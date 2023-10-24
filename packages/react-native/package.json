@@ -1,0 +1,46 @@
+{
+  "name": "@codepush/react-native",
+  "version": "0.0.2",
+  "description": "React Native OTA solution for internal infrastructure",
+  "main": "src/index.js",
+  "files": [
+    "src",
+    "lib",
+    "android",
+    "ios",
+    "cpp",
+    "*.podspec",
+    "!ios/build",
+    "!android/build",
+    "!android/gradle",
+    "!android/gradlew",
+    "!android/gradlew.bat",
+    "!android/local.properties",
+    "!**/__tests__",
+    "!**/__fixtures__",
+    "!**/__mocks__",
+    "!**/.*"
+  ],
+  "scripts": {},
+  "keywords": [],
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/codepush",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/codepush/issues"
+  },
+  "homepage": "https://github.com/gronxb/codepush#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "codegenConfig": {
+    "name": "RNReactNativeSpec",
+    "type": "modules",
+    "jsSrcsDir": "src"
+  },
+  "packageManager": "pnpm@8.9.2",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-native": "^0.72.6"
+  }
+}
