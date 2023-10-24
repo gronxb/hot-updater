@@ -7,8 +7,10 @@ const { InternalCodePush } = NativeModules;
  *
  * @returns {Promise<string>} A promise that resolves to the bundle URL.
  */
-export const getBundleURL = (): Promise<string> => {
-  return InternalCodePush.getBundleURL((url: string) => Promise.resolve(url));
+export const getBundleURL = () => {
+  return new Promise<string>((resolve) =>
+    InternalCodePush.getBundleURL((url: string) => resolve(url))
+  );
 };
 
 /**

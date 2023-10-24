@@ -1,4 +1,5 @@
 #import <React/RCTBridgeModule.h>
+#import <React/RCTBundleURLProvider.h>
 
 @interface InternalCodePush : NSObject <RCTBridgeModule>
 

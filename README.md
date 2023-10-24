@@ -1,2 +1,1 @@
-# codepush (WIP)
-React Native OTA solution for internal infrastructure
+./packages/react-native/README.md
