@@ -1,8 +1,9 @@
 {
   "name": "@codepush/react-native",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "React Native OTA solution for internal infrastructure",
-  "main": "src/index.js",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "files": [
     "src",
     "lib",
@@ -21,7 +22,9 @@
     "!**/__mocks__",
     "!**/.*"
   ],
-  "scripts": {},
+  "scripts": {
+    "build": "tsc"
+  },
   "keywords": [],
   "license": "MIT",
   "repository": "https://github.com/gronxb/codepush",
