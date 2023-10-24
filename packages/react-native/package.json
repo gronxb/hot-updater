@@ -1,6 +1,6 @@
 {
   "name": "@codepush/react-native",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "React Native OTA solution for internal infrastructure",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
