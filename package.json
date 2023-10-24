@@ -3,7 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "description": "React Native OTA solution for internal infrastructure",
-  "scripts": {},
+  "scripts": {
+    "preinstall": "npx only-allow pnpm"
+  },
   "keywords": [],
   "license": "MIT",
   "codegenConfig": {

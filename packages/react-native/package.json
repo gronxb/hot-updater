@@ -23,6 +23,8 @@
     "!**/.*"
   ],
   "scripts": {
+    "preinstall": "npx only-allow pnpm",
+    "prepare": "tsc",
     "build": "tsc"
   },
   "keywords": [],
