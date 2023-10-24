@@ -1,0 +1,15 @@
+{
+  "name": "@codepush/root",
+  "private": true,
+  "version": "1.0.0",
+  "description": "React Native OTA solution for internal infrastructure",
+  "scripts": {},
+  "keywords": [],
+  "license": "MIT",
+  "codegenConfig": {
+    "name": "RNReactNativeSpec",
+    "type": "modules",
+    "jsSrcsDir": "src"
+  },
+  "packageManager": "pnpm@8.9.2"
+}
