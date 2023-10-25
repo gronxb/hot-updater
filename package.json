@@ -1,5 +1,5 @@
 {
-  "name": "@liveupdater/root",
+  "name": "@hot-updater/root",
   "private": true,
   "description": "React Native OTA solution for internal infrastructure",
   "scripts": {

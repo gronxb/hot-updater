@@ -1,6 +1,6 @@
 {
-  "name": "@liveupdater/react-native",
-  "version": "0.0.3",
+  "name": "@hot-updater/react-native",
+  "version": "0.0.1",
   "description": "React Native OTA solution for internal infrastructure",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -29,12 +29,12 @@
   },
   "keywords": [],
   "license": "MIT",
-  "repository": "https://github.com/gronxb/liveupdater",
+  "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "bugs": {
-    "url": "https://github.com/gronxb/liveupdater/issues"
+    "url": "https://github.com/gronxb/hot-updater/issues"
   },
-  "homepage": "https://github.com/gronxb/liveupdater#readme",
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
   "publishConfig": {
     "access": "public"
   },

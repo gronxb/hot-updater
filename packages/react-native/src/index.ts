@@ -1,6 +1,6 @@
 import { NativeModules } from "react-native";
 
-const { LiveUpdater } = NativeModules;
+const { HotUpdater } = NativeModules;
 
 /**
  * Retrieves the bundle URL.
@@ -9,7 +9,7 @@ const { LiveUpdater } = NativeModules;
  */
 export const getBundleURL = () => {
   return new Promise<string>((resolve) =>
-    LiveUpdater.getBundleURL((url: string) => resolve(url))
+    HotUpdater.getBundleURL((url: string) => resolve(url))
   );
 };
 
@@ -20,7 +20,7 @@ export const getBundleURL = () => {
  * @returns {void} No return value.
  */
 export const setBundleURL = (url: string) => {
-  return LiveUpdater.setBundleURL(url);
+  return HotUpdater.setBundleURL(url);
 };
 
 /**
@@ -32,7 +32,7 @@ export const setBundleURL = (url: string) => {
  */
 export const downloadAndSave = (url: string) => {
   return new Promise<boolean>((resolve, reject) =>
-    LiveUpdater.downloadAndSave(url, (isSuccess: boolean) =>
+    HotUpdater.downloadAndSave(url, (isSuccess: boolean) =>
       isSuccess ? resolve(true) : reject(false)
     )
   );

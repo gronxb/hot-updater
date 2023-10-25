@@ -1,6 +1,6 @@
-#import "LiveUpdater.h"
+#import "HotUpdater.h"
 
-@implementation LiveUpdater
+@implementation HotUpdater
 
 RCT_EXPORT_MODULE();
 
@@ -18,7 +18,7 @@ static dispatch_once_t setBundleURLOnceToken;
         }
 
         _bundleURL = [NSURL fileURLWithPath:path];
-        [[NSUserDefaults standardUserDefaults] setObject:[_bundleURL absoluteString] forKey:@"LiveUpdaterBundleURL"];
+        [[NSUserDefaults standardUserDefaults] setObject:[_bundleURL absoluteString] forKey:@"HotUpdaterBundleURL"];
         [[NSUserDefaults standardUserDefaults] synchronize];
     });
 }
@@ -26,7 +26,7 @@ static dispatch_once_t setBundleURLOnceToken;
 + (NSURL *)cachedURLFromBundle {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSString *savedURLString = [[NSUserDefaults standardUserDefaults] objectForKey:@"LiveUpdaterBundleURL"];
+        NSString *savedURLString = [[NSUserDefaults standardUserDefaults] objectForKey:@"HotUpdaterBundleURL"];
         if (savedURLString) {
             _bundleURL = [NSURL URLWithString:savedURLString];
         }
@@ -100,19 +100,19 @@ static dispatch_once_t setBundleURLOnceToken;
 #pragma mark - React Native Exports
 
 RCT_EXPORT_METHOD(getBundleURL:(RCTResponseSenderBlock)callback) {
-    NSString *urlString = [LiveUpdater.bundleURL absoluteString];
+    NSString *urlString = [HotUpdater.bundleURL absoluteString];
     callback(@[urlString]);
 }
 
 RCT_EXPORT_METHOD(setBundleURL:(NSString *)urlString) {
-    [LiveUpdater setBundleURL:[NSURL URLWithString:urlString]];
+    [HotUpdater setBundleURL:[NSURL URLWithString:urlString]];
 }
 
 RCT_EXPORT_METHOD(downloadAndSave:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
     NSURL *url = [NSURL URLWithString:urlString];
-    NSString *path = [LiveUpdater pathFromURL:url];
+    NSString *path = [HotUpdater pathFromURL:url];
     NSLog(@"Downloading %@ to %@", url, path);
-    BOOL success = [LiveUpdater downloadDataFromURL:url andSaveToPath:path];
+    BOOL success = [HotUpdater downloadDataFromURL:url andSaveToPath:path];
     callback(@[@(success)]);
 }
 

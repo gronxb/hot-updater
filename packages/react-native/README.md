@@ -1,4 +1,4 @@
-# liveupdater (WIP)
+# hot-updater (WIP)
 React Native OTA solution for internal infrastructure
 
 ## Usage
@@ -26,7 +26,7 @@ React Native OTA solution for internal infrastructure
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
 {
-    return [LiveUpdater bundleURL];
+    return [HotUpdater bundleURL];
 }
 
 / ...
