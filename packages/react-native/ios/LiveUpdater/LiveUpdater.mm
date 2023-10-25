@@ -11,20 +11,9 @@ static dispatch_once_t setBundleURLOnceToken;
 
 + (void)setBundleURL:(NSURL *)url {
     dispatch_once(&setBundleURLOnceToken, ^{
-        NSData *data = [NSData dataWithContentsOfURL:url];
-
-        if (!data) {
-            NSLog(@"Failed to download data from URL: %@", url);
-            return;
-        }
-
         NSString *path = [self pathForFilename:[url lastPathComponent]];
 
-        NSError *error;
-        [data writeToFile:path options:NSDataWritingAtomic error:&error];
-
-        if (error) {
-            NSLog(@"Failed to save data: %@", error);
+        if (![self downloadDataFromURL:url andSaveToPath:path]) {
             return;
         }
 
@@ -69,6 +58,26 @@ static dispatch_once_t setBundleURLOnceToken;
     return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:filename];
 }
 
+
+- (BOOL)downloadDataFromURL:(NSURL *)url andSaveToPath:(NSString *)path {
+    NSData *data = [NSData dataWithContentsOfURL:url];
+
+    if (!data) {
+        NSLog(@"Failed to download data from URL: %@", url);
+        return NO;
+    }
+
+    NSError *error;
+    [data writeToFile:path options:NSDataWritingAtomic error:&error];
+
+    if (error) {
+        NSLog(@"Failed to save data: %@", error);
+        return NO;
+    }
+
+    return YES;
+}
+
 #pragma mark - React Native Exports
 
 RCT_EXPORT_METHOD(getBundleURL:(RCTResponseSenderBlock)callback) {
@@ -78,6 +87,14 @@ RCT_EXPORT_METHOD(getBundleURL:(RCTResponseSenderBlock)callback) {
 
 RCT_EXPORT_METHOD(setBundleURL:(NSString *)urlString) {
     [LiveUpdater setBundleURL:[NSURL URLWithString:urlString]];
+}
+
+RCT_EXPORT_METHOD(downloadAndSave:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSString *path = [self pathForFilename:[url lastPathComponent]];
+
+    BOOL success = [self downloadDataFromURL:url andSaveToPath:path];
+    callback(@[@(success)]);
 }
 
 @end
