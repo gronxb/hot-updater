@@ -1,5 +1,5 @@
 {
-  "name": "@codepush/react-native",
+  "name": "@liveupdater/react-native",
   "version": "0.0.4",
   "description": "React Native OTA solution for internal infrastructure",
   "main": "lib/index.js",
@@ -29,12 +29,12 @@
   },
   "keywords": [],
   "license": "MIT",
-  "repository": "https://github.com/gronxb/codepush",
+  "repository": "https://github.com/gronxb/liveupdater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "bugs": {
-    "url": "https://github.com/gronxb/codepush/issues"
+    "url": "https://github.com/gronxb/liveupdater/issues"
   },
-  "homepage": "https://github.com/gronxb/codepush#readme",
+  "homepage": "https://github.com/gronxb/liveupdater#readme",
   "publishConfig": {
     "access": "public"
   },

@@ -1,5 +1,5 @@
 {
-  "name": "@codepush/root",
+  "name": "@liveupdater/root",
   "private": true,
   "version": "1.0.0",
   "description": "React Native OTA solution for internal infrastructure",

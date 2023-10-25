@@ -1,6 +1,6 @@
 import { NativeModules } from "react-native";
 
-const { InternalCodePush } = NativeModules;
+const { LiveUpdater } = NativeModules;
 
 /**
  * Retrieves the bundle URL.
@@ -9,7 +9,7 @@ const { InternalCodePush } = NativeModules;
  */
 export const getBundleURL = () => {
   return new Promise<string>((resolve) =>
-    InternalCodePush.getBundleURL((url: string) => resolve(url))
+    LiveUpdater.getBundleURL((url: string) => resolve(url))
   );
 };
 
@@ -20,5 +20,5 @@ export const getBundleURL = () => {
  * @returns {void} No return value.
  */
 export const setBundleURL = (url: string) => {
-  return InternalCodePush.setBundleURL(url);
+  return LiveUpdater.setBundleURL(url);
 };
