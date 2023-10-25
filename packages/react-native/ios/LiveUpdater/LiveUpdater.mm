@@ -11,7 +11,7 @@ static dispatch_once_t setBundleURLOnceToken;
 
 + (void)setBundleURL:(NSURL *)url {
     dispatch_once(&setBundleURLOnceToken, ^{
-        NSString *path = [self pathForFilename:[url lastPathComponent]];
+        NSString *path = [self pathFromURL:url];
         
         if (![self downloadDataFromURL:url andSaveToPath:path]) {
             return;
@@ -58,12 +58,31 @@ static dispatch_once_t setBundleURLOnceToken;
     return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:filename];
 }
 
++ (NSString *)pathFromURL:(NSURL *)url {
+    NSString *pathComponent = url.path;
+
+    if ([pathComponent hasPrefix:@"/"]) {
+        pathComponent = [pathComponent substringFromIndex:1];
+    }
+
+    return [self pathForFilename:pathComponent];
+}
 
 + (BOOL)downloadDataFromURL:(NSURL *)url andSaveToPath:(NSString *)path {
     NSData *data = [NSData dataWithContentsOfURL:url];
 
     if (!data) {
         NSLog(@"Failed to download data from URL: %@", url);
+        return NO;
+    }
+
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *folderError;
+    if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+                withIntermediateDirectories:YES
+                                 attributes:nil
+                                      error:&folderError]) {
+        NSLog(@"Failed to create folder: %@", folderError);
         return NO;
     }
 
@@ -91,8 +110,8 @@ RCT_EXPORT_METHOD(setBundleURL:(NSString *)urlString) {
 
 RCT_EXPORT_METHOD(downloadAndSave:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
     NSURL *url = [NSURL URLWithString:urlString];
-    NSString *path = [LiveUpdater pathForFilename:[url lastPathComponent]];
-
+    NSString *path = [LiveUpdater pathFromURL:url];
+    NSLog(@"Downloading %@ to %@", url, path);
     BOOL success = [LiveUpdater downloadDataFromURL:url andSaveToPath:path];
     callback(@[@(success)]);
 }
