@@ -12,7 +12,7 @@ static dispatch_once_t setBundleURLOnceToken;
 + (void)setBundleURL:(NSURL *)url {
     dispatch_once(&setBundleURLOnceToken, ^{
         NSString *path = [self pathForFilename:[url lastPathComponent]];
-
+        
         if (![self downloadDataFromURL:url andSaveToPath:path]) {
             return;
         }
@@ -59,7 +59,7 @@ static dispatch_once_t setBundleURLOnceToken;
 }
 
 
-- (BOOL)downloadDataFromURL:(NSURL *)url andSaveToPath:(NSString *)path {
++ (BOOL)downloadDataFromURL:(NSURL *)url andSaveToPath:(NSString *)path {
     NSData *data = [NSData dataWithContentsOfURL:url];
 
     if (!data) {
@@ -91,9 +91,9 @@ RCT_EXPORT_METHOD(setBundleURL:(NSString *)urlString) {
 
 RCT_EXPORT_METHOD(downloadAndSave:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
     NSURL *url = [NSURL URLWithString:urlString];
-    NSString *path = [self pathForFilename:[url lastPathComponent]];
+    NSString *path = [LiveUpdater pathForFilename:[url lastPathComponent]];
 
-    BOOL success = [self downloadDataFromURL:url andSaveToPath:path];
+    BOOL success = [LiveUpdater downloadDataFromURL:url andSaveToPath:path];
     callback(@[@(success)]);
 }
 
