@@ -6,6 +6,9 @@ React Native OTA solution for internal infrastructure
 ```objective-c
 // filename: ios/MyApp/AppDelegate.mm
 // ...
+#import <HotUpdater/HotUpdater.h>
+
+// ...
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
 {
@@ -29,5 +32,5 @@ React Native OTA solution for internal infrastructure
     return [HotUpdater bundleURL];
 }
 
-/ ...
+// ...
 ```
