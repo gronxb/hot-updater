@@ -1,4 +1,4 @@
-import { NativeModules } from "react-native";
+import { NativeModules, Platform } from "react-native";
 
 const { HotUpdater } = NativeModules;
 
@@ -36,4 +36,24 @@ export const downloadAndSave = (url: string) => {
       isSuccess ? resolve(true) : reject(false)
     )
   );
+};
+
+export interface HotUpdaterInit {
+  api: {
+    ios: string;
+    android: string;
+  };
+}
+
+export const init = async ({ api }: HotUpdaterInit) => {
+  if (!["ios", "android"].includes(Platform.OS)) {
+    throw new Error("HotUpdater is only supported on iOS and Android");
+  }
+
+  const url = Platform.select({
+    ios: api.ios,
+    android: api.android,
+  })!;
+
+  setBundleURL(url);
 };

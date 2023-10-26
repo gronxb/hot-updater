@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/react-native",
   "version": "0.0.1",
-  "description": "React Native OTA solution for internal infrastructure",
+  "description": "React Native OTA solution for self-hosted",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -25,9 +25,16 @@
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "prepare": "tsc",
+    "typecheck": "tsc --noEmit",
     "build": "tsc"
   },
-  "keywords": [],
+  "keywords": [
+    "react-native",
+    "code",
+    "push",
+    "code-push",
+    "self-hosted"
+  ],
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
