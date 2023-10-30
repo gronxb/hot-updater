@@ -133,6 +133,7 @@ static NSURL *_bundleURL = nil;
     }
     
     [self setVersionId:prefix];
+    NSLog(@"Downloaded all files.");
     return allSuccess;
 }
 
