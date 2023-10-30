@@ -5,19 +5,32 @@
 RCT_EXPORT_MODULE();
 
 static NSURL *_bundleURL = nil;
-static dispatch_once_t setBundleURLOnceToken;
 
 #pragma mark - Bundle URL Management
 
-+ (void)setBundleURL:(NSURL *)url {
-    dispatch_once(&setBundleURLOnceToken, ^{
-        NSString *path = [self pathFromURL:url];
-        
-        if (![self downloadDataFromURL:url andSaveToPath:path]) {
-            return;
-        }
++ (void)setVersionId:(NSString*)versionId {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setInteger:version forKey:@"HotUpdaterVersionId"];
+        [defaults synchronize];
+    });
+}
 
-        _bundleURL = [NSURL fileURLWithPath:path];
++ (NSString *)getVersionId {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if ([defaults objectForKey:@"HotUpdaterVersionId"]) {
+        return @([defaults integerForKey:@"HotUpdaterVersionId"]);
+    } else {
+        return nil;
+    }
+}
+
+
++ (void)setBundleURL:(NSString *)localPath {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _bundleURL = [NSURL fileURLWithPath:localPath];
         [[NSUserDefaults standardUserDefaults] setObject:[_bundleURL absoluteString] forKey:@"HotUpdaterBundleURL"];
         [[NSUserDefaults standardUserDefaults] synchronize];
     });
@@ -54,66 +67,104 @@ static dispatch_once_t setBundleURLOnceToken;
 
 #pragma mark - Utility Methods
 
-+ (NSString *)pathForFilename:(NSString *)filename {
++ (NSString *)convertFileSystemPathFromBasePath:(NSString *)filename {
     return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:filename];
 }
 
-+ (NSString *)pathFromURL:(NSURL *)url {
-    NSString *pathComponent = url.path;
-
-    if ([pathComponent hasPrefix:@"/"]) {
-        pathComponent = [pathComponent substringFromIndex:1];
++ (NSString *)removePrefixFromPath:(NSString *)path prefix:(NSString *)prefix {
+    if ([path hasPrefix:[NSString stringWithFormat:@"/%@/", prefix]]) {
+        return [path stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"/%@"/, prefix] withString:@""];
     }
-
-    return [self pathForFilename:pathComponent];
+    return path;
 }
 
-+ (BOOL)downloadDataFromURL:(NSURL *)url andSaveToPath:(NSString *)path {
-    NSData *data = [NSData dataWithContentsOfURL:url];
++ (BOOL)downloadFilesFromURLs:(NSArray<NSURL *> *)urls prefix:(NSString *)prefix {
+    NSOperationQueue *queue = [[NSOperationQueue alloc] init];
+    queue.maxConcurrentOperationCount = urls.count;
 
-    if (!data) {
-        NSLog(@"Failed to download data from URL: %@", url);
-        return NO;
+    __block BOOL allSuccess = YES;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+    for (NSURL *url in urls) {
+        NSString *filename = [url lastPathComponent];
+        NSString *basePath = [self removePrefixFromPath:[url path] prefix:prefix];
+        NSString *path = [self convertFileSystemPathFromBasePath basePath:basePath];
+
+        [queue addOperationWithBlock:^{
+            NSData *data = [NSData dataWithContentsOfURL:url];
+
+            if (!data) {
+                NSLog(@"Failed to download data from URL: %@", url);
+                allSuccess = NO;
+                dispatch_semaphore_signal(semaphore);
+                return;
+            }
+
+            NSFileManager *fileManager = [NSFileManager defaultManager];
+            NSError *folderError;
+            if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+                        withIntermediateDirectories:YES
+                                         attributes:nil
+                                              error:&folderError]) {
+                NSLog(@"Failed to create folder: %@", folderError);
+                allSuccess = NO;
+                dispatch_semaphore_signal(semaphore);
+                return;
+            }
+
+            NSError *error;
+            [data writeToFile:path options:NSDataWritingAtomic error:&error];
+
+            if (error) {
+                NSLog(@"Failed to save data: %@", error);
+                allSuccess = NO;
+            }
+            
+            if ([filename hasPrefix:@"index"] && [filename hasSuffix:@".bundle"]) {
+                [self setBundleURL:path];
+            }
+            dispatch_semaphore_signal(semaphore);
+        }];
     }
 
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSError *folderError;
-    if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
-                withIntermediateDirectories:YES
-                                 attributes:nil
-                                      error:&folderError]) {
-        NSLog(@"Failed to create folder: %@", folderError);
-        return NO;
+    for (int i = 0; i < urls.count; i++) {
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
     }
-
-    NSError *error;
-    [data writeToFile:path options:NSDataWritingAtomic error:&error];
-
-    if (error) {
-        NSLog(@"Failed to save data: %@", error);
-        return NO;
-    }
-
-    return YES;
+    
+    [self setVersionId:prefix]
+    return allSuccess;
 }
 
 #pragma mark - React Native Exports
 
-RCT_EXPORT_METHOD(getBundleURL:(RCTResponseSenderBlock)callback) {
-    NSString *urlString = [HotUpdater.bundleURL absoluteString];
-    callback(@[urlString]);
+RCT_EXPORT_METHOD(getAppVersionId:(RCTResponseSenderBlock)callback) {
+    NSString *version = [self getVersionId];
+    if (version) {
+        callback(@[version]);
+    } else {
+        callback(@[[NSNull null]]);
+    }
 }
 
-RCT_EXPORT_METHOD(setBundleURL:(NSString *)urlString) {
-    [HotUpdater setBundleURL:[NSURL URLWithString:urlString]];
+RCT_EXPORT_METHOD(downloadFilesFromURLs:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+    NSMutableArray<NSURL *> *urls = [NSMutableArray new];
+    
+    for (NSString *urlString in urlStrings) {
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (url) {
+            [urls addObject:url];
+        } else {
+            reject(@"INVALID_URL", [NSString stringWithFormat:@"Invalid URL: %@", urlString], nil);
+            return;
+        }
+    }
+    
+    BOOL success = [HotUpdater downloadFilesFromURLs:urls prefix:prefix];
+    
+    if (success) {
+        resolve(@(YES));
+    } else {
+        reject(@"DOWNLOAD_ERROR", @"Failed to download files", nil);
+    }
 }
-
-RCT_EXPORT_METHOD(downloadAndSave:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
-    NSURL *url = [NSURL URLWithString:urlString];
-    NSString *path = [HotUpdater pathFromURL:url];
-    NSLog(@"Downloading %@ to %@", url, path);
-    BOOL success = [HotUpdater downloadDataFromURL:url andSaveToPath:path];
-    callback(@[@(success)]);
-}
-
 @end

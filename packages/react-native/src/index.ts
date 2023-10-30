@@ -1,59 +1,75 @@
 import { NativeModules, Platform } from "react-native";
+import { HotUpdaterMetaData } from "./types";
 
 const { HotUpdater } = NativeModules;
 
 /**
- * Retrieves the bundle URL.
+ * Fetches the current app version id.
  *
- * @returns {Promise<string>} A promise that resolves to the bundle URL.
+ * @async
+ * @returns {Promise<string|null>} Resolves with the current version id or null if not available.
+ * @throws {Error} Rejects if there's an error while fetching the version id.
  */
-export const getBundleURL = () => {
-  return new Promise<string>((resolve) =>
-    HotUpdater.getBundleURL((url: string) => resolve(url))
-  );
+export const getAppVersionId = async (): Promise<string | null> => {
+  return new Promise((resolve) => {
+    NativeModules.YourModule.getAppVersionId((version: string | null) => {
+      resolve(version);
+    });
+  });
 };
 
 /**
- * Sets the bundle URL.
+ * Downloads files from given URLs.
  *
- * @param {string} url - The URL to be set as the bundle URL.
- * @returns {void} No return value.
+ * @async
+ * @param {string[]} urlStrings - An array of URL strings to download files from.
+ * @param {string} prefix - The prefix to be added to each file name.
+ * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
+ * @throws {Error} Throws an error with message 'INVALID_URL' if any of the URL strings are invalid.
+ * @throws {Error} Throws an error with message 'DOWNLOAD_ERROR' if the download fails.
  */
-export const setBundleURL = (url: string) => {
-  return HotUpdater.setBundleURL(url);
+export const downloadFilesFromURLs = (
+  urlStrings: string[],
+  prefix: string
+): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    HotUpdater.downloadFilesFromURLs(
+      urlStrings,
+      prefix,
+      (success: boolean) => {
+        resolve(success);
+      },
+      (_: string, errorMessage: string) => {
+        reject(new Error(errorMessage));
+      }
+    );
+  });
 };
 
-/**
- * Downloads and saves data from the given URL.
- *
- * @param {string} url - The URL to download data from.
- * @returns {Promise<boolean>} Resolves with `true` if the operation is successful, otherwise rejects with `false`.
- *
- */
-export const downloadAndSave = (url: string) => {
-  return new Promise<boolean>((resolve, reject) =>
-    HotUpdater.downloadAndSave(url, (isSuccess: boolean) =>
-      isSuccess ? resolve(true) : reject(false)
-    )
-  );
-};
+export type HotUpdaterContext =
+  | {
+      ios: string;
+      android: string;
+    }
+  | string;
 
 export interface HotUpdaterInit {
-  api: {
-    ios: string;
-    android: string;
-  };
+  metadata:
+    | HotUpdaterMetaData
+    | (() => HotUpdaterMetaData)
+    | (() => Promise<HotUpdaterMetaData>);
 }
 
-export const init = async ({ api }: HotUpdaterInit) => {
+export const init = async ({ metadata }: HotUpdaterInit) => {
   if (!["ios", "android"].includes(Platform.OS)) {
     throw new Error("HotUpdater is only supported on iOS and Android");
   }
 
-  const url = Platform.select({
-    ios: api.ios,
-    android: api.android,
-  })!;
+  const { files, id } =
+    typeof metadata === "function" ? await metadata() : metadata;
 
-  setBundleURL(url);
+  const appVersionId = await getAppVersionId();
+  if (id !== appVersionId && id != null) {
+    await downloadFilesFromURLs(files, id);
+  }
 };
