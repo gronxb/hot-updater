@@ -12,15 +12,16 @@ static NSURL *_bundleURL = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setInteger:version forKey:@"HotUpdaterVersionId"];
+        [defaults setObject:versionId forKey:@"HotUpdaterVersionId"];
         [defaults synchronize];
     });
 }
 
 + (NSString *)getVersionId {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    if ([defaults objectForKey:@"HotUpdaterVersionId"]) {
-        return @([defaults integerForKey:@"HotUpdaterVersionId"]);
+    NSString *versionId = [defaults objectForKey:@"HotUpdaterVersionId"];
+    if (versionId && ![versionId isKindOfClass:[NSNull class]] && versionId.length > 0) {
+        return versionId;
     } else {
         return nil;
     }
@@ -67,13 +68,13 @@ static NSURL *_bundleURL = nil;
 
 #pragma mark - Utility Methods
 
-+ (NSString *)convertFileSystemPathFromBasePath:(NSString *)filename {
-    return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:filename];
++ (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
+    return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:basePath];
 }
 
 + (NSString *)removePrefixFromPath:(NSString *)path prefix:(NSString *)prefix {
     if ([path hasPrefix:[NSString stringWithFormat:@"/%@/", prefix]]) {
-        return [path stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"/%@"/, prefix] withString:@""];
+        return [path stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"/%@/", prefix] withString:@""];
     }
     return path;
 }
@@ -88,7 +89,7 @@ static NSURL *_bundleURL = nil;
     for (NSURL *url in urls) {
         NSString *filename = [url lastPathComponent];
         NSString *basePath = [self removePrefixFromPath:[url path] prefix:prefix];
-        NSString *path = [self convertFileSystemPathFromBasePath basePath:basePath];
+        NSString *path = [self convertFileSystemPathFromBasePath:basePath];
 
         [queue addOperationWithBlock:^{
             NSData *data = [NSData dataWithContentsOfURL:url];
@@ -131,14 +132,14 @@ static NSURL *_bundleURL = nil;
         dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
     }
     
-    [self setVersionId:prefix]
+    [self setVersionId:prefix];
     return allSuccess;
 }
 
 #pragma mark - React Native Exports
 
 RCT_EXPORT_METHOD(getAppVersionId:(RCTResponseSenderBlock)callback) {
-    NSString *version = [self getVersionId];
+    NSString *version = [HotUpdater getVersionId];
     if (version) {
         callback(@[version]);
     } else {
