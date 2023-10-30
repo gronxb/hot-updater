@@ -139,33 +139,22 @@ static NSURL *_bundleURL = nil;
 #pragma mark - React Native Exports
 
 RCT_EXPORT_METHOD(getAppVersionId:(RCTResponseSenderBlock)callback) {
-    NSString *version = [HotUpdater getVersionId];
-    if (version) {
-        callback(@[version]);
-    } else {
-        callback(@[[NSNull null]]);
-    }
+    NSString *versionId = [HotUpdater getVersionId];
+    callback(@[versionId ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(downloadFilesFromURLs:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
-    NSMutableArray<NSURL *> *urls = [NSMutableArray new];
-    
+RCT_EXPORT_METHOD(downloadFilesFromURLs:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix callback:(RCTResponseSenderBlock)callback) {
+    NSMutableArray<NSURL *> *urls = [NSMutableArray array];
     for (NSString *urlString in urlStrings) {
+        NSLog(@"urlString: %@", urlString);
         NSURL *url = [NSURL URLWithString:urlString];
+
         if (url) {
             [urls addObject:url];
-        } else {
-            reject(@"INVALID_URL", [NSString stringWithFormat:@"Invalid URL: %@", urlString], nil);
-            return;
         }
     }
-    
-    BOOL success = [HotUpdater downloadFilesFromURLs:urls prefix:prefix];
-    
-    if (success) {
-        resolve(@(YES));
-    } else {
-        reject(@"DOWNLOAD_ERROR", @"Failed to download files", nil);
-    }
+
+    BOOL result = [HotUpdater downloadFilesFromURLs:urls prefix:prefix];
+    callback(@[@(result)]);
 }
 @end
