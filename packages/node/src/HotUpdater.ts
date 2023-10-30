@@ -1,5 +1,6 @@
 import Sqids from "sqids";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { Version } from "./types";
 
 export interface HotUpdaterOptions {
   s3Client?: S3Client;
@@ -18,13 +19,13 @@ export class HotUpdater {
     this.bucketName = bucketName;
   }
 
-  private encodeVersion(version: number) {
-    return this.sqids.encode([version]);
+  private encodeVersion(version: Version) {
+    return this.sqids.encode(version.split(".").map(Number));
   }
 
-  private decodeVersion(id: string) {
-    const [version] = this.sqids.decode(id);
-    return version;
+  private decodeVersion(hash: string) {
+    const version = this.sqids.decode(hash);
+    return version.join(".");
   }
 
   private async getListObjectsV2Command(prefix?: string) {
@@ -37,18 +38,18 @@ export class HotUpdater {
       Prefix: prefix,
     });
     const data = await this.s3Client.send(command);
-    const assetPaths = data.Contents?.map((content) => content.Key).filter(
+    const files = data.Contents?.map((content) => content.Key).filter(
       (key) => key !== prefix
     );
-    return assetPaths;
+    return files;
   }
 
   public async getVersionList() {
-    const assetPaths = await this.getListObjectsV2Command();
+    const files = await this.getListObjectsV2Command();
 
     const versionSet = new Set(
-      assetPaths.map((assetPaths) => {
-        const [prefix] = assetPaths.split("/");
+      files.map((file) => {
+        const [prefix] = file.split("/");
         const version = this.decodeVersion(prefix);
         return version;
       })
@@ -57,11 +58,11 @@ export class HotUpdater {
     return Array.from(versionSet);
   }
 
-  public async getMetaData(version: number) {
+  public async getMetaData(version: Version) {
     const prefix = `${this.encodeVersion(version)}/`;
 
     return {
-      assetPaths: await this.getListObjectsV2Command(prefix),
+      files: await this.getListObjectsV2Command(prefix),
       version,
     };
   }

@@ -7,10 +7,10 @@ vi.mock("@aws-sdk/client-s3", () => {
   const S3Client = vi.fn();
   S3Client.prototype.send = vi.fn().mockImplementation((command) => ({
     Contents: [
-      { Key: "Gm/index.bundle" }, // v1/index.bundle
-      { Key: "Gm/assets/logo.png" }, // v1/index.bundle
-      { Key: "ql/index.bundle" }, // v2/index.bundle
-      { Key: "ql/assets/logo.png" }, // v2/index.bundle
+      { Key: "MhpYhz/index.bundle" }, // 1.0.0/index.bundle
+      { Key: "MhpYhz/assets/logo.png" }, // 1.0.0/index.bundle
+      { Key: "IQhQ8B/index.bundle" }, // 1.0.1/index.bundle
+      { Key: "IQhQ8B/assets/logo.png" }, // 1.0.1/index.bundle
     ].filter(
       command.Prefix
         ? (content) => content.Key.startsWith(command.Prefix)
@@ -42,7 +42,7 @@ describe("HotUpdater", () => {
 
   describe("encodeVersion and decodeVersion", () => {
     it("should correctly encode and decode a version", () => {
-      const version = 1234;
+      const version = "1.0.0";
       const encoded = hotUpdater["encodeVersion"](version);
       const decoded = hotUpdater["decodeVersion"](encoded);
       expect(decoded).toBe(version);
@@ -53,10 +53,10 @@ describe("HotUpdater", () => {
     it("should retrieve a list of objects from the S3 bucket", async () => {
       const result = await hotUpdater["getListObjectsV2Command"]();
       expect(result).toEqual([
-        "Gm/index.bundle",
-        "Gm/assets/logo.png",
-        "ql/index.bundle",
-        "ql/assets/logo.png",
+        "MhpYhz/index.bundle",
+        "MhpYhz/assets/logo.png",
+        "IQhQ8B/index.bundle",
+        "IQhQ8B/assets/logo.png",
       ]);
     });
   });
@@ -64,18 +64,17 @@ describe("HotUpdater", () => {
   describe("getVersionList", () => {
     it("should retrieve a list of versions", async () => {
       const versions = await hotUpdater.getVersionList();
-      expect(versions).toEqual([1, 2]);
+      expect(versions).toEqual(["1.0.0", "1.0.1"]);
     });
   });
 
   describe("getMetaData", () => {
     it("should retrieve metadata for a given version", async () => {
-      const version = 2;
+      const version = "1.0.1";
 
-      vi.fn().getMockImplementation;
-      const metadata = await hotUpdater.getMetaData(2);
+      const metadata = await hotUpdater.getMetaData(version);
       expect(metadata).toStrictEqual({
-        assetPaths: ["ql/index.bundle", "ql/assets/logo.png"],
+        files: ["IQhQ8B/index.bundle", "IQhQ8B/assets/logo.png"],
         version,
       });
     });
