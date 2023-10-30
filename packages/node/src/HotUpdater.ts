@@ -3,6 +3,7 @@ import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { Version } from "./types";
 
 export interface HotUpdaterOptions {
+  baseUrl?: string;
   s3Client?: S3Client;
   bucketName: string;
 }
@@ -10,13 +11,19 @@ export interface HotUpdaterOptions {
 export class HotUpdater {
   private s3Client?: S3Client;
   private bucketName: string;
+  private baseUrl: string;
   private sqids = new Sqids({
     alphabet: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
   });
 
-  constructor({ s3Client, bucketName }: HotUpdaterOptions) {
-    this.s3Client = s3Client ?? new S3Client({});
+  constructor({
+    bucketName,
+    s3Client = new S3Client({}),
+    baseUrl = "",
+  }: HotUpdaterOptions) {
+    this.s3Client = s3Client;
     this.bucketName = bucketName;
+    this.baseUrl = baseUrl;
   }
 
   private encodeVersion(version: Version) {
@@ -37,9 +44,10 @@ export class HotUpdater {
       Bucket: this.bucketName,
       Prefix: prefix,
     });
+
     const data = await this.s3Client.send(command);
-    const files = data.Contents?.map((content) => content.Key).filter(
-      (key) => key !== prefix
+    const files = data.Contents?.filter(({ Key }) => Key !== prefix).map(
+      (content) => [this.baseUrl, content.Key].join("/")
     );
     return files;
   }
@@ -49,7 +57,8 @@ export class HotUpdater {
 
     const versionSet = new Set(
       files.map((file) => {
-        const [prefix] = file.split("/");
+        const url = new URL(file);
+        const [prefix] = url.pathname.split("/").filter(Boolean);
         const version = this.decodeVersion(prefix);
         return version;
       })
@@ -63,6 +72,7 @@ export class HotUpdater {
 
     return {
       files: await this.getListObjectsV2Command(prefix),
+      id: this.encodeVersion(version),
       version,
     };
   }

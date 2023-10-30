@@ -7,8 +7,10 @@ vi.mock("@aws-sdk/client-s3", () => {
   const S3Client = vi.fn();
   S3Client.prototype.send = vi.fn().mockImplementation((command) => ({
     Contents: [
+      { Key: "MhpYhz/" },
       { Key: "MhpYhz/index.bundle" }, // 1.0.0/index.bundle
       { Key: "MhpYhz/assets/logo.png" }, // 1.0.0/index.bundle
+      { Key: "IQhQ8B/" },
       { Key: "IQhQ8B/index.bundle" }, // 1.0.1/index.bundle
       { Key: "IQhQ8B/assets/logo.png" }, // 1.0.1/index.bundle
     ].filter(
@@ -37,6 +39,7 @@ describe("HotUpdater", () => {
     hotUpdater = new HotUpdater({
       s3Client: new S3Client(),
       bucketName,
+      baseUrl: "https://test-bucket.s3.eu-west-1.amazonaws.com",
     });
   });
 
@@ -53,10 +56,12 @@ describe("HotUpdater", () => {
     it("should retrieve a list of objects from the S3 bucket", async () => {
       const result = await hotUpdater["getListObjectsV2Command"]();
       expect(result).toEqual([
-        "MhpYhz/index.bundle",
-        "MhpYhz/assets/logo.png",
-        "IQhQ8B/index.bundle",
-        "IQhQ8B/assets/logo.png",
+        "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/",
+        "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/index.bundle",
+        "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/assets/logo.png",
+        "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/",
+        "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/index.bundle",
+        "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/assets/logo.png",
       ]);
     });
   });
@@ -74,7 +79,11 @@ describe("HotUpdater", () => {
 
       const metadata = await hotUpdater.getMetaData(version);
       expect(metadata).toStrictEqual({
-        files: ["IQhQ8B/index.bundle", "IQhQ8B/assets/logo.png"],
+        files: [
+          "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/index.bundle",
+          "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/assets/logo.png",
+        ],
+        id: "IQhQ8B",
         version,
       });
     });
