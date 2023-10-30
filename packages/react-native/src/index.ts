@@ -12,7 +12,7 @@ const { HotUpdater } = NativeModules;
  */
 export const getAppVersionId = async (): Promise<string | null> => {
   return new Promise((resolve) => {
-    NativeModules.YourModule.getAppVersionId((version: string | null) => {
+    HotUpdater.getAppVersionId((version: string | null) => {
       resolve(version);
     });
   });
