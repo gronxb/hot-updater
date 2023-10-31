@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "React Native OTA solution for self-hosted",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
