@@ -1,7 +1,7 @@
 import { URL } from "react-native-url-polyfill";
 import { NativeModules, Platform } from "react-native";
 import { HotUpdaterMetaData } from "./types";
-import { HotUpdaterDownloadError, HotUpdaterPlatformError } from "./error";
+import { HotUpdaterError } from "./error";
 import { wrapNetworkError } from "./wrapNetworkError";
 
 const { HotUpdater } = NativeModules;
@@ -72,7 +72,9 @@ export const init = async ({
   onFailure,
 }: HotUpdaterInit) => {
   if (!["ios", "android"].includes(Platform.OS)) {
-    throw new HotUpdaterPlatformError();
+    throw new HotUpdaterError(
+      "HotUpdater is only supported on iOS and Android"
+    );
   }
 
   try {
@@ -87,7 +89,7 @@ export const init = async ({
       if (allDownloadFiles) {
         onSuccess?.("INSTALLING_UPDATE");
       } else {
-        throw new HotUpdaterDownloadError();
+        throw new HotUpdaterError("HotUpdater failed to download");
       }
       return;
     }

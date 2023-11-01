@@ -1,4 +1,4 @@
-import { HotUpdaterMetadataError } from "./error";
+import { HotUpdaterError } from "./error";
 
 export async function wrapNetworkError<T>(
   metadata: (() => Promise<T>) | (() => T)
@@ -6,6 +6,6 @@ export async function wrapNetworkError<T>(
   try {
     return await metadata();
   } catch (error) {
-    throw new HotUpdaterMetadataError();
+    throw new HotUpdaterError("HotUpdater metadata is not defined");
   }
 }
