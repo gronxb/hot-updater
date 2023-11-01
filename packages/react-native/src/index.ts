@@ -1,5 +1,8 @@
+import { URL } from "react-native-url-polyfill";
 import { NativeModules, Platform } from "react-native";
 import { HotUpdaterMetaData } from "./types";
+import { HotUpdaterDownloadError, HotUpdaterPlatformError } from "./error";
+import { wrapNetworkError } from "./wrapNetworkError";
 
 const { HotUpdater } = NativeModules;
 
@@ -30,36 +33,70 @@ export const downloadFilesFromURLs = (
   prefix: string
 ): Promise<boolean> => {
   return new Promise((resolve) => {
-    HotUpdater.downloadFilesFromURLs(urlStrings, prefix, (success: boolean) => {
-      resolve(success);
+    const encodedURLs = urlStrings.map((urlString) => {
+      const url = new URL(urlString);
+      return [
+        url.host,
+        url.pathname
+          .split("/")
+          .map((pathname) => encodeURIComponent(pathname))
+          .join("/"),
+      ].join("/");
     });
+
+    HotUpdater.downloadFilesFromURLs(
+      encodedURLs,
+      prefix,
+      (success: boolean) => {
+        resolve(success);
+      }
+    );
   });
 };
 
-export type HotUpdaterContext =
-  | {
-      ios: string;
-      android: string;
-    }
-  | string;
+export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 
 export interface HotUpdaterInit {
   metadata:
     | HotUpdaterMetaData
     | (() => HotUpdaterMetaData)
     | (() => Promise<HotUpdaterMetaData>);
+
+  onSuccess?: (status: HotUpdaterStatus) => void;
+  onFailure?: (e: unknown) => void;
 }
 
-export const init = async ({ metadata }: HotUpdaterInit) => {
+export const init = async ({
+  metadata,
+  onSuccess,
+  onFailure,
+}: HotUpdaterInit) => {
   if (!["ios", "android"].includes(Platform.OS)) {
-    throw new Error("HotUpdater is only supported on iOS and Android");
+    throw new HotUpdaterPlatformError();
   }
 
-  const { files, id } =
-    typeof metadata === "function" ? await metadata() : metadata;
+  try {
+    const { files, id } =
+      typeof metadata === "function"
+        ? await wrapNetworkError(metadata)
+        : metadata;
 
-  const appVersionId = await getAppVersionId();
-  if (id !== appVersionId && id != null) {
-    await downloadFilesFromURLs(files, id);
+    const appVersionId = await getAppVersionId();
+    if (id !== appVersionId) {
+      const allDownloadFiles = await downloadFilesFromURLs(files, id);
+      if (allDownloadFiles) {
+        onSuccess?.("INSTALLING_UPDATE");
+      } else {
+        throw new HotUpdaterDownloadError();
+      }
+      return;
+    }
+    onSuccess?.("UP_TO_DATE");
+  } catch (e) {
+    if (onFailure) {
+      onFailure(e);
+      return;
+    }
+    throw e;
   }
 };

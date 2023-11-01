@@ -132,8 +132,10 @@ static NSURL *_bundleURL = nil;
         dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
     }
     
-    [self setVersionId:prefix];
-    NSLog(@"Downloaded all files.");
+    if (allSuccess) {
+        [self setVersionId:prefix];
+        NSLog(@"Downloaded all files.");
+    }
     return allSuccess;
 }
 
@@ -147,7 +149,6 @@ RCT_EXPORT_METHOD(getAppVersionId:(RCTResponseSenderBlock)callback) {
 RCT_EXPORT_METHOD(downloadFilesFromURLs:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix callback:(RCTResponseSenderBlock)callback) {
     NSMutableArray<NSURL *> *urls = [NSMutableArray array];
     for (NSString *urlString in urlStrings) {
-        NSLog(@"urlString: %@", urlString);
         NSURL *url = [NSURL URLWithString:urlString];
 
         if (url) {
