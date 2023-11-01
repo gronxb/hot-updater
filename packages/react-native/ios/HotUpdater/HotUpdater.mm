@@ -66,6 +66,10 @@ static NSURL *_bundleURL = nil;
     return [self cachedURLFromBundle] ?: [self fallbackURL];
 }
 
++ (NSURL *)bundleURLWithoutFallback {
+    return [self cachedURLFromBundle];
+}
+
 #pragma mark - Utility Methods
 
 + (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
