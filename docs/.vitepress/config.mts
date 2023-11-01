@@ -4,13 +4,14 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "HotUpdater",
   description: "React Native OTA solution for self-hosted",
+  head: [["link", { rel: "icon", href: "/favicon.ico" }]],
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: "Home", link: "/" },
       { text: "Examples", link: "/markdown-examples" },
     ],
-    logo: "../logo.svg",
+    logo: "/favicon.ico",
     sidebar: [
       {
         text: "Examples",

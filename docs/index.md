@@ -6,7 +6,7 @@ hero:
   name: "HotUpdater"
   text: "React Native OTA solution for self-hosted"
   image:
-    src: /logo.svg
+    src: /assets/logo.svg
     alt: hot-updater
   tagline: My great project tagline
   actions:
