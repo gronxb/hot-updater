@@ -53,5 +53,8 @@
   "devDependencies": {
     "react": "^18.2.0",
     "react-native": "^0.72.6"
+  },
+  "dependencies": {
+    "react-native-url-polyfill": "^2.0.0"
   }
 }
