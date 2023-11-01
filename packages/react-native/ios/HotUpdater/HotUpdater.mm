@@ -8,6 +8,12 @@ static NSURL *_bundleURL = nil;
 
 #pragma mark - Bundle URL Management
 
++ (void)reload {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+    });
+}
+
 + (void)setVersionId:(NSString*)versionId {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -144,6 +150,10 @@ static NSURL *_bundleURL = nil;
 }
 
 #pragma mark - React Native Exports
+
+RCT_EXPORT_METHOD(reload) {
+    [HotUpdater reload];
+}
 
 RCT_EXPORT_METHOD(getAppVersionId:(RCTResponseSenderBlock)callback) {
     NSString *versionId = [HotUpdater getVersionId];

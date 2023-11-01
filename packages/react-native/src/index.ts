@@ -54,6 +54,13 @@ export const downloadFilesFromURLs = (
   });
 };
 
+/**
+ * Reloads the app.
+ */
+export const reload = () => {
+  HotUpdater.reload();
+};
+
 export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 
 export interface HotUpdaterInit {
@@ -78,15 +85,21 @@ export const init = async ({
   }
 
   try {
-    const { files, id } =
-      typeof metadata === "function"
-        ? await wrapNetworkError(metadata)
-        : metadata;
+    const {
+      files,
+      id,
+      reloadAfterUpdate = false,
+    } = typeof metadata === "function"
+      ? await wrapNetworkError(metadata)
+      : metadata;
 
     const appVersionId = await getAppVersionId();
     if (id !== appVersionId) {
       const allDownloadFiles = await downloadFilesFromURLs(files, id);
       if (allDownloadFiles) {
+        if (reloadAfterUpdate) {
+          reload();
+        }
         onSuccess?.("INSTALLING_UPDATE");
       } else {
         throw new HotUpdaterError("HotUpdater failed to download");
