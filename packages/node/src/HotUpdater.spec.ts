@@ -77,7 +77,7 @@ describe("HotUpdater", () => {
     it("should retrieve metadata for a given version", async () => {
       const version = "1.0.1";
 
-      const metadata = await hotUpdater.getMetaData(version);
+      const metadata = await hotUpdater.getMetaData({ version });
       expect(metadata).toStrictEqual({
         files: [
           "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/index.bundle",
@@ -85,6 +85,27 @@ describe("HotUpdater", () => {
         ],
         id: "IQhQ8B",
         version,
+        reloadAfterUpdate: false,
+      });
+    });
+  });
+
+  describe("getMetaData with options", () => {
+    it("should retrieve metadata for a given version", async () => {
+      const version = "1.0.1";
+
+      const metadata = await hotUpdater.getMetaData({
+        version,
+        reloadAfterUpdate: true,
+      });
+      expect(metadata).toStrictEqual({
+        files: [
+          "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/index.bundle",
+          "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/assets/logo.png",
+        ],
+        id: "IQhQ8B",
+        version,
+        reloadAfterUpdate: true,
       });
     });
   });

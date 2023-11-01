@@ -1,6 +1,6 @@
 import Sqids from "sqids";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
-import { Version } from "./types";
+import { MetaDataOptions, Version } from "./types";
 
 export interface HotUpdaterOptions {
   baseUrl?: string;
@@ -67,13 +67,17 @@ export class HotUpdater {
     return Array.from(versionSet);
   }
 
-  public async getMetaData(version: Version) {
+  public async getMetaData({
+    version,
+    reloadAfterUpdate = false,
+  }: MetaDataOptions) {
     const prefix = `${this.encodeVersion(version)}/`;
 
     return {
       files: await this.getListObjectsV2Command(prefix),
       id: this.encodeVersion(version),
       version,
+      reloadAfterUpdate,
     };
   }
 
