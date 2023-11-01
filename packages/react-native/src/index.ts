@@ -36,12 +36,12 @@ export const downloadFilesFromURLs = (
     const encodedURLs = urlStrings.map((urlString) => {
       const url = new URL(urlString);
       return [
-        url.host,
+        url.origin,
         url.pathname
           .split("/")
           .map((pathname) => encodeURIComponent(pathname))
           .join("/"),
-      ].join("/");
+      ].join("");
     });
 
     HotUpdater.downloadFilesFromURLs(
