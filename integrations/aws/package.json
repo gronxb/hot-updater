@@ -1,0 +1,23 @@
+{
+  "name": "@hot-updater/aws",
+  "type": "module",
+  "version": "0.0.1",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "index.js",
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.441.0"
+  }
+}

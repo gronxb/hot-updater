@@ -18,6 +18,12 @@ importers:
         specifier: 1.0.0-rc.24
         version: 1.0.0-rc.24(@algolia/client-search@4.20.0)(search-insights@2.9.0)(typescript@5.2.2)
 
+  integrations/aws:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.441.0
+        version: 3.441.0
+
   packages/cli:
     dependencies:
       '@aws-sdk/client-s3':
