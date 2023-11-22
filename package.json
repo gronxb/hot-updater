@@ -7,12 +7,7 @@
   },
   "keywords": [],
   "license": "MIT",
-  "codegenConfig": {
-    "name": "RNReactNativeSpec",
-    "type": "modules",
-    "jsSrcsDir": "src"
-  },
-  "packageManager": "pnpm@8.10.2",
+  "packageManager": "pnpm@8.10.5",
   "devDependencies": {
     "typescript": "^5.2.2"
   }

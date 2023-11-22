@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["esnext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "hot-updater": ["./packages/hot-updater/src/index.ts"],
+      "@hot-updater/node": ["./packages/node/src/index.ts"],
+      "@hot-updater/aws": ["./plugins/aws/src/index.ts"]
+    },
+    "strict": true,
+    "declaration": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  }
+}
