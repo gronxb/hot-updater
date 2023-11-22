@@ -18,10 +18,10 @@
   "license": "MIT",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
-    "prepare": "tsc",
-    "test": "vitest",
+    "prepare": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "test": "vitest"
   },
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",

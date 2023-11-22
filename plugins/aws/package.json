@@ -15,7 +15,9 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc"
+    "prepare": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.441.0"
