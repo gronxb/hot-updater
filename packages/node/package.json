@@ -3,6 +3,11 @@
   "version": "0.0.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "package.json"
+  ],
   "keywords": [
     "react-native",
     "code",
@@ -27,12 +32,13 @@
   "publishConfig": {
     "access": "public"
   },
-  "devDependencies": {
-    "@aws-sdk/client-s3": "^3.436.0",
-    "sqids": "^0.3.0",
-    "vitest": "^0.34.6"
+  "dependencies": {
+    "sqids": "^0.3.0"
   },
-  "peerDependencies": {
-    "@aws-sdk/client-s3": ">=3.x.x"
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.441.0",
+    "@types/node": "^20.9.4",
+    "vitest": "^0.34.6",
+    "workspace-tools": "^0.36.3"
   }
 }

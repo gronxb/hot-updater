@@ -1,6 +1,6 @@
 import { expect, vi, describe, beforeEach, it } from "vitest";
-
 import { HotUpdater } from "./HotUpdater"; // Adjust the path accordingly
+import { aws } from "@hot-updater/aws";
 import { S3Client } from "@aws-sdk/client-s3";
 
 vi.mock("@aws-sdk/client-s3", () => {
@@ -30,16 +30,18 @@ vi.mock("@aws-sdk/client-s3", () => {
   return { S3Client, ListObjectsV2Command };
 });
 
-describe("HotUpdater", () => {
+describe("HotUpdater - s3", () => {
   let hotUpdater: HotUpdater;
 
   const bucketName = "test-bucket";
 
   beforeEach(() => {
     hotUpdater = new HotUpdater({
-      s3Client: new S3Client(),
-      bucketName,
-      baseUrl: "https://test-bucket.s3.eu-west-1.amazonaws.com",
+      config: aws({
+        baseUrl: `https://${bucketName}.s3.eu-west-1.amazonaws.com`,
+        bucketName,
+        s3Client: new S3Client(),
+      }),
     });
   });
 
@@ -52,26 +54,27 @@ describe("HotUpdater", () => {
     });
   });
 
-  describe("getListObjectsV2Command", () => {
-    it("should retrieve a list of objects from the S3 bucket", async () => {
-      const result = await hotUpdater["getListObjectsV2Command"]();
-      expect(result).toEqual([
-        "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/",
-        "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/index.bundle",
-        "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/assets/logo.png",
-        "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/",
-        "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/index.bundle",
-        "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/assets/logo.png",
-      ]);
-    });
-  });
+  // TODO: go to @hot-updater/aws
+  // describe("getListObjectsV2Command", () => {
+  //   it("should retrieve a list of objects from the S3 bucket", async () => {
+  //     const result = await hotUpdater["getVersionList"]();
+  //     expect(result).toEqual([
+  //       "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/",
+  //       "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/index.bundle",
+  //       "https://test-bucket.s3.eu-west-1.amazonaws.com/MhpYhz/assets/logo.png",
+  //       "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/",
+  //       "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/index.bundle",
+  //       "https://test-bucket.s3.eu-west-1.amazonaws.com/IQhQ8B/assets/logo.png",
+  //     ]);
+  //   });
+  // });
 
-  describe("getVersionList", () => {
-    it("should retrieve a list of versions", async () => {
-      const versions = await hotUpdater.getVersionList();
-      expect(versions).toEqual(["1.0.0", "1.0.1"]);
-    });
-  });
+  // describe("getVersionList", () => {
+  //   it("should retrieve a list of versions", async () => {
+  //     const versions = await hotUpdater.getVersionList();
+  //     expect(versions).toEqual(["1.0.0", "1.0.1"]);
+  //   });
+  // });
 
   describe("getMetaData", () => {
     it("should retrieve metadata for a given version", async () => {

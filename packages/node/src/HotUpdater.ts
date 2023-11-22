@@ -1,29 +1,18 @@
 import Sqids from "sqids";
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
-import { MetaDataOptions, Version } from "./types";
+import type { HotUpdaterReadStrategy, MetaDataOptions, Version } from "./types";
 
 export interface HotUpdaterOptions {
-  baseUrl?: string;
-  s3Client?: S3Client;
-  bucketName: string;
+  config: HotUpdaterReadStrategy;
 }
 
 export class HotUpdater {
-  private s3Client?: S3Client;
-  private bucketName: string;
-  private baseUrl: string;
+  private config: HotUpdaterReadStrategy;
   private sqids = new Sqids({
     alphabet: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
   });
 
-  constructor({
-    bucketName,
-    s3Client = new S3Client({}),
-    baseUrl = "",
-  }: HotUpdaterOptions) {
-    this.s3Client = s3Client;
-    this.bucketName = bucketName;
-    this.baseUrl = baseUrl;
+  constructor({ config }: HotUpdaterOptions) {
+    this.config = config;
   }
 
   private encodeVersion(version: Version) {
@@ -35,25 +24,8 @@ export class HotUpdater {
     return version.join(".");
   }
 
-  private async getListObjectsV2Command(prefix?: string) {
-    /**
-     * Uses ListObjectsV2Command to fetch a list of objects from an S3 bucket.
-     * Note: A single invocation of ListObjectsV2Command can retrieve a maximum of 1,000 objects.
-     */
-    const command = new ListObjectsV2Command({
-      Bucket: this.bucketName,
-      Prefix: prefix,
-    });
-
-    const data = await this.s3Client.send(command);
-    const files = data.Contents?.filter(({ Key }) => Key !== prefix).map(
-      (content) => [this.baseUrl, content.Key].join("/")
-    );
-    return files;
-  }
-
   public async getVersionList() {
-    const files = await this.getListObjectsV2Command();
+    const files = await this.config.getListObjects();
 
     const versionSet = new Set(
       files.map((file) => {
@@ -74,7 +46,7 @@ export class HotUpdater {
     const prefix = `${this.encodeVersion(version)}/`;
 
     return {
-      files: await this.getListObjectsV2Command(prefix),
+      files: await this.config.getListObjects(prefix),
       id: this.encodeVersion(version),
       version,
       reloadAfterUpdate,
