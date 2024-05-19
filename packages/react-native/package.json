@@ -24,7 +24,8 @@
   "scripts": {
     "prepare": "tsc --project tsconfig.build.json",
     "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
   },
   "keywords": [
     "react-native",
@@ -44,9 +45,12 @@
     "access": "public"
   },
   "codegenConfig": {
-    "name": "RNReactNativeSpec",
+    "name": "HotUpdaterSpec",
     "type": "modules",
-    "jsSrcsDir": "src"
+    "jsSrcsDir": "./src/specs",
+    "android": {
+      "javaPackageName": "com.hotupdater"
+    }
   },
   "devDependencies": {
     "react": "^18.2.0",

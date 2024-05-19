@@ -21,8 +21,8 @@ importers:
   examples/react-native:
     dependencies:
       '@hot-updater/react-native':
-        specifier: ^0.0.5
-        version: 0.0.5(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0))
+        specifier: workspace:^
+        version: link:../../packages/react-native
       react:
         specifier: 18.2.0
         version: 18.2.0
@@ -1352,9 +1352,6 @@ packages:
 
   '@hapi/topo@5.1.0':
     resolution: {integrity: sha512-foQZKJig7Ob0BMAYBfcJk8d77QtOe7Wo4ox7ff1lQYoNNAb6jwcY1ncdoy2e9wQZzvNy7ODZCYJkK8kzmcAnAg==}
-
-  '@hot-updater/react-native@0.0.5':
-    resolution: {integrity: sha512-k5apgszCSG52iyDulTx+W2cCgYyOLADijoLi7s+71J/8k9nxHdKmGe1oD1hVmvi2tmhUlY0BoOq0oMa934Chzg==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -6774,12 +6771,6 @@ snapshots:
     dependencies:
       '@hapi/hoek': 9.3.0
 
-  '@hot-updater/react-native@0.0.5(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0))':
-    dependencies:
-      react-native-url-polyfill: 2.0.0(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0))
-    transitivePeerDependencies:
-      - react-native
-
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
       '@humanwhocodes/object-schema': 2.0.3
@@ -10975,11 +10966,6 @@ snapshots:
   react-native-url-polyfill@2.0.0(react-native@0.72.6(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(react@18.2.0)):
     dependencies:
       react-native: 0.72.6(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(react@18.2.0)
-      whatwg-url-without-unicode: 8.0.0-3
-
-  react-native-url-polyfill@2.0.0(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0)):
-    dependencies:
-      react-native: 0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0)
       whatwg-url-without-unicode: 8.0.0-3
 
   react-native@0.72.6(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(react@18.2.0):

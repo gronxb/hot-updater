@@ -10,7 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@hot-updater/react-native": "^0.0.5",
+    "@hot-updater/react-native": "workspace:^",
     "react": "18.2.0",
     "react-native": "0.74.1"
   },
