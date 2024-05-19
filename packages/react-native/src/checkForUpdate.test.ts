@@ -18,33 +18,33 @@ describe("appVersion 1.0, bundleVersion 0", async () => {
   });
 
   it("should return null if no update information is available", async () => {
-    const updateInfo = {};
+    const updatePayload = {};
 
-    const update = await checkForUpdate(updateInfo);
+    const update = await checkForUpdate(updatePayload);
     expect(update).toBeNull();
   });
 
   it("should return null if no update is available when the app version is higher", async () => {
-    const updateInfo = {
+    const updatePayload = {
       "1.1": {
         bundleVersion: 1,
         forceUpdate: false,
       },
     };
 
-    const update = await checkForUpdate(updateInfo);
+    const update = await checkForUpdate(updatePayload);
     expect(update).toBeNull();
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to true", async () => {
-    const updateInfo = {
+    const updatePayload = {
       "1.0": {
         bundleVersion: 1,
         forceUpdate: true,
       },
     };
 
-    const update = await checkForUpdate(updateInfo);
+    const update = await checkForUpdate(updatePayload);
     expect(update).toStrictEqual({
       bundleVersion: 1,
       forceUpdate: true,
@@ -52,14 +52,14 @@ describe("appVersion 1.0, bundleVersion 0", async () => {
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
-    const updateInfo = {
+    const updatePayload = {
       "1.0": {
         bundleVersion: 1,
         forceUpdate: false,
       },
     };
 
-    const update = await checkForUpdate(updateInfo);
+    const update = await checkForUpdate(updatePayload);
     expect(update).toStrictEqual({
       bundleVersion: 1,
       forceUpdate: false,
@@ -67,14 +67,14 @@ describe("appVersion 1.0, bundleVersion 0", async () => {
   });
 
   it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
-    const updateInfo = {
+    const updatePayload = {
       "1.0": {
         bundleVersion: 5,
         forceUpdate: false,
       },
     };
 
-    const update = await checkForUpdate(updateInfo);
+    const update = await checkForUpdate(updatePayload);
     expect(update).toStrictEqual({
       bundleVersion: 5,
       forceUpdate: false,

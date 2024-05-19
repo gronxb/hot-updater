@@ -1,24 +1,22 @@
 import { getAppVersion, getBundleVersion } from "./native";
-import type { UpdateInfo } from "./types";
+import type { UpdatePayloadArg } from "./types";
 import { isNullable } from "./utils";
 
-export const checkForUpdate = async (
-  updateInfo: UpdateInfo | (() => Promise<UpdateInfo>) | (() => UpdateInfo),
-) => {
-  const info =
-    typeof updateInfo === "function" ? await updateInfo() : updateInfo;
+export const checkForUpdate = async (updatePayload: UpdatePayloadArg) => {
+  const payload =
+    typeof updatePayload === "function" ? await updatePayload() : updatePayload;
 
   const currentAppVersion = await getAppVersion();
-  const latestAppVersionInfo = currentAppVersion
-    ? info?.[currentAppVersion]
+  const latestAppVersionPayload = currentAppVersion
+    ? payload?.[currentAppVersion]
     : null;
 
-  if (isNullable(latestAppVersionInfo)) {
+  if (isNullable(latestAppVersionPayload)) {
     return null;
   }
 
   const currentBundleVersion = await getBundleVersion();
-  const latestBundleVersion = latestAppVersionInfo?.bundleVersion;
+  const latestBundleVersion = latestAppVersionPayload?.bundleVersion;
 
   if (
     isNullable(latestBundleVersion) ||
@@ -30,6 +28,6 @@ export const checkForUpdate = async (
 
   return {
     bundleVersion: latestBundleVersion,
-    forceUpdate: latestAppVersionInfo.forceUpdate,
+    forceUpdate: latestAppVersionPayload.forceUpdate,
   };
 };

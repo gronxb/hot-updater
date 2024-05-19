@@ -1,6 +1,7 @@
 import { URL } from "react-native-url-polyfill";
 
 import { NativeModules } from "react-native";
+import { HotUpdaterError } from "./error";
 
 const { HotUpdater } = NativeModules;
 
@@ -22,16 +23,16 @@ export const getBundleVersion = async (): Promise<number | null> => {
  * Downloads files from given URLs.
  *
  * @async
- * @param {string[]} urlStrings - An array of URL strings to download files from.
+ * @param {string[]} urls - An array of URL strings to download files from.
  * @param {string} prefix - The prefix to be added to each file name.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
-  urlStrings: string[],
+  urls: string[],
   prefix: string,
 ): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const encodedURLs = urlStrings.map((urlString) => {
+  return new Promise((resolve, reject) => {
+    const encodedURLs = urls.map((urlString) => {
       const url = new URL(urlString);
       return [
         url.origin,
@@ -43,7 +44,13 @@ export const updateBundle = (
     });
 
     HotUpdater.updateBundle(encodedURLs, prefix, (success: boolean) => {
-      resolve(success);
+      if (success) {
+        resolve(success);
+      } else {
+        reject(
+          new HotUpdaterError("Failed to download and install the update"),
+        );
+      }
     });
   });
 };
