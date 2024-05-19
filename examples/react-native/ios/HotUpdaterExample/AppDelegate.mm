@@ -16,16 +16,19 @@
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
 {
-  return [HotUpdater bundleURL];
+  return [self bundleURL];
 }
 
 - (NSURL *)bundleURL
 {
-#if DEBUG
-  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
-#else
-  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
-#endif
+  // This field
+  return [HotUpdater bundleURL];
+
+// #if DEBUG
+//   return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
+// #else
+//   return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+// #endif
 }
 
 @end

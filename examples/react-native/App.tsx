@@ -10,30 +10,26 @@ import {Button, SafeAreaView, Text} from 'react-native';
 import {reload, init, getAppVersionId} from '@hot-updater/react-native';
 
 init({
-  // metadata: {
-  //   files: [
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/assets/node_modules/.pnpm/react-native@0.72.6_@babel+core@7.23.2_@babel+preset-env@7.23.2_react@18.2.0/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/alert-triangle.png',
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/assets/node_modules/.pnpm/react-native@0.72.6_@babel+core@7.23.2_@babel+preset-env@7.23.2_react@18.2.0/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/chevron-left.png',
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/assets/node_modules/.pnpm/react-native@0.72.6_@babel+core@7.23.2_@babel+preset-env@7.23.2_react@18.2.0/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/chevron-right.png',
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/assets/node_modules/.pnpm/react-native@0.72.6_@babel+core@7.23.2_@babel+preset-env@7.23.2_react@18.2.0/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/close.png',
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/assets/node_modules/.pnpm/react-native@0.72.6_@babel+core@7.23.2_@babel+preset-env@7.23.2_react@18.2.0/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/loader.png',
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/assets/src/logo.png',
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/index.bundle',
-  //     'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/index.bundle.map',
-  //   ],
-  //   id: 'MhpYhz',
-  //   version: '1.0.0',
-  //   reloadAfterUpdate: true,
-  // },
-  metadata: async () => {
-    return fetch('https://localhost:3000/metadata').then(res => res.json());
+  metadata: {
+    files: [
+      'https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/index.ios.bundle',
+    ],
+    id: 'MhpYh',
+    version: '1.0.0',
+    reloadAfterUpdate: true,
   },
+  // metadata: async () => {
+  //   const metadata = await fetch('https://localhost:3000/metadata').then(res =>
+  //     res.json(),
+  //   );
+  //   console.log('metadata', metadata);
+  //   return metadata;
+  // },
   onFailure: error => {
     console.error('Hot Updater error', error);
   },
   onSuccess: async () => {
     console.log('Hot Updater success');
-    console.log('AA', await getAppVersionId());
   },
 });
 

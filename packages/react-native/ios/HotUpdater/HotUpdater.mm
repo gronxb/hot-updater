@@ -1,5 +1,4 @@
 #import "HotUpdater.h"
-
 @implementation HotUpdater
 
 RCT_EXPORT_MODULE();
@@ -9,6 +8,7 @@ static NSURL *_bundleURL = nil;
 #pragma mark - Bundle URL Management
 
 + (void)reload {
+    NSLog(@"HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
     });
@@ -35,6 +35,7 @@ static NSURL *_bundleURL = nil;
 
 
 + (void)setBundleURL:(NSString *)localPath {
+    NSLog(@"Setting bundle URL: %@", localPath);
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         _bundleURL = [NSURL fileURLWithPath:localPath];
@@ -90,6 +91,7 @@ static NSURL *_bundleURL = nil;
 }
 
 + (BOOL)downloadFilesFromURLs:(NSArray<NSURL *> *)urls prefix:(NSString *)prefix {
+                
     NSOperationQueue *queue = [[NSOperationQueue alloc] init];
     queue.maxConcurrentOperationCount = urls.count;
 
@@ -132,6 +134,7 @@ static NSURL *_bundleURL = nil;
             }
             
             if ([filename hasPrefix:@"index"] && [filename hasSuffix:@".bundle"]) {
+                NSLog(@"Setting bundle URL: %@", path);
                 [self setBundleURL:path];
             }
             dispatch_semaphore_signal(semaphore);
