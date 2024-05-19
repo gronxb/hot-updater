@@ -17,7 +17,6 @@
   ],
   "license": "MIT",
   "scripts": {
-    "preinstall": "npx only-allow pnpm",
     "prepare": "tsc --project tsconfig.build.json",
     "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",

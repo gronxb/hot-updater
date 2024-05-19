@@ -7,7 +7,11 @@
     "moduleResolution": "node",
     "sourceMap": true,
     "declaration": true,
-    "outDir": "lib"
+    "outDir": "lib",
+    "baseUrl": ".",
+    "paths": {
+      "@hot-updater/node": ["../../packages/node/src/index.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]

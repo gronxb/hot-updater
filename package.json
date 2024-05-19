@@ -2,12 +2,9 @@
   "name": "@hot-updater/root",
   "private": true,
   "description": "React Native OTA solution for self-hosted",
-  "scripts": {
-    "preinstall": "npx only-allow pnpm"
-  },
   "keywords": [],
   "license": "MIT",
-  "packageManager": "pnpm@8.10.5",
+  "packageManager": "pnpm@9.1.1",
   "devDependencies": {
     "typescript": "^5.2.2"
   }
