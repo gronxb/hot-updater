@@ -1,64 +1,58 @@
 {
-  "name": "@hot-updater/react-native",
-  "version": "0.0.5",
-  "description": "React Native OTA solution for self-hosted",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
-  "files": [
-    "lib",
-    "android",
-    "ios",
-    "cpp",
-    "*.podspec",
-    "!ios/build",
-    "!android/build",
-    "!android/gradle",
-    "!android/gradlew",
-    "!android/gradlew.bat",
-    "!android/local.properties",
-    "!**/__tests__",
-    "!**/__fixtures__",
-    "!**/__mocks__",
-    "!**/.*"
-  ],
-  "scripts": {
-    "prepare": "tsc --project tsconfig.build.json",
-    "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest",
-    "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
-  },
-  "keywords": [
-    "react-native",
-    "code",
-    "push",
-    "code-push",
-    "self-hosted"
-  ],
-  "license": "MIT",
-  "repository": "https://github.com/gronxb/hot-updater",
-  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
-  "bugs": {
-    "url": "https://github.com/gronxb/hot-updater/issues"
-  },
-  "homepage": "https://github.com/gronxb/hot-updater#readme",
-  "publishConfig": {
-    "access": "public"
-  },
-  "codegenConfig": {
-    "name": "HotUpdaterSpec",
-    "type": "modules",
-    "jsSrcsDir": "./src/specs",
-    "android": {
-      "javaPackageName": "com.hotupdater"
-    }
-  },
-  "devDependencies": {
-    "react": "^18.2.0",
-    "react-native": "^0.72.6",
-    "vitest": "^1.6.0"
-  },
-  "dependencies": {
-    "react-native-url-polyfill": "^2.0.0"
-  }
+	"name": "@hot-updater/react-native",
+	"version": "0.0.5",
+	"description": "React Native OTA solution for self-hosted",
+	"main": "lib/index.js",
+	"types": "lib/index.d.ts",
+	"files": [
+		"lib",
+		"android",
+		"ios",
+		"cpp",
+		"*.podspec",
+		"!ios/build",
+		"!android/build",
+		"!android/gradle",
+		"!android/gradlew",
+		"!android/gradlew.bat",
+		"!android/local.properties",
+		"!**/__tests__",
+		"!**/__fixtures__",
+		"!**/__mocks__",
+		"!**/.*"
+	],
+	"scripts": {
+		"prepare": "tsc --project tsconfig.build.json",
+		"build": "tsc --project tsconfig.build.json",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
+	},
+	"keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+	"license": "MIT",
+	"repository": "https://github.com/gronxb/hot-updater",
+	"author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+	"bugs": {
+		"url": "https://github.com/gronxb/hot-updater/issues"
+	},
+	"homepage": "https://github.com/gronxb/hot-updater#readme",
+	"publishConfig": {
+		"access": "public"
+	},
+	"codegenConfig": {
+		"name": "HotUpdaterSpec",
+		"type": "modules",
+		"jsSrcsDir": "./src/specs",
+		"android": {
+			"javaPackageName": "com.hotupdater"
+		}
+	},
+	"devDependencies": {
+		"react": "^18.2.0",
+		"react-native": "^0.72.6",
+		"vitest": "^1.6.0"
+	},
+	"dependencies": {
+		"react-native-url-polyfill": "^2.0.0"
+	}
 }

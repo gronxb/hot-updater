@@ -4,8 +4,13 @@
   "description": "React Native OTA solution for self-hosted",
   "keywords": [],
   "license": "MIT",
+  "scripts": {
+    "biome": "biome format packages/** --write",
+    "biome:check": "biome check packages/**"
+  },
   "packageManager": "pnpm@9.1.1",
   "devDependencies": {
+    "@biomejs/biome": "1.7.3",
     "typescript": "^5.2.2"
   }
 }

@@ -1,3 +1,3 @@
 export const deploy = () => {
-  console.log("WIP");
+	console.log("WIP");
 };

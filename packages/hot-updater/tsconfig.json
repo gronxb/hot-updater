@@ -1,11 +1,11 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/package.json": ["package.json"],
-      "@/*": ["src/*"]
-    }
-  },
-  "include": ["src", "hot-updater.d.ts"]
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@/package.json": ["package.json"],
+			"@/*": ["src/*"]
+		}
+	},
+	"include": ["src", "hot-updater.d.ts"]
 }

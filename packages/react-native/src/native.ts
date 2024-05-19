@@ -11,11 +11,11 @@ const { HotUpdater } = NativeModules;
  * @returns {Promise<number|null>} Resolves with the current version id or null if not available.
  */
 export const getBundleVersion = async (): Promise<number | null> => {
-  return new Promise((resolve) => {
-    HotUpdater.getBundleVersion((version: number | null) => {
-      resolve(version);
-    });
-  });
+	return new Promise((resolve) => {
+		HotUpdater.getBundleVersion((version: number | null) => {
+			resolve(version);
+		});
+	});
 };
 
 /**
@@ -27,41 +27,41 @@ export const getBundleVersion = async (): Promise<number | null> => {
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
-  urlStrings: string[],
-  prefix: string
+	urlStrings: string[],
+	prefix: string,
 ): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const encodedURLs = urlStrings.map((urlString) => {
-      const url = new URL(urlString);
-      return [
-        url.origin,
-        url.pathname
-          .split("/")
-          .map((pathname) => encodeURIComponent(pathname))
-          .join("/"),
-      ].join("");
-    });
+	return new Promise((resolve) => {
+		const encodedURLs = urlStrings.map((urlString) => {
+			const url = new URL(urlString);
+			return [
+				url.origin,
+				url.pathname
+					.split("/")
+					.map((pathname) => encodeURIComponent(pathname))
+					.join("/"),
+			].join("");
+		});
 
-    HotUpdater.updateBundle(encodedURLs, prefix, (success: boolean) => {
-      resolve(success);
-    });
-  });
+		HotUpdater.updateBundle(encodedURLs, prefix, (success: boolean) => {
+			resolve(success);
+		});
+	});
 };
 
 /**
  * Fetches the current app version.
  */
 export const getAppVersion = async (): Promise<string | null> => {
-  return new Promise((resolve) => {
-    HotUpdater.getAppVersion((version: string | null) => {
-      resolve(version);
-    });
-  });
+	return new Promise((resolve) => {
+		HotUpdater.getAppVersion((version: string | null) => {
+			resolve(version);
+		});
+	});
 };
 
 /**
  * Reloads the app.
  */
 export const reload = () => {
-  HotUpdater.reload();
+	HotUpdater.reload();
 };
