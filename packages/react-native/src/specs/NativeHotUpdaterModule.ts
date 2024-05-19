@@ -4,6 +4,12 @@ import { TurboModuleRegistry } from "react-native";
 
 interface Spec extends TurboModule {
   reload(): void;
+  downloadFilesFromURLs(
+    encodedURLs: string,
+    prefix: string,
+    callback: (success: boolean) => void
+  ): Promise<boolean>;
+  getAppVersionId(): Promise<string>;
 }
 
 export default TurboModuleRegistry.get<Spec>("HotUpdater");
