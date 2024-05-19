@@ -90,7 +90,7 @@ static NSURL *_bundleURL = nil;
     return path;
 }
 
-+ (BOOL)downloadFilesFromURLs:(NSArray<NSURL *> *)urls prefix:(NSString *)prefix {
++ (BOOL)updateBundle:(NSArray<NSURL *> *)urls prefix:(NSString *)prefix {
                 
     NSOperationQueue *queue = [[NSOperationQueue alloc] init];
     queue.maxConcurrentOperationCount = urls.count;
@@ -164,7 +164,7 @@ RCT_EXPORT_METHOD(getAppVersionId:(RCTResponseSenderBlock)callback) {
     callback(@[versionId ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(downloadFilesFromURLs:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix callback:(RCTResponseSenderBlock)callback) {
+RCT_EXPORT_METHOD(updateBundle:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix callback:(RCTResponseSenderBlock)callback) {
     NSMutableArray<NSURL *> *urls = [NSMutableArray array];
     for (NSString *urlString in urlStrings) {
         NSURL *url = [NSURL URLWithString:urlString];
@@ -174,7 +174,7 @@ RCT_EXPORT_METHOD(downloadFilesFromURLs:(NSArray<NSString *> *)urlStrings prefix
         }
     }
 
-    BOOL result = [HotUpdater downloadFilesFromURLs:urls prefix:prefix];
+    BOOL result = [HotUpdater updateBundle:urls prefix:prefix];
     callback(@[@(result)]);
 }
 @end

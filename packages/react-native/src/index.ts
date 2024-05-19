@@ -28,7 +28,7 @@ export const getAppVersionId = async (): Promise<string | null> => {
  * @param {string} prefix - The prefix to be added to each file name.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
-export const downloadFilesFromURLs = (
+export const updateBundle = (
   urlStrings: string[],
   prefix: string
 ): Promise<boolean> => {
@@ -44,13 +44,9 @@ export const downloadFilesFromURLs = (
       ].join("");
     });
 
-    HotUpdater.downloadFilesFromURLs(
-      encodedURLs,
-      prefix,
-      (success: boolean) => {
-        resolve(success);
-      }
-    );
+    HotUpdater.updateBundle(encodedURLs, prefix, (success: boolean) => {
+      resolve(success);
+    });
   });
 };
 
@@ -95,7 +91,7 @@ export const init = async ({
 
     const appVersionId = await getAppVersionId();
     if (id !== appVersionId) {
-      const allDownloadFiles = await downloadFilesFromURLs(files, id);
+      const allDownloadFiles = await updateBundle(files, id);
       if (allDownloadFiles) {
         if (reloadAfterUpdate) {
           reload();

@@ -4,7 +4,7 @@ import { TurboModuleRegistry } from "react-native";
 
 interface Spec extends TurboModule {
   reload(): void;
-  downloadFilesFromURLs(
+  updateBundle(
     encodedURLs: string,
     prefix: string,
     callback: (success: boolean) => void
