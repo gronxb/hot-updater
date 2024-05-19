@@ -1,35 +1,35 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { checkForUpdate } from "./checkForUpdate";
+import * as natives from "./native";
+import type { UpdatePayload } from "./types";
 
-vi.mock("react-native", () => {
-  return {
-    Platform: {
-      OS: "ios",
-    },
-  };
-});
+vi.mock("./native", () => ({
+  getAppVersion: async () => "1.0",
+  getBundleVersion: async () => 1,
+}));
 
-describe("appVersion 1.0, bundleVersion 0", async () => {
-  afterEach(() => {
-    vi.mock("./native", () => ({
-      getAppVersion: async () => "1.0",
-      getBundleVersion: async () => 0,
-    }));
+describe("appVersion 1.0, bundleVersion null", async () => {
+  beforeAll(() => {
+    vi.spyOn(natives, "getAppVersion").mockImplementation(async () => "1.0");
+    vi.spyOn(natives, "getBundleVersion").mockImplementation(async () => 0);
   });
 
   it("should return null if no update information is available", async () => {
-    const updatePayload = {};
+    const updatePayload: UpdatePayload = {};
 
     const update = await checkForUpdate(updatePayload);
     expect(update).toBeNull();
   });
 
   it("should return null if no update is available when the app version is higher", async () => {
-    const updatePayload = {
-      "1.1": {
-        bundleVersion: 1,
-        forceUpdate: false,
-      },
+    const updatePayload: UpdatePayload = {
+      "1.1": [
+        {
+          enabled: true,
+          bundleVersion: 1,
+          forceUpdate: false,
+        },
+      ],
     };
 
     const update = await checkForUpdate(updatePayload);
@@ -37,51 +37,295 @@ describe("appVersion 1.0, bundleVersion 0", async () => {
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to true", async () => {
-    const updatePayload = {
-      "1.0": {
-        bundleVersion: 1,
-        forceUpdate: true,
-      },
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          enabled: true,
+          bundleVersion: 1,
+          forceUpdate: true,
+        },
+      ],
     };
 
     const update = await checkForUpdate(updatePayload);
     expect(update).toStrictEqual({
       bundleVersion: 1,
       forceUpdate: true,
+      status: "UPDATE",
     });
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
-    const updatePayload = {
-      "1.0": {
-        bundleVersion: 1,
-        forceUpdate: false,
-      },
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          enabled: true,
+          bundleVersion: 1,
+          forceUpdate: false,
+        },
+      ],
     };
 
     const update = await checkForUpdate(updatePayload);
     expect(update).toStrictEqual({
       bundleVersion: 1,
       forceUpdate: false,
+      status: "UPDATE",
     });
   });
 
   it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
-    const updatePayload = {
-      "1.0": {
-        bundleVersion: 5,
-        forceUpdate: false,
-      },
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 5,
+        },
+      ],
     };
 
     const update = await checkForUpdate(updatePayload);
     expect(update).toStrictEqual({
       bundleVersion: 5,
       forceUpdate: false,
+      status: "UPDATE",
     });
   });
 
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it("should update if the latest version is not available but a previous version is available", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: true,
+          enabled: false, // Disabled
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toStrictEqual({
+      bundleVersion: 1,
+      forceUpdate: false,
+      status: "UPDATE",
+    });
+  });
+
+  it("should not update if all updates are disabled", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: true,
+          enabled: false, // Disabled
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: false, // Disabled
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toBeNull();
+  });
+});
+
+describe("appVersion 1.0, bundleVersion v2", async () => {
+  beforeAll(() => {
+    vi.spyOn(natives, "getAppVersion").mockImplementation(async () => "1.0");
+    vi.spyOn(natives, "getBundleVersion").mockImplementation(async () => 2);
+  });
+
+  it("should return null if no update information is available", async () => {
+    const updatePayload: UpdatePayload = {};
+
+    const update = await checkForUpdate(updatePayload);
+    console.log(update);
+    expect(update).toBeNull();
+  });
+
+  it("should return null if no update is available when the app version is higher", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.1": [
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toBeNull();
+  });
+
+  it("should not update if the version is lower than the current version", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toBeNull();
+  });
+
+  it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 3,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toStrictEqual({
+      bundleVersion: 3,
+      forceUpdate: false,
+      status: "UPDATE",
+    });
+  });
+
+  it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 5, // Higher than the current version
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 4,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 3,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toStrictEqual({
+      bundleVersion: 5,
+      forceUpdate: false,
+      status: "UPDATE",
+    });
+  });
+
+  it("should not update if the latest version is disabled and matches the current version", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: true,
+          enabled: false, // Disabled
+          bundleVersion: 3,
+        },
+        {
+          forceUpdate: true,
+          enabled: true,
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toBeNull();
+  });
+
+  it("should rollback to a previous version if the current version is disabled", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: true,
+          enabled: false, // Disabled
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: true,
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    expect(update).toStrictEqual({
+      bundleVersion: 1,
+      forceUpdate: true, // Cause the app to reload
+      status: "ROLLBACK",
+    });
+  });
+
+  it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
+    const updatePayload: UpdatePayload = {
+      "1.0": [
+        {
+          forceUpdate: true,
+          enabled: false, // Disabled
+          bundleVersion: 2,
+        },
+        {
+          forceUpdate: false,
+          enabled: false, // Disabled
+          bundleVersion: 1,
+        },
+      ],
+    };
+
+    const update = await checkForUpdate(updatePayload);
+    console.log(update);
+    expect(update).toStrictEqual({
+      bundleVersion: 0,
+      forceUpdate: true, // Cause the app to reload
+      status: "ROLLBACK",
+    });
   });
 });
