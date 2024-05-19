@@ -1,4 +1,3 @@
-import { Platform } from "react-native";
 import { getAppVersion, getBundleVersion } from "./native";
 import type { UpdateInfo } from "./types";
 import { isNullable } from "./utils";
