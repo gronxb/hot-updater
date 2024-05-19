@@ -1,15 +1,15 @@
 {
-	"compilerOptions": {
-		"module": "commonjs",
-		"esModuleInterop": true,
-		"allowSyntheticDefaultImports": true,
-		"target": "es6",
-		"noImplicitAny": true,
-		"moduleResolution": "node",
-		"sourceMap": true,
-		"declaration": true,
-		"outDir": "lib"
-	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]
+  "compilerOptions": {
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "es6",
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "declaration": true,
+    "outDir": "lib"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]
 }

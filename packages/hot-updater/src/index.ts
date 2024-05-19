@@ -8,13 +8,13 @@ printLogo();
 const program = new Command();
 
 program
-	.name("hot-updater")
-	.description("CLI to React Native OTA solution for self-hosted")
-	.version(version);
+  .name("hot-updater")
+  .description("CLI to React Native OTA solution for self-hosted")
+  .version(version);
 
 program
-	.command("deploy")
-	.description("deploy a new version")
-	.action(() => {
-		deploy();
-	});
+  .command("deploy")
+  .description("deploy a new version")
+  .action(() => {
+    deploy();
+  });

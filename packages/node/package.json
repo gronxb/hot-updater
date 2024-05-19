@@ -1,33 +1,33 @@
 {
-	"name": "@hot-updater/node",
-	"version": "0.0.4",
-	"description": "React Native OTA solution for self-hosted",
-	"main": "lib/index.js",
-	"types": "lib/index.d.ts",
-	"files": ["lib", "package.json"],
-	"keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
-	"license": "MIT",
-	"scripts": {
-		"prepare": "tsc --project tsconfig.build.json",
-		"build": "tsc --project tsconfig.build.json",
-		"typecheck": "tsc --noEmit"
-	},
-	"repository": "https://github.com/gronxb/hot-updater",
-	"author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
-	"bugs": {
-		"url": "https://github.com/gronxb/hot-updater/issues"
-	},
-	"homepage": "https://github.com/gronxb/hot-updater#readme",
-	"publishConfig": {
-		"access": "public"
-	},
-	"dependencies": {
-		"sqids": "^0.3.0"
-	},
-	"devDependencies": {
-		"@aws-sdk/client-s3": "^3.441.0",
-		"@types/node": "^20.9.4",
-		"vitest": "^1.6.0",
-		"workspace-tools": "^0.36.3"
-	}
+  "name": "@hot-updater/node",
+  "version": "0.0.4",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["lib", "package.json"],
+  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+  "license": "MIT",
+  "scripts": {
+    "prepare": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "sqids": "^0.3.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.441.0",
+    "@types/node": "^20.9.4",
+    "vitest": "^1.6.0",
+    "workspace-tools": "^0.36.3"
+  }
 }

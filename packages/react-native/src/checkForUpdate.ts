@@ -3,33 +3,33 @@ import type { UpdateInfo } from "./types";
 import { isNullable } from "./utils";
 
 export const checkForUpdate = async (
-	updateInfo: UpdateInfo | (() => Promise<UpdateInfo>) | (() => UpdateInfo),
+  updateInfo: UpdateInfo | (() => Promise<UpdateInfo>) | (() => UpdateInfo),
 ) => {
-	const info =
-		typeof updateInfo === "function" ? await updateInfo() : updateInfo;
+  const info =
+    typeof updateInfo === "function" ? await updateInfo() : updateInfo;
 
-	const currentAppVersion = await getAppVersion();
-	const latestAppVersionInfo = currentAppVersion
-		? info?.[currentAppVersion]
-		: null;
+  const currentAppVersion = await getAppVersion();
+  const latestAppVersionInfo = currentAppVersion
+    ? info?.[currentAppVersion]
+    : null;
 
-	if (isNullable(latestAppVersionInfo)) {
-		return null;
-	}
+  if (isNullable(latestAppVersionInfo)) {
+    return null;
+  }
 
-	const currentBundleVersion = await getBundleVersion();
-	const latestBundleVersion = latestAppVersionInfo?.bundleVersion;
+  const currentBundleVersion = await getBundleVersion();
+  const latestBundleVersion = latestAppVersionInfo?.bundleVersion;
 
-	if (
-		isNullable(latestBundleVersion) ||
-		isNullable(currentBundleVersion) ||
-		latestBundleVersion <= currentBundleVersion
-	) {
-		return null;
-	}
+  if (
+    isNullable(latestBundleVersion) ||
+    isNullable(currentBundleVersion) ||
+    latestBundleVersion <= currentBundleVersion
+  ) {
+    return null;
+  }
 
-	return {
-		bundleVersion: latestBundleVersion,
-		forceUpdate: latestAppVersionInfo.forceUpdate,
-	};
+  return {
+    bundleVersion: latestBundleVersion,
+    forceUpdate: latestAppVersionInfo.forceUpdate,
+  };
 };
