@@ -25,6 +25,7 @@
     "prepare": "tsc --project tsconfig.build.json",
     "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "test": "vitest",
     "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
   },
   "keywords": [
@@ -54,7 +55,8 @@
   },
   "devDependencies": {
     "react": "^18.2.0",
-    "react-native": "^0.72.6"
+    "react-native": "^0.72.6",
+    "vitest": "^1.6.0"
   },
   "dependencies": {
     "react-native-url-polyfill": "^2.0.0"

@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export type Version =
   | `${number}.${number}.${number}`
   | `${number}.${number}`
@@ -27,3 +29,10 @@ export type HotUpdaterMetaData = {
    */
   reloadAfterUpdate?: boolean;
 };
+
+export interface UpdateInfo {
+  [appVersion: string]: {
+    bundleVersion: number;
+    forceUpdate: boolean;
+  };
+}

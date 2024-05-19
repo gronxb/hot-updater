@@ -7,7 +7,12 @@
 
 import React from 'react';
 import {Button, SafeAreaView, Text} from 'react-native';
-import {reload, init, getAppVersionId} from '@hot-updater/react-native';
+import {
+  reload,
+  init,
+  getBundleVersion,
+  getAppVersion,
+} from '@hot-updater/react-native';
 
 init({
   metadata: {
@@ -43,7 +48,7 @@ function App(): React.JSX.Element {
       <Button
         title="get Version Id"
         onPress={async () => {
-          console.log('AA', await getAppVersionId());
+          console.log('AA', await getBundleVersion(), await getAppVersion());
         }}
       />
     </SafeAreaView>

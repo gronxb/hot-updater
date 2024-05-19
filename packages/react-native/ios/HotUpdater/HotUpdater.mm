@@ -23,6 +23,11 @@ static NSURL *_bundleURL = nil;
     });
 }
 
++ (NSString *)getAppVersion {
+   NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+   return appVersion;
+}
+
 + (NSString *)getVersionId {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *versionId = [defaults objectForKey:@"HotUpdaterVersionId"];
@@ -159,9 +164,15 @@ RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
 }
 
-RCT_EXPORT_METHOD(getAppVersionId:(RCTResponseSenderBlock)callback) {
+RCT_EXPORT_METHOD(getBundleVersion:(RCTResponseSenderBlock)callback) {
     NSString *versionId = [HotUpdater getVersionId];
     callback(@[versionId ?: [NSNull null]]);
+}
+
+
+RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
+    NSString *version = [HotUpdater getAppVersion];
+    callback(@[version ?: [NSNull null]]);
 }
 
 RCT_EXPORT_METHOD(updateBundle:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix callback:(RCTResponseSenderBlock)callback) {

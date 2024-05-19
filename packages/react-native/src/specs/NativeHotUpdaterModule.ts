@@ -9,7 +9,7 @@ interface Spec extends TurboModule {
     prefix: string,
     callback: (success: boolean) => void
   ): Promise<boolean>;
-  getAppVersionId(): Promise<string>;
+  getBundleVersion(): Promise<string>;
 }
 
 export default TurboModuleRegistry.get<Spec>("HotUpdater");
