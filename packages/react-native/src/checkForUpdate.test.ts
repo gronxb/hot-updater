@@ -148,7 +148,6 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
     const updatePayload: UpdatePayload = {};
 
     const update = await checkForUpdate(updatePayload);
-    console.log(update);
     expect(update).toBeNull();
   });
 
@@ -172,7 +171,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
     expect(update).toBeNull();
   });
 
-  it("should not update if the version is lower than the current version", async () => {
+  it("should rollback if the latest bundle is deleted", async () => {
     const updatePayload: UpdatePayload = {
       "1.0": [
         {
@@ -184,7 +183,12 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
     };
 
     const update = await checkForUpdate(updatePayload);
-    expect(update).toBeNull();
+    console.log(update);
+    expect(update).toStrictEqual({
+      bundleVersion: 1,
+      forceUpdate: true,
+      status: "ROLLBACK",
+    });
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
@@ -321,7 +325,6 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
     };
 
     const update = await checkForUpdate(updatePayload);
-    console.log(update);
     expect(update).toStrictEqual({
       bundleVersion: 0,
       forceUpdate: true, // Cause the app to reload

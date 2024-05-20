@@ -4,7 +4,7 @@ import { isNullable } from "./utils";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
-const findAvailablePayload = (payload: UpdatePayload[string]) => {
+const findLatestPayload = (payload: UpdatePayload[string]) => {
   return (
     payload
       ?.filter((item) => item.enabled)
@@ -22,9 +22,12 @@ const checkForRollback = (
   const enabled = payload?.find(
     (item) => item.bundleVersion === currentBundleVersion,
   )?.enabled;
+  const availableOldVersion = payload?.find(
+    (item) => item.bundleVersion < currentBundleVersion && item.enabled,
+  )?.enabled;
 
   if (isNullable(enabled)) {
-    return false;
+    return availableOldVersion;
   }
   return !enabled;
 };
@@ -40,30 +43,30 @@ export const checkForUpdate = async (updatePayload: UpdatePayloadArg) => {
   const currentBundleVersion = await getBundleVersion();
 
   const isRollback = checkForRollback(appVersionPayload, currentBundleVersion);
-  const availablePayload = await findAvailablePayload(appVersionPayload);
+  const latestPayload = await findLatestPayload(appVersionPayload);
 
   if (isRollback) {
-    if (availablePayload.bundleVersion === currentBundleVersion) {
+    if (latestPayload.bundleVersion === currentBundleVersion) {
       return null;
     }
-    if (availablePayload.bundleVersion > currentBundleVersion) {
+    if (latestPayload.bundleVersion > currentBundleVersion) {
       return {
-        bundleVersion: availablePayload.bundleVersion,
-        forceUpdate: availablePayload.forceUpdate,
+        bundleVersion: latestPayload.bundleVersion,
+        forceUpdate: latestPayload.forceUpdate,
         status: "UPDATE" as UpdateStatus,
       };
     }
     return {
-      bundleVersion: availablePayload.bundleVersion,
+      bundleVersion: latestPayload.bundleVersion,
       forceUpdate: true,
       status: "ROLLBACK" as UpdateStatus,
     };
   }
 
-  if (availablePayload.bundleVersion > currentBundleVersion) {
+  if (latestPayload.bundleVersion > currentBundleVersion) {
     return {
-      bundleVersion: availablePayload.bundleVersion,
-      forceUpdate: availablePayload.forceUpdate,
+      bundleVersion: latestPayload.bundleVersion,
+      forceUpdate: latestPayload.forceUpdate,
       status: "UPDATE" as UpdateStatus,
     };
   }
