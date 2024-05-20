@@ -5,52 +5,67 @@
  * @format
  */
 
-import {
-  getAppVersion,
-  getBundleVersion,
-  init,
-  reload,
-} from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import type React from "react";
-import { Button, SafeAreaView, Text } from "react-native";
+import { useEffect, useState } from "react";
+import { Button, Image, SafeAreaView, Text } from "react-native";
 
-init({
-  metadata: {
-    files: [
-      "https://gronxb.s3.ap-northeast-2.amazonaws.com/MhpYhz/index.ios.bundle",
-    ],
-    id: "MhpYh",
-    version: "1.0.0",
-    reloadAfterUpdate: true,
+HotUpdater.init({
+  payload: async () => {
+    const payload = await fetch("").then((res) => res.json());
+    return payload;
   },
-  // metadata: async () => {
-  //   const metadata = await fetch('https://localhost:3000/metadata').then(res =>
-  //     res.json(),
-  //   );
-  //   console.log('metadata', metadata);
-  //   return metadata;
-  // },
-  onFailure: (error) => {
-    console.error("Hot Updater error", error);
+  onError: (e) => {
+    console.error("Hot Updater error", e);
   },
-  onSuccess: async () => {
-    console.log("Hot Updater success");
+  onSuccess: async (status) => {
+    console.log("Hot Updater success", status);
   },
 });
 
 function App(): React.JSX.Element {
+  const [version, setVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    HotUpdater.getBundleVersion().then((version) => {
+      setVersion(version);
+    });
+  }, []);
+
   return (
     <SafeAreaView>
-      <Text>Hello World</Text>
-
-      <Button title="reload" onPress={() => reload()} />
-
-      <Button
-        title="get Version Id"
-        onPress={async () => {
-          console.log(await getBundleVersion(), await getAppVersion());
+      <Image
+        source={require("./src/logo.png")}
+        style={{
+          marginTop: 20,
+          width: "100%",
+          height: "50%",
         }}
+        resizeMode="center"
       />
+
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Hot Updater UP_TO_DATE !
+      </Text>
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Bundle Version: {version ?? "Loading..."}
+      </Text>
+
+      <Button title="Reload" onPress={() => HotUpdater.reload()} />
     </SafeAreaView>
   );
 }

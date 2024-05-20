@@ -88,15 +88,14 @@ static NSURL *_bundleURL = nil;
     return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:basePath];
 }
 
-+ (NSString *)removePrefixFromPath:(NSString *)path prefix:(NSString *)prefix {
++ (NSString *)stripPrefixFromPath:(NSString *)prefix path:(NSString *)path {
     if ([path hasPrefix:[NSString stringWithFormat:@"/%@/", prefix]]) {
         return [path stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"/%@/", prefix] withString:@""];
     }
     return path;
 }
 
-+ (BOOL)updateBundle:(NSArray<NSURL *> *)urls prefix:(NSString *)prefix {
-                
++ (BOOL)updateBundle:(NSString *)prefix urls:(NSArray<NSURL *> *)urls {
     NSOperationQueue *queue = [[NSOperationQueue alloc] init];
     queue.maxConcurrentOperationCount = urls.count;
 
@@ -105,7 +104,7 @@ static NSURL *_bundleURL = nil;
 
     for (NSURL *url in urls) {
         NSString *filename = [url lastPathComponent];
-        NSString *basePath = [self removePrefixFromPath:[url path] prefix:prefix];
+        NSString *basePath = [self stripPrefixFromPath:prefix path:[url path]];
         NSString *path = [self convertFileSystemPathFromBasePath:basePath];
 
         [queue addOperationWithBlock:^{
@@ -175,7 +174,7 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
     callback(@[version ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(updateBundle:(NSArray<NSString *> *)urlStrings prefix:(NSString *)prefix callback:(RCTResponseSenderBlock)callback) {
+RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix urlStrings:(NSArray<NSString *> *)urlStrings callback:(RCTResponseSenderBlock)callback) {
     NSMutableArray<NSURL *> *urls = [NSMutableArray array];
     for (NSString *urlString in urlStrings) {
         NSURL *url = [NSURL URLWithString:urlString];
@@ -185,7 +184,7 @@ RCT_EXPORT_METHOD(updateBundle:(NSArray<NSString *> *)urlStrings prefix:(NSStrin
         }
     }
 
-    BOOL result = [HotUpdater updateBundle:urls prefix:prefix];
+    BOOL result = [HotUpdater updateBundle:prefix urls:urls];
     callback(@[@(result)]);
 }
 @end

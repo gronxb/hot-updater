@@ -53,12 +53,14 @@ export const checkForUpdate = async (updatePayload: UpdatePayloadArg) => {
       return {
         bundleVersion: latestPayload.bundleVersion,
         forceUpdate: latestPayload.forceUpdate,
+        files: latestPayload.files,
         status: "UPDATE" as UpdateStatus,
       };
     }
     return {
       bundleVersion: latestPayload.bundleVersion,
       forceUpdate: true,
+      files: latestPayload.files ?? [],
       status: "ROLLBACK" as UpdateStatus,
     };
   }
@@ -67,6 +69,7 @@ export const checkForUpdate = async (updatePayload: UpdatePayloadArg) => {
     return {
       bundleVersion: latestPayload.bundleVersion,
       forceUpdate: latestPayload.forceUpdate,
+      files: latestPayload.files,
       status: "UPDATE" as UpdateStatus,
     };
   }

@@ -23,13 +23,13 @@ export const getBundleVersion = async (): Promise<number> => {
  * Downloads files from given URLs.
  *
  * @async
+ * @param {string} bundleVersion - identifier for the bundle version.
  * @param {string[]} urls - An array of URL strings to download files from.
- * @param {string} prefix - The prefix to be added to each file name.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
+  bundleVersion: number,
   urls: string[],
-  prefix: string,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     const encodedURLs = urls.map((urlString) => {
@@ -43,15 +43,19 @@ export const updateBundle = (
       ].join("");
     });
 
-    HotUpdater.updateBundle(encodedURLs, prefix, (success: boolean) => {
-      if (success) {
-        resolve(success);
-      } else {
-        reject(
-          new HotUpdaterError("Failed to download and install the update"),
-        );
-      }
-    });
+    HotUpdater.updateBundle(
+      `v${bundleVersion}`,
+      encodedURLs,
+      (success: boolean) => {
+        if (success) {
+          resolve(success);
+        } else {
+          reject(
+            new HotUpdaterError("Failed to download and install the update"),
+          );
+        }
+      },
+    );
   });
 };
 

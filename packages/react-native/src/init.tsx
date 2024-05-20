@@ -29,7 +29,10 @@ export const init = async (config: HotUpdaterInitConfig) => {
   }
 
   try {
-    const allDownloadFiles = await updateBundle([], "");
+    const allDownloadFiles = await updateBundle(
+      update.bundleVersion,
+      update.files,
+    );
     if (allDownloadFiles) {
       if (update.forceUpdate) {
         reload();

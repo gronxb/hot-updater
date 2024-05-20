@@ -3,6 +3,7 @@ export interface UpdatePayload {
     bundleVersion: number;
     forceUpdate: boolean;
     enabled: boolean;
+    files: string[];
   }[];
 }
 
