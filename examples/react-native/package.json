@@ -7,7 +7,7 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "bundle:ios": "react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest ios",
+    "bundle:ios": "react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build",
     "webpack-start": "react-native webpack-start",
     "webpack-bundle:ios": "react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios",
     "test": "jest"

@@ -34,16 +34,6 @@ function App(): React.JSX.Element {
 
   return (
     <SafeAreaView>
-      <Image
-        source={require("./src/logo.png")}
-        style={{
-          marginTop: 20,
-          width: "100%",
-          height: "50%",
-        }}
-        resizeMode="center"
-      />
-
       <Text
         style={{
           marginVertical: 20,
@@ -52,7 +42,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater UP_TO_DATE !
+        Hot Updater Not Update
       </Text>
       <Text
         style={{
