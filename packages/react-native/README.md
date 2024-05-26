@@ -34,3 +34,8 @@ React Native OTA solution for internal infrastructure
 
 // ...
 ```
+
+## Android Debug
+```sh
+> adb logcat -s HotUpdater
+```

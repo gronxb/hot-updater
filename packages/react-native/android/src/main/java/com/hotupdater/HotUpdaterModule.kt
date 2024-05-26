@@ -13,8 +13,6 @@ class HotUpdaterModule internal constructor(context: ReactApplicationContext) :
     return NAME
   }
 
-  // Example method
-  // See https://reactnative.dev/docs/native-modules-android
   @ReactMethod
   override fun reload() {
     // test log
