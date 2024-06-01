@@ -1,4 +1,4 @@
-export interface UpdatePayload {
+export interface UpdateSource {
   [appVersion: string]: {
     bundleVersion: number;
     forceUpdate: boolean;
@@ -7,7 +7,8 @@ export interface UpdatePayload {
   }[];
 }
 
-export type UpdatePayloadArg =
-  | UpdatePayload
-  | (() => Promise<UpdatePayload>)
-  | (() => UpdatePayload);
+export type UpdateSourceArg =
+  | string
+  | UpdateSource
+  | (() => Promise<UpdateSource>)
+  | (() => UpdateSource);

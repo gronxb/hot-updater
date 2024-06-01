@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { checkForUpdate } from "./checkForUpdate";
 import * as natives from "./native";
-import type { UpdatePayload } from "./types";
+import type { UpdateSource } from "./types";
 
 vi.mock("./native", () => ({
   getAppVersion: async () => "1.0",
@@ -15,14 +15,14 @@ describe("appVersion 1.0, bundleVersion null", async () => {
   });
 
   it("should return null if no update information is available", async () => {
-    const updatePayload: UpdatePayload = {};
+    const updateSource: UpdateSource = {};
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toBeNull();
   });
 
   it("should return null if no update is available when the app version is higher", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.1": [
         {
           enabled: true,
@@ -33,12 +33,12 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toBeNull();
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to true", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           enabled: true,
@@ -49,7 +49,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       bundleVersion: 1,
       forceUpdate: true,
@@ -59,7 +59,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -70,7 +70,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       files: [],
       bundleVersion: 1,
@@ -80,7 +80,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
   });
 
   it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -91,7 +91,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       bundleVersion: 5,
       forceUpdate: false,
@@ -101,7 +101,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
   });
 
   it("should update if the latest version is not available but a previous version is available", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -118,7 +118,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       files: [],
       bundleVersion: 1,
@@ -128,7 +128,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
   });
 
   it("should not update if all updates are disabled", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -145,7 +145,7 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toBeNull();
   });
 });
@@ -157,14 +157,14 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
   });
 
   it("should return null if no update information is available", async () => {
-    const updatePayload: UpdatePayload = {};
+    const updateSource: UpdateSource = {};
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toBeNull();
   });
 
   it("should return null if no update is available when the app version is higher", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.1": [
         {
           files: [],
@@ -181,12 +181,12 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toBeNull();
   });
 
   it("should rollback if the latest bundle is deleted", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -197,7 +197,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       files: [],
       bundleVersion: 1,
@@ -207,7 +207,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -230,7 +230,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       files: [],
       bundleVersion: 3,
@@ -240,7 +240,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
   });
 
   it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -275,7 +275,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       files: [],
       bundleVersion: 5,
@@ -285,7 +285,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
   });
 
   it("should not update if the latest version is disabled and matches the current version", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -308,12 +308,12 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toBeNull();
   });
 
   it("should rollback to a previous version if the current version is disabled", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -330,7 +330,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       files: [],
       bundleVersion: 1,
@@ -340,7 +340,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
   });
 
   it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
-    const updatePayload: UpdatePayload = {
+    const updateSource: UpdateSource = {
       "1.0": [
         {
           files: [],
@@ -357,7 +357,7 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       ],
     };
 
-    const update = await checkForUpdate(updatePayload);
+    const update = await checkForUpdate(updateSource);
     expect(update).toStrictEqual({
       files: [],
       bundleVersion: 0,

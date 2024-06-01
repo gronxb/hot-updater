@@ -1,12 +1,12 @@
 import { getAppVersion, getBundleVersion } from "./native";
-import type { UpdatePayload, UpdatePayloadArg } from "./types";
+import type { UpdateSource, UpdateSourceArg } from "./types";
 import { isNullable } from "./utils";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
-const findLatestPayload = (payload: UpdatePayload[string]) => {
+const findLatestSource = (source: UpdateSource[string]) => {
   return (
-    payload
+    source
       ?.filter((item) => item.enabled)
       ?.sort((a, b) => b.bundleVersion - a.bundleVersion)?.[0] ?? {
       bundleVersion: 0,
@@ -16,13 +16,13 @@ const findLatestPayload = (payload: UpdatePayload[string]) => {
 };
 
 const checkForRollback = (
-  payload: UpdatePayload[string],
+  source: UpdateSource[string],
   currentBundleVersion: number,
 ) => {
-  const enabled = payload?.find(
+  const enabled = source?.find(
     (item) => item.bundleVersion === currentBundleVersion,
   )?.enabled;
-  const availableOldVersion = payload?.find(
+  const availableOldVersion = source?.find(
     (item) => item.bundleVersion < currentBundleVersion && item.enabled,
   )?.enabled;
 
@@ -32,44 +32,60 @@ const checkForRollback = (
   return !enabled;
 };
 
-export const checkForUpdate = async (updatePayload: UpdatePayloadArg) => {
-  const payload =
-    typeof updatePayload === "function" ? await updatePayload() : updatePayload;
+const ensureUpdateSource = async (updateSource: UpdateSourceArg) => {
+  let source: UpdateSource | null = null;
+  if (typeof updateSource === "string") {
+    if (updateSource.startsWith("http")) {
+      const response = await fetch(updateSource);
+      source = (await response.json()) as UpdateSource;
+    }
+  } else if (typeof updateSource === "function") {
+    source = await updateSource();
+  } else {
+    source = updateSource;
+  }
+  if (!source) {
+    throw new Error("Invalid source");
+  }
+  return source;
+};
+
+export const checkForUpdate = async (updateSource: UpdateSourceArg) => {
+  const source = await ensureUpdateSource(updateSource);
 
   const currentAppVersion = await getAppVersion();
-  const appVersionPayload = currentAppVersion
-    ? payload?.[currentAppVersion]
-    : [];
+
+  const appVersionSource = currentAppVersion ? source?.[currentAppVersion] : [];
   const currentBundleVersion = await getBundleVersion();
 
-  const isRollback = checkForRollback(appVersionPayload, currentBundleVersion);
-  const latestPayload = await findLatestPayload(appVersionPayload);
+  const isRollback = checkForRollback(appVersionSource, currentBundleVersion);
+  const latestSource = await findLatestSource(appVersionSource);
 
   if (isRollback) {
-    if (latestPayload.bundleVersion === currentBundleVersion) {
+    if (latestSource.bundleVersion === currentBundleVersion) {
       return null;
     }
-    if (latestPayload.bundleVersion > currentBundleVersion) {
+    if (latestSource.bundleVersion > currentBundleVersion) {
       return {
-        bundleVersion: latestPayload.bundleVersion,
-        forceUpdate: latestPayload.forceUpdate,
-        files: latestPayload.files,
+        bundleVersion: latestSource.bundleVersion,
+        forceUpdate: latestSource.forceUpdate,
+        files: latestSource.files,
         status: "UPDATE" as UpdateStatus,
       };
     }
     return {
-      bundleVersion: latestPayload.bundleVersion,
+      bundleVersion: latestSource.bundleVersion,
       forceUpdate: true,
-      files: latestPayload.files ?? [],
+      files: latestSource.files ?? [],
       status: "ROLLBACK" as UpdateStatus,
     };
   }
 
-  if (latestPayload.bundleVersion > currentBundleVersion) {
+  if (latestSource.bundleVersion > currentBundleVersion) {
     return {
-      bundleVersion: latestPayload.bundleVersion,
-      forceUpdate: latestPayload.forceUpdate,
-      files: latestPayload.files,
+      bundleVersion: latestSource.bundleVersion,
+      forceUpdate: latestSource.forceUpdate,
+      files: latestSource.files,
       status: "UPDATE" as UpdateStatus,
     };
   }

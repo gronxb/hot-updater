@@ -11,10 +11,7 @@ import { useEffect, useState } from "react";
 import { Button, Image, SafeAreaView, Text } from "react-native";
 
 HotUpdater.init({
-  payload: async () => {
-    const payload = await fetch("").then((res) => res.json());
-    return payload;
-  },
+  source: "",
   onError: (e) => {
     console.error("Hot Updater error", e);
   },

@@ -2,12 +2,12 @@ import { Platform } from "react-native";
 import { checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
 import { reload, updateBundle } from "./native";
-import type { UpdatePayloadArg } from "./types";
+import type { UpdateSourceArg } from "./types";
 
 export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 
 export interface HotUpdaterInitConfig {
-  payload: UpdatePayloadArg;
+  source: UpdateSourceArg;
   onSuccess?: (status: HotUpdaterStatus) => void;
   onError?: (error: HotUpdaterError) => void;
 }
@@ -22,7 +22,7 @@ export const init = async (config: HotUpdaterInitConfig) => {
     throw error;
   }
 
-  const update = await checkForUpdate(config.payload);
+  const update = await checkForUpdate(config.source);
   if (!update) {
     config?.onSuccess?.("UP_TO_DATE");
     return;
