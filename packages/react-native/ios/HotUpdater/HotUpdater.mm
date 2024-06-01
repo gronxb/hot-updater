@@ -14,11 +14,11 @@ static NSURL *_bundleURL = nil;
     });
 }
 
-+ (void)setVersionId:(NSString*)versionId {
++ (void)setBundleVersion:(NSString*)bundleVersion {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setObject:versionId forKey:@"HotUpdaterVersionId"];
+        [defaults setObject:bundleVersion forKey:@"HotUpdaterBundleVersion"];
         [defaults synchronize];
     });
 }
@@ -28,11 +28,11 @@ static NSURL *_bundleURL = nil;
    return appVersion;
 }
 
-+ (NSString *)getVersionId {
++ (NSString *)getBundleVersion {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *versionId = [defaults objectForKey:@"HotUpdaterVersionId"];
-    if (versionId && ![versionId isKindOfClass:[NSNull class]] && versionId.length > 0) {
-        return versionId;
+    NSString *bundleVersion = [defaults objectForKey:@"HotUpdaterBundleVersion"];
+    if (bundleVersion && ![bundleVersion isKindOfClass:[NSNull class]] && bundleVersion.length > 0) {
+        return bundleVersion;
     } else {
         return nil;
     }
@@ -150,7 +150,7 @@ static NSURL *_bundleURL = nil;
     }
     
     if (allSuccess) {
-        [self setVersionId:prefix];
+        [self setBundleVersion:prefix];
         NSLog(@"Downloaded all files.");
     }
     return allSuccess;
@@ -164,8 +164,8 @@ RCT_EXPORT_METHOD(reload) {
 }
 
 RCT_EXPORT_METHOD(getBundleVersion:(RCTResponseSenderBlock)callback) {
-    NSString *versionId = [HotUpdater getVersionId];
-    callback(@[versionId ?: [NSNull null]]);
+    NSString *bundleVersion = [HotUpdater getBundleVersion];
+    callback(@[bundleVersion ?: [NSNull null]]);
 }
 
 
