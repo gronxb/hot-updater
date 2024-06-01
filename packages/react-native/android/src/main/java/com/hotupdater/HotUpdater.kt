@@ -2,25 +2,36 @@ package com.hotupdater
 
 import android.content.Context
 import android.util.Log
+import com.facebook.react.ReactNativeHost
 import java.io.File
 import java.net.MalformedURLException
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 
-class HotUpdater internal constructor(context: Context) {
+class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNativeHost) {
     private val mContext: Context = context
+    private val mReactNativeHost: ReactNativeHost = reactNativeHost
+
     private var bundleURL: String? = null
 
     companion object {
         private var mCurrentInstance: HotUpdater? = null
 
-        fun initialize(context: Context): HotUpdater {
+        fun initialize(context: Context, reactNativeHost: ReactNativeHost): HotUpdater {
             Log.d("HotUpdater", "Initializing HotUpdater")
+
             return mCurrentInstance
                     ?: synchronized(this) {
-                        mCurrentInstance ?: HotUpdater(context).also { mCurrentInstance = it }
+                        mCurrentInstance
+                                ?: HotUpdater(context, reactNativeHost).also {
+                                    mCurrentInstance = it
+                                }
                     }
+        }
+
+        fun reload() {
+            mCurrentInstance?.reload()
         }
 
         fun getJSBundleFile(): String? {
@@ -53,6 +64,11 @@ class HotUpdater internal constructor(context: Context) {
         } else {
             path
         }
+    }
+
+    fun reload() {
+        mReactNativeHost.reactInstanceManager.recreateReactContextInBackground()
+        Log.d("HotUpdater", "HotUpdater requested a reload")
     }
 
     fun getBundleURL(): String? {
