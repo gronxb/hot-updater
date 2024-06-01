@@ -6,7 +6,6 @@ import { Command } from "commander";
 printLogo();
 
 const program = new Command();
-
 program
   .name("hot-updater")
   .description("CLI to React Native OTA solution for self-hosted")
@@ -18,3 +17,5 @@ program
   .action(() => {
     deploy();
   });
+
+program.parse();
