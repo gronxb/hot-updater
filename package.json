@@ -12,6 +12,7 @@
   "devDependencies": {
     "@biomejs/biome": "1.7.3",
     "esbuild": "^0.21.4",
+    "ts-patch": "^3.2.0",
     "typescript": "^5.4.5"
   }
 }
