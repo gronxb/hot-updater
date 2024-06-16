@@ -43,6 +43,9 @@
   "linter": {
     "enabled": true,
     "rules": {
+      "style": {
+        "noParameterAssign": "off"
+      },
       "recommended": true
     }
   }
