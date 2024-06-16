@@ -6,6 +6,11 @@
     "hot-updater": "./lib/index.cjs"
   },
   "exports": {
+    ".": {
+      "types": "./lib/helper.d.ts",
+      "import": "./lib/helper.js",
+      "require": "./lib/helper.js"
+    },
     "./metro": {
       "import": "./lib/plugins/metro.js",
       "require": "./lib/plugins/metro.js",

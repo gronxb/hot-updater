@@ -19,5 +19,5 @@
       { "transform": "typescript-transform-paths" }
     ]
   },
-  "include": ["src/plugins"],
+  "include": ["src/plugins", "src/helper.ts"],
 }

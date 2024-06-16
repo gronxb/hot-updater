@@ -1,10 +1,7 @@
 import { cwd } from "@/cwd";
+import type { Config } from "@/helper";
 import { cosmiconfig } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
-
-export type Config = {
-  deploy: (() => void)[];
-};
 
 export const loadConfig = async () => {
   const result = await cosmiconfig("hot-updater", {
