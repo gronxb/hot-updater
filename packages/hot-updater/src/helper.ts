@@ -1,5 +1,7 @@
 export type Config = {
-  deploy: (() => void)[];
+  updateServer: string;
+  build: (cwd: string) => void;
+  deploy: (cwd: string) => void;
 };
 
 export const defineConfig = (config: Config | (() => Config)): Config =>

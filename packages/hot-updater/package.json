@@ -10,11 +10,6 @@
       "types": "./lib/helper.d.ts",
       "import": "./lib/helper.js",
       "require": "./lib/helper.js"
-    },
-    "./metro": {
-      "import": "./lib/plugins/metro.js",
-      "require": "./lib/plugins/metro.js",
-      "types": "./lib/plugins/metro.d.ts"
     }
   },
   "description": "React Native OTA solution for self-hosted",
@@ -33,14 +28,10 @@
     "build": "node esbuild.config.js && tspc --project tsconfig.build.json"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.441.0",
-    "@aws-sdk/lib-storage": "^3.441.0",
     "@hot-updater/node": "workspace:^",
-    "@react-native/community-cli-plugin": "^0.74.84",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
-    "metro-config": "^0.80.9",
     "picocolors": "^1.0.0",
     "prompts": "^2.4.2",
     "workspace-tools": "^0.36.3"
@@ -48,7 +39,6 @@
   "devDependencies": {
     "@types/connect": "^3.4.38",
     "@types/cosmiconfig": "^6.0.0",
-    "metro": "^0.80.9",
     "typescript-transform-paths": "^3.4.7"
   }
 }

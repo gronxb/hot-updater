@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "target": "es6",
@@ -8,16 +7,12 @@
     "moduleResolution": "node",
     "sourceMap": true,
     "declaration": true,
-    "baseUrl": ".",
-    "resolveJsonModule": true,
-    "paths": {
-      "@/*": ["src/*"],
-      "@/package.json": ["package.json"]
-    },
     "outDir": "lib",
-    "plugins": [
-      { "transform": "typescript-transform-paths" }
-    ]
+    "baseUrl": ".",
+    "paths": {
+      "@hot-updater/node": ["../../packages/node/src/index.ts"]
+    }
   },
-  "include": ["src/helper.ts"],
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]
 }

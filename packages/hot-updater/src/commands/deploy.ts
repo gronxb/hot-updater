@@ -1,11 +1,11 @@
+import { cwd } from "@/cwd";
 import { loadConfig } from "@/utils/loadConfig";
-import { metro } from "../plugins/metro";
 
 export const deploy = async () => {
-  // metro();
-  const { deploy } = await loadConfig();
+  const { build, deploy } = await loadConfig();
 
-  for (const plugin of deploy) {
-    await plugin();
-  }
+  const path = cwd();
+
+  await build(path);
+  await deploy(path);
 };

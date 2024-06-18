@@ -1,6 +1,8 @@
+import { metro } from "@hot-updater/metro";
 import { defineConfig } from "hot-updater";
-import { metro } from "hot-updater/metro";
 
 export default defineConfig({
-  deploy: [metro()],
+  updateServer: "",
+  build: metro(),
+  deploy: () => {},
 });

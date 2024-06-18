@@ -6,12 +6,14 @@
   "license": "MIT",
   "scripts": {
     "biome": "biome format packages/** --write",
-    "biome:check": "biome check packages/**"
+    "biome:check": "biome check packages/**",
+    "clear": "rimraf --glob **/lib"
   },
   "packageManager": "pnpm@9.1.4",
   "devDependencies": {
     "@biomejs/biome": "1.7.3",
     "esbuild": "^0.21.4",
+    "rimraf": "^5.0.7",
     "ts-patch": "^3.2.0",
     "typescript": "^5.4.5"
   }

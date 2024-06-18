@@ -1,0 +1,32 @@
+{
+  "name": "@hot-updater/metro",
+  "type": "module",
+  "version": "0.0.1",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepare": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "metro-config": "^0.80.9"
+  },
+  "devDependencies": {
+    "metro": "^0.80.9"
+  },
+  "peerDependencies": {
+    "metro": "*"
+  }
+}

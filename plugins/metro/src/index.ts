@@ -1,15 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { cwd } from "@/cwd";
 import Metro from "metro";
 import type { InputConfigT } from "metro-config";
 import Server from "metro/src/Server";
 
-export const metro = (overrideConfig?: InputConfigT) => async () => {
+export const metro = (overrideConfig?: InputConfigT) => async (cwd: string) => {
   const config = await Metro.loadConfig({}, overrideConfig);
 
-  const basePath = cwd();
-  const buildPath = path.join(basePath, "build");
+  const buildPath = path.join(cwd, "build");
 
   await fs.rm(buildPath, { recursive: true, force: true });
   await fs.mkdir(buildPath);
@@ -28,7 +26,7 @@ export const metro = (overrideConfig?: InputConfigT) => async () => {
         const copyTargetFiles = assets
           .flatMap((asset) => asset.files)
           .map((file) => {
-            const resolvedPath = file.replace(basePath, "");
+            const resolvedPath = file.replace(cwd, "");
             return {
               from: file,
               to: path.join(buildPath, resolvedPath),
@@ -51,7 +49,7 @@ export const metro = (overrideConfig?: InputConfigT) => async () => {
         }
       },
     },
-    out: path.join(basePath, "build", "index.ios.bundle"),
+    out: path.join(cwd, "build", "index.ios.bundle"),
     platform: "ios",
     minify: true,
     sourceMap: true,
