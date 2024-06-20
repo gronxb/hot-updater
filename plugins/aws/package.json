@@ -3,7 +3,8 @@
   "type": "module",
   "version": "0.0.1",
   "description": "React Native OTA solution for self-hosted",
-  "main": "index.js",
+  "main": "lib/plugins/aws/src/index.js",
+  "types": "lib/plugins/aws/src/index.d.ts",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
@@ -20,6 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.441.0"
+    "@aws-sdk/client-s3": "^3.441.0",
+    "@aws-sdk/lib-storage": "^3.600.0"
   }
 }

@@ -7,5 +7,5 @@ export const deploy = async () => {
   const path = cwd();
 
   await build(path);
-  await deploy(path);
+  await deploy(path).upload();
 };
