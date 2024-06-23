@@ -145,6 +145,9 @@ importers:
       '@types/cosmiconfig':
         specifier: ^6.0.0
         version: 6.0.0(typescript@5.4.5)
+      '@types/prompts':
+        specifier: ^2.4.9
+        version: 2.4.9
       typescript-transform-paths:
         specifier: ^3.4.7
         version: 3.4.7(typescript@5.4.5)
@@ -2973,6 +2976,9 @@ packages:
 
   '@types/node@20.9.4':
     resolution: {integrity: sha512-wmyg8HUhcn6ACjsn8oKYjkN/zUzQeNtMy44weTJSM6p4MMzEOuKbA3OjJ267uPCOW7Xex9dyrNTful8XTQYoDA==}
+
+  '@types/prompts@2.4.9':
+    resolution: {integrity: sha512-qTxFi6Buiu8+50/+3DGIWLHM6QuWsEKugJnnP6iv2Mc4ncxE4A/OJkjuVOA+5X0X1S/nq5VJRa8Lu+nwcvbrKA==}
 
   '@types/prop-types@15.7.12':
     resolution: {integrity: sha512-5zvhXYtRNRluoE/jAp4GVsSduVUzNWKkOZrCDBWYtE7biZywwdC2AcEzg+cSMLFRfVgeAFqpfNabiPjxFddV1Q==}
@@ -11578,6 +11584,11 @@ snapshots:
   '@types/node@20.9.4':
     dependencies:
       undici-types: 5.26.5
+
+  '@types/prompts@2.4.9':
+    dependencies:
+      '@types/node': 20.9.4
+      kleur: 3.0.3
 
   '@types/prop-types@15.7.12': {}
 

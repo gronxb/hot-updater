@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { log } from "@hot-updater/internal";
 import mime from "mime";
 import { readDir } from "./utils/readDir";
 
@@ -19,8 +20,14 @@ export const uploadS3 =
     const buildDir = path.join(cwd, "build");
 
     return {
+      async uploadMetadata() {
+        // s3에 metadata.json 이미 있나 확인하기
+        // 있으면 secretKey로 열어보기
+        // 없으면 만들기
+        // 다음 버전 만들기
+      },
       async upload() {
-        console.log("uploading to s3");
+        log.info("uploading to s3");
 
         const files = await readDir(buildDir);
         const result = await Promise.allSettled(
@@ -42,8 +49,6 @@ export const uploadS3 =
               },
             });
             await upload.done();
-
-            console.log(`uploaded: ${Key}`);
             return upload;
           }),
         );
@@ -54,6 +59,7 @@ export const uploadS3 =
         if (rejectedCount > 0) {
           throw new Error("upload failed");
         }
+        log.success("upload success");
       },
     };
   };

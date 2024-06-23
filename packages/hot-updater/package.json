@@ -39,6 +39,7 @@
   "devDependencies": {
     "@types/connect": "^3.4.38",
     "@types/cosmiconfig": "^6.0.0",
+    "@types/prompts": "^2.4.9",
     "typescript-transform-paths": "^3.4.7"
   }
 }

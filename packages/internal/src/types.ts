@@ -7,4 +7,5 @@ export interface PluginArgs {
   cwd: string;
   server: string;
   secretKey: string;
+  targetVersion?: string;
 }
