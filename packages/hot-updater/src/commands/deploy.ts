@@ -6,6 +6,6 @@ export const deploy = async (platform: "ios" | "android") => {
 
   const path = cwd();
 
-  await build(platform, path);
-  await deploy(path).upload();
+  await build({ platform, cwd: path });
+  await deploy({ platform, cwd: path }).upload();
 };

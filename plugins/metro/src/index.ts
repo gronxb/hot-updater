@@ -6,7 +6,7 @@ import Server from "metro/src/Server";
 
 export const metro =
   (overrideConfig?: InputConfigT) =>
-  async (platform: "ios" | "android", cwd: string) => {
+  async ({ cwd, platform }: { platform: "ios" | "android"; cwd: string }) => {
     const config = await Metro.loadConfig({}, overrideConfig);
 
     const buildPath = path.join(cwd, "build");

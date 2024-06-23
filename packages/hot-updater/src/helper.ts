@@ -1,7 +1,12 @@
+export interface PluginArgs {
+  platform: "ios" | "android";
+  cwd: string;
+}
+
 export type Config = {
   updateServer: string;
-  build: (platform: "ios" | "android", cwd: string) => void;
-  deploy: (cwd: string) => {
+  build: (args: PluginArgs) => void;
+  deploy: (args: PluginArgs) => {
     upload: () => void;
   };
 };
