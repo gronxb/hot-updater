@@ -4,7 +4,7 @@ export interface PluginArgs {
 }
 
 export type Config = {
-  updateServer: string;
+  server: string;
   build: (args: PluginArgs) => void;
   deploy: (args: PluginArgs) => {
     upload: () => void;

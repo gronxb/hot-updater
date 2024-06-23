@@ -9,7 +9,7 @@ config({
 });
 
 export default defineConfig({
-  updateServer: "",
+  server: "",
   build: metro(),
   deploy: uploadS3({
     region: "ap-northeast-2",
