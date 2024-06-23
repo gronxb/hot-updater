@@ -2,8 +2,11 @@ export interface HotUpdaterReadStrategy {
   getListObjects(prefix?: string): Promise<string[]>;
 }
 
-export interface PluginArgs {
+export interface CliArgs {
   platform: "ios" | "android";
+  cwd: string;
+}
+export interface PluginArgs extends CliArgs {
   cwd: string;
   server: string;
   secretKey: string;
@@ -24,3 +27,9 @@ export type UpdateSourceArg =
   | UpdateSource[]
   | (() => Promise<UpdateSource[]>)
   | (() => UpdateSource[]);
+
+export interface DeployPlugin {
+  uploadBundle: () => Promise<void>;
+  uploadUpdateJson: (source: UpdateSource) => Promise<void>;
+  readStrategy: HotUpdaterReadStrategy;
+}

@@ -33,12 +33,14 @@
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
     "picocolors": "^1.0.0",
+    "plist": "^3.1.0",
     "prompts": "^2.4.2",
     "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
     "@types/connect": "^3.4.38",
     "@types/cosmiconfig": "^6.0.0",
+    "@types/plist": "^3.0.5",
     "@types/prompts": "^2.4.9",
     "typescript-transform-paths": "^3.4.7"
   }
