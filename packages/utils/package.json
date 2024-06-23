@@ -1,11 +1,20 @@
 {
-  "name": "@hot-updater/node",
+  "name": "@hot-updater/utils",
   "version": "0.0.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
-  "files": ["lib", "package.json"],
-  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+  "files": [
+    "lib",
+    "package.json"
+  ],
+  "keywords": [
+    "react-native",
+    "code",
+    "push",
+    "code-push",
+    "self-hosted"
+  ],
   "license": "MIT",
   "scripts": {
     "prepare": "tsc --project tsconfig.build.json",
@@ -22,6 +31,7 @@
     "access": "public"
   },
   "dependencies": {
+    "picocolors": "^1.0.0",
     "sqids": "^0.3.0"
   },
   "devDependencies": {

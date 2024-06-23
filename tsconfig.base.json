@@ -6,7 +6,7 @@
     "moduleResolution": "Bundler",
     "paths": {
       "hot-updater": ["./packages/hot-updater/src/index.ts"],
-      "@hot-updater/node": ["./packages/node/src/index.ts"],
+      "@hot-updater/utils": ["./packages/utils/src/index.ts"],
       "@hot-updater/aws": ["./plugins/aws/src/index.ts"]
     },
     "strict": true,

@@ -10,7 +10,7 @@
     "outDir": "lib",
     "baseUrl": ".",
     "paths": {
-      "@hot-updater/node": ["../../packages/node/src/index.ts"]
+      "@hot-updater/utils": ["../../packages/utils/src/index.ts"]
     }
   },
   "include": ["src/**/*"],

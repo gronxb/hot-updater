@@ -117,9 +117,9 @@ importers:
 
   packages/hot-updater:
     dependencies:
-      '@hot-updater/node':
+      '@hot-updater/utils':
         specifier: workspace:^
-        version: link:../node
+        version: link:../utils
       commander:
         specifier: ^11.1.0
         version: 11.1.0
@@ -148,25 +148,6 @@ importers:
       typescript-transform-paths:
         specifier: ^3.4.7
         version: 3.4.7(typescript@5.4.5)
-
-  packages/node:
-    dependencies:
-      sqids:
-        specifier: ^0.3.0
-        version: 0.3.0
-    devDependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.441.0
-        version: 3.441.0
-      '@types/node':
-        specifier: ^20.9.4
-        version: 20.9.4
-      vitest:
-        specifier: ^1.6.0
-        version: 1.6.0(@types/node@20.9.4)(terser@5.31.0)
-      workspace-tools:
-        specifier: ^0.36.3
-        version: 0.36.3
 
   packages/react-native:
     dependencies:
@@ -232,6 +213,28 @@ importers:
       vite-tsconfig-paths:
         specifier: ^4.2.1
         version: 4.3.2(typescript@5.4.5)(vite@5.2.11(@types/node@20.9.4)(terser@5.31.0))
+
+  packages/utils:
+    dependencies:
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.0.0
+      sqids:
+        specifier: ^0.3.0
+        version: 0.3.0
+    devDependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.441.0
+        version: 3.441.0
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.9.4
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.0(@types/node@20.9.4)(terser@5.31.0)
+      workspace-tools:
+        specifier: ^0.36.3
+        version: 0.36.3
 
   plugins/aws:
     dependencies:
