@@ -2,6 +2,7 @@ import { deploy } from "@/commands/deploy";
 import { version } from "@/package.json";
 import { printLogo } from "@/utils/printLogo";
 import { Command, Option } from "commander";
+import { generateSecretKey } from "./commands/generateSecretKey";
 
 printLogo();
 
@@ -27,5 +28,10 @@ program
       deploy(platform);
     },
   );
+
+program
+  .command("generate-secret-key")
+  .description("generate a new secret key")
+  .action(generateSecretKey);
 
 program.parse();
