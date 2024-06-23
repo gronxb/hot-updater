@@ -11,16 +11,16 @@ export interface PluginArgs {
 }
 
 export interface UpdateSource {
-  [appVersion: string]: {
-    bundleVersion: number;
-    forceUpdate: boolean;
-    enabled: boolean;
-    files: string[];
-  }[];
+  platform: "ios" | "android";
+  targetVersion: string;
+  bundleVersion: number;
+  forceUpdate: boolean;
+  enabled: boolean;
+  files: string[];
 }
 
 export type UpdateSourceArg =
   | string
-  | UpdateSource
-  | (() => Promise<UpdateSource>)
-  | (() => UpdateSource);
+  | UpdateSource[]
+  | (() => Promise<UpdateSource[]>)
+  | (() => UpdateSource[]);
