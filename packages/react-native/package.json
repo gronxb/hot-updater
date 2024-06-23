@@ -54,6 +54,7 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
+    "@hot-updater/internal": "workspace:^",
     "react-native-url-polyfill": "^2.0.0"
   }
 }

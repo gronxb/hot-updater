@@ -1,7 +1,7 @@
+import type { UpdateSource } from "@hot-updater/internal";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { checkForUpdate } from "./checkForUpdate";
 import * as natives from "./native";
-import type { UpdateSource } from "./types";
 
 vi.mock("./native", () => ({
   getAppVersion: async () => "1.0",

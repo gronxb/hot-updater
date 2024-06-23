@@ -25,6 +25,40 @@ export const uploadS3 =
         // 있으면 secretKey로 열어보기
         // 없으면 만들기
         // 다음 버전 만들기
+        // {
+        //   "1.0": [
+        //     {
+        //       files: [],
+        //       forceUpdate: false,
+        //       enabled: true,
+        //       bundleVersion: 5, // Higher than the current version
+        //     },
+        //     {
+        //       files: [],
+        //       forceUpdate: false,
+        //       enabled: true,
+        //       bundleVersion: 4,
+        //     },
+        //     {
+        //       files: [],
+        //       forceUpdate: false,
+        //       enabled: true,
+        //       bundleVersion: 3,
+        //     },
+        //     {
+        //       files: [],
+        //       forceUpdate: false,
+        //       enabled: true,
+        //       bundleVersion: 2,
+        //     },
+        //     {
+        //       files: [],
+        //       forceUpdate: false,
+        //       enabled: true,
+        //       bundleVersion: 1,
+        //     },
+        //   ],
+        // }
       },
       async upload() {
         log.info("uploading to s3");

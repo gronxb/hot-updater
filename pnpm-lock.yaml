@@ -136,8 +136,8 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
       workspace-tools:
-        specifier: ^0.36.3
-        version: 0.36.3
+        specifier: ^0.36.4
+        version: 0.36.4
     devDependencies:
       '@types/connect':
         specifier: ^3.4.38
@@ -157,9 +157,9 @@ importers:
       picocolors:
         specifier: ^1.0.0
         version: 1.0.0
-      sqids:
-        specifier: ^0.3.0
-        version: 0.3.0
+      workspace-tools:
+        specifier: ^0.36.4
+        version: 0.36.4
     devDependencies:
       '@aws-sdk/client-s3':
         specifier: ^3.441.0
@@ -170,12 +170,12 @@ importers:
       vitest:
         specifier: ^1.6.0
         version: 1.6.0(@types/node@20.9.4)(terser@5.31.0)
-      workspace-tools:
-        specifier: ^0.36.3
-        version: 0.36.3
 
   packages/react-native:
     dependencies:
+      '@hot-updater/internal':
+        specifier: workspace:^
+        version: link:../internal
       react-native-url-polyfill:
         specifier: ^2.0.0
         version: 2.0.0(react-native@0.72.6(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(react@18.2.0))
@@ -6911,9 +6911,6 @@ packages:
   sprintf-js@1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
 
-  sqids@0.3.0:
-    resolution: {integrity: sha512-lOQK1ucVg+W6n3FhRwwSeUijxe93b51Bfz5PMRMihVf1iVkl82ePQG7V5vwrhzB11v0NtsR25PSZRGiSomJaJw==}
-
   ssri@10.0.6:
     resolution: {integrity: sha512-MGrFH9Z4NP9Iyhqn16sDtBpRRNJ0Y2hNa6D65h736fVSaPCHr4DM4sWUNvVaSuC+0OBGhwsrydQwmgfg5LncqQ==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
@@ -7641,8 +7638,8 @@ packages:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
 
-  workspace-tools@0.36.3:
-    resolution: {integrity: sha512-9kx+l+1ClwFbp5CM+3jwNYDFI2sHl0T1oA7ld/LKMnDcMm3225p6UjFUuXo7yMjBWCc2Yecat+0vqTHmdrzYlA==}
+  workspace-tools@0.36.4:
+    resolution: {integrity: sha512-v0UFVvw9BjHtRu2Dau5PEJKkuG8u4jPlpXZQWjSz9XgbSutpPURqtO2P0hp3cVmQVATh8lkMFCewFgJuDnyC/w==}
 
   wrap-ansi@6.2.0:
     resolution: {integrity: sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA==}
@@ -16743,8 +16740,6 @@ snapshots:
 
   sprintf-js@1.0.3: {}
 
-  sqids@0.3.0: {}
-
   ssri@10.0.6:
     dependencies:
       minipass: 7.1.2
@@ -17567,10 +17562,10 @@ snapshots:
 
   word-wrap@1.2.5: {}
 
-  workspace-tools@0.36.3:
+  workspace-tools@0.36.4:
     dependencies:
       '@yarnpkg/lockfile': 1.1.0
-      fast-glob: 3.3.1
+      fast-glob: 3.3.2
       git-url-parse: 13.1.1
       globby: 11.1.0
       jju: 1.4.0

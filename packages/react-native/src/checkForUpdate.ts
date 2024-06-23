@@ -1,5 +1,5 @@
+import type { UpdateSource, UpdateSourceArg } from "@hot-updater/internal";
 import { getAppVersion, getBundleVersion } from "./native";
-import type { UpdateSource, UpdateSourceArg } from "./types";
 import { isNullable } from "./utils";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";

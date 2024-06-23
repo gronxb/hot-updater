@@ -34,7 +34,7 @@
     "cosmiconfig-typescript-loader": "^5.0.0",
     "picocolors": "^1.0.0",
     "prompts": "^2.4.2",
-    "workspace-tools": "^0.36.3"
+    "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
     "@types/connect": "^3.4.38",
