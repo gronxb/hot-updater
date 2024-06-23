@@ -1,6 +1,12 @@
-export interface HotUpdaterReadStrategy {
-  getListObjects(prefix?: string): Promise<string[]>;
-}
+export type HotUpdaterReadStrategy = () =>
+  | Promise<{
+      updateJson: string | null;
+      files: string[];
+    }>
+  | {
+      updateJson: string | null;
+      files: string[];
+    };
 
 export interface CliArgs {
   platform: "ios" | "android";

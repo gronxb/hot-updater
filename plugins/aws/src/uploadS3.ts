@@ -20,53 +20,14 @@ export const uploadS3 =
     const buildDir = path.join(cwd, "build");
 
     return {
-      readStrategy: {
-        getListObjects: async (prefix) => {
-          // s3에 있는 파일 목록 가져오기
-          // prefix가 있으면 prefix로 시작하는 파일만 가져오기
-          // 없으면 모두 가져오기
-          return [];
-        },
+      async readStrategy() {
+        return {
+          updateJson: "",
+          files: [],
+        };
       },
-      async uploadUpdateJson() {
-        // s3에 metadata.json 이미 있나 확인하기
-        // 있으면 secretKey로 열어보기
-        // 없으면 만들기
-        // 다음 버전 만들기
-        // {
-        //   "1.0": [
-        //     {
-        //       files: [],
-        //       forceUpdate: false,
-        //       enabled: true,
-        //       bundleVersion: 5, // Higher than the current version
-        //     },
-        //     {
-        //       files: [],
-        //       forceUpdate: false,
-        //       enabled: true,
-        //       bundleVersion: 4,
-        //     },
-        //     {
-        //       files: [],
-        //       forceUpdate: false,
-        //       enabled: true,
-        //       bundleVersion: 3,
-        //     },
-        //     {
-        //       files: [],
-        //       forceUpdate: false,
-        //       enabled: true,
-        //       bundleVersion: 2,
-        //     },
-        //     {
-        //       files: [],
-        //       forceUpdate: false,
-        //       enabled: true,
-        //       bundleVersion: 1,
-        //     },
-        //   ],
-        // }
+      async uploadUpdateJson(source) {
+        const { updateJson, files } = await this.readStrategy();
       },
       async uploadBundle() {
         log.info("uploading to s3");
