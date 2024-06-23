@@ -1,7 +1,12 @@
 import { uploadS3 } from "@hot-updater/aws";
 import { metro } from "@hot-updater/metro";
 
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({
+  override: true,
+});
 
 export default defineConfig({
   updateServer: "",

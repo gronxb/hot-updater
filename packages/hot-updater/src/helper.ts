@@ -1,6 +1,6 @@
 export type Config = {
   updateServer: string;
-  build: (cwd: string) => void;
+  build: (platform: "ios" | "android", cwd: string) => void;
   deploy: (cwd: string) => {
     upload: () => void;
   };

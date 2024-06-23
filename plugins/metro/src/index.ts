@@ -4,56 +4,62 @@ import Metro from "metro";
 import type { InputConfigT } from "metro-config";
 import Server from "metro/src/Server";
 
-export const metro = (overrideConfig?: InputConfigT) => async (cwd: string) => {
-  const config = await Metro.loadConfig({}, overrideConfig);
+export const metro =
+  (overrideConfig?: InputConfigT) =>
+  async (platform: "ios" | "android", cwd: string) => {
+    const config = await Metro.loadConfig({}, overrideConfig);
 
-  const buildPath = path.join(cwd, "build");
+    const buildPath = path.join(cwd, "build");
 
-  await fs.rm(buildPath, { recursive: true, force: true });
-  await fs.mkdir(buildPath);
+    await fs.rm(buildPath, { recursive: true, force: true });
+    await fs.mkdir(buildPath);
 
-  await Metro.runBuild(config, {
-    entry: "index.js",
-    output: {
-      build: async (server, options) => {
-        const bundleOptions = { ...Server.DEFAULT_BUNDLE_OPTIONS, ...options };
+    await Metro.runBuild(config, {
+      entry: "index.js",
+      output: {
+        build: async (server, options) => {
+          const bundleOptions = {
+            ...Server.DEFAULT_BUNDLE_OPTIONS,
+            ...options,
+          };
 
-        const assets = await server.getAssets({
-          ...bundleOptions,
-          bundleType: "bundle",
-        });
-
-        const copyTargetFiles = assets
-          .flatMap((asset) => asset.files)
-          .map((file) => {
-            const resolvedPath = file.replace(cwd, "");
-            return {
-              from: file,
-              to: path.join(buildPath, resolvedPath),
-            };
+          // copy assets
+          const assets = await server.getAssets({
+            ...bundleOptions,
+            bundleType: "bundle",
           });
 
-        await Promise.all(
-          copyTargetFiles.map(async ({ from, to }) => {
-            await fs.mkdir(path.dirname(to), { recursive: true });
-            await fs.copyFile(from, to);
-          }),
-        );
+          const copyTargetFiles = assets
+            .flatMap((asset) => asset.files)
+            .map((file) => {
+              const resolvedPath = file.replace(cwd, "");
+              return {
+                from: file,
+                to: path.join(buildPath, resolvedPath),
+              };
+            });
 
-        return server.build(bundleOptions);
-      },
-      save: async ({ code, map }, options) => {
-        await fs.writeFile(options.bundleOutput, code);
-        if (options.sourcemapOutput) {
-          await fs.writeFile(options.sourcemapOutput, map);
-        }
-      },
-    },
-    out: path.join(cwd, "build", "index.ios.bundle"),
-    platform: "ios",
-    minify: true,
-    sourceMap: true,
-  });
+          await Promise.all(
+            copyTargetFiles.map(async ({ from, to }) => {
+              await fs.mkdir(path.dirname(to), { recursive: true });
+              await fs.copyFile(from, to);
+            }),
+          );
 
-  console.log("Build completed");
-};
+          return server.build(bundleOptions);
+        },
+        save: async ({ code, map }, options) => {
+          await fs.writeFile(options.bundleOutput, code);
+          if (options.sourcemapOutput) {
+            await fs.writeFile(options.sourcemapOutput, map);
+          }
+        },
+      },
+      out: path.join(cwd, "build", `index.${platform}.bundle`),
+      platform,
+      minify: true,
+      sourceMap: true,
+    });
+
+    console.log("Build completed");
+  };

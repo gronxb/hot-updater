@@ -1,7 +1,7 @@
 import { deploy } from "@/commands/deploy";
 import { version } from "@/package.json";
 import { printLogo } from "@/utils/printLogo";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 
 printLogo();
 
@@ -14,8 +14,18 @@ program
 program
   .command("deploy")
   .description("deploy a new version")
-  .action(() => {
-    deploy();
-  });
+  .addOption(
+    new Option("-p, --platform <platform>", "specify the platform")
+      .choices(["ios", "android"])
+      .makeOptionMandatory(true),
+  )
+  .action(
+    (options: {
+      platform: "ios" | "android";
+    }) => {
+      const { platform } = options;
+      deploy(platform);
+    },
+  );
 
 program.parse();
