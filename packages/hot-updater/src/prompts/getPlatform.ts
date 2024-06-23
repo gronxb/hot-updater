@@ -7,8 +7,8 @@ export const getPlatform = async () => {
       name: "platfrom",
       message: "Which platform do you want to deploy?",
       choices: [
-        { title: "ios", value: "#00ff00" },
-        { title: "android", value: "#00ff00" },
+        { title: "ios", value: "ios" },
+        { title: "android", value: "android" },
       ],
     },
   ]);

@@ -28,14 +28,11 @@ program
   .addOption(
     new Option(
       "-t, --target-app-version <targetVersion>",
-      "specify the platform.",
+      "specify the platform",
     ),
   )
   .addOption(
-    new Option(
-      "-f, --force-update <forceUpdate>",
-      "force update the app.",
-    ).default(false),
+    new Option("-f, --force-update", "force update the app").default(false),
   )
   .action(async (options: DeployOptions) => {
     if (!options.platform) {

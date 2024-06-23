@@ -16,6 +16,7 @@ export const deploy = async (options: DeployOptions) => {
   const targetVersion =
     options.targetVersion ??
     (await getDefaultTargetVersion(path, options.platform));
+
   if (!targetVersion) {
     throw new Error(
       "Target version not found. Please provide a target version.",
@@ -30,11 +31,12 @@ export const deploy = async (options: DeployOptions) => {
     ...config,
   });
 
+  await uploadBundle();
+
   const updateSource = await getNextUpdate(readStrategy, {
     ...options,
     targetVersion,
   });
-
-  await uploadBundle();
+  console.log(updateSource);
   await uploadUpdateJson(updateSource);
 };
