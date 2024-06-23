@@ -1,20 +1,11 @@
 {
-  "name": "@hot-updater/utils",
+  "name": "@hot-updater/internal",
   "version": "0.0.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
-  "files": [
-    "lib",
-    "package.json"
-  ],
-  "keywords": [
-    "react-native",
-    "code",
-    "push",
-    "code-push",
-    "self-hosted"
-  ],
+  "files": ["lib", "package.json"],
+  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
   "license": "MIT",
   "scripts": {
     "prepare": "tsc --project tsconfig.build.json",

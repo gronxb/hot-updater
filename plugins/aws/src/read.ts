@@ -1,5 +1,5 @@
 import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
-import type { HotUpdaterReadStrategy } from "@hot-updater/utils";
+import type { HotUpdaterReadStrategy } from "@hot-updater/internal";
 
 export interface HotUpdaterAwsOptions {
   s3Client: S3Client;

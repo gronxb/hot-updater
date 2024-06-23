@@ -1,4 +1,4 @@
-import { log } from "@hot-updater/utils";
+import { log } from "@hot-updater/internal";
 import pc from "picocolors";
 
 export const logoString = [

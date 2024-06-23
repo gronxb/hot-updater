@@ -1,9 +1,4 @@
-export interface PluginArgs {
-  platform: "ios" | "android";
-  cwd: string;
-  server: string;
-  secretKey: string;
-}
+import type { PluginArgs } from "@hot-updater/internal";
 
 export type Config = {
   server: string;
