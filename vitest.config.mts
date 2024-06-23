@@ -6,6 +6,14 @@ export default defineConfig({
     alias: [{ find: "@", replacement: resolve(__dirname, "./src") }],
   },
   test: {
-    exclude: ["lib", "node_modules"],
+    exclude: [
+      "lib/**",
+      "**/lib/**",
+      "dist/**",
+      "**/dist/**",
+      "**/node_modules/**",
+      "node_modules/**",
+      "examples/**",
+    ],
   },
 });

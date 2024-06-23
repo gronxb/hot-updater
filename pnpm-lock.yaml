@@ -23,6 +23,9 @@ importers:
       typescript:
         specifier: ^5.4.5
         version: 5.4.5
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.0(@types/node@20.9.4)(terser@5.31.0)
 
   docs:
     devDependencies:
@@ -167,9 +170,6 @@ importers:
       '@types/node':
         specifier: ^20.9.4
         version: 20.9.4
-      vitest:
-        specifier: ^1.6.0
-        version: 1.6.0(@types/node@20.9.4)(terser@5.31.0)
 
   packages/react-native:
     dependencies:
@@ -189,9 +189,6 @@ importers:
       react-native:
         specifier: ^0.72.6
         version: 0.72.6(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(react@18.2.0)
-      vitest:
-        specifier: ^1.6.0
-        version: 1.6.0(@types/node@20.9.4)(terser@5.31.0)
 
   packages/server:
     dependencies:

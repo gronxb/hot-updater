@@ -7,7 +7,8 @@
   "scripts": {
     "biome": "biome format packages/** --write",
     "biome:check": "biome check packages/**",
-    "clear": "rimraf --glob **/lib"
+    "clear": "rimraf --glob **/lib",
+    "test": "vitest"
   },
   "packageManager": "pnpm@9.1.4",
   "devDependencies": {
@@ -15,6 +16,7 @@
     "esbuild": "^0.21.4",
     "rimraf": "^5.0.7",
     "ts-patch": "^3.2.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   }
 }
