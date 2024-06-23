@@ -241,6 +241,9 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.600.0
         version: 3.600.0(@aws-sdk/client-s3@3.441.0)
+      mime:
+        specifier: ^4.0.3
+        version: 4.0.3
 
   plugins/metro:
     dependencies:
@@ -5791,6 +5794,11 @@ packages:
   mime@2.6.0:
     resolution: {integrity: sha512-USPkMeET31rOMiarsBNIHZKLGgvKc/LrjofAnBlOttf5ajRvqiRA8QsenbcooctK6d6Ts6aqZXBA+XbkKthiQg==}
     engines: {node: '>=4.0.0'}
+    hasBin: true
+
+  mime@4.0.3:
+    resolution: {integrity: sha512-KgUb15Oorc0NEKPbvfa0wRU+PItIEZmiv+pyAO2i0oTIVTJhlzMclU7w4RXWQrSOVH5ax/p/CkIO7KI4OyFJTQ==}
+    engines: {node: '>=16'}
     hasBin: true
 
   mimic-fn@2.1.0:
@@ -15496,6 +15504,8 @@ snapshots:
   mime@1.6.0: {}
 
   mime@2.6.0: {}
+
+  mime@4.0.3: {}
 
   mimic-fn@2.1.0: {}
 

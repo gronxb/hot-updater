@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import mime from "mime";
 import { readDir } from "./utils/readDir";
 
 export interface AwsConfig
@@ -24,13 +25,17 @@ export const uploadS3 =
         const files = await readDir(buildDir);
         const result = await Promise.allSettled(
           files.map(async (file, index) => {
-            const Body = await fs.readFile(path.join(buildDir, file));
+            const filePath = path.join(buildDir, file);
+            const Body = await fs.readFile(filePath);
+            const ContentType = mime.getType(filePath) ?? void 0;
+
             const Key = ["v1_TEST", platform, file.replace(buildDir, "")].join(
               "/",
             );
             const upload = new Upload({
               client,
               params: {
+                ContentType,
                 Bucket: bucketName,
                 Key,
                 Body,
