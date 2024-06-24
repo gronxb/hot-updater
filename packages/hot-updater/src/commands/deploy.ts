@@ -24,7 +24,7 @@ export const deploy = async (options: DeployOptions) => {
 
   await build({ cwd: path, ...options, ...config });
 
-  const newBundleVersion = Date.now() / 1000;
+  const newBundleVersion = Math.trunc(Date.now() / 1000);
 
   const { uploadBundle, uploadUpdateJson } = deploy({
     cwd: path,

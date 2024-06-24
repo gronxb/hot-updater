@@ -53,8 +53,8 @@ export const uploadS3 =
                 Body,
               },
             });
-            await upload.done();
-            return Key;
+            const response = await upload.done();
+            return response.Location;
           }),
         );
 
