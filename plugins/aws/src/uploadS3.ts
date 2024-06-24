@@ -19,29 +19,31 @@ export const uploadS3 =
 
     const buildDir = path.join(cwd, "build");
 
+    let files: string[] = [];
     return {
       async readStrategy() {
+        // s3에 있는 파일 목록 가져오기
         return {
           updateJson: "",
-          files: [],
+          files,
         };
       },
-      async uploadUpdateJson(source) {
-        const { updateJson, files } = await this.readStrategy();
-      },
-      async uploadBundle() {
+      async uploadUpdateJson(source) {},
+      async uploadBundle(bundleVersion) {
         log.info("uploading to s3");
 
-        const files = await readDir(buildDir);
+        const buildFiles = await readDir(buildDir);
         const result = await Promise.allSettled(
-          files.map(async (file, index) => {
+          buildFiles.map(async (file) => {
             const filePath = path.join(buildDir, file);
             const Body = await fs.readFile(filePath);
             const ContentType = mime.getType(filePath) ?? void 0;
 
-            const Key = ["v1_TEST", platform, file.replace(buildDir, "")].join(
-              "/",
-            );
+            const Key = [
+              `v${bundleVersion}`,
+              platform,
+              file.replace(buildDir, ""),
+            ].join("/");
             const upload = new Upload({
               client,
               params: {
@@ -52,7 +54,7 @@ export const uploadS3 =
               },
             });
             await upload.done();
-            return upload;
+            return Key;
           }),
         );
 
@@ -62,7 +64,14 @@ export const uploadS3 =
         if (rejectedCount > 0) {
           throw new Error("upload failed");
         }
+
+        files = result
+          .map((r) => r.status === "fulfilled" && r.value)
+          .filter(Boolean) as string[];
+
         log.success("upload success");
+
+        return { files };
       },
     };
   };

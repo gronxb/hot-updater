@@ -1,7 +1,6 @@
 import { cwd } from "@/cwd";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { loadConfig } from "@/utils/loadConfig";
-import { getNextUpdate } from "@hot-updater/internal";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -25,18 +24,21 @@ export const deploy = async (options: DeployOptions) => {
 
   await build({ cwd: path, ...options, ...config });
 
-  const { readStrategy, uploadBundle, uploadUpdateJson } = deploy({
+  const newBundleVersion = Date.now() / 1000;
+
+  const { uploadBundle, uploadUpdateJson } = deploy({
     cwd: path,
     ...options,
     ...config,
   });
 
-  await uploadBundle();
+  const { files } = await uploadBundle(newBundleVersion);
 
-  const updateSource = await getNextUpdate(readStrategy, {
+  await uploadUpdateJson({
     ...options,
+    files,
     targetVersion,
+    bundleVersion: newBundleVersion,
+    enabled: true,
   });
-  console.log(updateSource);
-  await uploadUpdateJson(updateSource);
 };

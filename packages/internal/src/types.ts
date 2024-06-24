@@ -35,7 +35,9 @@ export type UpdateSourceArg =
   | (() => UpdateSource[]);
 
 export interface DeployPlugin {
-  uploadBundle: () => Promise<void>;
+  uploadBundle: (bundleVersion: number) => Promise<{
+    files: string[];
+  }>;
   uploadUpdateJson: (source: UpdateSource) => Promise<void>;
   readStrategy: HotUpdaterReadStrategy;
 }
