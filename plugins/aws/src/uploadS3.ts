@@ -1,10 +1,21 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  NoSuchKey,
+  S3Client,
+  type S3ClientConfig,
+} from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { type CliArgs, type DeployPlugin, log } from "@hot-updater/internal";
+import {
+  type CliArgs,
+  type DeployPlugin,
+  type UpdateSource,
+  log,
+} from "@hot-updater/internal";
 import mime from "mime";
 import { readDir } from "./utils/readDir";
+import { streamToString } from "./utils/streamToString";
 
 export interface AwsConfig
   extends Pick<S3ClientConfig, "credentials" | "region"> {
@@ -20,15 +31,45 @@ export const uploadS3 =
     const buildDir = path.join(cwd, "build");
 
     let files: string[] = [];
+
     return {
-      async readStrategy() {
-        // s3에 있는 파일 목록 가져오기
-        return {
-          updateJson: "",
-          files,
-        };
+      async uploadUpdateJson(source) {
+        log.info("uploading update.json");
+
+        const newUpdateJson: UpdateSource[] = [];
+        try {
+          const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: "update.json",
+          });
+          const { Body: UpdateJsonBody } = await client.send(command);
+          const bodyContents = await streamToString(UpdateJsonBody);
+          const updateJson = JSON.parse(bodyContents);
+          newUpdateJson.push(...updateJson);
+        } catch (e) {
+          if (e instanceof NoSuchKey) {
+            log.info("update.json not found creating new one");
+          } else {
+            throw e;
+          }
+        }
+        newUpdateJson.unshift(source);
+
+        const Key = "update.json";
+        const Body = JSON.stringify(newUpdateJson, null, 2);
+        const ContentType = mime.getType(Key) ?? void 0;
+
+        const upload = new Upload({
+          client,
+          params: {
+            ContentType,
+            Bucket: bucketName,
+            Key,
+            Body,
+          },
+        });
+        await upload.done();
       },
-      async uploadUpdateJson(source) {},
       async uploadBundle(bundleVersion) {
         log.info("uploading to s3");
 
@@ -54,6 +95,7 @@ export const uploadS3 =
               },
             });
             const response = await upload.done();
+            log.info(`uploaded: ${Key}`);
             return response.Location;
           }),
         );
@@ -68,8 +110,6 @@ export const uploadS3 =
         files = result
           .map((r) => r.status === "fulfilled" && r.value)
           .filter(Boolean) as string[];
-
-        log.success("upload success");
 
         return { files };
       },

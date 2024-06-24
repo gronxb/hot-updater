@@ -26,10 +26,7 @@ program
     ]),
   )
   .addOption(
-    new Option(
-      "-t, --target-app-version <targetVersion>",
-      "specify the platform",
-    ),
+    new Option("-t, --target-version <targetVersion>", "specify the platform"),
   )
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),

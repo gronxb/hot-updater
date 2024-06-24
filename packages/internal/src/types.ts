@@ -39,5 +39,4 @@ export interface DeployPlugin {
     files: string[];
   }>;
   uploadUpdateJson: (source: UpdateSource) => Promise<void>;
-  readStrategy: HotUpdaterReadStrategy;
 }

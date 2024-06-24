@@ -1,6 +1,7 @@
 import { cwd } from "@/cwd";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { loadConfig } from "@/utils/loadConfig";
+import { log } from "@hot-updater/internal";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -41,4 +42,5 @@ export const deploy = async (options: DeployOptions) => {
     bundleVersion: newBundleVersion,
     enabled: true,
   });
+  log.success("upload success");
 };
