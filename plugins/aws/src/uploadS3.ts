@@ -56,7 +56,7 @@ export const uploadS3 =
         newUpdateJson.unshift(source);
 
         const Key = "update.json";
-        const Body = JSON.stringify(newUpdateJson, null, 2);
+        const Body = JSON.stringify(newUpdateJson);
         const ContentType = mime.getType(Key) ?? void 0;
 
         const upload = new Upload({
