@@ -23,7 +23,7 @@
     "lineEnding": "lf",
     "lineWidth": 80
   },
-  
+
   "javascript": {
     "formatter": {
       "arrowParentheses": "always",
@@ -43,7 +43,11 @@
   "linter": {
     "enabled": true,
     "rules": {
+      "suspicious":{
+        "noExplicitAny": "off"
+      },
       "style": {
+        "noNonNullAssertion": "off",
         "noParameterAssign": "off"
       },
       "recommended": true

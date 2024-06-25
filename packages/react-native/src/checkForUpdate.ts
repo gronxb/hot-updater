@@ -1,12 +1,13 @@
+import type { UpdateSource, UpdateSourceArg } from "@hot-updater/internal";
+import { filterTargetVersion } from "@hot-updater/internal";
+import { Platform } from "react-native";
 import { getAppVersion, getBundleVersion } from "./native";
-import type { UpdateSource, UpdateSourceArg } from "./types";
 import { isNullable } from "./utils";
-
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
-const findLatestSource = (source: UpdateSource[string]) => {
+const findLatestSources = (sources: UpdateSource[]) => {
   return (
-    source
+    sources
       ?.filter((item) => item.enabled)
       ?.sort((a, b) => b.bundleVersion - a.bundleVersion)?.[0] ?? {
       bundleVersion: 0,
@@ -16,13 +17,13 @@ const findLatestSource = (source: UpdateSource[string]) => {
 };
 
 const checkForRollback = (
-  source: UpdateSource[string],
+  sources: UpdateSource[],
   currentBundleVersion: number,
 ) => {
-  const enabled = source?.find(
+  const enabled = sources?.find(
     (item) => item.bundleVersion === currentBundleVersion,
   )?.enabled;
-  const availableOldVersion = source?.find(
+  const availableOldVersion = sources?.find(
     (item) => item.bundleVersion < currentBundleVersion && item.enabled,
   )?.enabled;
 
@@ -33,11 +34,11 @@ const checkForRollback = (
 };
 
 const ensureUpdateSource = async (updateSource: UpdateSourceArg) => {
-  let source: UpdateSource | null = null;
+  let source: UpdateSource[] | null = null;
   if (typeof updateSource === "string") {
     if (updateSource.startsWith("http")) {
       const response = await fetch(updateSource);
-      source = (await response.json()) as UpdateSource;
+      source = (await response.json()) as UpdateSource[];
     }
   } else if (typeof updateSource === "function") {
     source = await updateSource();
@@ -50,16 +51,19 @@ const ensureUpdateSource = async (updateSource: UpdateSourceArg) => {
   return source;
 };
 
-export const checkForUpdate = async (updateSource: UpdateSourceArg) => {
-  const source = await ensureUpdateSource(updateSource);
+export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
+  const sources = await ensureUpdateSource(updateSources);
 
   const currentAppVersion = await getAppVersion();
+  const platform = Platform.OS as "ios" | "android";
 
-  const appVersionSource = currentAppVersion ? source?.[currentAppVersion] : [];
+  const appVersionSources = currentAppVersion
+    ? filterTargetVersion(platform, currentAppVersion, sources)
+    : [];
   const currentBundleVersion = await getBundleVersion();
 
-  const isRollback = checkForRollback(appVersionSource, currentBundleVersion);
-  const latestSource = await findLatestSource(appVersionSource);
+  const isRollback = checkForRollback(appVersionSources, currentBundleVersion);
+  const latestSource = await findLatestSources(appVersionSources);
 
   if (isRollback) {
     if (latestSource.bundleVersion === currentBundleVersion) {

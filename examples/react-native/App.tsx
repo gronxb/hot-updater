@@ -52,6 +52,11 @@ function App(): React.JSX.Element {
         Bundle Version: {version ?? "Loading..."}
       </Text>
 
+      <Image
+        source={require("./src/logo.png")}
+        style={{ width: 200, height: 200, alignSelf: "center" }}
+      />
+
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
     </SafeAreaView>
   );

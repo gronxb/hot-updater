@@ -1,8 +1,8 @@
+import type { UpdateSourceArg } from "@hot-updater/internal";
 import { Platform } from "react-native";
 import { checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
 import { reload, updateBundle } from "./native";
-import type { UpdateSourceArg } from "./types";
 
 export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 

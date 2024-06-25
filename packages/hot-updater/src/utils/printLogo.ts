@@ -1,3 +1,4 @@
+import { log } from "@hot-updater/internal";
 import pc from "picocolors";
 
 export const logoString = [
@@ -10,5 +11,5 @@ export const logoString = [
 ].join("\n");
 
 export const printLogo = () => {
-  console.log(pc.blue(logoString));
+  log.info(logoString);
 };

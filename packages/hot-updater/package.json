@@ -5,8 +5,14 @@
   "bin": {
     "hot-updater": "./lib/index.cjs"
   },
+  "exports": {
+    ".": {
+      "types": "./lib/helper.d.ts",
+      "import": "./lib/helper.js",
+      "require": "./lib/helper.js"
+    }
+  },
   "description": "React Native OTA solution for self-hosted",
-  "main": "index.js",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
@@ -18,17 +24,24 @@
     "access": "public"
   },
   "scripts": {
-    "prepare": "esbuild src/index.ts --bundle --platform=node --outfile=lib/index.cjs",
-    "build": "esbuild src/index.ts --bundle --platform=node --outfile=lib/index.cjs"
+    "prepare": "pnpm build",
+    "build": "node esbuild.config.js && tspc --project tsconfig.build.json"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.441.0",
-    "@aws-sdk/lib-storage": "^3.441.0",
-    "@hot-updater/node": "workspace:^",
+    "@hot-updater/internal": "workspace:^",
     "commander": "^11.1.0",
-    "lilconfig": "^2.1.0",
+    "cosmiconfig": "^9.0.0",
+    "cosmiconfig-typescript-loader": "^5.0.0",
     "picocolors": "^1.0.0",
+    "plist": "^3.1.0",
     "prompts": "^2.4.2",
-    "workspace-tools": "^0.36.3"
+    "workspace-tools": "^0.36.4"
+  },
+  "devDependencies": {
+    "@types/connect": "^3.4.38",
+    "@types/cosmiconfig": "^6.0.0",
+    "@types/plist": "^3.0.5",
+    "@types/prompts": "^2.4.9",
+    "typescript-transform-paths": "^3.4.7"
   }
 }

@@ -50,10 +50,10 @@
   "devDependencies": {
     "@types/react": "^18.2.6",
     "react": "^18.2.0",
-    "react-native": "^0.72.6",
-    "vitest": "^1.6.0"
+    "react-native": "^0.72.6"
   },
   "dependencies": {
+    "@hot-updater/internal": "workspace:^",
     "react-native-url-polyfill": "^2.0.0"
   }
 }

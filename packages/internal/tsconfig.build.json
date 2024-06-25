@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "module": "commonjs",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "target": "es6",
@@ -7,12 +8,8 @@
     "moduleResolution": "node",
     "sourceMap": true,
     "declaration": true,
-    "outDir": "lib",
-    "baseUrl": ".",
-    "paths": {
-      "@hot-updater/internal": ["../../packages/internal/src/index.ts"]
-    }
+    "outDir": "lib"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]
+  "exclude": ["node_modules", "src/**/*.test.ts"]
 }
