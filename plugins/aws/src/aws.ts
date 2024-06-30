@@ -22,7 +22,7 @@ export interface AwsConfig
   bucketName: string;
 }
 
-export const uploadS3 =
+export const aws =
   (config: AwsConfig) =>
   ({ cwd, platform }: CliArgs): DeployPlugin => {
     const { bucketName, ...s3Config } = config;
@@ -33,6 +33,26 @@ export const uploadS3 =
     let files: string[] = [];
 
     return {
+      async getUpdateJson() {
+        log.info("getting update.json");
+
+        try {
+          const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: "update.json",
+          });
+          const { Body: UpdateJsonBody } = await client.send(command);
+          const bodyContents = await streamToString(UpdateJsonBody);
+          const updateJson = JSON.parse(bodyContents);
+          return updateJson as UpdateSource[];
+        } catch (e) {
+          if (e instanceof NoSuchKey) {
+            log.info("update.json not found");
+            return null;
+          }
+          throw e;
+        }
+      },
       async uploadUpdateJson(source) {
         log.info("uploading update.json");
 
@@ -53,6 +73,7 @@ export const uploadS3 =
             throw e;
           }
         }
+
         newUpdateJson.unshift(source);
 
         const Key = "update.json";

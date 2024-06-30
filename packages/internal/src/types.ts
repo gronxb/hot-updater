@@ -35,6 +35,7 @@ export type UpdateSourceArg =
   | (() => UpdateSource[]);
 
 export interface DeployPlugin {
+  getUpdateJson: () => Promise<UpdateSource[] | null>;
   uploadBundle: (bundleVersion: number) => Promise<{
     files: string[];
   }>;

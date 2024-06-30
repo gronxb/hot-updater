@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { log } from "@hot-updater/internal";
 import Metro from "metro";
 import type { InputConfigT } from "metro-config";
 import Server from "metro/src/Server";
@@ -13,6 +14,9 @@ export const metro =
 
     await fs.rm(buildPath, { recursive: true, force: true });
     await fs.mkdir(buildPath);
+
+    const bundleOutput = path.join(cwd, "build", `index.${platform}.bundle`);
+    const outputs: string[] = [];
 
     await Metro.runBuild(config, {
       entry: "index.js",
@@ -43,23 +47,31 @@ export const metro =
             copyTargetFiles.map(async ({ from, to }) => {
               await fs.mkdir(path.dirname(to), { recursive: true });
               await fs.copyFile(from, to);
+              outputs.push(to);
             }),
           );
 
           return server.build(bundleOptions);
         },
         save: async ({ code, map }, options) => {
+          outputs.push(options.bundleOutput);
           await fs.writeFile(options.bundleOutput, code);
+
           if (options.sourcemapOutput) {
+            outputs.push(options.sourcemapOutput);
             await fs.writeFile(options.sourcemapOutput, map);
           }
         },
       },
-      out: path.join(cwd, "build", `index.${platform}.bundle`),
+      out: bundleOutput,
       platform,
       minify: true,
       sourceMap: true,
     });
 
-    console.log("Build completed");
+    log.success("Build completed");
+    return {
+      buildPath,
+      outputs,
+    };
   };

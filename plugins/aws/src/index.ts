@@ -1,1 +1,1 @@
-export * from "./uploadS3";
+export * from "./aws";

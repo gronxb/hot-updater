@@ -20,11 +20,11 @@ import type { UpdateSource } from "./types";
  */
 export const filterTargetVersion = (
   platform: "ios" | "android",
-  currentVersion: string,
+  targetVersion: string,
   sources: UpdateSource[],
 ): UpdateSource[] => {
   // coerce currentVersion to a semver-compatible version
-  const currentVersionCoerce = semver.coerce(currentVersion)?.version;
+  const currentVersionCoerce = semver.coerce(targetVersion)?.version;
   if (!currentVersionCoerce) {
     return [];
   }

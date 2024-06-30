@@ -1,7 +1,9 @@
 import { cwd } from "@/cwd";
+import { areBuildHashesIncluded } from "@/utils/areBuildHashesIncluded";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
+import { getFileHashFromFile, getFileHashFromUrl } from "@/utils/getFileHash";
 import { loadConfig } from "@/utils/loadConfig";
-import { log } from "@hot-updater/internal";
+import { filterTargetVersion, log } from "@hot-updater/internal";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -23,15 +25,56 @@ export const deploy = async (options: DeployOptions) => {
     );
   }
 
-  await build({ cwd: path, ...options, ...config });
-
-  const newBundleVersion = Math.trunc(Date.now() / 1000);
-
-  const { uploadBundle, uploadUpdateJson } = deploy({
+  const { buildPath, outputs } = await build({
     cwd: path,
     ...options,
     ...config,
   });
+
+  const fileHashes = await Promise.all(
+    outputs.map(async (output) => {
+      return [output.replace(buildPath, ""), await getFileHashFromFile(output)];
+    }),
+  );
+  const buildHashes = Object.fromEntries(fileHashes);
+
+  const newBundleVersion = Math.trunc(Date.now() / 1000);
+
+  const { uploadBundle, getUpdateJson, uploadUpdateJson } = deploy({
+    cwd: path,
+    ...options,
+    ...config,
+  });
+
+  const updateJson = await getUpdateJson();
+
+  const targetVersions = filterTargetVersion(
+    options.platform,
+    targetVersion,
+    updateJson ?? [],
+  );
+
+  if (targetVersions.length > 0) {
+    const recentVersion = targetVersions[0];
+    const fileHashes = await Promise.all(
+      recentVersion.files.map(async (file) => {
+        const url = new URL(file);
+        const pathname = url.pathname.replace(
+          `/v${recentVersion.bundleVersion}/${options.platform}`,
+          "",
+        );
+
+        return [pathname, await getFileHashFromUrl(file)];
+      }),
+    );
+    const uploadedHashed = Object.fromEntries(fileHashes);
+
+    const isIncluded = areBuildHashesIncluded(uploadedHashed, buildHashes);
+    if (isIncluded) {
+      log.error("The update already exists.");
+      return;
+    }
+  }
 
   const { files } = await uploadBundle(newBundleVersion);
 

@@ -1,4 +1,4 @@
-import { uploadS3 } from "@hot-updater/aws";
+import { aws } from "@hot-updater/aws";
 import { metro } from "@hot-updater/metro";
 
 import { config } from "dotenv";
@@ -12,7 +12,7 @@ export default defineConfig({
   server: "",
   secretKey: process.env.HOT_UPDATER_SECRET_KEY!,
   build: metro(),
-  deploy: uploadS3({
+  deploy: aws({
     region: "ap-northeast-2",
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
