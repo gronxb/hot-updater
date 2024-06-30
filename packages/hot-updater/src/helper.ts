@@ -3,7 +3,10 @@ import type { DeployPlugin, PluginArgs } from "@hot-updater/internal";
 export type Config = {
   server: string;
   secretKey: string;
-  build: (args: PluginArgs) => void;
+  build: (args: PluginArgs) => Promise<{
+    buildPath: string;
+    outputs: string[];
+  }>;
   deploy: (args: PluginArgs) => DeployPlugin;
 };
 
