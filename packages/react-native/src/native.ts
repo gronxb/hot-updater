@@ -44,7 +44,7 @@ export const updateBundle = (
     });
 
     HotUpdater.updateBundle(
-      `v${bundleVersion}`,
+      `${bundleVersion}`,
       encodedURLs,
       (success: boolean) => {
         if (success) {

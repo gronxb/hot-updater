@@ -102,7 +102,7 @@ export const aws =
             const ContentType = mime.getType(filePath) ?? void 0;
 
             const Key = [
-              `v${bundleVersion}`,
+              `${bundleVersion}`,
               platform,
               file.replace(buildDir, ""),
             ].join("/");

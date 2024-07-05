@@ -60,7 +60,7 @@ export const deploy = async (options: DeployOptions) => {
       recentVersion.files.map(async (file) => {
         const url = new URL(file);
         const pathname = url.pathname.replace(
-          `/v${recentVersion.bundleVersion}/${options.platform}`,
+          `/${recentVersion.bundleVersion}/${options.platform}`,
           "",
         );
 

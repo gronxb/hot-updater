@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { Button, Image, SafeAreaView, Text } from "react-native";
 
 HotUpdater.init({
-  source: "",
+  source: "https://gronxb.s3.ap-northeast-2.amazonaws.com/update.json",
   onError: (e) => {
     console.error("Hot Updater error", e);
   },
@@ -39,7 +39,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater Not Update
+        Hot Updater 4
       </Text>
       <Text
         style={{
@@ -53,7 +53,7 @@ function App(): React.JSX.Element {
       </Text>
 
       <Image
-        source={require("./src/logo.png")}
+        source={require("./src/image.png")}
         style={{ width: 200, height: 200, alignSelf: "center" }}
       />
 

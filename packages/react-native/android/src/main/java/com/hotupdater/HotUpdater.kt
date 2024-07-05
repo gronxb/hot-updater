@@ -38,7 +38,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return mCurrentInstance?.getBundleURL()
         }
 
-        fun getBundleVersion(): String? {
+        fun getBundleVersion(): Int? {
             return mCurrentInstance?.getBundleVersion()
         }
 
@@ -103,10 +103,19 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun getBundleVersion(): String? {
+    fun getBundleVersion(): Int? {
         val sharedPreferences =
                 mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-        return sharedPreferences.getString("HotUpdaterBundleVersion", null)
+        val bundleVersion = sharedPreferences.getString("HotUpdaterBundleVersion", null)
+        return if (bundleVersion != null && bundleVersion.isNotEmpty()) {
+            try {
+                bundleVersion.toInt()
+            } catch (e: NumberFormatException) {
+                -1
+            }
+        } else {
+            -1
+        }
     }
 
     fun updateBundle(prefix: String, urls: List<String>): Boolean {

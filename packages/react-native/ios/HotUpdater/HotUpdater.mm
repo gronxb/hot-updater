@@ -28,16 +28,17 @@ static NSURL *_bundleURL = nil;
    return appVersion;
 }
 
-+ (NSString *)getBundleVersion {
++ (NSNumber *)getBundleVersion {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *bundleVersion = [defaults objectForKey:@"HotUpdaterBundleVersion"];
-    if (bundleVersion && ![bundleVersion isKindOfClass:[NSNull class]] && bundleVersion.length > 0) {
-        return bundleVersion;
-    } else {
-        return nil;
+    
+    if ([bundleVersion isKindOfClass:[NSString class]] && bundleVersion.length > 0) {
+        NSNumber *version = @([bundleVersion integerValue]);
+        return version;
     }
+    
+    return @(-1); // 기본값을 NSNumber로 반환
 }
-
 
 + (void)setBundleURL:(NSString *)localPath {
     NSLog(@"Setting bundle URL: %@", localPath);
@@ -164,8 +165,8 @@ RCT_EXPORT_METHOD(reload) {
 }
 
 RCT_EXPORT_METHOD(getBundleVersion:(RCTResponseSenderBlock)callback) {
-    NSString *bundleVersion = [HotUpdater getBundleVersion];
-    callback(@[bundleVersion ?: [NSNull null]]);
+    NSNumber *bundleVersion = [HotUpdater getBundleVersion];
+    callback(@[bundleVersion]);
 }
 
 
