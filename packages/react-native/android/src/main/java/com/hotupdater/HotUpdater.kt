@@ -130,7 +130,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
                         file.parentFile?.mkdirs()
                         file.writeBytes(data)
 
-                        if (filename.startsWith("index") && filename.endsWith(".bundle")) {
+                        if (filename.equals("index.android.bundle.js")) {
                             setBundleURL(path)
                         }
                     } catch (e: Exception) {

@@ -39,7 +39,7 @@ export const metro =
               const resolvedPath = file.replace(cwd, "");
               return {
                 from: file,
-                to: path.join(buildPath, resolvedPath),
+                to: path.join(buildPath, "assets", resolvedPath),
               };
             });
 

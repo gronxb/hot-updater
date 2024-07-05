@@ -137,7 +137,7 @@ static NSURL *_bundleURL = nil;
                 allSuccess = NO;
             }
             
-            if ([filename hasPrefix:@"index"] && [filename hasSuffix:@".bundle"]) {
+            if ([filename isEqualToString:@"index.ios.bundle.js"]) {
                 NSLog(@"Setting bundle URL: %@", path);
                 [self setBundleURL:path];
             }
