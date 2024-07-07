@@ -38,7 +38,7 @@ export const deploy = async (options: DeployOptions) => {
   );
   const buildHashes = Object.fromEntries(fileHashes);
 
-  const newBundleVersion = Math.trunc(Date.now() / 1000);
+  const newBundleVersion = formatDate(new Date());
 
   const { uploadBundle, getUpdateJson, uploadUpdateJson } = deploy({
     cwd: path,
