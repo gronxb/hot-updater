@@ -1,4 +1,4 @@
-import type { DeployPlugin, PluginArgs } from "@hot-updater/internal";
+import type { CliArgs, DeployPlugin, PluginArgs } from "@hot-updater/internal";
 
 export type Config = {
   server: string;
@@ -7,7 +7,7 @@ export type Config = {
     buildPath: string;
     outputs: string[];
   }>;
-  deploy: (args: PluginArgs) => DeployPlugin;
+  deploy: (args: CliArgs) => DeployPlugin;
 };
 
 export const defineConfig = (config: Config | (() => Config)): Config =>

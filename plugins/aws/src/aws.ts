@@ -7,11 +7,10 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import {
-  type CliArgs,
-  type DeployPlugin,
-  type UpdateSource,
-  log,
+import type {
+  CliArgs,
+  DeployPlugin,
+  UpdateSource,
 } from "@hot-updater/internal";
 import mime from "mime";
 import { readDir } from "./utils/readDir";
@@ -24,7 +23,7 @@ export interface AwsConfig
 
 export const aws =
   (config: AwsConfig) =>
-  ({ cwd, platform }: CliArgs): DeployPlugin => {
+  ({ cwd, platform, spinner }: CliArgs): DeployPlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
@@ -34,7 +33,7 @@ export const aws =
 
     return {
       async getUpdateJson() {
-        log.info("getting update.json");
+        spinner?.message("getting update.json");
 
         try {
           const command = new GetObjectCommand({
@@ -47,14 +46,13 @@ export const aws =
           return updateJson as UpdateSource[];
         } catch (e) {
           if (e instanceof NoSuchKey) {
-            log.info("update.json not found");
             return null;
           }
           throw e;
         }
       },
       async uploadUpdateJson(source) {
-        log.info("uploading update.json");
+        spinner?.message("uploading update.json");
 
         const newUpdateJson: UpdateSource[] = [];
         try {
@@ -68,7 +66,7 @@ export const aws =
           newUpdateJson.push(...updateJson);
         } catch (e) {
           if (e instanceof NoSuchKey) {
-            log.info("update.json not found creating new one");
+            spinner?.message("Creating new update.json");
           } else {
             throw e;
           }
@@ -92,7 +90,7 @@ export const aws =
         await upload.done();
       },
       async uploadBundle(bundleVersion) {
-        log.info("uploading to s3");
+        spinner?.message("uploading to s3");
 
         const buildFiles = await readDir(buildDir);
         const result = await Promise.allSettled(
@@ -116,7 +114,7 @@ export const aws =
               },
             });
             const response = await upload.done();
-            log.info(`uploaded: ${Key}`);
+            spinner?.message(`uploaded: ${Key}`);
             return response.Location;
           }),
         );

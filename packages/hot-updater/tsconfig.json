@@ -7,5 +7,5 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "hot-updater.d.ts"]
+  "include": ["src"]
 }

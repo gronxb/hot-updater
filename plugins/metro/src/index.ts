@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { log } from "@hot-updater/internal";
 import Metro from "metro";
 import type { InputConfigT } from "metro-config";
 import Server from "metro/src/Server";
@@ -69,7 +68,6 @@ export const metro =
       sourceMap: true,
     });
 
-    log.success("Build completed");
     return {
       buildPath,
       outputs,

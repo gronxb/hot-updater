@@ -1,14 +1,16 @@
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { version } from "@/package.json";
-import { printLogo } from "@/utils/printLogo";
+import { intro } from "@clack/prompts";
 import { log } from "@hot-updater/internal";
 import { Command, Option } from "commander";
 import { generateSecretKey } from "./commands/generateSecretKey";
+import { rollback } from "./commands/rollback";
 import { cwd } from "./cwd";
 import { getPlatform } from "./prompts/getPlatform";
 import { getDefaultTargetVersion } from "./utils/getDefaultTargetVersion";
+import { logoString } from "./utils/printLogo";
 
-printLogo();
+intro(logoString);
 
 const program = new Command();
 program
@@ -55,5 +57,10 @@ program
     log.info(`Android version: ${androidVersion}`);
     log.info(`iOS version: ${iosVersion}`);
   });
+
+program
+  .command("rollback")
+  .description("rollback to the previous version")
+  .action(rollback);
 
 program.parse();

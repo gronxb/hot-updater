@@ -11,6 +11,10 @@ export type HotUpdaterReadStrategy = () =>
 export interface CliArgs {
   platform: "ios" | "android";
   cwd: string;
+  spinner?: {
+    message: (message: string) => void;
+    stop: (message: string, code: number) => void;
+  };
 }
 export interface PluginArgs extends CliArgs {
   cwd: string;

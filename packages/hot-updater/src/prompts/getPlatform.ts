@@ -1,16 +1,18 @@
-import prompts from "prompts";
+import { select } from "@clack/prompts";
 
 export const getPlatform = async () => {
-  const response = await prompts([
-    {
-      type: "select",
-      name: "platfrom",
-      message: "Which platform do you want to deploy?",
-      choices: [
-        { title: "ios", value: "ios" },
-        { title: "android", value: "android" },
-      ],
-    },
-  ]);
-  return response.platfrom;
+  const platform = await select({
+    message: "Which platform do you want to deploy?",
+    initialValue: "ios" as "ios" | "android",
+    options: [
+      { label: "ios", value: "ios" },
+      { label: "android", value: "android" },
+    ],
+  });
+
+  if (typeof platform !== "string") {
+    throw new Error("Invalid platform");
+  }
+
+  return platform;
 };

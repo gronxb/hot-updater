@@ -1,9 +1,12 @@
+import { spinner } from "@clack/prompts";
+
 import { cwd } from "@/cwd";
 import { areBuildHashesIncluded } from "@/utils/areBuildHashesIncluded";
+import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile, getFileHashFromUrl } from "@/utils/getFileHash";
 import { loadConfig } from "@/utils/loadConfig";
-import { filterTargetVersion, log } from "@hot-updater/internal";
+import { filterTargetVersion } from "@hot-updater/internal";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -12,6 +15,8 @@ export interface DeployOptions {
 }
 
 export const deploy = async (options: DeployOptions) => {
+  const s = spinner();
+
   const { build, deploy, ...config } = await loadConfig();
 
   const path = cwd();
@@ -25,11 +30,14 @@ export const deploy = async (options: DeployOptions) => {
     );
   }
 
+  s.start("Build in progress");
+
   const { buildPath, outputs } = await build({
     cwd: path,
     ...options,
     ...config,
   });
+  s.message("Checking existing updates...");
 
   const fileHashes = await Promise.all(
     outputs.map(async (output) => {
@@ -37,17 +45,15 @@ export const deploy = async (options: DeployOptions) => {
     }),
   );
   const buildHashes = Object.fromEntries(fileHashes);
-
   const newBundleVersion = formatDate(new Date());
 
   const { uploadBundle, getUpdateJson, uploadUpdateJson } = deploy({
     cwd: path,
     ...options,
-    ...config,
+    spinner: s,
   });
 
   const updateJson = await getUpdateJson();
-
   const targetVersions = filterTargetVersion(
     options.platform,
     targetVersion,
@@ -71,11 +77,12 @@ export const deploy = async (options: DeployOptions) => {
 
     const isIncluded = areBuildHashesIncluded(uploadedHashed, buildHashes);
     if (isIncluded) {
-      log.error("The update already exists.");
+      s.stop("The update already exists.", -1);
       return;
     }
   }
 
+  s.message("Uploading bundle...");
   const { files } = await uploadBundle(newBundleVersion);
 
   await uploadUpdateJson({
@@ -85,5 +92,5 @@ export const deploy = async (options: DeployOptions) => {
     bundleVersion: newBundleVersion,
     enabled: true,
   });
-  log.success("upload success");
+  s.stop("Uploading Success !", 0);
 };
