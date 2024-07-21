@@ -2,12 +2,12 @@ import fs from "node:fs/promises";
 import { spinner } from "@clack/prompts";
 
 import { cwd } from "@/cwd";
+import { createZip } from "@/utils/createZip";
 import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { loadConfig } from "@/utils/loadConfig";
 import { type Platform, filterTargetVersion } from "@hot-updater/internal";
-import { create } from "tar";
 export interface DeployOptions {
   targetVersion?: string;
   platform: Platform;
@@ -39,22 +39,12 @@ export const deploy = async (options: DeployOptions) => {
   });
   s.message("Checking existing updates...");
 
-  await create(
-    {
-      gzip: true,
-      file: "build.tar.gz",
-      cwd: buildPath,
+  await createZip(buildPath, "build.zip");
 
-      // for same hash
-      portable: true,
-      noMtime: true,
-    },
-    ["."],
-  );
-
-  const bundlePath = buildPath.concat(".tar.gz");
+  const bundlePath = buildPath.concat(".zip");
 
   const hash = await getFileHashFromFile(bundlePath);
+
   const newBundleVersion = formatDate(new Date());
 
   const deployPlugin = deploy({

@@ -1,6 +1,5 @@
 #import "HotUpdater.h"
-#import <libarchive/archive.h>
-#import <libarchive/archive_entry.h>
+#import <SSZipArchive/SSZipArchive.h>
 
 @implementation HotUpdater
 
@@ -88,64 +87,25 @@ static NSURL *_bundleURL = nil;
 
 #pragma mark - Utility Methods
 
-- (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
++ (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
     return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:basePath];
 }
 
-- (NSString *)stripPrefixFromPath:(NSString *)prefix path:(NSString *)path {
++ (NSString *)stripPrefixFromPath:(NSString *)prefix path:(NSString *)path {
     if ([path hasPrefix:[NSString stringWithFormat:@"/%@/", prefix]]) {
         return [path stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"/%@/", prefix] withString:@""];
     }
     return path;
 }
 
-
-- (BOOL)extractTarGzFileAtPath:(NSString *)filePath toDestination:(NSString *)destinationPath {
-    struct archive *a;
-    struct archive *ext;
-    struct archive_entry *entry;
-    int r;
-
-    a = archive_read_new();
-    archive_read_support_format_tar(a);
-    archive_read_support_filter_gzip(a);
-    ext = archive_write_disk_new();
-    archive_write_disk_set_options(ext, ARCHIVE_EXTRACT_TIME);
-    archive_write_disk_set_standard_lookup(ext);
-
-    if ((r = archive_read_open_filename(a, [filePath UTF8String], 10240))) {
-        NSLog(@"archive_read_open_filename() failed: %s", archive_error_string(a));
-        return NO;
++ (BOOL)extractZipFileAtPath:(NSString *)filePath toDestination:(NSString *)destinationPath {
+    NSError *error = nil;
+    BOOL success = [SSZipArchive unzipFileAtPath:filePath toDestination:destinationPath overwrite:YES password:nil error:&error];
+    if (!success) {
+        NSLog(@"Failed to unzip file: %@", error);
     }
-
-    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
-        NSString *currentFile = [NSString stringWithUTF8String:archive_entry_pathname(entry)];
-        NSString *fullOutputPath = [destinationPath stringByAppendingPathComponent:currentFile];
-        archive_entry_set_pathname(entry, [fullOutputPath UTF8String]);
-        r = archive_write_header(ext, entry);
-        if (r != ARCHIVE_OK) {
-            NSLog(@"archive_write_header() failed: %s", archive_error_string(ext));
-        } else {
-            char buffer[8192];
-            ssize_t size;
-            while ((size = archive_read_data(a, buffer, sizeof(buffer))) > 0) {
-                if (archive_write_data(ext, buffer, size) < size) {
-                    NSLog(@"archive_write_data() failed: %s", archive_error_string(ext));
-                    break;
-                }
-            }
-            archive_write_finish_entry(ext);
-        }
-    }
-
-    archive_read_close(a);
-    archive_read_free(a);
-    archive_write_close(ext);
-    archive_write_free(ext);
-
-    return YES;
+    return success;
 }
-
 + (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
     NSString *filename = [url lastPathComponent];
     NSString *basePath = [self stripPrefixFromPath:prefix path:[url path]];
@@ -174,9 +134,8 @@ static NSURL *_bundleURL = nil;
         return NO;
     }
 
-    // 압축 해제 부분
-    if (![self extractTarGzFileAtPath:path toDestination:[path stringByDeletingLastPathComponent]]) {
-        NSLog(@"Failed to extract tar.gz file.");
+    if (![self extractZipFileAtPath:path toDestination:[path stringByDeletingLastPathComponent]]) {
+        NSLog(@"Failed to extract zip file.");
         return NO;
     }
 
@@ -191,7 +150,6 @@ static NSURL *_bundleURL = nil;
 
     return YES;
 }
-
 #pragma mark - React Native Exports
 
 RCT_EXPORT_METHOD(reload) {

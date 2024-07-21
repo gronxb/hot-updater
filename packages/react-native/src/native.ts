@@ -24,15 +24,15 @@ export const getBundleVersion = async (): Promise<number> => {
  *
  * @async
  * @param {string} bundleVersion - identifier for the bundle version.
- * @param {string} tarGzUrl - tar.gz file URL.
+ * @param {string} zipUrl - zip file URL.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
   bundleVersion: number,
-  tarGzUrl: string,
+  zipUrl: string,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    const url = new URL(tarGzUrl);
+    const url = new URL(zipUrl);
     const downloadUrl = [
       url.origin,
       url.pathname
