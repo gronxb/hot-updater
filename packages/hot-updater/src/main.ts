@@ -5,6 +5,7 @@ import { log } from "@hot-updater/internal";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import { generateSecretKey } from "./commands/generateSecretKey";
+import { list } from "./commands/list";
 import { rollback } from "./commands/rollback";
 import { cwd } from "./cwd";
 import { getPlatform } from "./prompts/getPlatform";
@@ -76,6 +77,24 @@ program
       );
     }
     rollback(options);
+  });
+
+program
+  .command("list")
+  .description("list all the versions")
+  .addOption(
+    new Option("-p, --platform <platform>", "specify the platform").choices([
+      "ios",
+      "android",
+    ]),
+  )
+  .action(async (options) => {
+    if (!options.platform) {
+      options.platform = await getPlatform(
+        "Which platform do you want to rollback?",
+      );
+    }
+    list(options);
   });
 
 program.parse();

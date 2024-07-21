@@ -3,13 +3,14 @@ import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { loadConfig } from "@/utils/loadConfig";
 import * as p from "@clack/prompts";
 import { filterTargetVersion, log } from "@hot-updater/internal";
+import Table from "cli-table3";
 
-export interface RollbackOptions {
+export interface ListOptions {
   platform: "ios" | "android";
   targetVersion?: string;
 }
 
-export const rollback = async (options: RollbackOptions) => {
+export const list = async (options: ListOptions) => {
   const s = p.spinner();
 
   const { deploy } = await loadConfig();
@@ -48,35 +49,13 @@ export const rollback = async (options: RollbackOptions) => {
   }
   s.stop();
 
-  const activeVersions = targetVersions.filter((source) => source.enabled);
-
-  const group = await p.group({
-    version: () =>
-      p.select({
-        maxItems: 5,
-        message: `Select versions to rollback (${options.platform})`,
-        initialValue: activeVersions[0],
-        options: targetVersions.map((source) => ({
-          label: String(source.bundleVersion),
-          value: source,
-          hint: `current: ${source.enabled ? "active" : "inactive"}, ${
-            source.enabled ? "active -> inactive" : "inactive -> active"
-          }`,
-        })),
-      }),
+  const table = new Table({
+    head: ["Version", "active"],
   });
 
-  s.start("Rolling back versions");
+  for (const source of targetVersions) {
+    table.push([source.bundleVersion, source.enabled]);
+  }
 
-  await deployPlugin.updateUpdateJson(group.version.bundleVersion, {
-    ...group.version,
-    enabled: !group.version.enabled,
-  });
-  await deployPlugin.commitUpdateJson();
-
-  const direction = group.version.enabled
-    ? "active -> inactive"
-    : "inactive -> active";
-
-  s.stop(`Done. Version ${group.version.bundleVersion} ${direction}`);
+  p.log.info(table.toString());
 };
