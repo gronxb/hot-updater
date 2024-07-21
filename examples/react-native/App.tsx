@@ -39,7 +39,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 4
+        Hot Updater 5
       </Text>
       <Text
         style={{

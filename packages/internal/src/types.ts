@@ -39,9 +39,15 @@ export type UpdateSourceArg =
   | (() => UpdateSource[]);
 
 export interface DeployPlugin {
-  getUpdateJson: () => Promise<UpdateSource[] | null>;
+  getUpdateJson: (refresh?: boolean) => Promise<UpdateSource[]>;
+  updateUpdateJson: (
+    targetBundleVersion: number,
+    newSource: UpdateSource,
+  ) => Promise<void>;
+  appendUpdateJson: (source: UpdateSource) => Promise<void>;
+  commitUpdateJson: () => Promise<void>;
+
   uploadBundle: (bundleVersion: number) => Promise<{
     files: string[];
   }>;
-  uploadUpdateJson: (source: UpdateSource) => Promise<void>;
 }

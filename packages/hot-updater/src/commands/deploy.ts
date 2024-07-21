@@ -47,17 +47,17 @@ export const deploy = async (options: DeployOptions) => {
   const buildHashes = Object.fromEntries(fileHashes);
   const newBundleVersion = formatDate(new Date());
 
-  const { uploadBundle, getUpdateJson, uploadUpdateJson } = deploy({
+  const deployPlugin = deploy({
     cwd: path,
     ...options,
     spinner: s,
   });
 
-  const updateJson = await getUpdateJson();
+  const updateSources = await deployPlugin.getUpdateJson();
   const targetVersions = filterTargetVersion(
     options.platform,
     targetVersion,
-    updateJson ?? [],
+    updateSources ?? [],
   );
 
   if (targetVersions.length > 0) {
@@ -83,14 +83,15 @@ export const deploy = async (options: DeployOptions) => {
   }
 
   s.message("Uploading bundle...");
-  const { files } = await uploadBundle(newBundleVersion);
+  const { files } = await deployPlugin.uploadBundle(newBundleVersion);
 
-  await uploadUpdateJson({
+  await deployPlugin.appendUpdateJson({
     ...options,
     files,
     targetVersion,
     bundleVersion: newBundleVersion,
     enabled: true,
   });
+  await deployPlugin.commitUpdateJson();
   s.stop("Uploading Success !", 0);
 };

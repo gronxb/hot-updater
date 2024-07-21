@@ -1,8 +1,8 @@
 import { select } from "@clack/prompts";
 
-export const getPlatform = async () => {
+export const getPlatform = async (message: string) => {
   const platform = await select({
-    message: "Which platform do you want to deploy?",
+    message: message,
     initialValue: "ios" as "ios" | "android",
     options: [
       { label: "ios", value: "ios" },
