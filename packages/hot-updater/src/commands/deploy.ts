@@ -1,13 +1,13 @@
+import fs from "node:fs/promises";
 import { spinner } from "@clack/prompts";
 
 import { cwd } from "@/cwd";
-import { areBuildHashesIncluded } from "@/utils/areBuildHashesIncluded";
 import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
-import { getFileHashFromFile, getFileHashFromUrl } from "@/utils/getFileHash";
+import { getFileHashFromFile } from "@/utils/getFileHash";
 import { loadConfig } from "@/utils/loadConfig";
 import { type Platform, filterTargetVersion } from "@hot-updater/internal";
-
+import { create } from "tar";
 export interface DeployOptions {
   targetVersion?: string;
   platform: Platform;
@@ -32,19 +32,29 @@ export const deploy = async (options: DeployOptions) => {
 
   s.start("Build in progress");
 
-  const { buildPath, outputs } = await build({
+  const { buildPath } = await build({
     cwd: path,
     ...options,
     ...config,
   });
   s.message("Checking existing updates...");
 
-  const fileHashes = await Promise.all(
-    outputs.map(async (output) => {
-      return [output.replace(buildPath, ""), await getFileHashFromFile(output)];
-    }),
+  await create(
+    {
+      gzip: true,
+      file: "build.tar.gz",
+      cwd: buildPath,
+
+      // for same hash
+      portable: true,
+      noMtime: true,
+    },
+    ["."],
   );
-  const buildHashes = Object.fromEntries(fileHashes);
+
+  const bundlePath = buildPath.concat(".tar.gz");
+
+  const hash = await getFileHashFromFile(bundlePath);
   const newBundleVersion = formatDate(new Date());
 
   const deployPlugin = deploy({
@@ -60,53 +70,35 @@ export const deploy = async (options: DeployOptions) => {
   );
 
   // hash check
-  // if (targetVersions.length > 0) {
-  //   const recentVersion = targetVersions[0];
-  //   const fileHashes = await Promise.all(
-  //     recentVersion.file.map(async (file) => {
-  //       const url = new URL(recentVersion.file);
-  //       const pathname = url.pathname.replace(
-  //         `/${recentVersion.bundleVersion}/${options.platform}`,
-  //         "",
-  //       );
+  if (targetVersions.length > 0) {
+    const recentVersion = targetVersions[0];
+    const recentHash = recentVersion.hash;
 
-  //       return [pathname, await getFileHashFromUrl(file)];
-  //     }),
-  //   );
-
-  //   const url = new URL(recentVersion.file);
-  //   const pathname = url.pathname.replace(
-  //     `/${recentVersion.bundleVersion}/${options.platform}`,
-  //     "",
-  //   );
-
-  //   const filehash = [pathname, await getFileHashFromUrl(recentVersion.file)];
-
-  //   const uploadedHashed = Object.fromEntries(fileHashes);
-
-  //   const isIncluded = areBuildHashesIncluded(uploadedHashed, buildHashes);
-  //   if (isIncluded) {
-  //     s.stop("The update already exists.", -1);
-  //     return;
-  //   }
-  // }
+    if (recentHash === hash) {
+      s.stop("The update already exists.", -1);
+      return;
+    }
+  }
 
   s.message("Uploading bundle...");
-  const { files } = await deployPlugin.uploadBundle(
+  const { file } = await deployPlugin.uploadBundle(
     options.platform,
     newBundleVersion,
+    bundlePath,
   );
 
   await deployPlugin.appendUpdateJson({
     forceUpdate: options.forceUpdate,
     platform: options.platform,
-    file: "", // tar.gz file
-    hash: "", // hash of tar.gz file
+    file,
+    hash,
     message: "", // commit message
     targetVersion,
     bundleVersion: newBundleVersion,
     enabled: true,
   });
   await deployPlugin.commitUpdateJson();
+
+  await fs.rm(bundlePath);
   s.stop("Uploading Success !", 0);
 };

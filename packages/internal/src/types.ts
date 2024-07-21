@@ -56,8 +56,9 @@ export interface DeployPlugin {
   uploadBundle: (
     platform: Platform,
     bundleVersion: number,
+    bundlePath: string,
   ) => Promise<{
-    files: string[];
+    file: string;
   }>;
   deleteBundle: (platform: Platform, bundleVersion: number) => Promise<void>;
 }

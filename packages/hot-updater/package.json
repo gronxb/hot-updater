@@ -37,6 +37,7 @@
     "cosmiconfig-typescript-loader": "^5.0.0",
     "picocolors": "^1.0.0",
     "plist": "^3.1.0",
+    "tar": "^7.4.0",
     "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
