@@ -31,7 +31,7 @@ export const init = async (config: HotUpdaterInitConfig) => {
   try {
     const allDownloadFiles = await updateBundle(
       update.bundleVersion,
-      update.files,
+      update.file,
     );
     if (allDownloadFiles) {
       if (update.forceUpdate) {

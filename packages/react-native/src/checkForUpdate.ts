@@ -73,14 +73,16 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
       return {
         bundleVersion: latestSource.bundleVersion,
         forceUpdate: latestSource.forceUpdate,
-        files: latestSource.files,
+        file: latestSource.file ?? null,
+        hash: latestSource.hash ?? null,
         status: "UPDATE" as UpdateStatus,
       };
     }
     return {
       bundleVersion: latestSource.bundleVersion,
       forceUpdate: true,
-      files: latestSource.files ?? [],
+      file: latestSource.file ?? null,
+      hash: latestSource.hash ?? null,
       status: "ROLLBACK" as UpdateStatus,
     };
   }
@@ -89,7 +91,8 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
     return {
       bundleVersion: latestSource.bundleVersion,
       forceUpdate: latestSource.forceUpdate,
-      files: latestSource.files,
+      file: latestSource.file ?? null,
+      hash: latestSource.hash ?? null,
       status: "UPDATE" as UpdateStatus,
     };
   }

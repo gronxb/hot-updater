@@ -30,7 +30,11 @@ export interface UpdateSource {
   bundleVersion: number;
   forceUpdate: boolean;
   enabled: boolean;
-  files: string[];
+
+  // new fields
+  file: string;
+  hash: string;
+  message?: string;
 }
 
 export type UpdateSourceArg =

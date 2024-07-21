@@ -59,27 +59,37 @@ export const deploy = async (options: DeployOptions) => {
     updateSources ?? [],
   );
 
-  if (targetVersions.length > 0) {
-    const recentVersion = targetVersions[0];
-    const fileHashes = await Promise.all(
-      recentVersion.files.map(async (file) => {
-        const url = new URL(file);
-        const pathname = url.pathname.replace(
-          `/${recentVersion.bundleVersion}/${options.platform}`,
-          "",
-        );
+  // hash check
+  // if (targetVersions.length > 0) {
+  //   const recentVersion = targetVersions[0];
+  //   const fileHashes = await Promise.all(
+  //     recentVersion.file.map(async (file) => {
+  //       const url = new URL(recentVersion.file);
+  //       const pathname = url.pathname.replace(
+  //         `/${recentVersion.bundleVersion}/${options.platform}`,
+  //         "",
+  //       );
 
-        return [pathname, await getFileHashFromUrl(file)];
-      }),
-    );
-    const uploadedHashed = Object.fromEntries(fileHashes);
+  //       return [pathname, await getFileHashFromUrl(file)];
+  //     }),
+  //   );
 
-    const isIncluded = areBuildHashesIncluded(uploadedHashed, buildHashes);
-    if (isIncluded) {
-      s.stop("The update already exists.", -1);
-      return;
-    }
-  }
+  //   const url = new URL(recentVersion.file);
+  //   const pathname = url.pathname.replace(
+  //     `/${recentVersion.bundleVersion}/${options.platform}`,
+  //     "",
+  //   );
+
+  //   const filehash = [pathname, await getFileHashFromUrl(recentVersion.file)];
+
+  //   const uploadedHashed = Object.fromEntries(fileHashes);
+
+  //   const isIncluded = areBuildHashesIncluded(uploadedHashed, buildHashes);
+  //   if (isIncluded) {
+  //     s.stop("The update already exists.", -1);
+  //     return;
+  //   }
+  // }
 
   s.message("Uploading bundle...");
   const { files } = await deployPlugin.uploadBundle(
@@ -90,7 +100,9 @@ export const deploy = async (options: DeployOptions) => {
   await deployPlugin.appendUpdateJson({
     forceUpdate: options.forceUpdate,
     platform: options.platform,
-    files,
+    file: "", // tar.gz file
+    hash: "", // hash of tar.gz file
+    message: "", // commit message
     targetVersion,
     bundleVersion: newBundleVersion,
     enabled: true,

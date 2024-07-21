@@ -4,7 +4,7 @@ import { TurboModuleRegistry } from "react-native";
 interface Spec extends TurboModule {
   reload(): void;
   updateBundle(
-    encodedURLs: string,
+    tarGzUrl: string,
     prefix: string,
     callback: (success: boolean) => void,
   ): Promise<boolean>;

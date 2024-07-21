@@ -24,38 +24,32 @@ export const getBundleVersion = async (): Promise<number> => {
  *
  * @async
  * @param {string} bundleVersion - identifier for the bundle version.
- * @param {string[]} urls - An array of URL strings to download files from.
+ * @param {string} tarGzUrl - tar.gz file URL.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
   bundleVersion: number,
-  urls: string[],
+  tarGzUrl: string,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    const encodedURLs = urls.map((urlString) => {
-      const url = new URL(urlString);
-      return [
-        url.origin,
-        url.pathname
-          .split("/")
-          .map((pathname) => encodeURIComponent(pathname))
-          .join("/"),
-      ].join("");
-    });
+    const url = new URL(tarGzUrl);
+    const downloadUrl = [
+      url.origin,
+      url.pathname
+        .split("/")
+        .map((pathname) => encodeURIComponent(pathname))
+        .join("/"),
+    ].join("");
 
-    HotUpdater.updateBundle(
-      `${bundleVersion}`,
-      encodedURLs,
-      (success: boolean) => {
-        if (success) {
-          resolve(success);
-        } else {
-          reject(
-            new HotUpdaterError("Failed to download and install the update"),
-          );
-        }
-      },
-    );
+    HotUpdater.updateBundle(bundleVersion, downloadUrl, (success: boolean) => {
+      if (success) {
+        resolve(success);
+      } else {
+        reject(
+          new HotUpdaterError("Failed to download and install the update"),
+        );
+      }
+    });
   });
 };
 
