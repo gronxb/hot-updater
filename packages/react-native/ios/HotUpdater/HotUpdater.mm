@@ -34,12 +34,11 @@ static NSURL *_bundleURL = nil;
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *bundleVersion = [defaults objectForKey:@"HotUpdaterBundleVersion"];
     
-    if ([bundleVersion isKindOfClass:[NSString class]] && bundleVersion.length > 0) {
-        NSNumber *version = @([bundleVersion integerValue]);
-        return version;
+    if (bundleVersion) {
+      return @([bundleVersion integerValue]);
     }
-    
-    return @(-1); // 기본값을 NSNumber로 반환
+
+    return @(-1);
 }
 
 + (void)setBundleURL:(NSString *)localPath {
@@ -106,8 +105,8 @@ static NSURL *_bundleURL = nil;
     }
     return success;
 }
+
 + (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
-    NSString *filename = [url lastPathComponent];
     NSString *basePath = [self stripPrefixFromPath:prefix path:[url path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
 
@@ -134,15 +133,28 @@ static NSURL *_bundleURL = nil;
         return NO;
     }
 
-    if (![self extractZipFileAtPath:path toDestination:[path stringByDeletingLastPathComponent]]) {
+    NSString *extractedPath = [path stringByDeletingLastPathComponent];
+    if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
         NSLog(@"Failed to extract zip file.");
         return NO;
     }
 
-    // 성공적으로 다운로드 및 압축 해제한 경우 번들 설정
-    if ([filename isEqualToString:@"index.ios.bundle.js"]) {
-        NSLog(@"Setting bundle URL: %@", path);
-        [self setBundleURL:path];
+    NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
+    NSString *filename = nil;
+    for (NSString *file in enumerator) {
+        if ([file isEqualToString:@"index.ios.bundle.js"]) {
+            filename = file;
+            break;
+        }
+    }
+
+    if (filename) {
+        NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
+        NSLog(@"Setting bundle URL: %@", bundlePath);
+        [self setBundleURL:bundlePath];
+    } else {
+        NSLog(@"index.ios.bundle.js not found.");
+        return NO;
     }
 
     [self setBundleVersion:prefix];
@@ -150,6 +162,7 @@ static NSURL *_bundleURL = nil;
 
     return YES;
 }
+
 #pragma mark - React Native Exports
 
 RCT_EXPORT_METHOD(reload) {
