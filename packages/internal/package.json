@@ -4,22 +4,13 @@
   "description": "React Native OTA solution for self-hosted",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
-  "files": [
-    "lib",
-    "package.json"
-  ],
-  "keywords": [
-    "react-native",
-    "code",
-    "push",
-    "code-push",
-    "self-hosted"
-  ],
+  "files": ["lib", "package.json"],
+  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
   "license": "MIT",
   "scripts": {
     "prepare": "tsc --project tsconfig.build.json",
     "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit"
+    "test:type": "tsc --noEmit"
   },
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",

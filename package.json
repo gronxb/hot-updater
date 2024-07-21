@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "biome": "biome format packages/** --write",
+    "test:type": "pnpm -r test:type",
     "biome:check": "biome check packages/**",
     "clear": "rimraf --glob **/lib",
     "test": "vitest"

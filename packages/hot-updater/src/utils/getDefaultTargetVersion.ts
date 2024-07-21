@@ -2,6 +2,7 @@ import { exec } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import util from "node:util";
+import type { Platform } from "@hot-updater/internal";
 
 const findXCodeProjectFilename = async (
   cwd: string,
@@ -63,7 +64,7 @@ export const getAndroidVersion = async (
 
 export const getDefaultTargetVersion = async (
   cwd: string,
-  platform: "ios" | "android",
+  platform: Platform,
 ) => {
   switch (platform) {
     case "ios":

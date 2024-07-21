@@ -1,5 +1,5 @@
 import semver from "semver";
-import type { UpdateSource } from "./types";
+import type { Platform, UpdateSource } from "./types";
 
 /**
  *
@@ -19,7 +19,7 @@ import type { UpdateSource } from "./types";
  * | ^1.2.3           | Equivalent to >=1.2.3 <2.0.0                                            |
  */
 export const filterTargetVersion = (
-  platform: "ios" | "android",
+  platform: Platform,
   targetVersion: string,
   sources: UpdateSource[],
 ): UpdateSource[] => {

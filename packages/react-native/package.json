@@ -24,7 +24,7 @@
   "scripts": {
     "prepare": "tsc --project tsconfig.build.json",
     "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "test:type": "tsc --noEmit",
     "test": "vitest",
     "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
   },

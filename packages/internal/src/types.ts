@@ -8,8 +8,9 @@ export type HotUpdaterReadStrategy = () =>
       files: string[];
     };
 
+export type Platform = "ios" | "android";
+
 export interface CliArgs {
-  platform: "ios" | "android";
   cwd: string;
   spinner?: {
     message: (message: string) => void;
@@ -24,7 +25,7 @@ export interface PluginArgs extends CliArgs {
 }
 
 export interface UpdateSource {
-  platform: "ios" | "android";
+  platform: Platform;
   targetVersion: string;
   bundleVersion: number;
   forceUpdate: boolean;
@@ -44,10 +45,15 @@ export interface DeployPlugin {
     targetBundleVersion: number,
     newSource: UpdateSource,
   ) => Promise<void>;
+  setUpdateJson: (sources: UpdateSource[]) => Promise<void>;
   appendUpdateJson: (source: UpdateSource) => Promise<void>;
   commitUpdateJson: () => Promise<void>;
 
-  uploadBundle: (bundleVersion: number) => Promise<{
+  uploadBundle: (
+    platform: Platform,
+    bundleVersion: number,
+  ) => Promise<{
     files: string[];
   }>;
+  deleteBundle: (platform: Platform, bundleVersion: number) => Promise<void>;
 }

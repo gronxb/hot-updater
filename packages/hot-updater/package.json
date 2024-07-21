@@ -25,7 +25,8 @@
   },
   "scripts": {
     "prepare": "pnpm build",
-    "build": "node esbuild.config.js && tspc --project tsconfig.build.json"
+    "build": "node esbuild.config.js && tspc --project tsconfig.build.json",
+    "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",

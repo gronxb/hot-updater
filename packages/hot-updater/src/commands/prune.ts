@@ -1,0 +1,44 @@
+import { cwd } from "@/cwd";
+import { loadConfig } from "@/utils/loadConfig";
+import * as p from "@clack/prompts";
+import type { Platform } from "@hot-updater/internal";
+
+export interface PruneOptions {
+  platform: Platform;
+}
+
+export const prune = async (options: PruneOptions) => {
+  const s = p.spinner();
+
+  const { deploy } = await loadConfig();
+
+  const path = cwd();
+
+  const deployPlugin = deploy({
+    cwd: path,
+    spinner: s,
+  });
+
+  s.start("Checking existing updates");
+  const updateSources = await deployPlugin.getUpdateJson();
+
+  const activeSources = updateSources.filter((source) => source.enabled);
+  const inactiveSources = updateSources.filter((source) => !source.enabled);
+
+  if (inactiveSources.length === 0) {
+    s.stop("No inactive versions found", -1);
+    return;
+  }
+
+  s.message("Pruning updates");
+
+  await deployPlugin.setUpdateJson(activeSources);
+  await deployPlugin.commitUpdateJson();
+
+  for (const source of inactiveSources) {
+    await deployPlugin.deleteBundle(options.platform, source.bundleVersion);
+    p.log.success(`Pruned ${source.bundleVersion}`);
+  }
+
+  s.stop("Done");
+};

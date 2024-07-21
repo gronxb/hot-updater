@@ -2,10 +2,10 @@ import { cwd } from "@/cwd";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { loadConfig } from "@/utils/loadConfig";
 import * as p from "@clack/prompts";
-import { filterTargetVersion, log } from "@hot-updater/internal";
+import { type Platform, filterTargetVersion, log } from "@hot-updater/internal";
 
 export interface RollbackOptions {
-  platform: "ios" | "android";
+  platform: Platform;
   targetVersion?: string;
 }
 

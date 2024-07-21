@@ -6,11 +6,11 @@ import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile, getFileHashFromUrl } from "@/utils/getFileHash";
 import { loadConfig } from "@/utils/loadConfig";
-import { filterTargetVersion } from "@hot-updater/internal";
+import { type Platform, filterTargetVersion } from "@hot-updater/internal";
 
 export interface DeployOptions {
   targetVersion?: string;
-  platform: "ios" | "android";
+  platform: Platform;
   forceUpdate: boolean;
 }
 
@@ -49,7 +49,6 @@ export const deploy = async (options: DeployOptions) => {
 
   const deployPlugin = deploy({
     cwd: path,
-    ...options,
     spinner: s,
   });
 
@@ -83,10 +82,14 @@ export const deploy = async (options: DeployOptions) => {
   }
 
   s.message("Uploading bundle...");
-  const { files } = await deployPlugin.uploadBundle(newBundleVersion);
+  const { files } = await deployPlugin.uploadBundle(
+    options.platform,
+    newBundleVersion,
+  );
 
   await deployPlugin.appendUpdateJson({
-    ...options,
+    forceUpdate: options.forceUpdate,
+    platform: options.platform,
     files,
     targetVersion,
     bundleVersion: newBundleVersion,

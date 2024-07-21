@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   NoSuchKey,
   S3Client,
   type S3ClientConfig,
@@ -23,7 +26,7 @@ export interface AwsConfig
 
 export const aws =
   (config: AwsConfig) =>
-  ({ cwd, platform, spinner }: CliArgs): DeployPlugin => {
+  ({ cwd, spinner }: CliArgs): DeployPlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
@@ -34,10 +37,6 @@ export const aws =
 
     return {
       async commitUpdateJson() {
-        if (updateSources.length === 0) {
-          return;
-        }
-
         try {
           const command = new GetObjectCommand({
             Bucket: bucketName,
@@ -87,6 +86,9 @@ export const aws =
         updateSources = await this.getUpdateJson();
         updateSources.unshift(source);
       },
+      async setUpdateJson(sources) {
+        updateSources = sources;
+      },
 
       async getUpdateJson(refresh = false) {
         if (updateSources.length > 0 && !refresh) {
@@ -112,7 +114,37 @@ export const aws =
           throw e;
         }
       },
-      async uploadBundle(bundleVersion) {
+      async deleteBundle(platform, bundleVersion) {
+        const Key = [bundleVersion, platform].join("/");
+
+        spinner?.message(`deleting: ${Key}`);
+
+        const listCommand = new ListObjectsV2Command({
+          Bucket: bucketName,
+          Prefix: `${bundleVersion}/${platform}`,
+        });
+        const listResponse = await client.send(listCommand);
+
+        if (listResponse.Contents && listResponse.Contents.length > 0) {
+          const objectsToDelete = listResponse.Contents.map((obj) => ({
+            Key: obj.Key,
+          }));
+
+          const deleteParams = {
+            Bucket: bucketName,
+            Delete: {
+              Objects: objectsToDelete,
+              Quiet: true,
+            },
+          };
+
+          const deleteCommand = new DeleteObjectsCommand(deleteParams);
+          await client.send(deleteCommand);
+        } else {
+          spinner?.message("bundle not found");
+        }
+      },
+      async uploadBundle(platform, bundleVersion) {
         spinner?.message("uploading to s3");
 
         const buildFiles = await readDir(buildDir);
