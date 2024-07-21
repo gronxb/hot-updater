@@ -82,3 +82,5 @@ dist
 docs/.vitepress/cache
 
 .env
+
+*.bundle

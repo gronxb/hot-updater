@@ -8,7 +8,7 @@
     "lint": "eslint .",
     "start": "react-native start",
     "bundle:ios": "react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build",
-    "make-apk": "react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build && cd android && ./gradlew assembleRelease && cd ..",
+    "make-apk": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/ && cd android && ./gradlew assembleDebug && cd ..",
     "bundle:android": "react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build",
     "webpack-start": "react-native webpack-start",
     "webpack-bundle:ios": "react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios",
