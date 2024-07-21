@@ -3,14 +3,14 @@ import { version } from "@/package.json";
 import { intro } from "@clack/prompts";
 import { log } from "@hot-updater/internal";
 import { Command, Option } from "commander";
+import picocolors from "picocolors";
 import { generateSecretKey } from "./commands/generateSecretKey";
 import { rollback } from "./commands/rollback";
 import { cwd } from "./cwd";
 import { getPlatform } from "./prompts/getPlatform";
 import { getDefaultTargetVersion } from "./utils/getDefaultTargetVersion";
-import { logoString } from "./utils/printLogo";
 
-intro(logoString);
+intro(`${picocolors.bgCyan(picocolors.black(" hot-updater "))}`);
 
 const program = new Command();
 program
@@ -35,7 +35,9 @@ program
   )
   .action(async (options: DeployOptions) => {
     if (!options.platform) {
-      options.platform = await getPlatform();
+      options.platform = await getPlatform(
+        "Which platform do you want to deploy?",
+      );
     }
     deploy(options);
   });
@@ -61,6 +63,19 @@ program
 program
   .command("rollback")
   .description("rollback to the previous version")
-  .action(rollback);
+  .addOption(
+    new Option("-p, --platform <platform>", "specify the platform").choices([
+      "ios",
+      "android",
+    ]),
+  )
+  .action(async (options) => {
+    if (!options.platform) {
+      options.platform = await getPlatform(
+        "Which platform do you want to rollback?",
+      );
+    }
+    rollback(options);
+  });
 
 program.parse();

@@ -30,40 +30,20 @@ export const aws =
     const buildDir = path.join(cwd, "build");
 
     let files: string[] = [];
+    let updateSources: UpdateSource[] = [];
 
     return {
-      async getUpdateJson() {
-        spinner?.message("getting update.json");
-
-        try {
-          const command = new GetObjectCommand({
-            Bucket: bucketName,
-            Key: "update.json",
-          });
-          const { Body: UpdateJsonBody } = await client.send(command);
-          const bodyContents = await streamToString(UpdateJsonBody);
-          const updateJson = JSON.parse(bodyContents);
-          return updateJson as UpdateSource[];
-        } catch (e) {
-          if (e instanceof NoSuchKey) {
-            return null;
-          }
-          throw e;
+      async commitUpdateJson() {
+        if (updateSources.length === 0) {
+          return;
         }
-      },
-      async uploadUpdateJson(source) {
-        spinner?.message("uploading update.json");
 
-        const newUpdateJson: UpdateSource[] = [];
         try {
           const command = new GetObjectCommand({
             Bucket: bucketName,
             Key: "update.json",
           });
-          const { Body: UpdateJsonBody } = await client.send(command);
-          const bodyContents = await streamToString(UpdateJsonBody);
-          const updateJson = JSON.parse(bodyContents);
-          newUpdateJson.push(...updateJson);
+          await client.send(command);
         } catch (e) {
           if (e instanceof NoSuchKey) {
             spinner?.message("Creating new update.json");
@@ -72,10 +52,9 @@ export const aws =
           }
         }
 
-        newUpdateJson.unshift(source);
-
+        spinner?.message("uploading update.json");
         const Key = "update.json";
-        const Body = JSON.stringify(newUpdateJson);
+        const Body = JSON.stringify(updateSources);
         const ContentType = mime.getType(Key) ?? void 0;
 
         const upload = new Upload({
@@ -88,6 +67,50 @@ export const aws =
           },
         });
         await upload.done();
+      },
+      async updateUpdateJson(
+        targetBundleVersion: number,
+        newSource: UpdateSource,
+      ) {
+        updateSources = await this.getUpdateJson();
+
+        const targetIndex = updateSources.findIndex(
+          (u) => u.bundleVersion === targetBundleVersion,
+        );
+        if (targetIndex === -1) {
+          throw new Error("target bundle version not found");
+        }
+
+        updateSources[targetIndex] = newSource;
+      },
+      async appendUpdateJson(source) {
+        updateSources = await this.getUpdateJson();
+        updateSources.unshift(source);
+      },
+
+      async getUpdateJson(refresh = false) {
+        if (updateSources.length > 0 && !refresh) {
+          return updateSources;
+        }
+
+        spinner?.message("getting update.json");
+
+        try {
+          const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: "update.json",
+          });
+          const { Body: UpdateJsonBody } = await client.send(command);
+          const bodyContents = await streamToString(UpdateJsonBody);
+          const updateJson = JSON.parse(bodyContents);
+          updateSources = updateJson;
+          return updateJson as UpdateSource[];
+        } catch (e) {
+          if (e instanceof NoSuchKey) {
+            return [];
+          }
+          throw e;
+        }
       },
       async uploadBundle(bundleVersion) {
         spinner?.message("uploading to s3");
