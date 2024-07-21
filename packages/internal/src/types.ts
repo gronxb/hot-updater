@@ -60,5 +60,5 @@ export interface DeployPlugin {
   ) => Promise<{
     file: string;
   }>;
-  deleteBundle: (platform: Platform, bundleVersion: number) => Promise<void>;
+  deleteBundle: (platform: Platform, bundleVersion: number) => Promise<string>;
 }

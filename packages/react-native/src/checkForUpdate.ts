@@ -61,7 +61,17 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
 
   const isRollback = checkForRollback(appVersionSources, currentBundleVersion);
   const latestSource = await findLatestSources(appVersionSources);
+
   if (!latestSource) {
+    if (isRollback) {
+      return {
+        bundleVersion: 0,
+        forceUpdate: true,
+        file: null,
+        hash: null,
+        status: "ROLLBACK" as UpdateStatus,
+      };
+    }
     return null;
   }
 

@@ -456,6 +456,12 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
     ];
 
     const update = await checkForUpdate(updateSources);
-    expect(update).toStrictEqual(null);
+    expect(update).toStrictEqual({
+      file: null,
+      hash: null,
+      bundleVersion: 0,
+      forceUpdate: true, // Cause the app to reload
+      status: "ROLLBACK",
+    });
   });
 });

@@ -4,8 +4,8 @@ import { TurboModuleRegistry } from "react-native";
 interface Spec extends TurboModule {
   reload(): void;
   updateBundle(
-    zipUrl: string,
     prefix: string,
+    zipUrl: string | null,
     callback: (success: boolean) => void,
   ): Promise<boolean>;
   getBundleVersion(): Promise<string>;

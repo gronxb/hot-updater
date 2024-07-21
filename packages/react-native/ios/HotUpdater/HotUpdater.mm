@@ -107,6 +107,11 @@ static NSURL *_bundleURL = nil;
 }
 
 + (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
+    if (!url) {
+        [self setBundleVersion:prefix];
+        [self setBundleURL:nil];
+        return YES;
+    }
     NSString *basePath = [self stripPrefixFromPath:prefix path:[url path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
 

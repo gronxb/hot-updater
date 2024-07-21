@@ -114,8 +114,6 @@ export const aws =
       async deleteBundle(platform, bundleVersion) {
         const Key = [bundleVersion, platform].join("/");
 
-        spinner?.message(`deleting: ${Key}`);
-
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
           Prefix: `${bundleVersion}/${platform}`,
@@ -137,9 +135,11 @@ export const aws =
 
           const deleteCommand = new DeleteObjectsCommand(deleteParams);
           await client.send(deleteCommand);
-        } else {
-          spinner?.message("bundle not found");
+          return Key;
         }
+
+        spinner?.message("bundle not found");
+        throw new Error("bundle not found");
       },
       async uploadBundle(platform, bundleVersion, bundlePath) {
         spinner?.message("uploading to s3");

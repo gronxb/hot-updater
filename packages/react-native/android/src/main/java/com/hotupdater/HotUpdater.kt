@@ -40,7 +40,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return mCurrentInstance?.getBundleVersion()
         }
 
-        fun updateBundle(prefix: String, url: String): Boolean? {
+        fun updateBundle(prefix: String, url: String?): Boolean? {
 
             return mCurrentInstance?.updateBundle(prefix, url)
         }
@@ -139,7 +139,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun updateBundle(prefix: String, url: String): Boolean {
+    fun updateBundle(prefix: String, url: String?): Boolean {
         val downloadUrl = URL(url)
 
         val basePath = stripPrefixFromPath(prefix, downloadUrl.path)

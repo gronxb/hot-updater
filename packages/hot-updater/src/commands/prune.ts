@@ -36,8 +36,11 @@ export const prune = async (options: PruneOptions) => {
   await deployPlugin.commitUpdateJson();
 
   for (const source of inactiveSources) {
-    await deployPlugin.deleteBundle(options.platform, source.bundleVersion);
-    p.log.success(`Pruned ${source.bundleVersion}`);
+    const key = await deployPlugin.deleteBundle(
+      options.platform,
+      source.bundleVersion,
+    );
+    p.log.info(`deleting: ${key}`);
   }
 
   s.stop("Done");

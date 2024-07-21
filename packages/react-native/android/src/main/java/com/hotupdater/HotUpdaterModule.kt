@@ -39,7 +39,7 @@ class HotUpdaterModule internal constructor(context: ReactApplicationContext) :
   }
 
   @ReactMethod
-  override fun updateBundle(prefix: String, url: String, callback: Callback) {
+  override fun updateBundle(prefix: String, url: String?, callback: Callback) {
     val result = HotUpdater.updateBundle(prefix, url)
     callback.invoke(result)
   }
