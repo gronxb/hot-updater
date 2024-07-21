@@ -14,7 +14,7 @@ const { HotUpdater } = NativeModules;
 export const getBundleVersion = async (): Promise<number> => {
   return new Promise((resolve) => {
     HotUpdater.getBundleVersion((version: number | null) => {
-      resolve(version ?? 0);
+      resolve(version ?? -1);
     });
   });
 };
@@ -41,15 +41,19 @@ export const updateBundle = (
         .join("/"),
     ].join("");
 
-    HotUpdater.updateBundle(bundleVersion, downloadUrl, (success: boolean) => {
-      if (success) {
-        resolve(success);
-      } else {
-        reject(
-          new HotUpdaterError("Failed to download and install the update"),
-        );
-      }
-    });
+    HotUpdater.updateBundle(
+      String(bundleVersion),
+      downloadUrl,
+      (success: boolean) => {
+        if (success) {
+          resolve(success);
+        } else {
+          reject(
+            new HotUpdaterError("Failed to download and install the update"),
+          );
+        }
+      },
+    );
   });
 };
 

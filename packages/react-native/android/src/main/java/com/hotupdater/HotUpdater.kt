@@ -4,10 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactNativeHost
 import java.io.File
-import java.net.MalformedURLException
 import java.net.URL
-import java.util.concurrent.Executors
-import java.util.concurrent.Semaphore
+import java.util.zip.ZipFile
 
 class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNativeHost) {
     private val mContext: Context = context
@@ -38,15 +36,13 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return mCurrentInstance?.getBundleURL()
         }
 
-        fun getBundleVersion(): Int? {
+        fun getBundleVersion(): Double? {
             return mCurrentInstance?.getBundleVersion()
         }
 
-        fun updateBundle(prefix: String, urls: List<String>): Boolean? {
-            Log.d("HotUpdater", "Updating bundle with prefix: $prefix")
-            urls.forEach { Log.d("HotUpdater", it.toString()) }
+        fun updateBundle(prefix: String, url: String): Boolean? {
 
-            return mCurrentInstance?.updateBundle(prefix, urls)
+            return mCurrentInstance?.updateBundle(prefix, url)
         }
     }
 
@@ -76,8 +72,10 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             val sharedPreferences =
                     mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
+
             return urlString
         }
+
         return bundleURL
     }
 
@@ -103,70 +101,92 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun getBundleVersion(): Int? {
+    fun getBundleVersion(): Double? {
         val sharedPreferences =
                 mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
         val bundleVersion = sharedPreferences.getString("HotUpdaterBundleVersion", null)
+        Log.d("HotUpdater", "Bundle version: $bundleVersion")
         return if (bundleVersion != null && bundleVersion.isNotEmpty()) {
             try {
-                bundleVersion.toInt()
-            } catch (e: NumberFormatException) {
-                -1
+                bundleVersion.toDouble()
+            } catch (e: Exception) {
+                -1.0
             }
         } else {
-            -1
+            -1.0
         }
     }
 
-    fun updateBundle(prefix: String, urls: List<String>): Boolean {
-        val executor = Executors.newFixedThreadPool(urls.size)
-        val semaphore = Semaphore(0)
-
-        var allSuccess = true
-
-        for (urlString in urls) {
-            executor.execute {
-                try {
-                    val url = URL(urlString)
-                    val filename = url.path.substring(url.path.lastIndexOf('/') + 1)
-                    val basePath = stripPrefixFromPath(prefix, url.path)
-                    val path = convertFileSystemPathFromBasePath(basePath)
-
-                    try {
-                        val data = url.readBytes()
-
-                        val file = File(path)
+    private fun extractZipFileAtPath(filePath: String, destinationPath: String): Boolean {
+        return try {
+            ZipFile(filePath).use { zip ->
+                zip.entries().asSequence().forEach { entry ->
+                    val file = File(destinationPath, entry.name)
+                    if (entry.isDirectory) {
+                        file.mkdirs()
+                    } else {
                         file.parentFile?.mkdirs()
-                        file.writeBytes(data)
-
-                        if (filename.equals("index.android.bundle.js")) {
-                            setBundleURL(path)
+                        zip.getInputStream(entry).use { input ->
+                            file.outputStream().use { output -> input.copyTo(output) }
                         }
-                    } catch (e: Exception) {
-                        Log.d("HotUpdater", "Failed to download data from URL: $url")
-                        Log.d("HotUpdater", e.toString())
-                        allSuccess = false
-                    } finally {
-                        semaphore.release()
                     }
-                } catch (e: MalformedURLException) {
-                    Log.d("HotUpdater", "Invalid URL: $urlString")
-                    allSuccess = false
-                    semaphore.release()
                 }
             }
+            true
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to unzip file: ${e.message}")
+            false
+        }
+    }
+
+    fun updateBundle(prefix: String, url: String): Boolean {
+        val downloadUrl = URL(url)
+
+        val basePath = stripPrefixFromPath(prefix, downloadUrl.path)
+        val path = convertFileSystemPathFromBasePath(basePath)
+
+        val data =
+                try {
+                    downloadUrl.readBytes()
+                } catch (e: Exception) {
+                    Log.d("HotUpdater", "Failed to download data from URL: $url")
+                    return false
+                }
+
+        val file = File(path)
+        try {
+            file.parentFile?.mkdirs()
+            file.writeBytes(data)
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to save data: ${e.message}")
+            return false
         }
 
-        for (i in urls.indices) {
-            semaphore.acquire()
+        val extractedPath = file.parentFile?.path
+        if (extractedPath == null) {
+            return false
         }
 
-        executor.shutdown()
-
-        if (allSuccess) {
-            setBundleVersion(prefix)
-            Log.d("HotUpdater", "Downloaded all files.")
+        if (!extractZipFileAtPath(path, extractedPath)) {
+            Log.d("HotUpdater", "Failed to extract zip file.")
+            return false
         }
-        return allSuccess
+
+        val extractedDirectory = File(extractedPath)
+        val indexFile = extractedDirectory.walk().find { it.name == "index.android.bundle.js" }
+
+        if (indexFile != null) {
+            val bundlePath = indexFile.path
+            Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
+            setBundleURL(bundlePath)
+        } else {
+            Log.d("HotUpdater", "index.android.bundle.js not found.")
+            return false
+        }
+
+        setBundleVersion(prefix)
+        Log.d("HotUpdater", "Downloaded and extracted file successfully.")
+
+        return true
     }
 }

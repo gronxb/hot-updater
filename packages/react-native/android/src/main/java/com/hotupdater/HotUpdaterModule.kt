@@ -3,7 +3,6 @@ package com.hotupdater
 import com.facebook.react.bridge.Callback
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.ReadableArray
 
 class HotUpdaterModule internal constructor(context: ReactApplicationContext) :
     HotUpdaterSpec(context) {
@@ -36,17 +35,12 @@ class HotUpdaterModule internal constructor(context: ReactApplicationContext) :
 
   @ReactMethod
   override fun getBundleVersion(callback: Callback) {
-    // test invoke
     callback.invoke(HotUpdater.getBundleVersion())
   }
 
   @ReactMethod
-  override fun updateBundle(prefix: String, urlStrings: ReadableArray, callback: Callback) {
-    val urlList = mutableListOf<String>()
-    for (i in 0 until urlStrings.size()) {
-      urlStrings.getString(i)?.let { urlList.add(it) }
-    }
-    val result = HotUpdater.updateBundle(prefix, urlList)
+  override fun updateBundle(prefix: String, url: String, callback: Callback) {
+    val result = HotUpdater.updateBundle(prefix, url)
     callback.invoke(result)
   }
 

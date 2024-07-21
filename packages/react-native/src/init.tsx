@@ -29,15 +29,10 @@ export const init = async (config: HotUpdaterInitConfig) => {
   }
 
   try {
-    const allDownloadFiles = await updateBundle(
-      update.bundleVersion,
-      update.file,
-    );
-    if (allDownloadFiles) {
-      if (update.forceUpdate) {
-        reload();
-        config?.onSuccess?.("INSTALLING_UPDATE");
-      }
+    const isSuccess = await updateBundle(update.bundleVersion, update.file);
+    if (isSuccess && update.forceUpdate) {
+      reload();
+      config?.onSuccess?.("INSTALLING_UPDATE");
     }
   } catch (error) {
     if (error instanceof HotUpdaterError) {

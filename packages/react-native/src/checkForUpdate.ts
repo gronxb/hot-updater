@@ -9,10 +9,7 @@ const findLatestSources = (sources: UpdateSource[]) => {
   return (
     sources
       ?.filter((item) => item.enabled)
-      ?.sort((a, b) => b.bundleVersion - a.bundleVersion)?.[0] ?? {
-      bundleVersion: 0,
-      forceUpdate: false,
-    }
+      ?.sort((a, b) => b.bundleVersion - a.bundleVersion)?.[0] ?? null
   );
 };
 
@@ -64,35 +61,39 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
 
   const isRollback = checkForRollback(appVersionSources, currentBundleVersion);
   const latestSource = await findLatestSources(appVersionSources);
+  if (!latestSource) {
+    return null;
+  }
 
-  if (isRollback) {
-    if (latestSource.bundleVersion === currentBundleVersion) {
-      return null;
-    }
-    if (latestSource.bundleVersion > currentBundleVersion) {
+  if (latestSource.file)
+    if (isRollback) {
+      if (latestSource.bundleVersion === currentBundleVersion) {
+        return null;
+      }
+      if (latestSource.bundleVersion > currentBundleVersion) {
+        return {
+          bundleVersion: latestSource.bundleVersion,
+          forceUpdate: latestSource.forceUpdate,
+          file: latestSource.file,
+          hash: latestSource.hash,
+          status: "UPDATE" as UpdateStatus,
+        };
+      }
       return {
         bundleVersion: latestSource.bundleVersion,
-        forceUpdate: latestSource.forceUpdate,
-        file: latestSource.file ?? null,
-        hash: latestSource.hash ?? null,
-        status: "UPDATE" as UpdateStatus,
+        forceUpdate: true,
+        file: latestSource.file,
+        hash: latestSource.hash,
+        status: "ROLLBACK" as UpdateStatus,
       };
     }
-    return {
-      bundleVersion: latestSource.bundleVersion,
-      forceUpdate: true,
-      file: latestSource.file ?? null,
-      hash: latestSource.hash ?? null,
-      status: "ROLLBACK" as UpdateStatus,
-    };
-  }
 
   if (latestSource.bundleVersion > currentBundleVersion) {
     return {
       bundleVersion: latestSource.bundleVersion,
       forceUpdate: latestSource.forceUpdate,
-      file: latestSource.file ?? null,
-      hash: latestSource.hash ?? null,
+      file: latestSource.file,
+      hash: latestSource.hash,
       status: "UPDATE" as UpdateStatus,
     };
   }
