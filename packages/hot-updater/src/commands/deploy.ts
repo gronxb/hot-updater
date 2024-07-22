@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { spinner } from "@clack/prompts";
 
-import { cwd } from "@/cwd";
+import { getCwd } from "@/cwd";
 import { createZip } from "@/utils/createZip";
 import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
@@ -19,10 +19,10 @@ export const deploy = async (options: DeployOptions) => {
 
   const { build, deploy, ...config } = await loadConfig();
 
-  const path = cwd();
+  const cwd = getCwd();
   const targetVersion =
     options.targetVersion ??
-    (await getDefaultTargetVersion(path, options.platform));
+    (await getDefaultTargetVersion(cwd, options.platform));
 
   if (!targetVersion) {
     throw new Error(
@@ -33,9 +33,9 @@ export const deploy = async (options: DeployOptions) => {
   s.start("Build in progress");
 
   const { buildPath } = await build({
-    cwd: path,
-    ...options,
-    ...config,
+    cwd,
+    spinner: s,
+    platform: options.platform,
   });
   s.message("Checking existing updates...");
 
@@ -48,7 +48,7 @@ export const deploy = async (options: DeployOptions) => {
   const newBundleVersion = formatDate(new Date());
 
   const deployPlugin = deploy({
-    cwd: path,
+    cwd,
     spinner: s,
   });
 
@@ -82,7 +82,7 @@ export const deploy = async (options: DeployOptions) => {
     platform: options.platform,
     file,
     hash,
-    message: "", // commit message
+    description: "",
     targetVersion,
     bundleVersion: newBundleVersion,
     enabled: true,

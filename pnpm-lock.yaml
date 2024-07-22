@@ -274,6 +274,9 @@ importers:
 
   plugins/metro:
     dependencies:
+      '@hot-updater/internal':
+        specifier: workspace:^
+        version: link:../../packages/internal
       metro-config:
         specifier: ^0.80.9
         version: 0.80.9

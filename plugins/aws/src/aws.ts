@@ -11,7 +11,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import type {
-  CliArgs,
+  BasePluginArgs,
   DeployPlugin,
   UpdateSource,
 } from "@hot-updater/internal";
@@ -26,7 +26,7 @@ export interface AwsConfig
 
 export const aws =
   (config: AwsConfig) =>
-  ({ cwd, spinner }: CliArgs): DeployPlugin => {
+  ({ spinner }: BasePluginArgs): DeployPlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 

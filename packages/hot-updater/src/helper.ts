@@ -1,13 +1,17 @@
-import type { CliArgs, DeployPlugin, PluginArgs } from "@hot-updater/internal";
+import type {
+  BasePluginArgs,
+  BuildPluginArgs,
+  DeployPlugin,
+} from "@hot-updater/internal";
 
 export type Config = {
   server: string;
   secretKey: string;
-  build: (args: PluginArgs) => Promise<{
+  build: (args: BuildPluginArgs) => Promise<{
     buildPath: string;
     outputs: string[];
   }>;
-  deploy: (args: CliArgs) => DeployPlugin;
+  deploy: (args: BasePluginArgs) => DeployPlugin;
 };
 
 export const defineConfig = (config: Config | (() => Config)): Config =>

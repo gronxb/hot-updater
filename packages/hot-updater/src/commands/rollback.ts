@@ -1,4 +1,4 @@
-import { cwd } from "@/cwd";
+import { getCwd } from "@/cwd";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { loadConfig } from "@/utils/loadConfig";
 import * as p from "@clack/prompts";
@@ -14,12 +14,12 @@ export const rollback = async (options: RollbackOptions) => {
 
   const { deploy } = await loadConfig();
 
-  const path = cwd();
+  const cwd = getCwd();
 
   s.start("getting target version");
   const targetVersion =
     options.targetVersion ??
-    (await getDefaultTargetVersion(path, options.platform));
+    (await getDefaultTargetVersion(cwd, options.platform));
 
   if (!targetVersion) {
     throw new Error(
@@ -28,9 +28,8 @@ export const rollback = async (options: RollbackOptions) => {
   }
 
   const deployPlugin = deploy({
-    cwd: path,
+    cwd,
     spinner: s,
-    ...options,
   });
 
   s.message("Checking existing updates");

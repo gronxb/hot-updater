@@ -1,4 +1,4 @@
-import { cwd } from "@/cwd";
+import { getCwd } from "@/cwd";
 import { loadConfig } from "@/utils/loadConfig";
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/internal";
@@ -12,10 +12,10 @@ export const prune = async (options: PruneOptions) => {
 
   const { deploy } = await loadConfig();
 
-  const path = cwd();
+  const cwd = getCwd();
 
   const deployPlugin = deploy({
-    cwd: path,
+    cwd,
     spinner: s,
   });
 

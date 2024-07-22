@@ -1,12 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { BuildPluginArgs } from "@hot-updater/internal";
 import Metro from "metro";
 import type { InputConfigT } from "metro-config";
 import Server from "metro/src/Server";
 
 export const metro =
   (overrideConfig?: InputConfigT) =>
-  async ({ cwd, platform }: { platform: "ios" | "android"; cwd: string }) => {
+  async ({ cwd, platform }: BuildPluginArgs) => {
     const config = await Metro.loadConfig({}, overrideConfig);
 
     const buildPath = path.join(cwd, "build");
@@ -32,15 +33,36 @@ export const metro =
             bundleType: "bundle",
           });
 
-          const copyTargetFiles = assets
-            .flatMap((asset) => asset.files)
-            .map((file) => {
-              const resolvedPath = file.replace(cwd, "");
-              return {
-                from: file,
-                to: path.join(buildPath, "assets", resolvedPath),
-              };
-            });
+          let copyTargetFiles: { from: string; to: string }[] = [];
+
+          switch (platform) {
+            case "ios": {
+              copyTargetFiles = assets
+                .flatMap((asset) => asset.files)
+                .map((file) => {
+                  const resolvedPath = file.replace(cwd, "");
+                  return {
+                    from: file,
+                    to: path.join(buildPath, "assets", resolvedPath),
+                  };
+                });
+              break;
+            }
+            case "android": {
+              copyTargetFiles = assets
+                .flatMap((asset) => asset.files)
+                .map((file) => {
+                  const resolvedPath = file
+                    .replace(`${cwd}/`, "")
+                    .replace(/\/|\\/g, "_");
+                  return {
+                    from: file,
+                    to: path.join(buildPath, "drawable-mdpi", resolvedPath),
+                  };
+                });
+              break;
+            }
+          }
 
           await Promise.all(
             copyTargetFiles.map(async ({ from, to }) => {

@@ -17,7 +17,7 @@ vi.mock("react-native", () => ({
 describe("appVersion 1.0, bundleVersion null", async () => {
   beforeAll(() => {
     vi.spyOn(natives, "getAppVersion").mockImplementation(async () => "1.0");
-    vi.spyOn(natives, "getBundleVersion").mockImplementation(async () => 0);
+    vi.spyOn(natives, "getBundleVersion").mockImplementation(async () => -1);
   });
 
   it("should return null if no update information is available", async () => {
@@ -201,6 +201,56 @@ describe("appVersion 1.0, bundleVersion null", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toBeNull();
+  });
+
+  it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
+    const updateSources: UpdateSource[] = [
+      {
+        platform: "ios",
+        targetVersion: "1.0",
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
+        forceUpdate: true,
+        enabled: false, // Disabled
+        bundleVersion: 2,
+      },
+      {
+        platform: "ios",
+        targetVersion: "1.0",
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
+        forceUpdate: false,
+        enabled: false, // Disabled
+        bundleVersion: 1,
+      },
+    ];
+
+    const update = await checkForUpdate(updateSources);
+    expect(update).toStrictEqual(null);
+  });
+
+  it("should update if the latest version is available and the app version is the same", async () => {
+    const updateSources: UpdateSource[] = [
+      {
+        forceUpdate: false,
+        platform: "ios",
+        file: "20240722210327/ios/build.zip",
+        hash: "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
+        description: "",
+        targetVersion: "1.0",
+        bundleVersion: 20240722210327,
+        enabled: true,
+      },
+    ];
+
+    const update = await checkForUpdate(updateSources);
+    expect(update).toStrictEqual({
+      bundleVersion: 20240722210327,
+      forceUpdate: false,
+      status: "UPDATE",
+      file: "20240722210327/ios/build.zip",
+      hash: "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
+    });
   });
 });
 

@@ -10,18 +10,16 @@ export type HotUpdaterReadStrategy = () =>
 
 export type Platform = "ios" | "android";
 
-export interface CliArgs {
+export interface BasePluginArgs {
   cwd: string;
   spinner?: {
     message: (message: string) => void;
     stop: (message: string, code: number) => void;
   };
 }
-export interface PluginArgs extends CliArgs {
-  cwd: string;
-  server: string;
-  secretKey: string;
-  targetVersion?: string;
+
+export interface BuildPluginArgs extends BasePluginArgs {
+  platform: Platform;
 }
 
 export interface UpdateSource {
@@ -30,11 +28,9 @@ export interface UpdateSource {
   bundleVersion: number;
   forceUpdate: boolean;
   enabled: boolean;
-
-  // new fields
   file: string;
   hash: string;
-  message?: string;
+  description?: string;
 }
 
 export type UpdateSourceArg =
