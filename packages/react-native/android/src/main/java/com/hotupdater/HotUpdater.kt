@@ -89,7 +89,11 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    private fun setJSBundle(instanceManager: ReactInstanceManager, latestJSBundleFile: String) {
+    private fun setJSBundle(instanceManager: ReactInstanceManager, latestJSBundleFile: String?) {
+        if (latestJSBundleFile == null) {
+            return
+        }
+
         try {
             val latestJSBundleLoader: JSBundleLoader =
                     if (latestJSBundleFile.lowercase().startsWith("assets://")) {
@@ -118,7 +122,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     fun reload() {
         Log.d("HotUpdater", "HotUpdater requested a reload")
 
-        setJSBundle(mReactNativeHost.reactInstanceManager, getBundleURL() ?: "")
+        setJSBundle(mReactNativeHost.reactInstanceManager, getBundleURL())
 
         clearLifecycleEventListener()
         try {
