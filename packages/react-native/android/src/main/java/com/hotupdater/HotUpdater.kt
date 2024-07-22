@@ -1,8 +1,12 @@
 package com.hotupdater
 
+import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.facebook.react.ReactNativeHost
+import com.facebook.react.bridge.LifecycleEventListener
 import java.io.File
 import java.net.URL
 import java.util.zip.ZipFile
@@ -41,7 +45,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
 
         fun updateBundle(prefix: String, url: String?): Boolean? {
-
             return mCurrentInstance?.updateBundle(prefix, url)
         }
     }
@@ -62,9 +65,41 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
+    private fun loadBundleLegacy() {
+        val currentActivity: Activity? =
+                mReactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+        if (currentActivity == null) {
+            return
+        }
+
+        currentActivity.runOnUiThread { currentActivity.recreate() }
+    }
+    private var mLifecycleEventListener: LifecycleEventListener? = null
+
+    private fun clearLifecycleEventListener() {
+        if (mLifecycleEventListener != null) {
+            mReactNativeHost.reactInstanceManager.currentReactContext?.removeLifecycleEventListener(
+                    mLifecycleEventListener
+            )
+            mLifecycleEventListener = null
+        }
+    }
+
     fun reload() {
-        mReactNativeHost.reactInstanceManager.recreateReactContextInBackground()
         Log.d("HotUpdater", "HotUpdater requested a reload")
+
+        clearLifecycleEventListener()
+        try {
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    mReactNativeHost.reactInstanceManager.recreateReactContextInBackground()
+                } catch (t: Throwable) {
+                    loadBundleLegacy()
+                }
+            }
+        } catch (t: Throwable) {
+            loadBundleLegacy()
+        }
     }
 
     fun getBundleURL(): String? {
@@ -79,7 +114,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         return bundleURL
     }
 
-    private fun setBundleURL(_bundleURL: String) {
+    private fun setBundleURL(_bundleURL: String?) {
         synchronized(this) {
             if (bundleURL == null) {
                 bundleURL = _bundleURL
@@ -92,7 +127,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             }
         }
     }
-    private fun setBundleVersion(bundleVersion: String) {
+    private fun setBundleVersion(bundleVersion: String?) {
         val sharedPreferences =
                 mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
         with(sharedPreferences.edit()) {
@@ -140,6 +175,12 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     }
 
     fun updateBundle(prefix: String, url: String?): Boolean {
+        if (url == null) {
+            setBundleURL(null)
+            setBundleVersion(null)
+            return true
+        }
+
         val downloadUrl = URL(url)
 
         val basePath = stripPrefixFromPath(prefix, downloadUrl.path)

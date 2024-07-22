@@ -84,3 +84,4 @@ docs/.vitepress/cache
 .env
 
 *.bundle
+**/*/android/app/src/main/res/drawable-mdpi/
