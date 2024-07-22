@@ -5,9 +5,12 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.facebook.react.ReactInstanceManager
 import com.facebook.react.ReactNativeHost
+import com.facebook.react.bridge.JSBundleLoader
 import com.facebook.react.bridge.LifecycleEventListener
 import java.io.File
+import java.lang.reflect.Field
 import java.net.URL
 import java.util.zip.ZipFile
 
@@ -37,6 +40,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
 
         fun getJSBundleFile(): String? {
+            Log.d("HotUpdater", "Getting JS bundle file ${mCurrentInstance?.getBundleURL()}")
             return mCurrentInstance?.getBundleURL()
         }
 
@@ -85,8 +89,36 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
+    private fun setJSBundle(instanceManager: ReactInstanceManager, latestJSBundleFile: String) {
+        try {
+            val latestJSBundleLoader: JSBundleLoader =
+                    if (latestJSBundleFile.lowercase().startsWith("assets://")) {
+                        JSBundleLoader.createAssetLoader(
+                                instanceManager.currentReactContext,
+                                latestJSBundleFile,
+                                false
+                        )
+                    } else {
+                        JSBundleLoader.createFileLoader(latestJSBundleFile)
+                    }
+
+            val bundleLoaderField: Field =
+                    instanceManager::class.java.getDeclaredField("mBundleLoader")
+            bundleLoaderField.isAccessible = true
+            bundleLoaderField.set(instanceManager, latestJSBundleLoader)
+        } catch (e: Exception) {
+            Log.d(
+                    "HotUpdater",
+                    "Unable to set JSBundle - CodePush may not support this version of React Native"
+            )
+            throw IllegalAccessException("Could not setJSBundle")
+        }
+    }
+
     fun reload() {
         Log.d("HotUpdater", "HotUpdater requested a reload")
+
+        setJSBundle(mReactNativeHost.reactInstanceManager, getBundleURL() ?: "")
 
         clearLifecycleEventListener()
         try {
@@ -110,7 +142,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
 
             return urlString
         }
-
         return bundleURL
     }
 
