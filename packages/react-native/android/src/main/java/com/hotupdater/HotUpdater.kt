@@ -18,8 +18,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     private val mContext: Context = context
     private val mReactNativeHost: ReactNativeHost = reactNativeHost
 
-    private var bundleURL: String? = null
-
     companion object {
         private var mCurrentInstance: HotUpdater? = null
 
@@ -90,37 +88,38 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     }
 
     private fun setJSBundle(instanceManager: ReactInstanceManager, latestJSBundleFile: String?) {
-        if (latestJSBundleFile == null) {
-            return
-        }
 
         try {
-            val latestJSBundleLoader: JSBundleLoader =
-                    if (latestJSBundleFile.lowercase().startsWith("assets://")) {
+            var latestJSBundleLoader: JSBundleLoader? = null
+
+            if (latestJSBundleFile != null && latestJSBundleFile.lowercase().startsWith("assets://")
+            ) {
+                latestJSBundleLoader =
                         JSBundleLoader.createAssetLoader(
                                 instanceManager.currentReactContext,
                                 latestJSBundleFile,
                                 false
                         )
-                    } else {
-                        JSBundleLoader.createFileLoader(latestJSBundleFile)
-                    }
+            } else if (latestJSBundleFile != null) {
+                latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile)
+            }
 
             val bundleLoaderField: Field =
                     instanceManager::class.java.getDeclaredField("mBundleLoader")
             bundleLoaderField.isAccessible = true
-            bundleLoaderField.set(instanceManager, latestJSBundleLoader)
+
+            if (latestJSBundleLoader != null) {
+                bundleLoaderField.set(instanceManager, latestJSBundleLoader)
+            } else {
+                bundleLoaderField.set(instanceManager, null)
+            }
         } catch (e: Exception) {
-            Log.d(
-                    "HotUpdater",
-                    "Unable to set JSBundle - CodePush may not support this version of React Native"
-            )
             throw IllegalAccessException("Could not setJSBundle")
         }
     }
 
     fun reload() {
-        Log.d("HotUpdater", "HotUpdater requested a reload")
+        Log.d("HotUpdater", "HotUpdater requested a reload ${getBundleURL()}")
 
         setJSBundle(mReactNativeHost.reactInstanceManager, getBundleURL())
 
@@ -139,27 +138,19 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     }
 
     fun getBundleURL(): String? {
-        if (bundleURL == null) {
-            val sharedPreferences =
-                    mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
+        val sharedPreferences =
+                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+        val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
 
-            return urlString
-        }
-        return bundleURL
+        return urlString
     }
 
-    private fun setBundleURL(_bundleURL: String?) {
-        synchronized(this) {
-            if (bundleURL == null) {
-                bundleURL = _bundleURL
-                val sharedPreferences =
-                        mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-                with(sharedPreferences.edit()) {
-                    putString("HotUpdaterBundleURL", bundleURL)
-                    apply()
-                }
-            }
+    private fun setBundleURL(bundleURL: String?) {
+        val sharedPreferences =
+                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+        with(sharedPreferences.edit()) {
+            putString("HotUpdaterBundleURL", bundleURL)
+            apply()
         }
     }
     private fun setBundleVersion(bundleVersion: String?) {
