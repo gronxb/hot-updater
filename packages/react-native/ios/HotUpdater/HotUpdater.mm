@@ -5,8 +5,6 @@
 
 RCT_EXPORT_MODULE();
 
-static NSURL *_bundleURL = nil;
-
 #pragma mark - Bundle URL Management
 
 + (void)reload {
@@ -17,12 +15,9 @@ static NSURL *_bundleURL = nil;
 }
 
 + (void)setBundleVersion:(NSString*)bundleVersion {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setObject:bundleVersion forKey:@"HotUpdaterBundleVersion"];
-        [defaults synchronize];
-    });
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:bundleVersion forKey:@"HotUpdaterBundleVersion"];
+    [defaults synchronize];
 }
 
 + (NSString *)getAppVersion {
@@ -43,27 +38,21 @@ static NSURL *_bundleURL = nil;
 
 + (void)setBundleURL:(NSString *)localPath {
     NSLog(@"Setting bundle URL: %@", localPath);
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        _bundleURL = [NSURL fileURLWithPath:localPath];
-        [[NSUserDefaults standardUserDefaults] setObject:[_bundleURL absoluteString] forKey:@"HotUpdaterBundleURL"];
-        [[NSUserDefaults standardUserDefaults] synchronize];
-    });
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:localPath forKey:@"HotUpdaterBundleURL"];
+    [defaults synchronize];
 }
 
 + (NSURL *)cachedURLFromBundle {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSString *savedURLString = [[NSUserDefaults standardUserDefaults] objectForKey:@"HotUpdaterBundleURL"];
-        if (savedURLString) {
-            _bundleURL = [NSURL URLWithString:savedURLString];
-        }
-    });
-
-    if (_bundleURL && [[NSFileManager defaultManager] fileExistsAtPath:[_bundleURL path]]) {
-        return _bundleURL;
-    }
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *savedURLString = [defaults objectForKey:@"HotUpdaterBundleURL"];
     
+    if (savedURLString) {
+        NSURL *bundleURL = [NSURL URLWithString:savedURLString];
+        if (bundleURL && [[NSFileManager defaultManager] fileExistsAtPath:[bundleURL path]]) {
+            return bundleURL;
+        }
+    }
     return nil;
 }
 
@@ -80,8 +69,18 @@ static NSURL *_bundleURL = nil;
     return [self cachedURLFromBundle] ?: [self fallbackURL];
 }
 
-+ (NSURL *)bundleURLWithoutFallback {
-    return [self cachedURLFromBundle];
++ (void)initializeOnAppUpdate {
+    NSString *currentVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *savedVersion = [defaults stringForKey:@"HotUpdaterAppVersion"];
+
+    if (![currentVersion isEqualToString:savedVersion]) {
+        [defaults removeObjectForKey:@"HotUpdaterBundleURL"];
+        [defaults removeObjectForKey:@"HotUpdaterBundleVersion"];
+        
+        [defaults setObject:currentVersion forKey:@"HotUpdaterAppVersion"];
+        [defaults synchronize];
+    }
 }
 
 #pragma mark - Utility Methods
@@ -107,8 +106,8 @@ static NSURL *_bundleURL = nil;
 }
 
 + (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
-    if (!url) {
-        [self setBundleVersion:prefix];
+    if (url == nil) {
+        [self setBundleVersion:nil];
         [self setBundleURL:nil];
         return YES;
     }
@@ -170,6 +169,10 @@ static NSURL *_bundleURL = nil;
 
 #pragma mark - React Native Exports
 
+RCT_EXPORT_METHOD(initializeOnAppUpdate) {
+    [HotUpdater initializeOnAppUpdate];
+}
+
 RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
 }
@@ -185,14 +188,14 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
     callback(@[version ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix urlString:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) {
-        callback(@[@(NO)]);
-        return;
+RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix downloadUrl:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
+    NSURL *url = nil;
+    if (urlString != nil) {
+        url = [NSURL URLWithString:urlString];
     }
 
     BOOL result = [HotUpdater updateBundle:prefix url:url];
     callback(@[@(result)]);
 }
+
 @end

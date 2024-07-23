@@ -9,6 +9,7 @@ abstract class HotUpdaterSpec internal constructor(context: ReactApplicationCont
 
   abstract fun updateBundle(prefix: String, url: String?, callback: Callback)
   abstract fun reload()
+  abstract fun initializeOnAppUpdate()
   abstract fun getAppVersion(callback: Callback)
   abstract fun getBundleVersion(callback: Callback)
 }

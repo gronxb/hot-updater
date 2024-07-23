@@ -6,6 +6,5 @@
 @interface HotUpdater : NSObject <RCTBridgeModule>
 
 + (NSURL *)bundleURL;
-+ (NSURL *)bundleURLWithoutFallback;
 
 @end

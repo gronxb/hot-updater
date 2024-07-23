@@ -42,7 +42,7 @@ class MainApplication : Application(), ReactApplication {
     super.onCreate()
 
     SoLoader.init(this, false)
-    HotUpdater.initialize(applicationContext, reactNativeHost)
+    HotUpdater.init(applicationContext, reactNativeHost)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.
       load()

@@ -77,3 +77,10 @@ export const getAppVersion = async (): Promise<string | null> => {
 export const reload = () => {
   HotUpdater.reload();
 };
+
+/**
+ * Initializes the HotUpdater.
+ */
+export const initializeOnAppUpdate = () => {
+  HotUpdater.initializeOnAppUpdate();
+};

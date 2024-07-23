@@ -21,7 +21,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     companion object {
         private var mCurrentInstance: HotUpdater? = null
 
-        fun initialize(context: Context, reactNativeHost: ReactNativeHost): HotUpdater {
+        fun init(context: Context, reactNativeHost: ReactNativeHost): HotUpdater {
             Log.d("HotUpdater", "Initializing HotUpdater")
 
             return mCurrentInstance
@@ -31,6 +31,14 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
                                     mCurrentInstance = it
                                 }
                     }
+        }
+
+        fun getAppVersion(): String? {
+            return mCurrentInstance?.getAppVersion()
+        }
+
+        fun initializeOnAppUpdate() {
+            mCurrentInstance?.initializeOnAppUpdate()
         }
 
         fun reload() {
@@ -117,6 +125,22 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
+    fun initializeOnAppUpdate() {
+        val sharedPreferences =
+                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+
+        val currentVersion = getAppVersion()
+        val savedVersion = sharedPreferences.getString("HotUpdaterAppVersion", null)
+
+        if (currentVersion != savedVersion) {
+            val editor = sharedPreferences.edit()
+            editor.remove("HotUpdaterBundleURL")
+            editor.remove("HotUpdaterBundleVersion")
+            editor.putString("HotUpdaterAppVersion", currentVersion)
+            editor.apply()
+        }
+    }
+
     fun reload() {
         Log.d("HotUpdater", "HotUpdater requested a reload ${getBundleURL()}")
 
@@ -134,6 +158,11 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         } catch (t: Throwable) {
             loadBundleLegacy()
         }
+    }
+
+    fun getAppVersion(): String {
+        val packageInfo = mContext.packageManager.getPackageInfo(mContext.packageName, 0)
+        return packageInfo.versionName
     }
 
     fun getBundleURL(): String {

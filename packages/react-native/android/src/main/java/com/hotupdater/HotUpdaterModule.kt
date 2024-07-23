@@ -14,23 +14,18 @@ class HotUpdaterModule internal constructor(context: ReactApplicationContext) :
   }
 
   @ReactMethod
+  override fun initializeOnAppUpdate() {
+    HotUpdater.initializeOnAppUpdate()
+  }
+
+  @ReactMethod
   override fun reload() {
     HotUpdater.reload()
   }
 
   @ReactMethod
   override fun getAppVersion(callback: Callback) {
-    try {
-      val packageInfo =
-          mReactApplicationContext.packageManager.getPackageInfo(
-              mReactApplicationContext.packageName,
-              0
-          )
-
-      callback.invoke(packageInfo.versionName)
-    } catch (e: Exception) {
-      callback.invoke(null)
-    }
+    callback.invoke(HotUpdater.getAppVersion())
   }
 
   @ReactMethod
