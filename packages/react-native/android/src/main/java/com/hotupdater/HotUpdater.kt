@@ -103,7 +103,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             } else if (latestJSBundleFile != null) {
                 latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile)
             }
-
             val bundleLoaderField: Field =
                     instanceManager::class.java.getDeclaredField("mBundleLoader")
             bundleLoaderField.isAccessible = true
@@ -137,10 +136,13 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun getBundleURL(): String? {
+    fun getBundleURL(): String {
         val sharedPreferences =
                 mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
         val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
+        if (urlString.isNullOrEmpty()) {
+            return "assets://index.android.bundle"
+        }
 
         return urlString
     }
