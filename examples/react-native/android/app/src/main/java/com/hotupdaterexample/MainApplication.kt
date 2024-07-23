@@ -24,7 +24,8 @@ class MainApplication : Application(), ReactApplication {
 
         override fun getJSMainModuleName(): String = "index"
 
-        override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+        // @see hot updater test
+        override fun getUseDeveloperSupport(): Boolean = false
 
         override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
         override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
@@ -39,8 +40,9 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+
     SoLoader.init(this, false)
-    HotUpdater.initialize(applicationContext, reactNativeHost)
+    HotUpdater.init(applicationContext, reactNativeHost)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.
       load()

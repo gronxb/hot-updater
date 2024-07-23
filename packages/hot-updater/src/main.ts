@@ -8,7 +8,7 @@ import { generateSecretKey } from "./commands/generateSecretKey";
 import { list } from "./commands/list";
 import { prune } from "./commands/prune";
 import { rollback } from "./commands/rollback";
-import { cwd } from "./cwd";
+import { getCwd } from "./cwd";
 import { getPlatform } from "./prompts/getPlatform";
 import { getDefaultTargetVersion } from "./utils/getDefaultTargetVersion";
 
@@ -54,7 +54,7 @@ program
   .description("get the current app version")
 
   .action(async () => {
-    const path = cwd();
+    const path = getCwd();
     const androidVersion = await getDefaultTargetVersion(path, "android");
     const iosVersion = await getDefaultTargetVersion(path, "ios");
 
@@ -92,7 +92,7 @@ program
   .action(async (options) => {
     if (!options.platform) {
       options.platform = await getPlatform(
-        "Which platform do you want to rollback?",
+        "Which platform do you want to list?",
       );
     }
     list(options);
@@ -110,7 +110,7 @@ program
   .action(async (options) => {
     if (!options.platform) {
       options.platform = await getPlatform(
-        "Which platform do you want to rollback?",
+        "Which platform do you want to prune?",
       );
     }
     prune(options);

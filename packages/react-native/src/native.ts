@@ -14,7 +14,7 @@ const { HotUpdater } = NativeModules;
 export const getBundleVersion = async (): Promise<number> => {
   return new Promise((resolve) => {
     HotUpdater.getBundleVersion((version: number | null) => {
-      resolve(version ?? 0);
+      resolve(version ?? -1);
     });
   });
 };
@@ -24,28 +24,29 @@ export const getBundleVersion = async (): Promise<number> => {
  *
  * @async
  * @param {string} bundleVersion - identifier for the bundle version.
- * @param {string[]} urls - An array of URL strings to download files from.
+ * @param {string | null} zipUrl - zip file URL.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
   bundleVersion: number,
-  urls: string[],
+  zipUrl: string | null,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    const encodedURLs = urls.map((urlString) => {
-      const url = new URL(urlString);
-      return [
+    let downloadUrl = null;
+    if (zipUrl) {
+      const url = new URL(zipUrl);
+      downloadUrl = [
         url.origin,
         url.pathname
           .split("/")
           .map((pathname) => encodeURIComponent(pathname))
           .join("/"),
       ].join("");
-    });
+    }
 
     HotUpdater.updateBundle(
-      `${bundleVersion}`,
-      encodedURLs,
+      String(bundleVersion),
+      downloadUrl,
       (success: boolean) => {
         if (success) {
           resolve(success);
@@ -75,4 +76,11 @@ export const getAppVersion = async (): Promise<string | null> => {
  */
 export const reload = () => {
   HotUpdater.reload();
+};
+
+/**
+ * Initializes the HotUpdater.
+ */
+export const initializeOnAppUpdate = () => {
+  HotUpdater.initializeOnAppUpdate();
 };

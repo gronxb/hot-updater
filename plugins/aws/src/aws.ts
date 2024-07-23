@@ -11,7 +11,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import type {
-  CliArgs,
+  BasePluginArgs,
   DeployPlugin,
   UpdateSource,
 } from "@hot-updater/internal";
@@ -26,13 +26,10 @@ export interface AwsConfig
 
 export const aws =
   (config: AwsConfig) =>
-  ({ cwd, spinner }: CliArgs): DeployPlugin => {
+  ({ spinner }: BasePluginArgs): DeployPlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
-    const buildDir = path.join(cwd, "build");
-
-    let files: string[] = [];
     let updateSources: UpdateSource[] = [];
 
     return {
@@ -117,8 +114,6 @@ export const aws =
       async deleteBundle(platform, bundleVersion) {
         const Key = [bundleVersion, platform].join("/");
 
-        spinner?.message(`deleting: ${Key}`);
-
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
           Prefix: `${bundleVersion}/${platform}`,
@@ -140,52 +135,40 @@ export const aws =
 
           const deleteCommand = new DeleteObjectsCommand(deleteParams);
           await client.send(deleteCommand);
-        } else {
-          spinner?.message("bundle not found");
+          return Key;
         }
+
+        spinner?.message("bundle not found");
+        throw new Error("bundle not found");
       },
-      async uploadBundle(platform, bundleVersion) {
+      async uploadBundle(platform, bundleVersion, bundlePath) {
         spinner?.message("uploading to s3");
 
-        const buildFiles = await readDir(buildDir);
-        const result = await Promise.allSettled(
-          buildFiles.map(async (file) => {
-            const filePath = path.join(buildDir, file);
-            const Body = await fs.readFile(filePath);
-            const ContentType = mime.getType(filePath) ?? void 0;
+        const Body = await fs.readFile(bundlePath);
+        const ContentType = mime.getType(bundlePath) ?? void 0;
 
-            const Key = [
-              `${bundleVersion}`,
-              platform,
-              file.replace(buildDir, ""),
-            ].join("/");
-            const upload = new Upload({
-              client,
-              params: {
-                ContentType,
-                Bucket: bucketName,
-                Key,
-                Body,
-              },
-            });
-            const response = await upload.done();
-            spinner?.message(`uploaded: ${Key}`);
-            return response.Location;
-          }),
-        );
+        const filename = path.basename(bundlePath);
 
-        const rejectedCount = result.filter(
-          (r) => r.status === "rejected",
-        ).length;
-        if (rejectedCount > 0) {
+        const Key = [bundleVersion, platform, filename].join("/");
+        const upload = new Upload({
+          client,
+          params: {
+            ContentType,
+            Bucket: bucketName,
+            Key,
+            Body,
+          },
+        });
+        const response = await upload.done();
+        if (!response.Location) {
+          spinner?.stop("upload failed", -1);
           throw new Error("upload failed");
         }
 
-        files = result
-          .map((r) => r.status === "fulfilled" && r.value)
-          .filter(Boolean) as string[];
-
-        return { files };
+        spinner?.message(`uploaded: ${Key}`);
+        return {
+          file: response.Location,
+        };
       },
     };
   };

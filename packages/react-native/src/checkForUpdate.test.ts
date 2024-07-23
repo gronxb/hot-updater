@@ -17,7 +17,7 @@ vi.mock("react-native", () => ({
 describe("appVersion 1.0, bundleVersion null", async () => {
   beforeAll(() => {
     vi.spyOn(natives, "getAppVersion").mockImplementation(async () => "1.0");
-    vi.spyOn(natives, "getBundleVersion").mockImplementation(async () => 0);
+    vi.spyOn(natives, "getBundleVersion").mockImplementation(async () => -1);
   });
 
   it("should return null if no update information is available", async () => {
@@ -35,7 +35,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
         enabled: true,
         bundleVersion: 1,
         forceUpdate: false,
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
       },
     ];
 
@@ -51,7 +52,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
         enabled: true,
         bundleVersion: 1,
         forceUpdate: false,
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
       },
       {
         platform: "ios",
@@ -59,7 +61,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
         enabled: true,
         bundleVersion: 2,
         forceUpdate: false,
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
       },
     ];
 
@@ -68,7 +71,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       bundleVersion: 2,
       forceUpdate: false,
       status: "UPDATE",
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
     });
   });
 
@@ -80,7 +84,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
         enabled: true,
         bundleVersion: 1,
         forceUpdate: true,
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
       },
     ];
     const update = await checkForUpdate(updateSources);
@@ -89,7 +94,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       bundleVersion: 1,
       forceUpdate: true,
       status: "UPDATE",
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
     });
   });
 
@@ -98,7 +104,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         enabled: true,
         bundleVersion: 1,
         forceUpdate: false,
@@ -107,7 +114,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toStrictEqual({
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
       bundleVersion: 1,
       forceUpdate: false,
       status: "UPDATE",
@@ -119,7 +127,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 5,
@@ -131,7 +140,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       bundleVersion: 5,
       forceUpdate: false,
       status: "UPDATE",
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
     });
   });
 
@@ -140,7 +150,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: true,
         enabled: false, // Disabled
         bundleVersion: 2,
@@ -148,7 +159,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 1,
@@ -157,7 +169,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toStrictEqual({
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
       bundleVersion: 1,
       forceUpdate: false,
       status: "UPDATE",
@@ -169,7 +182,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: true,
         enabled: false, // Disabled
         bundleVersion: 2,
@@ -177,7 +191,8 @@ describe("appVersion 1.0, bundleVersion null", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: false, // Disabled
         bundleVersion: 1,
@@ -186,6 +201,56 @@ describe("appVersion 1.0, bundleVersion null", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toBeNull();
+  });
+
+  it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
+    const updateSources: UpdateSource[] = [
+      {
+        platform: "ios",
+        targetVersion: "1.0",
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
+        forceUpdate: true,
+        enabled: false, // Disabled
+        bundleVersion: 2,
+      },
+      {
+        platform: "ios",
+        targetVersion: "1.0",
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
+        forceUpdate: false,
+        enabled: false, // Disabled
+        bundleVersion: 1,
+      },
+    ];
+
+    const update = await checkForUpdate(updateSources);
+    expect(update).toStrictEqual(null);
+  });
+
+  it("should update if the latest version is available and the app version is the same", async () => {
+    const updateSources: UpdateSource[] = [
+      {
+        forceUpdate: false,
+        platform: "ios",
+        file: "20240722210327/ios/build.zip",
+        hash: "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
+        description: "",
+        targetVersion: "1.0",
+        bundleVersion: 20240722210327,
+        enabled: true,
+      },
+    ];
+
+    const update = await checkForUpdate(updateSources);
+    expect(update).toStrictEqual({
+      bundleVersion: 20240722210327,
+      forceUpdate: false,
+      status: "UPDATE",
+      file: "20240722210327/ios/build.zip",
+      hash: "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
+    });
   });
 });
 
@@ -207,7 +272,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 2,
@@ -215,7 +281,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 1,
@@ -231,7 +298,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 1,
@@ -240,7 +308,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toStrictEqual({
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
       bundleVersion: 1,
       forceUpdate: true,
       status: "ROLLBACK",
@@ -252,7 +321,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 3,
@@ -260,7 +330,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 2,
@@ -268,7 +339,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 1,
@@ -277,7 +349,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toStrictEqual({
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
       bundleVersion: 3,
       forceUpdate: false,
       status: "UPDATE",
@@ -289,7 +362,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 5, // Higher than the current version
@@ -297,7 +371,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 4,
@@ -305,7 +380,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 3,
@@ -313,7 +389,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 2,
@@ -321,7 +398,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 1,
@@ -330,7 +408,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toStrictEqual({
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
       bundleVersion: 5,
       forceUpdate: false,
       status: "UPDATE",
@@ -342,7 +421,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: true,
         enabled: false, // Disabled
         bundleVersion: 3,
@@ -350,7 +430,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: true,
         enabled: true,
         bundleVersion: 2,
@@ -358,7 +439,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 1,
@@ -374,7 +456,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: true,
         enabled: false, // Disabled
         bundleVersion: 2,
@@ -382,7 +465,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: true,
         bundleVersion: 1,
@@ -391,7 +475,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toStrictEqual({
-      files: [],
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
       bundleVersion: 1,
       forceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
@@ -403,7 +488,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: true,
         enabled: false, // Disabled
         bundleVersion: 2,
@@ -411,7 +497,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
       {
         platform: "ios",
         targetVersion: "1.0",
-        files: [],
+        file: "http://example.com/bundle.zip",
+        hash: "hash",
         forceUpdate: false,
         enabled: false, // Disabled
         bundleVersion: 1,
@@ -420,7 +507,8 @@ describe("appVersion 1.0, bundleVersion v2", async () => {
 
     const update = await checkForUpdate(updateSources);
     expect(update).toStrictEqual({
-      files: [],
+      file: null,
+      hash: null,
       bundleVersion: 0,
       forceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",

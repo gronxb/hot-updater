@@ -1,11 +1,11 @@
-import { cwd } from "@/cwd";
+import { getCwd } from "@/cwd";
 import type { Config } from "@/helper";
 import { cosmiconfig } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 
 export const loadConfig = async () => {
   const result = await cosmiconfig("hot-updater", {
-    stopDir: cwd(),
+    stopDir: getCwd(),
     searchPlaces: [
       "hot-updater.config.js",
       "hot-updater.config.cjs",

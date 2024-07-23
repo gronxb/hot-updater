@@ -1,9 +1,9 @@
 #import "HotUpdater.h"
+#import <SSZipArchive/SSZipArchive.h>
+
 @implementation HotUpdater
 
 RCT_EXPORT_MODULE();
-
-static NSURL *_bundleURL = nil;
 
 #pragma mark - Bundle URL Management
 
@@ -15,12 +15,9 @@ static NSURL *_bundleURL = nil;
 }
 
 + (void)setBundleVersion:(NSString*)bundleVersion {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setObject:bundleVersion forKey:@"HotUpdaterBundleVersion"];
-        [defaults synchronize];
-    });
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:bundleVersion forKey:@"HotUpdaterBundleVersion"];
+    [defaults synchronize];
 }
 
 + (NSString *)getAppVersion {
@@ -32,37 +29,30 @@ static NSURL *_bundleURL = nil;
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *bundleVersion = [defaults objectForKey:@"HotUpdaterBundleVersion"];
     
-    if ([bundleVersion isKindOfClass:[NSString class]] && bundleVersion.length > 0) {
-        NSNumber *version = @([bundleVersion integerValue]);
-        return version;
+    if (bundleVersion) {
+      return @([bundleVersion integerValue]);
     }
-    
-    return @(-1); // 기본값을 NSNumber로 반환
+
+    return @(-1);
 }
 
 + (void)setBundleURL:(NSString *)localPath {
     NSLog(@"Setting bundle URL: %@", localPath);
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        _bundleURL = [NSURL fileURLWithPath:localPath];
-        [[NSUserDefaults standardUserDefaults] setObject:[_bundleURL absoluteString] forKey:@"HotUpdaterBundleURL"];
-        [[NSUserDefaults standardUserDefaults] synchronize];
-    });
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:localPath forKey:@"HotUpdaterBundleURL"];
+    [defaults synchronize];
 }
 
 + (NSURL *)cachedURLFromBundle {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSString *savedURLString = [[NSUserDefaults standardUserDefaults] objectForKey:@"HotUpdaterBundleURL"];
-        if (savedURLString) {
-            _bundleURL = [NSURL URLWithString:savedURLString];
-        }
-    });
-
-    if (_bundleURL && [[NSFileManager defaultManager] fileExistsAtPath:[_bundleURL path]]) {
-        return _bundleURL;
-    }
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *savedURLString = [defaults objectForKey:@"HotUpdaterBundleURL"];
     
+    if (savedURLString) {
+        NSURL *bundleURL = [NSURL URLWithString:savedURLString];
+        if (bundleURL && [[NSFileManager defaultManager] fileExistsAtPath:[bundleURL path]]) {
+            return bundleURL;
+        }
+    }
     return nil;
 }
 
@@ -79,8 +69,18 @@ static NSURL *_bundleURL = nil;
     return [self cachedURLFromBundle] ?: [self fallbackURL];
 }
 
-+ (NSURL *)bundleURLWithoutFallback {
-    return [self cachedURLFromBundle];
++ (void)initializeOnAppUpdate {
+    NSString *currentVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *savedVersion = [defaults stringForKey:@"HotUpdaterAppVersion"];
+
+    if (![currentVersion isEqualToString:savedVersion]) {
+        [defaults removeObjectForKey:@"HotUpdaterBundleURL"];
+        [defaults removeObjectForKey:@"HotUpdaterBundleVersion"];
+        
+        [defaults setObject:currentVersion forKey:@"HotUpdaterAppVersion"];
+        [defaults synchronize];
+    }
 }
 
 #pragma mark - Utility Methods
@@ -96,69 +96,82 @@ static NSURL *_bundleURL = nil;
     return path;
 }
 
-+ (BOOL)updateBundle:(NSString *)prefix urls:(NSArray<NSURL *> *)urls {
-    NSOperationQueue *queue = [[NSOperationQueue alloc] init];
-    queue.maxConcurrentOperationCount = urls.count;
-
-    __block BOOL allSuccess = YES;
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-
-    for (NSURL *url in urls) {
-        NSString *filename = [url lastPathComponent];
-        NSString *basePath = [self stripPrefixFromPath:prefix path:[url path]];
-        NSString *path = [self convertFileSystemPathFromBasePath:basePath];
-
-        [queue addOperationWithBlock:^{
-            NSData *data = [NSData dataWithContentsOfURL:url];
-
-            if (!data) {
-                NSLog(@"Failed to download data from URL: %@", url);
-                allSuccess = NO;
-                dispatch_semaphore_signal(semaphore);
-                return;
-            }
-
-            NSFileManager *fileManager = [NSFileManager defaultManager];
-            NSError *folderError;
-            if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
-                        withIntermediateDirectories:YES
-                                         attributes:nil
-                                              error:&folderError]) {
-                NSLog(@"Failed to create folder: %@", folderError);
-                allSuccess = NO;
-                dispatch_semaphore_signal(semaphore);
-                return;
-            }
-
-            NSError *error;
-            [data writeToFile:path options:NSDataWritingAtomic error:&error];
-
-            if (error) {
-                NSLog(@"Failed to save data: %@", error);
-                allSuccess = NO;
-            }
-            
-            if ([filename isEqualToString:@"index.ios.bundle.js"]) {
-                NSLog(@"Setting bundle URL: %@", path);
-                [self setBundleURL:path];
-            }
-            dispatch_semaphore_signal(semaphore);
-        }];
++ (BOOL)extractZipFileAtPath:(NSString *)filePath toDestination:(NSString *)destinationPath {
+    NSError *error = nil;
+    BOOL success = [SSZipArchive unzipFileAtPath:filePath toDestination:destinationPath overwrite:YES password:nil error:&error];
+    if (!success) {
+        NSLog(@"Failed to unzip file: %@", error);
     }
-
-    for (int i = 0; i < urls.count; i++) {
-        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    }
-    
-    if (allSuccess) {
-        [self setBundleVersion:prefix];
-        NSLog(@"Downloaded all files.");
-    }
-    return allSuccess;
+    return success;
 }
 
++ (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
+    if (url == nil) {
+        [self setBundleVersion:nil];
+        [self setBundleURL:nil];
+        return YES;
+    }
+    NSString *basePath = [self stripPrefixFromPath:prefix path:[url path]];
+    NSString *path = [self convertFileSystemPathFromBasePath:basePath];
+
+    NSData *data = [NSData dataWithContentsOfURL:url];
+    if (!data) {
+        NSLog(@"Failed to download data from URL: %@", url);
+        return NO;
+    }
+
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *folderError;
+    if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+                withIntermediateDirectories:YES
+                                 attributes:nil
+                                      error:&folderError]) {
+        NSLog(@"Failed to create folder: %@", folderError);
+        return NO;
+    }
+
+    NSError *error;
+    [data writeToFile:path options:NSDataWritingAtomic error:&error];
+    if (error) {
+        NSLog(@"Failed to save data: %@", error);
+        return NO;
+    }
+
+    NSString *extractedPath = [path stringByDeletingLastPathComponent];
+    if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
+        NSLog(@"Failed to extract zip file.");
+        return NO;
+    }
+
+    NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
+    NSString *filename = nil;
+    for (NSString *file in enumerator) {
+        if ([file isEqualToString:@"index.ios.bundle.js"]) {
+            filename = file;
+            break;
+        }
+    }
+
+    if (filename) {
+        NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
+        NSLog(@"Setting bundle URL: %@", bundlePath);
+        [self setBundleURL:bundlePath];
+    } else {
+        NSLog(@"index.ios.bundle.js not found.");
+        return NO;
+    }
+
+    [self setBundleVersion:prefix];
+    NSLog(@"Downloaded and extracted file successfully.");
+
+    return YES;
+}
 
 #pragma mark - React Native Exports
+
+RCT_EXPORT_METHOD(initializeOnAppUpdate) {
+    [HotUpdater initializeOnAppUpdate];
+}
 
 RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
@@ -175,17 +188,14 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
     callback(@[version ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix urlStrings:(NSArray<NSString *> *)urlStrings callback:(RCTResponseSenderBlock)callback) {
-    NSMutableArray<NSURL *> *urls = [NSMutableArray array];
-    for (NSString *urlString in urlStrings) {
-        NSURL *url = [NSURL URLWithString:urlString];
-
-        if (url) {
-            [urls addObject:url];
-        }
+RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix downloadUrl:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
+    NSURL *url = nil;
+    if (urlString != nil) {
+        url = [NSURL URLWithString:urlString];
     }
 
-    BOOL result = [HotUpdater updateBundle:prefix urls:urls];
+    BOOL result = [HotUpdater updateBundle:prefix url:url];
     callback(@[@(result)]);
 }
+
 @end

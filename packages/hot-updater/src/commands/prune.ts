@@ -1,4 +1,4 @@
-import { cwd } from "@/cwd";
+import { getCwd } from "@/cwd";
 import { loadConfig } from "@/utils/loadConfig";
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/internal";
@@ -12,10 +12,10 @@ export const prune = async (options: PruneOptions) => {
 
   const { deploy } = await loadConfig();
 
-  const path = cwd();
+  const cwd = getCwd();
 
   const deployPlugin = deploy({
-    cwd: path,
+    cwd,
     spinner: s,
   });
 
@@ -36,8 +36,11 @@ export const prune = async (options: PruneOptions) => {
   await deployPlugin.commitUpdateJson();
 
   for (const source of inactiveSources) {
-    await deployPlugin.deleteBundle(options.platform, source.bundleVersion);
-    p.log.success(`Pruned ${source.bundleVersion}`);
+    const key = await deployPlugin.deleteBundle(
+      options.platform,
+      source.bundleVersion,
+    );
+    p.log.info(`deleting: ${key}`);
   }
 
   s.stop("Done");

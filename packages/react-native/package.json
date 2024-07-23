@@ -28,7 +28,13 @@
     "test": "vitest",
     "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
   },
-  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+  "keywords": [
+    "react-native",
+    "code",
+    "push",
+    "code-push",
+    "self-hosted"
+  ],
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",

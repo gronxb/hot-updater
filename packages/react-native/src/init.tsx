@@ -2,7 +2,7 @@ import type { UpdateSourceArg } from "@hot-updater/internal";
 import { Platform } from "react-native";
 import { checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
-import { reload, updateBundle } from "./native";
+import { initializeOnAppUpdate, reload, updateBundle } from "./native";
 
 export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 
@@ -21,6 +21,7 @@ export const init = async (config: HotUpdaterInitConfig) => {
     config?.onError?.(error);
     throw error;
   }
+  await initializeOnAppUpdate();
 
   const update = await checkForUpdate(config.source);
   if (!update) {
@@ -29,15 +30,10 @@ export const init = async (config: HotUpdaterInitConfig) => {
   }
 
   try {
-    const allDownloadFiles = await updateBundle(
-      update.bundleVersion,
-      update.files,
-    );
-    if (allDownloadFiles) {
-      if (update.forceUpdate) {
-        reload();
-        config?.onSuccess?.("INSTALLING_UPDATE");
-      }
+    const isSuccess = await updateBundle(update.bundleVersion, update.file);
+    if (isSuccess && update.forceUpdate) {
+      reload();
+      config?.onSuccess?.("INSTALLING_UPDATE");
     }
   } catch (error) {
     if (error instanceof HotUpdaterError) {

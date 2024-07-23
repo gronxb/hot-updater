@@ -9,10 +9,7 @@ const findLatestSources = (sources: UpdateSource[]) => {
   return (
     sources
       ?.filter((item) => item.enabled)
-      ?.sort((a, b) => b.bundleVersion - a.bundleVersion)?.[0] ?? {
-      bundleVersion: 0,
-      forceUpdate: false,
-    }
+      ?.sort((a, b) => b.bundleVersion - a.bundleVersion)?.[0] ?? null
   );
 };
 
@@ -65,31 +62,48 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
   const isRollback = checkForRollback(appVersionSources, currentBundleVersion);
   const latestSource = await findLatestSources(appVersionSources);
 
-  if (isRollback) {
-    if (latestSource.bundleVersion === currentBundleVersion) {
-      return null;
-    }
-    if (latestSource.bundleVersion > currentBundleVersion) {
+  if (!latestSource) {
+    if (isRollback) {
       return {
-        bundleVersion: latestSource.bundleVersion,
-        forceUpdate: latestSource.forceUpdate,
-        files: latestSource.files,
-        status: "UPDATE" as UpdateStatus,
+        bundleVersion: 0,
+        forceUpdate: true,
+        file: null,
+        hash: null,
+        status: "ROLLBACK" as UpdateStatus,
       };
     }
-    return {
-      bundleVersion: latestSource.bundleVersion,
-      forceUpdate: true,
-      files: latestSource.files ?? [],
-      status: "ROLLBACK" as UpdateStatus,
-    };
+    return null;
   }
+
+  if (latestSource.file)
+    if (isRollback) {
+      if (latestSource.bundleVersion === currentBundleVersion) {
+        return null;
+      }
+      if (latestSource.bundleVersion > currentBundleVersion) {
+        return {
+          bundleVersion: latestSource.bundleVersion,
+          forceUpdate: latestSource.forceUpdate,
+          file: latestSource.file,
+          hash: latestSource.hash,
+          status: "UPDATE" as UpdateStatus,
+        };
+      }
+      return {
+        bundleVersion: latestSource.bundleVersion,
+        forceUpdate: true,
+        file: latestSource.file,
+        hash: latestSource.hash,
+        status: "ROLLBACK" as UpdateStatus,
+      };
+    }
 
   if (latestSource.bundleVersion > currentBundleVersion) {
     return {
       bundleVersion: latestSource.bundleVersion,
       forceUpdate: latestSource.forceUpdate,
-      files: latestSource.files,
+      file: latestSource.file,
+      hash: latestSource.hash,
       status: "UPDATE" as UpdateStatus,
     };
   }
