@@ -82,17 +82,15 @@ program
   .command("list")
   .description("list all the versions")
   .addOption(
+    new Option("-t, --target-version <targetVersion>", "specify the platform"),
+  )
+  .addOption(
     new Option("-p, --platform <platform>", "specify the platform").choices([
       "ios",
       "android",
     ]),
   )
   .action(async (options) => {
-    if (!options.platform) {
-      options.platform = await getPlatform(
-        "Which platform do you want to list?",
-      );
-    }
     list(options);
   });
 

@@ -1,9 +1,9 @@
 import { getCwd } from "@/cwd";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { loadConfig } from "@/utils/loadConfig";
+import { createTable } from "@/utils/table";
 import * as p from "@clack/prompts";
-import { type Platform, filterTargetVersion, log } from "@hot-updater/internal";
-import Table from "cli-table3";
+import { type Platform, filterTargetVersion } from "@hot-updater/internal";
 import picocolors from "picocolors";
 
 export interface RollbackOptions {
@@ -53,18 +53,6 @@ export const rollback = async (options: RollbackOptions) => {
   }
   s.stop();
 
-  const createTable = () =>
-    new Table({
-      head: [
-        "Platform",
-        "Active",
-        "Description",
-        "Target App Version",
-        "Bundle Version",
-      ],
-      style: { head: ["cyan"] },
-    });
-
   const group = await p.group(
     {
       version: () =>
@@ -73,16 +61,8 @@ export const rollback = async (options: RollbackOptions) => {
           maxItems: 3,
           initialValue: targetVersions[0],
           options: targetVersions.map((source) => {
-            const table = createTable();
-            table.push([
-              source.platform,
-              source.enabled
-                ? picocolors.green("true")
-                : picocolors.red("false"),
-              source.description || "-",
-              source.targetVersion,
-              source.bundleVersion,
-            ]);
+            const { table, pushTable } = createTable();
+            pushTable(source);
 
             const hint = source.enabled
               ? [
@@ -104,36 +84,22 @@ export const rollback = async (options: RollbackOptions) => {
           return;
         }
 
-        const currTable = createTable();
-        const nextTable = createTable();
-        currTable.push([
-          results.version.platform,
-          results.version.enabled
-            ? picocolors.green("true")
-            : picocolors.red("false"),
-          results.version.description || "-",
-          results.version.targetVersion,
-          results.version.bundleVersion,
-        ]);
-
-        nextTable.push([
-          results.version.platform,
-          !results.version.enabled
-            ? picocolors.green("true")
-            : picocolors.red("false"),
-          results.version.description || "-",
-          results.version.targetVersion,
-          results.version.bundleVersion,
-        ]);
+        const curr = createTable();
+        const next = createTable();
+        curr.pushTable(results.version);
+        next.pushTable({
+          ...results.version,
+          enabled: !results.version.enabled,
+        });
 
         return p.confirm({
           message: [
             "",
             picocolors.bgRed("Current bundle:"),
-            currTable.toString(),
+            curr.table.toString(),
             "",
             picocolors.bgGreen(picocolors.black("Next bundle:")),
-            nextTable.toString(),
+            next.table.toString(),
             "",
             "Are you sure you want to rollback?",
           ].join("\n"),

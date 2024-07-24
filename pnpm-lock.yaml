@@ -31,7 +31,7 @@ importers:
     devDependencies:
       vitepress:
         specifier: 1.0.0-rc.24
-        version: 1.0.0-rc.24(@algolia/client-search@4.20.0)(@types/node@20.9.4)(@types/react@18.3.2)(postcss@8.4.38)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)(search-insights@2.9.0)(terser@5.31.0)(typescript@5.4.5)
+        version: 1.0.0-rc.24(@algolia/client-search@4.20.0)(@types/node@20.9.4)(@types/react@18.3.3)(postcss@8.4.38)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.9.0)(terser@5.31.0)(typescript@5.4.5)
 
   examples/react-native:
     dependencies:
@@ -56,7 +56,7 @@ importers:
         version: 7.24.5
       '@callstack/repack':
         specifier: ^4.0.0
-        version: 4.0.0(@react-native-community/cli-debugger-ui@13.6.8)(@react-native-community/cli-server-api@13.6.8)(@react-native-community/cli-types@13.6.6)(@react-native-community/cli@13.6.6)(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0))(type-fest@0.21.3)(webpack@5.91.0(esbuild@0.21.4))
+        version: 4.0.0(@react-native-community/cli-debugger-ui@13.6.8)(@react-native-community/cli-server-api@13.6.8)(@react-native-community/cli-types@13.6.6)(@react-native-community/cli@13.6.6)(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0))(type-fest@4.23.0)(webpack@5.91.0(esbuild@0.21.4))
       '@hot-updater/aws':
         specifier: workspace:^
         version: link:../../plugins/aws
@@ -3032,6 +3032,9 @@ packages:
 
   '@types/react@18.3.2':
     resolution: {integrity: sha512-Btgg89dAnqD4vV7R3hlwOxgqobUQKgx3MmrQRi0yYbs/P0ym8XozIAlkqVilPqHQwXs4e9Tf63rrCgl58BcO4w==}
+
+  '@types/react@18.3.3':
+    resolution: {integrity: sha512-hti/R0pS0q1/xx+TsI73XIqk26eBsISZ2R0wUijXIngRK9R/e7Xw/cXVxQK7R5JjW+SV4zGcn5hXjudkN/pLIw==}
 
   '@types/semver@7.5.8':
     resolution: {integrity: sha512-I8EUhyrgfLrcTkzV3TSsGyl1tSuPrEDzr0yd5m90UgNxQkyDXULk3b6MlQqTCpZpNtWe1K0hzclnZkTcLBe2UQ==}
@@ -6610,6 +6613,10 @@ packages:
     resolution: {integrity: sha512-/3IjMdb2L9QbBdWiW5e3P2/npwMBaU9mHCSCUzNln0ZCYbcfTsGbTJrU/kGemdH2IWmB2ioZ+zkxtmq6g09fGQ==}
     engines: {node: '>=0.10.0'}
 
+  react@18.3.1:
+    resolution: {integrity: sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==}
+    engines: {node: '>=0.10.0'}
+
   read-cache@1.0.0:
     resolution: {integrity: sha512-Owdv/Ft7IjOgm/i0xvNDZ1LrRANRfew4b2prF3OWMQLxLfu3bS8FVhCsrSCMK4lR56Y9ya+AThoTpDCTxCmpRA==}
 
@@ -7309,6 +7316,10 @@ packages:
   type-fest@0.8.1:
     resolution: {integrity: sha512-4dbzIzqvjtgiM5rw1k5rEHtBANKmdudhGyBEajN01fEyhaAIhsoKNy6y7+IN93IfpFtwY9iqi7kD+xwKhQsNJA==}
     engines: {node: '>=8'}
+
+  type-fest@4.23.0:
+    resolution: {integrity: sha512-ZiBujro2ohr5+Z/hZWHESLz3g08BBdrdLMieYFULJO+tWc437sn8kQsWLJoZErY8alNhxre9K4p3GURAG11n+w==}
+    engines: {node: '>=16'}
 
   type-is@1.6.18:
     resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
@@ -9515,11 +9526,11 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@callstack/repack@4.0.0(@react-native-community/cli-debugger-ui@13.6.8)(@react-native-community/cli-server-api@13.6.8)(@react-native-community/cli-types@13.6.6)(@react-native-community/cli@13.6.6)(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0))(type-fest@0.21.3)(webpack@5.91.0(esbuild@0.21.4))':
+  '@callstack/repack@4.0.0(@react-native-community/cli-debugger-ui@13.6.8)(@react-native-community/cli-server-api@13.6.8)(@react-native-community/cli-types@13.6.6)(@react-native-community/cli@13.6.6)(react-native@0.74.1(@babel/core@7.23.2)(@babel/preset-env@7.23.2(@babel/core@7.23.2))(@types/react@18.3.2)(react@18.2.0))(type-fest@4.23.0)(webpack@5.91.0(esbuild@0.21.4))':
     dependencies:
       '@callstack/repack-dev-server': 4.0.0(@react-native-community/cli-debugger-ui@13.6.8)(@react-native-community/cli-server-api@13.6.8)
       '@discoveryjs/json-ext': 0.5.7
-      '@pmmmwh/react-refresh-webpack-plugin': 0.5.13(react-refresh@0.14.2)(type-fest@0.21.3)(webpack@5.91.0(esbuild@0.21.4))
+      '@pmmmwh/react-refresh-webpack-plugin': 0.5.13(react-refresh@0.14.2)(type-fest@4.23.0)(webpack@5.91.0(esbuild@0.21.4))
       '@react-native-community/cli': 13.6.6
       '@react-native-community/cli-types': 13.6.6
       colorette: 1.4.0
@@ -9575,9 +9586,9 @@ snapshots:
 
   '@docsearch/css@3.5.2': {}
 
-  '@docsearch/js@3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.2)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)(search-insights@2.9.0)':
+  '@docsearch/js@3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.3)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.9.0)':
     dependencies:
-      '@docsearch/react': 3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.2)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)(search-insights@2.9.0)
+      '@docsearch/react': 3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.3)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.9.0)
       preact: 10.18.1
     transitivePeerDependencies:
       - '@algolia/client-search'
@@ -9586,16 +9597,16 @@ snapshots:
       - react-dom
       - search-insights
 
-  '@docsearch/react@3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.2)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)(search-insights@2.9.0)':
+  '@docsearch/react@3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.3)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.9.0)':
     dependencies:
       '@algolia/autocomplete-core': 1.9.3(@algolia/client-search@4.20.0)(algoliasearch@4.20.0)(search-insights@2.9.0)
       '@algolia/autocomplete-preset-algolia': 1.9.3(@algolia/client-search@4.20.0)(algoliasearch@4.20.0)
       '@docsearch/css': 3.5.2
       algoliasearch: 4.20.0
     optionalDependencies:
-      '@types/react': 18.3.2
-      react: 18.2.0
-      react-dom: 18.3.1(react@18.2.0)
+      '@types/react': 18.3.3
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
       search-insights: 2.9.0
     transitivePeerDependencies:
       - '@algolia/client-search'
@@ -10266,7 +10277,7 @@ snapshots:
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
-  '@pmmmwh/react-refresh-webpack-plugin@0.5.13(react-refresh@0.14.2)(type-fest@0.21.3)(webpack@5.91.0(esbuild@0.21.4))':
+  '@pmmmwh/react-refresh-webpack-plugin@0.5.13(react-refresh@0.14.2)(type-fest@4.23.0)(webpack@5.91.0(esbuild@0.21.4))':
     dependencies:
       ansi-html-community: 0.0.8
       core-js-pure: 3.37.1
@@ -10278,7 +10289,7 @@ snapshots:
       source-map: 0.7.4
       webpack: 5.91.0(esbuild@0.21.4)
     optionalDependencies:
-      type-fest: 0.21.3
+      type-fest: 4.23.0
 
   '@react-native-community/cli-clean@11.3.7':
     dependencies:
@@ -11690,6 +11701,12 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.12
       csstype: 3.1.2
+
+  '@types/react@18.3.3':
+    dependencies:
+      '@types/prop-types': 15.7.12
+      csstype: 3.1.2
+    optional: true
 
   '@types/semver@7.5.8': {}
 
@@ -16288,6 +16305,13 @@ snapshots:
       react: 18.2.0
       scheduler: 0.23.2
 
+  react-dom@18.3.1(react@18.3.1):
+    dependencies:
+      loose-envify: 1.4.0
+      react: 18.3.1
+      scheduler: 0.23.2
+    optional: true
+
   react-is@16.13.1: {}
 
   react-is@17.0.2: {}
@@ -16428,6 +16452,11 @@ snapshots:
   react@18.2.0:
     dependencies:
       loose-envify: 1.4.0
+
+  react@18.3.1:
+    dependencies:
+      loose-envify: 1.4.0
+    optional: true
 
   read-cache@1.0.0:
     dependencies:
@@ -17200,6 +17229,9 @@ snapshots:
 
   type-fest@0.8.1: {}
 
+  type-fest@4.23.0:
+    optional: true
+
   type-is@1.6.18:
     dependencies:
       media-typer: 0.3.0
@@ -17449,10 +17481,10 @@ snapshots:
       fsevents: 2.3.3
       terser: 5.31.0
 
-  vitepress@1.0.0-rc.24(@algolia/client-search@4.20.0)(@types/node@20.9.4)(@types/react@18.3.2)(postcss@8.4.38)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)(search-insights@2.9.0)(terser@5.31.0)(typescript@5.4.5):
+  vitepress@1.0.0-rc.24(@algolia/client-search@4.20.0)(@types/node@20.9.4)(@types/react@18.3.3)(postcss@8.4.38)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.9.0)(terser@5.31.0)(typescript@5.4.5):
     dependencies:
       '@docsearch/css': 3.5.2
-      '@docsearch/js': 3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.2)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)(search-insights@2.9.0)
+      '@docsearch/js': 3.5.2(@algolia/client-search@4.20.0)(@types/react@18.3.3)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.9.0)
       '@types/markdown-it': 13.0.5
       '@vitejs/plugin-vue': 4.3.1(vite@4.5.0(@types/node@20.9.4)(terser@5.31.0))(vue@3.3.7(typescript@5.4.5))
       '@vue/devtools-api': 6.5.1

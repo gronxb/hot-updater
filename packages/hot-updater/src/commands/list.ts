@@ -1,9 +1,9 @@
 import { getCwd } from "@/cwd";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { loadConfig } from "@/utils/loadConfig";
+import { createTable } from "@/utils/table";
 import * as p from "@clack/prompts";
-import { type Platform, filterTargetVersion, log } from "@hot-updater/internal";
-import Table from "cli-table3";
+import { type Platform, filterTargetVersion } from "@hot-updater/internal";
 
 export interface ListOptions {
   platform: Platform;
@@ -18,9 +18,13 @@ export const list = async (options: ListOptions) => {
   const cwd = getCwd();
 
   s.start("getting target version");
-  const targetVersion =
-    options.targetVersion ??
-    (await getDefaultTargetVersion(cwd, options.platform));
+  let targetVersion: string | null = "*";
+  if (options.targetVersion) {
+    targetVersion = options.targetVersion;
+  }
+  if (!options.targetVersion && options.platform) {
+    targetVersion = await getDefaultTargetVersion(cwd, options.platform);
+  }
 
   if (!targetVersion) {
     throw new Error(
@@ -39,7 +43,7 @@ export const list = async (options: ListOptions) => {
   const targetVersions = filterTargetVersion(
     updateSources,
     targetVersion,
-    options.platform,
+    options?.platform,
   );
 
   if (targetVersions.length === 0) {
@@ -48,13 +52,21 @@ export const list = async (options: ListOptions) => {
   }
   s.stop();
 
-  const table = new Table({
-    head: ["Version", "active"],
+  await p.select({
+    message: "Select versions to rollback",
+    maxItems: 3,
+    initialValue: targetVersions[0],
+    // options: targetVersions.map(
+    options: [...targetVersions, ...targetVersions, ...targetVersions].map(
+      (source) => {
+        const { table, pushTable } = createTable();
+        pushTable(source);
+
+        return {
+          label: ["\n", table.toString(), "\n"].join(""),
+          value: source,
+        };
+      },
+    ),
   });
-
-  for (const source of targetVersions) {
-    table.push([source.bundleVersion, source.enabled]);
-  }
-
-  p.log.info(table.toString());
 };
