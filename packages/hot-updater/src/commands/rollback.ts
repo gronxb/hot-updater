@@ -1,7 +1,7 @@
-import { getCwd } from "@/cwd";
-import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
-import { loadConfig } from "@/utils/loadConfig";
-import { createTable } from "@/utils/table";
+import { getCwd } from "@/cwd.js";
+import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion.js";
+import { loadConfig } from "@/utils/loadConfig.js";
+import { createTable } from "@/utils/table.js";
 import * as p from "@clack/prompts";
 import { type Platform, filterTargetVersion } from "@hot-updater/internal";
 import picocolors from "picocolors";

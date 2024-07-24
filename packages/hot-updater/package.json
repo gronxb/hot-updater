@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.1",
   "bin": {
-    "hot-updater": "./lib/index.cjs"
+    "hot-updater": "./lib/main.js"
   },
   "exports": {
     ".": {
@@ -25,19 +25,23 @@
   },
   "scripts": {
     "prepare": "pnpm build",
-    "build": "node esbuild.config.js && tspc --project tsconfig.build.json",
-    "test:type": "tsc --noEmit"
+    "build": "tsc --project tsconfig.build.json",
+    "test:type": "tsc --noEmit",
+    "dev": "tsc --project tsconfig.build.json --watch"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
     "@hot-updater/internal": "workspace:^",
+    "@inkjs/ui": "^2.0.0",
     "cli-table3": "^0.6.5",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
+    "ink": "^5.0.1",
     "jszip": "^3.10.1",
     "picocolors": "^1.0.0",
     "plist": "^3.1.0",
+    "react": "^18.2.0",
     "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
@@ -45,6 +49,7 @@
     "@types/cosmiconfig": "^6.0.0",
     "@types/plist": "^3.0.5",
     "@types/prompts": "^2.4.9",
+    "@types/react": "^18.3.3",
     "typescript-transform-paths": "^3.4.7"
   }
 }

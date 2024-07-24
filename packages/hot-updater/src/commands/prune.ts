@@ -1,5 +1,5 @@
-import { getCwd } from "@/cwd";
-import { loadConfig } from "@/utils/loadConfig";
+import { getCwd } from "@/cwd.js";
+import { loadConfig } from "@/utils/loadConfig.js";
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/internal";
 

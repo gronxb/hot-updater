@@ -1,23 +1,38 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "target": "es6",
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "sourceMap": true,
-    "declaration": true,
-    "baseUrl": ".",
-    "resolveJsonModule": true,
-    "paths": {
-      "@/*": ["src/*"],
-      "@/package.json": ["package.json"]
-    },
     "outDir": "lib",
-    "plugins": [
-      { "transform": "typescript-transform-paths" }
-    ]
+    "baseUrl": ".",
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler",
+		"target": "ES2020", // Node.js 14
+		"lib": [
+			"DOM",
+			"DOM.Iterable",
+			"ES2020"
+		],
+		"allowSyntheticDefaultImports": true, // To provide backwards compatibility, Node.js allows you to import most CommonJS packages with a default import. This flag tells TypeScript that it's okay to use import on CommonJS modules.
+		"resolveJsonModule": false, // ESM doesn't yet support JSON modules.
+		"declaration": true,
+		"pretty": true,
+		"newLine": "lf",
+		"stripInternal": true,
+		"strict": true,
+		"noImplicitReturns": true,
+		"noImplicitOverride": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"noEmitOnError": true,
+		"useDefineForClassFields": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+    "paths": {
+      "@/package.json": ["package.json"],
+      "@/*": ["src/*"]
+    },
+    "plugins": [{ "transform": "typescript-transform-paths" }]
   },
-  "include": ["src/helper.ts"],
+  "include": ["src"]
 }

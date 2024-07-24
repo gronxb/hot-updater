@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": ".",
-    "jsx": "react",
+    "jsx": "react-jsx",
+    "module": "NodeNext",
+    "moduleResolution": "Node16",
+		"target": "ES2020", // Node.js 14
     "paths": {
       "@/package.json": ["package.json"],
       "@/*": ["src/*"]

@@ -1,12 +1,12 @@
 import fs from "node:fs/promises";
 import { spinner } from "@clack/prompts";
 
-import { getCwd } from "@/cwd";
-import { createZip } from "@/utils/createZip";
-import { formatDate } from "@/utils/formatDate";
-import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
-import { getFileHashFromFile } from "@/utils/getFileHash";
-import { loadConfig } from "@/utils/loadConfig";
+import { getCwd } from "@/cwd.js";
+import { createZip } from "@/utils/createZip.js";
+import { formatDate } from "@/utils/formatDate.js";
+import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion.js";
+import { getFileHashFromFile } from "@/utils/getFileHash.js";
+import { loadConfig } from "@/utils/loadConfig.js";
 import { type Platform, filterTargetVersion } from "@hot-updater/internal";
 export interface DeployOptions {
   targetVersion?: string;
@@ -17,7 +17,7 @@ export interface DeployOptions {
 export const deploy = async (options: DeployOptions) => {
   const s = spinner();
 
-  const { build, deploy, ...config } = await loadConfig();
+  const { build, deploy } = await loadConfig();
 
   const cwd = getCwd();
   const targetVersion =
@@ -62,7 +62,7 @@ export const deploy = async (options: DeployOptions) => {
   // hash check
   if (targetVersions.length > 0) {
     const recentVersion = targetVersions[0];
-    const recentHash = recentVersion.hash;
+    const recentHash = recentVersion?.hash;
 
     if (recentHash === hash) {
       s.stop("The update already exists.", -1);

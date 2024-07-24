@@ -2,7 +2,7 @@ import {build} from 'esbuild';
 import packageJson from './package.json' assert { type: 'json' } ;
 
 build({
-    entryPoints: ['src/main.ts'],
+    entryPoints: ['src/main.tsx'],
     bundle:true,
     platform: "node",
     outfile: 'lib/index.cjs',
