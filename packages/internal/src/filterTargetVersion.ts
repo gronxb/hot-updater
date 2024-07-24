@@ -23,6 +23,9 @@ export const filterTargetVersion = (
   targetVersion: string,
   platform?: Platform,
 ): UpdateSource[] => {
+  // coerce currentVersion to a semver-compatible version
+  const currentVersionCoerce = semver.coerce(targetVersion)?.version;
+
   // Filter sources by platform and if currentVersion satisfies the targetVersion range
   const filteredSources = sources
     .filter((source) => {
@@ -34,7 +37,7 @@ export const filterTargetVersion = (
     .filter(
       (source) =>
         targetVersion === "*" ||
-        semver.satisfies(targetVersion, source.targetVersion),
+        semver.satisfies(currentVersionCoerce ?? "*", source.targetVersion),
     );
 
   // Separate '*' versions from other versions

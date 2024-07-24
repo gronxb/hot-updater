@@ -22,7 +22,8 @@ export const rollback = async (options: RollbackOptions) => {
   let targetVersion: string | null = "*";
   if (options.targetVersion) {
     targetVersion = options.targetVersion;
-  } else if (options.platform) {
+  }
+  if (!options.targetVersion && options.platform) {
     targetVersion = await getDefaultTargetVersion(cwd, options.platform);
   }
 

@@ -66,6 +66,9 @@ program
   .command("rollback")
   .description("rollback to the previous version")
   .addOption(
+    new Option("-t, --target-version <targetVersion>", "specify the platform"),
+  )
+  .addOption(
     new Option("-p, --platform <platform>", "specify the platform").choices([
       "ios",
       "android",
