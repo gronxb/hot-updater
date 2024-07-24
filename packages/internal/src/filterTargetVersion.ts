@@ -19,22 +19,23 @@ import type { Platform, UpdateSource } from "./types";
  * | ^1.2.3           | Equivalent to >=1.2.3 <2.0.0                                            |
  */
 export const filterTargetVersion = (
-  platform: Platform,
-  targetVersion: string,
   sources: UpdateSource[],
+  targetVersion: string,
+  platform?: Platform,
 ): UpdateSource[] => {
-  // coerce currentVersion to a semver-compatible version
-  const currentVersionCoerce = semver.coerce(targetVersion)?.version;
-  if (!currentVersionCoerce) {
-    return [];
-  }
-
   // Filter sources by platform and if currentVersion satisfies the targetVersion range
-  const filteredSources = sources.filter(
-    (source) =>
-      source.platform === platform &&
-      semver.satisfies(currentVersionCoerce, source.targetVersion),
-  );
+  const filteredSources = sources
+    .filter((source) => {
+      if (platform) {
+        return source.platform === platform;
+      }
+      return true;
+    })
+    .filter(
+      (source) =>
+        targetVersion === "*" ||
+        semver.satisfies(targetVersion, source.targetVersion),
+    );
 
   // Separate '*' versions from other versions
   const starVersions = filteredSources.filter(

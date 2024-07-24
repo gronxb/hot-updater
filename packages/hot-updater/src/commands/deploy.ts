@@ -54,9 +54,9 @@ export const deploy = async (options: DeployOptions) => {
 
   const updateSources = await deployPlugin.getUpdateJson();
   const targetVersions = filterTargetVersion(
-    options.platform,
-    targetVersion,
     updateSources ?? [],
+    targetVersion,
+    options.platform,
   );
 
   // hash check

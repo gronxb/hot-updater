@@ -55,7 +55,7 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
   const platform = Platform.OS as "ios" | "android";
 
   const appVersionSources = currentAppVersion
-    ? filterTargetVersion(platform, currentAppVersion, sources)
+    ? filterTargetVersion(sources, currentAppVersion, platform)
     : [];
   const currentBundleVersion = await getBundleVersion();
 
