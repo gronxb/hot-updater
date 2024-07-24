@@ -72,11 +72,6 @@ program
     ]),
   )
   .action(async (options) => {
-    if (!options.platform) {
-      options.platform = await getPlatform(
-        "Which platform do you want to rollback?",
-      );
-    }
     rollback(options);
   });
 

@@ -37,9 +37,9 @@ export const list = async (options: ListOptions) => {
   const updateSources = await deployPlugin.getUpdateJson();
 
   const targetVersions = filterTargetVersion(
-    options.platform,
-    targetVersion,
     updateSources,
+    targetVersion,
+    options.platform,
   );
 
   if (targetVersions.length === 0) {

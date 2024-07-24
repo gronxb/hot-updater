@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
@@ -16,7 +15,6 @@ import type {
   UpdateSource,
 } from "@hot-updater/internal";
 import mime from "mime";
-import { readDir } from "./utils/readDir";
 import { streamToString } from "./utils/streamToString";
 
 export interface AwsConfig
@@ -48,7 +46,7 @@ export const aws =
           }
         }
 
-        spinner?.message("uploading update.json");
+        spinner?.message("Uploading update.json");
         const Key = "update.json";
         const Body = JSON.stringify(updateSources);
         const ContentType = mime.getType(Key) ?? void 0;
@@ -142,7 +140,7 @@ export const aws =
         throw new Error("bundle not found");
       },
       async uploadBundle(platform, bundleVersion, bundlePath) {
-        spinner?.message("uploading to s3");
+        spinner?.message("Uploading Bundle");
 
         const Body = await fs.readFile(bundlePath);
         const ContentType = mime.getType(bundlePath) ?? void 0;
@@ -161,11 +159,11 @@ export const aws =
         });
         const response = await upload.done();
         if (!response.Location) {
-          spinner?.stop("upload failed", -1);
-          throw new Error("upload failed");
+          spinner?.stop("Upload Failed", -1);
+          throw new Error("Upload Failed");
         }
 
-        spinner?.message(`uploaded: ${Key}`);
+        spinner?.message(`Uploaded: ${Key}`);
         return {
           file: response.Location,
         };
