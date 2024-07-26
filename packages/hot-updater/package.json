@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.1",
   "bin": {
-    "hot-updater": "./lib/main.js"
+    "hot-updater": "./lib/index.mjs"
   },
   "exports": {
     ".": {
@@ -25,9 +25,9 @@
   },
   "scripts": {
     "prepare": "pnpm build",
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tspc --project tsconfig.build.json",
     "test:type": "tsc --noEmit",
-    "dev": "tsc --project tsconfig.build.json --watch"
+    "dev": "tspc --project tsconfig.build.json --watch"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
@@ -38,11 +38,15 @@
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
     "ink": "^5.0.1",
+    "ink-link": "^4.1.0",
     "jszip": "^3.10.1",
+    "meow": "^13.2.0",
+    "pastel": "^3.0.0",
     "picocolors": "^1.0.0",
     "plist": "^3.1.0",
     "react": "^18.2.0",
-    "workspace-tools": "^0.36.4"
+    "workspace-tools": "^0.36.4",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/connect": "^3.4.38",

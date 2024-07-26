@@ -1,15 +1,37 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "baseUrl": ".",
+	"compilerOptions": {
+		"moduleResolution": "node16",
+		"module": "Node16",
+		"outDir": "lib",
+    "moduleDetection": "force",
+		"target": "ES2022", // Node.js 18
+		"lib": [
+			"DOM",
+			"DOM.Iterable",
+			"ES2022"
+		],
+		"resolveJsonModule": false, // ESM doesn't yet support JSON modules.
     "jsx": "react-jsx",
-    "module": "NodeNext",
-    "moduleResolution": "Node16",
-		"target": "ES2020", // Node.js 14
+		"declaration": true,
+		"newLine": "lf",
+		"stripInternal": true,
+		"strict": true,
+		"noImplicitReturns": true,
+		"noImplicitOverride": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"noEmitOnError": true,
+		"useDefineForClassFields": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+    "baseUrl": ".",
     "paths": {
       "@/package.json": ["package.json"],
       "@/*": ["src/*"]
     }
-  },
-  "include": ["src"]
+	},
+	"include": ["src"]
 }

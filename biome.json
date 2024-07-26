@@ -43,10 +43,15 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "suspicious":{
-        "noExplicitAny": "off"
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noArrayIndexKey":"off"
+      },
+      "complexity": {
+        "useLiteralKeys": "off"
       },
       "style": {
+        "useNodejsImportProtocol":"off",
         "noNonNullAssertion": "off",
         "noParameterAssign": "off"
       },

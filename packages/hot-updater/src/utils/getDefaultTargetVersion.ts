@@ -1,8 +1,8 @@
-import { exec } from "node:child_process";
-import fs from "node:fs/promises";
-import path from "node:path";
-import util from "node:util";
+import { exec } from "child_process";
+import path from "path";
+import util from "util";
 import type { Platform } from "@hot-updater/internal";
+import fs from "fs/promises";
 
 const findXCodeProjectFilename = async (
   cwd: string,

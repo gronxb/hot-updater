@@ -1,5 +1,5 @@
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
+import crypto from "crypto";
+import fs from "fs/promises";
 
 export const getFileHashFromFile = async (filepath: string) => {
   try {
