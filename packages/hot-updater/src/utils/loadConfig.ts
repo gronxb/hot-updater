@@ -1,5 +1,5 @@
-import { getCwd } from "@/cwd";
-import type { Config } from "@/helper";
+import { getCwd } from "@/cwd.js";
+import type { Config } from "@/helper.js";
 import { cosmiconfig } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 

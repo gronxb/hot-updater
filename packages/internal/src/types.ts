@@ -12,9 +12,15 @@ export type Platform = "ios" | "android";
 
 export interface BasePluginArgs {
   cwd: string;
+  log?: {
+    info: (message: string) => void;
+    success: (message: string) => void;
+    error: (message: string) => void;
+  };
   spinner?: {
     message: (message: string) => void;
-    stop: (message: string, code: number) => void;
+    error: (message: string) => void;
+    done: (message: string) => void;
   };
 }
 

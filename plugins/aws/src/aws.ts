@@ -1,5 +1,4 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import path from "path";
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -14,6 +13,7 @@ import type {
   DeployPlugin,
   UpdateSource,
 } from "@hot-updater/internal";
+import fs from "fs/promises";
 import mime from "mime";
 import { streamToString } from "./utils/streamToString";
 
@@ -24,7 +24,7 @@ export interface AwsConfig
 
 export const aws =
   (config: AwsConfig) =>
-  ({ spinner }: BasePluginArgs): DeployPlugin => {
+  ({ log, spinner }: BasePluginArgs): DeployPlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
@@ -90,7 +90,7 @@ export const aws =
           return updateSources;
         }
 
-        spinner?.message("getting update.json");
+        spinner?.message("Getting update.json");
 
         try {
           const command = new GetObjectCommand({
@@ -136,8 +136,8 @@ export const aws =
           return Key;
         }
 
-        spinner?.message("bundle not found");
-        throw new Error("bundle not found");
+        spinner?.error("Bundle Not Found");
+        throw new Error("Bundle Not Found");
       },
       async uploadBundle(platform, bundleVersion, bundlePath) {
         spinner?.message("Uploading Bundle");
@@ -159,11 +159,11 @@ export const aws =
         });
         const response = await upload.done();
         if (!response.Location) {
-          spinner?.stop("Upload Failed", -1);
+          spinner?.error("Upload Failed");
           throw new Error("Upload Failed");
         }
 
-        spinner?.message(`Uploaded: ${Key}`);
+        log?.info(`Uploaded: ${Key}`);
         return {
           file: response.Location,
         };

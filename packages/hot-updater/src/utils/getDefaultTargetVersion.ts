@@ -1,8 +1,8 @@
-import { exec } from "node:child_process";
-import fs from "node:fs/promises";
-import path from "node:path";
-import util from "node:util";
+import { exec } from "child_process";
+import path from "path";
+import util from "util";
 import type { Platform } from "@hot-updater/internal";
+import fs from "fs/promises";
 
 const findXCodeProjectFilename = async (
   cwd: string,
@@ -41,7 +41,7 @@ export const getIOSVersion = async (cwd: string): Promise<string | null> => {
       `xcodebuild -project ${projectPath} -showBuildSettings | grep MARKETING_VERSION`,
     );
     const versionMatch = stdout.match(/MARKETING_VERSION = ([\d.]+)/);
-    return versionMatch ? versionMatch[1] : null;
+    return versionMatch?.[1] ? versionMatch[1] : null;
   } catch (error) {
     return null;
   }
@@ -56,7 +56,7 @@ export const getAndroidVersion = async (
     const versionNameMatch = buildGradleContent.match(
       /versionName\s+"([\d.]+)"/,
     );
-    return versionNameMatch ? versionNameMatch[1] : null;
+    return versionNameMatch?.[1] ? versionNameMatch[1] : null;
   } catch (error) {
     return null;
   }
@@ -65,11 +65,12 @@ export const getAndroidVersion = async (
 export const getDefaultTargetVersion = async (
   cwd: string,
   platform: Platform,
-) => {
+): Promise<string | null> => {
   switch (platform) {
     case "ios":
       return getIOSVersion(cwd);
     case "android":
       return getAndroidVersion(cwd);
   }
+  return null;
 };

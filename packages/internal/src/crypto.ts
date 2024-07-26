@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import crypto from "crypto";
 import { isObject } from "./isObject";
 
 export const encryptJson = (

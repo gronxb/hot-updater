@@ -39,7 +39,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 12
+        Hot Updater 14
       </Text>
       <Text
         style={{
@@ -53,7 +53,7 @@ function App(): React.JSX.Element {
       </Text>
 
       <Image
-        source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
         style={{ width: 200, height: 200, alignSelf: "center" }}
       />
 
