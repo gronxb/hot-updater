@@ -1,6 +1,6 @@
-import { lstatSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import path from "node:path";
+import { lstatSync } from "fs";
+import path from "path";
+import { readdir } from "fs/promises";
 
 export const readDir = async (dir: string) => {
   const files = await readdir(dir, {

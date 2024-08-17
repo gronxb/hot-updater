@@ -1,6 +1,6 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import path from "path";
 import type { BuildPluginArgs } from "@hot-updater/internal";
+import fs from "fs/promises";
 import Metro from "metro";
 import type { InputConfigT } from "metro-config";
 import Server from "metro/src/Server";
@@ -13,7 +13,7 @@ export const metro =
     const buildPath = path.join(cwd, "build");
 
     await fs.rm(buildPath, { recursive: true, force: true });
-    await fs.mkdir(buildPath);
+    await fs.mkdir(buildPath, { recursive: true });
 
     const bundleOutput = path.join(cwd, "build", `index.${platform}.bundle`);
     const outputs: string[] = [];
@@ -89,7 +89,6 @@ export const metro =
       minify: true,
       sourceMap: true,
     });
-
     return {
       buildPath,
       outputs,
