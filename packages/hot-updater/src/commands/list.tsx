@@ -11,7 +11,7 @@ import { option } from "pastel";
 import { Fragment, useEffect, useState } from "react";
 import { z } from "zod";
 
-export interface RollbackOptions {
+export interface ListOptions {
   platform?: Platform;
   targetVersion?: string;
 }
@@ -47,8 +47,8 @@ const deployPlugin = deploy({
   cwd,
 });
 
-export default function Rollback({ options }: Props) {
-  const { updateSources, refresh } = useUpdateSources({
+export default function List({ options }: Props) {
+  const { updateSources } = useUpdateSources({
     deployPlugin,
     platform: options.platform,
     targetVersion: options.targetVersion,
@@ -64,28 +64,12 @@ export default function Rollback({ options }: Props) {
     }
   }, [updateSources]);
 
-  const handleRollback = async (updateSource: UpdateSource) => {
-    const bundleVersion = updateSource.bundleVersion;
-
-    await deployPlugin.updateUpdateJson(bundleVersion, {
-      ...updateSource,
-      enabled: !updateSource.enabled,
-    });
-    await deployPlugin.commitUpdateJson();
-
-    const updateSources = await refresh();
-    setHighlightSource(
-      updateSources?.find((source) => source.bundleVersion === bundleVersion) ??
-        null,
-    );
-  };
-
   return (
     <Box flexDirection="column">
       <Banner />
 
       <StatusMessage variant="info">
-        Select the Version to Rollback ({updateSources.length})
+        List ({updateSources.length})
       </StatusMessage>
 
       <SelectInput
@@ -104,40 +88,12 @@ export default function Rollback({ options }: Props) {
           } as { label: string; value: UpdateSource };
         })}
         onHighlight={(item) => setHighlightSource(item.value)}
-        onSelect={(updateSource) => handleRollback(updateSource.value)}
       />
 
       {highlightSource ? (
         <Fragment>
-          {highlightSource.enabled ? (
-            <Text color="green">{"Current: ACTIVE"}</Text>
-          ) : (
-            <Text color="red">{"Current: INACTIVE"}</Text>
-          )}
-
-          <Text color="gray">Expected</Text>
-          <BundleInfoTable
-            source={highlightSource}
-            widths={{
-              active: 30,
-            }}
-            renders={{
-              active: () =>
-                highlightSource.enabled ? (
-                  <Fragment>
-                    <Text color="green">ACTIVE</Text>
-                    <Text color="gray"> to </Text>
-                    <Text color="red">INACTIVE</Text>
-                  </Fragment>
-                ) : (
-                  <Fragment>
-                    <Text color="red">INACTIVE</Text>
-                    <Text color="gray"> to </Text>
-                    <Text color="green">ACTIVE</Text>
-                  </Fragment>
-                ),
-            }}
-          />
+          <Text color="gray">Current</Text>
+          <BundleInfoTable source={highlightSource} />
         </Fragment>
       ) : null}
     </Box>

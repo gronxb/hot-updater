@@ -47,6 +47,9 @@
         "noExplicitAny": "off",
         "noArrayIndexKey":"off"
       },
+      "correctness":{
+        "useExhaustiveDependencies": "off"
+      },
       "complexity": {
         "useLiteralKeys": "off"
       },

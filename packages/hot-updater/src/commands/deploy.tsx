@@ -4,6 +4,7 @@ import { useLog } from "@/hooks/useLog.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useSpinner } from "@/hooks/useSpinner.js";
 import { createZip } from "@/utils/createZip.js";
+import { delay } from "@/utils/delay.js";
 import { formatDate } from "@/utils/formatDate.js";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion.js";
 import { getFileHashFromFile } from "@/utils/getFileHash.js";
@@ -71,9 +72,9 @@ const cwd = getCwd();
 export default function Deploy({ options }: Props) {
   const { forceUpdate } = options;
 
-  const [step, setStep] = useState<"description" | "select" | "build" | "log">(
-    !options.description ? "description" : "select",
-  );
+  const [step, setStep] = useState<
+    "description" | "platform" | "build" | "log"
+  >(!options.description ? "description" : "platform");
 
   const { spinner, SpinnerLog } = useSpinner();
   const { log, StaticLogs } = useLog();
@@ -100,6 +101,7 @@ export default function Deploy({ options }: Props) {
       process.exit(1);
     }
 
+    delay(50);
     const { buildPath } = await build({
       cwd,
       platform,
@@ -178,13 +180,13 @@ export default function Deploy({ options }: Props) {
             placeholder="Description"
             onSubmit={(description) => {
               setDescription(description);
-              setStep("select");
+              setStep("platform");
             }}
           />
         </Box>
       );
     }
-    case "select": {
+    case "platform": {
       return (
         <Box flexDirection="column">
           <Banner />

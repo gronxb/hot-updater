@@ -126,18 +126,12 @@ importers:
 
   packages/hot-updater:
     dependencies:
-      '@clack/prompts':
-        specifier: ^0.7.0
-        version: 0.7.0
       '@hot-updater/internal':
         specifier: workspace:^
         version: link:../internal
       '@inkjs/ui':
         specifier: ^2.0.0
         version: 2.0.0(ink@5.0.1(@types/react@18.3.3)(react-devtools-core@4.28.4)(react@18.2.0))
-      cli-table3:
-        specifier: ^0.6.5
-        version: 0.6.5
       commander:
         specifier: ^11.1.0
         version: 11.1.0
@@ -156,9 +150,6 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
-      meow:
-        specifier: ^13.2.0
-        version: 13.2.0
       pastel:
         specifier: ^3.0.0
         version: 3.0.0(ink@5.0.1(@types/react@18.3.3)(react-devtools-core@4.28.4)(react@18.2.0))(react@18.2.0)(zod@3.23.8)
@@ -171,6 +162,9 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.2.0
+      read-package-up:
+        specifier: ^11.0.0
+        version: 11.0.0
       workspace-tools:
         specifier: ^0.36.4
         version: 0.36.4
@@ -187,9 +181,6 @@ importers:
       '@types/plist':
         specifier: ^3.0.5
         version: 3.0.5
-      '@types/prompts':
-        specifier: ^2.4.9
-        version: 2.4.9
       '@types/react':
         specifier: ^18.3.3
         version: 18.3.3
@@ -1437,18 +1428,6 @@ packages:
       '@react-native-community/cli-types': '*'
       react-native: '>=0.63'
       webpack: 5.x
-
-  '@clack/core@0.3.4':
-    resolution: {integrity: sha512-H4hxZDXgHtWTwV3RAVenqcC4VbJZNegbBjlPvzOzCouXtS2y3sDvlO3IsbrPNWuLWPPlYVYPghQdSF64683Ldw==}
-
-  '@clack/prompts@0.7.0':
-    resolution: {integrity: sha512-0MhX9/B4iL6Re04jPrttDm+BsP8y6mS7byuv0BvXgdXhbV5PdlsHt55dvNsuBCPZ7xq1oTAOOuotR9NFbQyMSA==}
-    bundledDependencies:
-      - is-unicode-supported
-
-  '@colors/colors@1.5.0':
-    resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
-    engines: {node: '>=0.1.90'}
 
   '@discoveryjs/json-ext@0.5.7':
     resolution: {integrity: sha512-dBVuXR082gk3jsFp7Rd/JI4kytwGHecnCoTtXFb7DB6CNHp4rg5k1bhg0nWdLGLnOV71lmDzGQaLMy8iPLY0pw==}
@@ -3055,9 +3034,6 @@ packages:
   '@types/plist@3.0.5':
     resolution: {integrity: sha512-E6OCaRmAe4WDmWNsL/9RMqdkkzDCY1etutkflWk4c+AcjDU07Pcz1fQwTX0TQz+Pxqn9i4L1TU3UFpjnrcDgxA==}
 
-  '@types/prompts@2.4.9':
-    resolution: {integrity: sha512-qTxFi6Buiu8+50/+3DGIWLHM6QuWsEKugJnnP6iv2Mc4ncxE4A/OJkjuVOA+5X0X1S/nq5VJRa8Lu+nwcvbrKA==}
-
   '@types/prop-types@15.7.12':
     resolution: {integrity: sha512-5zvhXYtRNRluoE/jAp4GVsSduVUzNWKkOZrCDBWYtE7biZywwdC2AcEzg+cSMLFRfVgeAFqpfNabiPjxFddV1Q==}
 
@@ -3878,10 +3854,6 @@ packages:
   cli-spinners@3.1.0:
     resolution: {integrity: sha512-2MH0N34TpDAs9ROPVkZJfBWFoYfv4zfkJF14PBHY4v/qRY75SLcm4WaEKNCLScsXieosa/tY/+slJ+BDswJxHQ==}
     engines: {node: '>=18.20'}
-
-  cli-table3@0.6.5:
-    resolution: {integrity: sha512-+W/5efTR7y5HRD7gACw9yQjqMVvEMLBHmboM/kPWam+H+Hmyrgjh6YncVKK122YZkXrLudzTuAukUw9FnMf7IQ==}
-    engines: {node: 10.* || >= 12.*}
 
   cli-truncate@4.0.0:
     resolution: {integrity: sha512-nPdaFdQ0h/GEigbPClz11D0v/ZJEwxmeVZGeMo3Z5StPtUTkA9o1lD6QwoirYiSDzbcwn2XcjwmCp68W1IS4TA==}
@@ -5759,10 +5731,6 @@ packages:
 
   memoize-one@5.2.1:
     resolution: {integrity: sha512-zYiwtZUcYyXKo/np96AGZAckk+FWWsUdJ3cHGGmld7+AhvcWmQyGCYUh1hc4Q/pkOhb65dQR/pqCyK0cOaHz4Q==}
-
-  meow@13.2.0:
-    resolution: {integrity: sha512-pxQJQzB6djGPXh08dacEloMFopsOqGVRKFPYvPOt9XDZ1HasbgDZA74CJGreSU4G3Ak7EFJGoiH2auq+yXISgA==}
-    engines: {node: '>=18'}
 
   merge-descriptors@1.0.1:
     resolution: {integrity: sha512-cCi6g3/Zr1iqQi6ySbseM1Xvooa98N0w31jzUYrXPX2xqObmFGHJ0tQ5u74H3mVh7wLouTseZyYIq39g8cNp1w==}
@@ -9823,20 +9791,6 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@clack/core@0.3.4':
-    dependencies:
-      picocolors: 1.0.0
-      sisteransi: 1.0.5
-
-  '@clack/prompts@0.7.0':
-    dependencies:
-      '@clack/core': 0.3.4
-      picocolors: 1.0.0
-      sisteransi: 1.0.5
-
-  '@colors/colors@1.5.0':
-    optional: true
-
   '@discoveryjs/json-ext@0.5.7': {}
 
   '@docsearch/css@3.5.2': {}
@@ -11947,11 +11901,6 @@ snapshots:
       '@types/node': 20.9.4
       xmlbuilder: 15.1.1
 
-  '@types/prompts@2.4.9':
-    dependencies:
-      '@types/node': 20.9.4
-      kleur: 3.0.3
-
   '@types/prop-types@15.7.12': {}
 
   '@types/react-dom@18.3.0':
@@ -13004,12 +12953,6 @@ snapshots:
   cli-spinners@2.9.1: {}
 
   cli-spinners@3.1.0: {}
-
-  cli-table3@0.6.5:
-    dependencies:
-      string-width: 4.2.3
-    optionalDependencies:
-      '@colors/colors': 1.5.0
 
   cli-truncate@4.0.0:
     dependencies:
@@ -15360,8 +15303,6 @@ snapshots:
       fs-monkey: 1.0.6
 
   memoize-one@5.2.1: {}
-
-  meow@13.2.0: {}
 
   merge-descriptors@1.0.1: {}
 
