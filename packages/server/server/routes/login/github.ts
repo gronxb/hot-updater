@@ -38,6 +38,7 @@ githubLoginRouter.get("/login/github/callback", async (c) => {
       },
     });
     const githubUser: GitHubUser = await githubUserResponse.json();
+    console.log(githubUser);
     const existingUser: DatabaseUser | null = (db
       .prepare("SELECT * FROM user WHERE github_id = ?")
       .get(githubUser.id) ?? null) as DatabaseUser | null;
