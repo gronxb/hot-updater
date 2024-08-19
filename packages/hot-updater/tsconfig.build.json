@@ -2,8 +2,8 @@
 	"compilerOptions": {
 		"moduleResolution": "node16",
 		"module": "Node16",
-		"outDir": "lib",
-    "moduleDetection": "force",
+		"outDir": "dist",
+    	"moduleDetection": "force",
 		"target": "ES2022", // Node.js 18
 		"lib": [
 			"DOM",

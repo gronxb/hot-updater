@@ -3,13 +3,13 @@
   "type": "module",
   "version": "0.0.1",
   "bin": {
-    "hot-updater": "./lib/index.mjs"
+    "hot-updater": "./dist/index.mjs"
   },
   "exports": {
     ".": {
-      "types": "./lib/helper.d.ts",
-      "import": "./lib/helper.js",
-      "require": "./lib/helper.js"
+      "types": "./dist/helper.d.ts",
+      "import": "./dist/helper.js",
+      "require": "./dist/helper.js"
     }
   },
   "description": "React Native OTA solution for self-hosted",
