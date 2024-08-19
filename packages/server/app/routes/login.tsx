@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { type LoaderFunctionArgs, redirect } from "@remix-run/node";
 
 export function loader({ context }: LoaderFunctionArgs) {
@@ -10,7 +11,9 @@ export function loader({ context }: LoaderFunctionArgs) {
 export default function LoginPage() {
   return (
     <>
-      <a href="/api/login/github">Sign in with GitHub</a>
+      <Button asChild>
+        <a href="/api/login/github">Sign in with GitHub</a>
+      </Button>
     </>
   );
 }
