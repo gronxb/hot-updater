@@ -63,7 +63,9 @@ export function loader({ context }: LoaderFunctionArgs) {
   });
 }
 
-export default function index() {
+export default function Index() {
+  const { user } = useLoaderData<typeof loader>();
+
   return (
     <div className="flex flex-col w-full min-h-screen bg-muted/40">
       <header className="sticky top-0 z-30 flex items-center gap-4 px-4 border-b h-14 bg-background sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
@@ -84,10 +86,17 @@ export default function index() {
           <div className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
 
           <Avatar>
-            <AvatarImage src="https://github.com/shadcn.png" />
-            <AvatarFallback>CN</AvatarFallback>
+            <AvatarImage src={user.avatarUrl} />
+            <AvatarFallback>
+              {user.username.slice(0, 2).toUpperCase()}
+            </AvatarFallback>
           </Avatar>
+          <p>{user.username}</p>
         </div>
+
+        <form action="/api/logout" method="post">
+          <button type="submit">Sign out</button>
+        </form>
       </header>
       <main className="grid items-start flex-1 gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">
         <Card className="w-full overflow-hidden">
