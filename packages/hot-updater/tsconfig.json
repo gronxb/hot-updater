@@ -3,7 +3,7 @@
 		"moduleResolution": "node16",
 		"module": "Node16",
 		"outDir": "dist",
-    "moduleDetection": "force",
+ 		"moduleDetection": "force",
 		"target": "ES2022", // Node.js 18
 		"lib": [
 			"DOM",
