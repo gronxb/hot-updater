@@ -7,7 +7,6 @@
     "ignore": [
       "**/dist/**",
       "**/build/**",
-      "**/lib/**",
       "node_modules/**",
 
       "**/*.js"
@@ -45,16 +44,16 @@
     "rules": {
       "suspicious": {
         "noExplicitAny": "off",
-        "noArrayIndexKey":"off"
+        "noArrayIndexKey": "off"
       },
-      "correctness":{
+      "correctness": {
         "useExhaustiveDependencies": "off"
       },
       "complexity": {
         "useLiteralKeys": "off"
       },
       "style": {
-        "useNodejsImportProtocol":"off",
+        "useNodejsImportProtocol": "off",
         "noNonNullAssertion": "off",
         "noParameterAssign": "off"
       },
