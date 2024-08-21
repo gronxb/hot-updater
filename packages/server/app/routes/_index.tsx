@@ -1,8 +1,11 @@
+import { Check, Plus, X } from "lucide-react";
+
 /**
  * v0 by Vercel.
  * @see https://v0.dev/t/UGRMCDSNnIz
- * Documentation: https://v0.dev/docs#integrating-generated-code-into-your-nextjs-app
+ * Documentaion: https://v0.dev/docs#integrating-generated-code-into-your-nextjs-app
  */
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Breadcrumb,
@@ -38,13 +41,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { UpdateSource } from "@hot-updater/internal";
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 
+import { formatDateTimeFromBundleVersion } from "@/lib/date";
+import { cn } from "@/lib/utils";
 import {
   type LoaderFunctionArgs,
   type MetaFunction,
   redirect,
 } from "@remix-run/node";
 import { Link, json, useLoaderData } from "@remix-run/react";
+import { useState } from "react";
 
 export const meta: MetaFunction = () => {
   return [
@@ -58,24 +71,128 @@ export function loader({ context }: LoaderFunctionArgs) {
   if (!user) {
     return redirect("/login");
   }
+
+  const updateSources = [
+    {
+      platform: "ios",
+      targetVersion: "1.0",
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
+      forceUpdate: false,
+      enabled: true,
+      description: "Bug fixes and performance improvements",
+      bundleVersion: 20240821000000,
+    },
+    {
+      platform: "ios",
+      targetVersion: "1.0",
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
+      forceUpdate: false,
+      enabled: true,
+      description: "Bug fixes and performance improvements",
+      bundleVersion: 20240821000001,
+    },
+    {
+      platform: "ios",
+      targetVersion: "1.0",
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
+      forceUpdate: false,
+      enabled: true,
+      description: "Bug fixes and performance improvements",
+      bundleVersion: 20240821000002,
+    },
+    {
+      platform: "ios",
+      targetVersion: "1.0",
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
+      forceUpdate: false,
+      enabled: false,
+      description: "Bug fixes and performance improvements",
+      bundleVersion: 20240821000003,
+    },
+    {
+      platform: "ios",
+      targetVersion: "1.0",
+      file: "http://example.com/bundle.zip",
+      hash: "hash",
+      description: "Bug fixes and performance improvements",
+      forceUpdate: false,
+      enabled: true,
+      bundleVersion: 20240821000003,
+    },
+  ] as UpdateSource[];
+
   return json({
     user,
+    updateSources,
   });
 }
 
+const columnHelper = createColumnHelper<UpdateSource>();
+
+const columns = [
+  columnHelper.accessor("platform", {
+    header: "Platform",
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("targetVersion", {
+    header: "Target Version",
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("enabled", {
+    header: "Enabled",
+    cell: (info) =>
+      info.getValue() ? (
+        <div className="flex flex-row items-center gap-2">
+          <Check />
+          <p>Enabled</p>
+        </div>
+      ) : (
+        <div className="flex flex-row items-center gap-2">
+          <X />
+          <p>Disabled</p>
+        </div>
+      ),
+  }),
+  columnHelper.accessor("description", {
+    header: "Description",
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("bundleVersion", {
+    header: "Created At",
+    cell: (info) => formatDateTimeFromBundleVersion(String(info.getValue())),
+  }),
+];
+
 export default function Index() {
-  const { user } = useLoaderData<typeof loader>();
+  const { user, updateSources } = useLoaderData<typeof loader>();
+
+  const table = useReactTable({
+    data: updateSources,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex flex-col w-full min-h-screen bg-muted/40">
+    <div
+      className="flex flex-col w-full min-h-screen overflow-hidden bg-muted/40"
+      onClick={() => {
+        setIsSidebarOpen(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setIsSidebarOpen(false);
+        }
+      }}
+    >
       <header className="sticky top-0 z-30 flex items-center gap-4 px-4 border-b h-14 bg-background sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
         <Breadcrumb className="hidden md:flex">
           <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link to={"/dashboard"}>Dashboard</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbPage>App Updates</BreadcrumbPage>
@@ -107,129 +224,41 @@ export default function Index() {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Platform</TableHead>
-                  <TableHead>Target Version</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Created At</TableHead>
-                  <TableHead>
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell>iOS</TableCell>
-                  <TableCell>2.5.1</TableCell>
-                  <TableCell>Bug fixes and performance improvements</TableCell>
-                  <TableCell>2023-06-15 10:24 AM</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          aria-haspopup="true"
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <MoveHorizontalIcon className="w-4 h-4" />
-                          <span className="sr-only">Toggle menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>View Details</DropdownMenuItem>
-                        <DropdownMenuItem>
-                          Promote to Production
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Android</TableCell>
-                  <TableCell>3.1.0</TableCell>
-                  <TableCell>New features and UI improvements</TableCell>
-                  <TableCell>2023-05-28 03:12 PM</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          aria-haspopup="true"
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <MoveHorizontalIcon className="w-4 h-4" />
-                          <span className="sr-only">Toggle menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>View Details</DropdownMenuItem>
-                        <DropdownMenuItem>
-                          Promote to Production
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>iOS</TableCell>
-                  <TableCell>2.4.2</TableCell>
-                  <TableCell>Crash fixes and stability improvements</TableCell>
-                  <TableCell>2023-04-20 09:48 AM</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          aria-haspopup="true"
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <MoveHorizontalIcon className="w-4 h-4" />
-                          <span className="sr-only">Toggle menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>View Details</DropdownMenuItem>
-                        <DropdownMenuItem>
-                          Promote to Production
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Android</TableCell>
-                  <TableCell>3.0.1</TableCell>
-                  <TableCell>Initial release of the new app version</TableCell>
-                  <TableCell>2023-03-10 04:56 PM</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          aria-haspopup="true"
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <MoveHorizontalIcon className="w-4 h-4" />
-                          <span className="sr-only">Toggle menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>View Details</DropdownMenuItem>
-                        <DropdownMenuItem>
-                          Promote to Production
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
+                {table.getRowModel().rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    className="cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsSidebarOpen(true);
+                    }}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </CardContent>
@@ -241,7 +270,7 @@ export default function Index() {
               size="icon"
               className="fixed bottom-4 right-4 sm:hidden"
             >
-              <PlusIcon className="w-5 h-5" />
+              <Plus className="w-5 h-5" />
               <span className="sr-only">New Update</span>
             </Button>
           </SheetTrigger>
@@ -291,49 +320,25 @@ export default function Index() {
           </SheetContent>
         </Sheet>
       </main>
+      {/* Sidebar */}
+
+      <aside
+        className={cn(
+          "fixed right-0 z-50 flex-col hidden min-w-64 h-full gap-4 p-4 sm:flex bg-muted ease-in-out duration-300",
+          isSidebarOpen ? "translate-x-0" : "translate-x-full",
+        )}
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+      >
+        <X
+          className={cn("fixed w-5 h-5 cursor-pointer top-4 right-4")}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsSidebarOpen(false);
+          }}
+        />
+      </aside>
     </div>
-  );
-}
-
-function MoveHorizontalIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    // biome-ignore lint/a11y/noSvgWithoutTitle: <explanation>
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="18 8 22 12 18 16" />
-      <polyline points="6 8 2 12 6 16" />
-      <line x1="2" x2="22" y1="12" y2="12" />
-    </svg>
-  );
-}
-
-function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    // biome-ignore lint/a11y/noSvgWithoutTitle: <explanation>
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M5 12h14" />
-      <path d="M12 5v14" />
-    </svg>
   );
 }
