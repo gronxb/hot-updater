@@ -49,6 +49,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
+import { Textarea } from "@/components/ui/textarea";
 import { formatDateTimeFromBundleVersion } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import {
@@ -338,9 +339,19 @@ export default function Index() {
             setIsSidebarOpen(false);
           }}
         />
+        <div className="font-medium">Edit</div>
+
+        <div>
+          <label htmlFor="targetVersion">Target Version</label>
+          <Input id="targetVersion" value="13.2" />
+        </div>
+
+        <div>
+          <label htmlFor="description">Description</label>
+          <Textarea id="description" placeholder="hi" />
+        </div>
 
         <div className="flex flex-col gap-1">
-          <div className="font-medium">Edit</div>
           <div className="flex items-center gap-2">
             <Checkbox id="forceUpdate">Force Update</Checkbox>
             <label htmlFor="forceUpdate">Force Update</label>
@@ -359,7 +370,7 @@ export default function Index() {
           <p className="text-xs text-gray-500">
             When disabled, this update will not be available to your users.
           </p>
-          <Button>Save</Button>
+          <Button className="mt-6">Save</Button>
         </div>
       </aside>
     </div>
