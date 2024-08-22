@@ -325,7 +325,7 @@ export default function Index() {
 
       <aside
         className={cn(
-          "fixed right-0 z-50 flex-col hidden min-w-64 h-full gap-4 p-4 sm:flex bg-muted ease-in-out duration-300 shadow",
+          "fixed right-0 z-50 flex-col hidden min-w-64 h-full gap-4 p-4 sm:flex bg-muted ease-in-out duration-300 shadow-lg",
           isSidebarOpen ? "translate-x-0" : "translate-x-full",
         )}
         onClick={(e) => {
