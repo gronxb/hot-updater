@@ -190,6 +190,12 @@ importers:
 
   packages/internal:
     dependencies:
+      cosmiconfig:
+        specifier: ^9.0.0
+        version: 9.0.0(typescript@5.4.5)
+      cosmiconfig-typescript-loader:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@20.9.4)(cosmiconfig@9.0.0(typescript@5.4.5))(typescript@5.4.5)
       picocolors:
         specifier: ^1.0.0
         version: 1.0.0

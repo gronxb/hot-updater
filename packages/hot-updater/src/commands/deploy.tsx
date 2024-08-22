@@ -1,5 +1,4 @@
 import { Banner } from "@/components/Banner.js";
-import { getCwd } from "@/cwd.js";
 import { useLog } from "@/hooks/useLog.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useSpinner } from "@/hooks/useSpinner.js";
@@ -8,8 +7,12 @@ import { delay } from "@/utils/delay.js";
 import { formatDate } from "@/utils/formatDate.js";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion.js";
 import { getFileHashFromFile } from "@/utils/getFileHash.js";
-import { loadConfig } from "@/utils/loadConfig.js";
-import { type Platform, filterTargetVersion } from "@hot-updater/internal";
+import {
+  type Platform,
+  filterTargetVersion,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/internal";
 import { StatusMessage, TextInput } from "@inkjs/ui";
 import fs from "fs/promises";
 import { Box } from "ink";

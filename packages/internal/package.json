@@ -4,8 +4,17 @@
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "package.json"],
-  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "keywords": [
+    "react-native",
+    "code",
+    "push",
+    "code-push",
+    "self-hosted"
+  ],
   "license": "MIT",
   "scripts": {
     "prepare": "tsc --project tsconfig.build.json",
@@ -22,6 +31,8 @@
     "access": "public"
   },
   "dependencies": {
+    "cosmiconfig": "^9.0.0",
+    "cosmiconfig-typescript-loader": "^5.0.0",
     "picocolors": "^1.0.0",
     "semver": "^7.6.2",
     "workspace-tools": "^0.36.4"

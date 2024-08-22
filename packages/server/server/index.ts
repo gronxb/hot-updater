@@ -101,20 +101,20 @@ app.use(async (c, next) => {
   })(c, next);
 });
 
-/**
- * Start the production server
- */
+// /**
+//  * Start the production server
+//  */
 
-if (isProductionMode) {
-  serve(
-    {
-      ...app,
-      port: Number(process.env.PORT) || 5173,
-    },
-    async (info) => {
-      console.log(`🚀 Server started on port ${info.port}`);
-    },
-  );
-}
+// if (isProductionMode) {
+//   serve(
+//     {
+//       ...app,
+//       port: Number(process.env.PORT) || 5173,
+//     },
+//     async (info) => {
+//       console.log(`🚀 Server started on port ${info.port}`);
+//     },
+//   );
+// }
 
 export default app;

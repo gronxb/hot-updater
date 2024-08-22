@@ -1,10 +1,13 @@
 import { Banner } from "@/components/Banner.js";
 import { BundleInfoTable } from "@/components/BundleInfoTable.js";
 import { SelectInput } from "@/components/SelectInput.js";
-import { getCwd } from "@/cwd.js";
 import { useUpdateSources } from "@/hooks/useUpdateSources.js";
-import { loadConfig } from "@/utils/loadConfig.js";
-import type { Platform, UpdateSource } from "@hot-updater/internal";
+import {
+  type Platform,
+  type UpdateSource,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/internal";
 import { StatusMessage } from "@inkjs/ui";
 import { Box, Text } from "ink";
 import { option } from "pastel";
