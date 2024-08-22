@@ -66,6 +66,9 @@ importers:
       '@hot-updater/metro':
         specifier: workspace:^
         version: link:../../plugins/metro
+      '@hot-updater/server':
+        specifier: workspace:^
+        version: link:../../packages/server
       '@react-native-community/cli-platform-android':
         specifier: 13.6.6
         version: 13.6.6
@@ -364,6 +367,9 @@ importers:
       tailwindcss:
         specifier: ^3.4.4
         version: 3.4.4
+      typescript-transform-paths:
+        specifier: ^3.4.7
+        version: 3.4.7(typescript@5.4.5)
       vite:
         specifier: ^5.1.0
         version: 5.2.11(@types/node@20.9.4)(terser@5.31.0)

@@ -20,13 +20,14 @@
     "react-native": "0.74.1"
   },
   "devDependencies": {
-    "@hot-updater/internal": "workspace:^",
     "@babel/core": "^7.20.0",
     "@babel/preset-env": "^7.20.0",
     "@babel/runtime": "^7.24.5",
     "@callstack/repack": "^4.0.0",
     "@hot-updater/aws": "workspace:^",
+    "@hot-updater/internal": "workspace:^",
     "@hot-updater/metro": "workspace:^",
+    "@hot-updater/server": "workspace:^",
     "@react-native-community/cli-platform-android": "13.6.6",
     "@react-native/babel-preset": "0.74.83",
     "@react-native/eslint-config": "0.74.83",

@@ -18,6 +18,7 @@ export default defineConfig({
         v3_throwAbortReason: true,
         unstable_singleFetch: true,
       },
+      buildDirectory: "build",
       serverBuildFile: "remix.js",
       buildEnd: async () => {
         await esbuild

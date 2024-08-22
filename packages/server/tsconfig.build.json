@@ -9,8 +9,12 @@
     "types": ["react", "better-sqlite3"],
     "sourceMap": true,
     "declaration": true,
-    "outDir": "dist",
+    "emitDeclarationOnly": true,
+    "outDir": "build",
     "baseUrl": ".",
+    "paths": {
+      "@/*": ["./app/*"],
+    },
   },
   "include": ["index.ts"],
   "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]

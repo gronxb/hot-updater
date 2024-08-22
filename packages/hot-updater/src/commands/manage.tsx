@@ -9,7 +9,7 @@ export default function Manage() {
     serve(
       {
         ...app,
-        port: 3000,
+        port: 5173,
       },
       async (info) => {
         console.log(`🚀 Server started on port ${info.port}`);

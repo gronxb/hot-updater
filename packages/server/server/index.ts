@@ -1,10 +1,10 @@
+import path from "path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { AppLoadContext, ServerBuild } from "@remix-run/node";
 import { Hono } from "hono";
 import { verifyRequestOrigin } from "lucia";
 import { remix } from "./dev/handler.js";
-import { importDevBuild } from "./dev/server.js";
 import { lucia } from "./lib/auth.js";
 import type { Context } from "./lib/context.js";
 import { githubLoginRouter } from "./routes/login/github.js";
@@ -12,22 +12,29 @@ import { logoutRouter } from "./routes/logout.js";
 
 const mode =
   process.env.NODE_ENV === "test" ? "development" : process.env.NODE_ENV;
-const isProductionMode = mode === "production";
 
 const app = new Hono<Context>();
 
 /**
  * Serve assets files from build/client/assets
  */
-app.use("/assets/*", serveStatic({ root: "./build/client" }));
-
-/**
- * Serve public files
- */
 app.use(
-  "*",
-  serveStatic({ root: isProductionMode ? "./build/client" : "./public" }),
+  "/assets/*",
+  serveStatic({
+    /**
+     * support pnpm
+     */
+    root: "./node_modules/@hot-updater/server/build/client/assets",
+    rewriteRequestPath: (path) => {
+      return path.replace("/assets", "");
+    },
+  }),
 );
+
+// /**
+//  * Serve public files
+//  */
+// app.use("*", serveStatic({ root: "./" }));
 
 /**
  * Lucia CSRF
@@ -82,12 +89,10 @@ app.route("/api", logoutRouter);
  * Add remix middleware to Hono server
  */
 app.use(async (c, next) => {
-  const build = (isProductionMode
-    ? // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      // eslint-disable-next-line import/no-unresolved -- this expected until you build the app
-      await import("../build/server/remix.js")
-    : await importDevBuild()) as unknown as ServerBuild;
+  const build = (await import(
+    // @ts-ignore
+    "../build/server/remix.js"
+  )) as unknown as ServerBuild;
 
   return remix({
     build,
