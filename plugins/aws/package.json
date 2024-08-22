@@ -21,6 +21,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
+    "@hot-updater/internal": "workspace:^",
     "@aws-sdk/client-s3": "^3.441.0",
     "@aws-sdk/lib-storage": "^3.600.0",
     "mime": "^4.0.3"

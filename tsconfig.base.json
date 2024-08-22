@@ -7,7 +7,6 @@
     "isolatedModules": true,
     "paths": {
       "hot-updater": ["./packages/hot-updater/src/index.ts"],
-      "@hot-updater/internal": ["./packages/internal/src/index.ts"],
       "@hot-updater/aws": ["./plugins/aws/src/index.ts"]
     },
     "strict": true,

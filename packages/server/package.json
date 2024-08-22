@@ -1,6 +1,5 @@
 {
-  "name": "server",
-  "private": true,
+  "name": "@hot-updater/server",
   "sideEffects": false,
   "type": "module",
   "scripts": {

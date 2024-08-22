@@ -9,9 +9,6 @@
     "declaration": true,
     "outDir": "dist",
     "baseUrl": ".",
-    "paths": {
-      "@hot-updater/internal": ["../../packages/internal/src/index.ts"]
-    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]

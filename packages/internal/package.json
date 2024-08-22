@@ -2,23 +2,23 @@
   "name": "@hot-updater/internal",
   "version": "0.0.4",
   "description": "React Native OTA solution for self-hosted",
-  "main": "dist/index.js",
+  "sideEffects": false,
+  "main": "dist/index.mjs",
+  "module": "dist/index.cjs",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist",
-    "package.json"
-  ],
-  "keywords": [
-    "react-native",
-    "code",
-    "push",
-    "code-push",
-    "self-hosted"
-  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "package.json"],
+  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
   "license": "MIT",
   "scripts": {
-    "prepare": "tsc --project tsconfig.build.json",
-    "build": "tsc --project tsconfig.build.json",
+    "prepare": "tsc --project tsconfig.build.json && node esbuild.config.js",
+    "build": "tsc --project tsconfig.build.json && node esbuild.config.js",
     "test:type": "tsc --noEmit"
   },
   "repository": "https://github.com/gronxb/hot-updater",

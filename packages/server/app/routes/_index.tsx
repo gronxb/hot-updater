@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { UpdateSource } from "@hot-updater/internal";
+import { type UpdateSource, getCwd, loadConfig } from "@hot-updater/internal";
 import {
   createColumnHelper,
   flexRender,
@@ -48,65 +48,18 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export function loader({ context }: LoaderFunctionArgs) {
+export async function loader({ context }: LoaderFunctionArgs) {
   const { user } = context;
   if (!user) {
     return redirect("/login");
   }
 
-  const updateSources = [
-    {
-      platform: "ios",
-      targetVersion: "1.0",
-      file: "http://example.com/bundle.zip",
-      hash: "hash",
-      forceUpdate: false,
-      enabled: true,
-      description: "Bug fixes and performance improvements",
-      bundleVersion: 20240821000000,
-    },
-    {
-      platform: "ios",
-      targetVersion: "1.0",
-      file: "http://example.com/bundle.zip",
-      hash: "hash",
-      forceUpdate: false,
-      enabled: true,
-      description: "Bug fixes and performance improvements",
-      bundleVersion: 20240821000001,
-    },
-    {
-      platform: "ios",
-      targetVersion: "1.0",
-      file: "http://example.com/bundle.zip",
-      hash: "hash",
-      forceUpdate: false,
-      enabled: true,
-      description: "Bug fixes and performance improvements",
-      bundleVersion: 20240821000002,
-    },
-    {
-      platform: "ios",
-      targetVersion: "1.0",
-      file: "http://example.com/bundle.zip",
-      hash: "hash",
-      forceUpdate: false,
-      enabled: false,
-      description: "Bug fixes and performance improvements",
-      bundleVersion: 20240821000003,
-    },
-    {
-      platform: "ios",
-      targetVersion: "1.0",
-      file: "http://example.com/bundle.zip",
-      hash: "hash",
-      description: "Bug fixes and performance improvements",
-      forceUpdate: false,
-      enabled: true,
-      bundleVersion: 20240821000003,
-    },
-  ] as UpdateSource[];
+  const { deploy } = await loadConfig();
+  const deployPlugin = deploy({
+    cwd: getCwd(),
+  });
 
+  const updateSources = await deployPlugin.getUpdateJson();
   return json({
     user,
     updateSources,
