@@ -1,21 +1,13 @@
-import { Check, Plus, X } from "lucide-react";
-
-/**
- * v0 by Vercel.
- * @see https://v0.dev/t/UGRMCDSNnIz
- * Documentaion: https://v0.dev/docs#integrating-generated-code-into-your-nextjs-app
- */
+import { Check, X } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -23,16 +15,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -49,15 +31,14 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
-import { Textarea } from "@/components/ui/textarea";
+import { Sidebar } from "@/components/Sidebar";
 import { formatDateTimeFromBundleVersion } from "@/lib/date";
-import { cn } from "@/lib/utils";
 import {
   type LoaderFunctionArgs,
   type MetaFunction,
   redirect,
 } from "@remix-run/node";
-import { Link, json, useLoaderData } from "@remix-run/react";
+import { json, useLoaderData } from "@remix-run/react";
 import { useState } from "react";
 
 export const meta: MetaFunction = () => {
@@ -264,115 +245,9 @@ export default function Index() {
             </Table>
           </CardContent>
         </Card>
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="fixed bottom-4 right-4 sm:hidden"
-            >
-              <Plus className="w-5 h-5" />
-              <span className="sr-only">New Update</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="sm:max-w-md">
-            <div className="grid gap-6 p-6">
-              <div className="grid gap-1">
-                <div className="text-2xl font-medium">iOS 2.5.1</div>
-                <div className="text-muted-foreground">
-                  Bug fixes and performance improvements
-                </div>
-              </div>
-              <div className="grid gap-4">
-                <div className="grid gap-2">
-                  <div className="font-medium">Platform</div>
-                  <div>iOS</div>
-                </div>
-                <div className="grid gap-2">
-                  <div className="font-medium">Target Version</div>
-                  <div>2.5.1</div>
-                </div>
-                <div className="grid gap-2">
-                  <div className="font-medium">Description</div>
-                  <div>
-                    This update includes bug fixes and performance improvements
-                    to enhance the user experience.
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <div className="font-medium">Created At</div>
-                  <div>2023-06-15 10:24 AM</div>
-                </div>
-                <div className="grid gap-2">
-                  <div className="font-medium">Actions</div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="forceUpdate">Force Update</Checkbox>
-                    <Checkbox id="enabled" defaultChecked>
-                      Enabled
-                    </Checkbox>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button>Promote to Production</Button>
-                <Button variant="outline">Delete</Button>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
       </main>
-      {/* Sidebar */}
 
-      <aside
-        className={cn(
-          "fixed right-0 z-50 flex-col hidden min-w-64 h-full gap-4 p-4 sm:flex bg-muted ease-in-out duration-300 shadow-lg",
-          isSidebarOpen ? "translate-x-0" : "translate-x-full",
-        )}
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
-      >
-        <X
-          className={cn("fixed w-5 h-5 cursor-pointer top-4 right-4")}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsSidebarOpen(false);
-          }}
-        />
-        <div className="font-medium">Edit</div>
-
-        <div>
-          <label htmlFor="targetVersion">Target Version</label>
-          <Input id="targetVersion" value="13.2" />
-        </div>
-
-        <div>
-          <label htmlFor="description">Description</label>
-          <Textarea id="description" placeholder="hi" />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Checkbox id="forceUpdate">Force Update</Checkbox>
-            <label htmlFor="forceUpdate">Force Update</label>
-          </div>
-          <p className="text-xs text-gray-500">
-            When enabled, this update will require users to update before
-            continuing to use the application.
-          </p>
-
-          <div className="flex items-center gap-2">
-            <Checkbox id="enabled" defaultChecked>
-              Enabled
-            </Checkbox>
-            <label htmlFor="enabled">Enabled</label>
-          </div>
-          <p className="text-xs text-gray-500">
-            When disabled, this update will not be available to your users.
-          </p>
-          <Button className="mt-6">Save</Button>
-        </div>
-      </aside>
+      <Sidebar open={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
     </div>
   );
 }
