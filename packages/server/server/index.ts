@@ -3,12 +3,12 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import type { AppLoadContext, ServerBuild } from "@remix-run/node";
 import { Hono } from "hono";
 import { verifyRequestOrigin } from "lucia";
-import { remix } from "./dev/handler";
-import { importDevBuild } from "./dev/server";
-import { lucia } from "./lib/auth";
-import type { Context } from "./lib/context";
-import { githubLoginRouter } from "./routes/login/github";
-import { logoutRouter } from "./routes/logout";
+import { remix } from "./dev/handler.js";
+import { importDevBuild } from "./dev/server.js";
+import { lucia } from "./lib/auth.js";
+import type { Context } from "./lib/context.js";
+import { githubLoginRouter } from "./routes/login/github.js";
+import { logoutRouter } from "./routes/logout.js";
 
 const mode =
   process.env.NODE_ENV === "test" ? "development" : process.env.NODE_ENV;

@@ -2,9 +2,9 @@ import { BetterSqlite3Adapter } from "@lucia-auth/adapter-sqlite";
 import { GitHub } from "arctic";
 import dotenv from "dotenv";
 import { Lucia } from "lucia";
-import { db } from "./db";
+import { db } from "./db.js";
 
-import type { DatabaseUser } from "./db";
+import type { DatabaseUser } from "./db.js";
 
 dotenv.config();
 
