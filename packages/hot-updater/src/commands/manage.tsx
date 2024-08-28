@@ -3,7 +3,6 @@ import app from "@hot-updater/server";
 import { Box, Text } from "ink";
 import { useEffect } from "react";
 
-console.log(app);
 export default function Manage() {
   useEffect(() => {
     serve(

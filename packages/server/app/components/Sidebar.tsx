@@ -32,7 +32,7 @@ export const Sidebar = ({ onClose, open }: SidebarProps) => {
 
       <div>
         <label htmlFor="targetVersion">Target Version</label>
-        <Input id="targetVersion" value="13.2" />
+        <Input id="targetVersion" />
       </div>
 
       <div>

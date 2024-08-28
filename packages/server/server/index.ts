@@ -34,7 +34,16 @@ app.use(
 // /**
 //  * Serve public files
 //  */
-// app.use("*", serveStatic({ root: "./" }));
+app.use(
+  "*",
+  serveStatic({
+    root: "./node_modules/@hot-updater/server/build/client",
+    rewriteRequestPath: (path) => {
+      console.log("path", path);
+      return path.replace("/client", "");
+    },
+  }),
+);
 
 /**
  * Lucia CSRF
