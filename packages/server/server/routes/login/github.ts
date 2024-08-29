@@ -1,4 +1,3 @@
-import { identifier } from "@electric-sql/pglite/template";
 import { OAuth2RequestError, generateState } from "arctic";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
@@ -25,7 +24,6 @@ githubLoginRouter.get("/login/github", async (c) => {
 });
 
 githubLoginRouter.get("/login/github/callback", async (c) => {
-  console.log("callback");
   const code = c.req.query("code")?.toString() ?? null;
   const state = c.req.query("state")?.toString() ?? null;
   const storedState = getCookie(c).github_oauth_state ?? null;
@@ -40,10 +38,9 @@ githubLoginRouter.get("/login/github/callback", async (c) => {
       },
     });
     const githubUser: GitHubUser = await githubUserResponse.json();
-    const results =
-      await db.sql`SELECT * FROM user WHERE github_id = ${identifier`${githubUser.id}`} LIMIT 1`;
-    const existingUser = results.rows[0] as DatabaseUser | null;
-
+    const existingUser: DatabaseUser | null = (db
+      .prepare("SELECT * FROM user WHERE github_id = ?")
+      .get(githubUser.id) ?? null) as DatabaseUser | null;
     if (existingUser) {
       const session = await lucia.createSession(existingUser.id, {});
       c.header(
@@ -55,15 +52,14 @@ githubLoginRouter.get("/login/github/callback", async (c) => {
     }
 
     const userId = generateId(15);
-    await db.query(
-      "INSERT INTO user (id, github_id, username, avatar_url, email) VALUES ($1, $2, $3, $4, $5)",
-      [
-        userId,
-        githubUser.id,
-        githubUser.login,
-        githubUser.avatar_url,
-        githubUser.email,
-      ],
+    db.prepare(
+      "INSERT INTO user (id, github_id, username, avatar_url, email) VALUES (?, ?, ?, ?, ?)",
+    ).run(
+      userId,
+      githubUser.id,
+      githubUser.login,
+      githubUser.avatar_url,
+      githubUser.email,
     );
     const session = await lucia.createSession(userId, {});
     c.header("Set-Cookie", lucia.createSessionCookie(session.id).serialize(), {

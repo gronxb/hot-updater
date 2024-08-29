@@ -1,4 +1,4 @@
-import { PostgresJsAdapter } from "@lucia-auth/adapter-postgresql";
+import { BetterSqlite3Adapter } from "@lucia-auth/adapter-sqlite";
 
 import { GitHub } from "arctic";
 import dotenv from "dotenv";
@@ -9,7 +9,7 @@ import type { DatabaseUser } from "./db.js";
 
 dotenv.config();
 
-const adapter = new PostgresJsAdapter(db, {
+const adapter = new BetterSqlite3Adapter(db, {
   user: "user",
   session: "session",
 });
