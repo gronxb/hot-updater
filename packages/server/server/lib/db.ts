@@ -1,6 +1,7 @@
 import sqlite from "better-sqlite3";
+import type { Database } from "better-sqlite3";
 
-export const db = sqlite("database.db");
+export const db: Database = sqlite("database.db");
 
 db.exec(`CREATE TABLE IF NOT EXISTS user (
     id TEXT NOT NULL PRIMARY KEY,
