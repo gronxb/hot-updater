@@ -1,6 +1,6 @@
-import sqlite from "better-sqlite3";
+import { PGlite } from "@electric-sql/pglite";
 
-export const db = sqlite("database.db");
+export const db = new PGlite();
 
 db.exec(`CREATE TABLE IF NOT EXISTS user (
     id TEXT NOT NULL PRIMARY KEY,

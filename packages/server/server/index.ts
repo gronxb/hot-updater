@@ -1,5 +1,3 @@
-import path from "path";
-import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { AppLoadContext, ServerBuild } from "@remix-run/node";
 import { Hono } from "hono";

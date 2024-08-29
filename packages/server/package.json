@@ -19,8 +19,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.2.4",
     "@hono/node-server": "^1.12.1",
     "@hot-updater/internal": "workspace:^",
+    "@lucia-auth/adapter-postgresql": "^3.1.2",
     "@lucia-auth/adapter-sqlite": "^3.0.2",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-checkbox": "^1.1.1",
@@ -33,7 +35,6 @@
     "@remix-run/server-runtime": "^2.11.2",
     "@tanstack/react-table": "^8.20.1",
     "arctic": "^1.9.2",
-    "better-sqlite3": "^11.1.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.5",
@@ -49,11 +50,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240821.1",
     "@hono/vite-dev-server": "^0.14.0",
-    "@libsql/client": "^0.9.0",
-    "@miniflare/d1": "^2.14.2",
-    "@miniflare/web-sockets": "^2.14.2",
     "@remix-run/dev": "^2.11.2",
-    "@types/better-sqlite3": "^7.6.11",
     "@types/react": "^18.2.20",
     "@types/react-dom": "^18.2.7",
     "autoprefixer": "^10.4.19",
