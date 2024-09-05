@@ -53,8 +53,14 @@ githubLoginRouter.get("/login/github/callback", async (c) => {
 
     const userId = generateId(15);
     db.prepare(
-      "INSERT INTO user (id, github_id, username) VALUES (?, ?, ?)",
-    ).run(userId, githubUser.id, githubUser.login);
+      "INSERT INTO user (id, github_id, username, avatar_url, email) VALUES (?, ?, ?, ?, ?)",
+    ).run(
+      userId,
+      githubUser.id,
+      githubUser.login,
+      githubUser.avatar_url,
+      githubUser.email,
+    );
     const session = await lucia.createSession(userId, {});
     c.header("Set-Cookie", lucia.createSessionCookie(session.id).serialize(), {
       append: true,
@@ -75,4 +81,7 @@ githubLoginRouter.get("/login/github/callback", async (c) => {
 interface GitHubUser {
   id: string;
   login: string;
+  avatar_url: string;
+  name: string;
+  email: string;
 }

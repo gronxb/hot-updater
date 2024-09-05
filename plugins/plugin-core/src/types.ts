@@ -1,3 +1,7 @@
+import type { Platform, UpdateSource } from "@hot-updater/core";
+
+export type { Platform, UpdateSource } from "@hot-updater/core";
+
 export type HotUpdaterReadStrategy = () =>
   | Promise<{
       updateJson: string | null;
@@ -7,8 +11,6 @@ export type HotUpdaterReadStrategy = () =>
       updateJson: string | null;
       files: string[];
     };
-
-export type Platform = "ios" | "android";
 
 export interface BasePluginArgs {
   cwd: string;
@@ -27,23 +29,6 @@ export interface BasePluginArgs {
 export interface BuildPluginArgs extends BasePluginArgs {
   platform: Platform;
 }
-
-export interface UpdateSource {
-  platform: Platform;
-  targetVersion: string;
-  bundleVersion: number;
-  forceUpdate: boolean;
-  enabled: boolean;
-  file: string;
-  hash: string;
-  description?: string;
-}
-
-export type UpdateSourceArg =
-  | string
-  | UpdateSource[]
-  | (() => Promise<UpdateSource[]>)
-  | (() => UpdateSource[]);
 
 export interface DeployPlugin {
   getUpdateJson: (refresh?: boolean) => Promise<UpdateSource[]>;
@@ -64,3 +49,13 @@ export interface DeployPlugin {
   }>;
   deleteBundle: (platform: Platform, bundleVersion: number) => Promise<string>;
 }
+
+export type Config = {
+  server: string;
+  secretKey: string;
+  build: (args: BuildPluginArgs) => Promise<{
+    buildPath: string;
+    outputs: string[];
+  }>;
+  deploy: (args: BasePluginArgs) => DeployPlugin;
+};

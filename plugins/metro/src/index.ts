@@ -1,5 +1,5 @@
 import path from "path";
-import type { BuildPluginArgs } from "@hot-updater/internal";
+import type { BuildPluginArgs } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import Metro from "metro";
 import type { InputConfigT } from "metro-config";

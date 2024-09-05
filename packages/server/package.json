@@ -1,24 +1,41 @@
 {
-  "name": "server",
-  "private": true,
+  "name": "@hot-updater/server",
   "sideEffects": false,
   "type": "module",
+  "types": "build/index.d.ts",
+  "main": "build/server/index.js",
+  "module": "build/server/index.js",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/server/index.js",
+      "require": "./build/server/index.js"
+    }
+  },
   "scripts": {
-    "build": "remix vite:build",
+    "build": "remix vite:build && tsc --project tsconfig.build.json",
+    "build:dts": "tsc --project tsconfig.build.json",
     "dev": "remix vite:dev",
-    "start": "remix-serve ./build/server/index.js",
-    "typecheck": "tsc"
+    "start": "node ./build/server/index.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.2.4",
     "@hono/node-server": "^1.12.1",
+    "@hot-updater/plugin-core": "workspace:^",
     "@lucia-auth/adapter-sqlite": "^3.0.2",
+    "@radix-ui/react-avatar": "^1.1.0",
+    "@radix-ui/react-checkbox": "^1.1.1",
+    "@radix-ui/react-dialog": "^1.1.1",
+    "@radix-ui/react-dropdown-menu": "^2.1.1",
     "@radix-ui/react-slot": "^1.1.0",
     "@remix-run/node": "^2.11.2",
     "@remix-run/react": "^2.11.2",
     "@remix-run/serve": "^2.11.2",
     "@remix-run/server-runtime": "^2.11.2",
+    "@tanstack/react-table": "^8.20.1",
     "arctic": "^1.9.2",
-    "better-sqlite3": "^11.1.2",
+    "better-sqlite3": "^11.2.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.5",
@@ -32,6 +49,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240821.1",
     "@hono/vite-dev-server": "^0.14.0",
     "@remix-run/dev": "^2.11.2",
     "@types/better-sqlite3": "^7.6.11",
@@ -41,6 +59,7 @@
     "postcss": "^8.4.38",
     "shadcn-ui": "^0.8.0",
     "tailwindcss": "^3.4.4",
+    "typescript-transform-paths": "^3.4.7",
     "vite": "^5.1.0",
     "vite-tsconfig-paths": "^4.2.1"
   },

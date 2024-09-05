@@ -10,16 +10,6 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, SafeAreaView, Text } from "react-native";
 
-HotUpdater.init({
-  source: "https://gronxb.s3.ap-northeast-2.amazonaws.com/update.json",
-  onError: (e) => {
-    console.error("Hot Updater error", e);
-  },
-  onSuccess: async (status) => {
-    console.log("Hot Updater success", status);
-  },
-});
-
 function App(): React.JSX.Element {
   const [version, setVersion] = useState<number | null>(null);
 

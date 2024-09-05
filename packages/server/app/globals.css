@@ -67,3 +67,7 @@
     @apply bg-background text-foreground;
   }
 }
+
+body {
+  font-family: 'Inter', sans-serif;
+}

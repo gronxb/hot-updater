@@ -12,7 +12,7 @@ import type {
   BasePluginArgs,
   DeployPlugin,
   UpdateSource,
-} from "@hot-updater/internal";
+} from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
 import { streamToString } from "./utils/streamToString";

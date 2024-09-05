@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ESNext",
+    "noImplicitAny": false,
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "types": ["react"],
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "build",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./app/*"],
+    },
+  },
+  "include": ["index.ts"],
+  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.spec.ts"]
+}

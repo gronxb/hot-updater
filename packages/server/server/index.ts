@@ -1,32 +1,46 @@
-import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { AppLoadContext, ServerBuild } from "@remix-run/node";
 import { Hono } from "hono";
 import { verifyRequestOrigin } from "lucia";
-import { remix } from "./dev/handler";
-import { importDevBuild } from "./dev/server";
-import { lucia } from "./lib/auth";
-import type { Context } from "./lib/context";
-import { githubLoginRouter } from "./routes/login/github";
-import { logoutRouter } from "./routes/logout";
+import { remix } from "./dev/handler.js";
+import { lucia } from "./lib/auth.js";
+import type { Context } from "./lib/context.js";
+import { githubLoginRouter } from "./routes/login/github.js";
+import { logoutRouter } from "./routes/logout.js";
 
 const mode =
   process.env.NODE_ENV === "test" ? "development" : process.env.NODE_ENV;
-const isProductionMode = mode === "production";
 
 const app = new Hono<Context>();
 
 /**
  * Serve assets files from build/client/assets
  */
-app.use("/assets/*", serveStatic({ root: "./build/client" }));
+app.use(
+  "/assets/*",
+  serveStatic({
+    /**
+     * support pnpm
+     */
+    root: "./node_modules/@hot-updater/server/build/client/assets",
+    rewriteRequestPath: (path) => {
+      return path.replace("/assets", "");
+    },
+  }),
+);
 
-/**
- * Serve public files
- */
+// /**
+//  * Serve public files
+//  */
 app.use(
   "*",
-  serveStatic({ root: isProductionMode ? "./build/client" : "./public" }),
+  serveStatic({
+    root: "./node_modules/@hot-updater/server/build/client",
+    rewriteRequestPath: (path) => {
+      console.log("path", path);
+      return path.replace("/client", "");
+    },
+  }),
 );
 
 /**
@@ -82,12 +96,10 @@ app.route("/api", logoutRouter);
  * Add remix middleware to Hono server
  */
 app.use(async (c, next) => {
-  const build = (isProductionMode
-    ? // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      // eslint-disable-next-line import/no-unresolved -- this expected until you build the app
-      await import("../build/server/remix.js")
-    : await importDevBuild()) as unknown as ServerBuild;
+  const build = (await import(
+    // @ts-ignore
+    "../build/server/remix.js"
+  )) as unknown as ServerBuild;
 
   return remix({
     build,
@@ -101,20 +113,20 @@ app.use(async (c, next) => {
   })(c, next);
 });
 
-/**
- * Start the production server
- */
+// /**
+//  * Start the production server
+//  */
 
-if (isProductionMode) {
-  serve(
-    {
-      ...app,
-      port: Number(process.env.PORT) || 5173,
-    },
-    async (info) => {
-      console.log(`🚀 Server started on port ${info.port}`);
-    },
-  );
-}
+// if (isProductionMode) {
+//   serve(
+//     {
+//       ...app,
+//       port: Number(process.env.PORT) || 5173,
+//     },
+//     async (info) => {
+//       console.log(`🚀 Server started on port ${info.port}`);
+//     },
+//   );
+// }
 
 export default app;

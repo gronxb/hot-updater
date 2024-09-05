@@ -1,11 +1,9 @@
 import { Banner } from "@/components/Banner.js";
 import { SelectInput } from "@/components/SelectInput.js";
-import { getCwd } from "@/cwd.js";
 import { useLog } from "@/hooks/useLog.js";
 import { useSpinner } from "@/hooks/useSpinner.js";
 import { useUpdateSources } from "@/hooks/useUpdateSources.js";
-import { loadConfig } from "@/utils/loadConfig.js";
-import type { Platform } from "@hot-updater/internal";
+import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { StatusMessage } from "@inkjs/ui";
 import { Box, Text, useApp } from "ink";
 import { option } from "pastel";
