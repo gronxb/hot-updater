@@ -1,4 +1,4 @@
-import type { Platform } from "@hot-updater/internal";
+import type { Platform } from "@hot-updater/plugin-core";
 import { Select } from "@inkjs/ui";
 import { useState } from "react";
 

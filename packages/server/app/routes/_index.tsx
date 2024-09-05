@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { type UpdateSource, getCwd, loadConfig } from "@hot-updater/internal";
+import { type UpdateSource, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import {
   createColumnHelper,
   flexRender,

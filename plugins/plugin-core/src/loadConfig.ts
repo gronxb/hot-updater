@@ -1,7 +1,7 @@
 import { cosmiconfig } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { getCwd } from "./cwd.js";
-import type { Config } from "./helper.js";
+import type { Config } from "./types.js";
 
 export const loadConfig = async () => {
   const result = await cosmiconfig("hot-updater", {

@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/internal",
+  "name": "@hot-updater/core",
   "version": "0.0.4",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
@@ -31,11 +31,7 @@
     "access": "public"
   },
   "dependencies": {
-    "cosmiconfig": "^9.0.0",
-    "cosmiconfig-typescript-loader": "^5.0.0",
-    "picocolors": "^1.0.0",
-    "semver": "^7.6.2",
-    "workspace-tools": "^0.36.4"
+    "semver": "^7.6.2"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.441.0",

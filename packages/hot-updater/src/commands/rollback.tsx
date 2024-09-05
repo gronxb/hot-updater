@@ -7,7 +7,7 @@ import {
   type UpdateSource,
   getCwd,
   loadConfig,
-} from "@hot-updater/internal";
+} from "@hot-updater/plugin-core";
 import { StatusMessage } from "@inkjs/ui";
 import { Box, Text } from "ink";
 import { option } from "pastel";

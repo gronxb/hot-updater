@@ -1,8 +1,6 @@
-import {
-  type DeployPlugin,
-  type Platform,
-  filterTargetVersion,
-} from "@hot-updater/internal";
+import type { DeployPlugin, Platform } from "@hot-updater/plugin-core";
+
+import { filterTargetVersion } from "@hot-updater/core";
 import { useAsyncMemo } from "./useAsyncMemo.js";
 
 export interface UpdateSourcesOptions {

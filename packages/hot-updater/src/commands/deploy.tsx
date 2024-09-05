@@ -7,12 +7,8 @@ import { delay } from "@/utils/delay.js";
 import { formatDate } from "@/utils/formatDate.js";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion.js";
 import { getFileHashFromFile } from "@/utils/getFileHash.js";
-import {
-  type Platform,
-  filterTargetVersion,
-  getCwd,
-  loadConfig,
-} from "@hot-updater/internal";
+import { filterTargetVersion } from "@hot-updater/core";
+import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { StatusMessage, TextInput } from "@inkjs/ui";
 import fs from "fs/promises";
 import { Box } from "ink";

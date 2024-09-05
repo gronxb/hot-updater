@@ -22,7 +22,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.2.4",
     "@hono/node-server": "^1.12.1",
-    "@hot-updater/internal": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
     "@lucia-auth/adapter-sqlite": "^3.0.2",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-checkbox": "^1.1.1",

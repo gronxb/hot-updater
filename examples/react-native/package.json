@@ -25,7 +25,7 @@
     "@babel/runtime": "^7.24.5",
     "@callstack/repack": "^4.0.0",
     "@hot-updater/aws": "workspace:^",
-    "@hot-updater/internal": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
     "@hot-updater/metro": "workspace:^",
     "@hot-updater/server": "workspace:^",
     "@react-native-community/cli-platform-android": "13.6.6",

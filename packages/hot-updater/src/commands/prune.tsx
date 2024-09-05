@@ -3,7 +3,7 @@ import { SelectInput } from "@/components/SelectInput.js";
 import { useLog } from "@/hooks/useLog.js";
 import { useSpinner } from "@/hooks/useSpinner.js";
 import { useUpdateSources } from "@/hooks/useUpdateSources.js";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/internal";
+import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { StatusMessage } from "@inkjs/ui";
 import { Box, Text, useApp } from "ink";
 import { option } from "pastel";

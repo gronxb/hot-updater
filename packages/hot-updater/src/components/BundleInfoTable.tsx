@@ -1,5 +1,5 @@
 import { formatDateTimeFromBundleVersion } from "@/utils/formatDate.js";
-import type { UpdateSource } from "@hot-updater/internal";
+import type { UpdateSource } from "@hot-updater/core";
 import { Text } from "ink";
 import { Table } from "./Table.js";
 

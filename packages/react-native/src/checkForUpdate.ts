@@ -1,5 +1,5 @@
-import type { UpdateSource, UpdateSourceArg } from "@hot-updater/internal";
-import { filterTargetVersion } from "@hot-updater/internal";
+import type { UpdateSource, UpdateSourceArg } from "@hot-updater/core";
+import { filterTargetVersion } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { getAppVersion, getBundleVersion } from "./native";
 import { isNullable } from "./utils";

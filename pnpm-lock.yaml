@@ -60,12 +60,12 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:^
         version: link:../../plugins/aws
-      '@hot-updater/internal':
-        specifier: workspace:^
-        version: link:../../packages/internal
       '@hot-updater/metro':
         specifier: workspace:^
         version: link:../../plugins/metro
+      '@hot-updater/plugin-core':
+        specifier: workspace:^
+        version: link:../../plugins/plugin-core
       '@hot-updater/server':
         specifier: workspace:^
         version: link:../../packages/server
@@ -130,14 +130,33 @@ importers:
         specifier: ^5.91.0
         version: 5.91.0(esbuild@0.21.4)
 
+  packages/core:
+    dependencies:
+      semver:
+        specifier: ^7.6.2
+        version: 7.6.2
+    devDependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.441.0
+        version: 3.441.0
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.9.4
+      '@types/semver':
+        specifier: ^7.5.8
+        version: 7.5.8
+
   packages/hot-updater:
     dependencies:
       '@hono/node-server':
         specifier: ^1.12.1
         version: 1.12.1
-      '@hot-updater/internal':
+      '@hot-updater/core':
         specifier: workspace:^
-        version: link:../internal
+        version: link:../core
+      '@hot-updater/plugin-core':
+        specifier: workspace:^
+        version: link:../../plugins/plugin-core
       '@hot-updater/server':
         specifier: workspace:^
         version: link:../server
@@ -200,39 +219,11 @@ importers:
         specifier: ^3.4.7
         version: 3.4.7(typescript@5.4.5)
 
-  packages/internal:
-    dependencies:
-      cosmiconfig:
-        specifier: ^9.0.0
-        version: 9.0.0(typescript@5.4.5)
-      cosmiconfig-typescript-loader:
-        specifier: ^5.0.0
-        version: 5.0.0(@types/node@20.9.4)(cosmiconfig@9.0.0(typescript@5.4.5))(typescript@5.4.5)
-      picocolors:
-        specifier: ^1.0.0
-        version: 1.0.0
-      semver:
-        specifier: ^7.6.2
-        version: 7.6.2
-      workspace-tools:
-        specifier: ^0.36.4
-        version: 0.36.4
-    devDependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.441.0
-        version: 3.441.0
-      '@types/node':
-        specifier: ^20.9.4
-        version: 20.9.4
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.5.8
-
   packages/react-native:
     dependencies:
-      '@hot-updater/internal':
+      '@hot-updater/core':
         specifier: workspace:^
-        version: link:../internal
+        version: link:../core
       react-native-url-polyfill:
         specifier: ^2.0.0
         version: 2.0.0(react-native@0.72.6(@babel/core@7.24.5)(@babel/preset-env@7.23.2(@babel/core@7.24.5))(react@18.2.0))
@@ -255,9 +246,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.12.1
         version: 1.12.1
-      '@hot-updater/internal':
+      '@hot-updater/plugin-core':
         specifier: workspace:^
-        version: link:../internal
+        version: link:../../plugins/plugin-core
       '@lucia-auth/adapter-sqlite':
         specifier: ^3.0.2
         version: 3.0.2(better-sqlite3@11.2.1)(lucia@3.2.0)
@@ -379,18 +370,18 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.600.0
         version: 3.600.0(@aws-sdk/client-s3@3.441.0)
-      '@hot-updater/internal':
+      '@hot-updater/plugin-core':
         specifier: workspace:^
-        version: link:../../packages/internal
+        version: link:../plugin-core
       mime:
         specifier: ^4.0.3
         version: 4.0.3
 
   plugins/metro:
     dependencies:
-      '@hot-updater/internal':
+      '@hot-updater/plugin-core':
         specifier: workspace:^
-        version: link:../../packages/internal
+        version: link:../plugin-core
       metro-config:
         specifier: ^0.80.9
         version: 0.80.9
@@ -398,6 +389,28 @@ importers:
       metro:
         specifier: ^0.80.9
         version: 0.80.9
+
+  plugins/plugin-core:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:^
+        version: link:../../packages/core
+      cosmiconfig:
+        specifier: ^9.0.0
+        version: 9.0.0(typescript@5.4.5)
+      cosmiconfig-typescript-loader:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@20.9.4)(cosmiconfig@9.0.0(typescript@5.4.5))(typescript@5.4.5)
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.0.0
+      workspace-tools:
+        specifier: ^0.36.4
+        version: 0.36.4
+    devDependencies:
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.9.4
 
 packages:
 

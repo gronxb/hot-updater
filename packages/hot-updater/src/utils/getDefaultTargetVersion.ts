@@ -1,7 +1,7 @@
 import { exec } from "child_process";
 import path from "path";
 import util from "util";
-import type { Platform } from "@hot-updater/internal";
+import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 
 const findXCodeProjectFilename = async (

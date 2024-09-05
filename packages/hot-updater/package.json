@@ -31,7 +31,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.12.1",
-    "@hot-updater/internal": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/core": "workspace:^",
     "@hot-updater/server": "workspace:^",
     "@inkjs/ui": "^2.0.0",
     "commander": "^11.1.0",

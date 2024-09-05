@@ -1,0 +1,43 @@
+{
+  "name": "@hot-updater/plugin-core",
+  "version": "0.0.4",
+  "type": "module",
+  "description": "React Native OTA solution for self-hosted",
+  "sideEffects": false,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "package.json"],
+  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+  "license": "MIT",
+  "scripts": {
+    "prepare": "tsc --project tsconfig.build.json && node esbuild.config.js",
+    "build": "tsc --project tsconfig.build.json && node esbuild.config.js",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:^",
+    "cosmiconfig": "^9.0.0",
+    "cosmiconfig-typescript-loader": "^5.0.0",
+    "picocolors": "^1.0.0",
+    "workspace-tools": "^0.36.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.4"
+  }
+}
