@@ -34,24 +34,9 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 2
+        Hot Updater 0
       </Text>
-      <Text
-        style={{
-          marginVertical: 20,
-          fontSize: 20,
-          fontWeight: "bold",
-          textAlign: "center",
-        }}
-      >
-        Bundle Version: {version ?? "Loading..."}
-      </Text>
-
-      <Image
-        source={require("./src/logo.png")}
-        style={{ width: 200, height: 200, alignSelf: "center" }}
-      />
-
+     
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
     </SafeAreaView>
   );

@@ -1,9 +1,8 @@
 import { cn } from "@/lib/utils";
 import type { UpdateSource } from "@hot-updater/plugin-core";
-import { Form, useSubmit } from "@remix-run/react";
-import { ActionFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { Form } from "@remix-run/react";
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
@@ -16,11 +15,12 @@ export interface SidebarProps {
 }
 
 export const Sidebar = ({ source, onClose, open }: SidebarProps) => {
-  const [targetVersion, setTargetVersion] = useState(source.targetVersion);
-  const [description, setDescription] = useState(source.description);
-  const [forceUpdate, setForceUpdate] = useState(source.forceUpdate);
-  const [enabled, setEnabled] = useState(source.enabled);
-  
+  const [$source, setSource] = useState<UpdateSource>(source);
+
+  useEffect(() => {
+    setSource(source);
+  }, [source]);
+
   return (
     <aside
       className={cn(
@@ -39,28 +39,39 @@ export const Sidebar = ({ source, onClose, open }: SidebarProps) => {
           onClose();
         }}
       />
-       <input type="hidden" name="bundleVersion" value={source.bundleVersion} />
+       <input type="hidden" name="bundleVersion" value={$source.bundleVersion} />
        
       <div className="font-medium">Edit</div>
 
       <div>
         <label htmlFor="targetVersion">Target Version</label>
-        <Input id="targetVersion" name="targetVersion" value={targetVersion} 
-        onChange={(e) => setTargetVersion(e.target.value)}
+        <Input id="targetVersion" name="targetVersion" value={$source.targetVersion} 
+        onChange={(e) => setSource((prev) => ({
+          ...prev,
+          targetVersion: e.target.value,
+        }))}
         />
       </div>
 
       <div>
         <label htmlFor="description">Description</label>
         <Textarea id="description" placeholder="hi" name="description"
-        value={description} onChange={(e) => setDescription(e.target.value)}
+        value={$source.description} onChange={(e) => setSource((prev) => ({
+          ...prev,
+          description: e.target.value,
+        }))}
         />
       </div>
 
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <Checkbox id="forceUpdate" name="forceUpdate"
-          checked={forceUpdate} onCheckedChange={(e) => typeof e === "boolean" && setForceUpdate(e)}
+          checked={$source.forceUpdate} onCheckedChange={(e) => typeof e === "boolean" && setSource(
+            (prev) => ({
+              ...prev,
+              forceUpdate: e,
+            }),
+          )}
           >Force Update</Checkbox>
           <label htmlFor="forceUpdate">Force Update</label>
         </div>
@@ -71,7 +82,12 @@ export const Sidebar = ({ source, onClose, open }: SidebarProps) => {
 
         <div className="flex items-center gap-2">
           <Checkbox id="enabled" name="enabled"
-          checked={enabled} onCheckedChange={(e) => typeof e === "boolean" && setEnabled(e)}
+          checked={$source.enabled} onCheckedChange={(e) => typeof e === "boolean" && setSource(
+            (prev) => ({
+              ...prev,
+              enabled: e,
+            }),
+          )}
           >
             Enabled
           </Checkbox>

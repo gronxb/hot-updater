@@ -1,4 +1,3 @@
-import {atom} from "jotai"
 import { Check, X } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -41,7 +40,6 @@ import {
   redirect,
 } from "@remix-run/node";
 import { json, useLoaderData } from "@remix-run/react";
-import { s } from "node_modules/vite/dist/node/types.d-aGj9QkWt";
 import { useState } from "react";
 
 export const meta: MetaFunction = () => {
