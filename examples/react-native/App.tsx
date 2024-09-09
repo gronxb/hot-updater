@@ -10,6 +10,11 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, SafeAreaView, Text } from "react-native";
 
+HotUpdater.init({
+  source: "https://gronxb.s3.ap-northeast-2.amazonaws.com/update.json",
+})
+
+
 function App(): React.JSX.Element {
   const [version, setVersion] = useState<number | null>(null);
 
@@ -29,7 +34,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 14
+        Hot Updater 2
       </Text>
       <Text
         style={{
@@ -43,7 +48,7 @@ function App(): React.JSX.Element {
       </Text>
 
       <Image
-        source={require("./src/test/_image.png")}
+        source={require("./src/logo.png")}
         style={{ width: 200, height: 200, alignSelf: "center" }}
       />
 

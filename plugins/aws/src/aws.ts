@@ -64,7 +64,7 @@ export const aws =
       },
       async updateUpdateJson(
         targetBundleVersion: number,
-        newSource: UpdateSource,
+        newSource: Partial<UpdateSource>,
       ) {
         updateSources = await this.getUpdateJson();
 
@@ -75,7 +75,7 @@ export const aws =
           throw new Error("target bundle version not found");
         }
 
-        updateSources[targetIndex] = newSource;
+        Object.assign(updateSources[targetIndex], newSource);
       },
       async appendUpdateJson(source) {
         updateSources = await this.getUpdateJson();

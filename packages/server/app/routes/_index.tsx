@@ -1,3 +1,4 @@
+import {atom} from "jotai"
 import { Check, X } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -34,11 +35,13 @@ import {
 import { Sidebar } from "@/components/Sidebar";
 import { formatDateTimeFromBundleVersion } from "@/lib/date";
 import {
+  type ActionFunctionArgs,
   type LoaderFunctionArgs,
   type MetaFunction,
   redirect,
 } from "@remix-run/node";
 import { json, useLoaderData } from "@remix-run/react";
+import { s } from "node_modules/vite/dist/node/types.d-aGj9QkWt";
 import { useState } from "react";
 
 export const meta: MetaFunction = () => {
@@ -65,6 +68,36 @@ export async function loader({ context }: LoaderFunctionArgs) {
     updateSources,
   });
 }
+
+
+
+export async function action({
+  request,
+}: ActionFunctionArgs) {
+  const body = await request.formData();
+  const source = {
+    bundleVersion: Number(body.get("bundleVersion")?.toString()) || Number.NaN,
+    targetVersion: body.get("targetVersion")?.toString() || "",
+    description: body.get("description")?.toString() || "",
+    forceUpdate: body.get("forceUpdate")?.toString() === "on",
+    enabled: body.get("enabled")?.toString() === "on",
+  }
+
+  const { deploy } = await loadConfig();
+  const deployPlugin = deploy({
+    cwd: getCwd(),
+  });
+
+  if( Number.isNaN(source.bundleVersion)) {
+    return redirect("/");
+  }
+  
+  await deployPlugin.updateUpdateJson(source.bundleVersion, source);
+  await deployPlugin.commitUpdateJson();
+
+  return redirect("/");
+}
+
 
 const columnHelper = createColumnHelper<UpdateSource>();
 
@@ -102,6 +135,7 @@ const columns = [
   }),
 ];
 
+
 export default function Index() {
   const { user, updateSources } = useLoaderData<typeof loader>();
 
@@ -111,17 +145,18 @@ export default function Index() {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const [selectedSource, setSelectedSource] = useState<UpdateSource | null>(null);
 
   return (
     <div
       className="flex flex-col w-full min-h-screen overflow-hidden bg-muted/40"
       onClick={() => {
-        setIsSidebarOpen(false);
+        setSelectedSource(null);
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
-          setIsSidebarOpen(false);
+          setSelectedSource(null);
         }
       }}
     >
@@ -181,7 +216,8 @@ export default function Index() {
                     className="cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setIsSidebarOpen(true);
+
+                      setSelectedSource(row.original);
                     }}
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -200,7 +236,7 @@ export default function Index() {
         </Card>
       </main>
 
-      <Sidebar open={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      {selectedSource ? <Sidebar source={selectedSource} open={Boolean(selectedSource)} onClose={() => setSelectedSource(null)} /> : null}
     </div>
   );
 }
