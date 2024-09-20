@@ -34,7 +34,7 @@ export interface DeployPlugin {
   getUpdateJson: (refresh?: boolean) => Promise<UpdateSource[]>;
   updateUpdateJson: (
     targetBundleVersion: number,
-    newSource: UpdateSource,
+    newSource: Partial<UpdateSource>,
   ) => Promise<void>;
   setUpdateJson: (sources: UpdateSource[]) => Promise<void>;
   appendUpdateJson: (source: UpdateSource) => Promise<void>;
