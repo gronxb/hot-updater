@@ -10,6 +10,7 @@ const createWindow = () => {
     },
   });
   
+  console.log(process.env.NOE_ENV);
   if(process.env.NODE_ENV === "development") {
     mainWindow.loadURL("http://localhost:8080/");
   } else {

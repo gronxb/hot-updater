@@ -7,8 +7,8 @@
     "check": "biome check --write",
     "dev": "cross-env NODE_ENV=development rspack serve",
     "format": "biome format --write",
-    "dev:gui": "concurrently \"cross-env NODE_ENV=development rspack serve\" \"electron main.js\"",
-    "preview:gui": "concurrently \"cross-env NODE_ENV=production rspack serve\" \"electron main.js\""
+    "dev:gui": "concurrently \"cross-env NODE_ENV=development rspack serve\" \"cross-env NODE_ENV=development electron main.js\"",
+    "preview:gui": "concurrently \"cross-env NODE_ENV=production rspack serve\" \"cross-env NODE_ENV=production electron main.js\""
   },
   "dependencies": {
     "react": "^18.2.0",
