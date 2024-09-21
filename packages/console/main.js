@@ -9,9 +9,12 @@ const createWindow = () => {
       preload: path.join(__dirname, "preload.js"),
     },
   });
-
-  mainWindow.loadURL("http://localhost:8080/");
-  //   mainWindow.loadFile("index.html");
+  
+  if(process.env.ENV === "dev") {
+    mainWindow.loadURL("http://localhost:8080/");
+  } else {
+    mainWindow.loadFile("index.html");
+  }
 };
 
 app.whenReady().then(() => {
