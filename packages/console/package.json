@@ -1,5 +1,5 @@
 {
-  "name": "console",
+  "name": "@hot-updater/console",
   "private": true,
   "version": "1.0.0",
   "scripts": {
@@ -17,12 +17,16 @@
     "@rsbuild/core": "^1.0.1",
     "@rsbuild/plugin-babel": "^1.0.1",
     "@rsbuild/plugin-solid": "^1.0.1",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.14.7",
+    "@tanstack/solid-table": "^8.20.5",
     "autoprefixer": "^10.4.19",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "concurrently": "^9.0.1",
     "cross-env": "^7.0.3",
     "electron": "^32.1.2",
+    "lucide-solid": "^0.446.0",
     "postcss": "^8.4.38",
     "solid-js": "^1.8.22",
     "tailwind-merge": "^2.5.2",

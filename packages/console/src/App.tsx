@@ -1,16 +1,34 @@
-import { Button } from "@/components/ui/button";
-import { createSignal } from "solid-js";
+import { ColorModeProvider, ColorModeScript } from "@kobalte/core";
+import { MetaProvider } from "@solidjs/meta";
+import { Route, Router } from "@solidjs/router";
+import { Suspense } from "solid-js";
+import { Home } from "./routes/home";
 import "./app.css";
+import { ThemeToggle } from "./components/theme-toggle";
+import { ToastList, ToastRegion } from "./components/ui/toast";
 
-const App = () => {
-  const [count, setCount] = createSignal(0);
-
+export default function App() {
   return (
-    <div class="content">
-      <h1>Rsbuild with Solid</h1>
-      <Button onClick={() => setCount(count() + 1)}>Count: {count()}</Button>
-    </div>
+    <Router
+      root={(props) => (
+        <MetaProvider>
+          <Suspense>
+            <ColorModeScript />
+            <ColorModeProvider>
+              <header class="header h-10 flex justify-between items-center w-full">
+                <div class="flex-1" />
+                <ThemeToggle class="pointer-events-auto header-no-drag" />
+              </header>
+              {props.children}
+            </ColorModeProvider>
+            <ToastRegion>
+              <ToastList />
+            </ToastRegion>
+          </Suspense>
+        </MetaProvider>
+      )}
+    >
+      <Route path="/" component={Home} />
+    </Router>
   );
-};
-
-export default App;
+}
