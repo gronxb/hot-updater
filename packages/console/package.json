@@ -11,6 +11,9 @@
     "dev:gui": "concurrently \"cross-env NODE_ENV=development rsbuild dev\" \"wait-on tcp:3000 && cross-env NODE_ENV=development electron main.js\"",
     "preview:gui": "concurrently \"cross-env NODE_ENV=production rsbuild dev\" \"cross-env NODE_ENV=production electron main.js\""
   },
+  "dependencies": {
+    "@hot-updater/core": "workspace:^"
+  },
   "devDependencies": {
     "@biomejs/biome": "^1.8.3",
     "@kobalte/core": "^0.13.6",

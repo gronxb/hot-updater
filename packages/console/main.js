@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
+const { ipcMain } = require("electron");
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -17,6 +18,8 @@ const createWindow = () => {
   
   console.log(process.env.NOE_ENV);
   if(process.env.NODE_ENV === "development") {
+    mainWindow.webContents.openDevTools();
+
     mainWindow.loadURL("http://localhost:3000/");
   } else {
     mainWindow.loadFile("index.html");
@@ -33,4 +36,8 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+ipcMain.handle("getUpdateSources", async () => {
+  return []; // TODO: plugin api 
 });

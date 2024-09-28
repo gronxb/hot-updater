@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ColumnDef } from "@tanstack/solid-table";
+import type { AccessorKeyColumnDef, ColumnDef } from "@tanstack/solid-table";
 import {
   createSolidTable,
   flexRender,
@@ -15,7 +15,7 @@ import {
 import { type Accessor, For, Show, splitProps } from "solid-js";
 
 type Props<TData, TValue> = {
-  columns: ColumnDef<TData, TValue>[];
+  columns: AccessorKeyColumnDef<TData, TValue>[];
   data: Accessor<TData[] | undefined>;
 };
 

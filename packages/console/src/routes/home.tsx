@@ -6,24 +6,16 @@ import {
   ToastProgress,
   ToastTitle,
 } from "@/components/ui/toast";
+import type { UpdateSource } from "@hot-updater/core";
 import { toaster } from "@kobalte/core";
 import type { RouteDefinition } from "@solidjs/router";
 import { cache, createAsync } from "@solidjs/router";
-import { type Task, columns } from "./_components/columns";
+import { columns } from "./_components/columns";
 import { DataTable } from "./_components/data-table";
 
-const getData = cache(async (): Promise<Task[]> => {
+const getData = cache(async (): Promise<UpdateSource[]> => {
   // Fetch data from your API here.
-  return [
-    {
-      id: "ptL0KpX_yRMI98JFr6B3n",
-      code: "TASK-33",
-      title: "We need to bypass the redundant AI interface!",
-      status: "todo",
-      label: "bug",
-    },
-    // ...
-  ];
+  return window.app.getUpdateSources();
 }, "data");
 
 export const route: RouteDefinition = {
