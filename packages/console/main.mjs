@@ -27,7 +27,6 @@ const createWindow = () => {
     mainWindow.webContents.openDevTools();
     mainWindow.loadURL("http://localhost:3000/");
   } else {
-    mainWindow.webContents.openDevTools();
     mainWindow.loadFile("index.html");
   }
 };
