@@ -1,25 +1,28 @@
 {
   "name": "@hot-updater/console",
+  "type": "module",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.1",
+  "main": "./dist/main.mjs",
   "scripts": {
-    "build": "rsbuild build",
+    "build": "rsbuild build --mode production",
     "check": "biome check --write",
     "dev": "rsbuild dev --open",
     "format": "biome format --write",
     "preview": "rsbuild preview",
     "dev:gui": "concurrently \"cross-env NODE_ENV=development rsbuild dev\" \"wait-on tcp:3000 && cross-env NODE_ENV=development electron main.js\"",
-    "preview:gui": "concurrently \"cross-env NODE_ENV=production rsbuild dev\" \"cross-env NODE_ENV=production electron main.js\""
+    "preview:gui": "cross-env NODE_ENV=production electron main.js"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:^"
+    "@hot-updater/core": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.8.3",
     "@kobalte/core": "^0.13.6",
-    "@rsbuild/core": "^1.0.1",
+    "@rsbuild/core": "^1.0.9",
     "@rsbuild/plugin-babel": "^1.0.1",
-    "@rsbuild/plugin-solid": "^1.0.1",
+    "@rsbuild/plugin-solid": "^1.0.2",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.14.7",
     "@tanstack/solid-table": "^8.20.5",
@@ -35,6 +38,7 @@
     "tailwind-merge": "^2.5.2",
     "tailwindcss": "^3.4.4",
     "tailwindcss-animate": "^1.0.7",
+    "tsup": "^8.3.0",
     "typescript": "^5.5.2",
     "wait-on": "^8.0.1"
   }

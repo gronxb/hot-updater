@@ -4,8 +4,8 @@
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
+  "main": "dist/index.js",
+  "module": "dist/index.cjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
@@ -14,10 +14,19 @@
     }
   },
   "files": ["dist", "package.json"],
-  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
   "license": "MIT",
   "scripts": {
-    "prepare": "tsc --project tsconfig.build.json && node esbuild.config.js",
+    "prepare": "pnpm build",
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "test:type": "tsc --noEmit"
   },

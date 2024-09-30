@@ -31,8 +31,9 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.12.1",
-    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/console": "workspace:^",
     "@hot-updater/core": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
     "@hot-updater/server": "workspace:^",
     "@inkjs/ui": "^2.0.0",
     "commander": "^11.1.0",
@@ -54,6 +55,7 @@
     "@types/cosmiconfig": "^6.0.0",
     "@types/plist": "^3.0.5",
     "@types/react": "^18.3.3",
+    "electron": "^32.1.2",
     "typescript-transform-paths": "^3.4.7"
   }
 }

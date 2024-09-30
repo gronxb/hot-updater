@@ -1,15 +1,19 @@
 import { ColorModeProvider, ColorModeScript } from "@kobalte/core";
 import { MetaProvider } from "@solidjs/meta";
-import { Route, Router } from "@solidjs/router";
+import { MemoryRouter, Route, createMemoryHistory } from "@solidjs/router";
 import { Suspense } from "solid-js";
 import { Home } from "./routes/home";
 import "./app.css";
 import { ThemeToggle } from "./components/theme-toggle";
 import { ToastList, ToastRegion } from "./components/ui/toast";
+import { EmptyConfig } from "./routes/empty-config";
 
 export default function App() {
+  const history = createMemoryHistory();
+
   return (
-    <Router
+    <MemoryRouter
+      history={history}
       root={(props) => (
         <MetaProvider>
           <Suspense>
@@ -29,6 +33,7 @@ export default function App() {
       )}
     >
       <Route path="/" component={Home} />
-    </Router>
+      <Route path="/empty-config" component={EmptyConfig} />
+    </MemoryRouter>
   );
 }
