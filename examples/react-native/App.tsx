@@ -10,6 +10,10 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, SafeAreaView, Text } from "react-native";
 
+HotUpdater.init({
+  source:"https://gronxb.s3.ap-northeast-2.amazonaws.com/update.json",
+})
+
 function App(): React.JSX.Element {
   const [version, setVersion] = useState<number | null>(null);
 
@@ -29,12 +33,25 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 0 - {version}
+        Hot Updater 1
+      </Text>
+
+      <Text 
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        BundleVersion: {version}  
       </Text>
       
+      <Image style={{
+        width: 100,
+        height: 100,
+      }} source={require('./src/test/_image.png')} />
 
-      {/* <Image source={require('./src/test/logo.png')} /> */}
-     
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
     </SafeAreaView>
   );

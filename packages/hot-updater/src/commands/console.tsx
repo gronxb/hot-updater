@@ -9,6 +9,7 @@ const consoleSource = import.meta
 
 export default function Manage() {
   useEffect(() => {
+    // electron 빌더로 빌드하고 실행하게 하자. electron 의존성 없애야함.
     const child = proc.spawn(electron as any, [consoleSource], {
       stdio: "inherit",
       windowsHide: false,

@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.1",
   "bin": {
-    "hot-updater": "./dist/cli.js"
+    "hot-updater": "./dist/index.js"
   },
   "exports": {
     ".": {
@@ -25,9 +25,8 @@
   },
   "scripts": {
     "prepare": "pnpm build",
-    "build": "tspc --project tsconfig.build.json",
-    "test:type": "tsc --noEmit",
-    "dev": "tspc --project tsconfig.build.json --watch"
+    "build": "tsup src/index.ts --format esm --dts",
+    "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^1.12.1",
@@ -55,6 +54,7 @@
     "@types/plist": "^3.0.5",
     "@types/react": "^18.3.3",
     "electron": "^32.1.2",
+    "tsup": "^8.3.0",
     "typescript-transform-paths": "^3.4.7"
   }
 }

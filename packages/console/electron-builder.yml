@@ -2,6 +2,8 @@ appId: com.hot-updater.console
 productName: Hot Updater Console
 directories:
   buildResources: build
+extraMetadata:
+  name: hot-updater-console
 files:
   - '!**/.vscode/*'
   - '!src/*'

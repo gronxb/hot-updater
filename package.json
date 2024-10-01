@@ -12,12 +12,11 @@
     "test": "vitest"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.7.3",
+    "@biomejs/biome": "1.9.3",
     "esbuild": "^0.21.4",
     "rimraf": "^5.0.7",
-    "ts-patch": "^3.2.0",
-    "typescript": "^5.4.5",
+    "typescript": "^5.6.2",
     "vitest": "^1.6.0"
   },
-  "packageManager": "pnpm@9.6.0"
+  "packageManager": "pnpm@9.11.0"
 }
