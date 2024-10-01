@@ -6,7 +6,8 @@ import { DataTable } from "./_components/data-table";
 
 const getData = cache(async (): Promise<UpdateSource[]> => {
   // Fetch data from your API here.
-  return window.app.getUpdateJson();
+  // console.log(await window.electron.ipcRenderer.send("getUpdateJson"));
+  return window.api.getUpdateJson();
 }, "data");
 
 export const route: RouteDefinition = {

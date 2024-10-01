@@ -1,4 +1,4 @@
-import { cn } from "@/libs/cn";
+import { cn } from "@renderer/libs/cn";
 import { type ComponentProps, splitProps } from "solid-js";
 
 export const Table = (props: ComponentProps<"table">) => {

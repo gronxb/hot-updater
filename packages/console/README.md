@@ -1,29 +1,34 @@
-# Rsbuild Project
+# console2
 
-## Setup
+An Electron application with Solid and TypeScript
 
-Install the dependencies:
+## Recommended IDE Setup
+
+- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+
+## Project Setup
+
+### Install
 
 ```bash
-pnpm install
+$ pnpm install
 ```
 
-## Get Started
-
-Start the dev server:
+### Development
 
 ```bash
-pnpm dev
+$ pnpm dev
 ```
 
-Build the app for production:
+### Build
 
 ```bash
-pnpm build
-```
+# For windows
+$ pnpm build:win
 
-Preview the production build locally:
+# For macOS
+$ pnpm build:mac
 
-```bash
-pnpm preview
+# For Linux
+$ pnpm build:linux
 ```

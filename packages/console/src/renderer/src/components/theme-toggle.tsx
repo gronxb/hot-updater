@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
 import { useColorMode } from "@kobalte/core";
+import { Button } from "@renderer/components/ui/button";
 import { Moon, Sun } from "lucide-solid";
 
 export interface ThemeToggleProps {

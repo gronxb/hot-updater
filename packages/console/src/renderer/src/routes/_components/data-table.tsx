@@ -5,8 +5,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import type { AccessorKeyColumnDef, ColumnDef } from "@tanstack/solid-table";
+} from "@renderer/components/ui/table";
+import type { AccessorKeyColumnDef } from "@tanstack/solid-table";
 import {
   createSolidTable,
   flexRender,
