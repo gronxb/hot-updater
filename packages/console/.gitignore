@@ -3,3 +3,4 @@ dist
 
 
 src-tauri/binaries
+sidecar-app/app
