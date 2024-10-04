@@ -47,7 +47,6 @@
     "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
-    "@types/node": "^20.9.4",
-    "tsup": "^8.3.0"
+    "@types/node": "^20.9.4"
   }
 }

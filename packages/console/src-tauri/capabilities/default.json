@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
+    "shell:allow-open",
+    "shell:allow-execute",
+    "shell:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "args": [
+            {
+              "validator": "\\S+"
+            }
+          ],
+          "name": "binaries/app",
+          "sidecar": true
+        }
+      ]
+    }
+  ]
+}

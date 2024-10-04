@@ -3,14 +3,14 @@
   "tailwind": {
     "config": "tailwind.config.cjs",
     "css": {
-      "path": "src/app.css",
+      "path": "src/App.css",
       "variable": true
     },
     "color": "zinc",
     "prefix": ""
   },
   "alias": {
-    "component": "@renderer/components",
-    "cn": "@renderer/libs/cn"
+    "component": "@/components",
+    "cn": "@/libs/cn"
   }
 }
