@@ -16,8 +16,8 @@
     "access": "public"
   },
   "scripts": {
-    "prepare": "tsc --project tsconfig.build.json",
-    "build": "tsc --project tsconfig.build.json",
+    "prepare": "pnpm build",
+    "build": "tsup src/index.ts --format cjs,esm --dts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
