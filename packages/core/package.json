@@ -45,7 +45,6 @@
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.441.0",
     "@types/node": "^20.9.4",
-    "@types/semver": "^7.5.8",
-    "tsup": "^8.3.0"
+    "@types/semver": "^7.5.8"
   }
 }
