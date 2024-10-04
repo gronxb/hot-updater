@@ -2,8 +2,8 @@ import type { UpdateSource } from "@hot-updater/core";
 import {
   type AccessorKeyColumnDef,
   createColumnHelper,
-} from "@tanstack/solid-table";
-import { Check, X } from "lucide-solid";
+} from "@tanstack/react-table";
+import { Check, X } from "lucide-react";
 
 const columnHelper = createColumnHelper<UpdateSource>();
 
@@ -31,12 +31,12 @@ export const columns: AccessorKeyColumnDef<UpdateSource, any>[] = [
     header: "Enabled",
     cell: (info) =>
       info.getValue() ? (
-        <div class="flex flex-row items-center gap-2">
+        <div className="flex flex-row items-center gap-2">
           <Check />
           <p>Enabled</p>
         </div>
       ) : (
-        <div class="flex flex-row items-center gap-2">
+        <div className="flex flex-row items-center gap-2">
           <X />
           <p>Disabled</p>
         </div>
