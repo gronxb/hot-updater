@@ -23,6 +23,19 @@
           "sidecar": true
         }
       ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/app",
+          "sidecar": true
+        }
+      ]
+    },
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "http://localhost:3000/*" }]
     }
   ]
 }
