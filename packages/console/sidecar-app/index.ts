@@ -1,24 +1,20 @@
-import { program } from "commander";
-import { ret } from "./ret";
-import type { UpdateSource } from "@hot-updater/core";
+import { trpcServer } from "@hono/trpc-server";
+import { Hono } from "hono";
+import { appRouter } from "./server/trpc";
 
-const data: UpdateSource[] = [];
+const port = 1422;
 
-program.command("getUpdateJson").action(async () => {
-  ret(data);
-});
+const app = new Hono();
 
-program.command("push").action(async () => {
-  data.push({
-    platform: "ios",
-    targetVersion: "1.x.x",
-    enabled: true,
-    bundleVersion: 1,
-    forceUpdate: false,
-    file: "http://example.com/bundle.zip",
-    hash: "hash",
-  });
-  ret(data);
-});
+app.use(
+  "/trpc/*",
+  trpcServer({
+    router: appRouter,
+  }),
+);
 
-program.parse(process.argv);
+console.log(`🚀 Listening on port ${port}`);
+export default {
+  port,
+  fetch: app.fetch,
+};

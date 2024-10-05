@@ -24,6 +24,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@sidecar-app/*": [
+        "./sidecar-app/*"
       ]
     }
   },
