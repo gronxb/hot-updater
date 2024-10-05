@@ -13,9 +13,7 @@ import { EmptyConfigPage } from "./pages/empty-config";
 import { HomePage } from "./pages/home";
 
 const cmd = Command.sidecar("binaries/app");
-
 cmd.spawn().then((child) => {
-  console.log(child.pid);
   /**
    * Killing server process when window is closed. Probably won't
    * work for multi window application
@@ -29,14 +27,7 @@ const queryClient = new QueryClient();
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      headers: () => {
-        return {
-          "Content-Type": "application/json",
-        };
-      },
-      fetch: (url, options) => {
-        return fetch(url, options);
-      },
+      fetch,
       url: "http://localhost:1422/trpc",
     }),
   ],
