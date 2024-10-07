@@ -7,16 +7,13 @@ import { processManager } from "@/lib/process-manager";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { RefreshCcw } from "lucide-react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { columns } from "./update-sources/columns";
 import { DataTable } from "./update-sources/data-table";
 
 export const HomePage = () => {
-  const {
-    data,
-    isLoading,
-    error: updateSourcesError,
-  } = trpc.updateSources.useQuery();
+  const { data, error: updateSourcesError } = trpc.updateSources.useQuery();
   const utils = trpc.useUtils();
 
   const { data: cwd } = trpc.cwd.useQuery();
@@ -24,11 +21,20 @@ export const HomePage = () => {
 
   const { mutate: setCwd, error } = trpc.setCwd.useMutation({
     onMutate: () => {
-      utils.cwd.invalidate();
-      utils.isConfigLoaded.invalidate();
-      utils.updateSources.invalidate();
+      setIsLoading(true);
+    },
+    onSettled: () => {
+      Promise.all([
+        utils.cwd.invalidate(),
+        utils.isConfigLoaded.invalidate(),
+        utils.updateSources.invalidate(),
+      ]).finally(() => {
+        setIsLoading(false);
+      });
     },
   });
+
+  const [isLoading, setIsLoading] = useState(false);
 
   return (
     <div className="w-full space-y-2.5">
