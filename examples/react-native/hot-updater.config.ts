@@ -2,11 +2,13 @@ import { aws } from "@hot-updater/aws";
 import { metro } from "@hot-updater/metro";
 
 import { config } from "dotenv";
-import { defineConfig } from "hot-updater";
+import { defineConfig } from "hot-updater/config";
 
 config({
   override: true,
 });
+
+console.log(process.env.AWS_S3_BUCKET_NAME);
 
 export default defineConfig({
   server: "",

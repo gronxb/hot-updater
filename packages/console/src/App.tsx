@@ -1,8 +1,6 @@
 import "./app.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { TauriEvent, listen } from "@tauri-apps/api/event";
 import { fetch } from "@tauri-apps/plugin-http";
-import { Command } from "@tauri-apps/plugin-shell";
 import { httpBatchLink } from "@trpc/react-query";
 import { Route, Switch } from "wouter";
 import { ThemeProvider } from "./components/theme-provider";
@@ -11,17 +9,6 @@ import { Toaster } from "./components/ui/toaster";
 import { trpc } from "./lib/trpc";
 import { EmptyConfigPage } from "./pages/empty-config";
 import { HomePage } from "./pages/home";
-
-const cmd = Command.sidecar("binaries/app");
-cmd.spawn().then((child) => {
-  /**
-   * Killing server process when window is closed. Probably won't
-   * work for multi window application
-   */
-  listen(TauriEvent.WINDOW_DESTROYED, () => {
-    child.kill();
-  });
-});
 
 const queryClient = new QueryClient();
 const trpcClient = trpc.createClient({
