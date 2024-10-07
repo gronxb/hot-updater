@@ -8,8 +8,6 @@ config({
   override: true,
 });
 
-console.log(process.env.AWS_S3_BUCKET_NAME);
-
 export default defineConfig({
   server: "",
   secretKey: process.env.HOT_UPDATER_SECRET_KEY!,

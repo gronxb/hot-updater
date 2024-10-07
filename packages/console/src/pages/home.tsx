@@ -23,12 +23,13 @@ export const HomePage = () => {
   const { data: isConfigLoaded } = trpc.isConfigLoaded.useQuery();
 
   const { mutate: setCwd, error } = trpc.setCwd.useMutation({
-    onSuccess: () => {
+    onMutate: () => {
       utils.cwd.invalidate();
       utils.isConfigLoaded.invalidate();
-      utils.updateSources.refetch();
+      utils.updateSources.invalidate();
     },
   });
+
   return (
     <div className="w-full space-y-2.5">
       <p>{JSON.stringify(error)}</p>
@@ -38,6 +39,7 @@ export const HomePage = () => {
 
       <Button
         onClick={() => {
+          utils.cwd.refetch();
           utils.updateSources.refetch();
           utils.isConfigLoaded.refetch();
         }}

@@ -4,23 +4,17 @@ import { type Child, Command } from "@tauri-apps/plugin-shell";
 
 class ProcessManager {
   private childProcess: Child | null = null;
-  private cwd: string | null = null;
-
-  constructor(initialCwd: string | null = null) {
-    this.cwd = initialCwd;
-  }
 
   async setCwd(newCwd: string) {
     trace(`Setting cwd to ${newCwd}`);
 
     if (this.childProcess) {
-      this.childProcess.kill();
+      trace(`Killing process ${this.childProcess.pid}`);
+      await this.childProcess.kill();
       this.childProcess = null;
     }
 
-    this.cwd = newCwd;
-
-    const cmd = Command.sidecar("binaries/app", [], { cwd: this.cwd });
+    const cmd = Command.sidecar("binaries/app", [], { cwd: newCwd });
 
     cmd.stdout.on("data", (data) => {
       info(data);
