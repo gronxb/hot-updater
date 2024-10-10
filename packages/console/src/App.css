@@ -107,10 +107,10 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground select-none;
   }
 }
 
-body {
-  user-select: none;
+.h-screen-without-header {
+  height: calc(100vh - 64px);
 }
