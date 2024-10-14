@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "console",
+  "productName": "Hot Updater Console",
   "version": "0.1.0",
   "identifier": "com.hot-updater.app",
   "build": {

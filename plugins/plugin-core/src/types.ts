@@ -2,16 +2,6 @@ import type { Platform, UpdateSource } from "@hot-updater/core";
 
 export type { Platform, UpdateSource } from "@hot-updater/core";
 
-export type HotUpdaterReadStrategy = () =>
-  | Promise<{
-      updateJson: string | null;
-      files: string[];
-    }>
-  | {
-      updateJson: string | null;
-      files: string[];
-    };
-
 export interface BasePluginArgs {
   cwd: string;
   log?: {
@@ -31,14 +21,14 @@ export interface BuildPluginArgs extends BasePluginArgs {
 }
 
 export interface DeployPlugin {
-  getUpdateJson: (refresh?: boolean) => Promise<UpdateSource[]>;
-  updateUpdateJson: (
+  getUpdateSources: (refresh?: boolean) => Promise<UpdateSource[]>;
+  updateUpdateSource: (
     targetBundleVersion: number,
     newSource: Partial<UpdateSource>,
   ) => Promise<void>;
-  setUpdateJson: (sources: UpdateSource[]) => Promise<void>;
-  appendUpdateJson: (source: UpdateSource) => Promise<void>;
-  commitUpdateJson: () => Promise<void>;
+  setUpdateSources: (sources: UpdateSource[]) => Promise<void>;
+  appendUpdateSource: (source: UpdateSource) => Promise<void>;
+  commitUpdateSource: () => Promise<void>;
 
   uploadBundle: (
     platform: Platform,

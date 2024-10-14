@@ -17,11 +17,13 @@ import {
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  onModify: (data: TData) => void;
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
+  onModify,
 }: DataTableProps<TData, TValue>) {
   const table = useReactTable({
     data,
@@ -56,6 +58,10 @@ export function DataTable<TData, TValue>({
               <TableRow
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
+                className="cursor-pointer"
+                onClick={() => {
+                  onModify(row.original);
+                }}
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id}>

@@ -47,6 +47,6 @@
     "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
-    "@types/node": "^20.9.4"
+    "@types/node": "^22.7.5"
   }
 }

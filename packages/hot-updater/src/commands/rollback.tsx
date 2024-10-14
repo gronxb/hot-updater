@@ -70,11 +70,11 @@ export default function Rollback({ options }: Props) {
   const handleRollback = async (updateSource: UpdateSource) => {
     const bundleVersion = updateSource.bundleVersion;
 
-    await deployPlugin.updateUpdateJson(bundleVersion, {
+    await deployPlugin.updateUpdateSource(bundleVersion, {
       ...updateSource,
       enabled: !updateSource.enabled,
     });
-    await deployPlugin.commitUpdateJson();
+    await deployPlugin.commitUpdateSource();
 
     const updateSources = await refresh();
     setHighlightSource(

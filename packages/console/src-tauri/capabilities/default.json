@@ -9,21 +9,8 @@
     "core:window:allow-start-dragging",
     "shell:allow-open",
     "shell:allow-execute",
+    "shell:allow-kill",
     "shell:default",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        {
-          "args": [
-            {
-              "validator": "\\S+"
-            }
-          ],
-          "name": "binaries/app",
-          "sidecar": true
-        }
-      ]
-    },
     {
       "identifier": "shell:allow-spawn",
       "allow": [
@@ -35,7 +22,13 @@
     },
     {
       "identifier": "http:default",
-      "allow": [{ "url": "http://localhost:1422" }]
-    }
+      "allow": [
+        {
+          "url": "http://localhost:1422"
+        }
+      ]
+    },
+    "dialog:default",
+    "log:default"
   ]
 }

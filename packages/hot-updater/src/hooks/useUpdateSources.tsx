@@ -18,7 +18,7 @@ export const useUpdateSources = (options: UpdateSourcesOptions) => {
 
     const deployPlugin = options.deployPlugin;
 
-    const updateSources = await deployPlugin.getUpdateJson();
+    const updateSources = await deployPlugin.getUpdateSources();
     const targetVersions = filterTargetVersion(
       updateSources,
       targetVersion,
