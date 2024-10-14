@@ -1,5 +1,5 @@
 [package]
-name = "console"
+name = "HotUpdater"
 version = "0.1.0"
 description = "React Native OTA solution for self-hosted"
 authors = ["you"]
