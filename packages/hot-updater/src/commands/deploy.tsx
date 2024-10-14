@@ -123,7 +123,7 @@ export default function Deploy({ options }: Props) {
       spinner,
     });
 
-    const updateSources = await deployPlugin.getUpdateJson();
+    const updateSources = await deployPlugin.getUpdateSources();
     const targetVersions = filterTargetVersion(
       updateSources ?? [],
       targetVersion,
@@ -149,7 +149,7 @@ export default function Deploy({ options }: Props) {
       bundlePath,
     );
 
-    await deployPlugin.appendUpdateJson({
+    await deployPlugin.appendUpdateSource({
       forceUpdate,
       platform,
       file,
@@ -159,7 +159,7 @@ export default function Deploy({ options }: Props) {
       bundleVersion: newBundleVersion,
       enabled: true,
     });
-    await deployPlugin.commitUpdateJson();
+    await deployPlugin.commitUpdateSource();
 
     await fs.rm(bundlePath);
     spinner.done("Uploading Success !");

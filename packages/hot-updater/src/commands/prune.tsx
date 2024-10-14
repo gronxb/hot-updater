@@ -56,8 +56,8 @@ export default function Prune({ options }: Props) {
 
     spinner.message("Pruning updates");
 
-    await deployPlugin.setUpdateJson(activeSources);
-    await deployPlugin.commitUpdateJson();
+    await deployPlugin.setUpdateSources(activeSources);
+    await deployPlugin.commitUpdateSource();
 
     for (const source of inactiveSources) {
       const key = await deployPlugin.deleteBundle(

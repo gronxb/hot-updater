@@ -1,4 +1,3 @@
-import path from "path";
 import {
   type Config,
   type DeployPlugin,
@@ -73,6 +72,17 @@ class ConfigManager {
 
 const configManager = new ConfigManager();
 
+const updateSourceSchema = z.object({
+  platform: z.union([z.literal("ios"), z.literal("android")]),
+  targetVersion: z.string(),
+  bundleVersion: z.number(),
+  forceUpdate: z.boolean(),
+  enabled: z.boolean(),
+  file: z.string(),
+  hash: z.string(),
+  description: z.string().optional(),
+});
+
 export const appRouter = router({
   cwd: publicProcedure.query(async () => {
     return configManager.cwd;
@@ -87,7 +97,40 @@ export const appRouter = router({
     return configManager.isConfigLoaded;
   }),
   updateSources: publicProcedure.query(async () => {
-    return configManager.deployPlugin?.getUpdateJson() ?? [];
+    return configManager.deployPlugin?.getUpdateSources() ?? [];
+  }),
+  getUpdateSourceByBundleVersion: publicProcedure
+    .input(z.object({ bundleVersion: z.number() }))
+    .query(async (opts) => {
+      const updateSources =
+        (await configManager.deployPlugin?.getUpdateSources()) ?? [];
+
+      return updateSources.find(
+        (source) => source.bundleVersion === opts.input.bundleVersion,
+      );
+    }),
+  updateUpdateSource: publicProcedure
+    .input(
+      z.object({
+        targetBundleVersion: z.number(),
+        updateSource: updateSourceSchema.partial(),
+      }),
+    )
+    .mutation(async (opts) => {
+      const updateSource =
+        (await configManager.deployPlugin?.updateUpdateSource(
+          opts.input.targetBundleVersion,
+          opts.input.updateSource,
+        )) ?? [];
+      return updateSource;
+    }),
+  commitUpdateSource: publicProcedure.mutation(async () => {
+    try {
+      await configManager.deployPlugin?.commitUpdateSource();
+      return true;
+    } catch (error) {
+      return false;
+    }
   }),
 });
 

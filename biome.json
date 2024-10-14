@@ -30,8 +30,7 @@
       "bracketSpacing": true,
       "jsxQuoteStyle": "double",
       "quoteProperties": "asNeeded",
-      "semicolons": "always",
-      "trailingComma": "all"
+      "semicolons": "always"
     }
   },
   "json": {
@@ -42,7 +41,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "a11y":{
+      "a11y": {
         "useKeyWithClickEvents": "off"
       },
       "suspicious": {
@@ -50,6 +49,7 @@
         "noArrayIndexKey": "off"
       },
       "correctness": {
+        "noUnusedImports": "error",
         "useExhaustiveDependencies": "off"
       },
       "complexity": {

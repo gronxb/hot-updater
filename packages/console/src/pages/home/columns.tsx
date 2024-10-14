@@ -31,14 +31,25 @@ export const columns: AccessorKeyColumnDef<UpdateSource, any>[] = [
     header: "Enabled",
     cell: (info) =>
       info.getValue() ? (
-        <div className="flex flex-row items-center gap-2">
+        <div className="flex flex-row items-center">
           <Check />
-          <p>Enabled</p>
         </div>
       ) : (
-        <div className="flex flex-row items-center gap-2">
+        <div className="flex flex-row items-center">
           <X />
-          <p>Disabled</p>
+        </div>
+      ),
+  }),
+  columnHelper.accessor("forceUpdate", {
+    header: "Force Update",
+    cell: (info) =>
+      info.getValue() ? (
+        <div className="flex flex-row items-center">
+          <Check />
+        </div>
+      ) : (
+        <div className="flex flex-row items-center">
+          <X />
         </div>
       ),
   }),

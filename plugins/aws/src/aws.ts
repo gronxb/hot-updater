@@ -31,7 +31,7 @@ export const aws =
     let updateSources: UpdateSource[] = [];
 
     return {
-      async commitUpdateJson() {
+      async commitUpdateSource() {
         try {
           const command = new GetObjectCommand({
             Bucket: bucketName,
@@ -62,11 +62,11 @@ export const aws =
         });
         await upload.done();
       },
-      async updateUpdateJson(
+      async updateUpdateSource(
         targetBundleVersion: number,
         newSource: Partial<UpdateSource>,
       ) {
-        updateSources = await this.getUpdateJson();
+        updateSources = await this.getUpdateSources();
 
         const targetIndex = updateSources.findIndex(
           (u) => u.bundleVersion === targetBundleVersion,
@@ -77,15 +77,15 @@ export const aws =
 
         Object.assign(updateSources[targetIndex], newSource);
       },
-      async appendUpdateJson(source) {
-        updateSources = await this.getUpdateJson();
+      async appendUpdateSource(source) {
+        updateSources = await this.getUpdateSources();
         updateSources.unshift(source);
       },
-      async setUpdateJson(sources) {
+      async setUpdateSources(sources) {
         updateSources = sources;
       },
 
-      async getUpdateJson(refresh = false) {
+      async getUpdateSources(refresh = false) {
         if (updateSources.length > 0 && !refresh) {
           return updateSources;
         }
@@ -99,9 +99,9 @@ export const aws =
           });
           const { Body: UpdateJsonBody } = await client.send(command);
           const bodyContents = await streamToString(UpdateJsonBody);
-          const updateJson = JSON.parse(bodyContents);
-          updateSources = updateJson;
-          return updateJson as UpdateSource[];
+          const _updateSource = JSON.parse(bodyContents);
+          updateSources = _updateSource;
+          return _updateSource as UpdateSource[];
         } catch (e) {
           if (e instanceof NoSuchKey) {
             return [];

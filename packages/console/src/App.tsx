@@ -1,7 +1,9 @@
 import "./app.css";
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fetch } from "@tauri-apps/plugin-http";
 import { httpBatchLink } from "@trpc/react-query";
+import { OverlayProvider } from "overlay-kit";
 import { Route, Switch } from "wouter";
 import { Header } from "./components/header";
 import { ThemeProvider } from "./components/theme-provider";
@@ -24,18 +26,20 @@ export default function App() {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-          <Header />
+        <OverlayProvider>
+          <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+            <Header />
 
-          <Switch>
-            <Route path="/" component={HomePage} />
-            <Route path="/empty-config" component={EmptyConfigPage} />
+            <Switch>
+              <Route path="/" component={HomePage} />
+              <Route path="/empty-config" component={EmptyConfigPage} />
 
-            {/* Default route in a switch */}
-            <Route>404: No such page!</Route>
-          </Switch>
-          <Toaster />
-        </ThemeProvider>
+              {/* Default route in a switch */}
+              <Route>404: No such page!</Route>
+            </Switch>
+            <Toaster />
+          </ThemeProvider>
+        </OverlayProvider>
       </QueryClientProvider>
     </trpc.Provider>
   );
