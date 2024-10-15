@@ -1,4 +1,4 @@
-import type { UpdateSource } from "@hot-updater/core";
+import type { UpdateSource } from "@hot-updater/utils";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { checkForUpdate } from "./checkForUpdate";
 import * as natives from "./native";

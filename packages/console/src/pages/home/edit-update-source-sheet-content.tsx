@@ -10,7 +10,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { trpc } from "@/lib/trpc";
-import type { UpdateSource } from "@hot-updater/core";
+import type { UpdateSource } from "@hot-updater/utils";
 import { Controller, useForm } from "react-hook-form";
 
 interface EditUpdateSourceSheetFormProps {

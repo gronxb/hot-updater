@@ -1,21 +1,20 @@
-import { version } from "@/packageJson.js";
-import { Box, Text } from "ink";
-import Link from "ink-link";
+import { version } from "@/packageJson";
+import boxen from "boxen";
+import picocolors from "picocolors";
 
-export const Banner = () => {
-  return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor="cyan"
-      alignSelf="flex-start"
-    >
-      <Text>Hot Updater - React Native OTA Solution v{version}</Text>
-      <Box justifyContent="center">
-        <Link url="https://github.com/gronxb/hot-updater">
-          <Text color="cyan">Github</Text>
-        </Link>
-      </Box>
-    </Box>
-  );
-};
+export const banner = boxen(
+  [
+    `${picocolors.bold("Hot Updater - React Native OTA Solution")} v${version}`,
+    "",
+    `Github: ${picocolors.magenta(
+      picocolors.underline("https://github.com/gronxb/hot-updater"),
+    )}`,
+    "Give a ⭐️ if you like it!",
+  ].join("\n"),
+  {
+    padding: 1,
+    borderStyle: "round",
+    borderColor: "redBright",
+    textAlignment: "center",
+  },
+);
