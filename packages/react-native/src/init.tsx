@@ -1,4 +1,4 @@
-import type { UpdateSourceArg } from "@hot-updater/core";
+import type { UpdateSourceArg } from "@hot-updater/utils";
 import { Platform } from "react-native";
 import { checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";

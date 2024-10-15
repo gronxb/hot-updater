@@ -1,20 +1,12 @@
-import { Banner } from "@/components/Banner.js";
-import { useLog } from "@/hooks/useLog.js";
-import { usePlatform } from "@/hooks/usePlatform.js";
-import { useSpinner } from "@/hooks/useSpinner.js";
-import { createZip } from "@/utils/createZip.js";
-import { delay } from "@/utils/delay.js";
-import { formatDate } from "@/utils/formatDate.js";
-import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion.js";
-import { getFileHashFromFile } from "@/utils/getFileHash.js";
-import { filterTargetVersion } from "@hot-updater/core";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
-import { StatusMessage, TextInput } from "@inkjs/ui";
-import fs from "fs/promises";
-import { Box } from "ink";
-import { option } from "pastel";
-import { useState } from "react";
-import { z } from "zod";
+import fs from "node:fs/promises";
+import { intro, spinner, text } from "@clack/prompts";
+
+import { createZip } from "@/utils/createZip";
+import { formatDate } from "@/utils/formatDate";
+import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
+import { getFileHashFromFile } from "@/utils/getFileHash";
+import { type Platform, filterTargetVersion } from "@hot-updater/utils";
+import { getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -22,191 +14,86 @@ export interface DeployOptions {
   forceUpdate: boolean;
 }
 
-export const options = z.object({
-  platform: z
-    .union([z.literal("ios"), z.literal("android")])
-    .describe(
-      option({
-        description: "specify the platform",
-        alias: "p",
-      }),
-    )
-    .optional(),
-  forceUpdate: z
-    .boolean()
-    .describe(
-      option({
-        description: "force update the app",
-        alias: "f",
-      }),
-    )
-    .default(false),
-  targetVersion: z
-    .string()
-    .describe(
-      option({
-        description: "specify the target version",
-        alias: "t",
-      }),
-    )
-    .optional(),
-  description: z
-    .string()
-    .describe(
-      option({
-        description: "bundle description",
-        alias: "m",
-      }),
-    )
-    .optional(),
-});
+export const deploy = async (options: DeployOptions) => {
+  const s = spinner();
 
-interface Props {
-  options: z.infer<typeof options>;
-}
+  const config = await loadConfig();
+  if (!config) {
+    console.error("No config found. Please run `hot-updater init` first.");
+    process.exit(1);
+  }
 
-const { build, deploy } = await loadConfig();
-const cwd = getCwd();
+  intro("Please provide a description for the bundle.");
+  const description = await text({ message: "Description" });
 
-export default function Deploy({ options }: Props) {
-  const { forceUpdate } = options;
+  const cwd = getCwd();
+  const targetVersion =
+    options.targetVersion ??
+    (await getDefaultTargetVersion(cwd, options.platform));
 
-  const [step, setStep] = useState<
-    "description" | "platform" | "build" | "log"
-  >(!options.description ? "description" : "platform");
-
-  const { spinner, SpinnerLog } = useSpinner();
-  const { log, StaticLogs } = useLog();
-
-  const [description, setDescription] = useState(options.description);
-
-  const { PlatformSelect } = usePlatform(options.platform);
-
-  const handleDeploy = async (platform: Platform) => {
-    setStep("build");
-
-    if (!platform) {
-      setStep("log");
-      log.error("Platform not found. Please provide a platform.");
-      process.exit(1);
-    }
-
-    const targetVersion =
-      options.targetVersion ?? (await getDefaultTargetVersion(cwd, platform));
-
-    if (!targetVersion) {
-      setStep("log");
-      log.error("Target version not found. Please provide a target version.");
-      process.exit(1);
-    }
-
-    delay(50);
-    const { buildPath } = await build({
-      cwd,
-      platform,
-      log,
-      spinner,
-    });
-    setStep("log");
-
-    spinner.message("Checking existing updates...");
-
-    await createZip(buildPath, "build.zip");
-    const bundlePath = buildPath.concat(".zip");
-    const hash = await getFileHashFromFile(bundlePath);
-
-    const newBundleVersion = formatDate(new Date());
-
-    const deployPlugin = deploy({
-      cwd,
-      log,
-      spinner,
-    });
-
-    const updateSources = await deployPlugin.getUpdateSources();
-    const targetVersions = filterTargetVersion(
-      updateSources ?? [],
-      targetVersion,
-      platform,
+  if (!targetVersion) {
+    throw new Error(
+      "Target version not found. Please provide a target version.",
     );
+  }
 
-    // hash check
-    if (targetVersions.length > 0) {
-      const recentVersion = targetVersions[0];
-      const recentHash = recentVersion?.hash;
+  s.start("Build in progress");
 
-      if (recentHash === hash) {
-        spinner.error("The update already exists.");
-        process.exit(1);
-      }
-    }
+  const { buildPath } = await config.build({
+    cwd,
+    platform: options.platform,
+  });
+  s.message("Checking existing updates...");
 
-    spinner.message("Uploading bundle...");
+  await createZip(buildPath, "build.zip");
 
-    const { file } = await deployPlugin.uploadBundle(
-      platform,
-      newBundleVersion,
-      bundlePath,
-    );
+  const bundlePath = buildPath.concat(".zip");
 
-    await deployPlugin.appendUpdateSource({
-      forceUpdate,
-      platform,
-      file,
-      hash,
-      description,
-      targetVersion,
-      bundleVersion: newBundleVersion,
-      enabled: true,
-    });
-    await deployPlugin.commitUpdateSource();
+  const hash = await getFileHashFromFile(bundlePath);
 
-    await fs.rm(bundlePath);
-    spinner.done("Uploading Success !");
-  };
+  const newBundleVersion = formatDate(new Date());
 
-  switch (step) {
-    case "description": {
-      return (
-        <Box flexDirection="column">
-          <Banner />
+  const deployPlugin = config.deploy({
+    cwd,
+  });
 
-          <StatusMessage variant="info">
-            Please provide a description for the bundle.
-          </StatusMessage>
+  const updateSources = await deployPlugin.getUpdateSources();
+  const targetVersions = filterTargetVersion(
+    updateSources ?? [],
+    targetVersion,
+    options.platform,
+  );
 
-          <TextInput
-            placeholder="Description"
-            onSubmit={(description) => {
-              setDescription(description);
-              setStep("platform");
-            }}
-          />
-        </Box>
-      );
-    }
-    case "platform": {
-      return (
-        <Box flexDirection="column">
-          <Banner />
+  // hash check
+  if (targetVersions.length > 0) {
+    const recentVersion = targetVersions[0];
+    const recentHash = recentVersion?.hash;
 
-          <StatusMessage variant="info">
-            Please select the platform to deploy.
-          </StatusMessage>
-          <PlatformSelect onNext={handleDeploy} />
-        </Box>
-      );
-    }
-    case "build": {
-      return null;
-    }
-    case "log": {
-      return (
-        <Box flexDirection="column">
-          <StaticLogs />
-          <SpinnerLog />
-        </Box>
-      );
+    if (recentHash === hash) {
+      s.stop("The update already exists.", -1);
+      return;
     }
   }
-}
+
+  s.message("Uploading bundle...");
+  const { file } = await deployPlugin.uploadBundle(
+    options.platform,
+    newBundleVersion,
+    bundlePath,
+  );
+
+  await deployPlugin.appendUpdateSource({
+    forceUpdate: options.forceUpdate,
+    platform: options.platform,
+    file,
+    hash,
+    description: String(description),
+    targetVersion,
+    bundleVersion: newBundleVersion,
+    enabled: true,
+  });
+  await deployPlugin.commitUpdateSource();
+
+  await fs.rm(bundlePath);
+  s.stop("Uploading Success !", 0);
+};

@@ -1,4 +1,4 @@
-import type { UpdateSource } from "@hot-updater/core";
+import type { UpdateSource } from "@hot-updater/utils";
 import {
   type AccessorKeyColumnDef,
   createColumnHelper,

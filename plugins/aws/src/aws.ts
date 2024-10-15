@@ -8,10 +8,11 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import type {
-  BasePluginArgs,
-  DeployPlugin,
-  UpdateSource,
+import {
+  type BasePluginArgs,
+  type DeployPlugin,
+  type UpdateSource,
+  log,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
@@ -24,7 +25,7 @@ export interface AwsConfig
 
 export const aws =
   (config: AwsConfig) =>
-  ({ log, spinner }: BasePluginArgs): DeployPlugin => {
+  (_: BasePluginArgs): DeployPlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
@@ -40,13 +41,13 @@ export const aws =
           await client.send(command);
         } catch (e) {
           if (e instanceof NoSuchKey) {
-            spinner?.message("Creating new update.json");
+            log.info("Creating new update.json");
           } else {
             throw e;
           }
         }
 
-        spinner?.message("Uploading update.json");
+        log.info("Uploading update.json");
         const Key = "update.json";
         const Body = JSON.stringify(updateSources);
         const ContentType = mime.getType(Key) ?? void 0;
@@ -90,7 +91,7 @@ export const aws =
           return updateSources;
         }
 
-        spinner?.message("Getting update.json");
+        log.info("Getting update.json");
 
         try {
           const command = new GetObjectCommand({
@@ -136,11 +137,11 @@ export const aws =
           return Key;
         }
 
-        spinner?.error("Bundle Not Found");
+        log.error("Bundle Not Found");
         throw new Error("Bundle Not Found");
       },
       async uploadBundle(platform, bundleVersion, bundlePath) {
-        spinner?.message("Uploading Bundle");
+        log.info("Uploading Bundle");
 
         const Body = await fs.readFile(bundlePath);
         const ContentType = mime.getType(bundlePath) ?? void 0;
@@ -159,7 +160,7 @@ export const aws =
         });
         const response = await upload.done();
         if (!response.Location) {
-          spinner?.error("Upload Failed");
+          log.error("Upload Failed");
           throw new Error("Upload Failed");
         }
 

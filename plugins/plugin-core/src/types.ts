@@ -1,19 +1,9 @@
-import type { Platform, UpdateSource } from "@hot-updater/core";
+import type { Platform, UpdateSource } from "@hot-updater/utils";
 
-export type { Platform, UpdateSource } from "@hot-updater/core";
+export type { Platform, UpdateSource } from "@hot-updater/utils";
 
 export interface BasePluginArgs {
   cwd: string;
-  log?: {
-    info: (message: string) => void;
-    success: (message: string) => void;
-    error: (message: string) => void;
-  };
-  spinner?: {
-    message: (message: string) => void;
-    error: (message: string) => void;
-    done: (message: string) => void;
-  };
 }
 
 export interface BuildPluginArgs extends BasePluginArgs {
