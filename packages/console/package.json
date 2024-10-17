@@ -1,6 +1,10 @@
 {
   "name": "@hot-updater/console",
-  "version": "0.1.0",
+  "version": "0.0.3",
+  "files": ["package.json"],
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "React Native OTA solution for self-hosted",
   "type": "module",
   "scripts": {
@@ -17,7 +21,7 @@
     "sidecar:linux-x64": "bun build ./sidecar-app/index.ts --compile --target=bun-linux-x64 --minify --bytecode --outfile ./sidecar-app/app"
   },
   "license": "MIT",
-  "dependencies": {
+  "devDependencies": {
     "@hot-updater/utils": "workspace:^",
     "@hot-updater/plugin-core": "workspace:^",
     "@radix-ui/react-checkbox": "^1.1.2",
@@ -31,9 +35,7 @@
     "@tauri-apps/plugin-log": "^2.0.0",
     "@types/node": "^20.9.4",
     "@types/react": "^18.3.11",
-    "jotai": "^2.10.0"
-  },
-  "devDependencies": {
+    "jotai": "^2.10.0",
     "@hono/trpc-server": "^0.3.2",
     "@tanstack/react-query": "^5.59.0",
     "@tanstack/react-table": "^8.20.5",

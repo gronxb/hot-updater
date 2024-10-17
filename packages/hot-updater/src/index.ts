@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { console } from "@/commands/console";
+import { openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { generateSecretKey } from "@/commands/generateSecretKey";
 import { prune } from "@/commands/prune";
@@ -48,7 +48,7 @@ program
     deploy(options);
   });
 
-program.command("console").description("open the console").action(console);
+program.command("console").description("open the console").action(openConsole);
 
 program
   .command("generate-secret-key")

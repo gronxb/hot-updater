@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hot-updater/react-native": "workspace:^",
+    "@hot-updater/console": "workspace:^",
     "react": "18.2.0",
     "react-native": "0.74.1"
   },
