@@ -35,6 +35,9 @@ importers:
 
   examples/react-native:
     dependencies:
+      '@hot-updater/console':
+        specifier: workspace:^
+        version: link:../../packages/console
       '@hot-updater/react-native':
         specifier: workspace:^
         version: link:../../packages/react-native
@@ -125,7 +128,10 @@ importers:
         version: 5.91.0(@swc/core@1.7.26(@swc/helpers@0.5.13))(esbuild@0.21.4)
 
   packages/console:
-    dependencies:
+    devDependencies:
+      '@hono/trpc-server':
+        specifier: ^0.3.2
+        version: 0.3.2(@trpc/server@11.0.0-rc.553)(hono@4.6.3)
       '@hot-updater/plugin-core':
         specifier: workspace:^
         version: link:../../plugins/plugin-core
@@ -153,25 +159,6 @@ importers:
       '@radix-ui/react-toast':
         specifier: ^1.2.2
         version: 1.2.2(@types/react-dom@18.3.0)(@types/react@18.3.11)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tauri-apps/plugin-dialog':
-        specifier: ^2.0.0
-        version: 2.0.0
-      '@tauri-apps/plugin-log':
-        specifier: ^2.0.0
-        version: 2.0.0
-      '@types/node':
-        specifier: ^20.9.4
-        version: 20.16.10
-      '@types/react':
-        specifier: ^18.3.11
-        version: 18.3.11
-      jotai:
-        specifier: ^2.10.0
-        version: 2.10.0(@types/react@18.3.11)(react@18.3.1)
-    devDependencies:
-      '@hono/trpc-server':
-        specifier: ^0.3.2
-        version: 0.3.2(@trpc/server@11.0.0-rc.553)(hono@4.6.3)
       '@tanstack/react-query':
         specifier: ^5.59.0
         version: 5.59.0(react@18.3.1)
@@ -184,7 +171,13 @@ importers:
       '@tauri-apps/cli':
         specifier: '>=2.0.0'
         version: 2.0.1
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2.0.0
+        version: 2.0.0
       '@tauri-apps/plugin-http':
+        specifier: ^2.0.0
+        version: 2.0.0
+      '@tauri-apps/plugin-log':
         specifier: ^2.0.0
         version: 2.0.0
       '@tauri-apps/plugin-shell':
@@ -199,6 +192,12 @@ importers:
       '@trpc/server':
         specifier: 11.0.0-rc.553
         version: 11.0.0-rc.553
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.16.10
+      '@types/react':
+        specifier: ^18.3.11
+        version: 18.3.11
       '@types/react-dom':
         specifier: ^18.3.0
         version: 18.3.0
@@ -220,6 +219,9 @@ importers:
       hono:
         specifier: ^4.6.3
         version: 4.6.3
+      jotai:
+        specifier: ^2.10.0
+        version: 2.10.0(@types/react@18.3.11)(react@18.3.1)
       lucide-react:
         specifier: ^0.447.0
         version: 0.447.0(react@18.3.1)
@@ -293,6 +295,9 @@ importers:
         specifier: ^0.36.4
         version: 0.36.4
     devDependencies:
+      '@hot-updater/console':
+        specifier: workspace:^
+        version: link:../console
       '@hot-updater/plugin-core':
         specifier: workspace:^
         version: link:../../plugins/plugin-core

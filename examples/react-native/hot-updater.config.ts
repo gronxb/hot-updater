@@ -20,4 +20,7 @@ export default defineConfig({
     },
     bucketName: process.env.AWS_S3_BUCKET_NAME!,
   }),
+  // planning
+  // storage: s3Storage(), r2Storage(),
+  // deploy: supabase(),
 });

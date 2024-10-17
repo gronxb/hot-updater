@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.5",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -12,6 +12,7 @@
       "require": "./dist/config.js"
     }
   },
+  "files": ["dist", "package.json"],
   "description": "React Native OTA solution for self-hosted",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -38,7 +39,8 @@
     "plist": "^3.1.0",
     "workspace-tools": "^0.36.4",
     "read-package-up": "^11.0.0",
-    "boxen": "^8.0.1"
+    "boxen": "^8.0.1",
+    "@hot-updater/console": "0.0.3"
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:^",

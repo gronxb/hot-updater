@@ -1,13 +1,14 @@
 #!/usr/bin/env node
+import { openConsole } from "@/commands/console";
+import { type DeployOptions, deploy } from "@/commands/deploy";
+import { generateSecretKey } from "@/commands/generateSecretKey";
+import { prune } from "@/commands/prune";
+import { banner } from "@/components/banner";
+import { version } from "@/packageJson";
+import { getPlatform } from "@/prompts/getPlatform";
+import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getCwd, log } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
-import { type DeployOptions, deploy } from "./commands/deploy";
-import { generateSecretKey } from "./commands/generateSecretKey";
-import { prune } from "./commands/prune";
-import { banner } from "./components/banner";
-import { version } from "./packageJson";
-import { getPlatform } from "./prompts/getPlatform";
-import { getDefaultTargetVersion } from "./utils/getDefaultTargetVersion";
 
 const program = new Command();
 
@@ -46,6 +47,8 @@ program
     }
     deploy(options);
   });
+
+program.command("console").description("open the console").action(openConsole);
 
 program
   .command("generate-secret-key")
