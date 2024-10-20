@@ -2,7 +2,4 @@ node_modules
 dist
 bin
 
-src-tauri/binaries
-sidecar-app/app
-
 hot-updater.config.ts
