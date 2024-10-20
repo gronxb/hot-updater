@@ -3,10 +3,10 @@
 // import { createServerFn } from "@tanstack/start";
 
 import { Sheet } from "@/components/ui/sheet";
+import { getUpdateSources } from "@/lib/config.server";
 import { columns } from "@/pages/home/columns";
 import { DataTable } from "@/pages/home/data-table";
 import { EditUpdateSourceSheetContent } from "@/pages/home/edit-update-source-sheet-content";
-import type { UpdateSource } from "@hot-updater/utils";
 import { createFileRoute } from "@tanstack/react-router";
 import { overlay } from "overlay-kit";
 
@@ -29,7 +29,7 @@ import { overlay } from "overlay-kit";
 
 export const Route = createFileRoute("/")({
   component: Home,
-  loader: async () => [] as UpdateSource[],
+  loader: async () => getUpdateSources(),
 });
 
 function Home() {

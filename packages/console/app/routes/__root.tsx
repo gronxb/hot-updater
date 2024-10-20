@@ -1,4 +1,3 @@
-import { Header } from "@/components/header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { createRootRoute } from "@tanstack/react-router";
@@ -29,7 +28,7 @@ function RootComponent() {
     <RootDocument>
       <OverlayProvider>
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-          <Header />
+          {/* <Header /> */}
 
           <Outlet />
 
