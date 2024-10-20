@@ -1,0 +1,31 @@
+{
+  "name": "example-with-trpc",
+  "type": "module",
+  "scripts": {
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "start": "vinxi start"
+  },
+  "devDependencies": {
+    "@kobalte/core": "^0.13.7",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.14.10",
+    "@solidjs/start": "^1.0.9",
+    "@tanstack/solid-table": "^8.20.5",
+    "@trpc/client": "^10.45.2",
+    "@trpc/server": "^10.45.2",
+    "@typeschema/valibot": "^0.13.4",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "solid-js": "^1.9.2",
+    "solidui-cli": "latest",
+    "tailwind": "^4.0.0",
+    "tailwind-merge": "^2.5.2",
+    "tailwindcss-animate": "^1.0.7",
+    "valibot": "^0.29.0",
+    "vinxi": "^0.4.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
