@@ -20,7 +20,6 @@
     "autoprefixer": "^10.4.19",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "lucide-solid": "^0.453.0",
     "postcss": "^8.4.38",
     "solid-js": "^1.9.2",
     "solidui-cli": "latest",

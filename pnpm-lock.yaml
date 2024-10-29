@@ -313,9 +313,6 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      lucide-solid:
-        specifier: ^0.453.0
-        version: 0.453.0(solid-js@1.9.2)
       postcss:
         specifier: ^8.4.38
         version: 8.4.47
@@ -7377,11 +7374,6 @@ packages:
     resolution: {integrity: sha512-SZ//hQmvi+kDKrNepArVkYK7/jfeZ5uFNEnYmd45RKZcbGD78KLnrcNXmgeg6m+xNHFvTG+CblszXCy4n6DN4w==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
-
-  lucide-solid@0.453.0:
-    resolution: {integrity: sha512-+yaTXOPSnfXpOCs5DwRyEya9MGRS3ZlHvz/cWOgDDqyZ/5/B6xx8C4p2ihT0i6Gb1+xe9b9pjlmUHfv2yq6t0g==}
-    peerDependencies:
-      solid-js: ^1.4.7
 
   magic-string@0.30.12:
     resolution: {integrity: sha512-Ea8I3sQMVXr8JhN4z+H/d8zwo+tYDgHE9+5G4Wnrwhs0gaK9fXTKx0Tw5Xwsd/bCPTTZNRAdpyzvoeORe9LYpw==}
@@ -19353,10 +19345,6 @@ snapshots:
   lucide-react@0.447.0(react@18.3.1):
     dependencies:
       react: 18.3.1
-
-  lucide-solid@0.453.0(solid-js@1.9.2):
-    dependencies:
-      solid-js: 1.9.2
 
   magic-string@0.30.12:
     dependencies:

@@ -3,7 +3,6 @@ import { createEffect, createSignal, onMount } from "solid-js";
 import { api } from "~/lib/api";
 import { columns } from "./_components/columns";
 import { DataTable } from "./_components/data-table";
-
 export default function Home() {
   const data = createAsync(() => api.hotUpdater.getUpdateSources.query());
   const [selectedBundleVersion, setSelectedBundleVersion] = createSignal<
@@ -24,7 +23,7 @@ export default function Home() {
         columns={columns}
         data={data}
         onRowClick={(row) => {
-          console.log(row.bundleVersion);
+          console.log(row);
           setSelectedBundleVersion(row.bundleVersion);
         }}
       />
