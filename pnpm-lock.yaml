@@ -264,22 +264,13 @@ importers:
 
   packages/console2:
     dependencies:
-      '@tanstack/solid-form':
-        specifier: ^0.34.0
-        version: 0.34.0(solid-js@1.9.2)
-      '@tanstack/valibot-form-adapter':
-        specifier: ^0.34.0
-        version: 0.34.0(valibot@0.42.1(typescript@5.6.2))
-      solid-sonner:
-        specifier: ^0.2.8
-        version: 0.2.8(solid-js@1.9.2)
-    devDependencies:
       '@hot-updater/plugin-core':
         specifier: workspace:^
         version: link:../../plugins/plugin-core
       '@hot-updater/utils':
         specifier: workspace:^
         version: link:../utils
+    devDependencies:
       '@kobalte/core':
         specifier: ^0.13.7
         version: 0.13.7(solid-js@1.9.2)
@@ -292,9 +283,15 @@ importers:
       '@solidjs/start':
         specifier: ^1.0.9
         version: 1.0.9(solid-js@1.9.2)(vinxi@0.4.3(@types/node@22.7.5)(encoding@0.1.13)(ioredis@5.4.1)(terser@5.31.0)(webpack-sources@3.2.3))(vite@5.4.8(@types/node@22.7.5)(terser@5.31.0))
+      '@tanstack/solid-form':
+        specifier: ^0.34.0
+        version: 0.34.0(solid-js@1.9.2)
       '@tanstack/solid-table':
         specifier: ^8.20.5
         version: 8.20.5(solid-js@1.9.2)
+      '@tanstack/valibot-form-adapter':
+        specifier: ^0.34.0
+        version: 0.34.0(valibot@0.42.1(typescript@5.6.2))
       '@trpc/client':
         specifier: ^10.45.2
         version: 10.45.2(@trpc/server@10.45.2)
@@ -319,6 +316,9 @@ importers:
       solid-js:
         specifier: ^1.9.2
         version: 1.9.2
+      solid-sonner:
+        specifier: ^0.2.8
+        version: 0.2.8(solid-js@1.9.2)
       solidui-cli:
         specifier: latest
         version: 0.7.0
@@ -331,6 +331,9 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.14(ts-node@10.9.2(@swc/core@1.7.26(@swc/helpers@0.5.13))(@types/node@22.7.5)(typescript@5.6.2)))
+      typescript:
+        specifier: ^5.6.2
+        version: 5.6.2
       valibot:
         specifier: ^0.42.1
         version: 0.42.1(typescript@5.6.2)
@@ -346,6 +349,9 @@ importers:
       '@hot-updater/console':
         specifier: 0.0.3
         version: 0.0.3
+      '@hot-updater/console2':
+        specifier: workspace:^
+        version: link:../console2
       boxen:
         specifier: ^8.0.1
         version: 8.0.1
@@ -15381,7 +15387,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 22.7.5
 
   '@types/cosmiconfig@6.0.0(typescript@5.6.2)':
     dependencies:
@@ -20347,7 +20353,7 @@ snapshots:
 
   path-scurry@1.11.1:
     dependencies:
-      lru-cache: 10.2.2
+      lru-cache: 10.4.3
       minipass: 7.1.2
 
   path-to-regexp@0.1.7:

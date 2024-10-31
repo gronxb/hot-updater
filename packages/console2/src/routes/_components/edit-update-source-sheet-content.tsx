@@ -30,12 +30,6 @@ const EditUpdateSourceSheetForm = ({
   source,
   onEditSuccess,
 }: EditUpdateSourceSheetFormProps) => {
-  const onSubmit = async (data: Partial<UpdateSource>) => {
-    if (!source.targetVersion) {
-      return;
-    }
-  };
-
   const form = createForm(() => ({
     defaultValues: {
       description: source.description,
@@ -49,6 +43,7 @@ const EditUpdateSourceSheetForm = ({
         targetBundleVersion: source.bundleVersion,
         updateSource: value,
       });
+      onEditSuccess();
     },
   }));
 
@@ -83,7 +78,7 @@ const EditUpdateSourceSheetForm = ({
       <div>
         <TextField class="grid w-full max-w-sm items-center gap-1.5">
           <TextFieldLabel for="targetVersion">Target Version</TextFieldLabel>
-          <form.Field name="description">
+          <form.Field name="targetVersion">
             {(field) => (
               <TextFieldInput
                 type="text"
@@ -165,15 +160,14 @@ export const EditUpdateSourceSheetContent = ({
     api.hotUpdater.getUpdateSourceByBundleVersion.query(bundleVersion),
   );
 
-  const $source = source();
   return (
     <SheetContent class="flex flex-col h-full">
       <SheetHeader class="mb-4">
-        <SheetTitle>Edit {$source?.bundleVersion}</SheetTitle>
+        <SheetTitle>Edit {source()?.bundleVersion}</SheetTitle>
       </SheetHeader>
 
-      {$source ? (
-        <EditUpdateSourceSheetForm source={$source} onEditSuccess={onClose} />
+      {source() ? (
+        <EditUpdateSourceSheetForm source={source()!} onEditSuccess={onClose} />
       ) : (
         <SheetDescription>
           No update source found for bundle version {bundleVersion}

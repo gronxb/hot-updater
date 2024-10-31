@@ -1,46 +1,49 @@
-import { createAsync } from "@solidjs/router";
-import { createEffect, createSignal, onMount } from "solid-js";
+import { Suspense, createResource, createSignal } from "solid-js";
+import { Sheet } from "~/components/ui/sheet";
 import { api } from "~/lib/api";
 import { columns } from "./_components/columns";
 import { DataTable } from "./_components/data-table";
+import { EditUpdateSourceSheetContent } from "./_components/edit-update-source-sheet-content";
+
 export default function Home() {
-  const data = createAsync(() => api.hotUpdater.getUpdateSources.query());
+  const [data, { refetch }] = createResource(() =>
+    api.hotUpdater.getUpdateSources.query(),
+  );
   const [selectedBundleVersion, setSelectedBundleVersion] = createSignal<
     number | null
   >(null);
 
-  createEffect(() => {
-    console.log("AA", data());
-  });
-  onMount(() => {
-    console.log("BB");
-  });
-
   return (
-    <main class="w-full space-y-2.5">
-      <DataTable
-        // TODO: columns가 문제인듯
-        columns={columns}
-        data={data}
-        onRowClick={(row) => {
-          console.log(row);
-          setSelectedBundleVersion(row.bundleVersion);
-        }}
-      />
-      {/* 
-      <Sheet
-        open={selectedBundleVersion() !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedBundleVersion(null);
-          }
-        }}
-      >
-        <EditUpdateSourceSheetContent
-          bundleVersion={selectedBundleVersion() ?? 0} // TODO: fix this
-          onClose={() => setSelectedBundleVersion(null)}
+    <Suspense fallback={<div>Loading...</div>}>
+      <main class="w-full space-y-2.5">
+        <DataTable
+          columns={columns}
+          data={data}
+          onRowClick={(row) => {
+            console.log(row);
+            setSelectedBundleVersion(row.bundleVersion);
+          }}
         />
-      </Sheet> */}
-    </main>
+
+        <Sheet
+          open={selectedBundleVersion() !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedBundleVersion(null);
+            }
+          }}
+        >
+          {selectedBundleVersion() && (
+            <EditUpdateSourceSheetContent
+              bundleVersion={selectedBundleVersion()!}
+              onClose={() => {
+                setSelectedBundleVersion(null);
+                refetch();
+              }}
+            />
+          )}
+        </Sheet>
+      </main>
+    </Suspense>
   );
 }

@@ -40,7 +40,8 @@
     "workspace-tools": "^0.36.4",
     "read-package-up": "^11.0.0",
     "boxen": "^8.0.1",
-    "@hot-updater/console": "0.0.3"
+    "@hot-updater/console": "0.0.3",
+    "@hot-updater/console2": "workspace:^"
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:^",

@@ -1,4 +1,4 @@
-import type { UpdateSource } from "@hot-updater/utils";
+import { type Config, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { wrap } from "@typeschema/valibot";
 import {
   boolean,
@@ -23,27 +23,39 @@ const updateSourceSchema = object({
   description: optional(string(), ""),
 });
 
+let config: Config | null = null;
+
 export const hotUpdaterRouter = createTRPCRouter({
-  hello: publicProcedure.input(wrap(string())).query(({ input }) => {
-    return `Hello ${input}!`;
+  hello: publicProcedure.query(async () => "hello"),
+  loadConfig: publicProcedure.query(async ({ ctx }) => {
+    config = await loadConfig();
+    return true;
+  }),
+  isConfigLoaded: publicProcedure.query(async ({ ctx }) => {
+    return config !== null;
   }),
   getUpdateSources: publicProcedure.query(async ({ ctx }) => {
-    return [
-      {
-        platform: "ios",
-        targetVersion: "1.0",
-        file: "http://example.com/bundle.zip",
-        hash: "hash",
-        forceUpdate: true,
-        enabled: false, // Disabled
-        bundleVersion: 2,
-      },
-    ] as UpdateSource[];
+    if (!config) {
+      config = await loadConfig();
+    }
+    const deployPlugin = config?.deploy({
+      cwd: getCwd(),
+    });
+    return deployPlugin?.getUpdateSources();
   }),
   getUpdateSourceByBundleVersion: publicProcedure
     .input(wrap(number()))
     .query(async ({ ctx, input }) => {
-      return null as UpdateSource | null;
+      if (!config) {
+        config = await loadConfig();
+      }
+      const deployPlugin = config?.deploy({
+        cwd: getCwd(),
+      });
+      const updateSources = await deployPlugin?.getUpdateSources();
+      return (
+        updateSources?.find((source) => source.bundleVersion === input) ?? null
+      );
     }),
   updateUpdateSource: publicProcedure
     .input(
@@ -55,6 +67,18 @@ export const hotUpdaterRouter = createTRPCRouter({
       ),
     )
     .mutation(async ({ ctx, input }) => {
-      return null as UpdateSource | null;
+      if (!config) {
+        config = await loadConfig();
+      }
+
+      const deployPlugin = config?.deploy({
+        cwd: getCwd(),
+      });
+      await deployPlugin?.updateUpdateSource(
+        input.targetBundleVersion,
+        input.updateSource,
+      );
+      await deployPlugin?.commitUpdateSource();
+      return true;
     }),
 });
