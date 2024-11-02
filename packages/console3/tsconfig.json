@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "lib": ["DOM", "ES2020"],
+    "jsx": "preserve",
+    "target": "ES2020",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "jsxImportSource": "solid-js",
+    "useDefineForClassFields": true,
+
+    /* modules */
+    "module": "ESNext",
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+
+    /* type checking */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@/src-server/*": ["src-server/*"]
+    }
+  },
+  "include": ["src"]
+}

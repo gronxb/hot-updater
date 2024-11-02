@@ -1,0 +1,44 @@
+{
+  "name": "console3",
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "rsbuild build",
+    "check": "biome check --write",
+    "dev": "rsbuild dev --open",
+    "format": "biome format --write",
+    "preview": "rsbuild preview"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.3",
+    "@hono/valibot-validator": "^0.4.1",
+    "@kobalte/core": "^0.13.7",
+    "@rsbuild/core": "^1.0.18",
+    "@rsbuild/plugin-babel": "^1.0.2",
+    "@rsbuild/plugin-solid": "^1.0.3",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.14.10",
+    "@tanstack/solid-form": "^0.34.0",
+    "@tanstack/solid-table": "^8.20.5",
+    "@tanstack/valibot-form-adapter": "^0.34.0",
+    "@typeschema/valibot": "^0.14.0",
+    "autoprefixer": "^10.4.19",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "postcss": "^8.4.38",
+    "solid-js": "^1.9.3",
+    "solid-sonner": "^0.2.8",
+    "solidui-cli": "latest",
+    "tailwind-merge": "^2.5.4",
+    "tailwindcss": "^3.4.14",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.6.3",
+    "valibot": "^0.42.1",
+    "hono": "^4.6.3",
+    "lucide-solid": "^0.454.0"
+  },
+  "dependencies": {
+    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/utils": "workspace:^"
+  }
+}
