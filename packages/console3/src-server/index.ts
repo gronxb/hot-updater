@@ -9,6 +9,8 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const relativePathToScript = path.relative(process.cwd(), __dirname);
 
 const app = new Hono()
+  .get("/ping", (c) => c.text("pong"))
+  .route("/rpc", rpc)
   .use(
     "/static/*",
     serveStatic({
@@ -21,9 +23,7 @@ const app = new Hono()
       root: relativePathToScript,
       path: "index.html",
     }),
-  )
-  .get("/ping", (c) => c.text("pong"))
-  .route("/rpc", rpc);
+  );
 
 export type AppType = typeof app;
 

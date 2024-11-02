@@ -1,4 +1,4 @@
-import type { AppType } from "@/src-server/index";
+import type { RpcType } from "@/src-server/rpc";
 import { hc } from "hono/client";
 
-export const api = hc<AppType>("/");
+export const api = hc<RpcType>("/rpc");

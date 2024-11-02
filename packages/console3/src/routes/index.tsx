@@ -7,7 +7,7 @@ import { EditUpdateSourceSheetContent } from "./_components/edit-update-source-s
 
 export default function Home() {
   const [data, { refetch }] = createResource(() =>
-    api.rpc.getUpdateSources.$get().then((res) => res.json()),
+    api.getUpdateSources.$get().then((res) => res.json()),
   );
 
   const [selectedBundleVersion, setSelectedBundleVersion] = createSignal<

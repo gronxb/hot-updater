@@ -79,3 +79,5 @@ export const rpc = new Hono()
       return c.json(true);
     },
   );
+
+export type RpcType = typeof rpc;

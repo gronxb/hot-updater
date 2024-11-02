@@ -39,7 +39,7 @@ const EditUpdateSourceSheetForm = ({
     },
     onSubmit: async ({ value }) => {
       // Do something with form data
-      await api.rpc.updateUpdateSource.$post({
+      await api.updateUpdateSource.$post({
         json: {
           targetBundleVersion: source.bundleVersion,
           updateSource: value,
@@ -159,7 +159,7 @@ export const EditUpdateSourceSheetContent = ({
   onClose,
 }: EditUpdateSourceSheetContentProps) => {
   const source = createAsync(() =>
-    api.rpc.getUpdateSourceByBundleVersion
+    api.getUpdateSourceByBundleVersion
       .$post({ json: { bundleVersion } })
       .then((res) => res.json()),
   );
