@@ -1,6 +1,15 @@
-import { createServer } from "http";
-import { a } from "@hot-updater/console2";
+import { serve } from "@hono/node-server";
+
+import app from "@hot-updater/console3";
 
 export const openConsole = () => {
-  createServer(a).listen(1422);
+  serve(
+    {
+      fetch: app.fetch,
+      port: 1422,
+    },
+    (info) => {
+      console.log(`Server running on port ${info.port}`);
+    },
+  );
 };
