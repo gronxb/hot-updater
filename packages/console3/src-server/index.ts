@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -16,10 +15,12 @@ const app = new Hono()
       root: relativePathToScript,
     }),
   )
-  .get("*", (c) =>
-    c.html(
-      fs.readFileSync(path.join(relativePathToScript, "index.html"), "utf-8"),
-    ),
+  .get(
+    "*",
+    serveStatic({
+      root: relativePathToScript,
+      path: "index.html",
+    }),
   )
   .get("/ping", (c) => c.text("pong"))
   .route("/rpc", rpc);
