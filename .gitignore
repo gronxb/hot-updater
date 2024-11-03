@@ -84,3 +84,7 @@ docs/.vitepress/cache
 
 *.bundle
 **/*/android/app/src/main/res/drawable-mdpi/
+
+
+.nx/cache
+.nx/workspace-data
