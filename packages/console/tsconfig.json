@@ -1,34 +1,30 @@
 {
   "compilerOptions": {
+    "lib": ["DOM", "ES2020"],
+    "jsx": "preserve",
     "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "isolatedModules": true,
-    "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "jsxImportSource": "solid-js",
+    "useDefineForClassFields": true,
 
-    /* Linting */
+    /* modules */
+    "module": "ESNext",
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+
+    /* type checking */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
 
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@sidecar-app/*": [
-        "./sidecar-app/*"
-      ]
+      "@/*": ["src/*"],
+      "@/src-server/*": ["src-server/*"]
     }
   },
-  "include": ["src", "sidecar-app"]
+  "include": ["src"]
 }
