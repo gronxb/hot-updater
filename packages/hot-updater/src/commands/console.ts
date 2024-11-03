@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 
-import app from "@hot-updater/console3";
+import app from "@hot-updater/console";
 
 export const openConsole = () => {
   serve(

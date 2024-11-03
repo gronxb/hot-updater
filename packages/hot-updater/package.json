@@ -12,10 +12,7 @@
       "require": "./dist/config.js"
     }
   },
-  "files": [
-    "dist",
-    "package.json"
-  ],
+  "files": ["dist", "package.json"],
   "description": "React Native OTA solution for self-hosted",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -35,9 +32,7 @@
   "dependencies": {
     "@clack/prompts": "^0.7.0",
     "@hono/node-server": "^1.13.4",
-    "@hot-updater/console": "0.0.3",
-    "@hot-updater/console2": "workspace:^",
-    "@hot-updater/console3": "workspace:^",
+    "@hot-updater/console": "workspace:^",
     "boxen": "^8.0.1",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
