@@ -1,7 +1,29 @@
-# Tauri + Solid + Typescript
+# Rsbuild Project
 
-This template should help get you started developing with Tauri, Solid and Typescript in Vite.
+## Setup
 
-## Recommended IDE Setup
+Install the dependencies:
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+```bash
+pnpm install
+```
+
+## Get Started
+
+Start the dev server:
+
+```bash
+pnpm dev
+```
+
+Build the app for production:
+
+```bash
+pnpm build
+```
+
+Preview the production build locally:
+
+```bash
+pnpm preview
+```

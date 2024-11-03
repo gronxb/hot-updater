@@ -31,16 +31,17 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
+    "@hono/node-server": "^1.13.4",
+    "@hot-updater/console": "workspace:^",
+    "boxen": "^8.0.1",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
     "jszip": "^3.10.1",
     "picocolors": "^1.0.0",
     "plist": "^3.1.0",
-    "workspace-tools": "^0.36.4",
     "read-package-up": "^11.0.0",
-    "boxen": "^8.0.1",
-    "@hot-updater/console": "0.0.3"
+    "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:^",

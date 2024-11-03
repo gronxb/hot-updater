@@ -1,8 +1,13 @@
+# Local
+.DS_Store
+*.local
+*.log*
+
+# Dist
 node_modules
-dist
-bin
+dist/
 
-src-tauri/binaries
-sidecar-app/app
-
-hot-updater.config.ts
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
