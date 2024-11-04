@@ -1,3 +1,20 @@
+## 0.1.4 (2024-11-04)
+
+### 🚀 Features
+
+- metro using cli spawn ([f03c1f4](https://github.com/gronxb/hot-updater/commit/f03c1f4))
+
+### 🩹 Fixes
+
+- nx projects ([5e37368](https://github.com/gronxb/hot-updater/commit/5e37368))
+- cwd ([2fe6507](https://github.com/gronxb/hot-updater/commit/2fe6507))
+- async config ([9cef90f](https://github.com/gronxb/hot-updater/commit/9cef90f))
+- using cli ([94ee6e2](https://github.com/gronxb/hot-updater/commit/94ee6e2))
+
+### ❤️  Thank You
+
+- Sungyu Kang @gronxb
+
 ## 0.1.3 (2024-11-04)
 
 ### 🚀 Features
