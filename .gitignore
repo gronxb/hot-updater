@@ -88,3 +88,5 @@ docs/.vitepress/cache
 
 .nx/cache
 .nx/workspace-data
+
+build.zip
