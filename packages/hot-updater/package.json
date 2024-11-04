@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.1.0",
   "bin": {
-    "hot-updater": "./dist/index.cjs"
+    "hot-updater": "./dist/index.js"
   },
   "exports": {
     "./config": {
@@ -25,7 +25,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/config.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts src/config.ts --format esm,cjs --dts --shims",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {

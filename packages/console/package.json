@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "rsbuild build && tsup src-server/index.ts --format esm,cjs --dts",
+    "build": "rsbuild build && tsup src-server/index.ts --format esm,cjs --dts --shims",
     "check": "biome check --write",
     "dev": "rsbuild dev --open",
     "format": "biome format --write",
