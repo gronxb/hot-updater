@@ -16,6 +16,10 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist",
+    "package.json"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "test:type": "tsc --noEmit"
