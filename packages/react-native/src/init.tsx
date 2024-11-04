@@ -13,6 +13,13 @@ export interface HotUpdaterInitConfig {
 }
 
 export const init = async (config: HotUpdaterInitConfig) => {
+  if (__DEV__) {
+    console.warn(
+      "[HotUpdater] __DEV__ is true, HotUpdater is only supported in production",
+    );
+    return;
+  }
+
   if (!["ios", "android"].includes(Platform.OS)) {
     const error = new HotUpdaterError(
       "HotUpdater is only supported on iOS and Android",
