@@ -5,8 +5,8 @@
   "keywords": [],
   "license": "MIT",
   "scripts": {
-    "biome": "biome format packages/** --write",
-    "biome:check": "biome check packages/**",
+    "biome": "biome format packages/** plugins/** --write",
+    "biome:check": "biome check packages/** plugins/**",
     "clear": "rimraf --glob **/dist",
     "test": "vitest",
     "build": "nx run-many --target=build --projects=packages/*,plugins/*",

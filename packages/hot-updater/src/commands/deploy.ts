@@ -5,8 +5,8 @@ import { createZip } from "@/utils/createZip";
 import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
-import { type Platform, filterTargetVersion } from "@hot-updater/utils";
 import { getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { type Platform, filterTargetVersion } from "@hot-updater/utils";
 
 export interface DeployOptions {
   targetVersion?: string;
