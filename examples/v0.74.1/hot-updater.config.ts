@@ -2,7 +2,7 @@ import { aws } from "@hot-updater/aws";
 import { metro } from "@hot-updater/metro";
 
 import { config } from "dotenv";
-import { defineConfig } from "hot-updater/config";
+import { defineConfig } from "hot-updater";
 
 config({
   override: true,

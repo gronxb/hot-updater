@@ -5,13 +5,9 @@
   "bin": {
     "hot-updater": "./dist/index.js"
   },
-  "exports": {
-    "./config": {
-      "types": "./dist/config.d.ts",
-      "import": "./dist/config.js",
-      "require": "./dist/config.cjs"
-    }
-  },
+  "main": "dist/config.cjs",
+  "module": "dist/config.js",
+  "types": "dist/config.d.ts",
   "files": [
     "dist",
     "package.json"
