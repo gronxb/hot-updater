@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/utils",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -13,7 +13,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "package.json"],
+  "files": [
+    "dist",
+    "package.json"
+  ],
   "keywords": [
     "react-native",
     "react-native-code-push",
