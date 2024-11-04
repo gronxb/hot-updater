@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
@@ -58,7 +58,6 @@
     "react-native": "^0.72.6"
   },
   "dependencies": {
-    "@hot-updater/utils": "workspace:^",
-    "react-native-url-polyfill": "^2.0.0"
+    "@hot-updater/utils": "0.1.0"
   }
 }

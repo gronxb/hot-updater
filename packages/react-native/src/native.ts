@@ -1,5 +1,3 @@
-import { URL } from "react-native-url-polyfill";
-
 import { NativeModules } from "react-native";
 import { HotUpdaterError } from "./error";
 
@@ -32,21 +30,9 @@ export const updateBundle = (
   zipUrl: string | null,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    let downloadUrl = null;
-    if (zipUrl) {
-      const url = new URL(zipUrl);
-      downloadUrl = [
-        url.origin,
-        url.pathname
-          .split("/")
-          .map((pathname) => encodeURIComponent(pathname))
-          .join("/"),
-      ].join("");
-    }
-
     HotUpdater.updateBundle(
       String(bundleVersion),
-      downloadUrl,
+      zipUrl,
       (success: boolean) => {
         if (success) {
           resolve(success);

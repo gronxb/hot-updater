@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/utils",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -39,10 +39,10 @@
     "access": "public"
   },
   "dependencies": {
-    "semver": "^7.6.2"
+    "semver": "^7.6.3"
   },
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.441.0",
+    "@aws-sdk/client-s3": "^3.685.0",
     "@types/node": "^20.9.4",
     "@types/semver": "^7.5.8"
   }

@@ -1,9 +1,10 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "files": ["dist", "package.json"],
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
@@ -45,12 +46,12 @@
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.6.3",
-    "valibot": "^0.42.1"
+    "valibot": "^0.42.1",
+    "@hono/node-server": "^1.13.4",
+    "@types/node": "^22.8.6"
   },
   "dependencies": {
-    "@hono/node-server": "^1.13.4",
-    "@hot-updater/plugin-core": "workspace:^",
-    "@hot-updater/utils": "workspace:^",
-    "@types/node": "^22.8.6"
+    "@hot-updater/plugin-core": "0.1.0",
+    "@hot-updater/utils": "0.1.0"
   }
 }
