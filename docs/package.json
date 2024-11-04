@@ -1,4 +1,5 @@
 {
+  "name": "@hot-updater/docs",
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
