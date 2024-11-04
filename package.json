@@ -5,19 +5,40 @@
   "keywords": [],
   "license": "MIT",
   "scripts": {
-    "biome": "biome format packages/** --write",
-    "test:type": "pnpm -r test:type",
-    "biome:check": "biome check packages/**",
+    "biome": "biome format packages/** plugins/** --write",
+    "biome:check": "biome check packages/** plugins/**",
     "clear": "rimraf --glob **/dist",
-    "test": "vitest"
+    "test": "vitest",
+    "build": "nx run-many --target=build --projects=packages/*,plugins/*",
+    "build:dev": "nx run-many --target=build --projects=packages/*,plugins/* --watch",
+    "test:type": "nx run-many --target=test:type --all",
+    "release:test": "nx release --dry-run",
+    "release": "pnpm clear && pnpm build && nx release --skip-publish",
+    "publish:all": "nx release publish",
+    "publish:rc": "nx release publish --tag rc"
   },
   "devDependencies": {
+    "nx": "20.0.5",
+    "@nx/js": "^20.0.6",
+    "@swc-node/register": "^1.10.9",
+    "@swc/core": "^1.7.40",
     "@biomejs/biome": "1.9.3",
     "esbuild": "^0.21.4",
     "rimraf": "^5.0.7",
     "typescript": "^5.6.2",
     "vitest": "^1.6.0",
     "tsup": "^8.3.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@hot-updater/console": "workspace:*",
+      "@hot-updater/plugin-core": "workspace:*",
+      "@hot-updater/utils": "workspace:*",
+      "@hot-updater/aws": "workspace:*",
+      "@hot-updater/metro": "workspace:*",
+      "@hot-updater/react-native": "workspace:*",
+      "@hot-updater/react": "workspace:*"
+    }
   },
   "packageManager": "pnpm@9.12.3"
 }

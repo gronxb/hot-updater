@@ -17,7 +17,6 @@
     "access": "public"
   },
   "scripts": {
-    "prepare": "pnpm build",
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "test:type": "tsc --noEmit"
   },

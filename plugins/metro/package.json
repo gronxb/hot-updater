@@ -17,9 +17,8 @@
     "access": "public"
   },
   "scripts": {
-    "prepare": "pnpm build",
     "build": "tsup src/index.ts --format cjs,esm --dts",
-    "typecheck": "tsc --noEmit"
+    "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "metro-config": "^0.80.9",

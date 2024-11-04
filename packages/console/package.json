@@ -16,7 +16,8 @@
     "check": "biome check --write",
     "dev": "rsbuild dev --open",
     "format": "biome format --write",
-    "preview": "rsbuild preview"
+    "preview": "rsbuild preview",
+    "test:type": "tsc --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.3",

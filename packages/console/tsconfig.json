@@ -26,5 +26,6 @@
       "@/src-server/*": ["src-server/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "src-server"],
+  "exclude": ["node_modules"]
 }

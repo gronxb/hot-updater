@@ -23,7 +23,6 @@
     "!**/.*"
   ],
   "scripts": {
-    "prepare": "pnpm build",
     "build": "tsup src/index.ts --format esm --dts",
     "test:type": "tsc --noEmit",
     "test": "vitest",
