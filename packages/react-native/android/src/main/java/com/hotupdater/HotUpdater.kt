@@ -271,14 +271,14 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
 
         val extractedDirectory = File(extractedPath)
-        val indexFile = extractedDirectory.walk().find { it.name == "index.android.bundle.js" }
+        val indexFile = extractedDirectory.walk().find { it.name == "index.android.bundle" }
 
         if (indexFile != null) {
             val bundlePath = indexFile.path
             Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
             setBundleURL(bundlePath)
         } else {
-            Log.d("HotUpdater", "index.android.bundle.js not found.")
+            Log.d("HotUpdater", "index.android.bundle not found.")
             return false
         }
 

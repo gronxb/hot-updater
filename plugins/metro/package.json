@@ -21,10 +21,13 @@
     "package.json"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react-native",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "@hot-updater/plugin-core": "0.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.7"
   }
 }

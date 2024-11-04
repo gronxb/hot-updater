@@ -351,12 +351,9 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
     devDependencies:
-      metro:
-        specifier: ^0.80.9
-        version: 0.80.9(encoding@0.1.13)
-      metro-config:
-        specifier: ^0.80.9
-        version: 0.80.9(encoding@0.1.13)
+      '@types/node':
+        specifier: ^22.8.7
+        version: 22.8.7
 
   plugins/plugin-core:
     dependencies:

@@ -1,9 +1,8 @@
 import { spawn } from "child_process";
+import { lstatSync } from "fs";
 import path from "path";
-import type { BuildPluginArgs } from "@hot-updater/plugin-core";
+import { type BuildPluginArgs, log } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
-import { log } from "../../plugin-core/dist/index.cjs";
-
 interface RunBundleArgs {
   cwd: string;
   platform: string;
@@ -28,6 +27,8 @@ const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
     "index.js",
     "--platform",
     String(platform),
+    "--sourcemap-output",
+    [bundleOutput, "map"].join("."),
   ];
 
   log.normal("\n");
@@ -66,8 +67,12 @@ export const metro =
 
     await runBundle({ cwd, platform, buildPath });
 
-    const outputs = await fs.readdir(buildPath, { recursive: true });
+    const files = await fs.readdir(buildPath, { recursive: true });
+    const outputs = files
+      .filter((file) => !lstatSync(path.join(buildPath, file)).isDirectory())
+      .map((output) => path.join(buildPath, output));
 
+    console.log(outputs);
     return {
       buildPath,
       outputs,

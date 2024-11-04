@@ -146,7 +146,7 @@ RCT_EXPORT_MODULE();
     NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
     NSString *filename = nil;
     for (NSString *file in enumerator) {
-        if ([file isEqualToString:@"index.ios.bundle.js"]) {
+        if ([file isEqualToString:@"index.ios.bundle"]) {
             filename = file;
             break;
         }
@@ -157,7 +157,7 @@ RCT_EXPORT_MODULE();
         NSLog(@"Setting bundle URL: %@", bundlePath);
         [self setBundleURL:bundlePath];
     } else {
-        NSLog(@"index.ios.bundle.js not found.");
+        NSLog(@"index.ios.bundle not found.");
         return NO;
     }
 
