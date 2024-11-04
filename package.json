@@ -31,6 +31,7 @@
   },
   "pnpm": {
     "overrides": {
+      "hot-updater": "workspace:*",
       "@hot-updater/console": "workspace:*",
       "@hot-updater/plugin-core": "workspace:*",
       "@hot-updater/utils": "workspace:*",

@@ -6,8 +6,8 @@
     "moduleResolution": "Bundler",
     "isolatedModules": true,
     "paths": {
-      "hot-updater": ["./packages/hot-updater/src/index.ts"],
-      "@hot-updater/aws": ["./plugins/aws/src/index.ts"]
+      "@hot-updater/aws": ["./plugins/aws/src/index.ts"],
+      "hot-updater": ["./packages/hot-updater/src/index.ts"]
     },
     "strict": true,
     "declaration": true,

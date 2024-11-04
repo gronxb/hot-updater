@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
@@ -30,7 +30,13 @@
     "test": "vitest",
     "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
   },
-  "keywords": ["react-native", "code", "push", "code-push", "self-hosted"],
+  "keywords": [
+    "react-native",
+    "code",
+    "push",
+    "code-push",
+    "self-hosted"
+  ],
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
@@ -58,6 +64,6 @@
     "react-native": "^0.72.6"
   },
   "dependencies": {
-    "@hot-updater/utils": "0.1.0"
+    "@hot-updater/utils": "0.1.1"
   }
 }

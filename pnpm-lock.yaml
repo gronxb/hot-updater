@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  hot-updater: workspace:*
   '@hot-updater/console': workspace:*
   '@hot-updater/plugin-core': workspace:*
   '@hot-updater/utils': workspace:*
@@ -130,7 +131,7 @@ importers:
         specifier: ^8.19.0
         version: 8.57.0
       hot-updater:
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/hot-updater
       jest:
         specifier: ^29.6.3

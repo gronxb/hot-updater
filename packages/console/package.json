@@ -1,8 +1,11 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.1.0",
-  "files": ["dist", "package.json"],
+  "version": "0.1.1",
+  "files": [
+    "dist",
+    "package.json"
+  ],
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -51,7 +54,7 @@
     "@types/node": "^22.8.6"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "0.1.0",
-    "@hot-updater/utils": "0.1.0"
+    "@hot-updater/plugin-core": "0.1.1",
+    "@hot-updater/utils": "0.1.1"
   }
 }
