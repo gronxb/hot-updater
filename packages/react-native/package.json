@@ -1,8 +1,10 @@
 {
   "name": "@hot-updater/react-native",
   "version": "0.0.5",
+  "type": "module",
   "description": "React Native OTA solution for self-hosted",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "react-native": "src/index.ts",
   "types": "dist/index.d.ts",
   "files": [
@@ -23,7 +25,7 @@
     "!**/.*"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
