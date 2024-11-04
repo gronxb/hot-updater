@@ -1,7 +1,7 @@
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Route, Router } from "@solidjs/router";
 import { Suspense } from "solid-js";
-import "./app.css";
+import "./App.css";
 import { Toaster } from "./components/ui/sonner";
 import Home from "./routes";
 

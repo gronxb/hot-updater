@@ -7,7 +7,7 @@
   "scripts": {
     "biome": "biome format packages/** plugins/** --write",
     "biome:check": "biome check packages/** plugins/**",
-    "clear": "rimraf --glob **/dist",
+    "clear": "rimraf --glob **/dist .nx",
     "test": "vitest",
     "build": "nx run-many --target=build --projects=packages/*,plugins/*",
     "build:dev": "nx run-many --target=build --projects=packages/*,plugins/* --watch",
