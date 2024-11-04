@@ -72,7 +72,6 @@ export const metro =
       .filter((file) => !lstatSync(path.join(buildPath, file)).isDirectory())
       .map((output) => path.join(buildPath, output));
 
-    console.log(outputs);
     return {
       buildPath,
       outputs,
