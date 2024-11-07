@@ -118,6 +118,9 @@ importers:
       eslint:
         specifier: ^8.19.0
         version: 8.57.0
+      hot-updater:
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
       invariant:
         specifier: ^2.2.4
         version: 2.2.4
