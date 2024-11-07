@@ -15,7 +15,6 @@
     "test": "jest"
   },
   "dependencies": {
-    "@hot-updater/console": "0.1.2",
     "@hot-updater/react-native": "0.1.2",
     "react": "18.2.0",
     "react-native": "0.74.1"
@@ -25,9 +24,9 @@
     "@babel/preset-env": "^7.20.0",
     "@babel/runtime": "^7.24.5",
     "@callstack/repack": "^4.0.0",
+    "@hot-updater/console": "0.1.2",
     "@hot-updater/aws": "0.1.2",
     "@hot-updater/metro": "0.1.2",
-    "@hot-updater/plugin-core": "0.1.2",
     "@react-native-community/cli-platform-android": "13.6.6",
     "@react-native/babel-preset": "0.74.83",
     "@react-native/eslint-config": "0.74.83",
