@@ -79,9 +79,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/console':
-        specifier: workspace:*
-        version: link:../../packages/console
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
@@ -167,9 +164,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/console':
-        specifier: workspace:*
-        version: link:../../packages/console
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
@@ -255,9 +249,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/console':
-        specifier: workspace:*
-        version: link:../../packages/console
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
@@ -297,6 +288,9 @@ importers:
       eslint:
         specifier: ^8.19.0
         version: 8.57.0
+      hot-updater:
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
       jest:
         specifier: ^29.6.3
         version: 29.7.0(@types/node@22.8.7)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.13))(@types/node@22.8.7)(typescript@5.0.4))
@@ -4963,6 +4957,7 @@ packages:
 
   acorn-import-assertions@1.9.0:
     resolution: {integrity: sha512-cmMwop9x+8KFhxvKrKfPYmN6/pKTYYHBqLa0DfvVZcKMJWNyWLnaqND7dx/qn66R7ewM1UX5XMaDVP5wlVTaVA==}
+    deprecated: package has been renamed to acorn-import-attributes
     peerDependencies:
       acorn: ^8
 
@@ -14551,7 +14546,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
@@ -14563,9 +14560,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-color@2.1.0': {}
 
