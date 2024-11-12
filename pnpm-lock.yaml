@@ -253,14 +253,14 @@ importers:
         specifier: ^7.25.0
         version: 7.26.0
       '@hot-updater/aws':
-        specifier: 0.1.4
-        version: 0.1.4
+        specifier: workspace:*
+        version: link:../../plugins/aws
       '@hot-updater/console':
-        specifier: 0.1.4
-        version: 0.1.4
+        specifier: workspace:*
+        version: link:../../packages/console
       '@hot-updater/metro':
-        specifier: 0.1.4
-        version: 0.1.4
+        specifier: workspace:*
+        version: link:../../plugins/metro
       '@react-native-community/cli':
         specifier: 15.0.0
         version: 15.0.0(typescript@5.0.4)
@@ -2896,15 +2896,6 @@ packages:
     peerDependencies:
       hono: '>=3.9.0'
       valibot: ^1.0.0 || ^1.0.0-beta || ^1.0.0-rc
-
-  '@hot-updater/aws@0.1.4':
-    resolution: {integrity: sha512-836XWbnaas0hsnScddNEgLU44+FZQK/RCudjvQEpulDGvsNtmj34mM7gBwRA/068n0pwUqldT6icdAJWYgEQoA==}
-
-  '@hot-updater/console@0.1.4':
-    resolution: {integrity: sha512-eDlcosxGwK2iszLgZscsOWnSpFLpkPyXOQ17Pc7UA2WIQ4T/2874kCSQymv3PAtodNh4n50w25x72jGcJIto4w==}
-
-  '@hot-updater/metro@0.1.4':
-    resolution: {integrity: sha512-tcisa5T2oEpfUgOeC42Z9gc86k8fEeY0SfbrqsP7Aqc/i8MVt4zPNn/U13ZZnuHB2CV5Q1D7zdTXh9rCIIL0OQ==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -12820,24 +12811,6 @@ snapshots:
       hono: 4.6.3
       valibot: 0.42.1(typescript@5.6.3)
 
-  '@hot-updater/aws@0.1.4':
-    dependencies:
-      '@aws-sdk/client-s3': 3.685.0
-      '@aws-sdk/lib-storage': 3.685.0(@aws-sdk/client-s3@3.685.0)
-      '@hot-updater/plugin-core': link:plugins/plugin-core
-      mime: 4.0.4
-    transitivePeerDependencies:
-      - aws-crt
-
-  '@hot-updater/console@0.1.4':
-    dependencies:
-      '@hot-updater/plugin-core': link:plugins/plugin-core
-      '@hot-updater/utils': link:packages/utils
-
-  '@hot-updater/metro@0.1.4':
-    dependencies:
-      '@hot-updater/plugin-core': link:plugins/plugin-core
-
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
       '@humanwhocodes/object-schema': 2.0.3
@@ -14575,7 +14548,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
@@ -14587,9 +14562,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-color@2.1.0': {}
 
