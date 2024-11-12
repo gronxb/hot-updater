@@ -19,7 +19,6 @@
     "@babel/preset-env": "^7.20.0",
     "@babel/runtime": "^7.20.0",
     "@hot-updater/aws": "0.1.4",
-    "@hot-updater/console": "0.1.4",
     "@hot-updater/metro": "0.1.4",
     "@react-native-community/cli-platform-android": "10.2.0",
     "@react-native-community/cli-platform-ios": "10.2.5",
