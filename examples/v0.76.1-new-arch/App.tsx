@@ -33,7 +33,7 @@ function App(): React.JSX.Element {
 
   return (
     <SafeAreaView>
-      <Text>Babel {process.env.HOT_UPDATER_BUNDLE_ID}</Text>
+      <Text>Babel {HotUpdater.HOT_UPDATER_BUNDLE_ID}</Text>
       <Text>
         Babel{" "}
         {Date.now() - extractTimestampFromUUIDv7(env.HOT_UPDATER_BUNDLE_ID)}

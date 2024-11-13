@@ -12,7 +12,7 @@ export default function replaceHotUpdaterBundleId(): PluginObj {
     visitor: {
       MemberExpression(path: NodePath<t.MemberExpression>) {
         if (
-          t.isIdentifier(path.node.object, { name: "env" }) &&
+          t.isIdentifier(path.node.object, { name: "HotUpdater" }) &&
           t.isIdentifier(path.node.property, {
             name: "HOT_UPDATER_BUNDLE_ID",
           })

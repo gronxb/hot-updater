@@ -28,6 +28,8 @@ export const init = async (config: HotUpdaterInitConfig) => {
     config?.onError?.(error);
     throw error;
   }
+
+  // always setBundleId HotUpdater.HOT_UPDATER_BUNDLE_ID
   await initializeOnAppUpdate();
 
   const update = await checkForUpdate(config.source);
