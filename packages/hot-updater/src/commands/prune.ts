@@ -42,7 +42,7 @@ export const prune = async (options: PruneOptions) => {
     for (const source of inactiveSources) {
       const key = await deployPlugin.deleteBundle(
         options.platform,
-        source.bundleVersion,
+        source.bundleTimestamp,
       );
       p.log.info(`deleting: ${key}`);
     }

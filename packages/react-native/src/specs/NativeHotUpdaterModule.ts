@@ -10,7 +10,7 @@ interface Spec extends TurboModule {
   ): Promise<boolean>;
   initializeOnAppUpdate(): void;
   getAppVersion(): Promise<string | null>;
-  getBundleVersion(): Promise<number | null>;
+  getBundleTimestamp(): Promise<number | null>;
 }
 
 export default TurboModuleRegistry.get<Spec>("HotUpdater");

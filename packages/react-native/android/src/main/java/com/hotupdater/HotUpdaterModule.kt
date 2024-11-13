@@ -29,8 +29,8 @@ class HotUpdaterModule internal constructor(context: ReactApplicationContext) :
   }
 
   @ReactMethod
-  override fun getBundleVersion(callback: Callback) {
-    callback.invoke(HotUpdater.getBundleVersion())
+  override fun getBundleTimestamp(callback: Callback) {
+    callback.invoke(HotUpdater.getBundleTimestamp())
   }
 
   @ReactMethod

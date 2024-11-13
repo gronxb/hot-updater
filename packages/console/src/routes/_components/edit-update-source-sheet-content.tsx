@@ -41,7 +41,7 @@ const EditUpdateSourceSheetForm = ({
       // Do something with form data
       await api.updateUpdateSource.$post({
         json: {
-          targetBundleVersion: source.bundleVersion,
+          targetBundleTimestamp: source.bundleTimestamp,
           updateSource: value,
         },
       });
@@ -150,31 +150,31 @@ const EditUpdateSourceSheetForm = ({
 };
 
 export interface EditUpdateSourceSheetContentProps {
-  bundleVersion: number;
+  bundleTimestamp: number;
   onClose: () => void;
 }
 
 export const EditUpdateSourceSheetContent = ({
-  bundleVersion,
+  bundleTimestamp,
   onClose,
 }: EditUpdateSourceSheetContentProps) => {
   const source = createAsync(() =>
     api.getUpdateSourceByBundleVersion
-      .$post({ json: { bundleVersion } })
+      .$post({ json: { bundleTimestamp } })
       .then((res) => res.json()),
   );
 
   return (
     <SheetContent class="flex flex-col h-full">
       <SheetHeader class="mb-4">
-        <SheetTitle>Edit {source()?.bundleVersion}</SheetTitle>
+        <SheetTitle>Edit {source()?.bundleTimestamp}</SheetTitle>
       </SheetHeader>
 
       {source() ? (
         <EditUpdateSourceSheetForm source={source()!} onEditSuccess={onClose} />
       ) : (
         <SheetDescription>
-          No update source found for bundle version {bundleVersion}
+          No update source found for bundle version {bundleTimestamp}
         </SheetDescription>
       )}
     </SheetContent>

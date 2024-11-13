@@ -9,9 +9,9 @@ const { HotUpdater } = NativeModules;
  * @async
  * @returns {Promise<number>} Resolves with the current version id or null if not available.
  */
-export const getBundleVersion = async (): Promise<number> => {
+export const getBundleTimestamp = async (): Promise<number> => {
   return new Promise((resolve) => {
-    HotUpdater.getBundleVersion((version: number | null) => {
+    HotUpdater.getBundleTimestamp((version: number | null) => {
       resolve(version ?? -1);
     });
   });
@@ -21,17 +21,17 @@ export const getBundleVersion = async (): Promise<number> => {
  * Downloads files from given URLs.
  *
  * @async
- * @param {string} bundleVersion - identifier for the bundle version.
+ * @param {string} bundleTimestamp - identifier for the bundle version.
  * @param {string | null} zipUrl - zip file URL.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
-  bundleVersion: number,
+  bundleTimestamp: number,
   zipUrl: string | null,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     HotUpdater.updateBundle(
-      String(bundleVersion),
+      String(bundleTimestamp),
       zipUrl,
       (success: boolean) => {
         if (success) {

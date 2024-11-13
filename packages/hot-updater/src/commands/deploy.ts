@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import { intro, spinner, text } from "@clack/prompts";
 
 import { createZip } from "@/utils/createZip";
-import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getCwd, loadConfig } from "@hot-updater/plugin-core";
@@ -52,7 +51,7 @@ export const deploy = async (options: DeployOptions) => {
 
     const hash = await getFileHashFromFile(bundlePath);
 
-    const newBundleVersion = formatDate(new Date());
+    const newBundleVersion = Date.now();
 
     const deployPlugin = config.deploy({
       cwd,
@@ -90,7 +89,7 @@ export const deploy = async (options: DeployOptions) => {
       hash,
       description: String(description),
       targetVersion,
-      bundleVersion: newBundleVersion,
+      bundleTimestamp: newBundleVersion,
       enabled: true,
     });
     await deployPlugin.commitUpdateSource();

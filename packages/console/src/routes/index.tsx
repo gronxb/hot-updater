@@ -10,7 +10,7 @@ export default function Home() {
     api.getUpdateSources.$get().then((res) => res.json()),
   );
 
-  const [selectedBundleVersion, setSelectedBundleVersion] = createSignal<
+  const [selectedBundleTimestamp, setSelectedBundleTimestamp] = createSignal<
     number | null
   >(null);
 
@@ -22,23 +22,23 @@ export default function Home() {
           data={data}
           onRowClick={(row) => {
             console.log(row);
-            setSelectedBundleVersion(row.bundleVersion);
+            setSelectedBundleTimestamp(row.bundleTimestamp);
           }}
         />
 
         <Sheet
-          open={selectedBundleVersion() !== null}
+          open={selectedBundleTimestamp() !== null}
           onOpenChange={(open) => {
             if (!open) {
-              setSelectedBundleVersion(null);
+              setSelectedBundleTimestamp(null);
             }
           }}
         >
-          {selectedBundleVersion() && (
+          {selectedBundleTimestamp() && (
             <EditUpdateSourceSheetContent
-              bundleVersion={selectedBundleVersion()!}
+              bundleTimestamp={selectedBundleTimestamp()!}
               onClose={() => {
-                setSelectedBundleVersion(null);
+                setSelectedBundleTimestamp(null);
                 refetch();
               }}
             />

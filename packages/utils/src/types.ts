@@ -3,7 +3,7 @@ export type Platform = "ios" | "android";
 export interface UpdateSource {
   platform: Platform;
   targetVersion: string;
-  bundleVersion: number;
+  bundleTimestamp: number;
   forceUpdate: boolean;
   enabled: boolean;
   file: string;

@@ -58,7 +58,7 @@ export const columns: ColumnDef<UpdateSource>[] = [
     cell: (info) => info.getValue(),
   },
   {
-    accessorKey: "bundleVersion",
+    accessorKey: "bundleTimestamp",
     header: "Created At",
     cell: (info) => formatDateTimeFromBundleVersion(String(info.getValue())),
   },
