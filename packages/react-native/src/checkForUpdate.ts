@@ -1,7 +1,7 @@
 import type { UpdateSource, UpdateSourceArg } from "@hot-updater/utils";
 import { filterTargetVersion } from "@hot-updater/utils";
 import { Platform } from "react-native";
-import { getAppVersion, getBundleTimestamp } from "./native";
+import { NIL_UUID, getAppVersion, getBundleId } from "./native";
 import { isNullable } from "./utils";
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
@@ -9,19 +9,16 @@ const findLatestSources = (sources: UpdateSource[]) => {
   return (
     sources
       ?.filter((item) => item.enabled)
-      ?.sort((a, b) => b.bundleTimestamp - a.bundleTimestamp)?.[0] ?? null
+      ?.sort((a, b) => b.bundleId.localeCompare(a.bundleId))?.[0] ?? null
   );
 };
 
-const checkForRollback = (
-  sources: UpdateSource[],
-  currentBundleTimestamp: number,
-) => {
+const checkForRollback = (sources: UpdateSource[], currentBundleId: string) => {
   const enabled = sources?.find(
-    (item) => item.bundleTimestamp === currentBundleTimestamp,
+    (item) => item.bundleId === currentBundleId,
   )?.enabled;
   const availableOldVersion = sources?.find(
-    (item) => item.bundleTimestamp < currentBundleTimestamp && item.enabled,
+    (item) => item.bundleId < currentBundleId && item.enabled,
   )?.enabled;
 
   if (isNullable(enabled)) {
@@ -57,18 +54,15 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
   const appVersionSources = currentAppVersion
     ? filterTargetVersion(sources, currentAppVersion, platform)
     : [];
-  const currentBundleTimestamp = await getBundleTimestamp();
+  const currentBundleId = await getBundleId();
 
-  const isRollback = checkForRollback(
-    appVersionSources,
-    currentBundleTimestamp,
-  );
+  const isRollback = checkForRollback(appVersionSources, currentBundleId);
   const latestSource = await findLatestSources(appVersionSources);
 
   if (!latestSource) {
     if (isRollback) {
       return {
-        bundleTimestamp: 0,
+        bundleId: NIL_UUID,
         forceUpdate: true,
         file: null,
         hash: null,
@@ -80,12 +74,12 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
 
   if (latestSource.file)
     if (isRollback) {
-      if (latestSource.bundleTimestamp === currentBundleTimestamp) {
+      if (latestSource.bundleId === currentBundleId) {
         return null;
       }
-      if (latestSource.bundleTimestamp > currentBundleTimestamp) {
+      if (latestSource.bundleId > currentBundleId) {
         return {
-          bundleTimestamp: latestSource.bundleTimestamp,
+          bundleId: latestSource.bundleId,
           forceUpdate: latestSource.forceUpdate,
           file: latestSource.file,
           hash: latestSource.hash,
@@ -93,7 +87,7 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
         };
       }
       return {
-        bundleTimestamp: latestSource.bundleTimestamp,
+        bundleId: latestSource.bundleId,
         forceUpdate: true,
         file: latestSource.file,
         hash: latestSource.hash,
@@ -101,9 +95,9 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
       };
     }
 
-  if (latestSource.bundleTimestamp > currentBundleTimestamp) {
+  if (latestSource.bundleId.localeCompare(currentBundleId) > 0) {
     return {
-      bundleTimestamp: latestSource.bundleTimestamp,
+      bundleId: latestSource.bundleId,
       forceUpdate: latestSource.forceUpdate,
       file: latestSource.file,
       hash: latestSource.hash,

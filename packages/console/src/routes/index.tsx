@@ -10,9 +10,9 @@ export default function Home() {
     api.getUpdateSources.$get().then((res) => res.json()),
   );
 
-  const [selectedBundleTimestamp, setSelectedBundleTimestamp] = createSignal<
-    number | null
-  >(null);
+  const [selectedBundleId, setSelectedBundleId] = createSignal<string | null>(
+    null,
+  );
 
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -22,23 +22,23 @@ export default function Home() {
           data={data}
           onRowClick={(row) => {
             console.log(row);
-            setSelectedBundleTimestamp(row.bundleTimestamp);
+            setSelectedBundleId(row.bundleId);
           }}
         />
 
         <Sheet
-          open={selectedBundleTimestamp() !== null}
+          open={selectedBundleId() !== null}
           onOpenChange={(open) => {
             if (!open) {
-              setSelectedBundleTimestamp(null);
+              setSelectedBundleId(null);
             }
           }}
         >
-          {selectedBundleTimestamp() && (
+          {selectedBundleId() && (
             <EditUpdateSourceSheetContent
-              bundleTimestamp={selectedBundleTimestamp()!}
+              bundleId={selectedBundleId()!}
               onClose={() => {
-                setSelectedBundleTimestamp(null);
+                setSelectedBundleId(null);
                 refetch();
               }}
             />

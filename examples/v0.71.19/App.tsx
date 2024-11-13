@@ -18,7 +18,7 @@ function App(): React.JSX.Element {
   const [version, setVersion] = useState<number | null>(null);
 
   useEffect(() => {
-    HotUpdater.getBundleTimestamp().then((version) => {
+    HotUpdater.getBundleId().then((version) => {
       setVersion(version);
     });
   }, []);
@@ -44,7 +44,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        BundleTimestamp: {version}
+        BundleId: {version}
       </Text>
 
       <Image

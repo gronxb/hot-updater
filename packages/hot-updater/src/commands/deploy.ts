@@ -39,7 +39,7 @@ export const deploy = async (options: DeployOptions) => {
 
     s.start("Build in progress");
 
-    const { buildPath } = await config.build({
+    const { buildPath, bundleId } = await config.build({
       cwd,
       platform: options.platform,
     });
@@ -50,8 +50,6 @@ export const deploy = async (options: DeployOptions) => {
     const bundlePath = buildPath.concat(".zip");
 
     const hash = await getFileHashFromFile(bundlePath);
-
-    const newBundleVersion = Date.now();
 
     const deployPlugin = config.deploy({
       cwd,
@@ -78,7 +76,7 @@ export const deploy = async (options: DeployOptions) => {
     s.message("Uploading bundle...");
     const { file } = await deployPlugin.uploadBundle(
       options.platform,
-      newBundleVersion,
+      bundleId,
       bundlePath,
     );
 
@@ -89,7 +87,7 @@ export const deploy = async (options: DeployOptions) => {
       hash,
       description: String(description),
       targetVersion,
-      bundleTimestamp: newBundleVersion,
+      bundleId: bundleId,
       enabled: true,
     });
     await deployPlugin.commitUpdateSource();

@@ -13,7 +13,7 @@ export interface BuildPluginArgs extends BasePluginArgs {
 export interface DeployPlugin {
   getUpdateSources: (refresh?: boolean) => Promise<UpdateSource[]>;
   updateUpdateSource: (
-    targetBundleTimestamp: number,
+    targetBundleId: string,
     newSource: Partial<UpdateSource>,
   ) => Promise<void>;
   setUpdateSources: (sources: UpdateSource[]) => Promise<void>;
@@ -22,15 +22,12 @@ export interface DeployPlugin {
 
   uploadBundle: (
     platform: Platform,
-    bundleTimestamp: number,
+    bundleId: string,
     bundlePath: string,
   ) => Promise<{
     file: string;
   }>;
-  deleteBundle: (
-    platform: Platform,
-    bundleTimestamp: number,
-  ) => Promise<string>;
+  deleteBundle: (platform: Platform, bundleId: string) => Promise<string>;
 }
 
 export type Config = {
@@ -38,7 +35,7 @@ export type Config = {
   secretKey: string;
   build: (args: BuildPluginArgs) => Promise<{
     buildPath: string;
-    outputs: string[];
+    bundleId: string;
   }>;
   deploy: (args: BasePluginArgs) => DeployPlugin;
 };

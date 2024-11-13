@@ -1,6 +1,6 @@
 import { checkForUpdate } from "./checkForUpdate";
 import { init } from "./init";
-import { getAppVersion, getBundleTimestamp, reload } from "./native";
+import { getAppVersion, getBundleId, reload } from "./native";
 
 export type * from "./init";
 export type * from "./checkForUpdate";
@@ -11,5 +11,5 @@ export const HotUpdater = {
   reload,
   checkForUpdate,
   getAppVersion,
-  getBundleTimestamp,
+  getBundleId,
 };

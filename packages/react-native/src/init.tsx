@@ -37,9 +37,10 @@ export const init = async (config: HotUpdaterInitConfig) => {
   }
 
   try {
-    const isSuccess = await updateBundle(update.bundleTimestamp, update.file);
+    const isSuccess = await updateBundle(update.bundleId, update.file);
     if (isSuccess && update.forceUpdate) {
       reload();
+
       config?.onSuccess?.("INSTALLING_UPDATE");
     }
   } catch (error) {

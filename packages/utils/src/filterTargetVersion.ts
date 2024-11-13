@@ -62,8 +62,8 @@ export const filterTargetVersion = (
   // Combine '*' versions and sorted other versions
   const combinedSortedVersions = [...starVersions, ...sortedOtherVersions];
 
-  // Sort by bundleTimestamp in descending order
-  return combinedSortedVersions.sort(
-    (a, b) => b.bundleTimestamp - a.bundleTimestamp,
+  // Sort by bundleId in descending order
+  return combinedSortedVersions.sort((a, b) =>
+    b.bundleId.localeCompare(a.bundleId),
   );
 };

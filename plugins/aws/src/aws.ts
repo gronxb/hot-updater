@@ -64,13 +64,13 @@ export const aws =
         await upload.done();
       },
       async updateUpdateSource(
-        targetBundleTimestamp: number,
+        targetBundleId: string,
         newSource: Partial<UpdateSource>,
       ) {
         updateSources = await this.getUpdateSources();
 
         const targetIndex = updateSources.findIndex(
-          (u) => u.bundleTimestamp === targetBundleTimestamp,
+          (u) => u.bundleId === targetBundleId,
         );
         if (targetIndex === -1) {
           throw new Error("target bundle version not found");
@@ -110,12 +110,12 @@ export const aws =
           throw e;
         }
       },
-      async deleteBundle(platform, bundleTimestamp) {
-        const Key = [bundleTimestamp, platform].join("/");
+      async deleteBundle(platform, bundleId) {
+        const Key = [bundleId, platform].join("/");
 
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
-          Prefix: `${bundleTimestamp}/${platform}`,
+          Prefix: `${bundleId}/${platform}`,
         });
         const listResponse = await client.send(listCommand);
 
@@ -140,7 +140,7 @@ export const aws =
         log.error("Bundle Not Found");
         throw new Error("Bundle Not Found");
       },
-      async uploadBundle(platform, bundleTimestamp, bundlePath) {
+      async uploadBundle(platform, bundleId, bundlePath) {
         log.info("Uploading Bundle");
 
         const Body = await fs.readFile(bundlePath);
@@ -148,7 +148,7 @@ export const aws =
 
         const filename = path.basename(bundlePath);
 
-        const Key = [bundleTimestamp, platform, filename].join("/");
+        const Key = [bundleId, platform, filename].join("/");
         const upload = new Upload({
           client,
           params: {

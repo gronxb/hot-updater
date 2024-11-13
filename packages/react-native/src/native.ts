@@ -3,46 +3,54 @@ import { HotUpdaterError } from "./error";
 
 const { HotUpdater } = NativeModules;
 
+export const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
 /**
  * Fetches the current bundle version id.
  *
  * @async
  * @returns {Promise<number>} Resolves with the current version id or null if not available.
  */
-export const getBundleTimestamp = async (): Promise<number> => {
+export const getBundleId = async (): Promise<string> => {
   return new Promise((resolve) => {
-    HotUpdater.getBundleTimestamp((version: number | null) => {
-      resolve(version ?? -1);
+    HotUpdater.getBundleId((version: string | null) => {
+      resolve(version ?? NIL_UUID);
     });
   });
+};
+
+/**
+ * Fetches the current bundle version id.
+ *
+ * @async
+ * @returns {Promise<number>} Resolves with the current version id or null if not available.
+ */
+export const setBundleId = async (bundleId: string): Promise<void> => {
+  HotUpdater.setBundleId(bundleId);
 };
 
 /**
  * Downloads files from given URLs.
  *
  * @async
- * @param {string} bundleTimestamp - identifier for the bundle version.
+ * @param {string} bundleId - identifier for the bundle version.
  * @param {string | null} zipUrl - zip file URL.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
-  bundleTimestamp: number,
+  bundleId: string,
   zipUrl: string | null,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    HotUpdater.updateBundle(
-      String(bundleTimestamp),
-      zipUrl,
-      (success: boolean) => {
-        if (success) {
-          resolve(success);
-        } else {
-          reject(
-            new HotUpdaterError("Failed to download and install the update"),
-          );
-        }
-      },
-    );
+    HotUpdater.updateBundle(String(bundleId), zipUrl, (success: boolean) => {
+      if (success) {
+        resolve(success);
+      } else {
+        reject(
+          new HotUpdaterError("Failed to download and install the update"),
+        );
+      }
+    });
   });
 };
 

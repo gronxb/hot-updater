@@ -11,7 +11,7 @@ import * as v from "valibot";
 const updateSourceSchema = v.object({
   platform: v.union([v.literal("ios"), v.literal("android")]),
   targetVersion: v.string(),
-  bundleTimestamp: v.number(),
+  bundleId: v.string(),
   forceUpdate: v.boolean(),
   enabled: v.boolean(),
   file: v.string(),
@@ -41,9 +41,9 @@ export const rpc = new Hono()
   })
   .post(
     "/getUpdateSourceByBundleVersion",
-    vValidator("json", v.object({ bundleTimestamp: v.number() })),
+    vValidator("json", v.object({ bundleId: v.string() })),
     async (c) => {
-      const { bundleTimestamp } = c.req.valid("json");
+      const { bundleId } = c.req.valid("json");
       if (!config) {
         config = await loadConfig();
       }
@@ -52,7 +52,7 @@ export const rpc = new Hono()
       });
       const updateSources = await deployPlugin?.getUpdateSources();
       const updateSource = updateSources?.find(
-        (source) => source.bundleTimestamp === bundleTimestamp,
+        (source) => source.bundleId === bundleId,
       );
       return c.json((updateSource ?? null) satisfies UpdateSource | null);
     },
@@ -62,22 +62,19 @@ export const rpc = new Hono()
     vValidator(
       "json",
       v.object({
-        targetBundleTimestamp: v.number(),
+        targetBundleId: v.string(),
         updateSource: v.partial(updateSourceSchema),
       }),
     ),
     async (c) => {
-      const { targetBundleTimestamp, updateSource } = c.req.valid("json");
+      const { targetBundleId, updateSource } = c.req.valid("json");
       if (!config) {
         config = await loadConfig();
       }
       const deployPlugin = config?.deploy({
         cwd: getCwd(),
       });
-      await deployPlugin?.updateUpdateSource(
-        targetBundleTimestamp,
-        updateSource,
-      );
+      await deployPlugin?.updateUpdateSource(targetBundleId, updateSource);
       await deployPlugin?.commitUpdateSource();
       return c.json(true);
     },

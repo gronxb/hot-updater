@@ -3,7 +3,7 @@ import type { Platform } from "./types";
 
 export type MatchSource = {
   targetVersion: string;
-  latestBundleTimestamp: string;
+  latestBundleId: string;
   path: string;
   platform: Platform;
 };
@@ -12,7 +12,7 @@ export const matchTargetVersion = (
   matchSources: MatchSource[],
   current: {
     version: string;
-    bundleTimestamp: string;
+    bundleId: string;
     platform: Platform;
   },
 ) => {
