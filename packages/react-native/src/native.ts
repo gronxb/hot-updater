@@ -3,7 +3,7 @@ import { HotUpdaterError } from "./error";
 
 const { HotUpdater } = NativeModules;
 
-export const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Fetches the current bundle version id.

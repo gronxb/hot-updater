@@ -1,8 +1,10 @@
 import type { Bundle, BundleArg } from "@hot-updater/utils";
 import { filterTargetVersion } from "@hot-updater/utils";
 import { Platform } from "react-native";
-import { NIL_UUID, getAppVersion, getBundleId } from "./native";
+import { getAppVersion, getBundleId } from "./native";
 import { isNullable } from "./utils";
+
+export const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 

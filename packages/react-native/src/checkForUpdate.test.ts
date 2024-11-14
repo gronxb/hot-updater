@@ -1,6 +1,6 @@
 import type { Bundle } from "@hot-updater/utils";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { checkForUpdate } from "./checkForUpdate";
+import { NIL_UUID, checkForUpdate } from "./checkForUpdate";
 import * as natives from "./native";
 
 vi.mock("./native", () => ({
@@ -509,7 +509,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
     expect(update).toStrictEqual({
       file: null,
       hash: null,
-      bundleId: "0",
+      bundleId: NIL_UUID,
       forceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
     });

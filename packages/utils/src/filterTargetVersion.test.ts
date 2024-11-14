@@ -130,7 +130,7 @@ describe("filterTargetVersion", () => {
       { targetVersion: "^1.2.3", platform: "ios", bundleId: "1" },
       { targetVersion: "^1.2.3", platform: "android", bundleId: "1" },
       { targetVersion: "1.2.x", platform: "ios", bundleId: "1" },
-      { targetVersion: "1.2", platform: "ios", bundleId: 1 },
+      { targetVersion: "1.2", platform: "ios", bundleId: "1" },
     ]);
   });
 
