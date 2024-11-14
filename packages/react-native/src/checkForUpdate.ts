@@ -1,23 +1,24 @@
-import type { UpdateSource, UpdateSourceArg } from "@hot-updater/utils";
+import type { Bundle, BundleArg } from "@hot-updater/utils";
 import { filterTargetVersion } from "@hot-updater/utils";
 import { Platform } from "react-native";
 import { NIL_UUID, getAppVersion, getBundleId } from "./native";
 import { isNullable } from "./utils";
+
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
-const findLatestSources = (sources: UpdateSource[]) => {
+const findLatestBundles = (bundles: Bundle[]) => {
   return (
-    sources
+    bundles
       ?.filter((item) => item.enabled)
       ?.sort((a, b) => b.bundleId.localeCompare(a.bundleId))?.[0] ?? null
   );
 };
 
-const checkForRollback = (sources: UpdateSource[], currentBundleId: string) => {
-  const enabled = sources?.find(
+const checkForRollback = (bundles: Bundle[], currentBundleId: string) => {
+  const enabled = bundles?.find(
     (item) => item.bundleId === currentBundleId,
   )?.enabled;
-  const availableOldVersion = sources?.find(
+  const availableOldVersion = bundles?.find(
     (item) => item.bundleId < currentBundleId && item.enabled,
   )?.enabled;
 
@@ -27,39 +28,39 @@ const checkForRollback = (sources: UpdateSource[], currentBundleId: string) => {
   return !enabled;
 };
 
-const ensureUpdateSource = async (updateSource: UpdateSourceArg) => {
-  let source: UpdateSource[] | null = null;
-  if (typeof updateSource === "string") {
-    if (updateSource.startsWith("http")) {
-      const response = await fetch(updateSource);
-      source = (await response.json()) as UpdateSource[];
+const ensureBundles = async (bundle: BundleArg) => {
+  let bundles: Bundle[] | null = null;
+  if (typeof bundle === "string") {
+    if (bundle.startsWith("http")) {
+      const response = await fetch(bundle);
+      bundles = (await response.json()) as Bundle[];
     }
-  } else if (typeof updateSource === "function") {
-    source = await updateSource();
+  } else if (typeof bundle === "function") {
+    bundles = await bundle();
   } else {
-    source = updateSource;
+    bundles = bundle;
   }
-  if (!source) {
-    throw new Error("Invalid source");
+  if (!bundles) {
+    throw new Error("Invalid bundle");
   }
-  return source;
+  return bundles;
 };
 
-export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
-  const sources = await ensureUpdateSource(updateSources);
+export const checkForUpdate = async (bundles: BundleArg) => {
+  const $bundles = await ensureBundles(bundles);
 
   const currentAppVersion = await getAppVersion();
   const platform = Platform.OS as "ios" | "android";
 
-  const appVersionSources = currentAppVersion
-    ? filterTargetVersion(sources, currentAppVersion, platform)
+  const appVersionBundles = currentAppVersion
+    ? filterTargetVersion($bundles, currentAppVersion, platform)
     : [];
   const currentBundleId = await getBundleId();
 
-  const isRollback = checkForRollback(appVersionSources, currentBundleId);
-  const latestSource = await findLatestSources(appVersionSources);
+  const isRollback = checkForRollback(appVersionBundles, currentBundleId);
+  const latestBundle = await findLatestBundles(appVersionBundles);
 
-  if (!latestSource) {
+  if (!latestBundle) {
     if (isRollback) {
       return {
         bundleId: NIL_UUID,
@@ -72,35 +73,35 @@ export const checkForUpdate = async (updateSources: UpdateSourceArg) => {
     return null;
   }
 
-  if (latestSource.file)
+  if (latestBundle.file)
     if (isRollback) {
-      if (latestSource.bundleId === currentBundleId) {
+      if (latestBundle.bundleId === currentBundleId) {
         return null;
       }
-      if (latestSource.bundleId > currentBundleId) {
+      if (latestBundle.bundleId > currentBundleId) {
         return {
-          bundleId: latestSource.bundleId,
-          forceUpdate: latestSource.forceUpdate,
-          file: latestSource.file,
-          hash: latestSource.hash,
+          bundleId: latestBundle.bundleId,
+          forceUpdate: latestBundle.forceUpdate,
+          file: latestBundle.file,
+          hash: latestBundle.hash,
           status: "UPDATE" as UpdateStatus,
         };
       }
       return {
-        bundleId: latestSource.bundleId,
+        bundleId: latestBundle.bundleId,
         forceUpdate: true,
-        file: latestSource.file,
-        hash: latestSource.hash,
+        file: latestBundle.file,
+        hash: latestBundle.hash,
         status: "ROLLBACK" as UpdateStatus,
       };
     }
 
-  if (latestSource.bundleId.localeCompare(currentBundleId) > 0) {
+  if (latestBundle.bundleId.localeCompare(currentBundleId) > 0) {
     return {
-      bundleId: latestSource.bundleId,
-      forceUpdate: latestSource.forceUpdate,
-      file: latestSource.file,
-      hash: latestSource.hash,
+      bundleId: latestBundle.bundleId,
+      forceUpdate: latestBundle.forceUpdate,
+      file: latestBundle.file,
+      hash: latestBundle.hash,
       status: "UPDATE" as UpdateStatus,
     };
   }

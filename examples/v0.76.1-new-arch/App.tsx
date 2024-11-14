@@ -36,7 +36,8 @@ function App(): React.JSX.Element {
       <Text>Babel {HotUpdater.HOT_UPDATER_BUNDLE_ID}</Text>
       <Text>
         Babel{" "}
-        {Date.now() - extractTimestampFromUUIDv7(env.HOT_UPDATER_BUNDLE_ID)}
+        {Date.now() -
+          extractTimestampFromUUIDv7(HotUpdater.HOT_UPDATER_BUNDLE_ID)}
       </Text>
       <Text
         style={{

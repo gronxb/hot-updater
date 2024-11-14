@@ -1,4 +1,4 @@
-import type { UpdateSourceArg } from "@hot-updater/utils";
+import type { BundleArg } from "@hot-updater/utils";
 import { Platform } from "react-native";
 import { checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
@@ -7,7 +7,7 @@ import { initializeOnAppUpdate, reload, updateBundle } from "./native";
 export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 
 export interface HotUpdaterInitConfig {
-  source: UpdateSourceArg;
+  source: BundleArg;
   onSuccess?: (status: HotUpdaterStatus) => void;
   onError?: (error: HotUpdaterError) => void;
 }

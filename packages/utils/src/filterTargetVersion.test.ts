@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { filterTargetVersion } from "./filterTargetVersion";
 
 describe("filterTargetVersion", () => {
-  const sources: any[] = [
+  const bundles: any[] = [
     {
       targetVersion: "1.2.3",
       platform: "ios",
@@ -55,8 +55,8 @@ describe("filterTargetVersion", () => {
     },
   ];
 
-  it("should return sources matching the current version exactly", () => {
-    const result = filterTargetVersion(sources, "1.2.3", "ios");
+  it("should return bundles matching the current version exactly", () => {
+    const result = filterTargetVersion(bundles, "1.2.3", "ios");
     expect(result).toEqual([
       { targetVersion: "1.2.3", platform: "ios", bundleId: "2" },
       { targetVersion: "*", platform: "ios", bundleId: "1" },
@@ -70,8 +70,8 @@ describe("filterTargetVersion", () => {
     ]);
   });
 
-  it("should return sources matching a range", () => {
-    const result = filterTargetVersion(sources, "1.2.4", "ios");
+  it("should return bundles matching a range", () => {
+    const result = filterTargetVersion(bundles, "1.2.4", "ios");
     expect(result).toEqual([
       { targetVersion: "*", platform: "ios", bundleId: "1" },
       { targetVersion: "1.2.3 - 1.2.7", platform: "ios", bundleId: "1" },
@@ -87,28 +87,28 @@ describe("filterTargetVersion", () => {
     ]);
   });
 
-  it("should return no sources if the current version does not match", () => {
-    const result = filterTargetVersion(sources, "2.0.0", "ios");
+  it("should return no bundles if the current version does not match", () => {
+    const result = filterTargetVersion(bundles, "2.0.0", "ios");
     expect(result).toEqual([
       { targetVersion: "*", platform: "ios", bundleId: "1" },
     ]);
   });
 
   it("should handle invalid current version gracefully", () => {
-    const result = filterTargetVersion(sources, "invalid.version", "ios");
+    const result = filterTargetVersion(bundles, "invalid.version", "ios");
     expect(result).toEqual([]);
   });
 
-  it("should return sources matching any version with wildcard", () => {
-    const result = filterTargetVersion(sources, "1.3.0", "ios");
+  it("should return bundles matching any version with wildcard", () => {
+    const result = filterTargetVersion(bundles, "1.3.0", "ios");
     expect(result).toEqual([
       { targetVersion: "*", platform: "ios", bundleId: "1" },
       { targetVersion: "^1.2.3", platform: "ios", bundleId: "1" },
     ]);
   });
 
-  it("should sort the sources by version correctly", () => {
-    const result = filterTargetVersion(sources, "1.2.4", "ios");
+  it("should sort the bundles by version correctly", () => {
+    const result = filterTargetVersion(bundles, "1.2.4", "ios");
     expect(result).toEqual([
       { targetVersion: "*", platform: "ios", bundleId: "1" },
       { targetVersion: "1.2.3 - 1.2.7", platform: "ios", bundleId: "1" },
@@ -120,8 +120,8 @@ describe("filterTargetVersion", () => {
     ]);
   });
 
-  it("should sort the sources by version correctly", () => {
-    const result = filterTargetVersion(sources, "1.2.4");
+  it("should sort the bundles by version correctly", () => {
+    const result = filterTargetVersion(bundles, "1.2.4");
     expect(result).toEqual([
       { targetVersion: "*", platform: "ios", bundleId: "1" },
       { targetVersion: "1.2.3 - 1.2.7", platform: "ios", bundleId: "1" },
@@ -134,12 +134,12 @@ describe("filterTargetVersion", () => {
     ]);
   });
 
-  it("should return all sources if targetVersion is *", () => {
-    const result = filterTargetVersion(sources, "*");
-    expect(result).toEqual(sources);
+  it("should return all bundles if targetVersion is *", () => {
+    const result = filterTargetVersion(bundles, "*");
+    expect(result).toEqual(bundles);
   });
 
-  it("should prioritize platform sources", () => {
+  it("should prioritize platform bundles", () => {
     const result = filterTargetVersion(
       [
         {
@@ -210,7 +210,7 @@ describe("filterTargetVersion", () => {
     ]);
   });
 
-  it("should prioritize platform sources", () => {
+  it("should prioritize platform bundles", () => {
     const result = filterTargetVersion(
       [
         {

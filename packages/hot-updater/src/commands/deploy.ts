@@ -55,9 +55,9 @@ export const deploy = async (options: DeployOptions) => {
       cwd,
     });
 
-    const updateSources = await deployPlugin.getUpdateSources();
+    const bundles = await deployPlugin.getBundles();
     const targetVersions = filterTargetVersion(
-      updateSources ?? [],
+      bundles ?? [],
       targetVersion,
       options.platform,
     );
@@ -80,7 +80,7 @@ export const deploy = async (options: DeployOptions) => {
       bundlePath,
     );
 
-    await deployPlugin.appendUpdateSource({
+    await deployPlugin.appendBundle({
       forceUpdate: options.forceUpdate,
       platform: options.platform,
       file,
@@ -90,7 +90,7 @@ export const deploy = async (options: DeployOptions) => {
       bundleId: bundleId,
       enabled: true,
     });
-    await deployPlugin.commitUpdateSource();
+    await deployPlugin.commitBundle();
 
     await fs.rm(bundlePath);
     s.stop("Uploading Success !", 0);

@@ -1,6 +1,6 @@
-import type { Platform, UpdateSource } from "@hot-updater/utils";
+import type { Bundle, Platform } from "@hot-updater/utils";
 
-export type { Platform, UpdateSource } from "@hot-updater/utils";
+export type { Platform, Bundle } from "@hot-updater/utils";
 
 export interface BasePluginArgs {
   cwd: string;
@@ -11,14 +11,14 @@ export interface BuildPluginArgs extends BasePluginArgs {
 }
 
 export interface DeployPlugin {
-  getUpdateSources: (refresh?: boolean) => Promise<UpdateSource[]>;
-  updateUpdateSource: (
+  getBundles: (refresh?: boolean) => Promise<Bundle[]>;
+  updateBundle: (
     targetBundleId: string,
-    newSource: Partial<UpdateSource>,
+    newBundle: Partial<Bundle>,
   ) => Promise<void>;
-  setUpdateSources: (sources: UpdateSource[]) => Promise<void>;
-  appendUpdateSource: (source: UpdateSource) => Promise<void>;
-  commitUpdateSource: () => Promise<void>;
+  setBundles: (bundles: Bundle[]) => Promise<void>;
+  appendBundle: (bundles: Bundle) => Promise<void>;
+  commitBundle: () => Promise<void>;
 
   uploadBundle: (
     platform: Platform,

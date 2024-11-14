@@ -1,4 +1,4 @@
-import type { UpdateSource } from "@hot-updater/utils";
+import type { Bundle } from "@hot-updater/utils";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { checkForUpdate } from "./checkForUpdate";
 import * as natives from "./native";
@@ -21,14 +21,14 @@ describe("appVersion 1.0, bundleId null", async () => {
   });
 
   it("should return null if no update information is available", async () => {
-    const updateSources: UpdateSource[] = [];
+    const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toBeNull();
   });
 
   it("should return null if no update is available when the app version is higher", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.1",
@@ -40,12 +40,12 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toBeNull();
   });
 
   it("should update if a higher bundle with semver version exists", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.x.x",
@@ -66,7 +66,7 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       bundleId: "2",
       forceUpdate: false,
@@ -77,7 +77,7 @@ describe("appVersion 1.0, bundleId null", async () => {
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to true", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -88,7 +88,7 @@ describe("appVersion 1.0, bundleId null", async () => {
         hash: "hash",
       },
     ];
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
 
     expect(update).toStrictEqual({
       bundleId: "1",
@@ -100,7 +100,7 @@ describe("appVersion 1.0, bundleId null", async () => {
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -112,7 +112,7 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -123,7 +123,7 @@ describe("appVersion 1.0, bundleId null", async () => {
   });
 
   it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -135,7 +135,7 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       bundleId: "5",
       forceUpdate: false,
@@ -146,7 +146,7 @@ describe("appVersion 1.0, bundleId null", async () => {
   });
 
   it("should update if the latest version is not available but a previous version is available", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -167,7 +167,7 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -178,7 +178,7 @@ describe("appVersion 1.0, bundleId null", async () => {
   });
 
   it("should not update if all updates are disabled", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -199,12 +199,12 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toBeNull();
   });
 
   it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -225,12 +225,12 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual(null);
   });
 
   it("should update if the latest version is available and the app version is the same", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         forceUpdate: false,
         platform: "ios",
@@ -243,7 +243,7 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       bundleId: "20240722210327",
       forceUpdate: false,
@@ -261,14 +261,14 @@ describe("appVersion 1.0, bundleId v2", async () => {
   });
 
   it("should return null if no update information is available", async () => {
-    const updateSources: UpdateSource[] = [];
+    const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toBeNull();
   });
 
   it("should return null if no update is available when the app version is higher", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -289,12 +289,12 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toBeNull();
   });
 
   it("should rollback if the latest bundle is deleted", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -306,7 +306,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -317,7 +317,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
   });
 
   it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -347,7 +347,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -358,7 +358,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
   });
 
   it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -406,7 +406,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -417,7 +417,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
   });
 
   it("should not update if the latest version is disabled and matches the current version", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -447,12 +447,12 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toBeNull();
   });
 
   it("should rollback to a previous version if the current version is disabled", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -473,7 +473,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -484,7 +484,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
   });
 
   it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
-    const updateSources: UpdateSource[] = [
+    const bundles: Bundle[] = [
       {
         platform: "ios",
         targetVersion: "1.0",
@@ -505,7 +505,7 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(updateSources);
+    const update = await checkForUpdate(bundles);
     expect(update).toStrictEqual({
       file: null,
       hash: null,

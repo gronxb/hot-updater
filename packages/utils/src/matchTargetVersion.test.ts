@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { type MatchSource, matchTargetVersion } from "./matchTargetVersion";
+import { type MatchBundle, matchTargetVersion } from "./matchTargetVersion";
 
 describe("matchTargetVersion", () => {
   it("should return the correct path when a matching version is found", () => {
-    const matchSources = [
+    const matchBundles = [
       {
         targetVersion: "1.2.3",
         latestBundleId: "1",
@@ -16,8 +16,8 @@ describe("matchTargetVersion", () => {
         path: "/path/to/version/1.2.x",
         platform: "ios",
       },
-    ] as MatchSource[];
-    const result = matchTargetVersion(matchSources, {
+    ] as MatchBundle[];
+    const result = matchTargetVersion(matchBundles, {
       version: "1.2.3",
       bundleId: "1",
       platform: "ios",
@@ -26,7 +26,7 @@ describe("matchTargetVersion", () => {
   });
 
   it("should return undefined when no matching version is found", () => {
-    const matchSources = [
+    const matchBundles = [
       {
         targetVersion: "1.2.3",
         latestBundleId: "1",
@@ -39,9 +39,9 @@ describe("matchTargetVersion", () => {
         path: "/path/to/version/1.2.x",
         platform: "ios",
       },
-    ] as MatchSource[];
+    ] as MatchBundle[];
 
-    const result = matchTargetVersion(matchSources, {
+    const result = matchTargetVersion(matchBundles, {
       version: "2.0.0",
       bundleId: "2",
       platform: "ios",
@@ -50,7 +50,7 @@ describe("matchTargetVersion", () => {
   });
 
   it("should return the correct path when a wildcard version is found", () => {
-    const matchSources = [
+    const matchBundles = [
       {
         targetVersion: "*",
         latestBundleId: "2",
@@ -63,9 +63,9 @@ describe("matchTargetVersion", () => {
         path: "/path/to/version/1.2.x",
         platform: "ios",
       },
-    ] as MatchSource[];
+    ] as MatchBundle[];
 
-    const result = matchTargetVersion(matchSources, {
+    const result = matchTargetVersion(matchBundles, {
       version: "1.3.0",
       bundleId: "1",
       platform: "ios",

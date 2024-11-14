@@ -24,25 +24,25 @@ export const prune = async (options: PruneOptions) => {
     });
 
     s.start("Checking existing updates");
-    const updateSources = await deployPlugin.getUpdateSources();
+    const bundles = await deployPlugin.getBundles();
 
-    const activeSources = updateSources.filter((source) => source.enabled);
-    const inactiveSources = updateSources.filter((source) => !source.enabled);
+    const activeBundles = bundles.filter((bundle) => bundle.enabled);
+    const inactiveBundles = bundles.filter((bundle) => !bundle.enabled);
 
-    if (inactiveSources.length === 0) {
+    if (inactiveBundles.length === 0) {
       s.stop("No inactive versions found", -1);
       return;
     }
 
     s.message("Pruning updates");
 
-    await deployPlugin.setUpdateSources(activeSources);
-    await deployPlugin.commitUpdateSource();
+    await deployPlugin.setBundles(activeBundles);
+    await deployPlugin.commitBundle();
 
-    for (const source of inactiveSources) {
+    for (const bundle of inactiveBundles) {
       const key = await deployPlugin.deleteBundle(
         options.platform,
-        source.bundleId,
+        bundle.bundleId,
       );
       p.log.info(`deleting: ${key}`);
     }

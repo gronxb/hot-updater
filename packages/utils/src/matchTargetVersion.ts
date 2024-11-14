@@ -1,7 +1,7 @@
 import semver from "semver";
 import type { Platform } from "./types";
 
-export type MatchSource = {
+export type MatchBundle = {
   targetVersion: string;
   latestBundleId: string;
   path: string;
@@ -9,17 +9,17 @@ export type MatchSource = {
 };
 
 export const matchTargetVersion = (
-  matchSources: MatchSource[],
+  matchBundles: MatchBundle[],
   current: {
     version: string;
     bundleId: string;
     platform: Platform;
   },
 ) => {
-  const matchSource = matchSources
-    .filter((source) => source.platform === current.platform)
-    .find((source) => {
-      return semver.satisfies(current.version, source.targetVersion);
+  const matchBundle = matchBundles
+    .filter((bundle) => bundle.platform === current.platform)
+    .find((bundle) => {
+      return semver.satisfies(current.version, bundle.targetVersion);
     });
-  return matchSource?.path;
+  return matchBundle?.path;
 };

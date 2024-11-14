@@ -1,6 +1,6 @@
 export type Platform = "ios" | "android";
 
-export interface UpdateSource {
+export interface Bundle {
   bundleId: string;
   platform: Platform;
   targetVersion: string;
@@ -11,8 +11,8 @@ export interface UpdateSource {
   description?: string;
 }
 
-export type UpdateSourceArg =
+export type BundleArg =
   | string
-  | UpdateSource[]
-  | (() => Promise<UpdateSource[]>)
-  | (() => UpdateSource[]);
+  | Bundle[]
+  | (() => Promise<Bundle[]>)
+  | (() => Bundle[]);
