@@ -15,9 +15,5 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun reload()
 
-    abstract fun initializeOnAppUpdate()
-
     abstract fun getAppVersion(callback: Callback)
-
-    abstract fun getBundleId(callback: Callback)
 }

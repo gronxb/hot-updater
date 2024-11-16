@@ -12,11 +12,6 @@ class HotUpdaterModule internal constructor(
     override fun getName(): String = NAME
 
     @ReactMethod
-    override fun initializeOnAppUpdate() {
-        HotUpdater.initializeOnAppUpdate()
-    }
-
-    @ReactMethod
     override fun reload() {
         HotUpdater.reload()
     }

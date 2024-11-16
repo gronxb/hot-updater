@@ -8,7 +8,6 @@ interface Spec extends TurboModule {
     zipUrl: string | null,
     callback: (success: boolean) => void,
   ): Promise<boolean>;
-  initializeOnAppUpdate(): void;
   getAppVersion(): Promise<string | null>;
 }
 

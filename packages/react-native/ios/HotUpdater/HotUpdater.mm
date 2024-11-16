@@ -52,20 +52,6 @@ RCT_EXPORT_MODULE();
     return [self cachedURLFromBundle] ?: [self fallbackURL];
 }
 
-+ (void)initializeOnAppUpdate {
-    NSString *currentVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *savedVersion = [defaults stringForKey:@"HotUpdaterAppVersion"];
-
-    if (![currentVersion isEqualToString:savedVersion]) {
-        [defaults removeObjectForKey:@"HotUpdaterBundleURL"];
-        [defaults removeObjectForKey:@"HotUpdaterBundleVersion"];
-        
-        [defaults setObject:currentVersion forKey:@"HotUpdaterAppVersion"];
-        [defaults synchronize];
-    }
-}
-
 #pragma mark - Utility Methods
 
 + (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
@@ -149,10 +135,6 @@ RCT_EXPORT_MODULE();
 }
 
 #pragma mark - React Native Exports
-
-RCT_EXPORT_METHOD(initializeOnAppUpdate) {
-    [HotUpdater initializeOnAppUpdate];
-}
 
 RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
