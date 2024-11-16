@@ -8,6 +8,20 @@
   "main": "dist/config.cjs",
   "module": "dist/config.js",
   "types": "dist/config.d.ts",
+  "exports": {
+    ".": {
+      "node": "./dist/config.cjs",
+      "import": "./dist/config.js",
+      "require": "./dist/config.cjs",
+      "types": "./dist/config.d.ts"
+    },
+    "./babel-plugin": {
+      "node": "./dist/plugins/babel.cjs",
+      "import": "./dist/plugins/babel.js",
+      "require": "./dist/plugins/babel.cjs",
+      "types": "./dist/plugins/babel.d.ts"
+    }
+  },
   "files": [
     "dist",
     "package.json"
@@ -24,13 +38,15 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/config.ts --format esm,cjs --dts --shims",
+    "build": "tsup src/index.ts src/config.ts src/plugins/babel.ts --format esm,cjs --dts --shims",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
     "@hono/node-server": "^1.13.4",
     "@hot-updater/console": "0.1.4",
+    "@hot-updater/plugin-core": "0.1.4",
+    "@hot-updater/utils": "0.1.4",
     "boxen": "^8.0.1",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
@@ -39,13 +55,17 @@
     "picocolors": "^1.0.0",
     "plist": "^3.1.0",
     "read-package-up": "^11.0.0",
-    "workspace-tools": "^0.36.4",
-    "@hot-updater/plugin-core": "0.1.4",
-    "@hot-updater/utils": "0.1.4"
+    "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/traverse": "^7.25.9",
+    "@babel/types": "^7.26.0",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__traverse": "^7.20.6",
     "@types/connect": "^3.4.38",
     "@types/cosmiconfig": "^6.0.0",
+    "@types/node": "^22.9.0",
     "@types/plist": "^3.0.5"
   }
 }

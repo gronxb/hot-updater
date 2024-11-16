@@ -30,6 +30,7 @@
     "@types/react": "^18.0.24",
     "@types/react-test-renderer": "^18.0.0",
     "babel-jest": "^29.2.1",
+    "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
     "hot-updater": "0.1.4",
     "invariant": "^2.2.4",
