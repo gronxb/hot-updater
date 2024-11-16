@@ -136,9 +136,9 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun getAppVersion(): String {
+    fun getAppVersion(): String? {
         val packageInfo = mContext.packageManager.getPackageInfo(mContext.packageName, 0)
-        return packageInfo.versionName ?: ""
+        return packageInfo.versionName
     }
 
     fun getBundleURL(): String {
