@@ -16,19 +16,23 @@ const findLatestBundles = (bundles: Bundle[]) => {
 };
 
 const ensureBundles = async (bundle: BundleArg) => {
-  let bundles: Bundle[] | null = null;
-  if (typeof bundle === "string") {
-    if (bundle.startsWith("http")) {
-      const response = await fetch(bundle);
-      bundles = (await response.json()) as Bundle[];
+  try {
+    let bundles: Bundle[] | null = null;
+    if (typeof bundle === "string") {
+      if (bundle.startsWith("http")) {
+        const response = await fetch(bundle);
+        bundles = (await response.json()) as Bundle[];
+      }
+    } else if (typeof bundle === "function") {
+      bundles = await bundle();
+    } else {
+      bundles = bundle;
     }
-  } else if (typeof bundle === "function") {
-    bundles = await bundle();
-  } else {
-    bundles = bundle;
-  }
 
-  return bundles ?? [];
+    return bundles ?? [];
+  } catch {
+    return [];
+  }
 };
 
 export const checkForUpdate = async (bundles: BundleArg) => {
