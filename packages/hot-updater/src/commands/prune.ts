@@ -1,12 +1,8 @@
 import * as p from "@clack/prompts";
-import { type Platform, getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/plugin-core";
 import { loadConfig } from "@hot-updater/plugin-core";
 
-export interface PruneOptions {
-  platform: Platform;
-}
-
-export const prune = async (options: PruneOptions) => {
+export const prune = async () => {
   const s = p.spinner();
 
   try {
@@ -20,7 +16,6 @@ export const prune = async (options: PruneOptions) => {
 
     const deployPlugin = config.deploy({
       cwd,
-      // spinner: s,
     });
 
     s.start("Checking existing updates");
