@@ -52,9 +52,14 @@
     "name": "HotUpdaterSpec",
     "type": "modules",
     "jsSrcsDir": "./src/specs",
+    "outputDir": {
+      "ios": "ios/generated",
+      "android": "android/generated"
+    },
     "android": {
       "javaPackageName": "com.hotupdater"
-    }
+    },
+    "includesGeneratedCode": true
   },
   "peerDependencies": {
     "react-native": "*"
