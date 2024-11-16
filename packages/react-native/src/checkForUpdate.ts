@@ -27,10 +27,8 @@ const ensureBundles = async (bundle: BundleArg) => {
   } else {
     bundles = bundle;
   }
-  if (!bundles) {
-    throw new Error("Invalid bundle");
-  }
-  return bundles;
+
+  return bundles ?? [];
 };
 
 export const checkForUpdate = async (bundles: BundleArg) => {
