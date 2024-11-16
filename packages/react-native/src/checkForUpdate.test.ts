@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/utils";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { NIL_UUID, checkForUpdate } from "./checkForUpdate";
+import { checkForUpdate } from "./checkForUpdate";
+import { NIL_UUID } from "./const";
 import * as natives from "./native";
 
 vi.mock("./native", () => ({

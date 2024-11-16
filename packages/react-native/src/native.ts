@@ -1,9 +1,8 @@
 import { NativeModules } from "react-native";
+import { NIL_UUID } from "./const";
 import { HotUpdaterError } from "./error";
 
 const { HotUpdater } = NativeModules;
-
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Fetches the current bundle version id.
