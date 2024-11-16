@@ -90,3 +90,5 @@ docs/.vitepress/cache
 .nx/workspace-data
 
 build.zip
+
+generated/

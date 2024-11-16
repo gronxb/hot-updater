@@ -26,7 +26,7 @@
     "!**/.*"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "bob build && tsup src/index.ts --format esm,cjs --dts",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
@@ -48,10 +48,17 @@
   "publishConfig": {
     "access": "public"
   },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "dist",
+    "targets": [
+      "codegen"
+    ]
+  },
   "codegenConfig": {
     "name": "HotUpdaterSpec",
-    "type": "modules",
-    "jsSrcsDir": "./src/specs",
+    "type": "all",
+    "jsSrcsDir": "src/specs",
     "outputDir": {
       "ios": "ios/generated",
       "android": "android/generated"
@@ -65,9 +72,11 @@
     "react-native": "*"
   },
   "devDependencies": {
-    "@types/react": "^18.2.6",
-    "react": "^18.2.0",
-    "react-native": "^0.72.6"
+    "@react-native-community/cli": "15.0.1",
+    "@types/react": "^18.2.44",
+    "react": "18.3.1",
+    "react-native": "0.76.2",
+    "react-native-builder-bob": "^0.32.0"
   },
   "dependencies": {
     "@hot-updater/utils": "0.1.4"
