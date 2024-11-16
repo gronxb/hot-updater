@@ -7,8 +7,8 @@ interface Spec extends TurboModule {
     prefix: string,
     zipUrl: string | null,
     callback: (success: boolean) => void,
-  ): Promise<boolean>;
-  getAppVersion(): Promise<string | null>;
+  ): void;
+  getAppVersion(callback: (version: string | null) => void): void;
 }
 
 export default TurboModuleRegistry.get<Spec>("HotUpdater");
