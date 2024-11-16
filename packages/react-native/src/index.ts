@@ -1,4 +1,5 @@
 import { checkForUpdate } from "./checkForUpdate";
+import { NIL_UUID } from "./const";
 import { init } from "./init";
 import { getAppVersion, getBundleId, reload } from "./native";
 
@@ -12,4 +13,8 @@ export const HotUpdater = {
   checkForUpdate,
   getAppVersion,
   getBundleId,
+  /**
+   * In production environment, this value will be replaced with a uuidv7.
+   */
+  HOT_UPDATER_BUNDLE_ID: NIL_UUID,
 };
