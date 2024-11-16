@@ -24,6 +24,7 @@
     "@react-native-community/cli-platform-android": "15.0.0",
     "@react-native-community/cli-platform-ios": "15.0.0",
     "@react-native/babel-preset": "0.76.1",
+    "@react-native/codegen": "^0.76.1",
     "@react-native/eslint-config": "0.76.1",
     "@react-native/gradle-plugin": "0.76.1",
     "@react-native/metro-config": "0.76.1",
