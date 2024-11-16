@@ -15,12 +15,11 @@ HotUpdater.init({
 });
 
 function App(): React.JSX.Element {
-  const [version, setVersion] = useState<number | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    HotUpdater.getBundleId().then((version) => {
-      setVersion(version);
-    });
+    const version = HotUpdater.getBundleId();
+    setVersion(version);
   }, []);
 
   return (

@@ -74,11 +74,7 @@ export const deploy = async (options: DeployOptions) => {
     }
 
     s.message("Uploading bundle...");
-    const { file } = await deployPlugin.uploadBundle(
-      options.platform,
-      bundleId,
-      bundlePath,
-    );
+    const { file } = await deployPlugin.uploadBundle(bundleId, bundlePath);
 
     await deployPlugin.appendBundle({
       forceUpdate: options.forceUpdate,

@@ -105,12 +105,12 @@ export const aws =
           throw e;
         }
       },
-      async deleteBundle(platform, bundleId) {
-        const Key = [bundleId, platform].join("/");
+      async deleteBundle(bundleId) {
+        const Key = [bundleId].join("/");
 
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
-          Prefix: `${bundleId}/${platform}`,
+          Prefix: bundleId,
         });
         const listResponse = await client.send(listCommand);
 
@@ -135,7 +135,7 @@ export const aws =
         log.error("Bundle Not Found");
         throw new Error("Bundle Not Found");
       },
-      async uploadBundle(platform, bundleId, bundlePath) {
+      async uploadBundle(bundleId, bundlePath) {
         log.info("Uploading Bundle");
 
         const Body = await fs.readFile(bundlePath);
@@ -143,7 +143,7 @@ export const aws =
 
         const filename = path.basename(bundlePath);
 
-        const Key = [bundleId, platform, filename].join("/");
+        const Key = [bundleId, filename].join("/");
         const upload = new Upload({
           client,
           params: {

@@ -23,21 +23,18 @@ function extractTimestampFromUUIDv7(uuid: string) {
 }
 
 function App(): React.JSX.Element {
-  const [version, setVersion] = useState<number | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    HotUpdater.getBundleId().then((version) => {
-      setVersion(version);
-    });
+    const version = HotUpdater.getBundleId();
+    setVersion(version);
   }, []);
 
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.HOT_UPDATER_BUNDLE_ID}</Text>
       <Text>
-        Babel{" "}
-        {Date.now() -
-          extractTimestampFromUUIDv7(HotUpdater.HOT_UPDATER_BUNDLE_ID)}
+        Babel {extractTimestampFromUUIDv7(HotUpdater.HOT_UPDATER_BUNDLE_ID)}
       </Text>
       <Text
         style={{
@@ -66,6 +63,7 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
+        // source={require("./src/logo.png")}
         source={require("./src/test/_image.png")}
       />
 

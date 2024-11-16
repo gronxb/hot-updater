@@ -8,7 +8,7 @@ const { HotUpdater } = NativeModules;
  * Fetches the current bundle version id.
  *
  * @async
- * @returns {Promise<number>} Resolves with the current version id or null if not available.
+ * @returns {Promise<string>} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
   return HotUpdater.HOT_UPDATER_BUNDLE_ID ?? NIL_UUID;

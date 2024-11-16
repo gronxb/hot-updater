@@ -30,6 +30,7 @@ const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
     String(platform),
     "--sourcemap-output",
     [bundleOutput, "map"].join("."),
+    "--reset-cache",
   ];
 
   log.normal("\n");
@@ -39,6 +40,7 @@ const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
   const bundle = spawn(cliPath, args, {
     cwd,
     env: {
+      ...process.env,
       HOT_UPDATER_BUNDLE_ID: bundleId,
     },
   });

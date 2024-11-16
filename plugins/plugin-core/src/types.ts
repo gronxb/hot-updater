@@ -21,18 +21,15 @@ export interface DeployPlugin {
   commitBundle: () => Promise<void>;
 
   uploadBundle: (
-    platform: Platform,
     bundleId: string,
     bundlePath: string,
   ) => Promise<{
     file: string;
   }>;
-  deleteBundle: (platform: Platform, bundleId: string) => Promise<string>;
+  deleteBundle: (bundleId: string) => Promise<string>;
 }
 
 export type Config = {
-  server: string;
-  secretKey: string;
   build: (args: BuildPluginArgs) => Promise<{
     buildPath: string;
     bundleId: string;

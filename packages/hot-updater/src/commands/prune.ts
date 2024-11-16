@@ -40,7 +40,7 @@ export const prune = async (options: PruneOptions) => {
     await deployPlugin.commitBundle();
 
     for (const bundle of inactiveBundles) {
-      const key = await deployPlugin.deleteBundle(options.platform, bundle.id);
+      const key = await deployPlugin.deleteBundle(bundle.id);
       p.log.info(`deleting: ${key}`);
     }
 

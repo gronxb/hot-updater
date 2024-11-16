@@ -235,7 +235,7 @@ describe("appVersion 1.0, bundleId null", async () => {
       {
         forceUpdate: false,
         platform: "ios",
-        file: "20240722210327/ios/build.zip",
+        file: "20240722210327/build.zip",
         hash: "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
         description: "",
         targetVersion: "1.0",
@@ -249,7 +249,7 @@ describe("appVersion 1.0, bundleId null", async () => {
       id: "20240722210327",
       forceUpdate: false,
       status: "UPDATE",
-      file: "20240722210327/ios/build.zip",
+      file: "20240722210327/build.zip",
       hash: "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
     });
   });

@@ -454,7 +454,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "android",
-          file: "/android/build.zip",
+          file: "/build.zip",
           hash: "d0cc1d97b7a50645db1ad0e502c63ac52c1afe799550949a62c04fe0ae99a606",
           description: "",
           targetVersion: "1.0",
@@ -464,7 +464,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "ios",
-          file: "/ios/build.zip",
+          file: "/build.zip",
           hash: "516490c4a042d487cda558986a9a162b75625f242cb2291ba3b915fae9a1b264",
           description: "",
           targetVersion: "1.0",
@@ -474,7 +474,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "android",
-          file: "/android/build.zip",
+          file: "/build.zip",
           hash: "f519fc7d303eede4c3c549622a5640a88700a3e58daf5df44b0b748971c77bb3",
           description: "",
           targetVersion: "1.0",
@@ -484,7 +484,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "ios",
-          file: "/ios/build.zip",
+          file: "/build.zip",
           hash: "eea69b75925f9f9e266cf3ffce87effd1f00b9a09832d690ca145d64c92714e1",
           description: "",
           targetVersion: "1.0",
@@ -499,7 +499,7 @@ describe("filterTargetVersion", () => {
       {
         forceUpdate: false,
         platform: "ios",
-        file: "/ios/build.zip",
+        file: "/build.zip",
         hash: "eea69b75925f9f9e266cf3ffce87effd1f00b9a09832d690ca145d64c92714e1",
         description: "",
         targetVersion: "1.0",
@@ -509,7 +509,7 @@ describe("filterTargetVersion", () => {
       {
         forceUpdate: false,
         platform: "ios",
-        file: "/ios/build.zip",
+        file: "/build.zip",
         hash: "516490c4a042d487cda558986a9a162b75625f242cb2291ba3b915fae9a1b264",
         description: "",
         targetVersion: "1.0",
@@ -525,7 +525,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "android",
-          file: "/android/build.zip",
+          file: "/build.zip",
           hash: "d0cc1d97b7a50645db1ad0e502c63ac52c1afe799550949a62c04fe0ae99a606",
           description: "",
           targetVersion: "1.0",
@@ -535,7 +535,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "ios",
-          file: "/ios/build.zip",
+          file: "/build.zip",
           hash: "516490c4a042d487cda558986a9a162b75625f242cb2291ba3b915fae9a1b264",
           description: "",
           targetVersion: "1.0",
@@ -545,7 +545,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "android",
-          file: "/android/build.zip",
+          file: "/build.zip",
           hash: "f519fc7d303eede4c3c549622a5640a88700a3e58daf5df44b0b748971c77bb3",
           description: "",
           targetVersion: "1.0",
@@ -555,7 +555,7 @@ describe("filterTargetVersion", () => {
         {
           forceUpdate: false,
           platform: "ios",
-          file: "/ios/build.zip",
+          file: "/build.zip",
           hash: "eea69b75925f9f9e266cf3ffce87effd1f00b9a09832d690ca145d64c92714e1",
           description: "",
           targetVersion: "1.0",
@@ -570,7 +570,7 @@ describe("filterTargetVersion", () => {
       {
         forceUpdate: false,
         platform: "ios",
-        file: "/ios/build.zip",
+        file: "/build.zip",
         hash: "eea69b75925f9f9e266cf3ffce87effd1f00b9a09832d690ca145d64c92714e1",
         description: "",
         targetVersion: "1.0",
@@ -580,7 +580,7 @@ describe("filterTargetVersion", () => {
       {
         forceUpdate: false,
         platform: "ios",
-        file: "/ios/build.zip",
+        file: "/build.zip",
         hash: "516490c4a042d487cda558986a9a162b75625f242cb2291ba3b915fae9a1b264",
         description: "",
         targetVersion: "1.0",
