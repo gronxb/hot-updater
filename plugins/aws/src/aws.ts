@@ -10,8 +10,8 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import {
   type BasePluginArgs,
+  type Bundle,
   type DeployPlugin,
-  type UpdateSource,
   log,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
@@ -29,10 +29,10 @@ export const aws =
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
-    let updateSources: UpdateSource[] = [];
+    let bundles: Bundle[] = [];
 
     return {
-      async commitUpdateSource() {
+      async commitBundle() {
         try {
           const command = new GetObjectCommand({
             Bucket: bucketName,
@@ -49,7 +49,7 @@ export const aws =
 
         log.info("Uploading update.json");
         const Key = "update.json";
-        const Body = JSON.stringify(updateSources);
+        const Body = JSON.stringify(bundles);
         const ContentType = mime.getType(Key) ?? void 0;
 
         const upload = new Upload({
@@ -63,32 +63,27 @@ export const aws =
         });
         await upload.done();
       },
-      async updateUpdateSource(
-        targetBundleVersion: number,
-        newSource: Partial<UpdateSource>,
-      ) {
-        updateSources = await this.getUpdateSources();
+      async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
+        bundles = await this.getBundles();
 
-        const targetIndex = updateSources.findIndex(
-          (u) => u.bundleVersion === targetBundleVersion,
-        );
+        const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
         if (targetIndex === -1) {
           throw new Error("target bundle version not found");
         }
 
-        Object.assign(updateSources[targetIndex], newSource);
+        Object.assign(bundles[targetIndex], newBundle);
       },
-      async appendUpdateSource(source) {
-        updateSources = await this.getUpdateSources();
-        updateSources.unshift(source);
+      async appendBundle(inputBundle) {
+        bundles = await this.getBundles();
+        bundles.unshift(inputBundle);
       },
-      async setUpdateSources(sources) {
-        updateSources = sources;
+      async setBundles(inputBundles) {
+        bundles = inputBundles;
       },
 
-      async getUpdateSources(refresh = false) {
-        if (updateSources.length > 0 && !refresh) {
-          return updateSources;
+      async getBundles(refresh = false) {
+        if (bundles.length > 0 && !refresh) {
+          return bundles;
         }
 
         log.info("Getting update.json");
@@ -100,9 +95,9 @@ export const aws =
           });
           const { Body: UpdateJsonBody } = await client.send(command);
           const bodyContents = await streamToString(UpdateJsonBody);
-          const _updateSource = JSON.parse(bodyContents);
-          updateSources = _updateSource;
-          return _updateSource as UpdateSource[];
+          const _bundle = JSON.parse(bodyContents);
+          bundles = _bundle;
+          return _bundle as Bundle[];
         } catch (e) {
           if (e instanceof NoSuchKey) {
             return [];
@@ -110,12 +105,12 @@ export const aws =
           throw e;
         }
       },
-      async deleteBundle(platform, bundleVersion) {
-        const Key = [bundleVersion, platform].join("/");
+      async deleteBundle(bundleId) {
+        const Key = [bundleId].join("/");
 
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
-          Prefix: `${bundleVersion}/${platform}`,
+          Prefix: bundleId,
         });
         const listResponse = await client.send(listCommand);
 
@@ -140,7 +135,7 @@ export const aws =
         log.error("Bundle Not Found");
         throw new Error("Bundle Not Found");
       },
-      async uploadBundle(platform, bundleVersion, bundlePath) {
+      async uploadBundle(bundleId, bundlePath) {
         log.info("Uploading Bundle");
 
         const Body = await fs.readFile(bundlePath);
@@ -148,7 +143,7 @@ export const aws =
 
         const filename = path.basename(bundlePath);
 
-        const Key = [bundleVersion, platform, filename].join("/");
+        const Key = [bundleId, filename].join("/");
         const upload = new Upload({
           client,
           params: {

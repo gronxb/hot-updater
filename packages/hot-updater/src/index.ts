@@ -71,18 +71,5 @@ program
 program
   .command("prune")
   .description("prune all the inactive versions")
-  .addOption(
-    new Option("-p, --platform <platform>", "specify the platform").choices([
-      "ios",
-      "android",
-    ]),
-  )
-  .action(async (options) => {
-    if (!options.platform) {
-      options.platform = await getPlatform(
-        "Which platform do you want to prune?",
-      );
-    }
-    prune(options);
-  });
+  .action(prune);
 program.parse(process.argv);

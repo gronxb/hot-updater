@@ -1,5 +1,5 @@
 import semver from "semver";
-import type { Platform, UpdateSource } from "./types";
+import type { Bundle, Platform } from "./types";
 
 /**
  *
@@ -19,33 +19,33 @@ import type { Platform, UpdateSource } from "./types";
  * | ^1.2.3           | Equivalent to >=1.2.3 <2.0.0                                            |
  */
 export const filterTargetVersion = (
-  sources: UpdateSource[],
+  bundles: Bundle[],
   targetVersion: string,
   platform?: Platform,
-): UpdateSource[] => {
+): Bundle[] => {
   // coerce currentVersion to a semver-compatible version
   const currentVersionCoerce = semver.coerce(targetVersion)?.version;
 
-  // Filter sources by platform and if currentVersion satisfies the targetVersion range
-  const filteredSources = sources
-    .filter((source) => {
+  // Filter bundles by platform and if currentVersion satisfies the targetVersion range
+  const filteredBundles = bundles
+    .filter((bundle) => {
       if (platform) {
-        return source.platform === platform;
+        return bundle.platform === platform;
       }
       return true;
     })
     .filter(
-      (source) =>
+      (bundle) =>
         targetVersion === "*" ||
-        semver.satisfies(currentVersionCoerce ?? "*", source.targetVersion),
+        semver.satisfies(currentVersionCoerce ?? "*", bundle.targetVersion),
     );
 
   // Separate '*' versions from other versions
-  const starVersions = filteredSources.filter(
-    (source) => source.targetVersion === "*",
+  const starVersions = filteredBundles.filter(
+    (bundle) => bundle.targetVersion === "*",
   );
-  const otherVersions = filteredSources.filter(
-    (source) => source.targetVersion !== "*",
+  const otherVersions = filteredBundles.filter(
+    (bundle) => bundle.targetVersion !== "*",
   );
 
   // Sort other versions by their minimum semver value in descending order
@@ -62,8 +62,6 @@ export const filterTargetVersion = (
   // Combine '*' versions and sorted other versions
   const combinedSortedVersions = [...starVersions, ...sortedOtherVersions];
 
-  // Sort by bundleVersion in descending order
-  return combinedSortedVersions.sort(
-    (a, b) => b.bundleVersion - a.bundleVersion,
-  );
+  // Sort by bundleId in descending order
+  return combinedSortedVersions.sort((a, b) => b.id.localeCompare(a.id));
 };

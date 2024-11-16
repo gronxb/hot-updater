@@ -1,4 +1,5 @@
 import { NativeModules } from "react-native";
+import { NIL_UUID } from "./const";
 import { HotUpdaterError } from "./error";
 
 const { HotUpdater } = NativeModules;
@@ -7,42 +8,34 @@ const { HotUpdater } = NativeModules;
  * Fetches the current bundle version id.
  *
  * @async
- * @returns {Promise<number>} Resolves with the current version id or null if not available.
+ * @returns {Promise<string>} Resolves with the current version id or null if not available.
  */
-export const getBundleVersion = async (): Promise<number> => {
-  return new Promise((resolve) => {
-    HotUpdater.getBundleVersion((version: number | null) => {
-      resolve(version ?? -1);
-    });
-  });
+export const getBundleId = (): string => {
+  return HotUpdater.HOT_UPDATER_BUNDLE_ID ?? NIL_UUID;
 };
 
 /**
  * Downloads files from given URLs.
  *
  * @async
- * @param {string} bundleVersion - identifier for the bundle version.
+ * @param {string} bundleId - identifier for the bundle version.
  * @param {string | null} zipUrl - zip file URL.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
 export const updateBundle = (
-  bundleVersion: number,
+  bundleId: string,
   zipUrl: string | null,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    HotUpdater.updateBundle(
-      String(bundleVersion),
-      zipUrl,
-      (success: boolean) => {
-        if (success) {
-          resolve(success);
-        } else {
-          reject(
-            new HotUpdaterError("Failed to download and install the update"),
-          );
-        }
-      },
-    );
+    HotUpdater.updateBundle(String(bundleId), zipUrl, (success: boolean) => {
+      if (success) {
+        resolve(success);
+      } else {
+        reject(
+          new HotUpdaterError("Failed to download and install the update"),
+        );
+      }
+    });
   });
 };
 
@@ -62,11 +55,4 @@ export const getAppVersion = async (): Promise<string | null> => {
  */
 export const reload = () => {
   HotUpdater.reload();
-};
-
-/**
- * Initializes the HotUpdater.
- */
-export const initializeOnAppUpdate = () => {
-  HotUpdater.initializeOnAppUpdate();
 };

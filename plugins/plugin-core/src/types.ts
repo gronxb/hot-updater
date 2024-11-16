@@ -1,6 +1,6 @@
-import type { Platform, UpdateSource } from "@hot-updater/utils";
+import type { Bundle, Platform } from "@hot-updater/utils";
 
-export type { Platform, UpdateSource } from "@hot-updater/utils";
+export type { Platform, Bundle } from "@hot-updater/utils";
 
 export interface BasePluginArgs {
   cwd: string;
@@ -11,31 +11,28 @@ export interface BuildPluginArgs extends BasePluginArgs {
 }
 
 export interface DeployPlugin {
-  getUpdateSources: (refresh?: boolean) => Promise<UpdateSource[]>;
-  updateUpdateSource: (
-    targetBundleVersion: number,
-    newSource: Partial<UpdateSource>,
+  getBundles: (refresh?: boolean) => Promise<Bundle[]>;
+  updateBundle: (
+    targetBundleId: string,
+    newBundle: Partial<Bundle>,
   ) => Promise<void>;
-  setUpdateSources: (sources: UpdateSource[]) => Promise<void>;
-  appendUpdateSource: (source: UpdateSource) => Promise<void>;
-  commitUpdateSource: () => Promise<void>;
+  setBundles: (bundles: Bundle[]) => Promise<void>;
+  appendBundle: (bundles: Bundle) => Promise<void>;
+  commitBundle: () => Promise<void>;
 
   uploadBundle: (
-    platform: Platform,
-    bundleVersion: number,
+    bundleId: string,
     bundlePath: string,
   ) => Promise<{
     file: string;
   }>;
-  deleteBundle: (platform: Platform, bundleVersion: number) => Promise<string>;
+  deleteBundle: (bundleId: string) => Promise<string>;
 }
 
 export type Config = {
-  server: string;
-  secretKey: string;
   build: (args: BuildPluginArgs) => Promise<{
     buildPath: string;
-    outputs: string[];
+    bundleId: string;
   }>;
   deploy: (args: BasePluginArgs) => DeployPlugin;
 };

@@ -14,17 +14,28 @@ HotUpdater.init({
   source: "https://gronxb.s3.ap-northeast-2.amazonaws.com/update.json",
 });
 
+function extractTimestampFromUUIDv7(uuid: string) {
+  const timestampHex = uuid.split("-").join("").slice(0, 12);
+
+  const timestamp = Number.parseInt(timestampHex, 16);
+
+  return timestamp;
+}
+
 function App(): React.JSX.Element {
-  const [version, setVersion] = useState<number | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    HotUpdater.getBundleVersion().then((version) => {
-      setVersion(version);
-    });
+    const version = HotUpdater.getBundleId();
+    setVersion(version);
   }, []);
 
   return (
     <SafeAreaView>
+      <Text>Babel {HotUpdater.HOT_UPDATER_BUNDLE_ID}</Text>
+      <Text>
+        Babel {extractTimestampFromUUIDv7(HotUpdater.HOT_UPDATER_BUNDLE_ID)}
+      </Text>
       <Text
         style={{
           marginVertical: 20,
@@ -44,7 +55,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        BundleVersion: {version}
+        BundleId: {version}
       </Text>
 
       <Image
@@ -52,6 +63,7 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
+        // source={require("./src/logo.png")}
         source={require("./src/test/_image.png")}
       />
 

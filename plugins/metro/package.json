@@ -25,7 +25,8 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "0.1.4"
+    "@hot-updater/plugin-core": "0.1.4",
+    "uuidv7": "^1.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.8.7"

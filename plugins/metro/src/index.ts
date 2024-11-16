@@ -1,8 +1,9 @@
 import { spawn } from "child_process";
-import { lstatSync } from "fs";
 import path from "path";
 import { type BuildPluginArgs, log } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
+import { uuidv7 } from "uuidv7";
+
 interface RunBundleArgs {
   cwd: string;
   platform: string;
@@ -29,12 +30,22 @@ const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
     String(platform),
     "--sourcemap-output",
     [bundleOutput, "map"].join("."),
+    "--reset-cache",
   ];
 
   log.normal("\n");
-  const bundle = spawn(cliPath, args, { cwd });
 
-  return new Promise<void>((resolve, reject) => {
+  const bundleId = uuidv7();
+
+  const bundle = spawn(cliPath, args, {
+    cwd,
+    env: {
+      ...process.env,
+      HOT_UPDATER_BUNDLE_ID: bundleId,
+    },
+  });
+
+  return new Promise<string>((resolve, reject) => {
     bundle.stdout?.on("data", (data: Buffer) => {
       log.normal(data.toString().trim());
     });
@@ -52,7 +63,7 @@ const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
         );
       }
 
-      resolve();
+      resolve(bundleId);
     });
   });
 };
@@ -65,15 +76,10 @@ export const metro =
     await fs.rm(buildPath, { recursive: true, force: true });
     await fs.mkdir(buildPath, { recursive: true });
 
-    await runBundle({ cwd, platform, buildPath });
-
-    const files = await fs.readdir(buildPath, { recursive: true });
-    const outputs = files
-      .filter((file) => !lstatSync(path.join(buildPath, file)).isDirectory())
-      .map((output) => path.join(buildPath, output));
+    const bundleId = await runBundle({ cwd, platform, buildPath });
 
     return {
       buildPath,
-      outputs,
+      bundleId,
     };
   };

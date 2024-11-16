@@ -9,8 +9,6 @@ config({
 });
 
 export default defineConfig({
-  server: "",
-  secretKey: process.env.HOT_UPDATER_SECRET_KEY!,
   build: metro(),
   deploy: aws({
     region: "ap-northeast-2",

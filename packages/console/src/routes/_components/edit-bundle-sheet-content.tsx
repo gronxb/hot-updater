@@ -17,32 +17,32 @@ import {
   TextFieldLabel,
 } from "@/components/ui/text-field";
 import { api } from "@/lib/api";
-import type { UpdateSource } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import { createAsync } from "@solidjs/router";
 import { createForm } from "@tanstack/solid-form";
 
-interface EditUpdateSourceSheetFormProps {
-  source: UpdateSource;
+interface EditBundleSheetFormProps {
+  bundle: Bundle;
   onEditSuccess: () => void;
 }
 
-const EditUpdateSourceSheetForm = ({
-  source,
+const EditBundleSheetForm = ({
+  bundle,
   onEditSuccess,
-}: EditUpdateSourceSheetFormProps) => {
+}: EditBundleSheetFormProps) => {
   const form = createForm(() => ({
     defaultValues: {
-      description: source.description,
-      targetVersion: source.targetVersion,
-      enabled: source.enabled,
-      forceUpdate: source.forceUpdate,
+      description: bundle.description,
+      targetVersion: bundle.targetVersion,
+      enabled: bundle.enabled,
+      forceUpdate: bundle.forceUpdate,
     },
     onSubmit: async ({ value }) => {
       // Do something with form data
-      await api.updateUpdateSource.$post({
+      await api.updateBundle.$post({
         json: {
-          targetBundleVersion: source.bundleVersion,
-          updateSource: value,
+          targetBundleId: bundle.id,
+          bundle: value,
         },
       });
       onEditSuccess();
@@ -149,32 +149,30 @@ const EditUpdateSourceSheetForm = ({
   );
 };
 
-export interface EditUpdateSourceSheetContentProps {
-  bundleVersion: number;
+export interface EditBundleSheetContentProps {
+  bundleId: string;
   onClose: () => void;
 }
 
-export const EditUpdateSourceSheetContent = ({
-  bundleVersion,
+export const EditBundleSheetContent = ({
+  bundleId,
   onClose,
-}: EditUpdateSourceSheetContentProps) => {
-  const source = createAsync(() =>
-    api.getUpdateSourceByBundleVersion
-      .$post({ json: { bundleVersion } })
-      .then((res) => res.json()),
+}: EditBundleSheetContentProps) => {
+  const bundle = createAsync(() =>
+    api.getBundleById.$post({ json: { bundleId } }).then((res) => res.json()),
   );
 
   return (
     <SheetContent class="flex flex-col h-full">
       <SheetHeader class="mb-4">
-        <SheetTitle>Edit {source()?.bundleVersion}</SheetTitle>
+        <SheetTitle>Edit {bundle()?.id}</SheetTitle>
       </SheetHeader>
 
-      {source() ? (
-        <EditUpdateSourceSheetForm source={source()!} onEditSuccess={onClose} />
+      {bundle() ? (
+        <EditBundleSheetForm bundle={bundle()!} onEditSuccess={onClose} />
       ) : (
         <SheetDescription>
-          No update source found for bundle version {bundleVersion}
+          No update bundle found for bundle id {bundleId}
         </SheetDescription>
       )}
     </SheetContent>

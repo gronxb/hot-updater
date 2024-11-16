@@ -1,4 +1,4 @@
-import type { UpdateSource } from "@hot-updater/utils";
+import type { Bundle } from "@hot-updater/utils";
 import type { ColumnDef } from "@tanstack/solid-table";
 import { Check, X } from "lucide-solid";
 
@@ -13,7 +13,7 @@ const formatDateTimeFromBundleVersion = (input: string): string => {
   return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
 };
 
-export const columns: ColumnDef<UpdateSource>[] = [
+export const columns: ColumnDef<Bundle>[] = [
   {
     accessorKey: "platform",
     header: "Platform",
@@ -58,7 +58,7 @@ export const columns: ColumnDef<UpdateSource>[] = [
     cell: (info) => info.getValue(),
   },
   {
-    accessorKey: "bundleVersion",
+    accessorKey: "bundleId",
     header: "Created At",
     cell: (info) => formatDateTimeFromBundleVersion(String(info.getValue())),
   },

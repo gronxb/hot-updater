@@ -1,17 +1,17 @@
 import { vValidator } from "@hono/valibot-validator";
 import {
+  type Bundle,
   type Config,
-  type UpdateSource,
   getCwd,
   loadConfig,
 } from "@hot-updater/plugin-core";
 import { Hono } from "hono";
 import * as v from "valibot";
 
-const updateSourceSchema = v.object({
+const bundleSchema = v.object({
   platform: v.union([v.literal("ios"), v.literal("android")]),
   targetVersion: v.string(),
-  bundleVersion: v.number(),
+  id: v.string(),
   forceUpdate: v.boolean(),
   enabled: v.boolean(),
   file: v.string(),
@@ -29,53 +29,51 @@ export const rpc = new Hono()
   .get("/isConfigLoaded", (c) => {
     return c.json(config !== null);
   })
-  .get("/getUpdateSources", async (c) => {
+  .get("/getBundles", async (c) => {
     if (!config) {
       config = await loadConfig();
     }
     const deployPlugin = config?.deploy({
       cwd: getCwd(),
     });
-    const updateSources = await deployPlugin?.getUpdateSources();
-    return c.json((updateSources ?? []) satisfies UpdateSource[]);
+    const bundles = await deployPlugin?.getBundles();
+    return c.json((bundles ?? []) satisfies Bundle[]);
   })
   .post(
-    "/getUpdateSourceByBundleVersion",
-    vValidator("json", v.object({ bundleVersion: v.number() })),
+    "/getBundleById",
+    vValidator("json", v.object({ bundleId: v.string() })),
     async (c) => {
-      const { bundleVersion } = c.req.valid("json");
+      const { bundleId } = c.req.valid("json");
       if (!config) {
         config = await loadConfig();
       }
       const deployPlugin = config?.deploy({
         cwd: getCwd(),
       });
-      const updateSources = await deployPlugin?.getUpdateSources();
-      const updateSource = updateSources?.find(
-        (source) => source.bundleVersion === bundleVersion,
-      );
-      return c.json((updateSource ?? null) satisfies UpdateSource | null);
+      const bundles = await deployPlugin?.getBundles();
+      const bundle = bundles?.find((bundle) => bundle.id === bundleId);
+      return c.json((bundle ?? null) satisfies Bundle | null);
     },
   )
   .post(
-    "/updateUpdateSource",
+    "/updateBundle",
     vValidator(
       "json",
       v.object({
-        targetBundleVersion: v.number(),
-        updateSource: v.partial(updateSourceSchema),
+        targetBundleId: v.string(),
+        bundle: v.partial(v.omit(bundleSchema, ["id"])),
       }),
     ),
     async (c) => {
-      const { targetBundleVersion, updateSource } = c.req.valid("json");
+      const { targetBundleId, bundle } = c.req.valid("json");
       if (!config) {
         config = await loadConfig();
       }
       const deployPlugin = config?.deploy({
         cwd: getCwd(),
       });
-      await deployPlugin?.updateUpdateSource(targetBundleVersion, updateSource);
-      await deployPlugin?.commitUpdateSource();
+      await deployPlugin?.updateBundle(targetBundleId, bundle);
+      await deployPlugin?.commitBundle();
       return c.json(true);
     },
   );

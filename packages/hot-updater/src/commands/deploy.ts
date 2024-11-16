@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import { intro, spinner, text } from "@clack/prompts";
 
 import { createZip } from "@/utils/createZip";
-import { formatDate } from "@/utils/formatDate";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getCwd, loadConfig } from "@hot-updater/plugin-core";
@@ -40,7 +39,7 @@ export const deploy = async (options: DeployOptions) => {
 
     s.start("Build in progress");
 
-    const { buildPath } = await config.build({
+    const { buildPath, bundleId } = await config.build({
       cwd,
       platform: options.platform,
     });
@@ -52,15 +51,13 @@ export const deploy = async (options: DeployOptions) => {
 
     const hash = await getFileHashFromFile(bundlePath);
 
-    const newBundleVersion = formatDate(new Date());
-
     const deployPlugin = config.deploy({
       cwd,
     });
 
-    const updateSources = await deployPlugin.getUpdateSources();
+    const bundles = await deployPlugin.getBundles();
     const targetVersions = filterTargetVersion(
-      updateSources ?? [],
+      bundles ?? [],
       targetVersion,
       options.platform,
     );
@@ -77,23 +74,19 @@ export const deploy = async (options: DeployOptions) => {
     }
 
     s.message("Uploading bundle...");
-    const { file } = await deployPlugin.uploadBundle(
-      options.platform,
-      newBundleVersion,
-      bundlePath,
-    );
+    const { file } = await deployPlugin.uploadBundle(bundleId, bundlePath);
 
-    await deployPlugin.appendUpdateSource({
+    await deployPlugin.appendBundle({
       forceUpdate: options.forceUpdate,
       platform: options.platform,
       file,
       hash,
       description: String(description),
       targetVersion,
-      bundleVersion: newBundleVersion,
+      id: bundleId,
       enabled: true,
     });
-    await deployPlugin.commitUpdateSource();
+    await deployPlugin.commitBundle();
 
     await fs.rm(bundlePath);
     s.stop("Uploading Success !", 0);

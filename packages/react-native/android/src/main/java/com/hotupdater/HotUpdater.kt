@@ -37,10 +37,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return mCurrentInstance?.getAppVersion()
         }
 
-        fun initializeOnAppUpdate() {
-            mCurrentInstance?.initializeOnAppUpdate()
-        }
-
         fun reload() {
             mCurrentInstance?.reload()
         }
@@ -48,10 +44,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         fun getJSBundleFile(): String? {
             Log.d("HotUpdater", "Getting JS bundle file ${mCurrentInstance?.getBundleURL()}")
             return mCurrentInstance?.getBundleURL()
-        }
-
-        fun getBundleVersion(): Double? {
-            return mCurrentInstance?.getBundleVersion()
         }
 
         fun updateBundle(prefix: String, url: String?): Boolean? {
@@ -125,25 +117,9 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun initializeOnAppUpdate() {
-        val sharedPreferences =
-                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-
-        val currentVersion = getAppVersion()
-        val savedVersion = sharedPreferences.getString("HotUpdaterAppVersion", null)
-
-        if (currentVersion != savedVersion) {
-            val editor = sharedPreferences.edit()
-            editor.remove("HotUpdaterBundleURL")
-            editor.remove("HotUpdaterBundleVersion")
-            editor.putString("HotUpdaterAppVersion", currentVersion)
-            editor.apply()
-        }
-    }
-
     fun reload() {
         Log.d("HotUpdater", "HotUpdater requested a reload ${getBundleURL()}")
-
+ 
         setJSBundle(mReactNativeHost.reactInstanceManager, getBundleURL())
 
         clearLifecycleEventListener()
@@ -160,7 +136,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun getAppVersion(): String {
+    fun getAppVersion(): String? {
         val packageInfo = mContext.packageManager.getPackageInfo(mContext.packageName, 0)
         return packageInfo.versionName
     }
@@ -182,30 +158,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         with(sharedPreferences.edit()) {
             putString("HotUpdaterBundleURL", bundleURL)
             apply()
-        }
-    }
-    private fun setBundleVersion(bundleVersion: String?) {
-        val sharedPreferences =
-                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-        with(sharedPreferences.edit()) {
-            putString("HotUpdaterBundleVersion", bundleVersion)
-            apply()
-        }
-    }
-
-    fun getBundleVersion(): Double? {
-        val sharedPreferences =
-                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-        val bundleVersion = sharedPreferences.getString("HotUpdaterBundleVersion", null)
-        Log.d("HotUpdater", "Bundle version: $bundleVersion")
-        return if (bundleVersion != null && bundleVersion.isNotEmpty()) {
-            try {
-                bundleVersion.toDouble()
-            } catch (e: Exception) {
-                -1.0
-            }
-        } else {
-            -1.0
         }
     }
 
@@ -234,7 +186,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     fun updateBundle(prefix: String, url: String?): Boolean {
         if (url == null) {
             setBundleURL(null)
-            setBundleVersion(null)
             return true
         }
 
@@ -282,7 +233,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return false
         }
 
-        setBundleVersion(prefix)
         Log.d("HotUpdater", "Downloaded and extracted file successfully.")
 
         return true

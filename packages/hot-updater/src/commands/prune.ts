@@ -1,12 +1,8 @@
 import * as p from "@clack/prompts";
-import { type Platform, getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/plugin-core";
 import { loadConfig } from "@hot-updater/plugin-core";
 
-export interface PruneOptions {
-  platform: Platform;
-}
-
-export const prune = async (options: PruneOptions) => {
+export const prune = async () => {
   const s = p.spinner();
 
   try {
@@ -20,30 +16,26 @@ export const prune = async (options: PruneOptions) => {
 
     const deployPlugin = config.deploy({
       cwd,
-      // spinner: s,
     });
 
     s.start("Checking existing updates");
-    const updateSources = await deployPlugin.getUpdateSources();
+    const bundles = await deployPlugin.getBundles();
 
-    const activeSources = updateSources.filter((source) => source.enabled);
-    const inactiveSources = updateSources.filter((source) => !source.enabled);
+    const activeBundles = bundles.filter((bundle) => bundle.enabled);
+    const inactiveBundles = bundles.filter((bundle) => !bundle.enabled);
 
-    if (inactiveSources.length === 0) {
+    if (inactiveBundles.length === 0) {
       s.stop("No inactive versions found", -1);
       return;
     }
 
     s.message("Pruning updates");
 
-    await deployPlugin.setUpdateSources(activeSources);
-    await deployPlugin.commitUpdateSource();
+    await deployPlugin.setBundles(activeBundles);
+    await deployPlugin.commitBundle();
 
-    for (const source of inactiveSources) {
-      const key = await deployPlugin.deleteBundle(
-        options.platform,
-        source.bundleVersion,
-      );
+    for (const bundle of inactiveBundles) {
+      const key = await deployPlugin.deleteBundle(bundle.id);
       p.log.info(`deleting: ${key}`);
     }
 

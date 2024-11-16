@@ -14,26 +14,9 @@ RCT_EXPORT_MODULE();
     });
 }
 
-+ (void)setBundleVersion:(NSString*)bundleVersion {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setObject:bundleVersion forKey:@"HotUpdaterBundleVersion"];
-    [defaults synchronize];
-}
-
 + (NSString *)getAppVersion {
    NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
    return appVersion;
-}
-
-+ (NSNumber *)getBundleVersion {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *bundleVersion = [defaults objectForKey:@"HotUpdaterBundleVersion"];
-    
-    if (bundleVersion) {
-      return @([bundleVersion integerValue]);
-    }
-
-    return @(-1);
 }
 
 + (void)setBundleURL:(NSString *)localPath {
@@ -69,20 +52,6 @@ RCT_EXPORT_MODULE();
     return [self cachedURLFromBundle] ?: [self fallbackURL];
 }
 
-+ (void)initializeOnAppUpdate {
-    NSString *currentVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *savedVersion = [defaults stringForKey:@"HotUpdaterAppVersion"];
-
-    if (![currentVersion isEqualToString:savedVersion]) {
-        [defaults removeObjectForKey:@"HotUpdaterBundleURL"];
-        [defaults removeObjectForKey:@"HotUpdaterBundleVersion"];
-        
-        [defaults setObject:currentVersion forKey:@"HotUpdaterAppVersion"];
-        [defaults synchronize];
-    }
-}
-
 #pragma mark - Utility Methods
 
 + (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
@@ -107,7 +76,6 @@ RCT_EXPORT_MODULE();
 
 + (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
     if (url == nil) {
-        [self setBundleVersion:nil];
         [self setBundleURL:nil];
         return YES;
     }
@@ -161,7 +129,6 @@ RCT_EXPORT_MODULE();
         return NO;
     }
 
-    [self setBundleVersion:prefix];
     NSLog(@"Downloaded and extracted file successfully.");
 
     return YES;
@@ -169,19 +136,9 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - React Native Exports
 
-RCT_EXPORT_METHOD(initializeOnAppUpdate) {
-    [HotUpdater initializeOnAppUpdate];
-}
-
 RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
 }
-
-RCT_EXPORT_METHOD(getBundleVersion:(RCTResponseSenderBlock)callback) {
-    NSNumber *bundleVersion = [HotUpdater getBundleVersion];
-    callback(@[bundleVersion]);
-}
-
 
 RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
     NSString *version = [HotUpdater getAppVersion];

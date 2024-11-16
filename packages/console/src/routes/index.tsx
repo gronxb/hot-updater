@@ -3,16 +3,16 @@ import { api } from "@/lib/api";
 import { Suspense, createResource, createSignal } from "solid-js";
 import { columns } from "./_components/columns";
 import { DataTable } from "./_components/data-table";
-import { EditUpdateSourceSheetContent } from "./_components/edit-update-source-sheet-content";
+import { EditBundleSheetContent } from "./_components/edit-bundle-sheet-content";
 
 export default function Home() {
   const [data, { refetch }] = createResource(() =>
-    api.getUpdateSources.$get().then((res) => res.json()),
+    api.getBundles.$get().then((res) => res.json()),
   );
 
-  const [selectedBundleVersion, setSelectedBundleVersion] = createSignal<
-    number | null
-  >(null);
+  const [selectedBundleId, setSelectedBundleId] = createSignal<string | null>(
+    null,
+  );
 
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -22,23 +22,23 @@ export default function Home() {
           data={data}
           onRowClick={(row) => {
             console.log(row);
-            setSelectedBundleVersion(row.bundleVersion);
+            setSelectedBundleId(row.id);
           }}
         />
 
         <Sheet
-          open={selectedBundleVersion() !== null}
+          open={selectedBundleId() !== null}
           onOpenChange={(open) => {
             if (!open) {
-              setSelectedBundleVersion(null);
+              setSelectedBundleId(null);
             }
           }}
         >
-          {selectedBundleVersion() && (
-            <EditUpdateSourceSheetContent
-              bundleVersion={selectedBundleVersion()!}
+          {selectedBundleId() && (
+            <EditBundleSheetContent
+              bundleId={selectedBundleId()!}
               onClose={() => {
-                setSelectedBundleVersion(null);
+                setSelectedBundleId(null);
                 refetch();
               }}
             />
