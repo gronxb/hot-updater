@@ -41,7 +41,7 @@ const EditBundleSheetForm = ({
       // Do something with form data
       await api.updateBundle.$post({
         json: {
-          targetBundleId: bundle.bundleId,
+          targetBundleId: bundle.id,
           bundle: value,
         },
       });
@@ -165,7 +165,7 @@ export const EditBundleSheetContent = ({
   return (
     <SheetContent class="flex flex-col h-full">
       <SheetHeader class="mb-4">
-        <SheetTitle>Edit {bundle()?.bundleId}</SheetTitle>
+        <SheetTitle>Edit {bundle()?.id}</SheetTitle>
       </SheetHeader>
 
       {bundle() ? (

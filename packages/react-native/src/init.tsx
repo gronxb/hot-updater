@@ -29,7 +29,6 @@ export const init = async (config: HotUpdaterInitConfig) => {
     throw error;
   }
 
-  // always setBundleId HotUpdater.HOT_UPDATER_BUNDLE_ID
   await initializeOnAppUpdate();
 
   const update = await checkForUpdate(config.source);
@@ -39,7 +38,7 @@ export const init = async (config: HotUpdaterInitConfig) => {
   }
 
   try {
-    const isSuccess = await updateBundle(update.bundleId, update.file);
+    const isSuccess = await updateBundle(update.id, update.file);
     if (isSuccess && update.forceUpdate) {
       reload();
 

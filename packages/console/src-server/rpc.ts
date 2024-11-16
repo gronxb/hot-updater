@@ -11,7 +11,7 @@ import * as v from "valibot";
 const bundleSchema = v.object({
   platform: v.union([v.literal("ios"), v.literal("android")]),
   targetVersion: v.string(),
-  bundleId: v.string(),
+  id: v.string(),
   forceUpdate: v.boolean(),
   enabled: v.boolean(),
   file: v.string(),
@@ -51,7 +51,7 @@ export const rpc = new Hono()
         cwd: getCwd(),
       });
       const bundles = await deployPlugin?.getBundles();
-      const bundle = bundles?.find((bundle) => bundle.bundleId === bundleId);
+      const bundle = bundles?.find((bundle) => bundle.id === bundleId);
       return c.json((bundle ?? null) satisfies Bundle | null);
     },
   )
@@ -61,7 +61,7 @@ export const rpc = new Hono()
       "json",
       v.object({
         targetBundleId: v.string(),
-        bundle: v.partial(bundleSchema),
+        bundle: v.partial(v.omit(bundleSchema, ["id"])),
       }),
     ),
     async (c) => {

@@ -50,10 +50,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return mCurrentInstance?.getBundleURL()
         }
 
-        fun getBundleTimestamp(): Double? {
-            return mCurrentInstance?.getBundleTimestamp()
-        }
-
         fun updateBundle(prefix: String, url: String?): Boolean? {
             return mCurrentInstance?.updateBundle(prefix, url)
         }
@@ -135,7 +131,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         if (currentVersion != savedVersion) {
             val editor = sharedPreferences.edit()
             editor.remove("HotUpdaterBundleURL")
-            editor.remove("HotUpdaterBundleVersion")
             editor.putString("HotUpdaterAppVersion", currentVersion)
             editor.apply()
         }
@@ -184,30 +179,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             apply()
         }
     }
-    private fun setBundleTimestamp(bundleTimestamp: String?) {
-        val sharedPreferences =
-                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-        with(sharedPreferences.edit()) {
-            putString("HotUpdaterBundleVersion", bundleTimestamp)
-            apply()
-        }
-    }
-
-    fun getBundleTimestamp(): Double? {
-        val sharedPreferences =
-                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-        val bundleTimestamp = sharedPreferences.getString("HotUpdaterBundleVersion", null)
-        Log.d("HotUpdater", "Bundle version: $bundleTimestamp")
-        return if (bundleTimestamp != null && bundleTimestamp.isNotEmpty()) {
-            try {
-                bundleTimestamp.toDouble()
-            } catch (e: Exception) {
-                -1.0
-            }
-        } else {
-            -1.0
-        }
-    }
 
     private fun extractZipFileAtPath(filePath: String, destinationPath: String): Boolean {
         return try {
@@ -234,7 +205,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     fun updateBundle(prefix: String, url: String?): Boolean {
         if (url == null) {
             setBundleURL(null)
-            setBundleTimestamp(null)
             return true
         }
 
@@ -282,7 +252,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return false
         }
 
-        setBundleTimestamp(prefix)
         Log.d("HotUpdater", "Downloaded and extracted file successfully.")
 
         return true

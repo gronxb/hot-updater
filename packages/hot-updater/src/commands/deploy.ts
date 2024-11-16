@@ -87,7 +87,7 @@ export const deploy = async (options: DeployOptions) => {
       hash,
       description: String(description),
       targetVersion,
-      bundleId: bundleId,
+      id: bundleId,
       enabled: true,
     });
     await deployPlugin.commitBundle();

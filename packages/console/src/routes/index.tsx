@@ -22,7 +22,7 @@ export default function Home() {
           data={data}
           onRowClick={(row) => {
             console.log(row);
-            setSelectedBundleId(row.bundleId);
+            setSelectedBundleId(row.id);
           }}
         />
 

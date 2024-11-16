@@ -11,22 +11,8 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
  * @async
  * @returns {Promise<number>} Resolves with the current version id or null if not available.
  */
-export const getBundleId = async (): Promise<string> => {
-  return new Promise((resolve) => {
-    HotUpdater.getBundleId((version: string | null) => {
-      resolve(version ?? NIL_UUID);
-    });
-  });
-};
-
-/**
- * Fetches the current bundle version id.
- *
- * @async
- * @returns {Promise<number>} Resolves with the current version id or null if not available.
- */
-export const setBundleId = async (bundleId: string): Promise<void> => {
-  HotUpdater.setBundleId(bundleId);
+export const getBundleId = (): string => {
+  return HotUpdater.HOT_UPDATER_BUNDLE_ID ?? NIL_UUID;
 };
 
 /**

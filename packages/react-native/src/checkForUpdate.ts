@@ -12,16 +12,14 @@ const findLatestBundles = (bundles: Bundle[]) => {
   return (
     bundles
       ?.filter((item) => item.enabled)
-      ?.sort((a, b) => b.bundleId.localeCompare(a.bundleId))?.[0] ?? null
+      ?.sort((a, b) => b.id.localeCompare(a.id))?.[0] ?? null
   );
 };
 
 const checkForRollback = (bundles: Bundle[], currentBundleId: string) => {
-  const enabled = bundles?.find(
-    (item) => item.bundleId === currentBundleId,
-  )?.enabled;
+  const enabled = bundles?.find((item) => item.id === currentBundleId)?.enabled;
   const availableOldVersion = bundles?.find(
-    (item) => item.bundleId < currentBundleId && item.enabled,
+    (item) => item.id < currentBundleId && item.enabled,
   )?.enabled;
 
   if (isNullable(enabled)) {
@@ -65,7 +63,7 @@ export const checkForUpdate = async (bundles: BundleArg) => {
   if (!latestBundle) {
     if (isRollback) {
       return {
-        bundleId: NIL_UUID,
+        id: NIL_UUID,
         forceUpdate: true,
         file: null,
         hash: null,
@@ -77,12 +75,12 @@ export const checkForUpdate = async (bundles: BundleArg) => {
 
   if (latestBundle.file)
     if (isRollback) {
-      if (latestBundle.bundleId === currentBundleId) {
+      if (latestBundle.id === currentBundleId) {
         return null;
       }
-      if (latestBundle.bundleId > currentBundleId) {
+      if (latestBundle.id > currentBundleId) {
         return {
-          bundleId: latestBundle.bundleId,
+          id: latestBundle.id,
           forceUpdate: latestBundle.forceUpdate,
           file: latestBundle.file,
           hash: latestBundle.hash,
@@ -90,7 +88,7 @@ export const checkForUpdate = async (bundles: BundleArg) => {
         };
       }
       return {
-        bundleId: latestBundle.bundleId,
+        id: latestBundle.id,
         forceUpdate: true,
         file: latestBundle.file,
         hash: latestBundle.hash,
@@ -98,9 +96,9 @@ export const checkForUpdate = async (bundles: BundleArg) => {
       };
     }
 
-  if (latestBundle.bundleId.localeCompare(currentBundleId) > 0) {
+  if (latestBundle.id.localeCompare(currentBundleId) > 0) {
     return {
-      bundleId: latestBundle.bundleId,
+      id: latestBundle.id,
       forceUpdate: latestBundle.forceUpdate,
       file: latestBundle.file,
       hash: latestBundle.hash,

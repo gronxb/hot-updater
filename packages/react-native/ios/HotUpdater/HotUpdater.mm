@@ -14,26 +14,9 @@ RCT_EXPORT_MODULE();
     });
 }
 
-+ (void)setBundleTimestamp:(NSString*)bundleTimestamp {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setObject:bundleTimestamp forKey:@"HotUpdaterBundleVersion"];
-    [defaults synchronize];
-}
-
 + (NSString *)getAppVersion {
    NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
    return appVersion;
-}
-
-+ (NSNumber *)getBundleTimestamp {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *bundleTimestamp = [defaults objectForKey:@"HotUpdaterBundleVersion"];
-    
-    if (bundleTimestamp) {
-      return @([bundleTimestamp integerValue]);
-    }
-
-    return @(-1);
 }
 
 + (void)setBundleURL:(NSString *)localPath {
@@ -107,7 +90,6 @@ RCT_EXPORT_MODULE();
 
 + (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
     if (url == nil) {
-        [self setBundleTimestamp:nil];
         [self setBundleURL:nil];
         return YES;
     }
@@ -161,7 +143,6 @@ RCT_EXPORT_MODULE();
         return NO;
     }
 
-    [self setBundleTimestamp:prefix];
     NSLog(@"Downloaded and extracted file successfully.");
 
     return YES;
@@ -177,11 +158,10 @@ RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
 }
 
-RCT_EXPORT_METHOD(getBundleTimestamp:(RCTResponseSenderBlock)callback) {
-    NSNumber *bundleTimestamp = [HotUpdater getBundleTimestamp];
-    callback(@[bundleTimestamp]);
+RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
+    NSString *version = [HotUpdater getAppVersion];
+    callback(@[version ?: [NSNull null]]);
 }
-
 
 RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
     NSString *version = [HotUpdater getAppVersion];

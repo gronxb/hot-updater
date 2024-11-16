@@ -6,20 +6,20 @@ describe("matchTargetVersion", () => {
     const matchBundles = [
       {
         targetVersion: "1.2.3",
-        latestBundleId: "1",
+        latestBundleId: "00000000-0000-0000-0000-000000000001",
         path: "/path/to/version/1.2.3",
         platform: "ios",
       },
       {
         targetVersion: "1.2.x",
-        latestBundleId: "2",
+        latestBundleId: "00000000-0000-0000-0000-000000000002",
         path: "/path/to/version/1.2.x",
         platform: "ios",
       },
     ] as MatchBundle[];
     const result = matchTargetVersion(matchBundles, {
       version: "1.2.3",
-      bundleId: "1",
+      bundleId: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
     });
     expect(result).toBe("/path/to/version/1.2.3");
@@ -29,13 +29,13 @@ describe("matchTargetVersion", () => {
     const matchBundles = [
       {
         targetVersion: "1.2.3",
-        latestBundleId: "1",
+        latestBundleId: "00000000-0000-0000-0000-000000000001",
         path: "/path/to/version/1.2.3",
         platform: "ios",
       },
       {
         targetVersion: "1.2.x",
-        latestBundleId: "2",
+        latestBundleId: "00000000-0000-0000-0000-000000000002",
         path: "/path/to/version/1.2.x",
         platform: "ios",
       },
@@ -43,7 +43,7 @@ describe("matchTargetVersion", () => {
 
     const result = matchTargetVersion(matchBundles, {
       version: "2.0.0",
-      bundleId: "2",
+      bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
     });
     expect(result).toBeUndefined();
@@ -53,13 +53,13 @@ describe("matchTargetVersion", () => {
     const matchBundles = [
       {
         targetVersion: "*",
-        latestBundleId: "2",
+        latestBundleId: "00000000-0000-0000-0000-000000000002",
         path: "/path/to/version/wildcard",
         platform: "ios",
       },
       {
         targetVersion: "1.2.x",
-        latestBundleId: "1",
+        latestBundleId: "00000000-0000-0000-0000-000000000001",
         path: "/path/to/version/1.2.x",
         platform: "ios",
       },
@@ -67,7 +67,7 @@ describe("matchTargetVersion", () => {
 
     const result = matchTargetVersion(matchBundles, {
       version: "1.3.0",
-      bundleId: "1",
+      bundleId: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
     });
     expect(result).toBe("/path/to/version/wildcard");

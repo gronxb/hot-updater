@@ -66,9 +66,7 @@ export const aws =
       async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
         bundles = await this.getBundles();
 
-        const targetIndex = bundles.findIndex(
-          (u) => u.bundleId === targetBundleId,
-        );
+        const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
         if (targetIndex === -1) {
           throw new Error("target bundle version not found");
         }
