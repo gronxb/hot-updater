@@ -267,7 +267,13 @@ describe("appVersion 1.0, bundleId v2", async () => {
     const bundles: Bundle[] = [];
 
     const update = await checkForUpdate(bundles);
-    expect(update).toBeNull();
+    expect(update).toStrictEqual({
+      file: null,
+      hash: null,
+      id: NIL_UUID,
+      forceUpdate: true, // Cause the app to reload
+      status: "ROLLBACK",
+    });
   });
 
   it("should return null if no update is available when the app version is higher", async () => {

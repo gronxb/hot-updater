@@ -1,9 +1,9 @@
 import type { Bundle, BundleArg } from "@hot-updater/utils";
 import { filterTargetVersion } from "@hot-updater/utils";
 import { Platform } from "react-native";
+import { checkForRollback } from "./checkForRollback";
 import { NIL_UUID } from "./const";
 import { getAppVersion, getBundleId } from "./native";
-import { isNullable } from "./utils";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
@@ -13,18 +13,6 @@ const findLatestBundles = (bundles: Bundle[]) => {
       ?.filter((item) => item.enabled)
       ?.sort((a, b) => b.id.localeCompare(a.id))?.[0] ?? null
   );
-};
-
-const checkForRollback = (bundles: Bundle[], currentBundleId: string) => {
-  const enabled = bundles?.find((item) => item.id === currentBundleId)?.enabled;
-  const availableOldVersion = bundles?.find(
-    (item) => item.id < currentBundleId && item.enabled,
-  )?.enabled;
-
-  if (isNullable(enabled)) {
-    return availableOldVersion;
-  }
-  return !enabled;
 };
 
 const ensureBundles = async (bundle: BundleArg) => {
@@ -69,6 +57,7 @@ export const checkForUpdate = async (bundles: BundleArg) => {
         status: "ROLLBACK" as UpdateStatus,
       };
     }
+
     return null;
   }
 
