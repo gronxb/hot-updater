@@ -163,11 +163,6 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
     callback(@[version ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
-    NSString *version = [HotUpdater getAppVersion];
-    callback(@[version ?: [NSNull null]]);
-}
-
 RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix downloadUrl:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
     NSURL *url = nil;
     if (urlString != nil) {
