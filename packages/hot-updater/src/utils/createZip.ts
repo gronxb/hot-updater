@@ -5,6 +5,7 @@ import JSZip from "jszip";
 
 export const createZip = async (dirPath: string, filename: string) => {
   const zip = new JSZip();
+  await fs.rm(path.join(dirPath, filename), { force: true });
 
   async function addFiles(dir: string, zipFolder: JSZip) {
     const files = await fs.readdir(dir);

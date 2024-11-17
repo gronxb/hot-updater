@@ -30,6 +30,9 @@ function App(): React.JSX.Element {
     setVersion(version);
   }, []);
 
+  // @ts-expect-error
+  const isTurboModuleEnabled = global.__turboModuleProxy != null;
+
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.HOT_UPDATER_BUNDLE_ID}</Text>
@@ -58,13 +61,24 @@ function App(): React.JSX.Element {
         BundleId: {version}
       </Text>
 
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        isTurboModuleEnabled: {isTurboModuleEnabled ? "true" : "false"}
+      </Text>
+
       <Image
         style={{
           width: 100,
           height: 100,
         }}
-        // source={require("./src/logo.png")}
-        source={require("./src/test/_image.png")}
+        source={require("./src/logo.png")}
+        // source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
