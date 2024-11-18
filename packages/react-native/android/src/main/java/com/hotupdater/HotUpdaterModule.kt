@@ -1,8 +1,8 @@
 package com.hotupdater
 
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.Promise
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,

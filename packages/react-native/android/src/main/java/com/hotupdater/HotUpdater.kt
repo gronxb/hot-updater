@@ -5,20 +5,22 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceManager
 import com.facebook.react.ReactNativeHost
-import com.facebook.react.ReactHost
 import com.facebook.react.bridge.JSBundleLoader
 import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.common.LifecycleState
-import com.facebook.react.config.ReactFeatureFlags
-
 import java.io.File
 import java.lang.reflect.Field
 import java.net.URL
 import java.util.zip.ZipFile
 
-class HotUpdater internal constructor(reactHost: ReactHost, context: Context, reactNativeHost: ReactNativeHost) {
+class HotUpdater internal constructor(
+    reactHost: ReactHost,
+    context: Context,
+    reactNativeHost: ReactNativeHost,
+) {
     private val mContext: Context = context
     private val mReactNativeHost: ReactNativeHost = reactNativeHost
     private val mReactHost: ReactHost = reactHost
@@ -26,21 +28,23 @@ class HotUpdater internal constructor(reactHost: ReactHost, context: Context, re
     companion object {
         private var mCurrentInstance: HotUpdater? = null
 
-        fun init(reactHost: ReactHost, context: Context, reactNativeHost: ReactNativeHost): HotUpdater {
+        fun init(
+            reactHost: ReactHost,
+            context: Context,
+            reactNativeHost: ReactNativeHost,
+        ): HotUpdater {
             Log.d("HotUpdater", "Initializing HotUpdater")
 
             return mCurrentInstance
-                    ?: synchronized(this) {
-                        mCurrentInstance
-                                ?: HotUpdater(reactHost, context, reactNativeHost).also {
-                                    mCurrentInstance = it
-                                }
-                    }
+                ?: synchronized(this) {
+                    mCurrentInstance
+                        ?: HotUpdater(reactHost, context, reactNativeHost).also {
+                            mCurrentInstance = it
+                        }
+                }
         }
 
-        fun getAppVersion(): String? {
-            return mCurrentInstance?.getAppVersion()
-        }
+        fun getAppVersion(): String? = mCurrentInstance?.getAppVersion()
 
         fun reload() {
             mCurrentInstance?.reload()
@@ -51,9 +55,10 @@ class HotUpdater internal constructor(reactHost: ReactHost, context: Context, re
             return mCurrentInstance?.getBundleURL()
         }
 
-        fun updateBundle(bundleId: String, zipUrl: String): Boolean? {
-            return mCurrentInstance?.updateBundle(bundleId, zipUrl)
-        }
+        fun updateBundle(
+            bundleId: String,
+            zipUrl: String,
+        ): Boolean? = mCurrentInstance?.updateBundle(bundleId, zipUrl)
     }
 
     private val documentsDir: String
@@ -64,51 +69,57 @@ class HotUpdater internal constructor(reactHost: ReactHost, context: Context, re
         return "$documentsDir$separator$basePath"
     }
 
-    private fun stripPrefixFromPath(prefix: String, path: String): String {
-        return if (path.startsWith("/$prefix/")) {
+    private fun stripPrefixFromPath(
+        prefix: String,
+        path: String,
+    ): String =
+        if (path.startsWith("/$prefix/")) {
             path.replaceFirst("/$prefix/", "")
         } else {
             path
         }
-    }
 
     private fun loadBundleLegacy() {
         val currentActivity: Activity? =
-                mReactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+            mReactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
         if (currentActivity == null) {
             return
         }
 
         currentActivity.runOnUiThread { currentActivity.recreate() }
     }
+
     private var mLifecycleEventListener: LifecycleEventListener? = null
 
     private fun clearLifecycleEventListener() {
         if (mLifecycleEventListener != null) {
             mReactNativeHost.reactInstanceManager.currentReactContext?.removeLifecycleEventListener(
-                    mLifecycleEventListener
+                mLifecycleEventListener,
             )
             mLifecycleEventListener = null
         }
     }
 
-    private fun setJSBundle(instanceManager: ReactInstanceManager, latestJSBundleFile: String?) {
+    private fun setJSBundle(
+        instanceManager: ReactInstanceManager,
+        latestJSBundleFile: String?,
+    ) {
         try {
             var latestJSBundleLoader: JSBundleLoader? = null
 
             if (latestJSBundleFile != null && latestJSBundleFile.lowercase().startsWith("assets://")
             ) {
                 latestJSBundleLoader =
-                        JSBundleLoader.createAssetLoader(
-                                instanceManager.currentReactContext,
-                                latestJSBundleFile,
-                                false
-                        )
+                    JSBundleLoader.createAssetLoader(
+                        instanceManager.currentReactContext,
+                        latestJSBundleFile,
+                        false,
+                    )
             } else if (latestJSBundleFile != null) {
                 latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile)
             }
             val bundleLoaderField: Field =
-                    instanceManager::class.java.getDeclaredField("mBundleLoader")
+                instanceManager::class.java.getDeclaredField("mBundleLoader")
             bundleLoaderField.isAccessible = true
 
             if (latestJSBundleLoader != null) {
@@ -123,39 +134,28 @@ class HotUpdater internal constructor(reactHost: ReactHost, context: Context, re
 
     fun reload() {
         Log.d("HotUpdater", "HotUpdater requested a reload ${getBundleURL()}")
- 
+
         setJSBundle(mReactNativeHost.reactInstanceManager, getBundleURL())
-
-        if (ReactFeatureFlags.enableBridgelessArchitecture) {
-            check(mReactHost != null)
-            val currentActivity: Activity? =
-                mReactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
-            if (currentActivity == null) {
-                Log.d("HotUpdater", "Current activity is null")
-                return
-            }
-
-            if (mReactHost.lifecycleState != LifecycleState.RESUMED && currentActivity != null) {
-                mReactHost.onHostResume(currentActivity)
-            }
-            
-            mReactHost.reload("HotUpdater requested a reload")
-            return
-          }
-
 
         clearLifecycleEventListener()
         try {
             Handler(Looper.getMainLooper()).post {
-                try {
-                    mReactNativeHost.reactInstanceManager.recreateReactContextInBackground()
-                } catch (t: Throwable) {
-                    Log.d("HotUpdater", "Could not recreate React context2: ${t.message}")   
-                    loadBundleLegacy()
+                if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+                    check(mReactHost != null)
+                    val currentActivity: Activity? = mReactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+                    if (mReactHost.lifecycleState != LifecycleState.RESUMED && currentActivity != null) {
+                        mReactHost.onHostResume(currentActivity)
+                    }
+                    mReactHost.reload("HotUpdater requested a reload")
+                } else {
+                    try {
+                        mReactNativeHost.reactInstanceManager.recreateReactContextInBackground()
+                    } catch (t: Throwable) {
+                        loadBundleLegacy()
+                    }
                 }
             }
         } catch (t: Throwable) {
-            Log.d("HotUpdater", "Could not recreate React context3: ${t.message}")
             loadBundleLegacy()
         }
     }
@@ -167,27 +167,30 @@ class HotUpdater internal constructor(reactHost: ReactHost, context: Context, re
 
     fun getBundleURL(): String {
         val sharedPreferences =
-                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+            mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
         val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
         if (urlString.isNullOrEmpty()) {
             return "assets://index.android.bundle"
         }
 
-        Log.d("HotUpdater", "GetBundleURL: ${urlString}")
+        Log.d("HotUpdater", "GetBundleURL: $urlString")
         return urlString
     }
 
     private fun setBundleURL(bundleURL: String?) {
         val sharedPreferences =
-                mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+            mContext.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
         with(sharedPreferences.edit()) {
             putString("HotUpdaterBundleURL", bundleURL)
             apply()
         }
     }
 
-    private fun extractZipFileAtPath(filePath: String, destinationPath: String): Boolean {
-        return try {
+    private fun extractZipFileAtPath(
+        filePath: String,
+        destinationPath: String,
+    ): Boolean =
+        try {
             ZipFile(filePath).use { zip ->
                 zip.entries().asSequence().forEach { entry ->
                     val file = File(destinationPath, entry.name)
@@ -206,9 +209,11 @@ class HotUpdater internal constructor(reactHost: ReactHost, context: Context, re
             Log.d("HotUpdater", "Failed to unzip file: ${e.message}")
             false
         }
-    }
 
-    fun updateBundle(bundleId: String, zipUrl: String): Boolean {
+    fun updateBundle(
+        bundleId: String,
+        zipUrl: String,
+    ): Boolean {
         if (zipUrl.isEmpty()) {
             setBundleURL(null)
             return true
@@ -220,12 +225,12 @@ class HotUpdater internal constructor(reactHost: ReactHost, context: Context, re
         val path = convertFileSystemPathFromBasePath(basePath)
 
         val data =
-                try {
-                    downloadUrl.readBytes()
-                } catch (e: Exception) {
-                    Log.d("HotUpdater", "Failed to download data from URL: $zipUrl")
-                    return false
-                }
+            try {
+                downloadUrl.readBytes()
+            } catch (e: Exception) {
+                Log.d("HotUpdater", "Failed to download data from URL: $zipUrl")
+                return false
+            }
 
         val file = File(path)
         try {
