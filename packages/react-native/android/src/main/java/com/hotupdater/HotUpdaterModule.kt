@@ -13,7 +13,7 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload() {
-        HotUpdater.reload()
+        HotUpdater.reload(mReactApplicationContext.currentActivity)
     }
 
     @ReactMethod
