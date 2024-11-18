@@ -13,12 +13,12 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload() {
-        HotUpdater.reload(mReactApplicationContext.currentActivity)
+        HotUpdater.reload(mReactApplicationContext)
     }
 
     @ReactMethod
     override fun getAppVersion(promise: Promise) {
-        promise.resolve(HotUpdater.getAppVersion())
+        promise.resolve(HotUpdater.getAppVersion(mReactApplicationContext))
     }
 
     @ReactMethod
@@ -27,7 +27,7 @@ class HotUpdaterModule internal constructor(
         zipUrl: String,
         promise: Promise,
     ) {
-        val result = HotUpdater.updateBundle(bundleId, zipUrl)
+        val result = HotUpdater.updateBundle(mReactApplicationContext, bundleId, zipUrl)
         promise.resolve(result)
     }
 
