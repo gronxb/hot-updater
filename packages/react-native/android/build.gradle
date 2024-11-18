@@ -20,6 +20,7 @@ def isNewArchitectureEnabled() {
 
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
+apply from: "$projectDir/react-native-helpers.gradle"
 
 if (isNewArchitectureEnabled()) {
   apply plugin: "com.facebook.react"
@@ -86,7 +87,7 @@ android {
       if (isNewArchitectureEnabled()) {
         java.srcDirs += [
           "src/newarch",
-          // This is needed to build Kotlin project with NewArch enabled
+          // Codegen specs
           "generated/java",
           "generated/jni"
         ]
@@ -108,7 +109,13 @@ dependencies {
   // For < 0.71, this will be from the local maven repo
   // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
   //noinspection GradleDynamicVersion
-  implementation "com.facebook.react:react-native:+"
+  if (project.ext.shouldConsumeReactNativeFromMavenCentral()) {
+    // noinspection GradleDynamicVersion
+    implementation 'com.facebook.react:react-android:+'
+  } else {
+    // noinspection GradleDynamicVersion
+    implementation 'com.facebook.react:react-native:+'
+  }
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
 }
 

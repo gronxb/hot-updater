@@ -43,7 +43,7 @@ class MainApplication :
     override fun onCreate() {
         super.onCreate()
         SoLoader.init(this, OpenSourceMergedSoMapping)
-        HotUpdater.init(applicationContext, reactNativeHost)
+        HotUpdater.init(reactHost, applicationContext, reactNativeHost)
 
         if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
             // If you opted-in for the New Architecture, we load the native entry point for this app.
