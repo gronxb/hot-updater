@@ -23,7 +23,7 @@ class MainApplication :
                 PackageList(this).packages.apply {
                     // Packages that cannot be autolinked yet can be added manually here, for example:
                     // add(MyReactNativePackage())
-                    // add(HotUpdater())
+                    add(HotUpdater(applicationContext))
                 }
 
             override fun getJSMainModuleName(): String = "index"
@@ -35,9 +35,9 @@ class MainApplication :
 
             override fun getJSBundleFile(): String? {
                 // This field
-                Log.d("HotUpdater", "getJSBundleFile: ${HotUpdater.getJSBundleFile(applicationContext)}")
-                // 이거 처음에 null이라 업데이트 안됨
-                return HotUpdater.getJSBundleFile(applicationContext) ?: super.getJSBundleFile()
+                Log.d("HotUpdater", "getJSBundleFile: ${HotUpdater.getJSBundleFile()}")
+                // RELOAD해도 번들 업뎃 안되어있음.
+                return HotUpdater.getJSBundleFile() ?: super.getJSBundleFile()
             }
         }
 

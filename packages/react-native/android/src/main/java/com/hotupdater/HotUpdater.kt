@@ -24,13 +24,26 @@ import java.lang.reflect.Field
 import java.net.URL
 import java.util.zip.ZipFile
 
-class HotUpdater : ReactPackage {
+class HotUpdater(
+    private val context: Context,
+) : ReactPackage {
+    private val mContext: Context = context;
+    init {
+        synchronized(this) {
+            if (mCurrentInstance == null) {
+                mCurrentInstance = this
+            }
+        }
+    }
     override fun createViewManagers(context: ReactApplicationContext): MutableList<ViewManager<View, ReactShadowNode<*>>> = mutableListOf()
 
     override fun createNativeModules(context: ReactApplicationContext): MutableList<NativeModule> =
         listOf(HotUpdaterModule(context)).toMutableList()
 
     companion object {
+        @Volatile
+        private var mCurrentInstance: HotUpdater? = null
+
         private fun convertFileSystemPathFromBasePath(
             context: Context,
             basePath: String,
@@ -210,7 +223,13 @@ class HotUpdater : ReactPackage {
             }
         }
 
-        fun getJSBundleFile(context: Context): String? {
+        fun getJSBundleFile(): String? {
+            val context = mCurrentInstance?.mContext
+            if (context == null) {
+                Log.d("HotUpdater", "Context is null")
+                return "assets://index.android.bundle"
+            }
+
             Log.d("HotUpdater", "Getting JS bundle file ${getBundleURL(context)}")
             val sharedPreferences =
                 context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
