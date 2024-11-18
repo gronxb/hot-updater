@@ -46,8 +46,8 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return mCurrentInstance?.getBundleURL()
         }
 
-        fun updateBundle(prefix: String, url: String?): Boolean? {
-            return mCurrentInstance?.updateBundle(prefix, url)
+        fun updateBundle(bundleId: String, zipUrl: String): Boolean? {
+            return mCurrentInstance?.updateBundle(bundleId, zipUrl)
         }
     }
 
@@ -183,22 +183,22 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
         }
     }
 
-    fun updateBundle(prefix: String, url: String?): Boolean {
-        if (url == null) {
+    fun updateBundle(bundleId: String, zipUrl: String): Boolean {
+        if (zipUrl.isEmpty()) {
             setBundleURL(null)
             return true
         }
 
-        val downloadUrl = URL(url)
+        val downloadUrl = URL(zipUrl)
 
-        val basePath = stripPrefixFromPath(prefix, downloadUrl.path)
+        val basePath = stripPrefixFromPath(bundleId, downloadUrl.path)
         val path = convertFileSystemPathFromBasePath(basePath)
 
         val data =
                 try {
                     downloadUrl.readBytes()
                 } catch (e: Exception) {
-                    Log.d("HotUpdater", "Failed to download data from URL: $url")
+                    Log.d("HotUpdater", "Failed to download data from URL: $zipUrl")
                     return false
                 }
 

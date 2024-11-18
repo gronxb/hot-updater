@@ -39,7 +39,6 @@ export const getBundleId = (): string => {
 /**
  * Downloads files from given URLs.
  *
- * @async
  * @param {string} bundleId - identifier for the bundle version.
  * @param {string | null} zipUrl - zip file URL.
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.

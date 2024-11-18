@@ -35,7 +35,15 @@ const ensureBundles = async (bundle: BundleArg) => {
   }
 };
 
-export const checkForUpdate = async (bundles: BundleArg) => {
+export const checkForUpdate = async (
+  bundles: BundleArg,
+): Promise<{
+  id: string;
+  forceUpdate: boolean;
+  file: string | null;
+  hash: string | null;
+  status: UpdateStatus;
+} | null> => {
   const $bundles = await ensureBundles(bundles);
 
   const currentAppVersion = await getAppVersion();

@@ -74,17 +74,17 @@ RCT_EXPORT_MODULE();
     return success;
 }
 
-+ (BOOL)updateBundle:(NSString *)prefix url:(NSURL *)url {
-    if (url == nil) {
++ (BOOL)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl {
+    if (zipUrl == nil) {
         [self setBundleURL:nil];
         return YES;
     }
-    NSString *basePath = [self stripPrefixFromPath:prefix path:[url path]];
+    NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
 
-    NSData *data = [NSData dataWithContentsOfURL:url];
+    NSData *data = [NSData dataWithContentsOfURL:zipUrl];
     if (!data) {
-        NSLog(@"Failed to download data from URL: %@", url);
+        NSLog(@"Failed to download data from URL: %@", zipUrl);
         return NO;
     }
 
@@ -145,13 +145,13 @@ RCT_EXPORT_METHOD(getAppVersion:resolve:(RCTPromiseResolveBlock)resolve reject:(
     resolve(@[version ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix downloadUrl:(NSString *)urlString resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    NSURL *url = nil;
-    if (urlString != nil) {
-        url = [NSURL URLWithString:urlString];
+RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlString resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+    NSURL *zipUrl = nil;
+    if (![zipUrlString isEqualToString:@""]) {
+        zipUrl = [NSURL URLWithString:zipUrlString];
     }
 
-    BOOL result = [HotUpdater updateBundle:prefix url:url];
+    BOOL result = [HotUpdater updateBundle:bundleId zipUrl:zipUrl];
     resolve(@[@(result)]);
 }
 

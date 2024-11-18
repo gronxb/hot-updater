@@ -1,8 +1,8 @@
 package com.hotupdater
 
-import com.facebook.react.bridge.Callback
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.Promise
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
@@ -17,18 +17,18 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
-    override fun getAppVersion(callback: Callback) {
-        callback.invoke(HotUpdater.getAppVersion())
+    override fun getAppVersion(promise: Promise) {
+        promise.resolve(HotUpdater.getAppVersion())
     }
 
     @ReactMethod
     override fun updateBundle(
-        prefix: String,
-        url: String?,
-        callback: Callback,
+        bundleId: String,
+        zipUrl: String,
+        promise: Promise,
     ) {
-        val result = HotUpdater.updateBundle(prefix, url)
-        callback.invoke(result)
+        val result = HotUpdater.updateBundle(bundleId, zipUrl)
+        promise.resolve(result)
     }
 
     companion object {
