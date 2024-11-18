@@ -39,9 +39,6 @@
       "@hot-updater/metro": "workspace:*",
       "@hot-updater/react-native": "workspace:*",
       "@hot-updater/react": "workspace:*"
-    },
-    "patchedDependencies": {
-      "react-native-builder-bob": "patches/react-native-builder-bob.patch"
     }
   },
   "packageManager": "pnpm@9.12.3"

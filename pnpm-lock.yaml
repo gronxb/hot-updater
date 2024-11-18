@@ -14,11 +14,6 @@ overrides:
   '@hot-updater/react-native': workspace:*
   '@hot-updater/react': workspace:*
 
-patchedDependencies:
-  react-native-builder-bob:
-    hash: xlwurgjq4frqo7voh6ngqmiauu
-    path: patches/react-native-builder-bob.patch
-
 importers:
 
   .:
@@ -510,8 +505,8 @@ importers:
         specifier: 0.76.2
         version: 0.76.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@15.0.1)(@types/react@18.3.11)(encoding@0.1.13)(react@18.3.1)
       react-native-builder-bob:
-        specifier: ^0.32.0
-        version: 0.32.0(patch_hash=xlwurgjq4frqo7voh6ngqmiauu)(typescript@5.6.3)
+        specifier: ^0.32.1
+        version: 0.32.1(typescript@5.6.3)
 
   packages/utils:
     dependencies:
@@ -8572,8 +8567,8 @@ packages:
   react-is@18.3.1:
     resolution: {integrity: sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==}
 
-  react-native-builder-bob@0.32.0:
-    resolution: {integrity: sha512-Lz+y+8FOR4T61eqBGgLgB26ik242qZvz0scKBdmY5QeY9HPjFdn7ATrxhEcv7Np3EA7VGWATZ/6ZBfctQ9PELg==}
+  react-native-builder-bob@0.32.1:
+    resolution: {integrity: sha512-F4LsDRXoFtX3O3CzhFV/SXMWFrOdW/nw/QPjCPrMevEXBkKHxQ9w18LmvbZZlvSHy+pdPZP9tmKz8nPoX1LOUA==}
     engines: {node: '>= 18.0.0'}
     hasBin: true
 
@@ -21171,7 +21166,7 @@ snapshots:
 
   react-is@18.3.1: {}
 
-  react-native-builder-bob@0.32.0(patch_hash=xlwurgjq4frqo7voh6ngqmiauu)(typescript@5.6.3):
+  react-native-builder-bob@0.32.1(typescript@5.6.3):
     dependencies:
       '@babel/core': 7.26.0
       '@babel/plugin-transform-strict-mode': 7.25.9(@babel/core@7.26.0)
