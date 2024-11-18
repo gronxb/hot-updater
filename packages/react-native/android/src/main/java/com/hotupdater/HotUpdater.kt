@@ -7,27 +7,32 @@ import android.os.Looper
 import android.util.Log
 import com.facebook.react.ReactInstanceManager
 import com.facebook.react.ReactNativeHost
+import com.facebook.react.ReactHost
 import com.facebook.react.bridge.JSBundleLoader
 import com.facebook.react.bridge.LifecycleEventListener
+import com.facebook.react.common.LifecycleState
+import com.facebook.react.config.ReactFeatureFlags
+
 import java.io.File
 import java.lang.reflect.Field
 import java.net.URL
 import java.util.zip.ZipFile
 
-class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNativeHost) {
+class HotUpdater internal constructor(reactHost: ReactHost, context: Context, reactNativeHost: ReactNativeHost) {
     private val mContext: Context = context
     private val mReactNativeHost: ReactNativeHost = reactNativeHost
+    private val mReactHost: ReactHost = reactHost
 
     companion object {
         private var mCurrentInstance: HotUpdater? = null
 
-        fun init(context: Context, reactNativeHost: ReactNativeHost): HotUpdater {
+        fun init(reactHost: ReactHost, context: Context, reactNativeHost: ReactNativeHost): HotUpdater {
             Log.d("HotUpdater", "Initializing HotUpdater")
 
             return mCurrentInstance
                     ?: synchronized(this) {
                         mCurrentInstance
-                                ?: HotUpdater(context, reactNativeHost).also {
+                                ?: HotUpdater(reactHost, context, reactNativeHost).also {
                                     mCurrentInstance = it
                                 }
                     }
@@ -88,7 +93,6 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
     }
 
     private fun setJSBundle(instanceManager: ReactInstanceManager, latestJSBundleFile: String?) {
-
         try {
             var latestJSBundleLoader: JSBundleLoader? = null
 
@@ -122,16 +126,36 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
  
         setJSBundle(mReactNativeHost.reactInstanceManager, getBundleURL())
 
+        if (ReactFeatureFlags.enableBridgelessArchitecture) {
+            check(mReactHost != null)
+            val currentActivity: Activity? =
+                mReactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+            if (currentActivity == null) {
+                Log.d("HotUpdater", "Current activity is null")
+                return
+            }
+
+            if (mReactHost.lifecycleState != LifecycleState.RESUMED && currentActivity != null) {
+                mReactHost.onHostResume(currentActivity)
+            }
+            
+            mReactHost.reload("HotUpdater requested a reload")
+            return
+          }
+
+
         clearLifecycleEventListener()
         try {
             Handler(Looper.getMainLooper()).post {
                 try {
                     mReactNativeHost.reactInstanceManager.recreateReactContextInBackground()
                 } catch (t: Throwable) {
+                    Log.d("HotUpdater", "Could not recreate React context2: ${t.message}")   
                     loadBundleLegacy()
                 }
             }
         } catch (t: Throwable) {
+            Log.d("HotUpdater", "Could not recreate React context3: ${t.message}")
             loadBundleLegacy()
         }
     }
@@ -149,6 +173,7 @@ class HotUpdater internal constructor(context: Context, reactNativeHost: ReactNa
             return "assets://index.android.bundle"
         }
 
+        Log.d("HotUpdater", "GetBundleURL: ${urlString}")
         return urlString
     }
 
