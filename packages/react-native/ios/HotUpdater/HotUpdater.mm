@@ -140,19 +140,29 @@ RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
 }
 
-RCT_EXPORT_METHOD(getAppVersion:(RCTResponseSenderBlock)callback) {
+RCT_EXPORT_METHOD(getAppVersion:resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
     NSString *version = [HotUpdater getAppVersion];
-    callback(@[version ?: [NSNull null]]);
+    resolve(@[version ?: [NSNull null]]);
 }
 
-RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix downloadUrl:(NSString *)urlString callback:(RCTResponseSenderBlock)callback) {
+RCT_EXPORT_METHOD(updateBundle:(NSString *)prefix downloadUrl:(NSString *)urlString resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
     NSURL *url = nil;
     if (urlString != nil) {
         url = [NSURL URLWithString:urlString];
     }
 
     BOOL result = [HotUpdater updateBundle:prefix url:url];
-    callback(@[@(result)]);
+    resolve(@[@(result)]);
 }
+
+
+// Don't compile this code when we build for the old architecture.
+#ifdef RCT_NEW_ARCH_ENABLED
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+    (const facebook::react::ObjCTurboModule::InitParams &)params
+{
+    return std::make_shared<facebook::react::NativeRnLibSpecJSI>(params);
+}
+#endif
 
 @end

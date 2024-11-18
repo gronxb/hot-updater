@@ -1,6 +1,5 @@
 import { NativeModules, Platform } from "react-native";
 import { NIL_UUID } from "./const";
-import { HotUpdaterError } from "./error";
 
 const LINKING_ERROR =
   // biome-ignore lint/style/useTemplate: <explanation>
@@ -49,28 +48,14 @@ export const updateBundle = (
   bundleId: string,
   zipUrl: string | null,
 ): Promise<boolean> => {
-  return new Promise((resolve, reject) => {
-    HotUpdater.updateBundle(String(bundleId), zipUrl, (success: boolean) => {
-      if (success) {
-        resolve(success);
-      } else {
-        reject(
-          new HotUpdaterError("Failed to download and install the update"),
-        );
-      }
-    });
-  });
+  return HotUpdater.updateBundle(bundleId, zipUrl);
 };
 
 /**
  * Fetches the current app version.
  */
-export const getAppVersion = async (): Promise<string | null> => {
-  return new Promise((resolve) => {
-    HotUpdater.getAppVersion((version: string | null) => {
-      resolve(version);
-    });
-  });
+export const getAppVersion = (): Promise<string | null> => {
+  return HotUpdater.getAppVersion();
 };
 
 /**
