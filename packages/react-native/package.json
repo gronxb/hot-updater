@@ -1,19 +1,20 @@
 {
   "name": "@hot-updater/react-native",
   "version": "0.1.4",
-  "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
+  "source": "src/index.ts",
   "react-native": "src/index.ts",
   "types": "dist/index.d.ts",
   "files": [
-    "dist",
     "src",
+    "dist",
     "android",
     "ios",
     "cpp",
     "*.podspec",
+    "react-native.config.js",
     "!ios/build",
     "!android/build",
     "!android/gradle",
@@ -29,7 +30,7 @@
     "build": "bob build && tsup src/index.ts --format esm,cjs --dts",
     "test:type": "tsc --noEmit",
     "test": "vitest",
-    "codegen:test": "node ./node_modules/react-native/scripts/generate-codegen-artifacts.js --path ./ --outputPath dist/HotUpdater/generated/ -t ios"
+    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib"
   },
   "keywords": [
     "react-native",
@@ -74,6 +75,7 @@
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",
     "@types/react": "^18.2.44",
+    "del-cli": "^6.0.0",
     "react": "18.3.1",
     "react-native": "0.76.2",
     "react-native-builder-bob": "^0.32.1"
