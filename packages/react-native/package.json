@@ -58,7 +58,7 @@
   },
   "codegenConfig": {
     "name": "HotUpdaterSpec",
-    "type": "all",
+    "type": "modules",
     "jsSrcsDir": "src/specs",
     "outputDir": {
       "ios": "ios/generated",
