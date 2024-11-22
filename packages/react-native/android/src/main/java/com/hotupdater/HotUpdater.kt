@@ -116,17 +116,9 @@ class HotUpdater(
             }
         }
 
-        private fun getReactNativeHost(application: Application?): ReactNativeHost {
+        private fun getReactApplication(application: Application?): ReactApplication {
             if (application is ReactApplication) {
-                return application.reactNativeHost
-            } else {
-                throw IllegalArgumentException("Application does not implement ReactApplication")
-            }
-        }
-
-        private fun getReactHost(application: Application?): ReactHost? {
-            if (application is ReactApplication) {
-                return application.reactHost
+                return application
             } else {
                 throw IllegalArgumentException("Application does not implement ReactApplication")
             }
@@ -193,33 +185,18 @@ class HotUpdater(
             }
 
         fun reload(context: Context) {
+
             val activity: Activity? = getCurrentActivity(context)
-            val reactNativeHost: ReactNativeHost = this.getReactNativeHost(activity?.application)
-            val reactHost: ReactHost? = this.getReactHost(activity?.application)
+            val reactApplication: ReactApplication = this.getReactApplication(activity?.application)
+
+            val reactNativeHost: ReactNativeHost = reactApplication.reactNativeHost
+            val reactHost: ReactHost? = reactApplication.reactHost
 
             Log.d("HotUpdater", "HotUpdater requested a reload ${getBundleURL(context)}")
-
             setJSBundle(reactNativeHost.reactInstanceManager, getBundleURL(context))
 
-            clearLifecycleEventListener(reactNativeHost)
-            try {
-                Handler(Looper.getMainLooper()).post {
-                    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-                        check(reactHost != null)
-                        if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
-                            reactHost.onHostResume(activity)
-                        }
-                        reactHost.reload("HotUpdater requested a reload")
-                    } else {
-                        try {
-                            reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
-                        } catch (t: Throwable) {
-                            loadBundleLegacy(activity)
-                        }
-                    }
-                }
-            } catch (t: Throwable) {
-                loadBundleLegacy(activity)
+            Handler(Looper.getMainLooper()).post {
+                reactApplication.restart(activity, "HotUpdater requested a reload")
             }
         }
 
