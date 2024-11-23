@@ -16,7 +16,6 @@ import com.facebook.react.bridge.JSBundleLoader
 import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.common.LifecycleState
 import com.facebook.react.uimanager.ReactShadowNode
 import com.facebook.react.uimanager.ViewManager
 import java.io.File
@@ -27,7 +26,8 @@ import java.util.zip.ZipFile
 class HotUpdater(
     private val context: Context,
 ) : ReactPackage {
-    private val mContext: Context = context;
+    private val mContext: Context = context
+
     init {
         synchronized(this) {
             if (mCurrentInstance == null) {
@@ -35,6 +35,7 @@ class HotUpdater(
             }
         }
     }
+
     override fun createViewManagers(context: ReactApplicationContext): MutableList<ViewManager<View, ReactShadowNode<*>>> = mutableListOf()
 
     override fun createNativeModules(context: ReactApplicationContext): MutableList<NativeModule> =
@@ -84,6 +85,7 @@ class HotUpdater(
         }
 
         private fun setJSBundle(
+            context: Context,
             instanceManager: ReactInstanceManager,
             latestJSBundleFile: String?,
         ) {
@@ -94,9 +96,9 @@ class HotUpdater(
                 ) {
                     latestJSBundleLoader =
                         JSBundleLoader.createAssetLoader(
-                            instanceManager.currentReactContext,
+                            context,
                             latestJSBundleFile,
-                            false,
+                            true,
                         )
                 } else if (latestJSBundleFile != null) {
                     latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile)
@@ -137,7 +139,6 @@ class HotUpdater(
                 return "assets://index.android.bundle"
             }
 
-            Log.d("HotUpdater", "GetBundleURL: $urlString")
             return urlString
         }
 
@@ -185,29 +186,26 @@ class HotUpdater(
             }
 
         fun reload(context: Context) {
-
             val activity: Activity? = getCurrentActivity(context)
             val reactApplication: ReactApplication = this.getReactApplication(activity?.application)
 
             val reactNativeHost: ReactNativeHost = reactApplication.reactNativeHost
             val reactHost: ReactHost? = reactApplication.reactHost
 
-            Log.d("HotUpdater", "HotUpdater requested a reload ${getBundleURL(context)}")
-            setJSBundle(reactNativeHost.reactInstanceManager, getBundleURL(context))
-
+            if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+                setJSBundle(context, reactNativeHost.reactInstanceManager, getBundleURL(context))
+            }
             Handler(Looper.getMainLooper()).post {
                 reactApplication.restart(activity, "HotUpdater requested a reload")
             }
         }
 
-        fun getJSBundleFile(): String? {
+        fun getJSBundleFile(): String {
             val context = mCurrentInstance?.mContext
             if (context == null) {
-                Log.d("HotUpdater", "Context is null")
                 return "assets://index.android.bundle"
             }
 
-            Log.d("HotUpdater", "Getting JS bundle file ${getBundleURL(context)}")
             val sharedPreferences =
                 context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
@@ -215,7 +213,6 @@ class HotUpdater(
                 return "assets://index.android.bundle"
             }
 
-            Log.d("HotUpdater", "GetBundleURL: $urlString")
             return urlString
         }
 

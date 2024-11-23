@@ -36,13 +36,15 @@ class MainApplication :
             override fun getJSBundleFile(): String? {
                 // This field
                 Log.d("HotUpdater", "getJSBundleFile: ${HotUpdater.getJSBundleFile()}")
-                // RELOAD해도 번들 업뎃 안되어있음.
-                return HotUpdater.getJSBundleFile() ?: super.getJSBundleFile()
+                return HotUpdater.getJSBundleFile()
             }
         }
-
+    
     override val reactHost: ReactHost
-        get() = getDefaultReactHost(applicationContext, reactNativeHost)
+        get() {
+            Log.d("HotUpdater", "getReactHost")
+            return getDefaultReactHost(applicationContext, reactNativeHost)
+        }
 
     override fun onCreate() {
         super.onCreate()

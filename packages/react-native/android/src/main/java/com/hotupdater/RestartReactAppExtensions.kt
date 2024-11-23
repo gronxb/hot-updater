@@ -10,7 +10,10 @@ import com.facebook.react.common.LifecycleState
  * @param activity For bridgeless mode if the ReactHost is destroyed, we need an Activity to resume it.
  * @param reason The restart reason. Only used on bridgeless mode.
  */
-internal fun ReactApplication.restart(activity: Activity?, reason: String) {
+internal fun ReactApplication.restart(
+    activity: Activity?,
+    reason: String,
+) {
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
         val reactHost = this.reactHost
         check(reactHost != null)
