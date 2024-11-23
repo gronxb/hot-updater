@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.content.Context
@@ -42,6 +43,7 @@ class HotUpdater(
         listOf(HotUpdaterModule(context)).toMutableList()
 
     companion object {
+        @SuppressLint("StaticFieldLeak")
         @Volatile
         private var mCurrentInstance: HotUpdater? = null
 
@@ -71,17 +73,6 @@ class HotUpdater(
             }
 
             activity.runOnUiThread { activity.recreate() }
-        }
-
-        private var mLifecycleEventListener: LifecycleEventListener? = null
-
-        private fun clearLifecycleEventListener(reactNativeHost: ReactNativeHost) {
-            if (mLifecycleEventListener != null) {
-                reactNativeHost.reactInstanceManager.currentReactContext?.removeLifecycleEventListener(
-                    mLifecycleEventListener,
-                )
-                mLifecycleEventListener = null
-            }
         }
 
         private fun setJSBundle(
@@ -189,10 +180,8 @@ class HotUpdater(
             val activity: Activity? = getCurrentActivity(context)
             val reactApplication: ReactApplication = this.getReactApplication(activity?.application)
 
-            val reactNativeHost: ReactNativeHost = reactApplication.reactNativeHost
-            val reactHost: ReactHost? = reactApplication.reactHost
-
             if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+                val reactNativeHost: ReactNativeHost = reactApplication.reactNativeHost
                 setJSBundle(context, reactNativeHost.reactInstanceManager, getBundleURL(context))
             }
             Handler(Looper.getMainLooper()).post {
@@ -200,11 +189,8 @@ class HotUpdater(
             }
         }
 
-        fun getJSBundleFile(): String {
-            val context = mCurrentInstance?.mContext
-            if (context == null) {
-                return "assets://index.android.bundle"
-            }
+        public fun getJSBundleFile(): String {
+            val context = mCurrentInstance?.mContext ?: return "assets://index.android.bundle"
 
             val sharedPreferences =
                 context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
@@ -220,7 +206,7 @@ class HotUpdater(
             context: Context,
             bundleId: String,
             zipUrl: String,
-        ): Boolean? {
+        ): Boolean {
             if (zipUrl.isEmpty()) {
                 setBundleURL(context, null)
                 return true
@@ -248,10 +234,7 @@ class HotUpdater(
                 return false
             }
 
-            val extractedPath = file.parentFile?.path
-            if (extractedPath == null) {
-                return false
-            }
+            val extractedPath = file.parentFile?.path ?: return false
 
             if (!extractZipFileAtPath(path, extractedPath)) {
                 Log.d("HotUpdater", "Failed to extract zip file.")
