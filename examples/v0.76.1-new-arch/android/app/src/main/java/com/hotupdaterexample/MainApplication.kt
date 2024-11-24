@@ -41,10 +41,7 @@ class MainApplication :
         }
     
     override val reactHost: ReactHost
-        get() {
-            Log.d("HotUpdater", "getReactHost")
-            return getDefaultReactHost(applicationContext, reactNativeHost)
-        }
+              get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
     override fun onCreate() {
         super.onCreate()
