@@ -14,7 +14,6 @@ import com.facebook.react.ReactInstanceManager
 import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.JSBundleLoader
-import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ReactShadowNode
@@ -67,42 +66,62 @@ class HotUpdater(
                 path
             }
 
-        private fun loadBundleLegacy(activity: Activity?) {
-            if (activity == null) {
-                return
-            }
+        private fun getJSBundlerLoader(
+            context: Context,
+            latestJSBundleFile: String,
+        ): JSBundleLoader? {
+            var latestJSBundleLoader: JSBundleLoader? = null
 
-            activity.runOnUiThread { activity.recreate() }
+            if (latestJSBundleFile.lowercase().startsWith("assets://")) {
+                latestJSBundleLoader =
+                    JSBundleLoader.createAssetLoader(
+                        context,
+                        latestJSBundleFile,
+                        true,
+                    )
+            } else {
+                latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile)
+            }
+            return latestJSBundleLoader
         }
 
-        private fun setJSBundle(
+        private fun setJSBundleOldArch(
             context: Context,
             instanceManager: ReactInstanceManager,
-            latestJSBundleFile: String?,
+            bundleURL: String,
         ) {
             try {
-                var latestJSBundleLoader: JSBundleLoader? = null
-
-                if (latestJSBundleFile != null && latestJSBundleFile.lowercase().startsWith("assets://")
-                ) {
-                    latestJSBundleLoader =
-                        JSBundleLoader.createAssetLoader(
-                            context,
-                            latestJSBundleFile,
-                            true,
-                        )
-                } else if (latestJSBundleFile != null) {
-                    latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile)
-                }
+                val bundleLoader: JSBundleLoader? = this.getJSBundlerLoader(context, bundleURL)
                 val bundleLoaderField: Field =
                     instanceManager::class.java.getDeclaredField("mBundleLoader")
                 bundleLoaderField.isAccessible = true
 
-                if (latestJSBundleLoader != null) {
-                    bundleLoaderField.set(instanceManager, latestJSBundleLoader)
+                if (bundleLoader != null) {
+                    bundleLoaderField.set(instanceManager, bundleLoader)
                 } else {
                     bundleLoaderField.set(instanceManager, null)
                 }
+            } catch (e: Exception) {
+                Log.d("HotUpdater", "Failed to setJSBundle: ${e.message}")
+                throw IllegalAccessException("Could not setJSBundle")
+            }
+        }
+
+        private fun setJSBundleNewArch(
+            context: Context,
+            reactHost: ReactHost,
+            bundleURL: String,
+        ) {
+            try {
+                val reactHostDelegateField = reactHost::class.java.getDeclaredField("mReactHostDelegate")
+                reactHostDelegateField.isAccessible = true
+                val reactHostDelegate =
+                    reactHostDelegateField.get(
+                        reactHost,
+                    )
+                val jsBundleLoaderField = reactHostDelegate::class.java.getDeclaredField("jsBundleLoader")
+                jsBundleLoaderField.isAccessible = true
+                jsBundleLoaderField.set(reactHostDelegate, getJSBundlerLoader(context, bundleURL))
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to setJSBundle: ${e.message}")
                 throw IllegalAccessException("Could not setJSBundle")
@@ -179,11 +198,16 @@ class HotUpdater(
         fun reload(context: Context) {
             val activity: Activity? = getCurrentActivity(context)
             val reactApplication: ReactApplication = this.getReactApplication(activity?.application)
+            val reactHost: ReactHost? = reactApplication.reactHost
+            val reactNativeHost: ReactNativeHost = reactApplication.reactNativeHost
+            val bundleURL = getBundleURL(context)
 
-            if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-                val reactNativeHost: ReactNativeHost = reactApplication.reactNativeHost
-                setJSBundle(context, reactNativeHost.reactInstanceManager, getBundleURL(context))
+            if (!BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+                setJSBundleOldArch(context, reactNativeHost.reactInstanceManager, bundleURL)
+            } else if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED && reactHost != null) {
+                setJSBundleNewArch(context, reactHost, bundleURL)
             }
+
             Handler(Looper.getMainLooper()).post {
                 reactApplication.restart(activity, "HotUpdater requested a reload")
             }
@@ -254,7 +278,6 @@ class HotUpdater(
             }
 
             Log.d("HotUpdater", "Downloaded and extracted file successfully.")
-
             return true
         }
     }
