@@ -25,7 +25,6 @@ public class MainApplication extends Application implements ReactApplication {
           @SuppressWarnings("UnnecessaryLocalVariable")
           List<ReactPackage> packages = new PackageList(this).getPackages();
           // Packages that cannot be autolinked yet can be added manually here, for example:
-          packages.add(new HotUpdater(this.getApplication().getApplicationContext()));
           return packages;
         }
 
@@ -36,7 +35,7 @@ public class MainApplication extends Application implements ReactApplication {
         
         @Override
         protected String getJSBundleFile() {
-            return HotUpdater.Companion.getJSBundleFile();
+            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());
         }
 
         @Override
