@@ -7,6 +7,8 @@ export type * from "./init";
 export type * from "./checkForUpdate";
 export type * from "./native";
 
+export * from "./store";
+
 export const HotUpdater = {
   init,
   reload,

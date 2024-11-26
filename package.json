@@ -18,7 +18,7 @@
     "publish:rc": "nx release publish --tag rc"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.9.3",
+    "@biomejs/biome": "^1.9.4",
     "@nx/js": "^20.0.6",
     "@swc-node/register": "^1.10.9",
     "@swc/core": "^1.7.40",
@@ -41,5 +41,5 @@
       "@hot-updater/react": "workspace:*"
     }
   },
-  "packageManager": "pnpm@9.12.3"
+  "packageManager": "pnpm@9.14.2"
 }

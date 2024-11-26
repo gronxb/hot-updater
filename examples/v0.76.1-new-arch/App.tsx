@@ -5,7 +5,7 @@
  * @format
  */
 
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, SafeAreaView, Text } from "react-native";
@@ -23,15 +23,21 @@ function extractTimestampFromUUIDv7(uuid: string) {
 }
 
 function App(): React.JSX.Element {
-  const [version, setVersion] = useState<string | null>(null);
+  const [bundleId, setBundleId] = useState<string | null>(null);
+
+  const { progress } = useHotUpdaterStore();
 
   useEffect(() => {
-    const version = HotUpdater.getBundleId();
-    setVersion(version);
+    const bundleId = HotUpdater.getBundleId();
+    setBundleId(bundleId);
   }, []);
+
+  // @ts-expect-error
+  const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
   return (
     <SafeAreaView>
+      <Text>Progress: {Math.round(progress * 100)}%</Text>
       <Text>Babel {HotUpdater.HOT_UPDATER_BUNDLE_ID}</Text>
       <Text>
         Babel {extractTimestampFromUUIDv7(HotUpdater.HOT_UPDATER_BUNDLE_ID)}
@@ -55,7 +61,18 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        BundleId: {version}
+        BundleId: {bundleId}
+      </Text>
+
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        isTurboModuleEnabled: {isTurboModuleEnabled ? "true" : "false"}
       </Text>
 
       <Image
@@ -63,8 +80,8 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        // source={require("./src/logo.png")}
-        source={require("./src/test/_image.png")}
+        source={require("./src/logo.png")}
+        // source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />

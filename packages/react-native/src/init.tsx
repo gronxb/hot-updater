@@ -36,7 +36,7 @@ export const init = async (config: HotUpdaterInitConfig) => {
   }
 
   try {
-    const isSuccess = await updateBundle(update.id, update.file);
+    const isSuccess = await updateBundle(update.id, update.file || "");
     if (isSuccess && update.forceUpdate) {
       reload();
 
