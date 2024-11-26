@@ -14,15 +14,7 @@ internal fun ReactApplication.restart(
     activity: Activity?,
     reason: String,
 ) {
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-        val reactHost = this.reactHost
-        check(reactHost != null)
-        if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
-            reactHost.onHostResume(activity)
-        }
-        reactHost.reload(reason)
-        return
-    }
-
+    val reactNativeHost = this.reactNativeHost
+    check(reactNativeHost != null)
     reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
 }
