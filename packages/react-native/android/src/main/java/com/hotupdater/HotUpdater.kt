@@ -20,6 +20,7 @@ import com.facebook.react.uimanager.ReactShadowNode
 import com.facebook.react.uimanager.ViewManager
 import java.io.File
 import java.lang.reflect.Field
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipFile
 
@@ -68,21 +69,21 @@ class HotUpdater(
 
         private fun getJSBundlerLoader(
             context: Context,
-            latestJSBundleFile: String,
+            bundleFileUrl: String,
         ): JSBundleLoader? {
-            var latestJSBundleLoader: JSBundleLoader? = null
+            var bundleLoader: JSBundleLoader?
 
-            if (latestJSBundleFile.lowercase().startsWith("assets://")) {
-                latestJSBundleLoader =
+            if (bundleFileUrl.lowercase().startsWith("assets://")) {
+                bundleLoader =
                     JSBundleLoader.createAssetLoader(
                         context,
-                        latestJSBundleFile,
+                        bundleFileUrl,
                         true,
                     )
             } else {
-                latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile)
+                bundleLoader = JSBundleLoader.createFileLoader(bundleFileUrl)
             }
-            return latestJSBundleLoader
+            return bundleLoader
         }
 
         private fun setJSBundleOldArch(
@@ -230,7 +231,9 @@ class HotUpdater(
             context: Context,
             bundleId: String,
             zipUrl: String,
+            progressCallback: ((Double) -> Unit),
         ): Boolean {
+            Log.d("HotUpdater", "updateBundle bundleId $bundleId zipUrl $zipUrl")
             if (zipUrl.isEmpty()) {
                 setBundleURL(context, null)
                 return true
@@ -241,24 +244,42 @@ class HotUpdater(
             val basePath = stripPrefixFromPath(bundleId, downloadUrl.path)
             val path = convertFileSystemPathFromBasePath(context, basePath)
 
-            val data =
-                try {
-                    downloadUrl.readBytes()
-                } catch (e: Exception) {
-                    Log.d("HotUpdater", "Failed to download data from URL: $zipUrl")
+            var connection: HttpURLConnection? = null
+            try {
+                connection = downloadUrl.openConnection() as HttpURLConnection
+                connection.connect()
+
+                val totalSize = connection.contentLength
+                if (totalSize <= 0) {
+                    Log.d("HotUpdater", "Invalid content length: $totalSize")
                     return false
                 }
 
-            val file = File(path)
-            try {
+                val file = File(path)
                 file.parentFile?.mkdirs()
-                file.writeBytes(data)
+
+                connection.inputStream.use { input ->
+                    file.outputStream().use { output ->
+                        val buffer = ByteArray(8 * 1024)
+                        var bytesRead: Int
+                        var totalRead = 0L
+
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            totalRead += bytesRead
+                            val progress = (totalRead.toDouble() / totalSize)
+                            progressCallback.invoke(progress)
+                        }
+                    }
+                }
             } catch (e: Exception) {
-                Log.d("HotUpdater", "Failed to save data: ${e.message}")
+                Log.d("HotUpdater", "Failed to download data from URL: $zipUrl, Error: ${e.message}")
                 return false
+            } finally {
+                connection?.disconnect()
             }
 
-            val extractedPath = file.parentFile?.path ?: return false
+            val extractedPath = File(path).parentFile?.path ?: return false
 
             if (!extractZipFileAtPath(path, extractedPath)) {
                 Log.d("HotUpdater", "Failed to extract zip file.")

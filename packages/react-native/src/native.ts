@@ -11,7 +11,7 @@ const LINKING_ERROR =
 // @ts-expect-error
 const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
-const HotUpdaterModule = isTurboModuleEnabled
+export const HotUpdaterModule = isTurboModuleEnabled
   ? require("./specs/NativeHotUpdater").default
   : NativeModules.HotUpdater;
 

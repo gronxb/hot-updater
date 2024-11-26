@@ -3,6 +3,8 @@ package com.hotupdater
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.WritableNativeMap
+import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
@@ -27,8 +29,18 @@ class HotUpdaterModule internal constructor(
         zipUrl: String,
         promise: Promise,
     ) {
-        val result = HotUpdater.updateBundle(mReactApplicationContext, bundleId, zipUrl)
-        promise.resolve(result)
+        val isSuccess =
+            HotUpdater.updateBundle(mReactApplicationContext, bundleId, zipUrl) { progress ->
+                val params =
+                    WritableNativeMap().apply {
+                        putDouble("progress", progress)
+                    }
+
+                this.mReactApplicationContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit("onProgress", params)
+            }
+        promise.resolve(isSuccess)
     }
 
     companion object {
