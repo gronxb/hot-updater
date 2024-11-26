@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { HotUpdaterModule } from "./native";
 import { NativeEventEmitter } from "react-native";
+import { HotUpdaterModule } from "./native";
 
 export type HotUpdaterState = {
   progress: number;
