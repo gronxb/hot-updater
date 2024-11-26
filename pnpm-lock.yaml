@@ -133,6 +133,9 @@ importers:
       prettier:
         specifier: ^2.4.1
         version: 2.8.8
+      react-native-gradle-plugin:
+        specifier: ^0.71.19
+        version: 0.71.19
       react-test-renderer:
         specifier: 18.2.0
         version: 18.2.0(react@18.2.0)
