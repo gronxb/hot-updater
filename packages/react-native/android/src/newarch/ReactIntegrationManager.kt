@@ -3,6 +3,7 @@ package com.hotupdater
 import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
+import com.facebook.react.common.LifecycleState
 
 class ReactIntegrationManager(
     context: Context,
@@ -29,9 +30,14 @@ class ReactIntegrationManager(
         }
     }
 
+    /**
+     * Reload the React Native application.
+     */
     public fun reload(application: ReactApplication) {
         val reactHost = application.reactHost
         check(reactHost != null)
+
+        val activity = reactHost.currentReactContext?.currentActivity
         if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
             reactHost.onHostResume(activity)
         }

@@ -31,6 +31,9 @@ class ReactIntegrationManager(
         }
     }
 
+    /**
+     * Reload the React Native application.
+     */
     public fun reload(application: ReactApplication) {
         val reactNativeHost = application.reactNativeHost
         reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
