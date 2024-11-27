@@ -18,8 +18,8 @@ RCT_EXPORT_MODULE();
 }
 
 + (NSString *)getAppVersion {
-   NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-   return appVersion;
+    NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    return appVersion;
 }
 
 + (void)setBundleURL:(NSString *)localPath {
@@ -44,11 +44,11 @@ RCT_EXPORT_MODULE();
 
 + (NSURL *)fallbackURL {
     // This Support React Native 0.72.6
-    #if DEBUG
-        return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
-    #else
-        return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
-    #endif
+#if DEBUG
+    return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
+#else
+    return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+#endif
 }
 
 + (NSURL *)bundleURL {
@@ -83,16 +83,16 @@ RCT_EXPORT_MODULE();
         [self setBundleURL:nil];
         return YES;
     }
-
+    
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
-
+    
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
-
+    
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     __block BOOL success = NO;
-
+    
     NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
                                                         completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
@@ -101,19 +101,19 @@ RCT_EXPORT_MODULE();
             dispatch_semaphore_signal(semaphore);
             return;
         }
-
+        
         // Process the downloaded file (e.g., unzip and validate)
         // Update progress using sendEventWithName
         double progress = 1.0; // Example progress value
         [[self alloc] sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
-
+        
         success = YES;
         dispatch_semaphore_signal(semaphore);
     }];
-
+    
     [downloadTask resume];
     dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-
+    
     return success;
 }
 
@@ -125,19 +125,19 @@ RCT_EXPORT_MODULE();
 
 - (void)startObserving
 {
-  hasListeners = YES;
+    hasListeners = YES;
 }
 
 - (void)stopObserving
 {
-  hasListeners = NO;
+    hasListeners = NO;
 }
 
 - (void)sendEvent:(NSString *)name body:(id)body
 {
-  if (hasListeners) {
-    [self sendEventWithName:name body:body];
-  }
+    if (hasListeners) {
+        [self sendEventWithName:name body:body];
+    }
 }
 
 #pragma mark - React Native Exports
@@ -156,7 +156,7 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
     if (![zipUrlString isEqualToString:@""]) {
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
-
+    
     BOOL result = [HotUpdater updateBundle:bundleId zipUrl:zipUrl];
     resolve(@[@(result)]);
 }
@@ -165,7 +165,7 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
 // Don't compile this code when we build for the old architecture.
 #ifdef RCT_NEW_ARCH_ENABLED
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
-    (const facebook::react::ObjCTurboModule::InitParams &)params
+(const facebook::react::ObjCTurboModule::InitParams &)params
 {
     return std::make_shared<facebook::react::NativeHotUpdaterSpecJSI>(params);
 }
