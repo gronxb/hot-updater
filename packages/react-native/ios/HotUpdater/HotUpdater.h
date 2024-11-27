@@ -3,6 +3,7 @@
 
 #ifdef RCT_NEW_ARCH_ENABLED
 #import "HotUpdaterSpec.h"
+
 @interface HotUpdater : NSObject <NativeHotUpdaterSpec>
 #else
 #import <React/RCTBridgeModule.h>
