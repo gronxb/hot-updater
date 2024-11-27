@@ -74,64 +74,93 @@ RCT_EXPORT_MODULE();
     return success;
 }
 
-+ (BOOL)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl {
-    if (zipUrl == nil) {
+
++ (void)updateBundle:(NSString *)bundleId
+              zipUrl:(NSURL *)zipUrl
+     progressHandler:(void (^)(double progress))progressHandler
+    completionHandler:(void (^)(BOOL success))completionHandler {
+    if (!zipUrl) {
         [self setBundleURL:nil];
-        return YES;
+        completionHandler(YES);
+        return;
     }
+
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
 
-    NSData *data = [NSData dataWithContentsOfURL:zipUrl];
-    if (!data) {
-        NSLog(@"Failed to download data from URL: %@", zipUrl);
-        return NO;
-    }
+    NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
 
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSError *folderError;
-    if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
-                withIntermediateDirectories:YES
-                                 attributes:nil
-                                      error:&folderError]) {
-        NSLog(@"Failed to create folder: %@", folderError);
-        return NO;
-    }
-
-    NSError *error;
-    [data writeToFile:path options:NSDataWritingAtomic error:&error];
-    if (error) {
-        NSLog(@"Failed to save data: %@", error);
-        return NO;
-    }
-
-    NSString *extractedPath = [path stringByDeletingLastPathComponent];
-    if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
-        NSLog(@"Failed to extract zip file.");
-        return NO;
-    }
-
-    NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
-    NSString *filename = nil;
-    for (NSString *file in enumerator) {
-        if ([file isEqualToString:@"index.ios.bundle"]) {
-            filename = file;
-            break;
+    NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
+                                                        completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+        if (error) {
+            NSLog(@"Failed to download data from URL: %@, error: %@", zipUrl, error);
+            completionHandler(NO);
+            return;
         }
+
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        NSError *folderError;
+        if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+                    withIntermediateDirectories:YES
+                                     attributes:nil
+                                          error:&folderError]) {
+            NSLog(@"Failed to create folder: %@", folderError);
+            completionHandler(NO);
+            return;
+        }
+
+        NSError *moveError;
+        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:path] error:&moveError]) {
+            NSLog(@"Failed to save data: %@", moveError);
+            completionHandler(NO);
+            return;
+        }
+
+        NSString *extractedPath = [path stringByDeletingLastPathComponent];
+        if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
+            NSLog(@"Failed to extract zip file.");
+            completionHandler(NO);
+            return;
+        }
+
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
+        NSString *filename = nil;
+        for (NSString *file in enumerator) {
+            if ([file isEqualToString:@"index.ios.bundle"]) {
+                filename = file;
+                break;
+            }
+        }
+
+        if (filename) {
+            NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
+            NSLog(@"Setting bundle URL: %@", bundlePath);
+            [self setBundleURL:bundlePath];
+        } else {
+            NSLog(@"index.ios.bundle not found.");
+            completionHandler(NO);
+            return;
+        }
+
+        NSLog(@"Downloaded and extracted file successfully.");
+        completionHandler(YES);
+    }];
+
+    if (progressHandler) {
+        NSObject *observer = [[NSObject alloc] init];
+        [downloadTask addObserver:observer
+                       forKeyPath:@"countOfBytesReceived"
+                          options:NSKeyValueObservingOptionNew
+                          context:nil];
+        
+        [downloadTask addObserver:observer
+                       forKeyPath:@"countOfBytesExpectedToReceive"
+                          options:NSKeyValueObservingOptionNew
+                          context:nil];
     }
 
-    if (filename) {
-        NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
-        NSLog(@"Setting bundle URL: %@", bundlePath);
-        [self setBundleURL:bundlePath];
-    } else {
-        NSLog(@"index.ios.bundle not found.");
-        return NO;
-    }
-
-    NSLog(@"Downloaded and extracted file successfully.");
-
-    return YES;
+    [downloadTask resume];
 }
 
 #pragma mark - React Native Exports
@@ -151,8 +180,11 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
 
-    BOOL result = [HotUpdater updateBundle:bundleId zipUrl:zipUrl];
-    resolve(@[@(result)]);
+    [HotUpdater updateBundle:bundleId zipUrl:zipUrl progressHandler:^(double progress) {
+        NSLog(@"Progress: %f", progress);
+    } completionHandler:^(BOOL success) {
+        resolve(@[@(success)]);
+    }];
 }
 
 
@@ -161,7 +193,7 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
     (const facebook::react::ObjCTurboModule::InitParams &)params
 {
-    return std::make_shared<facebook::react::NativeRnLibSpecJSI>(params);
+    return std::make_shared<facebook::react::NativeHotUpdaterSpecJSI>(params);
 }
 #endif
 
