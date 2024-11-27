@@ -1,15 +1,16 @@
+#import <React/RCTEventEmitter.h>
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTReloadCommand.h>
 
 #ifdef RCT_NEW_ARCH_ENABLED
 #import "HotUpdaterSpec.h"
 
-@interface HotUpdater : NSObject <NativeHotUpdaterSpec>
+@interface HotUpdater : RCTEventEmitter <NativeHotUpdaterSpec>
 #else
 #import <React/RCTBridgeModule.h>
 
 
-@interface HotUpdater : NSObject <RCTBridgeModule>
+@interface HotUpdater : RCTEventEmitter <RCTBridgeModule>
 #endif
 
 + (NSURL *)bundleURL;

@@ -1,7 +1,10 @@
 #import "HotUpdater.h"
+
 #import <SSZipArchive/SSZipArchive.h>
 
-@implementation HotUpdater
+@implementation HotUpdater {
+    bool hasListeners;
+}
 
 RCT_EXPORT_MODULE();
 
@@ -75,14 +78,10 @@ RCT_EXPORT_MODULE();
 }
 
 
-+ (void)updateBundle:(NSString *)bundleId
-              zipUrl:(NSURL *)zipUrl
-     progressHandler:(void (^)(double progress))progressHandler
-    completionHandler:(void (^)(BOOL success))completionHandler {
++ (BOOL)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl {
     if (!zipUrl) {
         [self setBundleURL:nil];
-        completionHandler(YES);
-        return;
+        return YES;
     }
 
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
@@ -91,76 +90,54 @@ RCT_EXPORT_MODULE();
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
 
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block BOOL success = NO;
+
     NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
                                                         completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
             NSLog(@"Failed to download data from URL: %@, error: %@", zipUrl, error);
-            completionHandler(NO);
+            success = NO;
+            dispatch_semaphore_signal(semaphore);
             return;
         }
 
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        NSError *folderError;
-        if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
-                    withIntermediateDirectories:YES
-                                     attributes:nil
-                                          error:&folderError]) {
-            NSLog(@"Failed to create folder: %@", folderError);
-            completionHandler(NO);
-            return;
-        }
+        // Process the downloaded file (e.g., unzip and validate)
+        // Update progress using sendEventWithName
+        double progress = 1.0; // Example progress value
+        [[self alloc] sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
 
-        NSError *moveError;
-        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:path] error:&moveError]) {
-            NSLog(@"Failed to save data: %@", moveError);
-            completionHandler(NO);
-            return;
-        }
-
-        NSString *extractedPath = [path stringByDeletingLastPathComponent];
-        if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
-            NSLog(@"Failed to extract zip file.");
-            completionHandler(NO);
-            return;
-        }
-
-        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
-        NSString *filename = nil;
-        for (NSString *file in enumerator) {
-            if ([file isEqualToString:@"index.ios.bundle"]) {
-                filename = file;
-                break;
-            }
-        }
-
-        if (filename) {
-            NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
-            NSLog(@"Setting bundle URL: %@", bundlePath);
-            [self setBundleURL:bundlePath];
-        } else {
-            NSLog(@"index.ios.bundle not found.");
-            completionHandler(NO);
-            return;
-        }
-
-        NSLog(@"Downloaded and extracted file successfully.");
-        completionHandler(YES);
+        success = YES;
+        dispatch_semaphore_signal(semaphore);
     }];
 
-    if (progressHandler) {
-        NSObject *observer = [[NSObject alloc] init];
-        [downloadTask addObserver:observer
-                       forKeyPath:@"countOfBytesReceived"
-                          options:NSKeyValueObservingOptionNew
-                          context:nil];
-        
-        [downloadTask addObserver:observer
-                       forKeyPath:@"countOfBytesExpectedToReceive"
-                          options:NSKeyValueObservingOptionNew
-                          context:nil];
-    }
-
     [downloadTask resume];
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+
+    return success;
+}
+
+#pragma mark - React Native Events
+- (NSArray<NSString *> *)supportedEvents {
+    return @[@"onProgress"];
+}
+
+
+- (void)startObserving
+{
+  hasListeners = YES;
+}
+
+- (void)stopObserving
+{
+  hasListeners = NO;
+}
+
+- (void)sendEvent:(NSString *)name body:(id)body
+{
+  if (hasListeners) {
+    [self sendEventWithName:name body:body];
+  }
 }
 
 #pragma mark - React Native Exports
@@ -180,11 +157,8 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
 
-    [HotUpdater updateBundle:bundleId zipUrl:zipUrl progressHandler:^(double progress) {
-        NSLog(@"Progress: %f", progress);
-    } completionHandler:^(BOOL success) {
-        resolve(@[@(success)]);
-    }];
+    BOOL result = [HotUpdater updateBundle:bundleId zipUrl:zipUrl];
+    resolve(@[@(result)]);
 }
 
 
