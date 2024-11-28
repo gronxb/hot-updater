@@ -146,9 +146,10 @@ RCT_EXPORT_METHOD(reload) {
     [HotUpdater reload];
 }
 
-RCT_EXPORT_METHOD(getAppVersion:resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve
+                         reject:(RCTPromiseRejectBlock)reject) {
     NSString *version = [HotUpdater getAppVersion];
-    resolve(@[version ?: [NSNull null]]);
+    resolve(@[version ?: nil]);
 }
 
 RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlString resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
