@@ -45,7 +45,7 @@ export const checkForUpdate = async (
   status: UpdateStatus;
 } | null> => {
   const $bundles = await ensureBundles(bundles);
-
+  
   const currentAppVersion = await getAppVersion();
   const platform = Platform.OS as "ios" | "android";
 

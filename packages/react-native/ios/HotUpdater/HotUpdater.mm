@@ -2,9 +2,7 @@
 
 #import <SSZipArchive/SSZipArchive.h>
 
-@implementation HotUpdater {
-    bool hasListeners;
-}
+@implementation HotUpdater
 
 RCT_EXPORT_MODULE();
 
@@ -84,6 +82,7 @@ RCT_EXPORT_MODULE();
         return YES;
     }
     
+    NSLog(@"Updating bundle: %@ %@", bundleId, zipUrl);
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
     
@@ -105,6 +104,8 @@ RCT_EXPORT_MODULE();
         // Process the downloaded file (e.g., unzip and validate)
         // Update progress using sendEventWithName
         double progress = 1.0; // Example progress value
+        
+        NSLog(@"Sending progress event: %@", @(progress));
         [[self alloc] sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
         
         success = YES;
@@ -122,24 +123,6 @@ RCT_EXPORT_MODULE();
     return @[@"onProgress"];
 }
 
-
-- (void)startObserving
-{
-    hasListeners = YES;
-}
-
-- (void)stopObserving
-{
-    hasListeners = NO;
-}
-
-- (void)sendEvent:(NSString *)name body:(id)body
-{
-    if (hasListeners) {
-        [self sendEventWithName:name body:body];
-    }
-}
-
 #pragma mark - React Native Exports
 
 RCT_EXPORT_METHOD(reload) {
@@ -149,7 +132,7 @@ RCT_EXPORT_METHOD(reload) {
 RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve
                          reject:(RCTPromiseRejectBlock)reject) {
     NSString *version = [HotUpdater getAppVersion];
-    resolve(@[version ?: nil]);
+    resolve(version ?: [NSNull null]);
 }
 
 RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlString resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
