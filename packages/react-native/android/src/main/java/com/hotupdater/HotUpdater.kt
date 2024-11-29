@@ -114,6 +114,12 @@ class HotUpdater : ReactPackage {
                 return "assets://index.android.bundle"
             }
 
+            val file = File(urlString)
+            if (!file.exists()) {
+                setBundleURL(context, null)
+                return "assets://index.android.bundle"
+            }
+
             return urlString
         }
 

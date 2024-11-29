@@ -5,8 +5,7 @@ import { createZip } from "@/utils/createZip";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommitMessage } from "@/utils/getLatestGitCommitMessage";
-import { getCwd, loadConfig } from "@hot-updater/plugin-core";
-import { type Platform, filterTargetVersion } from "@hot-updater/utils";
+import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -51,32 +50,17 @@ export const deploy = async (options: DeployOptions) => {
 
     const hash = await getFileHashFromFile(bundlePath);
 
-    const deployPlugin = config.deploy({
+    const databasePlugin = config.database({
       cwd,
     });
 
-    const bundles = await deployPlugin.getBundles();
-    const targetVersions = filterTargetVersion(
-      bundles ?? [],
-      targetVersion,
-      options.platform,
-    );
-
-    // hash check
-    if (targetVersions.length > 0) {
-      const recentVersion = targetVersions[0];
-      const recentHash = recentVersion?.hash;
-
-      if (recentHash === hash) {
-        s.stop("The update already exists.", -1);
-        return;
-      }
-    }
-
     s.message("Uploading bundle...");
-    const { file } = await deployPlugin.uploadBundle(bundleId, bundlePath);
+    const storagePlugin = config.storage({
+      cwd,
+    });
+    const { file } = await storagePlugin.uploadBundle(bundleId, bundlePath);
 
-    await deployPlugin.appendBundle({
+    await databasePlugin.appendBundle({
       forceUpdate: options.forceUpdate,
       platform: options.platform,
       file,
@@ -86,7 +70,7 @@ export const deploy = async (options: DeployOptions) => {
       id: bundleId,
       enabled: true,
     });
-    await deployPlugin.commitBundle();
+    await databasePlugin.commitBundle();
 
     await fs.rm(bundlePath);
     s.stop("Uploading Success !", 0);

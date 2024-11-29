@@ -14,12 +14,12 @@ export const prune = async () => {
 
     const cwd = getCwd();
 
-    const deployPlugin = config.deploy({
+    const databasePlugin = config.database({
       cwd,
     });
 
     s.start("Checking existing updates");
-    const bundles = await deployPlugin.getBundles();
+    const bundles = await databasePlugin.getBundles();
 
     const activeBundles = bundles.filter((bundle) => bundle.enabled);
     const inactiveBundles = bundles.filter((bundle) => !bundle.enabled);
@@ -31,11 +31,15 @@ export const prune = async () => {
 
     s.message("Pruning updates");
 
-    await deployPlugin.setBundles(activeBundles);
-    await deployPlugin.commitBundle();
+    await databasePlugin.setBundles(activeBundles);
+    await databasePlugin.commitBundle();
+
+    const storagePlugin = config.storage({
+      cwd,
+    });
 
     for (const bundle of inactiveBundles) {
-      const key = await deployPlugin.deleteBundle(bundle.id);
+      const key = await storagePlugin.deleteBundle(bundle.id);
       p.log.info(`deleting: ${key}`);
     }
 

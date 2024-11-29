@@ -1,23 +1,26 @@
+import { extractTimestampFromUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
 import type { Bundle } from "@hot-updater/utils";
 import type { ColumnDef } from "@tanstack/solid-table";
+import dayjs from "dayjs";
 import { Check, X } from "lucide-solid";
-
-const formatDateTimeFromBundleVersion = (input: string): string => {
-  const year = input.substring(0, 4);
-  const month = input.substring(4, 6);
-  const day = input.substring(6, 8);
-  const hour = input.substring(8, 10);
-  const minute = input.substring(10, 12);
-  const second = input.substring(12, 14);
-
-  return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
-};
 
 export const columns: ColumnDef<Bundle>[] = [
   {
+    accessorKey: "id",
+    header: "ID",
+    cell: (info) => info.getValue(),
+  },
+  {
     accessorKey: "platform",
     header: "Platform",
-    cell: (info) => info.getValue(),
+    cell: (info) => {
+      switch (info.getValue()) {
+        case "ios":
+          return "iOS";
+        case "android":
+          return "Android";
+      }
+    },
   },
   {
     accessorKey: "targetVersion",
@@ -58,8 +61,11 @@ export const columns: ColumnDef<Bundle>[] = [
     cell: (info) => info.getValue(),
   },
   {
-    accessorKey: "bundleId",
+    accessorKey: "id",
     header: "Created At",
-    cell: (info) => formatDateTimeFromBundleVersion(String(info.getValue())),
+    cell: (info) =>
+      dayjs(extractTimestampFromUUIDv7(String(info.getValue()))).format(
+        "YYYY-MM-DD HH:mm:ss",
+      ),
   },
 ];

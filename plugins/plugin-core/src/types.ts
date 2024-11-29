@@ -10,7 +10,8 @@ export interface BuildPluginArgs extends BasePluginArgs {
   platform: Platform;
 }
 
-export interface DeployPlugin {
+export interface DatabasePlugin {
+  getBundleById: (bundleId: string) => Promise<Bundle | null>;
   getBundles: (refresh?: boolean) => Promise<Bundle[]>;
   updateBundle: (
     targetBundleId: string,
@@ -19,14 +20,25 @@ export interface DeployPlugin {
   setBundles: (bundles: Bundle[]) => Promise<void>;
   appendBundle: (bundles: Bundle) => Promise<void>;
   commitBundle: () => Promise<void>;
+}
 
+export interface DatabasePluginHooks {
+  onDatabaseUpdated?: () => Promise<void>;
+}
+
+export interface StoragePlugin {
   uploadBundle: (
     bundleId: string,
     bundlePath: string,
   ) => Promise<{
     file: string;
   }>;
+
   deleteBundle: (bundleId: string) => Promise<string>;
+}
+
+export interface StoragePluginHooks {
+  onStorageUploaded?: () => Promise<void>;
 }
 
 export type Config = {
@@ -34,5 +46,6 @@ export type Config = {
     buildPath: string;
     bundleId: string;
   }>;
-  deploy: (args: BasePluginArgs) => DeployPlugin;
+  storage: (args: BasePluginArgs) => StoragePlugin;
+  database: (args: BasePluginArgs) => DatabasePlugin;
 };
