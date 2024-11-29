@@ -4,9 +4,9 @@ import { spinner } from "@clack/prompts";
 import { createZip } from "@/utils/createZip";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
+import { getLatestGitCommitMessage } from "@/utils/getLatestGitCommitMessage";
 import { getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { type Platform, filterTargetVersion } from "@hot-updater/utils";
-import { getBranchName, getRecentCommitMessages } from "workspace-tools";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -25,8 +25,7 @@ export const deploy = async (options: DeployOptions) => {
     }
     const cwd = getCwd();
 
-    const branch = getBranchName(cwd);
-    const message = branch ? getRecentCommitMessages(branch, cwd)[0] : void 0;
+    const message = await getLatestGitCommitMessage();
 
     const targetVersion =
       options.targetVersion ??
@@ -82,7 +81,7 @@ export const deploy = async (options: DeployOptions) => {
       platform: options.platform,
       file,
       hash,
-      message,
+      message: message ?? undefined,
       targetVersion,
       id: bundleId,
       enabled: true,
