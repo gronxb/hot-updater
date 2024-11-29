@@ -1,12 +1,22 @@
 import {
   type ColumnDef,
+  type PaginationState,
   type Row,
   createSolidTable,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
 } from "@tanstack/solid-table";
-import { type Accessor, For, splitProps } from "solid-js";
+import { type Accessor, For, createSignal, splitProps } from "solid-js";
 
+import {
+  Pagination,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationItems,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import {
   Table,
   TableBody,
@@ -22,8 +32,14 @@ interface DataTableProps<TData, TValue> {
   onRowClick: (data: TData) => void;
 }
 
+const DEFAULT_PAGE_SIZE = 20;
+
 export function DataTable<TData, TValue>(props: DataTableProps<TData, TValue>) {
   const [local] = splitProps(props, ["columns", "data", "onRowClick"]);
+  const [pagination, setPagination] = createSignal<PaginationState>({
+    pageIndex: 0,
+    pageSize: DEFAULT_PAGE_SIZE,
+  });
 
   const table = createSolidTable({
     get data() {
@@ -31,6 +47,14 @@ export function DataTable<TData, TValue>(props: DataTableProps<TData, TValue>) {
     },
     columns: local.columns,
     getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    state: {
+      get pagination() {
+        return pagination();
+      },
+    },
+    onPaginationChange: setPagination,
+    manualPagination: false,
   });
 
   const handleRowClick = (row: Row<TData>) => () => {
@@ -38,62 +62,88 @@ export function DataTable<TData, TValue>(props: DataTableProps<TData, TValue>) {
   };
 
   return (
-    <div class="border rounded-md">
-      <Table>
-        <TableHeader>
-          <For each={table.getHeaderGroups()}>
-            {(headerGroup) => (
-              <TableRow>
-                <For each={headerGroup.headers}>
-                  {(header) => (
-                    <TableHead>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                    </TableHead>
-                  )}
-                </For>
-              </TableRow>
-            )}
-          </For>
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            <For each={table.getRowModel().rows}>
-              {(row) => (
-                <TableRow
-                  data-state={row.getIsSelected() && "selected"}
-                  class="cursor-pointer"
-                  onClick={handleRowClick(row)}
-                >
-                  <For each={row.getVisibleCells()}>
-                    {(cell) => (
-                      <TableCell>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </TableCell>
+    <div>
+      <div class="border rounded-md">
+        <Table>
+          <TableHeader>
+            <For each={table.getHeaderGroups()}>
+              {(headerGroup) => (
+                <TableRow>
+                  <For each={headerGroup.headers}>
+                    {(header) => (
+                      <TableHead>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                      </TableHead>
                     )}
                   </For>
                 </TableRow>
               )}
             </For>
-          ) : (
-            <TableRow>
-              <TableCell
-                colSpan={local.columns.length}
-                class="h-24 text-center"
-              >
-                No results.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              <For each={table.getRowModel().rows}>
+                {(row) => (
+                  <TableRow
+                    data-state={row.getIsSelected() && "selected"}
+                    class="cursor-pointer"
+                    onClick={handleRowClick(row)}
+                  >
+                    <For each={row.getVisibleCells()}>
+                      {(cell) => (
+                        <TableCell>
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </TableCell>
+                      )}
+                    </For>
+                  </TableRow>
+                )}
+              </For>
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={local.columns.length}
+                  class="h-24 text-center"
+                >
+                  No results.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <Pagination
+        class="mt-2.5 w-full [&>ul]:justify-center"
+        itemComponent={(props) => (
+          <PaginationItem
+            page={props.page}
+            onClick={() => table.setPageIndex(props.page - 1)}
+          >
+            {props.page}
+          </PaginationItem>
+        )}
+        ellipsisComponent={() => <PaginationEllipsis />}
+        count={Math.ceil((local.data()?.length ?? 0) / pagination().pageSize)}
+      >
+        <PaginationPrevious
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+        />
+        <PaginationItems />
+        <PaginationNext
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+        />
+      </Pagination>
     </div>
   );
 }

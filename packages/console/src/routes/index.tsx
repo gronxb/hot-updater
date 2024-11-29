@@ -1,6 +1,15 @@
+import { SplashScreen } from "@/components/spash-screen";
+import {
+} from "@/components/ui/pagination";
 import { Sheet } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
-import { Suspense, createResource, createSignal } from "solid-js";
+import {
+  Show,
+  Suspense,
+  createResource,
+  createSignal,
+  useTransition,
+} from "solid-js";
 import { columns } from "./_components/columns";
 import { DataTable } from "./_components/data-table";
 import { EditBundleSheetContent } from "./_components/edit-bundle-sheet-content";
@@ -13,36 +22,40 @@ export default function Home() {
   const [selectedBundleId, setSelectedBundleId] = createSignal<string | null>(
     null,
   );
+  const [_, start] = useTransition();
 
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<SplashScreen />}>
       <main class="w-full space-y-2.5">
         <DataTable
           columns={columns}
           data={data}
           onRowClick={(row) => {
-            console.log(row);
-            setSelectedBundleId(row.id);
+            start(() => {
+              setSelectedBundleId(row.id);
+            });
           }}
         />
 
         <Sheet
           open={selectedBundleId() !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSelectedBundleId(null);
-            }
-          }}
+          onOpenChange={(open) =>
+            !open && start(() => setSelectedBundleId(null))
+          }
         >
-          {selectedBundleId() && (
-            <EditBundleSheetContent
-              bundleId={selectedBundleId()!}
-              onClose={() => {
-                setSelectedBundleId(null);
-                refetch();
-              }}
-            />
-          )}
+          <Show when={selectedBundleId()}>
+            <Suspense>
+              <EditBundleSheetContent
+                bundleId={selectedBundleId()!}
+                onClose={() =>
+                  start(() => {
+                    setSelectedBundleId(null);
+                    refetch();
+                  })
+                }
+              />
+            </Suspense>
+          </Show>
         </Sheet>
       </main>
     </Suspense>
