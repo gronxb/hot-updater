@@ -43,6 +43,14 @@ class HotUpdaterModule internal constructor(
         promise.resolve(isSuccess)
     }
 
+    override fun addListener(eventName: String?) {
+        // No-op
+    }
+
+    override fun removeListeners(count: Double) {
+        // No-op
+    }
+
     companion object {
         const val NAME = "HotUpdater"
     }
