@@ -51,11 +51,12 @@ export const deploy = async (options: DeployOptions) => {
 
     const hash = await getFileHashFromFile(bundlePath);
 
-    const deployPlugin = config.deploy({
+    const databasePlugin = config.database({
       cwd,
     });
 
-    const bundles = await deployPlugin.getBundles();
+
+    const bundles = await databasePlugin.getBundles();
     const targetVersions = filterTargetVersion(
       bundles ?? [],
       targetVersion,
@@ -74,9 +75,12 @@ export const deploy = async (options: DeployOptions) => {
     }
 
     s.message("Uploading bundle...");
-    const { file } = await deployPlugin.uploadBundle(bundleId, bundlePath);
+    const storagePlugin = config.storage({
+      cwd,
+    });
+    const { file } = await storagePlugin.uploadBundle(bundleId, bundlePath);
 
-    await deployPlugin.appendBundle({
+    await databasePlugin.appendBundle({
       forceUpdate: options.forceUpdate,
       platform: options.platform,
       file,
@@ -86,7 +90,7 @@ export const deploy = async (options: DeployOptions) => {
       id: bundleId,
       enabled: true,
     });
-    await deployPlugin.commitBundle();
+    await databasePlugin.commitBundle();
 
     await fs.rm(bundlePath);
     s.stop("Uploading Success !", 0);

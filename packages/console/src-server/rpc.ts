@@ -33,10 +33,10 @@ export const rpc = new Hono()
     if (!config) {
       config = await loadConfig();
     }
-    const deployPlugin = config?.deploy({
+    const databasePlugin = config?.database({
       cwd: getCwd(),
     });
-    const bundles = await deployPlugin?.getBundles();
+    const bundles = await databasePlugin?.getBundles();
     return c.json((bundles ?? []) satisfies Bundle[]);
   })
   .post(
@@ -47,10 +47,10 @@ export const rpc = new Hono()
       if (!config) {
         config = await loadConfig();
       }
-      const deployPlugin = config?.deploy({
+      const databasePlugin = config?.database({
         cwd: getCwd(),
       });
-      const bundles = await deployPlugin?.getBundles();
+      const bundles = await databasePlugin?.getBundles();
       const bundle = bundles?.find((bundle) => bundle.id === bundleId);
       return c.json((bundle ?? null) satisfies Bundle | null);
     },
@@ -69,11 +69,11 @@ export const rpc = new Hono()
       if (!config) {
         config = await loadConfig();
       }
-      const deployPlugin = config?.deploy({
+      const databasePlugin = config?.database({
         cwd: getCwd(),
       });
-      await deployPlugin?.updateBundle(targetBundleId, bundle);
-      await deployPlugin?.commitBundle();
+      await databasePlugin?.updateBundle(targetBundleId, bundle);
+      await databasePlugin?.commitBundle();
       return c.json(true);
     },
   );
