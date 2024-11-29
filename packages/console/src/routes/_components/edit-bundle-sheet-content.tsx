@@ -32,7 +32,7 @@ const EditBundleSheetForm = ({
 }: EditBundleSheetFormProps) => {
   const form = createForm(() => ({
     defaultValues: {
-      description: bundle.description,
+      message: bundle.message,
       targetVersion: bundle.targetVersion,
       enabled: bundle.enabled,
       forceUpdate: bundle.forceUpdate,
@@ -60,13 +60,13 @@ const EditBundleSheetForm = ({
     >
       <div>
         <TextField class="grid w-full max-w-sm items-center gap-1.5">
-          <TextFieldLabel for="description">Description</TextFieldLabel>
-          <form.Field name="description">
+          <TextFieldLabel for="message">Message</TextFieldLabel>
+          <form.Field name="message">
             {(field) => (
               <TextFieldInput
                 type="text"
-                id="description"
-                placeholder="Description"
+                id="message"
+                placeholder="Message"
                 name={field().name}
                 value={field().state.value}
                 onBlur={field().handleBlur}

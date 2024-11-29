@@ -16,7 +16,7 @@ const bundleSchema = v.object({
   enabled: v.boolean(),
   file: v.string(),
   hash: v.string(),
-  description: v.optional(v.string(), ""),
+  message: v.optional(v.string(), ""),
 });
 
 let config: Config | null = null;

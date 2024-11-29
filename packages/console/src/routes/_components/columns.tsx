@@ -53,8 +53,8 @@ export const columns: ColumnDef<Bundle>[] = [
       ),
   },
   {
-    accessorKey: "description",
-    header: "Description",
+    accessorKey: "message",
+    header: "Message",
     cell: (info) => info.getValue(),
   },
   {

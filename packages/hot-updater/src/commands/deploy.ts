@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
-import { intro, spinner, text } from "@clack/prompts";
+import { spinner } from "@clack/prompts";
 
 import { createZip } from "@/utils/createZip";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { type Platform, filterTargetVersion } from "@hot-updater/utils";
+import { getBranchName, getRecentCommitMessages } from "workspace-tools";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -22,11 +23,11 @@ export const deploy = async (options: DeployOptions) => {
       console.error("No config found. Please run `hot-updater init` first.");
       process.exit(1);
     }
-
-    intro("Please provide a description for the bundle.");
-    const description = await text({ message: "Description" });
-
     const cwd = getCwd();
+
+    const branch = getBranchName(cwd);
+    const message = branch ? getRecentCommitMessages(branch, cwd)[0] : void 0;
+
     const targetVersion =
       options.targetVersion ??
       (await getDefaultTargetVersion(cwd, options.platform));
@@ -81,7 +82,7 @@ export const deploy = async (options: DeployOptions) => {
       platform: options.platform,
       file,
       hash,
-      description: String(description),
+      message,
       targetVersion,
       id: bundleId,
       enabled: true,
