@@ -97,6 +97,8 @@ RCT_EXPORT_MODULE();
 
         NSFileManager *fileManager = [NSFileManager defaultManager];
         NSError *folderError;
+
+        // Ensure directory exists
         if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                     withIntermediateDirectories:YES
                                      attributes:nil
@@ -105,6 +107,17 @@ RCT_EXPORT_MODULE();
             success = NO;
             dispatch_semaphore_signal(semaphore);
             return;
+        }
+
+        // Check if file already exists and remove it
+        if ([fileManager fileExistsAtPath:path]) {
+            NSError *removeError;
+            if (![fileManager removeItemAtPath:path error:&removeError]) {
+                NSLog(@"Failed to remove existing file: %@", removeError);
+                success = NO;
+                dispatch_semaphore_signal(semaphore);
+                return;
+            }
         }
 
         NSError *moveError;
