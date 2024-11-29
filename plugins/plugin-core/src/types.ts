@@ -21,6 +21,10 @@ export interface DatabasePlugin {
   commitBundle: () => Promise<void>;
 }
 
+export interface DatabasePluginHooks {
+  onDatabaseUpdated?: () => Promise<void>;
+}
+
 export interface StoragePlugin {
   uploadBundle: (
     bundleId: string,
@@ -30,6 +34,10 @@ export interface StoragePlugin {
   }>;
 
   deleteBundle: (bundleId: string) => Promise<string>;
+}
+
+export interface StoragePluginHooks {
+  onStorageUploaded?: () => Promise<void>;
 }
 
 export type Config = {

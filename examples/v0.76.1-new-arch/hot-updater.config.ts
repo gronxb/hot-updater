@@ -17,6 +17,10 @@ export default defineConfig({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
     bucketName: process.env.AWS_S3_BUCKET_NAME!,
+  }, {
+    onStorageUploaded: async (bundle) => {
+      console.log("Storage Uploaded", bundle);
+    },
   }),
   database: s3Database({
     region: "ap-northeast-2",
@@ -25,5 +29,9 @@ export default defineConfig({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
     bucketName: process.env.AWS_S3_BUCKET_NAME!,
+  }, {
+    onDatabaseUpdated: async (bundle) => {
+      console.log("Database Updated", bundle);
+    }
   }),
 });

@@ -1,4 +1,3 @@
-
 import {
   GetObjectCommand,
   NoSuchKey,
@@ -10,6 +9,7 @@ import type {
   BasePluginArgs,
   Bundle,
   DatabasePlugin,
+  DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
 import mime from "mime";
 import { streamToString } from "./utils/streamToString";
@@ -20,7 +20,7 @@ export interface S3DatabaseConfig
 }
 
 export const s3Database =
-  (config: S3DatabaseConfig) =>
+  (config: S3DatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
@@ -55,6 +55,7 @@ export const s3Database =
           },
         });
         await upload.done();
+        hooks?.onDatabaseUpdated?.();
       },
       async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
         bundles = await this.getBundles();

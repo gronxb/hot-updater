@@ -55,7 +55,6 @@ export const deploy = async (options: DeployOptions) => {
       cwd,
     });
 
-
     const bundles = await databasePlugin.getBundles();
     const targetVersions = filterTargetVersion(
       bundles ?? [],

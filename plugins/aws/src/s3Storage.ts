@@ -9,6 +9,7 @@ import { Upload } from "@aws-sdk/lib-storage";
 import type {
   BasePluginArgs,
   StoragePlugin,
+  StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
@@ -19,7 +20,7 @@ export interface S3StorageConfig
 }
 
 export const s3Storage =
-  (config: S3StorageConfig) =>
+  (config: S3StorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
@@ -75,6 +76,7 @@ export const s3Storage =
           throw new Error("Upload Failed");
         }
 
+        hooks?.onStorageUploaded?.();
         return {
           file: response.Location,
         };
