@@ -1,6 +1,5 @@
 import { SplashScreen } from "@/components/spash-screen";
-import {
-} from "@/components/ui/pagination";
+import {} from "@/components/ui/pagination";
 import { Sheet } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
 import {

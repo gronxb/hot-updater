@@ -12,4 +12,4 @@ export const SplashScreen = () => {
       </div>
     </div>
   );
-}
+};
