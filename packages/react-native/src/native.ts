@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from "react-native";
+import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import { NIL_UUID } from "./const";
 
 const LINKING_ERROR =
@@ -11,11 +11,11 @@ const LINKING_ERROR =
 // @ts-expect-error
 const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
-export const HotUpdaterModule = isTurboModuleEnabled
+const HotUpdaterModule = isTurboModuleEnabled
   ? require("./specs/NativeHotUpdater").default
   : NativeModules.HotUpdater;
 
-const HotUpdater = HotUpdaterModule
+const HotUpdaterNative = HotUpdaterModule
   ? HotUpdaterModule
   : new Proxy(
       {},
@@ -25,6 +25,21 @@ const HotUpdater = HotUpdaterModule
         },
       },
     );
+
+export type HotUpdaterEvent = {
+  onProgress: {
+    progress: number;
+  };
+};
+
+export const addListener = <T extends keyof HotUpdaterEvent>(
+  eventName: T,
+  listener: (event: HotUpdaterEvent[T]) => void,
+) => {
+  const eventEmitter = new NativeEventEmitter(HotUpdaterNative);
+
+  eventEmitter?.addListener(eventName, listener);
+};
 
 /**
  * Fetches the current bundle version id.
@@ -47,19 +62,19 @@ export const updateBundle = (
   bundleId: string,
   zipUrl: string | null,
 ): Promise<boolean> => {
-  return HotUpdater.updateBundle(bundleId, zipUrl);
+  return HotUpdaterNative.updateBundle(bundleId, zipUrl);
 };
 
 /**
  * Fetches the current app version.
  */
 export const getAppVersion = (): Promise<string | null> => {
-  return HotUpdater.getAppVersion();
+  return HotUpdaterNative.getAppVersion();
 };
 
 /**
  * Reloads the app.
  */
 export const reload = () => {
-  HotUpdater.reload();
+  HotUpdaterNative.reload();
 };

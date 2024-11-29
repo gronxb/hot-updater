@@ -27,7 +27,8 @@
     "!**/.*"
   ],
   "scripts": {
-    "build": "bob build && tsup src/index.ts --format esm,cjs --dts",
+    "prepare": "bob build",
+    "build": "tsup src/index.ts --format esm,cjs --dts",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib"
@@ -78,7 +79,7 @@
     "del-cli": "^6.0.0",
     "react": "18.3.1",
     "react-native": "0.76.2",
-    "react-native-builder-bob": "^0.32.1"
+    "react-native-builder-bob": "^0.33.1"
   },
   "dependencies": {
     "@hot-updater/utils": "0.1.4"

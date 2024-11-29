@@ -43,13 +43,10 @@ const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
       ...process.env,
       HOT_UPDATER_BUNDLE_ID: bundleId,
     },
+    stdio: ["ignore", "ignore", "pipe"],
   });
 
   return new Promise<string>((resolve, reject) => {
-    bundle.stdout?.on("data", (data: Buffer) => {
-      log.normal(data.toString().trim());
-    });
-
     bundle.stderr?.on("data", (data: Buffer) => {
       log.error(data.toString().trim());
     });

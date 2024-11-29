@@ -30,9 +30,9 @@ export interface Bundle {
    */
   hash: string;
   /**
-   * The description of the bundle.
+   * The message of the bundle.
    */
-  description?: string;
+  message?: string;
 }
 
 export type BundleArg =
