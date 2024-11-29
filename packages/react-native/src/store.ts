@@ -1,6 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
-import { NativeEventEmitter } from "react-native";
-import { HotUpdaterModule } from "./native";
+import { useSyncExternalStore } from "react";
 
 export type HotUpdaterState = {
   progress: number;
@@ -42,17 +40,6 @@ const createHotUpdaterStore = () => {
 export const hotUpdaterStore = createHotUpdaterStore();
 
 export const useHotUpdaterStore = () => {
-  useEffect(() => {
-    const eventEmitter = new NativeEventEmitter(HotUpdaterModule);
-    const eventListener = eventEmitter.addListener(
-      "onProgress",
-      ({ progress }: { progress: number }) => {
-        hotUpdaterStore.setState({ progress });
-      },
-    );
-    return () => eventListener.remove();
-  }, []);
-
   return useSyncExternalStore(
     hotUpdaterStore.subscribe,
     hotUpdaterStore.getState,
