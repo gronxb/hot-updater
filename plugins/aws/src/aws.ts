@@ -8,11 +8,10 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import {
-  type BasePluginArgs,
-  type Bundle,
-  type DeployPlugin,
-  log,
+import type {
+  BasePluginArgs,
+  Bundle,
+  DeployPlugin,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
@@ -40,14 +39,11 @@ export const aws =
           });
           await client.send(command);
         } catch (e) {
-          if (e instanceof NoSuchKey) {
-            log.info("Creating new update.json");
-          } else {
+          if (!(e instanceof NoSuchKey)) {
             throw e;
           }
         }
 
-        log.info("Uploading update.json");
         const Key = "update.json";
         const Body = JSON.stringify(bundles);
         const ContentType = mime.getType(Key) ?? void 0;
@@ -85,8 +81,6 @@ export const aws =
         if (bundles.length > 0 && !refresh) {
           return bundles;
         }
-
-        log.info("Getting update.json");
 
         try {
           const command = new GetObjectCommand({
@@ -132,12 +126,9 @@ export const aws =
           return Key;
         }
 
-        log.error("Bundle Not Found");
         throw new Error("Bundle Not Found");
       },
       async uploadBundle(bundleId, bundlePath) {
-        log.info("Uploading Bundle");
-
         const Body = await fs.readFile(bundlePath);
         const ContentType = mime.getType(bundlePath) ?? void 0;
 
@@ -155,11 +146,9 @@ export const aws =
         });
         const response = await upload.done();
         if (!response.Location) {
-          log.error("Upload Failed");
           throw new Error("Upload Failed");
         }
 
-        log?.info(`Uploaded: ${Key}`);
         return {
           file: response.Location,
         };
