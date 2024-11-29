@@ -50,8 +50,7 @@ export const rpc = new Hono()
       const databasePlugin = config?.database({
         cwd: getCwd(),
       });
-      const bundles = await databasePlugin?.getBundles();
-      const bundle = bundles?.find((bundle) => bundle.id === bundleId);
+      const bundle = await databasePlugin?.getBundleById(bundleId);
       return c.json((bundle ?? null) satisfies Bundle | null);
     },
   )

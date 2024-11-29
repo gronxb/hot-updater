@@ -11,6 +11,7 @@ export interface BuildPluginArgs extends BasePluginArgs {
 }
 
 export interface DatabasePlugin {
+  getBundleById: (bundleId: string) => Promise<Bundle | null>;
   getBundles: (refresh?: boolean) => Promise<Bundle[]>;
   updateBundle: (
     targetBundleId: string,

@@ -5,8 +5,7 @@ import { createZip } from "@/utils/createZip";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommitMessage } from "@/utils/getLatestGitCommitMessage";
-import { getCwd, loadConfig } from "@hot-updater/plugin-core";
-import { type Platform, filterTargetVersion } from "@hot-updater/utils";
+import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 export interface DeployOptions {
   targetVersion?: string;
@@ -54,24 +53,6 @@ export const deploy = async (options: DeployOptions) => {
     const databasePlugin = config.database({
       cwd,
     });
-
-    const bundles = await databasePlugin.getBundles();
-    const targetVersions = filterTargetVersion(
-      bundles ?? [],
-      targetVersion,
-      options.platform,
-    );
-
-    // hash check
-    if (targetVersions.length > 0) {
-      const recentVersion = targetVersions[0];
-      const recentHash = recentVersion?.hash;
-
-      if (recentHash === hash) {
-        s.stop("The update already exists.", -1);
-        return;
-      }
-    }
 
     s.message("Uploading bundle...");
     const storagePlugin = config.storage({

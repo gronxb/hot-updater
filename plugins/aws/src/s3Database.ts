@@ -74,7 +74,10 @@ export const s3Database =
       async setBundles(inputBundles) {
         bundles = inputBundles;
       },
-
+      async getBundleById(bundleId) {
+        const bundles = await this.getBundles();
+        return bundles.find((bundle) => bundle.id === bundleId) ?? null;
+      },
       async getBundles(refresh = false) {
         if (bundles.length > 0 && !refresh) {
           return bundles;
