@@ -1,5 +1,7 @@
+import logo from "@/assets/logo.png";
+
 import { SplashScreen } from "@/components/spash-screen";
-import {} from "@/components/ui/pagination";
+
 import { Sheet } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
 import {
@@ -26,6 +28,18 @@ export default function Home() {
   return (
     <Suspense fallback={<SplashScreen />}>
       <main class="w-full space-y-2.5">
+        <div class="flex flex-row items-center gap-1">
+          <img src={logo} alt="Hot Updater Console" class="w-12 h-12" />
+          <a
+            href="https://github.com/gronxb/hot-updater"
+            target="_blank"
+            class="text-2xl font-light"
+            rel="noreferrer"
+          >
+            Hot Updater Console
+          </a>
+        </div>
+
         <DataTable
           columns={columns}
           data={data}

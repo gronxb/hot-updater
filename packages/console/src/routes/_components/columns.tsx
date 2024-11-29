@@ -13,7 +13,14 @@ export const columns: ColumnDef<Bundle>[] = [
   {
     accessorKey: "platform",
     header: "Platform",
-    cell: (info) => info.getValue(),
+    cell: (info) => {
+      switch (info.getValue()) {
+        case "ios":
+          return "iOS";
+        case "android":
+          return "Android";
+      }
+    },
   },
   {
     accessorKey: "targetVersion",
