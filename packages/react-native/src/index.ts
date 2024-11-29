@@ -14,7 +14,6 @@ addListener("onProgress", ({ progress }) => {
   hotUpdaterStore.setState({ progress });
 });
 
-
 export const HotUpdater = {
   init,
   reload,

@@ -76,16 +76,16 @@ RCT_EXPORT_MODULE();
         [self setBundleURL:nil];
         return YES;
     }
-
+    
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
-
+    
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
-
+    
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     __block BOOL success = NO;
-
+    
     NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
                                                         completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
@@ -94,10 +94,10 @@ RCT_EXPORT_MODULE();
             dispatch_semaphore_signal(semaphore);
             return;
         }
-
+        
         NSFileManager *fileManager = [NSFileManager defaultManager];
         NSError *folderError;
-
+        
         // Ensure directory exists
         if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                     withIntermediateDirectories:YES
@@ -108,7 +108,7 @@ RCT_EXPORT_MODULE();
             dispatch_semaphore_signal(semaphore);
             return;
         }
-
+        
         // Check if file already exists and remove it
         if ([fileManager fileExistsAtPath:path]) {
             NSError *removeError;
@@ -119,7 +119,7 @@ RCT_EXPORT_MODULE();
                 return;
             }
         }
-
+        
         NSError *moveError;
         if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:path] error:&moveError]) {
             NSLog(@"Failed to save data: %@", moveError);
@@ -127,7 +127,7 @@ RCT_EXPORT_MODULE();
             dispatch_semaphore_signal(semaphore);
             return;
         }
-
+        
         NSString *extractedPath = [path stringByDeletingLastPathComponent];
         if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
             NSLog(@"Failed to extract zip file.");
@@ -135,7 +135,7 @@ RCT_EXPORT_MODULE();
             dispatch_semaphore_signal(semaphore);
             return;
         }
-
+        
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
@@ -144,7 +144,7 @@ RCT_EXPORT_MODULE();
                 break;
             }
         }
-
+        
         if (filename) {
             NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
             NSLog(@"Setting bundle URL: %@", bundlePath);
@@ -154,10 +154,10 @@ RCT_EXPORT_MODULE();
             NSLog(@"index.ios.bundle not found.");
             success = NO;
         }
-
+        
         dispatch_semaphore_signal(semaphore);
     }];
-
+    
     // Add observer for progress updates
     [downloadTask addObserver:self
                    forKeyPath:@"countOfBytesReceived"
@@ -167,10 +167,10 @@ RCT_EXPORT_MODULE();
                    forKeyPath:@"countOfBytesExpectedToReceive"
                       options:NSKeyValueObservingOptionNew
                       context:nil];
-
+    
     [downloadTask resume];
     dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-
+    
     return success;
 }
 
@@ -182,10 +182,10 @@ RCT_EXPORT_MODULE();
                        context:(void *)context {
     if ([keyPath isEqualToString:@"countOfBytesReceived"] || [keyPath isEqualToString:@"countOfBytesExpectedToReceive"]) {
         NSURLSessionDownloadTask *task = (NSURLSessionDownloadTask *)object;
-
+        
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
-
+            
             // Send progress to React Native
             [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
         }
@@ -210,7 +210,7 @@ RCT_EXPORT_MODULE();
 
 
 - (void)sendEventWithName:(NSString * _Nonnull)name result:(NSDictionary *)result {
-  [self sendEventWithName:name body:result];
+    [self sendEventWithName:name body:result];
 }
 
 
@@ -224,7 +224,7 @@ RCT_EXPORT_METHOD(reload) {
 }
 
 RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve
-                         reject:(RCTPromiseRejectBlock)reject) {   
+                  reject:(RCTPromiseRejectBlock)reject) {
     NSString *version = [self getAppVersion];
     resolve(version ?: [NSNull null]);
 }
