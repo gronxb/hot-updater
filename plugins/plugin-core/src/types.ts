@@ -20,6 +20,8 @@ export interface DatabasePlugin {
   setBundles: (bundles: Bundle[]) => Promise<void>;
   appendBundle: (bundles: Bundle) => Promise<void>;
   commitBundle: () => Promise<void>;
+
+  onUnmount?: () => Promise<void>;
 }
 
 export interface DatabasePluginHooks {

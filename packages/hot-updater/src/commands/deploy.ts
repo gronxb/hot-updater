@@ -71,7 +71,7 @@ export const deploy = async (options: DeployOptions) => {
       enabled: true,
     });
     await databasePlugin.commitBundle();
-
+    await databasePlugin.onUnmount?.();
     await fs.rm(bundlePath);
     s.stop("Uploading Success !", 0);
   } catch (e) {
