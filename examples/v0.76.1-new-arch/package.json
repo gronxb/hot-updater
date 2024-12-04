@@ -19,6 +19,7 @@
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
     "@hot-updater/aws": "0.1.4",
+    "@hot-updater/postgres": "0.1.4",
     "@hot-updater/metro": "0.1.4",
     "@react-native-community/cli": "15.0.0",
     "@react-native-community/cli-platform-android": "15.0.0",

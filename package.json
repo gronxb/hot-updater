@@ -38,7 +38,7 @@
       "@hot-updater/aws": "workspace:*",
       "@hot-updater/metro": "workspace:*",
       "@hot-updater/react-native": "workspace:*",
-      "@hot-updater/react": "workspace:*"
+      "@hot-updater/postgres": "workspace:*"
     }
   },
   "packageManager": "pnpm@9.14.4"

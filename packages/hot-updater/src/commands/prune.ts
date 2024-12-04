@@ -33,6 +33,7 @@ export const prune = async () => {
 
     await databasePlugin.setBundles(activeBundles);
     await databasePlugin.commitBundle();
+    await databasePlugin.onUnmount?.();
 
     const storagePlugin = config.storage({
       cwd,
