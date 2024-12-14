@@ -36,7 +36,7 @@ const ensureBundles = async (bundle: BundleArg) => {
 };
 
 export const checkForUpdate = async (
-  bundles: BundleArg,
+  bundleArg: BundleArg,
 ): Promise<{
   id: string;
   forceUpdate: boolean;
@@ -44,13 +44,13 @@ export const checkForUpdate = async (
   hash: string | null;
   status: UpdateStatus;
 } | null> => {
-  const $bundles = await ensureBundles(bundles);
+  const bundles = await ensureBundles(bundleArg);
 
   const currentAppVersion = await getAppVersion();
   const platform = Platform.OS as "ios" | "android";
 
   const appVersionBundles = currentAppVersion
-    ? filterTargetVersion($bundles, currentAppVersion, platform)
+    ? filterTargetVersion(bundles, currentAppVersion, platform)
     : [];
   const currentBundleId = await getBundleId();
 
