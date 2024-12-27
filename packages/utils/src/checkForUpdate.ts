@@ -1,7 +1,7 @@
-import type { Bundle, Platform } from "@hot-updater/utils";
-import { filterAppVersion } from "@hot-updater/utils";
 import { checkForRollback } from "./checkForRollback";
-import { NIL_UUID } from "./const";
+import { filterAppVersion } from "./filterAppVersion";
+import type { Bundle, Platform } from "./types";
+import { NIL_UUID } from "./uuid";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 

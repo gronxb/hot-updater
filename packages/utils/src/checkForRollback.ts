@@ -1,6 +1,6 @@
-import type { Bundle } from "@hot-updater/utils";
-import { NIL_UUID } from "./const";
+import type { Bundle } from "./types";
 import { isNullable } from "./utils";
+import { NIL_UUID } from "./uuid";
 
 export const checkForRollback = (
   bundles: Bundle[],

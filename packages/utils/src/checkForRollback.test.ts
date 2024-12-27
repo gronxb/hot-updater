@@ -1,6 +1,6 @@
-import type { Bundle } from "@hot-updater/utils";
 import { describe, expect, it } from "vitest";
 import { checkForRollback } from "./checkForRollback";
+import type { Bundle } from "./types";
 
 const DEFAULT_BUNDLE = {
   file: "",

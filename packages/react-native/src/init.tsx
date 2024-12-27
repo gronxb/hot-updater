@@ -1,6 +1,6 @@
 import type { BundleArg } from "@hot-updater/utils";
+import { checkForUpdate } from "@hot-updater/utils";
 import { Platform } from "react-native";
-import { checkForUpdate } from "./checkForUpdate";
 import { ensureBundles } from "./ensureBundles";
 import { HotUpdaterError } from "./error";
 import { getAppVersion, getBundleId, reload, updateBundle } from "./native";
