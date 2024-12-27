@@ -1,3 +1,7 @@
+## 0.1.5 (2024-12-27)
+
+This was a version bump only, there were no code changes.
+
 ## 0.1.4 (2024-11-04)
 
 ### 🚀 Features

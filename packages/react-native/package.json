@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -82,6 +82,6 @@
     "react-native-builder-bob": "^0.33.1"
   },
   "dependencies": {
-    "@hot-updater/utils": "0.1.4"
+    "@hot-updater/utils": "0.1.5"
   }
 }
