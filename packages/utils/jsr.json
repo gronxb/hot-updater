@@ -1,6 +1,0 @@
-{
-  "name": "@hot-updater/utils",
-  "version": "0.1.4",
-  "license": "MIT",
-  "exports": "./src/index.ts"
-}

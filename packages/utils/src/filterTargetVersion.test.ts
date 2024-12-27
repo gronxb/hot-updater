@@ -97,7 +97,10 @@ describe("filterTargetVersion", () => {
   ];
 
   it("should return bundles matching the current version exactly", () => {
-    const result = filterTargetVersion(bundles, "1.2.3", "ios");
+    const result = filterTargetVersion(
+      bundles.filter((b) => b.platform === "ios"),
+      "1.2.3",
+    );
     expect(result).toEqual([
       {
         targetVersion: "1.2.3",
@@ -184,7 +187,10 @@ describe("filterTargetVersion", () => {
   });
 
   it("should return bundles matching a range", () => {
-    const result = filterTargetVersion(bundles, "1.2.4", "ios");
+    const result = filterTargetVersion(
+      bundles.filter((b) => b.platform === "ios"),
+      "1.2.4",
+    );
     expect(result).toEqual([
       {
         targetVersion: "*",
@@ -253,7 +259,10 @@ describe("filterTargetVersion", () => {
   });
 
   it("should return no bundles if the current version does not match", () => {
-    const result = filterTargetVersion(bundles, "2.0.0", "ios");
+    const result = filterTargetVersion(
+      bundles.filter((b) => b.platform === "ios"),
+      "2.0.0",
+    );
     expect(result).toEqual([
       {
         targetVersion: "*",
@@ -268,12 +277,18 @@ describe("filterTargetVersion", () => {
   });
 
   it("should handle invalid current version gracefully", () => {
-    const result = filterTargetVersion(bundles, "invalid.version", "ios");
+    const result = filterTargetVersion(
+      bundles.filter((b) => b.platform === "ios"),
+      "invalid.version",
+    );
     expect(result).toEqual([]);
   });
 
   it("should return bundles matching any version with wildcard", () => {
-    const result = filterTargetVersion(bundles, "1.3.0", "ios");
+    const result = filterTargetVersion(
+      bundles.filter((b) => b.platform === "ios"),
+      "1.3.0",
+    );
     expect(result).toEqual([
       {
         targetVersion: "*",
@@ -297,7 +312,10 @@ describe("filterTargetVersion", () => {
   });
 
   it("should sort the bundles by version correctly", () => {
-    const result = filterTargetVersion(bundles, "1.2.4", "ios");
+    const result = filterTargetVersion(
+      bundles.filter((b) => b.platform === "ios"),
+      "1.2.4",
+    );
     expect(result).toEqual([
       {
         targetVersion: "*",
@@ -491,9 +509,8 @@ describe("filterTargetVersion", () => {
           id: "00000000-0000-0000-0000-000000000004",
           enabled: true,
         },
-      ],
+      ].filter((b) => b.platform === "ios") as Bundle[],
       "1.0",
-      "ios",
     );
     expect(result).toEqual([
       {
@@ -562,9 +579,8 @@ describe("filterTargetVersion", () => {
           id: "00000000-0000-0000-0000-000000000004",
           enabled: true,
         },
-      ],
+      ].filter((b) => b.platform === "ios") as Bundle[],
       "1.x",
-      "ios",
     );
     expect(result).toEqual([
       {

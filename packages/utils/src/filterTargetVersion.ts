@@ -1,5 +1,5 @@
 import semver from "semver";
-import type { Bundle, Platform } from "./types";
+import type { Bundle } from "./types";
 
 /**
  *
@@ -21,24 +21,16 @@ import type { Bundle, Platform } from "./types";
 export const filterTargetVersion = (
   bundles: Bundle[],
   targetVersion: string,
-  platform?: Platform,
 ): Bundle[] => {
   // coerce currentVersion to a semver-compatible version
   const currentVersionCoerce = semver.coerce(targetVersion)?.version;
 
   // Filter bundles by platform and if currentVersion satisfies the targetVersion range
-  const filteredBundles = bundles
-    .filter((bundle) => {
-      if (platform) {
-        return bundle.platform === platform;
-      }
-      return true;
-    })
-    .filter(
-      (bundle) =>
-        targetVersion === "*" ||
-        semver.satisfies(currentVersionCoerce ?? "*", bundle.targetVersion),
-    );
+  const filteredBundles = bundles.filter(
+    (bundle) =>
+      targetVersion === "*" ||
+      semver.satisfies(currentVersionCoerce ?? "*", bundle.targetVersion),
+  );
 
   // Separate '*' versions from other versions
   const starVersions = filteredBundles.filter(
