@@ -1,9 +1,7 @@
-import type { Bundle, BundleArg } from "@hot-updater/utils";
-import { filterTargetVersion } from "@hot-updater/utils";
-import { Platform } from "react-native";
+import type { Bundle, BundleArg, Platform } from "@hot-updater/utils";
+import { filterAppVersion } from "@hot-updater/utils";
 import { checkForRollback } from "./checkForRollback";
 import { NIL_UUID } from "./const";
-import { getAppVersion, getBundleId } from "./native";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
@@ -35,8 +33,15 @@ const ensureBundles = async (bundle: BundleArg) => {
   }
 };
 
+export interface GetBundlesArgs {
+  platform: Platform;
+  bundleId: string;
+  appVersion: string;
+}
+
 export const checkForUpdate = async (
   bundleArg: BundleArg,
+  { platform, bundleId, appVersion }: GetBundlesArgs,
 ): Promise<{
   id: string;
   forceUpdate: boolean;
@@ -46,16 +51,15 @@ export const checkForUpdate = async (
 } | null> => {
   const bundles = await ensureBundles(bundleArg);
 
-  const currentAppVersion = await getAppVersion();
-  const platform = Platform.OS as "ios" | "android";
+  // const currentAppVersion = await getAppVersion();
+  // const platform = Platform.OS as "ios" | "android";
+  // const currentBundleId = await getBundleId();
 
   const platformBundles = bundles.filter((b) => b.platform === platform);
-  const appVersionBundles = currentAppVersion
-    ? filterTargetVersion(platformBundles, currentAppVersion)
-    : [];
-  const currentBundleId = await getBundleId();
 
-  const isRollback = checkForRollback(appVersionBundles, currentBundleId);
+  const appVersionBundles = filterAppVersion(platformBundles, appVersion);
+
+  const isRollback = checkForRollback(appVersionBundles, bundleId);
   const latestBundle = await findLatestBundles(appVersionBundles);
 
   if (!latestBundle) {
@@ -74,10 +78,10 @@ export const checkForUpdate = async (
 
   if (latestBundle.file)
     if (isRollback) {
-      if (latestBundle.id === currentBundleId) {
+      if (latestBundle.id === bundleId) {
         return null;
       }
-      if (latestBundle.id > currentBundleId) {
+      if (latestBundle.id > bundleId) {
         return {
           id: latestBundle.id,
           forceUpdate: latestBundle.forceUpdate,
@@ -95,7 +99,7 @@ export const checkForUpdate = async (
       };
     }
 
-  if (latestBundle.id.localeCompare(currentBundleId) > 0) {
+  if (latestBundle.id.localeCompare(bundleId) > 0) {
     return {
       id: latestBundle.id,
       forceUpdate: latestBundle.forceUpdate,

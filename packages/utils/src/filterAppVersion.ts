@@ -18,7 +18,7 @@ import type { Bundle } from "./types";
  * | ~1.2.3           | Equivalent to >=1.2.3 <1.3.0                                            |
  * | ^1.2.3           | Equivalent to >=1.2.3 <2.0.0                                            |
  */
-export const filterTargetVersion = (
+export const filterAppVersion = (
   bundles: Bundle[],
   targetVersion: string,
 ): Bundle[] => {

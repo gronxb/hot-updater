@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { filterTargetVersion } from "./filterTargetVersion";
+import { filterAppVersion } from "./filterAppVersion";
 import type { Bundle } from "./types";
 
-describe("filterTargetVersion", () => {
+describe("filterAppVersion", () => {
   const bundles: Bundle[] = [
     {
       targetVersion: "1.2.3",
@@ -97,7 +97,7 @@ describe("filterTargetVersion", () => {
   ];
 
   it("should return bundles matching the current version exactly", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       bundles.filter((b) => b.platform === "ios"),
       "1.2.3",
     );
@@ -187,7 +187,7 @@ describe("filterTargetVersion", () => {
   });
 
   it("should return bundles matching a range", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       bundles.filter((b) => b.platform === "ios"),
       "1.2.4",
     );
@@ -259,7 +259,7 @@ describe("filterTargetVersion", () => {
   });
 
   it("should return no bundles if the current version does not match", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       bundles.filter((b) => b.platform === "ios"),
       "2.0.0",
     );
@@ -277,7 +277,7 @@ describe("filterTargetVersion", () => {
   });
 
   it("should handle invalid current version gracefully", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       bundles.filter((b) => b.platform === "ios"),
       "invalid.version",
     );
@@ -285,7 +285,7 @@ describe("filterTargetVersion", () => {
   });
 
   it("should return bundles matching any version with wildcard", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       bundles.filter((b) => b.platform === "ios"),
       "1.3.0",
     );
@@ -312,7 +312,7 @@ describe("filterTargetVersion", () => {
   });
 
   it("should sort the bundles by version correctly", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       bundles.filter((b) => b.platform === "ios"),
       "1.2.4",
     );
@@ -384,7 +384,7 @@ describe("filterTargetVersion", () => {
   });
 
   it("should sort the bundles by version correctly", () => {
-    const result = filterTargetVersion(bundles, "1.2.4");
+    const result = filterAppVersion(bundles, "1.2.4");
     expect(result).toEqual([
       {
         targetVersion: "*",
@@ -462,12 +462,12 @@ describe("filterTargetVersion", () => {
   });
 
   it("should return all bundles if targetVersion is *", () => {
-    const result = filterTargetVersion(bundles, "*");
+    const result = filterAppVersion(bundles, "*");
     expect(result).toEqual(bundles);
   });
 
   it("should prioritize platform bundles", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       [
         {
           forceUpdate: false,
@@ -537,7 +537,7 @@ describe("filterTargetVersion", () => {
   });
 
   it("should prioritize platform bundles", () => {
-    const result = filterTargetVersion(
+    const result = filterAppVersion(
       [
         {
           forceUpdate: false,

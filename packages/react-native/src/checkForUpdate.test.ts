@@ -1,30 +1,17 @@
 import type { Bundle } from "@hot-updater/utils";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { checkForUpdate } from "./checkForUpdate";
 import { NIL_UUID } from "./const";
-import * as natives from "./native";
-
-vi.mock("./native", () => ({
-  getAppVersion: async () => "1.0",
-  getBundleId: () => "00000000-0000-0000-0000-000000000001",
-}));
-
-vi.mock("react-native", () => ({
-  Platform: {
-    OS: "ios",
-  },
-}));
 
 describe("appVersion 1.0, bundleId null", async () => {
-  beforeAll(() => {
-    vi.spyOn(natives, "getAppVersion").mockImplementation(async () => "1.0");
-    vi.spyOn(natives, "getBundleId").mockImplementation(() => NIL_UUID);
-  });
-
   it("should return null if no update information is available", async () => {
     const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toBeNull();
   });
 
@@ -41,7 +28,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toBeNull();
   });
 
@@ -67,7 +58,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000002",
       forceUpdate: false,
@@ -89,7 +84,11 @@ describe("appVersion 1.0, bundleId null", async () => {
         hash: "hash",
       },
     ];
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
 
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
@@ -113,7 +112,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -136,7 +139,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       id: "5",
       forceUpdate: false,
@@ -168,7 +175,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -200,7 +211,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toBeNull();
   });
 
@@ -226,7 +241,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toStrictEqual(null);
   });
 
@@ -244,7 +263,11 @@ describe("appVersion 1.0, bundleId null", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       id: "20240722210327",
       forceUpdate: false,
@@ -256,17 +279,14 @@ describe("appVersion 1.0, bundleId null", async () => {
 });
 
 describe("appVersion 1.0, bundleId v2", async () => {
-  beforeAll(() => {
-    vi.spyOn(natives, "getAppVersion").mockImplementation(async () => "1.0");
-    vi.spyOn(natives, "getBundleId").mockImplementation(
-      () => "00000000-0000-0000-0000-000000000002",
-    );
-  });
-
   it("should return null if no update information is available", async () => {
     const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: null,
       hash: null,
@@ -298,7 +318,11 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toBeNull();
   });
 
@@ -315,7 +339,11 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -356,7 +384,11 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -415,7 +447,11 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -456,7 +492,11 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toBeNull();
   });
 
@@ -482,7 +522,11 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: "http://example.com/bundle.zip",
       hash: "hash",
@@ -514,7 +558,11 @@ describe("appVersion 1.0, bundleId v2", async () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles);
+    const update = await checkForUpdate(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
       file: null,
       hash: null,
