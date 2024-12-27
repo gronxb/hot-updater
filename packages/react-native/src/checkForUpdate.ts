@@ -1,4 +1,4 @@
-import type { Bundle, BundleArg, Platform } from "@hot-updater/utils";
+import type { Bundle, Platform } from "@hot-updater/utils";
 import { filterAppVersion } from "@hot-updater/utils";
 import { checkForRollback } from "./checkForRollback";
 import { NIL_UUID } from "./const";
@@ -13,48 +13,24 @@ const findLatestBundles = (bundles: Bundle[]) => {
   );
 };
 
-const ensureBundles = async (bundle: BundleArg) => {
-  try {
-    let bundles: Bundle[] | null = null;
-    if (typeof bundle === "string") {
-      if (bundle.startsWith("http")) {
-        const response = await fetch(bundle);
-        bundles = (await response.json()) as Bundle[];
-      }
-    } else if (typeof bundle === "function") {
-      bundles = await bundle();
-    } else {
-      bundles = bundle;
-    }
-
-    return bundles ?? [];
-  } catch {
-    return [];
-  }
-};
-
 export interface GetBundlesArgs {
   platform: Platform;
   bundleId: string;
   appVersion: string;
 }
 
-export const checkForUpdate = async (
-  bundleArg: BundleArg,
-  { platform, bundleId, appVersion }: GetBundlesArgs,
-): Promise<{
+export interface BundleUpdateInfo {
   id: string;
   forceUpdate: boolean;
   file: string | null;
   hash: string | null;
   status: UpdateStatus;
-} | null> => {
-  const bundles = await ensureBundles(bundleArg);
+}
 
-  // const currentAppVersion = await getAppVersion();
-  // const platform = Platform.OS as "ios" | "android";
-  // const currentBundleId = await getBundleId();
-
+export const checkForUpdate = async (
+  bundles: Bundle[],
+  { platform, bundleId, appVersion }: GetBundlesArgs,
+): Promise<BundleUpdateInfo | null> => {
   const platformBundles = bundles.filter((b) => b.platform === platform);
 
   const appVersionBundles = filterAppVersion(platformBundles, appVersion);

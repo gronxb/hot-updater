@@ -1,6 +1,7 @@
 import type { BundleArg } from "@hot-updater/utils";
 import { Platform } from "react-native";
 import { checkForUpdate } from "./checkForUpdate";
+import { ensureBundles } from "./ensureBundles";
 import { HotUpdaterError } from "./error";
 import { getAppVersion, getBundleId, reload, updateBundle } from "./native";
 
@@ -39,7 +40,9 @@ export const init = async (config: HotUpdaterInitConfig) => {
     throw error;
   }
 
-  const update = await checkForUpdate(config.source, {
+  const bundles = await ensureBundles(config.source);
+
+  const update = await checkForUpdate(bundles, {
     appVersion: currentAppVersion,
     bundleId: currentBundleId,
     platform,
