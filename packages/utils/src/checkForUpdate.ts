@@ -57,7 +57,7 @@ export const checkForUpdate = async (
       if (latestBundle.id === bundleId) {
         return null;
       }
-      if (latestBundle.id > bundleId) {
+      if (latestBundle.id.localeCompare(bundleId) > 0) {
         return {
           id: latestBundle.id,
           forceUpdate: latestBundle.forceUpdate,
