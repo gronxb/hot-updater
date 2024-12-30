@@ -8,6 +8,7 @@ import type {
 export const ensureBundles = async (
   bundle: BundleArg,
   { appVersion, bundleId, platform }: GetBundlesArgs,
+  requestHeaders?: Record<string, string>,
 ): Promise<Bundle[] | UpdateInfo> => {
   try {
     let bundles: Bundle[] | null = null;
@@ -18,6 +19,7 @@ export const ensureBundles = async (
             "x-app-platform": platform,
             "x-app-version": appVersion,
             "x-bundle-id": bundleId,
+            ...requestHeaders,
           },
         }).then((res) => res.json());
       }

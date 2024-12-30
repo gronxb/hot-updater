@@ -14,8 +14,7 @@ import type {
 import fs from "fs/promises";
 import mime from "mime";
 
-export interface S3StorageConfig
-  extends Pick<S3ClientConfig, "credentials" | "region"> {
+export interface S3StorageConfig extends S3ClientConfig {
   bucketName: string;
 }
 

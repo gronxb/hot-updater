@@ -9,6 +9,7 @@ export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 
 export interface HotUpdaterInitConfig {
   source: BundleArg;
+  requestHeaders?: Record<string, string>;
   onSuccess?: (status: HotUpdaterStatus) => void;
   onError?: (error: HotUpdaterError) => void;
 }
@@ -40,11 +41,15 @@ export const init = async (config: HotUpdaterInitConfig) => {
     throw error;
   }
 
-  const bundles = await ensureBundles(config.source, {
-    appVersion: currentAppVersion,
-    bundleId: currentBundleId,
-    platform,
-  });
+  const bundles = await ensureBundles(
+    config.source,
+    {
+      appVersion: currentAppVersion,
+      bundleId: currentBundleId,
+      platform,
+    },
+    config.requestHeaders,
+  );
 
   let updateInfo: UpdateInfo | null = null;
   if (Array.isArray(bundles)) {
