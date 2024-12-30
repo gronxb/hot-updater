@@ -21,7 +21,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --external react-native",
+    "build": "rslib build",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {

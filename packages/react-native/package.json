@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "prepare": "bob build",
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "rslib build",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib"

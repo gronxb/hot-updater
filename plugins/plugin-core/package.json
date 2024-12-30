@@ -29,7 +29,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "rslib build",
     "test:type": "tsc --noEmit"
   },
   "repository": "https://github.com/gronxb/hot-updater",

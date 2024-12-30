@@ -46,7 +46,6 @@
     "semver": "^7.6.3"
   },
   "devDependencies": {
-    "@rslib/core": "^0.2.2",
     "@types/node": "^20.9.4",
     "@types/semver": "^7.5.8"
   }

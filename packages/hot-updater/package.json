@@ -38,7 +38,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/config.ts src/plugins/babel.ts --format esm,cjs --dts --shims",
+    "build": "rslib build",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {

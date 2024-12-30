@@ -8,15 +8,16 @@
   ],
   "main": "dist/index.cjs",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/src-server/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/src-server/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
   "scripts": {
-    "build": "rsbuild build && tsup src-server/index.ts --format esm,cjs --dts --shims",
+    "build": "rsbuild build && rslib build",
     "check": "biome check --write",
     "dev": "rsbuild dev --open",
     "format": "biome format --write",
