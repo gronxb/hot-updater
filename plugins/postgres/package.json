@@ -18,6 +18,7 @@
   },
   "files": [
     "dist",
+    "sql",
     "package.json"
   ],
   "scripts": {

@@ -1,5 +1,5 @@
+import { NIL_UUID } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
-import { NIL_UUID } from "./const";
 import { ensureBundles } from "./ensureBundles";
 import { init } from "./init";
 import {

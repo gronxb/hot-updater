@@ -1,5 +1,5 @@
+import { NIL_UUID } from "@hot-updater/core";
 import { NativeEventEmitter, NativeModules, Platform } from "react-native";
-import { NIL_UUID } from "./const";
 
 const LINKING_ERROR =
   // biome-ignore lint/style/useTemplate: <explanation>
