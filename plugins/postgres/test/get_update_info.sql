@@ -20,7 +20,7 @@ BEGIN
     WITH rollback_candidate AS (
         SELECT
             b.id,
-            -- status가 'ROLLBACK'이면 force_update는 무조건 TRUE
+            -- If status is 'ROLLBACK', force_update is always TRUE
             TRUE AS force_update,
             b.file_url,
             b.file_hash,
@@ -62,13 +62,13 @@ BEGIN
 
     UNION ALL
     /*
-      최종 결과가 0개이고, current_bundle_id != NIL_UUID일 때
-      fallback row를 1개 추가.
-      이 fallback row도 ROLLBACK 이므로 forceUpdate = TRUE.
+      When there are no final results and current_bundle_id != NIL_UUID,
+      add one fallback row.
+      This fallback row is also ROLLBACK so forceUpdate = TRUE.
     */
     SELECT
         NIL_UUID      AS id,
-        TRUE          AS force_update,  -- 무조건 TRUE
+        TRUE          AS force_update,  -- Always TRUE
         NULL          AS file_url,
         NULL          AS file_hash,
         'ROLLBACK'    AS status
