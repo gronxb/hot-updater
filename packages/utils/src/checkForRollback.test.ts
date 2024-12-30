@@ -3,10 +3,12 @@ import { checkForRollback } from "./checkForRollback";
 import type { Bundle } from "./types";
 
 const DEFAULT_BUNDLE = {
-  file: "",
-  hash: "",
+  fileUrl: "",
+  fileHash: "",
   forceUpdate: false,
   platform: "ios",
+  gitCommitHash: null,
+  message: null,
   targetVersion: "1.0",
 } as const;
 

@@ -22,8 +22,8 @@ export interface GetBundlesArgs {
 export interface BundleUpdateInfo {
   id: string;
   forceUpdate: boolean;
-  file: string | null;
-  hash: string | null;
+  fileUrl: string | null;
+  fileHash: string | null;
   status: UpdateStatus;
 }
 
@@ -43,8 +43,8 @@ export const checkForUpdate = async (
       return {
         id: NIL_UUID,
         forceUpdate: true,
-        file: null,
-        hash: null,
+        fileUrl: null,
+        fileHash: null,
         status: "ROLLBACK" as UpdateStatus,
       };
     }
@@ -52,7 +52,7 @@ export const checkForUpdate = async (
     return null;
   }
 
-  if (latestBundle.file)
+  if (latestBundle.fileUrl)
     if (isRollback) {
       if (latestBundle.id === bundleId) {
         return null;
@@ -61,16 +61,16 @@ export const checkForUpdate = async (
         return {
           id: latestBundle.id,
           forceUpdate: latestBundle.forceUpdate,
-          file: latestBundle.file,
-          hash: latestBundle.hash,
+          fileUrl: latestBundle.fileUrl,
+          fileHash: latestBundle.fileHash,
           status: "UPDATE" as UpdateStatus,
         };
       }
       return {
         id: latestBundle.id,
         forceUpdate: true,
-        file: latestBundle.file,
-        hash: latestBundle.hash,
+        fileUrl: latestBundle.fileUrl,
+        fileHash: latestBundle.fileHash,
         status: "ROLLBACK" as UpdateStatus,
       };
     }
@@ -79,8 +79,8 @@ export const checkForUpdate = async (
     return {
       id: latestBundle.id,
       forceUpdate: latestBundle.forceUpdate,
-      file: latestBundle.file,
-      hash: latestBundle.hash,
+      fileUrl: latestBundle.fileUrl,
+      fileHash: latestBundle.fileHash,
       status: "UPDATE" as UpdateStatus,
     };
   }

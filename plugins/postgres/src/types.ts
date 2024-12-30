@@ -2,9 +2,10 @@ export type Platforms = "android" | "ios";
 
 export interface BundlesTable {
   enabled: boolean;
-  file: string;
   force_update: boolean;
-  hash: string;
+  file_url: string;
+  file_hash: string;
+  git_commit_hash: string | null;
   id: string;
   message: string | null;
   platform: Platforms;

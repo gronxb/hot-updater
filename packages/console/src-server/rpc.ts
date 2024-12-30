@@ -8,15 +8,16 @@ import {
 import { Hono } from "hono";
 import * as v from "valibot";
 
-const bundleSchema = v.object({
+export const bundleSchema = v.object({
   platform: v.union([v.literal("ios"), v.literal("android")]),
   targetVersion: v.string(),
   id: v.string(),
   forceUpdate: v.boolean(),
   enabled: v.boolean(),
-  file: v.string(),
-  hash: v.string(),
-  message: v.optional(v.string(), ""),
+  fileUrl: v.string(),
+  fileHash: v.string(),
+  gitCommitHash: v.nullable(v.string()),
+  message: v.nullable(v.string()),
 });
 
 let config: Config | null = null;

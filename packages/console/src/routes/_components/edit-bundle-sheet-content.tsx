@@ -36,7 +36,7 @@ const EditBundleSheetForm = ({
       targetVersion: bundle.targetVersion,
       enabled: bundle.enabled,
       forceUpdate: bundle.forceUpdate,
-    },
+    } as Partial<Bundle>,
     onSubmit: async ({ value }) => {
       // Do something with form data
       await api.updateBundle.$post({
@@ -68,7 +68,7 @@ const EditBundleSheetForm = ({
                 id="message"
                 placeholder="Message"
                 name={field().name}
-                value={field().state.value}
+                value={field().state.value ?? ""}
                 onBlur={field().handleBlur}
                 onInput={(e) => field().handleChange(e.currentTarget.value)}
               />
@@ -87,7 +87,7 @@ const EditBundleSheetForm = ({
                 id="targetVersion"
                 placeholder="Target Version"
                 name={field().name}
-                value={field().state.value}
+                value={field().state.value ?? ""}
                 onBlur={field().handleBlur}
                 onInput={(e) => field().handleChange(e.currentTarget.value)}
               />
