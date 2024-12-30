@@ -30,6 +30,8 @@
     "pg": "^8.13.1"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.10"
+    "@electric-sql/pglite": "^0.2.15",
+    "@types/pg": "^8.11.10",
+    "camelcase-keys": "^9.1.3"
   }
 }

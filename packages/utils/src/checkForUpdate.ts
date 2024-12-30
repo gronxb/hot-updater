@@ -32,7 +32,6 @@ export const checkForUpdate = async (
   { platform, bundleId, appVersion }: GetBundlesArgs,
 ): Promise<BundleUpdateInfo | null> => {
   const platformBundles = bundles.filter((b) => b.platform === platform);
-
   const appVersionBundles = filterAppVersion(platformBundles, appVersion);
 
   const isRollback = checkForRollback(appVersionBundles, bundleId);
