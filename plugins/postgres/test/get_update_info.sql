@@ -58,7 +58,7 @@ BEGIN
         WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
     )
     SELECT *
-    FROM final_result
+    FROM final_result WHERE final_result.id != current_bundle_id
 
     UNION ALL
     /*
