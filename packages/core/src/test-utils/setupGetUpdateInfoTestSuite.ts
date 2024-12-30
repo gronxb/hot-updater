@@ -18,6 +18,32 @@ export const setupGetUpdateInfoTestSuite = ({
     options: GetBundlesArgs,
   ) => Promise<UpdateInfo | null>;
 }) => {
+  it("applies an update when a '*' bundle is available", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetVersion: "*",
+        forceUpdate: false,
+        enabled: true,
+        id: "00000000-0000-0000-0000-000000000001",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
+
+    expect(update).toStrictEqual({
+      id: "00000000-0000-0000-0000-000000000001",
+      fileUrl: "http://example.com/bundle.zip",
+      fileHash: "hash",
+      forceUpdate: false,
+      status: "UPDATE",
+    });
+  });
+
   it("returns null when no bundles are provided", async () => {
     const bundles: Bundle[] = [];
 
