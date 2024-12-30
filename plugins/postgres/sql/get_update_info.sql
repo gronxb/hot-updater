@@ -1,7 +1,7 @@
 CREATE OR REPLACE FUNCTION get_update_info (
-    current_platform   platforms,
-    current_app_version text,
-    current_bundle_id  uuid
+    app_platform   platforms,
+    app_version text,
+    bundle_id  uuid
 )
 RETURNS TABLE (
     id            uuid,
@@ -27,8 +27,8 @@ BEGIN
             'ROLLBACK' AS status
         FROM bundles b
         WHERE b.enabled = TRUE
-          AND b.platform = current_platform
-          AND b.id < current_bundle_id
+          AND b.platform = app_platform
+          AND b.id < bundle_id
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -41,9 +41,9 @@ BEGIN
             'UPDATE' AS status
         FROM bundles b
         WHERE b.enabled = TRUE
-          AND b.platform = current_platform
-          AND b.id >= current_bundle_id
-          AND semver_satisfies(b.target_version, current_app_version)
+          AND b.platform = app_platform
+          AND b.id >= bundle_id
+          AND semver_satisfies(b.target_version, app_version)
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -58,11 +58,11 @@ BEGIN
         WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
     )
     SELECT *
-    FROM final_result WHERE final_result.id != current_bundle_id
+    FROM final_result WHERE final_result.id != bundle_id
 
     UNION ALL
     /*
-      When there are no final results and current_bundle_id != NIL_UUID,
+      When there are no final results and bundle_id != NIL_UUID,
       add one fallback row.
       This fallback row is also ROLLBACK so forceUpdate = TRUE.
     */
@@ -73,7 +73,7 @@ BEGIN
         NULL          AS file_hash,
         'ROLLBACK'    AS status
     WHERE (SELECT COUNT(*) FROM final_result) = 0
-      AND current_bundle_id != NIL_UUID;
+      AND bundle_id != NIL_UUID;
 
 END;
 $$;
