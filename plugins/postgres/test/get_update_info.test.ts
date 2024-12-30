@@ -51,7 +51,6 @@ const createCheckForUpdate =
     const result = await db.query<{
       id: string;
       force_update: boolean;
-      enabled: boolean;
       file_url: string;
       file_hash: string;
       status: string;
@@ -85,7 +84,6 @@ describe("get_update_info", () => {
   afterAll(async () => {
     await db.close();
   });
-
   it("should return null if no update information is available", async () => {
     const bundles: Bundle[] = [];
 
@@ -205,7 +203,7 @@ describe("get_update_info", () => {
         targetVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "5",
+        id: "00000000-0000-0000-0000-000000000005",
       },
     ];
 
@@ -215,7 +213,8 @@ describe("get_update_info", () => {
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      id: "5",
+      id: "00000000-0000-0000-0000-000000000005",
+
       forceUpdate: false,
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
@@ -317,7 +316,7 @@ describe("get_update_info", () => {
           "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
         message: "",
         targetVersion: "1.0",
-        id: "20240722210327",
+        id: "00000000-0000-0000-0000-000000000001",
         enabled: true,
       },
     ];
@@ -328,7 +327,7 @@ describe("get_update_info", () => {
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      id: "20240722210327",
+      id: "00000000-0000-0000-0000-000000000001",
       forceUpdate: false,
       status: "UPDATE",
       fileUrl: "20240722210327/build.zip",
@@ -412,7 +411,7 @@ describe("get_update_info", () => {
         targetVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "3",
+        id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
@@ -438,7 +437,7 @@ describe("get_update_info", () => {
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
-      id: "3",
+      id: "00000000-0000-0000-0000-000000000003",
       forceUpdate: false,
       status: "UPDATE",
     });
@@ -451,14 +450,14 @@ describe("get_update_info", () => {
         targetVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "5", // Higher than the current version
+        id: "00000000-0000-0000-0000-000000000005", // Higher than the current version
       },
       {
         ...DEFAULT_BUNDLE,
         targetVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "4",
+        id: "00000000-0000-0000-0000-000000000004",
       },
       {
         ...DEFAULT_BUNDLE,
@@ -466,7 +465,7 @@ describe("get_update_info", () => {
         targetVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "3",
+        id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
@@ -492,7 +491,7 @@ describe("get_update_info", () => {
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
-      id: "5",
+      id: "00000000-0000-0000-0000-000000000005",
       forceUpdate: false,
       status: "UPDATE",
     });
@@ -505,7 +504,7 @@ describe("get_update_info", () => {
         targetVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
-        id: "3",
+        id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
