@@ -26,7 +26,7 @@ export default defineConfig({
     },
     {
       transformFileUrl: (key) => {
-        return `${process.env.AWS_ENDPOINT!}/storage/v1/object/public/${process.env.AWS_S3_BUCKET_NAME!}/${key}`;
+        return `${process.env.AWS_PUBLIC_URL!}/${key}`;
       },
     },
   ),
