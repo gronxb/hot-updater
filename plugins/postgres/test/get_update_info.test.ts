@@ -59,7 +59,7 @@ const sql = await prepareSql();
 await db.exec(sql);
 const getUpdateInfo = createGetUpdateInfo(db);
 
-describe("get_update_info", () => {
+describe("getUpdateInfo", () => {
   beforeEach(async () => {
     await db.exec("DELETE FROM bundles");
   });

@@ -1,8 +1,7 @@
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
-
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+import { NIL_UUID } from "@hot-updater/core";
 
 export default function replaceHotUpdaterBundleId(): PluginObj {
   const bundleId = process.env["HOT_UPDATER_BUNDLE_ID"] ?? NIL_UUID;

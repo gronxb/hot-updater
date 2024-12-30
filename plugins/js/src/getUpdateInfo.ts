@@ -1,12 +1,12 @@
-import type {
-  Bundle,
-  GetBundlesArgs,
-  UpdateInfo,
-  UpdateStatus,
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+  type UpdateStatus,
 } from "@hot-updater/core";
 import { checkForRollback } from "./checkForRollback";
-import { filterAppVersion } from "./filterAppVersion";
-import { NIL_UUID } from "./uuid";
+import { semverSatisfies } from "./semverSatisfies";
 
 const findLatestBundles = (bundles: Bundle[]) => {
   return (
@@ -20,11 +20,13 @@ export const getUpdateInfo = async (
   bundles: Bundle[],
   { platform, bundleId, appVersion }: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
-  const platformBundles = bundles.filter((b) => b.platform === platform);
-  const appVersionBundles = filterAppVersion(platformBundles, appVersion);
+  const filteredBundles = bundles.filter(
+    (b) =>
+      b.platform === platform && semverSatisfies(b.targetVersion, appVersion),
+  );
 
-  const isRollback = checkForRollback(appVersionBundles, bundleId);
-  const latestBundle = await findLatestBundles(appVersionBundles);
+  const isRollback = checkForRollback(filteredBundles, bundleId);
+  const latestBundle = await findLatestBundles(filteredBundles);
 
   if (!latestBundle) {
     if (isRollback) {
