@@ -1,4 +1,4 @@
-import type { Bundle } from "./types";
+import type { Bundle } from "@hot-updater/core";
 import { isNullable } from "./utils";
 import { NIL_UUID } from "./uuid";
 

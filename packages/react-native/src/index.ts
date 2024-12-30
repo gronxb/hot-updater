@@ -1,4 +1,4 @@
-import { getUpdateInfo } from "@hot-updater/utils";
+import { getUpdateInfo } from "@hot-updater/js";
 import { NIL_UUID } from "./const";
 import { ensureBundles } from "./ensureBundles";
 import { init } from "./init";

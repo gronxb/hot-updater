@@ -55,6 +55,6 @@
   },
   "dependencies": {
     "@hot-updater/plugin-core": "0.1.5",
-    "@hot-updater/utils": "0.1.5"
+    "@hot-updater/core": "0.1.5"
   }
 }

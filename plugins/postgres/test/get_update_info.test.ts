@@ -1,8 +1,8 @@
 import { PGlite } from "@electric-sql/pglite";
+import type { Bundle } from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
 import camelcaseKeys from "camelcase-keys";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Bundle } from "../../../packages/utils/src/types";
-import { NIL_UUID } from "../../../packages/utils/src/uuid";
 import { prepareSql } from "./prepareSql";
 
 const DEFAULT_BUNDLE = {

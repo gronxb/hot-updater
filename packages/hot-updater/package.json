@@ -46,7 +46,7 @@
     "@hono/node-server": "^1.13.4",
     "@hot-updater/console": "0.1.5",
     "@hot-updater/plugin-core": "0.1.5",
-    "@hot-updater/utils": "0.1.5",
+    "@hot-updater/core": "0.1.5",
     "boxen": "^8.0.1",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",

@@ -1,6 +1,6 @@
+import type { Bundle, Platform } from "@hot-updater/core";
 import { checkForRollback } from "./checkForRollback";
 import { filterAppVersion } from "./filterAppVersion";
-import type { Bundle, Platform } from "./types";
 import { NIL_UUID } from "./uuid";
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";

@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/utils";
+import type { Bundle } from "@hot-updater/core";
 import type * as v from "valibot";
 import { describe, expectTypeOf, it } from "vitest";
 import type { bundleSchema } from "./rpc";

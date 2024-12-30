@@ -1,5 +1,5 @@
+import type { Bundle } from "@hot-updater/core";
 import semver from "semver";
-import type { Bundle } from "./types";
 
 /**
  *

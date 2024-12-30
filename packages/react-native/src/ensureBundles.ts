@@ -1,4 +1,4 @@
-import type { Bundle, BundleArg } from "@hot-updater/utils";
+import type { Bundle, BundleArg } from "@hot-updater/core";
 
 export const ensureBundles = async (bundle: BundleArg) => {
   try {

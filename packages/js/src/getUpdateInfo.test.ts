@@ -1,6 +1,6 @@
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 import { getUpdateInfo } from "./getUpdateInfo";
-import type { Bundle } from "./types";
 import { NIL_UUID } from "./uuid";
 
 const DEFAULT_BUNDLE = {

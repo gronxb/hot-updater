@@ -1,5 +1,5 @@
-import type { BundleArg } from "@hot-updater/utils";
-import { getUpdateInfo } from "@hot-updater/utils";
+import type { BundleArg } from "@hot-updater/core";
+import { getUpdateInfo } from "@hot-updater/js";
 import { Platform } from "react-native";
 import { ensureBundles } from "./ensureBundles";
 import { HotUpdaterError } from "./error";

@@ -1,5 +1,5 @@
 import { extractTimestampFromUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
-import type { Bundle } from "@hot-updater/utils";
+import type { Bundle } from "@hot-updater/core";
 import type { ColumnDef } from "@tanstack/solid-table";
 import dayjs from "dayjs";
 import { Check, X } from "lucide-solid";

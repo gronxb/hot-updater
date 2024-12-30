@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/utils",
+  "name": "@hot-updater/js",
   "version": "0.1.5",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
@@ -42,10 +42,10 @@
     "access": "public"
   },
   "dependencies": {
+    "@hot-updater/core": "0.1.5",
     "semver": "^7.6.3"
   },
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.685.0",
     "@types/node": "^20.9.4",
     "@types/semver": "^7.5.8"
   }

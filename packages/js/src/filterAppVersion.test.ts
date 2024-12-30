@@ -1,6 +1,6 @@
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 import { filterAppVersion } from "./filterAppVersion";
-import type { Bundle } from "./types";
 
 const DEFAULT_BUNDLE = {
   fileUrl: "",

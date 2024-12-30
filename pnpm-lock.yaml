@@ -8,11 +8,12 @@ overrides:
   hot-updater: workspace:*
   '@hot-updater/console': workspace:*
   '@hot-updater/plugin-core': workspace:*
-  '@hot-updater/utils': workspace:*
+  '@hot-updater/core': workspace:*
   '@hot-updater/aws': workspace:*
   '@hot-updater/metro': workspace:*
   '@hot-updater/react-native': workspace:*
   '@hot-updater/postgres': workspace:*
+  '@hot-updater/js': workspace:*
 
 importers:
 
@@ -330,12 +331,12 @@ importers:
 
   packages/console:
     dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      '@hot-updater/utils':
-        specifier: workspace:*
-        version: link:../utils
     devDependencies:
       '@biomejs/biome':
         specifier: ^1.9.4
@@ -422,6 +423,12 @@ importers:
         specifier: ^0.42.1
         version: 0.42.1(typescript@5.6.3)
 
+  packages/core:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.16.10
+
   packages/hot-updater:
     dependencies:
       '@clack/prompts':
@@ -433,12 +440,12 @@ importers:
       '@hot-updater/console':
         specifier: workspace:*
         version: link:../console
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      '@hot-updater/utils':
-        specifier: workspace:*
-        version: link:../utils
       boxen:
         specifier: ^8.0.1
         version: 8.0.1
@@ -495,12 +502,31 @@ importers:
         specifier: ^3.0.5
         version: 3.0.5
 
+  packages/js:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
+      semver:
+        specifier: ^7.6.3
+        version: 7.6.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.16.10
+      '@types/semver':
+        specifier: ^7.5.8
+        version: 7.5.8
+
   packages/react-native:
     dependencies:
-      '@hot-updater/utils':
+      '@hot-updater/core':
         specifier: workspace:*
-        version: link:../utils
+        version: link:../core
     devDependencies:
+      '@hot-updater/js':
+        specifier: workspace:*
+        version: link:../js
       '@react-native-community/cli':
         specifier: 15.0.1
         version: 15.0.1(typescript@5.6.3)
@@ -519,22 +545,6 @@ importers:
       react-native-builder-bob:
         specifier: ^0.33.1
         version: 0.33.1(typescript@5.6.3)
-
-  packages/utils:
-    dependencies:
-      semver:
-        specifier: ^7.6.3
-        version: 7.6.3
-    devDependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.685.0
-        version: 3.685.0
-      '@types/node':
-        specifier: ^20.9.4
-        version: 20.16.10
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.5.8
 
   plugins/aws:
     dependencies:
@@ -566,9 +576,9 @@ importers:
 
   plugins/plugin-core:
     dependencies:
-      '@hot-updater/utils':
+      '@hot-updater/core':
         specifier: workspace:*
-        version: link:../../packages/utils
+        version: link:../../packages/core
       cosmiconfig:
         specifier: ^9.0.0
         version: 9.0.0(typescript@5.6.3)
@@ -588,6 +598,9 @@ importers:
 
   plugins/postgres:
     dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core

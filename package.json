@@ -34,11 +34,12 @@
       "hot-updater": "workspace:*",
       "@hot-updater/console": "workspace:*",
       "@hot-updater/plugin-core": "workspace:*",
-      "@hot-updater/utils": "workspace:*",
+      "@hot-updater/core": "workspace:*",
       "@hot-updater/aws": "workspace:*",
       "@hot-updater/metro": "workspace:*",
       "@hot-updater/react-native": "workspace:*",
-      "@hot-updater/postgres": "workspace:*"
+      "@hot-updater/postgres": "workspace:*",
+      "@hot-updater/js": "workspace:*"
     }
   },
   "packageManager": "pnpm@9.14.4"
