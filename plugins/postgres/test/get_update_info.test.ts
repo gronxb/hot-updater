@@ -28,7 +28,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"}
-    )
+    );
   `;
 };
 
