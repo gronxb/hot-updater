@@ -7,7 +7,7 @@ on:
 name: Integration
 
 jobs:
-  type-check:
+  integration:
       runs-on: ubuntu-latest
       strategy:
         matrix:
