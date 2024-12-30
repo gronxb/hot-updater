@@ -1,9 +1,12 @@
-import type { Bundle, Platform } from "@hot-updater/core";
+import type {
+  Bundle,
+  GetBundlesArgs,
+  UpdateInfo,
+  UpdateStatus,
+} from "@hot-updater/core";
 import { checkForRollback } from "./checkForRollback";
 import { filterAppVersion } from "./filterAppVersion";
 import { NIL_UUID } from "./uuid";
-
-export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
 const findLatestBundles = (bundles: Bundle[]) => {
   return (
@@ -13,24 +16,10 @@ const findLatestBundles = (bundles: Bundle[]) => {
   );
 };
 
-export interface GetBundlesArgs {
-  platform: Platform;
-  bundleId: string;
-  appVersion: string;
-}
-
-export interface BundleUpdateInfo {
-  id: string;
-  forceUpdate: boolean;
-  fileUrl: string | null;
-  fileHash: string | null;
-  status: UpdateStatus;
-}
-
 export const getUpdateInfo = async (
   bundles: Bundle[],
   { platform, bundleId, appVersion }: GetBundlesArgs,
-): Promise<BundleUpdateInfo | null> => {
+): Promise<UpdateInfo | null> => {
   const platformBundles = bundles.filter((b) => b.platform === platform);
   const appVersionBundles = filterAppVersion(platformBundles, appVersion);
 
