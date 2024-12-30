@@ -40,6 +40,7 @@ export interface StoragePlugin {
 }
 
 export interface StoragePluginHooks {
+  transformFileUrl?: (key: string) => string;
   onStorageUploaded?: () => Promise<void>;
 }
 

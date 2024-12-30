@@ -63,6 +63,7 @@ export const deploy = async (options: DeployOptions) => {
     });
     const { fileUrl } = await storagePlugin.uploadBundle(bundleId, bundlePath);
 
+    s.message("Appending bundle to database...");
     await databasePlugin.appendBundle({
       forceUpdate: options.forceUpdate,
       platform: options.platform,
@@ -77,9 +78,9 @@ export const deploy = async (options: DeployOptions) => {
     await databasePlugin.commitBundle();
     await databasePlugin.onUnmount?.();
     await fs.rm(bundlePath);
-    s.stop("Uploading Success !", 0);
+    s.stop("Deploy Success !", 0);
   } catch (e) {
-    s.stop("Uploading Failed !", -1);
+    s.stop("Deploy Failed !", -1);
     console.error(e);
     process.exit(-1);
   }

@@ -71,13 +71,13 @@ export const s3Storage =
           },
         });
         const response = await upload.done();
-        if (!response.Location) {
+        if (!response.Location || !response.Key) {
           throw new Error("Upload Failed");
         }
 
         hooks?.onStorageUploaded?.();
         return {
-          fileUrl: response.Location,
+          fileUrl: hooks?.transformFileUrl?.(response.Key) ?? response.Location,
         };
       },
     };
