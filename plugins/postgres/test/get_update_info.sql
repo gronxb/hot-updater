@@ -42,19 +42,20 @@ BEGIN
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = current_platform
+          AND b.id >= current_bundle_id
           AND semver_satisfies(b.target_version, current_app_version)
         ORDER BY b.id DESC
         LIMIT 1
     ),
     final_result AS (
         SELECT *
-        FROM rollback_candidate
+        FROM update_candidate
 
         UNION ALL
 
         SELECT *
-        FROM update_candidate
-        WHERE NOT EXISTS (SELECT 1 FROM rollback_candidate)
+        FROM rollback_candidate
+        WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
     )
     SELECT *
     FROM final_result
