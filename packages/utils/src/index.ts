@@ -1,3 +1,3 @@
 export type * from "./types";
 export * from "./filterAppVersion";
-export * from "./checkForUpdate";
+export * from "./getUpdateInfo";

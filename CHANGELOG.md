@@ -82,7 +82,7 @@ This was a version bump only, there were no code changes.
 - **react-native:** getAppVersionId using my module ([6ab1ec8](https://github.com/gronxb/hot-updater/commit/6ab1ec8))
 - **react-native:** RN Bridge ([2b57c53](https://github.com/gronxb/hot-updater/commit/2b57c53))
 - **react-native:** encode uri ([1feb925](https://github.com/gronxb/hot-updater/commit/1feb925))
-- **react-native:** checkForUpdate test case ([fed0c19](https://github.com/gronxb/hot-updater/commit/fed0c19))
+- **react-native:** getUpdateInfo test case ([fed0c19](https://github.com/gronxb/hot-updater/commit/fed0c19))
 
 ### ❤️  Thank You
 

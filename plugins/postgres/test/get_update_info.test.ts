@@ -32,7 +32,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   `;
 };
 
-const createCheckForUpdate =
+const createGetUpdateInfo =
   (db: PGlite) =>
   async (
     bundles: Bundle[],
@@ -56,7 +56,7 @@ const createCheckForUpdate =
       status: string;
     }>(
       `
-      SELECT * FROM get_update_info('${platform}', '${bundleId}', '${appVersion}')
+      SELECT * FROM get_update_info('${platform}', '${appVersion}', '${bundleId}')
     `,
     );
     return result.rows[0] ? camelcaseKeys(result.rows[0]) : null;
@@ -68,13 +68,13 @@ const createInsertBundleQuerys = (bundles: Bundle[]) => {
 
 describe("get_update_info", () => {
   let db: PGlite;
-  let checkForUpdate: ReturnType<typeof createCheckForUpdate>;
+  let getUpdateInfo: ReturnType<typeof createGetUpdateInfo>;
 
   beforeAll(async () => {
     db = new PGlite();
     const sql = await prepareSql();
     await db.exec(sql);
-    checkForUpdate = createCheckForUpdate(db);
+    getUpdateInfo = createGetUpdateInfo(db);
   });
 
   beforeEach(async () => {
@@ -88,7 +88,7 @@ describe("get_update_info", () => {
   it("returns null when no bundles are provided", async () => {
     const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -107,7 +107,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -133,7 +133,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -157,7 +157,7 @@ describe("get_update_info", () => {
         forceUpdate: true,
       },
     ];
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -183,7 +183,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -208,7 +208,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -240,7 +240,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -272,7 +272,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -298,7 +298,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -321,7 +321,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -339,7 +339,7 @@ describe("get_update_info", () => {
   it("forces a rollback if no matching bundle exists for the provided bundleId", async () => {
     const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -371,7 +371,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -390,7 +390,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -429,7 +429,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -483,7 +483,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -522,7 +522,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -548,7 +548,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -581,7 +581,7 @@ describe("get_update_info", () => {
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",

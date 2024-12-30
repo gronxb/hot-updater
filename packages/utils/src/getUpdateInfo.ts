@@ -27,7 +27,7 @@ export interface BundleUpdateInfo {
   status: UpdateStatus;
 }
 
-export const checkForUpdate = async (
+export const getUpdateInfo = async (
   bundles: Bundle[],
   { platform, bundleId, appVersion }: GetBundlesArgs,
 ): Promise<BundleUpdateInfo | null> => {

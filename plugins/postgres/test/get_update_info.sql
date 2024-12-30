@@ -1,7 +1,7 @@
 CREATE OR REPLACE FUNCTION get_update_info (
     current_platform   platforms,
-    current_bundle_id  uuid,
-    current_app_version text
+    current_app_version text,
+    current_bundle_id  uuid
 )
 RETURNS TABLE (
     id            uuid,
