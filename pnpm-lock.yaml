@@ -502,22 +502,6 @@ importers:
         specifier: ^3.0.5
         version: 3.0.5
 
-  packages/js:
-    dependencies:
-      '@hot-updater/core':
-        specifier: workspace:*
-        version: link:../core
-      semver:
-        specifier: ^7.6.3
-        version: 7.6.3
-    devDependencies:
-      '@types/node':
-        specifier: ^20.9.4
-        version: 20.16.10
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.5.8
-
   packages/react-native:
     dependencies:
       '@hot-updater/core':
@@ -526,7 +510,7 @@ importers:
     devDependencies:
       '@hot-updater/js':
         specifier: workspace:*
-        version: link:../js
+        version: link:../../plugins/js
       '@react-native-community/cli':
         specifier: 15.0.1
         version: 15.0.1(typescript@5.6.3)
@@ -560,6 +544,22 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.0.4
+
+  plugins/js:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      semver:
+        specifier: ^7.6.3
+        version: 7.6.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.16.10
+      '@types/semver':
+        specifier: ^7.5.8
+        version: 7.5.8
 
   plugins/metro:
     dependencies:
