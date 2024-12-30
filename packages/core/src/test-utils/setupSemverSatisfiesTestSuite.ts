@@ -21,7 +21,7 @@ export const setupSemverSatisfiesTestSuite = ({
   semverSatisfies,
 }: {
   semverSatisfies: (
-    targetVersion: string,
+    targetAppVersion: string,
     currentVersion: string,
   ) => Promise<boolean> | boolean;
 }) => {

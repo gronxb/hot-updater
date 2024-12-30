@@ -9,7 +9,7 @@ const DEFAULT_BUNDLE = {
   platform: "ios",
   gitCommitHash: null,
   message: null,
-  targetVersion: "1.0",
+  targetAppVersion: "1.0",
 } as const;
 
 describe("checkForRollback", () => {

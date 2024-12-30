@@ -1,7 +1,7 @@
 import semver from "semver";
 
 export const semverSatisfies = (
-  targetVersion: string,
+  targetAppVersion: string,
   currentVersion: string,
 ) => {
   const currentCoerce = semver.coerce(currentVersion);
@@ -9,5 +9,5 @@ export const semverSatisfies = (
     throw new Error("Invalid current version");
   }
 
-  return semver.satisfies(currentCoerce.version, targetVersion);
+  return semver.satisfies(currentCoerce.version, targetAppVersion);
 };

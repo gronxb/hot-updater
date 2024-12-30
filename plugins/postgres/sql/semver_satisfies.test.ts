@@ -8,9 +8,9 @@ const sql = await prepareSql();
 await db.exec(sql);
 
 const createSemverSatisfies =
-  (db: PGlite) => async (targetVersion: string, currentVersion: string) => {
+  (db: PGlite) => async (targetAppVersion: string, currentVersion: string) => {
     const result = await db.query<{ actual: boolean }>(`
-    SELECT semver_satisfies('${targetVersion}', '${currentVersion}') AS actual;
+    SELECT semver_satisfies('${targetAppVersion}', '${currentVersion}') AS actual;
   `);
     return result.rows[0].actual;
   };

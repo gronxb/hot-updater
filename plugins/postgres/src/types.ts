@@ -9,7 +9,7 @@ export interface BundlesTable {
   id: string;
   message: string | null;
   platform: Platforms;
-  target_version: string;
+  target_app_version: string;
 }
 
 export interface Database {

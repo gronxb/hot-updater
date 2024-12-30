@@ -22,7 +22,8 @@ export const getUpdateInfo = async (
 ): Promise<UpdateInfo | null> => {
   const filteredBundles = bundles.filter(
     (b) =>
-      b.platform === platform && semverSatisfies(b.targetVersion, appVersion),
+      b.platform === platform &&
+      semverSatisfies(b.targetAppVersion, appVersion),
   );
 
   const isRollback = checkForRollback(filteredBundles, bundleId);

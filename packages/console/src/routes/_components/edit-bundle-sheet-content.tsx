@@ -33,7 +33,7 @@ const EditBundleSheetForm = ({
   const form = createForm(() => ({
     defaultValues: {
       message: bundle.message,
-      targetVersion: bundle.targetVersion,
+      targetAppVersion: bundle.targetAppVersion,
       enabled: bundle.enabled,
       forceUpdate: bundle.forceUpdate,
     } as Partial<Bundle>,
@@ -79,13 +79,15 @@ const EditBundleSheetForm = ({
 
       <div>
         <TextField class="grid w-full max-w-sm items-center gap-1.5">
-          <TextFieldLabel for="targetVersion">Target Version</TextFieldLabel>
-          <form.Field name="targetVersion">
+          <TextFieldLabel for="targetAppVersion">
+            Target App Version
+          </TextFieldLabel>
+          <form.Field name="targetAppVersion">
             {(field) => (
               <TextFieldInput
                 type="text"
-                id="targetVersion"
-                placeholder="Target Version"
+                id="targetAppVersion"
+                placeholder="Target App Version"
                 name={field().name}
                 value={field().state.value ?? ""}
                 onBlur={field().handleBlur}

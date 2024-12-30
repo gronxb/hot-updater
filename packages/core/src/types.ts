@@ -10,9 +10,9 @@ export interface Bundle {
    */
   platform: Platform;
   /**
-   * The target version of the bundle.
+   * The target app version of the bundle.
    */
-  targetVersion: string;
+  targetAppVersion: string;
   /**
    * Whether the bundle should force an update.
    */

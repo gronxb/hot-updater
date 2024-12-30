@@ -8,14 +8,14 @@ import { prepareSql } from "./prepareSql";
 const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
-      id, file_url, file_hash, platform, target_version,
+      id, file_url, file_hash, platform, target_app_version,
       force_update, enabled, git_commit_hash, message
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileUrl}',
       '${bundle.fileHash}',
       '${bundle.platform}',
-      '${bundle.targetVersion}',
+      '${bundle.targetAppVersion}',
       ${bundle.forceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},

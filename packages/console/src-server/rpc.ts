@@ -10,7 +10,7 @@ import * as v from "valibot";
 
 export const bundleSchema = v.object({
   platform: v.union([v.literal("ios"), v.literal("android")]),
-  targetVersion: v.string(),
+  targetAppVersion: v.string(),
   id: v.string(),
   forceUpdate: v.boolean(),
   enabled: v.boolean(),

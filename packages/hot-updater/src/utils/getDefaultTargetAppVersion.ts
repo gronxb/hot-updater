@@ -62,7 +62,7 @@ export const getAndroidVersion = async (
   }
 };
 
-export const getDefaultTargetVersion = async (
+export const getDefaultTargetAppVersion = async (
   cwd: string,
   platform: Platform,
 ): Promise<string | null> => {

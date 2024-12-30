@@ -22,7 +22,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "*",
+        targetAppVersion: "*",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -59,7 +59,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.1",
+        targetAppVersion: "1.1",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: false,
@@ -78,14 +78,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.x.x",
+        targetAppVersion: "1.x.x",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: false,
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
         forceUpdate: false,
@@ -110,7 +110,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: true,
@@ -135,7 +135,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: false,
@@ -160,7 +160,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000005",
@@ -185,14 +185,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -217,14 +217,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
@@ -243,14 +243,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
@@ -274,7 +274,7 @@ export const setupGetUpdateInfoTestSuite = ({
         fileHash:
           "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
         message: "",
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         id: "00000000-0000-0000-0000-000000000001",
         enabled: true,
       },
@@ -316,14 +316,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -342,7 +342,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -367,21 +367,21 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -406,14 +406,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000005", // Higher than the current version
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000004",
@@ -421,21 +421,21 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         platform: "ios",
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -460,21 +460,21 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -493,14 +493,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -526,14 +526,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",

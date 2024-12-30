@@ -43,7 +43,7 @@ BEGIN
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= bundle_id
-          AND semver_satisfies(b.target_version, app_version)
+          AND semver_satisfies(b.target_app_version, app_version)
         ORDER BY b.id DESC
         LIMIT 1
     ),
