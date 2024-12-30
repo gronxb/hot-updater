@@ -1,11 +1,17 @@
-import { checkForUpdate } from "./checkForUpdate";
+import { checkForUpdate } from "@hot-updater/utils";
 import { NIL_UUID } from "./const";
+import { ensureBundles } from "./ensureBundles";
 import { init } from "./init";
-import { addListener, getAppVersion, getBundleId, reload } from "./native";
+import {
+  addListener,
+  getAppVersion,
+  getBundleId,
+  reload,
+  updateBundle,
+} from "./native";
 import { hotUpdaterStore } from "./store";
 
 export type * from "./init";
-export type * from "./checkForUpdate";
 export type * from "./native";
 
 export * from "./store";
@@ -17,10 +23,13 @@ addListener("onProgress", ({ progress }) => {
 export const HotUpdater = {
   init,
   reload,
-  checkForUpdate,
   getAppVersion,
   getBundleId,
   addListener,
+
+  ensureBundles,
+  updateBundle,
+  checkForUpdate,
   /**
    * In production environment, this value will be replaced with a uuidv7.
    */

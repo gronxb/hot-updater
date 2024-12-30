@@ -11,3 +11,15 @@ export const getLatestGitCommitMessage = () => {
     });
   });
 };
+
+export const getGitCommitHash = () => {
+  return new Promise<string | null>((resolve) => {
+    exec("git rev-parse HEAD", (error, stdout) => {
+      if (error) {
+        resolve(null);
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
+};

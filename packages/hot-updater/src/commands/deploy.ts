@@ -4,7 +4,7 @@ import { spinner } from "@clack/prompts";
 import { createZip } from "@/utils/createZip";
 import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
-import { getLatestGitCommitMessage } from "@/utils/getLatestGitCommitMessage";
+import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
 import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 export interface DeployOptions {
@@ -24,7 +24,10 @@ export const deploy = async (options: DeployOptions) => {
     }
     const cwd = getCwd();
 
-    const message = await getLatestGitCommitMessage();
+    const [gitCommitHash, gitMessage] = await Promise.all([
+      getGitCommitHash(),
+      getLatestGitCommitMessage(),
+    ]);
 
     const targetVersion =
       options.targetVersion ??
@@ -48,7 +51,7 @@ export const deploy = async (options: DeployOptions) => {
 
     const bundlePath = buildPath.concat(".zip");
 
-    const hash = await getFileHashFromFile(bundlePath);
+    const fileHash = await getFileHashFromFile(bundlePath);
 
     const databasePlugin = config.database({
       cwd,
@@ -58,14 +61,15 @@ export const deploy = async (options: DeployOptions) => {
     const storagePlugin = config.storage({
       cwd,
     });
-    const { file } = await storagePlugin.uploadBundle(bundleId, bundlePath);
+    const { fileUrl } = await storagePlugin.uploadBundle(bundleId, bundlePath);
 
     await databasePlugin.appendBundle({
       forceUpdate: options.forceUpdate,
       platform: options.platform,
-      file,
-      hash,
-      message: message ?? undefined,
+      fileUrl,
+      fileHash,
+      gitCommitHash,
+      message: gitMessage,
       targetVersion,
       id: bundleId,
       enabled: true,

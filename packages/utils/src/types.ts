@@ -24,15 +24,19 @@ export interface Bundle {
   /**
    * The file URL of the bundle.
    */
-  file: string;
+  fileUrl: string;
   /**
    * The hash of the bundle.
    */
-  hash: string;
+  fileHash: string;
+  /**
+   * The git commit hash of the bundle.
+   */
+  gitCommitHash: string | null;
   /**
    * The message of the bundle.
    */
-  message?: string;
+  message: string | null;
 }
 
 export type BundleArg =

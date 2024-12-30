@@ -36,9 +36,10 @@ export const postgres =
               .values({
                 id: bundle.id,
                 enabled: bundle.enabled,
-                file: bundle.file,
+                file_url: bundle.fileUrl,
                 force_update: bundle.forceUpdate,
-                hash: bundle.hash,
+                file_hash: bundle.fileHash,
+                git_commit_hash: bundle.gitCommitHash,
                 message: bundle.message,
                 platform: bundle.platform,
                 target_version: bundle.targetVersion,
@@ -46,9 +47,10 @@ export const postgres =
               .onConflict((oc) =>
                 oc.column("id").doUpdateSet({
                   enabled: bundle.enabled,
-                  file: bundle.file,
+                  file_url: bundle.fileUrl,
                   force_update: bundle.forceUpdate,
-                  hash: bundle.hash,
+                  file_hash: bundle.fileHash,
+                  git_commit_hash: bundle.gitCommitHash,
                   message: bundle.message,
                   platform: bundle.platform,
                   target_version: bundle.targetVersion,
@@ -88,9 +90,10 @@ export const postgres =
         }
         return {
           enabled: data.enabled,
-          file: data.file,
+          fileUrl: data.file_url,
           forceUpdate: data.force_update,
-          hash: data.hash,
+          fileHash: data.file_hash,
+          gitCommitHash: data.git_commit_hash,
           id: data.id,
           message: data.message,
           platform: data.platform,
@@ -105,9 +108,10 @@ export const postgres =
         const data = await db.selectFrom("bundles").selectAll().execute();
         return data.map((bundle) => ({
           enabled: bundle.enabled,
-          file: bundle.file,
+          fileUrl: bundle.file_url,
           forceUpdate: bundle.force_update,
-          hash: bundle.hash,
+          fileHash: bundle.file_hash,
+          gitCommitHash: bundle.git_commit_hash,
           id: bundle.id,
           message: bundle.message,
           platform: bundle.platform,

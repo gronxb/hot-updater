@@ -33,7 +33,7 @@ export interface StoragePlugin {
     bundleId: string,
     bundlePath: string,
   ) => Promise<{
-    file: string;
+    fileUrl: string;
   }>;
 
   deleteBundle: (bundleId: string) => Promise<string>;

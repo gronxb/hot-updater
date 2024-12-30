@@ -78,7 +78,7 @@ export const s3Storage =
 
         hooks?.onStorageUploaded?.();
         return {
-          file: response.Location,
+          fileUrl: response.Location,
         };
       },
     };

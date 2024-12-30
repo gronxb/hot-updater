@@ -1,8 +1,9 @@
 import type { BundleArg } from "@hot-updater/utils";
+import { checkForUpdate } from "@hot-updater/utils";
 import { Platform } from "react-native";
-import { checkForUpdate } from "./checkForUpdate";
+import { ensureBundles } from "./ensureBundles";
 import { HotUpdaterError } from "./error";
-import { reload, updateBundle } from "./native";
+import { getAppVersion, getBundleId, reload, updateBundle } from "./native";
 
 export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE";
 
@@ -29,14 +30,31 @@ export const init = async (config: HotUpdaterInitConfig) => {
     throw error;
   }
 
-  const update = await checkForUpdate(config.source);
+  const currentAppVersion = await getAppVersion();
+  const platform = Platform.OS as "ios" | "android";
+  const currentBundleId = await getBundleId();
+
+  if (!currentAppVersion) {
+    const error = new HotUpdaterError("Failed to get app version");
+    config?.onError?.(error);
+    throw error;
+  }
+
+  const bundles = await ensureBundles(config.source);
+
+  const update = await checkForUpdate(bundles, {
+    appVersion: currentAppVersion,
+    bundleId: currentBundleId,
+    platform,
+  });
+
   if (!update) {
     config?.onSuccess?.("UP_TO_DATE");
     return;
   }
 
   try {
-    const isSuccess = await updateBundle(update.id, update.file || "");
+    const isSuccess = await updateBundle(update.id, update.fileUrl || "");
     if (isSuccess && update.forceUpdate) {
       reload();
 
