@@ -12,7 +12,7 @@ const DEFAULT_BUNDLE = {
 } as const;
 
 describe("checkForUpdate", () => {
-  it("should return null if no update information is available", async () => {
+  it("returns null when no bundles are provided", async () => {
     const bundles: Bundle[] = [];
 
     const update = await checkForUpdate(bundles, {
@@ -23,7 +23,7 @@ describe("checkForUpdate", () => {
     expect(update).toBeNull();
   });
 
-  it("should return null if no update is available when the app version is higher", async () => {
+  it("returns null when the app version does not qualify for the available higher version", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -42,7 +42,7 @@ describe("checkForUpdate", () => {
     expect(update).toBeNull();
   });
 
-  it("should update if a higher bundle with semver version exists", async () => {
+  it("applies an update when a higher semver-compatible bundle is available", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -74,7 +74,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should update if a higher bundle version exists and forceUpdate is set to true", async () => {
+  it("applies an update if forceUpdate is true for a matching version", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -99,7 +99,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
+  it("applies an update for a matching version even if forceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -124,7 +124,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
+  it("applies an update when the app version is the same but the bundle is still considered higher", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -142,7 +142,6 @@ describe("checkForUpdate", () => {
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000005",
-
       forceUpdate: false,
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
@@ -150,7 +149,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should update if the latest version is not available but a previous version is available", async () => {
+  it("falls back to an older enabled bundle when the latest is disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -182,7 +181,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should not update if all updates are disabled", async () => {
+  it("returns null if all bundles are disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -208,7 +207,7 @@ describe("checkForUpdate", () => {
     expect(update).toBeNull();
   });
 
-  it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
+  it("triggers a rollback if the latest bundle is disabled and no other updates are enabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -234,7 +233,7 @@ describe("checkForUpdate", () => {
     expect(update).toStrictEqual(null);
   });
 
-  it("should update if the latest version is available and the app version is the same", async () => {
+  it("applies an update when a same-version bundle is available and enabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -264,7 +263,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should return null if no update information is available", async () => {
+  it("forces a rollback if no matching bundle exists for the provided bundleId", async () => {
     const bundles: Bundle[] = [];
 
     const update = await checkForUpdate(bundles, {
@@ -281,7 +280,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should return null if no update is available when the app version is higher", async () => {
+  it("returns null if the user is already up-to-date with an available bundle", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -307,7 +306,7 @@ describe("checkForUpdate", () => {
     expect(update).toBeNull();
   });
 
-  it("should rollback if the latest bundle is deleted", async () => {
+  it("triggers a rollback if the previously used bundle no longer exists", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -332,7 +331,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
+  it("selects the next available bundle even if forceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -371,7 +370,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
+  it("applies the highest available bundle even if the app version is unchanged", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -425,7 +424,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should not update if the latest version is disabled and matches the current version", async () => {
+  it("returns null if the newest matching bundle is disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -458,7 +457,7 @@ describe("checkForUpdate", () => {
     expect(update).toBeNull();
   });
 
-  it("should rollback to a previous version if the current version is disabled", async () => {
+  it("rolls back to an older enabled bundle if the current one is disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -491,7 +490,7 @@ describe("checkForUpdate", () => {
     });
   });
 
-  it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
+  it("rolls back to the original bundle when all available bundles are disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
