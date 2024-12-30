@@ -1,4 +1,4 @@
-import type { BundleArg } from "@hot-updater/core";
+import type { BundleArg, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
 import { Platform } from "react-native";
 import { ensureBundles } from "./ensureBundles";
@@ -40,22 +40,36 @@ export const init = async (config: HotUpdaterInitConfig) => {
     throw error;
   }
 
-  const bundles = await ensureBundles(config.source);
-
-  const update = await getUpdateInfo(bundles, {
+  const bundles = await ensureBundles(config.source, {
     appVersion: currentAppVersion,
     bundleId: currentBundleId,
     platform,
   });
 
-  if (!update) {
+  let updateInfo: UpdateInfo | null = null;
+  if (Array.isArray(bundles)) {
+    // Direct comparison
+    updateInfo = await getUpdateInfo(bundles, {
+      appVersion: currentAppVersion,
+      bundleId: currentBundleId,
+      platform,
+    });
+  } else {
+    // Already verified from server
+    updateInfo = bundles;
+  }
+
+  if (!updateInfo) {
     config?.onSuccess?.("UP_TO_DATE");
     return;
   }
 
   try {
-    const isSuccess = await updateBundle(update.id, update.fileUrl || "");
-    if (isSuccess && update.forceUpdate) {
+    const isSuccess = await updateBundle(
+      updateInfo.id,
+      updateInfo.fileUrl || "",
+    );
+    if (isSuccess && updateInfo.forceUpdate) {
       reload();
 
       config?.onSuccess?.("INSTALLING_UPDATE");
