@@ -38,7 +38,7 @@ const EditBundleSheetForm = ({
   );
 
   const gitInfo = createMemo(() => {
-    const gitUrl = config()?.gitUrl;
+    const gitUrl = config()?.console?.gitUrl;
     const gitCommitHash = bundle.gitCommitHash;
     if (!gitUrl || !gitCommitHash) {
       return null;
