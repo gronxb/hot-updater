@@ -374,6 +374,9 @@ importers:
       '@types/node':
         specifier: ^22.8.6
         version: 22.8.7
+      '@types/semver':
+        specifier: ^7.5.8
+        version: 7.5.8
       '@typeschema/valibot':
         specifier: ^0.14.0
         version: 0.14.0(@types/json-schema@7.0.15)(valibot@0.42.1(typescript@5.6.3))
@@ -398,6 +401,9 @@ importers:
       postcss:
         specifier: ^8.4.38
         version: 8.4.38
+      semver:
+        specifier: ^7.6.3
+        version: 7.6.3
       solid-js:
         specifier: ^1.9.3
         version: 1.9.3

@@ -9,6 +9,7 @@ config({
 });
 
 export default defineConfig({
+  gitUrl: "https://github.com/gronxb/hot-updater",
   build: metro(),
   storage: s3Storage(
     {

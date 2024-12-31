@@ -45,6 +45,7 @@ export interface StoragePluginHooks {
 }
 
 export type Config = {
+  gitUrl?: string;
   build: (args: BuildPluginArgs) => Promise<{
     buildPath: string;
     bundleId: string;
