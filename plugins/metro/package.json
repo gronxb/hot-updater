@@ -25,10 +25,11 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "0.1.6-0",
-    "uuidv7": "^1.0.2"
+    "@hot-updater/plugin-core": "0.1.6-0"
   },
   "devDependencies": {
+    "execa": "^9.5.2",
+    "uuidv7": "^1.0.2",
     "@types/node": "^22.8.7"
   }
 }
