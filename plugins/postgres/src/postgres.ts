@@ -26,6 +26,7 @@ export const postgres =
     let bundles: Bundle[] = [];
 
     return {
+      name: "postgres",
       async onUnmount() {
         await pool.end();
       },

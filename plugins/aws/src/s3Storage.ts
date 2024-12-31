@@ -25,6 +25,7 @@ export const s3Storage =
     const client = new S3Client(s3Config);
 
     return {
+      name: "s3Storage",
       async deleteBundle(bundleId) {
         const Key = [bundleId].join("/");
 

@@ -1,6 +1,11 @@
 import path from "path";
-import { type BuildPluginArgs, log } from "@hot-updater/plugin-core";
-import { execa } from "execa";
+import {
+  type BasePluginArgs,
+  type BuildPlugin,
+  type BuildPluginArgs,
+  log,
+} from "@hot-updater/plugin-core";
+import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 
 interface RunBundleArgs {
@@ -34,13 +39,14 @@ const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
 
   log.normal("\n");
 
-  const { stderr } = await execa(cliPath, args, {
-    cwd,
-    reject: true,
-  });
-
-  if (stderr) {
-    log.error(stderr.trim());
+  try {
+    await execa(cliPath, args, {
+      cwd,
+    });
+  } catch (error) {
+    if (error instanceof ExecaError) {
+      throw error.stderr;
+    }
   }
 
   const bundleId = await fs.readFile(
@@ -57,16 +63,21 @@ const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
 
 export const metro =
   () =>
-  async ({ cwd, platform }: BuildPluginArgs) => {
-    const buildPath = path.join(cwd, "build");
-
-    await fs.rm(buildPath, { recursive: true, force: true });
-    await fs.mkdir(buildPath, { recursive: true });
-
-    const bundleId = await runBundle({ cwd, platform, buildPath });
-
+  ({ cwd }: BasePluginArgs): BuildPlugin => {
     return {
-      buildPath,
-      bundleId,
+      build: async ({ platform }: BuildPluginArgs) => {
+        const buildPath = path.join(cwd, "build");
+
+        await fs.rm(buildPath, { recursive: true, force: true });
+        await fs.mkdir(buildPath, { recursive: true });
+
+        const bundleId = await runBundle({ cwd, platform, buildPath });
+
+        return {
+          buildPath,
+          bundleId,
+        };
+      },
+      name: "metro",
     };
   };

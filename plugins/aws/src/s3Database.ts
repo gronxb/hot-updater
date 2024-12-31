@@ -28,6 +28,7 @@ export const s3Database =
     let bundles: Bundle[] = [];
 
     return {
+      name: "s3Database",
       async commitBundle() {
         try {
           const command = new GetObjectCommand({

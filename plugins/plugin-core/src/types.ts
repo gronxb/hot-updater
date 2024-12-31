@@ -6,7 +6,7 @@ export interface BasePluginArgs {
   cwd: string;
 }
 
-export interface BuildPluginArgs extends BasePluginArgs {
+export interface BuildPluginArgs {
   platform: Platform;
 }
 
@@ -22,10 +22,19 @@ export interface DatabasePlugin {
   commitBundle: () => Promise<void>;
 
   onUnmount?: () => Promise<void>;
+  name: string;
 }
 
 export interface DatabasePluginHooks {
   onDatabaseUpdated?: () => Promise<void>;
+}
+
+export interface BuildPlugin {
+  build: (args: BuildPluginArgs) => Promise<{
+    buildPath: string;
+    bundleId: string;
+  }>;
+  name: string;
 }
 
 export interface StoragePlugin {
@@ -37,6 +46,7 @@ export interface StoragePlugin {
   }>;
 
   deleteBundle: (bundleId: string) => Promise<string>;
+  name: string;
 }
 
 export interface StoragePluginHooks {
@@ -46,10 +56,7 @@ export interface StoragePluginHooks {
 
 export type Config = {
   gitUrl?: string;
-  build: (args: BuildPluginArgs) => Promise<{
-    buildPath: string;
-    bundleId: string;
-  }>;
+  build: (args: BasePluginArgs) => BuildPlugin;
   storage: (args: BasePluginArgs) => StoragePlugin;
   database: (args: BasePluginArgs) => DatabasePlugin;
 };
