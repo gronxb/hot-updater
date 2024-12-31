@@ -25,9 +25,15 @@ export const postgres =
     });
     let bundles: Bundle[] = [];
 
+    let isUnmount = false;
+
     return {
       name: "postgres",
       async onUnmount() {
+        if (isUnmount) {
+          return;
+        }
+        isUnmount = true;
         await pool.end();
       },
       async commitBundle() {
