@@ -510,6 +510,9 @@ importers:
       is-port-reachable:
         specifier: ^4.0.0
         version: 4.0.0
+      open:
+        specifier: ^10.1.0
+        version: 10.1.0
 
   packages/react-native:
     dependencies:
@@ -16072,7 +16075,6 @@ snapshots:
   bundle-name@4.1.0:
     dependencies:
       run-applescript: 7.0.0
-    optional: true
 
   bytes@3.0.0: {}
 
@@ -16509,14 +16511,12 @@ snapshots:
 
   deepmerge@4.3.1: {}
 
-  default-browser-id@5.0.0:
-    optional: true
+  default-browser-id@5.0.0: {}
 
   default-browser@5.2.1:
     dependencies:
       bundle-name: 4.1.0
       default-browser-id: 5.0.0
-    optional: true
 
   default-gateway@6.0.3:
     dependencies:
@@ -16535,8 +16535,7 @@ snapshots:
 
   define-lazy-prop@2.0.0: {}
 
-  define-lazy-prop@3.0.0:
-    optional: true
+  define-lazy-prop@3.0.0: {}
 
   define-properties@1.2.1:
     dependencies:
@@ -17823,8 +17822,7 @@ snapshots:
 
   is-docker@2.2.1: {}
 
-  is-docker@3.0.0:
-    optional: true
+  is-docker@3.0.0: {}
 
   is-extglob@2.1.1: {}
 
@@ -17859,7 +17857,6 @@ snapshots:
   is-inside-container@1.0.0:
     dependencies:
       is-docker: 3.0.0
-    optional: true
 
   is-interactive@1.0.0: {}
 
@@ -17965,7 +17962,6 @@ snapshots:
   is-wsl@3.1.0:
     dependencies:
       is-inside-container: 1.0.0
-    optional: true
 
   isarray@1.0.0: {}
 
@@ -19736,7 +19732,6 @@ snapshots:
       define-lazy-prop: 3.0.0
       is-inside-container: 1.0.0
       is-wsl: 3.1.0
-    optional: true
 
   open@6.4.0:
     dependencies:
@@ -20750,8 +20745,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.7.2
 
-  run-applescript@7.0.0:
-    optional: true
+  run-applescript@7.0.0: {}
 
   run-parallel@1.2.0:
     dependencies:

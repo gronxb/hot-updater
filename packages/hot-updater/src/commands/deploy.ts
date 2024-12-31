@@ -1,3 +1,5 @@
+import open from "open";
+
 import isPortReachable from "is-port-reachable";
 
 import * as p from "@clack/prompts";
@@ -123,15 +125,19 @@ export const deploy = async (options: DeployOptions) => {
     const note = `Console: http://localhost:${port}/${bundleId}`;
     if (!isConsoleOpen) {
       const result = await p.confirm({
-        message: "Console is not open. Open console?",
+        message: "Console server is not running. Would you like to start it?",
         initialValue: false,
       });
       if (result) {
-        await openConsole(port);
+        await openConsole(port, () => {
+          open(`http://localhost:${port}/${bundleId}`);
+        });
       }
+    } else {
+      open(`http://localhost:${port}/${bundleId}`);
     }
-    p.note(note);
 
+    p.note(note);
     p.outro("🚀 Deployment Successful");
   } catch (e) {
     await databasePlugin.onUnmount?.();
