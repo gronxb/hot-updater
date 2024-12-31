@@ -6,9 +6,11 @@ import { prune } from "@/commands/prune";
 import { banner } from "@/components/banner";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
+import * as p from "@clack/prompts";
 import { getCwd, log } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
+import semverValid from "semver/ranges/valid";
 
 const program = new Command();
 
@@ -37,7 +39,13 @@ program
     new Option(
       "-t, --target-app-version <targetAppVersion>",
       "specify the target app version (semver format e.g. 1.0.0, 1.x.x)",
-    ),
+    ).argParser((value) => {
+      if (!semverValid(value)) {
+        p.log.error("Invalid semver format (e.g. 1.0.0, 1.x.x)");
+        process.exit(1);
+      }
+      return value;
+    }),
   )
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),
