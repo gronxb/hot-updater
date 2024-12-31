@@ -42,7 +42,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@clack/prompts": "^0.7.0",
+    "@clack/prompts": "^0.9.0",
     "@hono/node-server": "^1.13.4",
     "@hot-updater/console": "0.1.6-0",
     "@hot-updater/core": "0.1.6-0",
@@ -67,6 +67,8 @@
     "@types/connect": "^3.4.38",
     "@types/cosmiconfig": "^6.0.0",
     "@types/node": "^22.9.0",
-    "@types/plist": "^3.0.5"
+    "@types/plist": "^3.0.5",
+    "is-port-reachable": "^4.0.0",
+    "open": "^10.1.0"
   }
 }

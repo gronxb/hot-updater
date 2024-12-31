@@ -6,7 +6,7 @@ export const banner = boxen(
   [
     `${picocolors.bold("Hot Updater - React Native OTA Solution")} v${version}`,
     "",
-    `Github: ${picocolors.magenta(
+    `Github: ${picocolors.green(
       picocolors.underline("https://github.com/gronxb/hot-updater"),
     )}`,
     "Give a ⭐️ if you like it!",
@@ -14,7 +14,11 @@ export const banner = boxen(
   {
     padding: 1,
     borderStyle: "round",
-    borderColor: "redBright",
+    borderColor: "green",
     textAlignment: "center",
   },
 );
+
+export const printBanner = () => {
+  console.log(banner);
+};

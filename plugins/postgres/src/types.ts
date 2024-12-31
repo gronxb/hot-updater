@@ -1,16 +1,19 @@
-export type Platforms = "android" | "ios";
+import type { Bundle } from "@hot-updater/core";
 
-export interface BundlesTable {
-  enabled: boolean;
-  force_update: boolean;
-  file_url: string;
-  file_hash: string;
-  git_commit_hash: string | null;
-  id: string;
-  message: string | null;
-  platform: Platforms;
-  target_app_version: string;
-}
+type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
+  ? `${T extends Capitalize<T> ? "_" : ""}${Lowercase<T>}${SnakeCase<U>}`
+  : S;
+
+// Utility type to recursively map object keys to snake_case
+type SnakeKeyObject<T> = T extends Record<string, any>
+  ? {
+      [K in keyof T as SnakeCase<Extract<K, string>>]: T[K] extends object
+        ? SnakeKeyObject<T[K]>
+        : T[K];
+    }
+  : T;
+
+export type BundlesTable = SnakeKeyObject<Bundle>;
 
 export interface Database {
   bundles: BundlesTable;

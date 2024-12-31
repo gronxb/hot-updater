@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-import { openConsole } from "@/commands/console";
+import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { generateSecretKey } from "@/commands/generateSecretKey";
 import { prune } from "@/commands/prune";
 import { banner } from "@/components/banner";
 import { version } from "@/packageJson";
-import { getPlatform } from "@/prompts/getPlatform";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getCwd, log } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
+import picocolors from "picocolors";
 
 const program = new Command();
 
@@ -35,23 +35,32 @@ program
   )
   .addOption(
     new Option(
-      "-t, --target-version <targetAppVersion>",
-      "specify the platform",
+      "-t, --target-app-version <targetAppVersion>",
+      "specify the target app version (semver format e.g. 1.0.0, 1.x.x)",
     ),
   )
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),
   )
+  .addOption(new Option("-i, --interactive", "interactive mode").default(false))
   .action(async (options: DeployOptions) => {
-    if (!options.platform) {
-      options.platform = await getPlatform(
-        "Which platform do you want to deploy?",
-      );
-    }
     deploy(options);
   });
 
-program.command("console").description("open the console").action(openConsole);
+program
+  .command("console")
+  .description("open the console")
+  .action(async () => {
+    const port = await getConsolePort();
+
+    await openConsole(port, (info) => {
+      console.log(
+        `Server running on ${picocolors.magenta(
+          picocolors.underline(`http://localhost:${info.port}`),
+        )}`,
+      );
+    });
+  });
 
 program
   .command("generate-secret-key")
