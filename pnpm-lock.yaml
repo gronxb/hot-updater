@@ -434,12 +434,6 @@ importers:
 
   packages/hot-updater:
     dependencies:
-      '@clack/prompts':
-        specifier: ^0.9.0
-        version: 0.9.0
-      '@hono/node-server':
-        specifier: ^1.13.4
-        version: 1.13.4(hono@4.6.3)
       '@hot-updater/console':
         specifier: workspace:*
         version: link:../console
@@ -449,39 +443,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.5.8
-      boxen:
-        specifier: ^8.0.1
-        version: 8.0.1
-      commander:
-        specifier: ^11.1.0
-        version: 11.1.0
-      cosmiconfig:
-        specifier: ^9.0.0
-        version: 9.0.0(typescript@5.7.2)
-      cosmiconfig-typescript-loader:
-        specifier: ^5.0.0
-        version: 5.0.0(@types/node@22.9.0)(cosmiconfig@9.0.0(typescript@5.7.2))(typescript@5.7.2)
-      jszip:
-        specifier: ^3.10.1
-        version: 3.10.1
-      picocolors:
-        specifier: ^1.0.0
-        version: 1.0.0
-      plist:
-        specifier: ^3.1.0
-        version: 3.1.0
-      read-package-up:
-        specifier: ^11.0.0
-        version: 11.0.0
-      uuidv7:
-        specifier: ^1.0.2
-        version: 1.0.2
-      workspace-tools:
-        specifier: ^0.36.4
-        version: 0.36.4
     devDependencies:
       '@babel/core':
         specifier: ^7.26.0
@@ -492,6 +453,12 @@ importers:
       '@babel/types':
         specifier: ^7.26.0
         version: 7.26.0
+      '@clack/prompts':
+        specifier: ^0.9.0
+        version: 0.9.0
+      '@hono/node-server':
+        specifier: ^1.13.4
+        version: 1.13.4(hono@4.6.3)
       '@types/babel__core':
         specifier: ^7.20.5
         version: 7.20.5
@@ -510,15 +477,45 @@ importers:
       '@types/plist':
         specifier: ^3.0.5
         version: 3.0.5
+      '@types/semver':
+        specifier: ^7.5.8
+        version: 7.5.8
+      boxen:
+        specifier: ^8.0.1
+        version: 8.0.1
+      commander:
+        specifier: ^11.1.0
+        version: 11.1.0
+      cosmiconfig:
+        specifier: ^9.0.0
+        version: 9.0.0(typescript@5.7.2)
+      cosmiconfig-typescript-loader:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.9.0)(cosmiconfig@9.0.0(typescript@5.7.2))(typescript@5.7.2)
       is-port-reachable:
         specifier: ^4.0.0
         version: 4.0.0
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       open:
         specifier: ^10.1.0
         version: 10.1.0
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.0.0
+      plist:
+        specifier: ^3.1.0
+        version: 3.1.0
+      read-package-up:
+        specifier: ^11.0.0
+        version: 11.0.0
       semver:
         specifier: ^7.6.3
         version: 7.6.3
+      uuidv7:
+        specifier: ^1.0.2
+        version: 1.0.2
 
   packages/react-native:
     dependencies:
@@ -569,9 +566,6 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
-      semver:
-        specifier: ^7.6.3
-        version: 7.6.3
     devDependencies:
       '@types/node':
         specifier: ^20.9.4
@@ -579,6 +573,9 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.5.8
+      semver:
+        specifier: ^7.6.3
+        version: 7.6.3
 
   plugins/metro:
     dependencies:
@@ -607,9 +604,6 @@ importers:
       cosmiconfig-typescript-loader:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.7.5)(cosmiconfig@9.0.0(typescript@5.7.2))(typescript@5.7.2)
-      picocolors:
-        specifier: ^1.0.0
-        version: 1.0.0
       workspace-tools:
         specifier: ^0.36.4
         version: 0.36.4
@@ -617,6 +611,9 @@ importers:
       '@types/node':
         specifier: ^22.7.5
         version: 22.7.5
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.0.0
 
   plugins/postgres:
     dependencies:
