@@ -17,6 +17,8 @@ import { getPlatform } from "@/prompts/getPlatform";
 
 import { getConsolePort, openConsole } from "./console";
 
+import { printBanner } from "@/components/banner";
+
 export interface DeployOptions {
   targetAppVersion?: string;
   platform?: Platform;
@@ -25,6 +27,8 @@ export interface DeployOptions {
 }
 
 export const deploy = async (options: DeployOptions) => {
+  printBanner();
+
   const config = await loadConfig();
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
