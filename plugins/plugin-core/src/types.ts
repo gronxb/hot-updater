@@ -55,18 +55,19 @@ export interface StoragePluginHooks {
 }
 
 export type Config = {
-  /**
-   * Git repository URL
-   * If git commit hash exists in console, it allows viewing commit history from the git repository
-   */
-  gitUrl?: string;
+  console: {
+    /**
+     * Git repository URL
+     * If git commit hash exists in console, it allows viewing commit history from the git repository
+     */
+    gitUrl?: string;
 
-  /**
-   * Console port
-   * @default 1422
-   */
-  consolePort?: number;
-
+    /**
+     * Console port
+     * @default 1422
+     */
+    port?: number;
+  };
   build: (args: BasePluginArgs) => BuildPlugin;
   storage: (args: BasePluginArgs) => StoragePlugin;
   database: (args: BasePluginArgs) => DatabasePlugin;

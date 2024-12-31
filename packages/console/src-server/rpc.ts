@@ -32,7 +32,7 @@ export const rpc = new Hono()
       config = await loadConfig();
     }
     return c.json({
-      gitUrl: config?.gitUrl,
+      console: config?.console,
     });
   })
   .get("/isConfigLoaded", (c) => {
