@@ -1,9 +1,12 @@
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+  type UpdateStatus,
+} from "@hot-updater/core";
 import { checkForRollback } from "./checkForRollback";
-import { filterAppVersion } from "./filterAppVersion";
-import type { Bundle, Platform } from "./types";
-import { NIL_UUID } from "./uuid";
-
-export type UpdateStatus = "ROLLBACK" | "UPDATE";
+import { semverSatisfies } from "./semverSatisfies";
 
 const findLatestBundles = (bundles: Bundle[]) => {
   return (
@@ -13,30 +16,18 @@ const findLatestBundles = (bundles: Bundle[]) => {
   );
 };
 
-export interface GetBundlesArgs {
-  platform: Platform;
-  bundleId: string;
-  appVersion: string;
-}
-
-export interface BundleUpdateInfo {
-  id: string;
-  forceUpdate: boolean;
-  fileUrl: string | null;
-  fileHash: string | null;
-  status: UpdateStatus;
-}
-
-export const checkForUpdate = async (
+export const getUpdateInfo = async (
   bundles: Bundle[],
   { platform, bundleId, appVersion }: GetBundlesArgs,
-): Promise<BundleUpdateInfo | null> => {
-  const platformBundles = bundles.filter((b) => b.platform === platform);
+): Promise<UpdateInfo | null> => {
+  const filteredBundles = bundles.filter(
+    (b) =>
+      b.platform === platform &&
+      semverSatisfies(b.targetAppVersion, appVersion),
+  );
 
-  const appVersionBundles = filterAppVersion(platformBundles, appVersion);
-
-  const isRollback = checkForRollback(appVersionBundles, bundleId);
-  const latestBundle = await findLatestBundles(appVersionBundles);
+  const isRollback = checkForRollback(filteredBundles, bundleId);
+  const latestBundle = await findLatestBundles(filteredBundles);
 
   if (!latestBundle) {
     if (isRollback) {

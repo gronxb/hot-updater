@@ -17,9 +17,12 @@ import {
   TextFieldLabel,
 } from "@/components/ui/text-field";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createAsync } from "@solidjs/router";
 import { createForm } from "@tanstack/solid-form";
+import semverValid from "semver/ranges/valid";
+import { Show, createMemo } from "solid-js";
 
 interface EditBundleSheetFormProps {
   bundle: Bundle;
@@ -30,15 +33,32 @@ const EditBundleSheetForm = ({
   bundle,
   onEditSuccess,
 }: EditBundleSheetFormProps) => {
+  const config = createAsync(() =>
+    api.getConfig.$get().then((res) => res.json()),
+  );
+
+  const gitInfo = createMemo(() => {
+    const gitUrl = config()?.gitUrl;
+    const gitCommitHash = bundle.gitCommitHash;
+    if (!gitUrl || !gitCommitHash) {
+      return null;
+    }
+    return {
+      gitUrl,
+      gitCommitHash,
+    };
+  });
+
   const form = createForm(() => ({
     defaultValues: {
       message: bundle.message,
-      targetVersion: bundle.targetVersion,
+      targetAppVersion: bundle.targetAppVersion,
       enabled: bundle.enabled,
       forceUpdate: bundle.forceUpdate,
     } as Partial<Bundle>,
     onSubmit: async ({ value }) => {
       // Do something with form data
+
       await api.updateBundle.$post({
         json: {
           targetBundleId: bundle.id,
@@ -48,6 +68,8 @@ const EditBundleSheetForm = ({
       onEditSuccess();
     },
   }));
+
+  const isValid = form.useStore((state) => state.isValid);
 
   return (
     <form
@@ -79,18 +101,46 @@ const EditBundleSheetForm = ({
 
       <div>
         <TextField class="grid w-full max-w-sm items-center gap-1.5">
-          <TextFieldLabel for="targetVersion">Target Version</TextFieldLabel>
-          <form.Field name="targetVersion">
+          <TextFieldLabel for="targetAppVersion">
+            Target App Version
+          </TextFieldLabel>
+          <form.Field
+            name="targetAppVersion"
+            validators={{
+              onChange: ({ value }) => {
+                if (value?.length === 0 || !semverValid(value)) {
+                  return "Invalid target app version";
+                }
+
+                return undefined;
+              },
+            }}
+          >
             {(field) => (
-              <TextFieldInput
-                type="text"
-                id="targetVersion"
-                placeholder="Target Version"
-                name={field().name}
-                value={field().state.value ?? ""}
-                onBlur={field().handleBlur}
-                onInput={(e) => field().handleChange(e.currentTarget.value)}
-              />
+              <>
+                <TextFieldInput
+                  type="text"
+                  id="targetAppVersion"
+                  class={cn(
+                    field().state.meta.errors.length > 0 &&
+                      "border-red-500 focus-visible:ring-red-500",
+                  )}
+                  placeholder="Target App Version"
+                  name={field().name}
+                  value={field().state.value ?? ""}
+                  onBlur={field().handleBlur}
+                  onInput={(e) => field().handleChange(e.currentTarget.value)}
+                />
+                {field().state.meta.errors.length > 0 ? (
+                  <em class="text-xs text-red-500">
+                    {field().state.meta.errors.join(", ")}
+                  </em>
+                ) : (
+                  <em class="text-xs text-muted-foreground">
+                    {semverValid(field().state.value)}
+                  </em>
+                )}
+              </>
             )}
           </form.Field>
         </TextField>
@@ -142,9 +192,24 @@ const EditBundleSheetForm = ({
           continuing to use the application.
         </p>
       </div>
-      <Button type="submit" class="mt-4">
+      <Button type="submit" class="mt-4" disabled={!isValid()}>
         Save
       </Button>
+
+      <div class="flex justify-end">
+        <Show when={gitInfo()}>
+          {(gitInfo) => (
+            <a
+              href={`${gitInfo().gitUrl}/commit/${gitInfo().gitCommitHash}`}
+              target="_blank"
+              rel="noreferrer"
+              class="text-xs text-muted-foreground"
+            >
+              Commit Hash: {gitInfo().gitCommitHash.slice(0, 8)}
+            </a>
+          )}
+        </Show>
+      </div>
     </form>
   );
 };
@@ -168,13 +233,18 @@ export const EditBundleSheetContent = ({
         <SheetTitle>Edit {bundle()?.id}</SheetTitle>
       </SheetHeader>
 
-      {bundle() ? (
-        <EditBundleSheetForm bundle={bundle()!} onEditSuccess={onClose} />
-      ) : (
-        <SheetDescription>
-          No update bundle found for bundle id {bundleId}
-        </SheetDescription>
-      )}
+      <Show
+        when={bundle()}
+        fallback={
+          <SheetDescription>
+            No update bundle found for bundle id {bundleId}
+          </SheetDescription>
+        }
+      >
+        {(bundle) => (
+          <EditBundleSheetForm bundle={bundle()} onEditSuccess={onClose} />
+        )}
+      </Show>
     </SheetContent>
   );
 };

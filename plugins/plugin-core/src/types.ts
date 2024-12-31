@@ -1,6 +1,6 @@
-import type { Bundle, Platform } from "@hot-updater/utils";
+import type { Bundle, Platform } from "@hot-updater/core";
 
-export type { Platform, Bundle } from "@hot-updater/utils";
+export type { Platform, Bundle } from "@hot-updater/core";
 
 export interface BasePluginArgs {
   cwd: string;
@@ -40,10 +40,12 @@ export interface StoragePlugin {
 }
 
 export interface StoragePluginHooks {
+  transformFileUrl?: (key: string) => string;
   onStorageUploaded?: () => Promise<void>;
 }
 
 export type Config = {
+  gitUrl?: string;
   build: (args: BuildPluginArgs) => Promise<{
     buildPath: string;
     bundleId: string;

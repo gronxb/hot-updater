@@ -10,9 +10,9 @@ export interface Bundle {
    */
   platform: Platform;
   /**
-   * The target version of the bundle.
+   * The target app version of the bundle.
    */
-  targetVersion: string;
+  targetAppVersion: string;
   /**
    * Whether the bundle should force an update.
    */
@@ -44,3 +44,19 @@ export type BundleArg =
   | Bundle[]
   | (() => Promise<Bundle[]>)
   | (() => Bundle[]);
+
+export type UpdateStatus = "ROLLBACK" | "UPDATE";
+
+export interface UpdateInfo {
+  id: string;
+  forceUpdate: boolean;
+  fileUrl: string | null;
+  fileHash: string | null;
+  status: UpdateStatus;
+}
+
+export interface GetBundlesArgs {
+  platform: Platform;
+  bundleId: string;
+  appVersion: string;
+}

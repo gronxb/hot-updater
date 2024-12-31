@@ -1,6 +1,6 @@
 {
-  "name": "@hot-updater/utils",
-  "version": "0.1.5",
+  "name": "@hot-updater/core",
+  "version": "0.1.6-0",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -9,8 +9,14 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./test-utils": {
+      "types": "./src/test-utils/index.ts",
+      "import": "./src/test-utils/index.ts",
+      "require": "./src/test-utils/index.ts"
     }
   },
   "files": [
@@ -29,7 +35,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "rslib build",
     "test:type": "tsc --noEmit"
   },
   "repository": "https://github.com/gronxb/hot-updater",
@@ -41,12 +47,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "semver": "^7.6.3"
-  },
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.685.0",
-    "@types/node": "^20.9.4",
-    "@types/semver": "^7.5.8"
+    "@types/node": "^20.9.4"
   }
 }

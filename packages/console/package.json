@@ -1,22 +1,23 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.1.5",
+  "version": "0.1.6-0",
   "files": [
     "dist",
     "package.json"
   ],
   "main": "dist/index.cjs",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/src-server/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/src-server/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
   "scripts": {
-    "build": "rsbuild build && tsup src-server/index.ts --format esm,cjs --dts --shims",
+    "build": "rsbuild build && rslib build",
     "check": "biome check --write",
     "dev": "rsbuild dev --open",
     "format": "biome format --write",
@@ -37,6 +38,7 @@
     "@tanstack/solid-table": "^8.20.5",
     "@tanstack/valibot-form-adapter": "^0.34.0",
     "@types/node": "^22.8.6",
+    "@types/semver": "^7.5.8",
     "@typeschema/valibot": "^0.14.0",
     "autoprefixer": "^10.4.19",
     "class-variance-authority": "^0.7.0",
@@ -45,6 +47,7 @@
     "hono": "^4.6.3",
     "lucide-solid": "^0.454.0",
     "postcss": "^8.4.38",
+    "semver": "^7.6.3",
     "solid-js": "^1.9.3",
     "solid-sonner": "^0.2.8",
     "tailwind-merge": "^2.5.4",
@@ -54,7 +57,7 @@
     "valibot": "^0.42.1"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "0.1.5",
-    "@hot-updater/utils": "0.1.5"
+    "@hot-updater/core": "0.1.6-0",
+    "@hot-updater/plugin-core": "0.1.6-0"
   }
 }

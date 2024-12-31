@@ -1,6 +1,6 @@
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 import { checkForRollback } from "./checkForRollback";
-import type { Bundle } from "./types";
 
 const DEFAULT_BUNDLE = {
   fileUrl: "",
@@ -9,7 +9,7 @@ const DEFAULT_BUNDLE = {
   platform: "ios",
   gitCommitHash: null,
   message: null,
-  targetVersion: "1.0",
+  targetAppVersion: "1.0",
 } as const;
 
 describe("checkForRollback", () => {

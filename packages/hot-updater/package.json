@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.1.5",
+  "version": "0.1.6-0",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -38,15 +38,15 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/config.ts src/plugins/babel.ts --format esm,cjs --dts --shims",
+    "build": "rslib build",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
     "@hono/node-server": "^1.13.4",
-    "@hot-updater/console": "0.1.5",
-    "@hot-updater/plugin-core": "0.1.5",
-    "@hot-updater/utils": "0.1.5",
+    "@hot-updater/console": "0.1.6-0",
+    "@hot-updater/core": "0.1.6-0",
+    "@hot-updater/plugin-core": "0.1.6-0",
     "boxen": "^8.0.1",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
@@ -55,6 +55,7 @@
     "picocolors": "^1.0.0",
     "plist": "^3.1.0",
     "read-package-up": "^11.0.0",
+    "uuidv7": "^1.0.2",
     "workspace-tools": "^0.36.4"
   },
   "devDependencies": {

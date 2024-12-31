@@ -1,3 +1,25 @@
+## 0.1.6-0 (2024-12-30)
+
+### 🚀 Features
+
+- postgres sql test with pglite ([7d93b5b](https://github.com/gronxb/hot-updater/commit/7d93b5b))
+- test re-cycle ([9b52885](https://github.com/gronxb/hot-updater/commit/9b52885))
+- migration semverSatisfies ([e4120e4](https://github.com/gronxb/hot-updater/commit/e4120e4))
+- **js:** migration js ([52ebc51](https://github.com/gronxb/hot-updater/commit/52ebc51))
+
+### 🩹 Fixes
+
+- testcase ([72607da](https://github.com/gronxb/hot-updater/commit/72607da))
+- test (8/18) ([b0dff12](https://github.com/gronxb/hot-updater/commit/b0dff12))
+- insert (14/18) ([aaba5d1](https://github.com/gronxb/hot-updater/commit/aaba5d1))
+- test (16/18) ([ac61ee7](https://github.com/gronxb/hot-updater/commit/ac61ee7))
+- test (18/18) ([d8545f1](https://github.com/gronxb/hot-updater/commit/d8545f1))
+- eng ([11a86d4](https://github.com/gronxb/hot-updater/commit/11a86d4))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.1.5 (2024-12-27)
 
 This was a version bump only, there were no code changes.
@@ -82,7 +104,7 @@ This was a version bump only, there were no code changes.
 - **react-native:** getAppVersionId using my module ([6ab1ec8](https://github.com/gronxb/hot-updater/commit/6ab1ec8))
 - **react-native:** RN Bridge ([2b57c53](https://github.com/gronxb/hot-updater/commit/2b57c53))
 - **react-native:** encode uri ([1feb925](https://github.com/gronxb/hot-updater/commit/1feb925))
-- **react-native:** checkForUpdate test case ([fed0c19](https://github.com/gronxb/hot-updater/commit/fed0c19))
+- **react-native:** getUpdateInfo test case ([fed0c19](https://github.com/gronxb/hot-updater/commit/fed0c19))
 
 ### ❤️  Thank You
 

@@ -2,13 +2,13 @@ import fs from "node:fs/promises";
 import { spinner } from "@clack/prompts";
 
 import { createZip } from "@/utils/createZip";
-import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
+import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
 import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 export interface DeployOptions {
-  targetVersion?: string;
+  targetAppVersion?: string;
   platform: Platform;
   forceUpdate: boolean;
 }
@@ -29,13 +29,13 @@ export const deploy = async (options: DeployOptions) => {
       getLatestGitCommitMessage(),
     ]);
 
-    const targetVersion =
-      options.targetVersion ??
-      (await getDefaultTargetVersion(cwd, options.platform));
+    const targetAppVersion =
+      options.targetAppVersion ??
+      (await getDefaultTargetAppVersion(cwd, options.platform));
 
-    if (!targetVersion) {
+    if (!targetAppVersion) {
       throw new Error(
-        "Target version not found. Please provide a target version.",
+        "Target app version not found. Please provide a target app version.",
       );
     }
 
@@ -63,6 +63,7 @@ export const deploy = async (options: DeployOptions) => {
     });
     const { fileUrl } = await storagePlugin.uploadBundle(bundleId, bundlePath);
 
+    s.message("Appending bundle to database...");
     await databasePlugin.appendBundle({
       forceUpdate: options.forceUpdate,
       platform: options.platform,
@@ -70,16 +71,16 @@ export const deploy = async (options: DeployOptions) => {
       fileHash,
       gitCommitHash,
       message: gitMessage,
-      targetVersion,
+      targetAppVersion,
       id: bundleId,
       enabled: true,
     });
     await databasePlugin.commitBundle();
     await databasePlugin.onUnmount?.();
     await fs.rm(bundlePath);
-    s.stop("Uploading Success !", 0);
+    s.stop("Deploy Success !", 0);
   } catch (e) {
-    s.stop("Uploading Failed !", -1);
+    s.stop("Deploy Failed !", -1);
     console.error(e);
     process.exit(-1);
   }

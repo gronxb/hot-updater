@@ -35,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { Bundle, Platform } from "@hot-updater/utils";
+import type { Bundle, Platform } from "@hot-updater/core";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];

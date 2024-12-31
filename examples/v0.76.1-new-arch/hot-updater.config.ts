@@ -9,10 +9,16 @@ config({
 });
 
 export default defineConfig({
+  gitUrl: "https://github.com/gronxb/hot-updater",
   build: metro(),
   storage: s3Storage(
     {
-      region: "ap-northeast-2",
+      // supabase s3
+      forcePathStyle: true,
+      endpoint: process.env.AWS_ENDPOINT!,
+
+      // common s3
+      region: process.env.AWS_REGION!,
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
@@ -20,23 +26,16 @@ export default defineConfig({
       bucketName: process.env.AWS_S3_BUCKET_NAME!,
     },
     {
-      onStorageUploaded: async () => {
-        console.log("Storage Uploaded");
+      transformFileUrl: (key) => {
+        return `${process.env.AWS_PUBLIC_URL!}/${key}`;
       },
     },
   ),
-  database: postgres(
-    {
-      host: process.env.POSTGRES_HOST!,
-      port: Number(process.env.POSTGRES_PORT!),
-      database: process.env.POSTGRES_DATABASE!,
-      user: process.env.POSTGRES_USER!,
-      password: process.env.POSTGRES_PASSWORD!,
-    },
-    {
-      onDatabaseUpdated: async () => {
-        console.log("Database Updated");
-      },
-    },
-  ),
+  database: postgres({
+    host: process.env.POSTGRES_HOST!,
+    port: Number(process.env.POSTGRES_PORT!),
+    database: process.env.POSTGRES_DATABASE!,
+    user: process.env.POSTGRES_USER!,
+    password: process.env.POSTGRES_PASSWORD!,
+  }),
 });

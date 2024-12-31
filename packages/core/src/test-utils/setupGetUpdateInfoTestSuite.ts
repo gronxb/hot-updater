@@ -1,7 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { checkForUpdate } from "./checkForUpdate";
-import type { Bundle } from "./types";
-import { NIL_UUID } from "./uuid";
+import { expect, it } from "vitest";
+import type { Bundle, GetBundlesArgs, UpdateInfo } from "../types";
+import { NIL_UUID } from "../uuid";
 
 const DEFAULT_BUNDLE = {
   fileUrl: "http://example.com/bundle.zip",
@@ -11,11 +10,44 @@ const DEFAULT_BUNDLE = {
   message: null,
 } as const;
 
-describe("appVersion 1.0, bundleId null", async () => {
-  it("should return null if no update information is available", async () => {
+export const setupGetUpdateInfoTestSuite = ({
+  getUpdateInfo,
+}: {
+  getUpdateInfo: (
+    bundles: Bundle[],
+    options: GetBundlesArgs,
+  ) => Promise<UpdateInfo | null>;
+}) => {
+  it("applies an update when a '*' bundle is available", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "*",
+        forceUpdate: false,
+        enabled: true,
+        id: "00000000-0000-0000-0000-000000000001",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+    });
+
+    expect(update).toStrictEqual({
+      id: "00000000-0000-0000-0000-000000000001",
+      fileUrl: "http://example.com/bundle.zip",
+      fileHash: "hash",
+      forceUpdate: false,
+      status: "UPDATE",
+    });
+  });
+
+  it("returns null when no bundles are provided", async () => {
     const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -23,18 +55,18 @@ describe("appVersion 1.0, bundleId null", async () => {
     expect(update).toBeNull();
   });
 
-  it("should return null if no update is available when the app version is higher", async () => {
+  it("returns null when the app version does not qualify for the available higher version", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.1",
+        targetAppVersion: "1.1",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: false,
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -42,25 +74,25 @@ describe("appVersion 1.0, bundleId null", async () => {
     expect(update).toBeNull();
   });
 
-  it("should update if a higher bundle with semver version exists", async () => {
+  it("applies an update when a higher semver-compatible bundle is available", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.x.x",
+        targetAppVersion: "1.x.x",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: false,
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
         forceUpdate: false,
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -74,17 +106,17 @@ describe("appVersion 1.0, bundleId null", async () => {
     });
   });
 
-  it("should update if a higher bundle version exists and forceUpdate is set to true", async () => {
+  it("applies an update if forceUpdate is true for a matching version", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: true,
       },
     ];
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -99,18 +131,18 @@ describe("appVersion 1.0, bundleId null", async () => {
     });
   });
 
-  it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
+  it("applies an update for a matching version even if forceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         forceUpdate: false,
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -124,24 +156,24 @@ describe("appVersion 1.0, bundleId null", async () => {
     });
   });
 
-  it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
+  it("applies an update when the app version is the same but the bundle is still considered higher", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "5",
+        id: "00000000-0000-0000-0000-000000000005",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      id: "5",
+      id: "00000000-0000-0000-0000-000000000005",
       forceUpdate: false,
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
@@ -149,25 +181,25 @@ describe("appVersion 1.0, bundleId null", async () => {
     });
   });
 
-  it("should update if the latest version is not available but a previous version is available", async () => {
+  it("falls back to an older enabled bundle when the latest is disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -181,25 +213,25 @@ describe("appVersion 1.0, bundleId null", async () => {
     });
   });
 
-  it("should not update if all updates are disabled", async () => {
+  it("returns null if all bundles are disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -207,25 +239,25 @@ describe("appVersion 1.0, bundleId null", async () => {
     expect(update).toBeNull();
   });
 
-  it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
+  it("triggers a rollback if the latest bundle is disabled and no other updates are enabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
@@ -233,7 +265,7 @@ describe("appVersion 1.0, bundleId null", async () => {
     expect(update).toStrictEqual(null);
   });
 
-  it("should update if the latest version is available and the app version is the same", async () => {
+  it("applies an update when a same-version bundle is available and enabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -242,19 +274,19 @@ describe("appVersion 1.0, bundleId null", async () => {
         fileHash:
           "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
         message: "",
-        targetVersion: "1.0",
-        id: "20240722210327",
+        targetAppVersion: "1.0",
+        id: "00000000-0000-0000-0000-000000000001",
         enabled: true,
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      id: "20240722210327",
+      id: "00000000-0000-0000-0000-000000000001",
       forceUpdate: false,
       status: "UPDATE",
       fileUrl: "20240722210327/build.zip",
@@ -262,13 +294,11 @@ describe("appVersion 1.0, bundleId null", async () => {
         "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
     });
   });
-});
 
-describe("appVersion 1.0, bundleId v2", async () => {
-  it("should return null if no update information is available", async () => {
+  it("forces a rollback if no matching bundle exists for the provided bundleId", async () => {
     const bundles: Bundle[] = [];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -282,25 +312,25 @@ describe("appVersion 1.0, bundleId v2", async () => {
     });
   });
 
-  it("should return null if no update is available when the app version is higher", async () => {
+  it("returns null if the user is already up-to-date with an available bundle", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -308,18 +338,18 @@ describe("appVersion 1.0, bundleId v2", async () => {
     expect(update).toBeNull();
   });
 
-  it("should rollback if the latest bundle is deleted", async () => {
+  it("triggers a rollback if the previously used bundle no longer exists", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -333,32 +363,32 @@ describe("appVersion 1.0, bundleId v2", async () => {
     });
   });
 
-  it("should update if a higher bundle version exists and forceUpdate is set to false", async () => {
+  it("selects the next available bundle even if forceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "3",
+        id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -366,53 +396,53 @@ describe("appVersion 1.0, bundleId v2", async () => {
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
-      id: "3",
+      id: "00000000-0000-0000-0000-000000000003",
       forceUpdate: false,
       status: "UPDATE",
     });
   });
 
-  it("should update even if the app version is the same and the bundle version is significantly higher", async () => {
+  it("applies the highest available bundle even if the app version is unchanged", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "5", // Higher than the current version
+        id: "00000000-0000-0000-0000-000000000005", // Higher than the current version
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "4",
+        id: "00000000-0000-0000-0000-000000000004",
       },
       {
         ...DEFAULT_BUNDLE,
         platform: "ios",
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
-        id: "3",
+        id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -420,38 +450,38 @@ describe("appVersion 1.0, bundleId v2", async () => {
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
-      id: "5",
+      id: "00000000-0000-0000-0000-000000000005",
       forceUpdate: false,
       status: "UPDATE",
     });
   });
 
-  it("should not update if the latest version is disabled and matches the current version", async () => {
+  it("returns null if the newest matching bundle is disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
-        id: "3",
+        id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -459,25 +489,25 @@ describe("appVersion 1.0, bundleId v2", async () => {
     expect(update).toBeNull();
   });
 
-  it("should rollback to a previous version if the current version is disabled", async () => {
+  it("rolls back to an older enabled bundle if the current one is disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -492,25 +522,25 @@ describe("appVersion 1.0, bundleId v2", async () => {
     });
   });
 
-  it("should rollback to the original bundle when receiving the latest bundle but all updates are disabled", async () => {
+  it("rolls back to the original bundle when all available bundles are disabled", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
-        targetVersion: "1.0",
+        targetAppVersion: "1.0",
         forceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
       },
     ];
 
-    const update = await checkForUpdate(bundles, {
+    const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
@@ -523,4 +553,4 @@ describe("appVersion 1.0, bundleId v2", async () => {
       status: "ROLLBACK",
     });
   });
-});
+};

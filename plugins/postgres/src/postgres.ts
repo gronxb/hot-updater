@@ -42,7 +42,7 @@ export const postgres =
                 git_commit_hash: bundle.gitCommitHash,
                 message: bundle.message,
                 platform: bundle.platform,
-                target_version: bundle.targetVersion,
+                target_app_version: bundle.targetAppVersion,
               })
               .onConflict((oc) =>
                 oc.column("id").doUpdateSet({
@@ -53,7 +53,7 @@ export const postgres =
                   git_commit_hash: bundle.gitCommitHash,
                   message: bundle.message,
                   platform: bundle.platform,
-                  target_version: bundle.targetVersion,
+                  target_app_version: bundle.targetAppVersion,
                 }),
               )
               .execute();
@@ -97,7 +97,7 @@ export const postgres =
           id: data.id,
           message: data.message,
           platform: data.platform,
-          targetVersion: data.target_version,
+          targetAppVersion: data.target_app_version,
         } as Bundle;
       },
       async getBundles(refresh = false) {
@@ -105,7 +105,11 @@ export const postgres =
           return bundles;
         }
 
-        const data = await db.selectFrom("bundles").selectAll().execute();
+        const data = await db
+          .selectFrom("bundles")
+          .orderBy("id", "desc")
+          .selectAll()
+          .execute();
         return data.map((bundle) => ({
           enabled: bundle.enabled,
           fileUrl: bundle.file_url,
@@ -115,7 +119,7 @@ export const postgres =
           id: bundle.id,
           message: bundle.message,
           platform: bundle.platform,
-          targetVersion: bundle.target_version,
+          targetAppVersion: bundle.target_app_version,
         })) as Bundle[];
       },
     };

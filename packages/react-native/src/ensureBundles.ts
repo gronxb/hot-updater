@@ -1,12 +1,27 @@
-import type { Bundle, BundleArg } from "@hot-updater/utils";
+import type {
+  Bundle,
+  BundleArg,
+  GetBundlesArgs,
+  UpdateInfo,
+} from "@hot-updater/core";
 
-export const ensureBundles = async (bundle: BundleArg) => {
+export const ensureBundles = async (
+  bundle: BundleArg,
+  { appVersion, bundleId, platform }: GetBundlesArgs,
+  requestHeaders?: Record<string, string>,
+): Promise<Bundle[] | UpdateInfo> => {
   try {
     let bundles: Bundle[] | null = null;
     if (typeof bundle === "string") {
       if (bundle.startsWith("http")) {
-        const response = await fetch(bundle);
-        bundles = (await response.json()) as Bundle[];
+        return await fetch(bundle, {
+          headers: {
+            "x-app-platform": platform,
+            "x-app-version": appVersion,
+            "x-bundle-id": bundleId,
+            ...requestHeaders,
+          },
+        }).then((res) => res.json());
       }
     } else if (typeof bundle === "function") {
       bundles = await bundle();

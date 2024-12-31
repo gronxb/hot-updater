@@ -6,7 +6,7 @@ import { prune } from "@/commands/prune";
 import { banner } from "@/components/banner";
 import { version } from "@/packageJson";
 import { getPlatform } from "@/prompts/getPlatform";
-import { getDefaultTargetVersion } from "@/utils/getDefaultTargetVersion";
+import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getCwd, log } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
 
@@ -34,7 +34,10 @@ program
     ]),
   )
   .addOption(
-    new Option("-t, --target-version <targetVersion>", "specify the platform"),
+    new Option(
+      "-t, --target-version <targetAppVersion>",
+      "specify the platform",
+    ),
   )
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),
@@ -61,8 +64,8 @@ program
 
   .action(async () => {
     const path = getCwd();
-    const androidVersion = await getDefaultTargetVersion(path, "android");
-    const iosVersion = await getDefaultTargetVersion(path, "ios");
+    const androidVersion = await getDefaultTargetAppVersion(path, "android");
+    const iosVersion = await getDefaultTargetAppVersion(path, "ios");
 
     log.info(`Android version: ${androidVersion}`);
     log.info(`iOS version: ${iosVersion}`);

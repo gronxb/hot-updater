@@ -14,8 +14,7 @@ import type {
 import fs from "fs/promises";
 import mime from "mime";
 
-export interface S3StorageConfig
-  extends Pick<S3ClientConfig, "credentials" | "region"> {
+export interface S3StorageConfig extends S3ClientConfig {
   bucketName: string;
 }
 
@@ -72,13 +71,13 @@ export const s3Storage =
           },
         });
         const response = await upload.done();
-        if (!response.Location) {
+        if (!response.Location || !response.Key) {
           throw new Error("Upload Failed");
         }
 
         hooks?.onStorageUploaded?.();
         return {
-          fileUrl: response.Location,
+          fileUrl: hooks?.transformFileUrl?.(response.Key) ?? response.Location,
         };
       },
     };

@@ -1,8 +1,7 @@
-import { spawn } from "child_process";
 import path from "path";
 import { type BuildPluginArgs, log } from "@hot-updater/plugin-core";
+import { execa } from "execa";
 import fs from "fs/promises";
-import { uuidv7 } from "uuidv7";
 
 interface RunBundleArgs {
   cwd: string;
@@ -10,11 +9,11 @@ interface RunBundleArgs {
   buildPath: string;
 }
 
-const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
+const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native");
   const cliPath = path.resolve(reactNativePath, "..", "cli.js");
 
-  const bundleOutput = path.join(cwd, "build", `index.${platform}.bundle`);
+  const bundleOutput = path.join(buildPath, `index.${platform}.bundle`);
 
   const args = [
     "bundle",
@@ -35,34 +34,25 @@ const runBundle = ({ cwd, platform, buildPath }: RunBundleArgs) => {
 
   log.normal("\n");
 
-  const bundleId = uuidv7();
-
-  const bundle = spawn(cliPath, args, {
+  const { stderr } = await execa(cliPath, args, {
     cwd,
-    env: {
-      ...process.env,
-      HOT_UPDATER_BUNDLE_ID: bundleId,
-    },
-    stdio: ["ignore", "ignore", "pipe"],
+    reject: true,
   });
 
-  return new Promise<string>((resolve, reject) => {
-    bundle.stderr?.on("data", (data: Buffer) => {
-      log.error(data.toString().trim());
-    });
+  if (stderr) {
+    log.error(stderr.trim());
+  }
 
-    bundle.on("close", (exitCode: number) => {
-      if (exitCode) {
-        reject(
-          new Error(
-            `"react-native bundle" command exited with code ${exitCode}.`,
-          ),
-        );
-      }
+  const bundleId = await fs.readFile(
+    path.join(buildPath, "BUNDLE_ID"),
+    "utf-8",
+  );
 
-      resolve(bundleId);
-    });
-  });
+  if (!bundleId) {
+    throw new Error("Bundle ID not found");
+  }
+
+  return bundleId;
 };
 
 export const metro =

@@ -10,6 +10,7 @@ export const createZip = async (dirPath: string, filename: string) => {
   async function addFiles(dir: string, zipFolder: JSZip) {
     const files = await fs.readdir(dir);
     files.sort();
+
     for (const file of files) {
       const fullPath = path.join(dir, file);
       const stats = await fs.stat(fullPath);

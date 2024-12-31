@@ -10,7 +10,7 @@ import * as v from "valibot";
 
 export const bundleSchema = v.object({
   platform: v.union([v.literal("ios"), v.literal("android")]),
-  targetVersion: v.string(),
+  targetAppVersion: v.string(),
   id: v.string(),
   forceUpdate: v.boolean(),
   enabled: v.boolean(),
@@ -26,6 +26,14 @@ export const rpc = new Hono()
   .get("/loadConfig", async (c) => {
     config = await loadConfig();
     return c.json(true);
+  })
+  .get("/getConfig", async (c) => {
+    if (!config) {
+      config = await loadConfig();
+    }
+    return c.json({
+      gitUrl: config?.gitUrl,
+    });
   })
   .get("/isConfigLoaded", (c) => {
     return c.json(config !== null);
