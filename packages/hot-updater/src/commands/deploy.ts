@@ -1,11 +1,16 @@
-import fs from "node:fs/promises";
+import isPortReachable from "is-port-reachable";
+
 import * as p from "@clack/prompts";
 
 import { createZip } from "@/utils/createZip";
+
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
 import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+
+import fs from "fs/promises";
+import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
   targetAppVersion?: string;
@@ -36,7 +41,7 @@ export const deploy = async (options: DeployOptions) => {
     );
   }
 
-  let bundleId: string;
+  let bundleId: string | null = null;
   let bundlePath: string;
   let fileUrl: string;
   let fileHash: string;
@@ -71,6 +76,10 @@ export const deploy = async (options: DeployOptions) => {
       {
         title: `📦 Uploading to Storage (${storagePlugin.name})`,
         task: async () => {
+          if (!bundleId) {
+            throw new Error("Bundle ID not found");
+          }
+
           ({ fileUrl } = await storagePlugin.uploadBundle(
             bundleId,
             bundlePath,
@@ -81,6 +90,10 @@ export const deploy = async (options: DeployOptions) => {
       {
         title: `📦 Updating Database (${databasePlugin.name})`,
         task: async () => {
+          if (!bundleId) {
+            throw new Error("Bundle ID not found");
+          }
+
           await databasePlugin.appendBundle({
             forceUpdate: options.forceUpdate,
             platform: options.platform,
@@ -100,11 +113,26 @@ export const deploy = async (options: DeployOptions) => {
         },
       },
     ]);
+    if (!bundleId) {
+      throw new Error("Bundle ID not found");
+    }
 
-    p.note("🚀 Deployment Successful");
-    // TODO
-    // if port 1422 is open, open consle (http://localhost:1422/bundle_id)
-    // if port 1422 is not open, run console (hot-updater console), and open console (http://localhost:1422/bundle_id)
+    const port = await getConsolePort(config);
+    const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
+
+    const note = `Console: http://localhost:${port}/${bundleId}`;
+    if (!isConsoleOpen) {
+      const result = await p.confirm({
+        message: "Console is not open. Open console?",
+        initialValue: false,
+      });
+      if (result) {
+        await openConsole(port);
+      }
+    }
+    p.note(note);
+
+    p.outro("🚀 Deployment Successful");
   } catch (e) {
     await databasePlugin.onUnmount?.();
     console.error(e);

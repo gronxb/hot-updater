@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { openConsole } from "@/commands/console";
+import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { generateSecretKey } from "@/commands/generateSecretKey";
 import { prune } from "@/commands/prune";
@@ -9,6 +9,7 @@ import { getPlatform } from "@/prompts/getPlatform";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getCwd, log } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
+import picocolors from "picocolors";
 
 const program = new Command();
 
@@ -51,7 +52,20 @@ program
     deploy(options);
   });
 
-program.command("console").description("open the console").action(openConsole);
+program
+  .command("console")
+  .description("open the console")
+  .action(async () => {
+    const port = await getConsolePort();
+
+    await openConsole(port, (info) => {
+      console.log(
+        `Server running on ${picocolors.magenta(
+          picocolors.underline(`http://localhost:${info.port}`),
+        )}`,
+      );
+    });
+  });
 
 program
   .command("generate-secret-key")

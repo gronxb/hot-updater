@@ -67,6 +67,7 @@
     "@types/connect": "^3.4.38",
     "@types/cosmiconfig": "^6.0.0",
     "@types/node": "^22.9.0",
-    "@types/plist": "^3.0.5"
+    "@types/plist": "^3.0.5",
+    "is-port-reachable": "^4.0.0"
   }
 }

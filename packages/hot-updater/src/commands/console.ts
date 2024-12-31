@@ -1,19 +1,28 @@
 import { serve } from "@hono/node-server";
 import app from "@hot-updater/console";
-import picocolors from "picocolors";
+import { type Config, loadConfig } from "@hot-updater/plugin-core";
 
-export const openConsole = () => {
+import type { AddressInfo } from "net";
+
+export const CONSOLE_DEFAULT_PORT = 1422;
+
+export const getConsolePort = async (config?: Config) => {
+  let $config: Config | undefined | null = config;
+  if (!$config) {
+    $config = await loadConfig();
+  }
+  return $config?.consolePort ?? CONSOLE_DEFAULT_PORT;
+};
+
+export const openConsole = async (
+  port: number,
+  listeningListener?: ((info: AddressInfo) => void) | undefined,
+) => {
   serve(
     {
       fetch: app.fetch,
-      port: 1422,
+      port,
     },
-    (info) => {
-      console.log(
-        `Server running on ${picocolors.magenta(
-          picocolors.underline(`http://localhost:${info.port}`),
-        )}`,
-      );
-    },
+    listeningListener,
   );
 };
