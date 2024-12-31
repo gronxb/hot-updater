@@ -105,7 +105,11 @@ export const postgres =
           return bundles;
         }
 
-        const data = await db.selectFrom("bundles").selectAll().execute();
+        const data = await db
+          .selectFrom("bundles")
+          .orderBy("id", "desc")
+          .selectAll()
+          .execute();
         return data.map((bundle) => ({
           enabled: bundle.enabled,
           fileUrl: bundle.file_url,
