@@ -434,6 +434,9 @@ importers:
 
   packages/hot-updater:
     dependencies:
+      '@clack/prompts':
+        specifier: ^0.9.0
+        version: 0.9.0
       '@hot-updater/console':
         specifier: workspace:*
         version: link:../console
@@ -443,6 +446,15 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
+      commander:
+        specifier: ^11.1.0
+        version: 11.1.0
+      cosmiconfig:
+        specifier: ^9.0.0
+        version: 9.0.0(typescript@5.7.2)
+      cosmiconfig-typescript-loader:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.9.0)(cosmiconfig@9.0.0(typescript@5.7.2))(typescript@5.7.2)
     devDependencies:
       '@babel/core':
         specifier: ^7.26.0
@@ -453,9 +465,6 @@ importers:
       '@babel/types':
         specifier: ^7.26.0
         version: 7.26.0
-      '@clack/prompts':
-        specifier: ^0.9.0
-        version: 0.9.0
       '@hono/node-server':
         specifier: ^1.13.4
         version: 1.13.4(hono@4.6.3)
@@ -483,15 +492,6 @@ importers:
       boxen:
         specifier: ^8.0.1
         version: 8.0.1
-      commander:
-        specifier: ^11.1.0
-        version: 11.1.0
-      cosmiconfig:
-        specifier: ^9.0.0
-        version: 9.0.0(typescript@5.7.2)
-      cosmiconfig-typescript-loader:
-        specifier: ^5.0.0
-        version: 5.0.0(@types/node@22.9.0)(cosmiconfig@9.0.0(typescript@5.7.2))(typescript@5.7.2)
       is-port-reachable:
         specifier: ^4.0.0
         version: 4.0.0

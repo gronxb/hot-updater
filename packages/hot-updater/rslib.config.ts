@@ -12,7 +12,6 @@ export default defineConfig({
           "plugins/babel": "./src/plugins/babel.ts",
         },
       },
-
       shims: {
         esm: {
           __dirname: true,
