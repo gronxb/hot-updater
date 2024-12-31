@@ -106,7 +106,9 @@ export const deploy = async (options: DeployOptions) => {
     // if port 1422 is open, open consle (http://localhost:1422/bundle_id)
     // if port 1422 is not open, run console (hot-updater console), and open console (http://localhost:1422/bundle_id)
   } catch (e) {
+    await databasePlugin.onUnmount?.();
     console.error(e);
+    process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();
   }
