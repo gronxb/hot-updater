@@ -1,8 +1,8 @@
-import { select } from "@clack/prompts";
+import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/core";
 
 export const getPlatform = async (message: string) => {
-  const platform = await select({
+  const platform = await p.select({
     message: message,
     initialValue: "ios" as Platform,
     options: [

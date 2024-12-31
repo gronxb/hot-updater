@@ -1,3 +1,5 @@
+import fs from "fs/promises";
+
 import open from "open";
 
 import isPortReachable from "is-port-reachable";
@@ -11,13 +13,15 @@ import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
 import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
-import fs from "fs/promises";
+import { getPlatform } from "@/prompts/getPlatform";
+
 import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
   targetAppVersion?: string;
-  platform: Platform;
+  platform?: Platform;
   forceUpdate: boolean;
+  interactive: boolean;
 }
 
 export const deploy = async (options: DeployOptions) => {
@@ -33,14 +37,45 @@ export const deploy = async (options: DeployOptions) => {
     getLatestGitCommitMessage(),
   ]);
 
+  const platform =
+    options.platform ??
+    (options.interactive
+      ? await getPlatform("Which platform do you want to deploy?")
+      : null);
+
+  if (p.isCancel(platform)) {
+    return;
+  }
+
+  if (!platform) {
+    p.log.error(
+      "Platform not found. -p <ios | android> or --platform <ios | android>",
+    );
+    return;
+  }
+
+  const defaultTargetAppVersion =
+    (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
+
   const targetAppVersion =
     options.targetAppVersion ??
-    (await getDefaultTargetAppVersion(cwd, options.platform));
+    (options.interactive
+      ? await p.text({
+          message: "Target app version",
+          placeholder: defaultTargetAppVersion,
+          initialValue: defaultTargetAppVersion,
+        })
+      : null);
+
+  if (p.isCancel(targetAppVersion)) {
+    return;
+  }
 
   if (!targetAppVersion) {
-    throw new Error(
-      "Target app version not found. Please provide a target app version.",
+    p.log.error(
+      "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
     );
+    return;
   }
 
   let bundleId: string | null = null;
@@ -64,7 +99,7 @@ export const deploy = async (options: DeployOptions) => {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
           const buildResult = await buildPlugin.build({
-            platform: options.platform,
+            platform: platform,
           });
           await createZip(buildResult.buildPath, "build.zip");
 
@@ -98,7 +133,7 @@ export const deploy = async (options: DeployOptions) => {
 
           await databasePlugin.appendBundle({
             forceUpdate: options.forceUpdate,
-            platform: options.platform,
+            platform,
             fileUrl,
             fileHash,
             gitCommitHash,
@@ -119,25 +154,27 @@ export const deploy = async (options: DeployOptions) => {
       throw new Error("Bundle ID not found");
     }
 
-    const port = await getConsolePort(config);
-    const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
+    if (options.interactive) {
+      const port = await getConsolePort(config);
+      const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
 
-    const note = `Console: http://localhost:${port}/${bundleId}`;
-    if (!isConsoleOpen) {
-      const result = await p.confirm({
-        message: "Console server is not running. Would you like to start it?",
-        initialValue: false,
-      });
-      if (result) {
-        await openConsole(port, () => {
-          open(`http://localhost:${port}/${bundleId}`);
+      const note = `Console: http://localhost:${port}/${bundleId}`;
+      if (!isConsoleOpen) {
+        const result = await p.confirm({
+          message: "Console server is not running. Would you like to start it?",
+          initialValue: false,
         });
+        if (result) {
+          await openConsole(port, () => {
+            open(`http://localhost:${port}/${bundleId}`);
+          });
+        }
+      } else {
+        open(`http://localhost:${port}/${bundleId}`);
       }
-    } else {
-      open(`http://localhost:${port}/${bundleId}`);
-    }
 
-    p.note(note);
+      p.note(note);
+    }
     p.outro("🚀 Deployment Successful");
   } catch (e) {
     await databasePlugin.onUnmount?.();
