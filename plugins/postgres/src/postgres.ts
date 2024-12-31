@@ -39,7 +39,8 @@ export const postgres =
       async commitBundle() {
         await db.transaction().execute(async (tx) => {
           for (const bundle of bundles) {
-            tx.insertInto("bundles")
+            await tx
+              .insertInto("bundles")
               .values({
                 id: bundle.id,
                 enabled: bundle.enabled,
@@ -66,6 +67,7 @@ export const postgres =
               .execute();
           }
         });
+
         hooks?.onDatabaseUpdated?.();
       },
       async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
