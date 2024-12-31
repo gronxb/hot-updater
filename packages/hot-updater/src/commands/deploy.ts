@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import semverValid from "semver/ranges/valid";
 
 import open from "open";
 
@@ -68,6 +69,12 @@ export const deploy = async (options: DeployOptions) => {
           message: "Target app version",
           placeholder: defaultTargetAppVersion,
           initialValue: defaultTargetAppVersion,
+          validate: (value) => {
+            if (!semverValid(value)) {
+              return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
+            }
+            return;
+          },
         })
       : null);
 
@@ -81,6 +88,7 @@ export const deploy = async (options: DeployOptions) => {
     );
     return;
   }
+  p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
 
   let bundleId: string | null = null;
   let bundlePath: string;

@@ -45,10 +45,10 @@
     "@hot-updater/core": "0.1.6-0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
-    "picocolors": "^1.0.0",
     "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
+    "picocolors": "^1.0.0",
     "@types/node": "^22.7.5"
   }
 }
