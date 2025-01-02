@@ -8,13 +8,13 @@ import type {
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 
-export interface SupabaseConfig {
+export interface SupabaseDatabaseConfig {
   supabaseUrl: string;
   supabaseAnonKey: string;
 }
 
-export const supabase =
-  (config: SupabaseConfig, hooks?: DatabasePluginHooks) =>
+export const supabaseDatabase =
+  (config: SupabaseDatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
     const supabase = createClient<Database>(
       config.supabaseUrl,
@@ -24,7 +24,7 @@ export const supabase =
     let bundles: Bundle[] = [];
 
     return {
-      name: "supabase",
+      name: "supabaseDatabase",
       async commitBundle() {
         await supabase.from("bundles").upsert(
           bundles.map((bundle) => ({

@@ -1,41 +1,33 @@
+import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 
 import { ExecaError, execa } from "execa";
 
-// const CONFIG_TEMPLATE = `
-// export default defineConfig({
-//   console: {
-//     gitUrl: "https://github.com/gronxb/hot-updater",
-//   },
-//   build: metro(),
-//   storage: s3Storage(
-//     {
-//       forcePathStyle: true,
-//       endpoint: "%%AWS_ENDPOINT%%",
-//       region: "%%AWS_REGION%%",
-//       credentials: {
-//         accessKeyId: "%%AWS_ACCESS_KEY_ID%%",
-//         secretAccessKey: "%%AWS_SECRET_ACCESS_KEY%%",
-//         sessionToken: "%%AWS_SESSION_TOKEN%%",
-//       },
-//       bucketName: "%%AWS_S3_BUCKET_NAME%%",
-//     },
-//     {
-//       transformFileUrl: (key) => {
-//         return \`\${%%AWS_PUBLIC_URL%%}/\${key}\`;
-//       },
-//     },
-//   ),
-//   database: postgres({
-//     host: %%POSTGRES_HOST%%,
-//     port: Number(%%POSTGRES_PORT%%),
-//     database: %%POSTGRES_DATABASE%%,
-//     user: %%POSTGRES_USER%%,
-//     password: %%POSTGRES_PASSWORD%%,
-//   }),
-// });
-// `;
+const CONFIG_TEMPLATE = `
+import { metro } from "@hot-updater/metro";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({
+  override: true,
+});
+
+
+export default defineConfig({
+  build: metro(),
+  storage: supabaseStorage({
+    supabaseUrl: "%%SUPABASE_URL%%",
+    supabaseAnonKey: "%%SUPABASE_ANON_KEY%%",
+    bucketName: "%%SUPABASE_BUCKET_NAME%%",
+  }),
+  database: supabaseDatabase({
+    supabaseUrl: "%%SUPABASE_URL%%",
+    supabaseAnonKey: "%%SUPABASE_ANON_KEY%%",
+  }),
+});
+`;
 
 const selectBucket = async (supabase: SupabaseClient) => {
   const publicBuckets = (
@@ -211,4 +203,12 @@ export const initSupabase = async () => {
   } while (!bucketId);
 
   console.log(bucketId);
+
+  console.log(
+    transformTemplate(CONFIG_TEMPLATE, {
+      SUPABASE_ANON_KEY: serviceRoleKey.api_key,
+      SUPABASE_URL: `https://${project.id}.supabase.co`,
+      SUPABASE_BUCKET_NAME: bucketId,
+    }),
+  );
 };
