@@ -1,3 +1,20 @@
+## 0.2.0 (2025-01-02)
+
+### 🚀 Features
+
+- postgres `get_update_info` qurery and ensure test ([#34](https://github.com/gronxb/hot-updater/pull/34))
+- improve deploy command ([#35](https://github.com/gronxb/hot-updater/pull/35))
+- console config ([#37](https://github.com/gronxb/hot-updater/pull/37))
+
+### 🩹 Fixes
+
+- semver valid and chore deps ([#36](https://github.com/gronxb/hot-updater/pull/36))
+- babel out dir ([#38](https://github.com/gronxb/hot-updater/pull/38))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.1.6-0 (2024-12-30)
 
 ### 🚀 Features
