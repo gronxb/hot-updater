@@ -26,7 +26,7 @@ export const supabase =
     return {
       name: "supabase",
       async commitBundle() {
-        await supabase.from("bundles").insert(
+        await supabase.from("bundles").upsert(
           bundles.map((bundle) => ({
             id: bundle.id,
             enabled: bundle.enabled,
@@ -38,6 +38,7 @@ export const supabase =
             platform: bundle.platform,
             target_app_version: bundle.targetAppVersion,
           })),
+          { onConflict: "id" },
         );
 
         hooks?.onDatabaseUpdated?.();
