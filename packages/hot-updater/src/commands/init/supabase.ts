@@ -2,9 +2,10 @@ import * as p from "@clack/prompts";
 import { ExecaError, execa } from "execa";
 
 export const initSupabase = async () => {
+  const spinner = p.spinner();
   const confirmed = await p.confirm({
     message: "Do you have supabsae organization?",
-    initialValue: false,
+    initialValue: true,
   });
 
   if (p.isCancel(confirmed)) {
@@ -34,7 +35,7 @@ export const initSupabase = async () => {
 
   const projectConfirmed = await p.confirm({
     message: "Do you have supabsae project?",
-    initialValue: false,
+    initialValue: true,
   });
 
   if (p.isCancel(projectConfirmed)) {
@@ -54,4 +55,73 @@ export const initSupabase = async () => {
       process.exit(1);
     }
   }
+
+  spinner.start("Getting projects");
+  const listProjects = await execa("npx", [
+    "-y",
+    "supabase",
+    "projects",
+    "list",
+    "--output",
+    "json",
+  ]);
+  const projectsProcess = JSON.parse(listProjects.stdout ?? "[]") as {
+    created_at: string;
+    database: {
+      host: string;
+      postgres_engine: string;
+      release_channel: string;
+      version: string;
+    };
+    id: string;
+    name: string;
+    organization_id: string;
+    region: string;
+    status: string;
+    linked: boolean;
+  }[];
+
+  spinner.stop();
+
+  const selectedProjectId = await p.select({
+    message: "Select your project",
+    options: projectsProcess.map((p) => ({
+      label: `${p.name} (${p.region})`,
+      value: p.id,
+    })),
+  });
+  if (p.isCancel(selectedProjectId)) {
+    process.exit(0);
+  }
+
+  const project = projectsProcess.find((p) => p.id === selectedProjectId);
+
+  spinner.start(`Getting api keys (${project?.name})`);
+  const apisKeysProcess = await execa("npx", [
+    "-y",
+    "supabase",
+    "projects",
+    "api-keys",
+    "--project-ref",
+    selectedProjectId,
+    "--output",
+    "json",
+  ]);
+  spinner.stop();
+
+  const apiKeys = JSON.parse(apisKeysProcess.stdout ?? "[]") as {
+    api_key: string;
+    name: string;
+  }[];
+
+  const anonKey = apiKeys.find((key) => key.name === "anon");
+
+  if (!anonKey) {
+    throw new Error("Anon key not found");
+  }
+  console.log(anonKey.api_key);
+  //   const supabase = createClient(
+  //     "https://ctgmjxoyblmtnvftsotj.supabase.co",
+  //     anonKey.api_key,
+  //   );
 };

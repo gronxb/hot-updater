@@ -1,7 +1,10 @@
+import { printBanner } from "@/components/banner";
 import { isCancel, select } from "@clack/prompts";
 import { initSupabase } from "./init/supabase";
 
 export const init = async () => {
+  printBanner();
+
   const provider = await select({
     message: "Select a provider",
     options: [{ value: "supabase", label: "Supabase" }],

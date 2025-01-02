@@ -46,6 +46,7 @@
     "@hot-updater/console": "0.2.0",
     "@hot-updater/core": "0.2.0",
     "@hot-updater/plugin-core": "0.2.0",
+    "@supabase/supabase-js": "^2.47.10",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0"
