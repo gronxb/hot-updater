@@ -646,6 +646,25 @@ importers:
         specifier: ^9.1.3
         version: 9.1.3
 
+  plugins/supabase:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+      '@supabase/supabase-js':
+        specifier: ^2.47.10
+        version: 2.47.10
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.2.15
+        version: 0.2.15
+      camelcase-keys:
+        specifier: ^9.1.3
+        version: 9.1.3
+
 packages:
 
   '@algolia/autocomplete-core@1.9.3':
