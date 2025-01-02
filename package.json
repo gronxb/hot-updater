@@ -36,6 +36,7 @@
       "@hot-updater/metro": "workspace:*",
       "@hot-updater/react-native": "workspace:*",
       "@hot-updater/postgres": "workspace:*",
+      "@hot-updater/supabase": "workspace:*",
       "@hot-updater/js": "workspace:*"
     }
   },
