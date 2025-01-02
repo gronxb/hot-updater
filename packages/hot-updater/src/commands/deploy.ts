@@ -18,6 +18,7 @@ import { getPlatform } from "@/prompts/getPlatform";
 
 import { getConsolePort, openConsole } from "./console";
 
+import path from "path";
 import { printBanner } from "@/components/banner";
 
 export interface DeployOptions {
@@ -113,10 +114,10 @@ export const deploy = async (options: DeployOptions) => {
           const buildResult = await buildPlugin.build({
             platform: platform,
           });
-          await createZip(buildResult.buildPath, "build.zip");
+          await createZip(buildResult.buildPath, "bundle.zip");
 
           bundleId = buildResult.bundleId;
-          bundlePath = buildResult.buildPath.concat(".zip");
+          bundlePath = path.join(getCwd(), "bundle.zip");
           fileHash = await getFileHashFromFile(bundlePath);
 
           return `✅ Build Complete (${buildPlugin.name})`;
