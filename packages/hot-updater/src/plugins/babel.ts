@@ -3,11 +3,13 @@ import path from "path";
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
-import { getCwd } from "@hot-updater/plugin-core";
 import { uuidv7 } from "uuidv7";
 
 export default function replaceHotUpdaterBundleId(): PluginObj {
-  const bundleIdPath = path.join(getCwd(), "build", "BUNDLE_ID");
+  const bundleIdPath = path.join(
+    process.env["BUILD_OUT_DIR"] ?? "dist",
+    "BUNDLE_ID",
+  );
 
   let bundleId = uuidv7();
 

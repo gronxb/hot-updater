@@ -2,7 +2,7 @@ import path from "path";
 import {
   type BasePluginArgs,
   type BuildPlugin,
-  type BuildPluginArgs,
+  type BuildPluginConfig,
   log,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
@@ -42,6 +42,10 @@ const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
   try {
     await execa(cliPath, args, {
       cwd,
+      env: {
+        ...process.env,
+        BUILD_OUT_DIR: buildPath,
+      },
     });
   } catch (error) {
     if (error instanceof ExecaError) {
@@ -61,12 +65,19 @@ const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
   return bundleId;
 };
 
+export interface MetroPluginConfig extends BuildPluginConfig {}
+
 export const metro =
-  () =>
+  (
+    config: MetroPluginConfig = {
+      outDir: "dist",
+    },
+  ) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => {
+    const { outDir = "dist" } = config;
     return {
-      build: async ({ platform }: BuildPluginArgs) => {
-        const buildPath = path.join(cwd, "build");
+      build: async ({ platform }) => {
+        const buildPath = path.join(cwd, outDir);
 
         await fs.rm(buildPath, { recursive: true, force: true });
         await fs.mkdir(buildPath, { recursive: true });

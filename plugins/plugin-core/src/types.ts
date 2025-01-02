@@ -6,8 +6,8 @@ export interface BasePluginArgs {
   cwd: string;
 }
 
-export interface BuildPluginArgs {
-  platform: Platform;
+export interface BuildPluginConfig {
+  outDir?: string;
 }
 
 export interface DatabasePlugin {
@@ -30,7 +30,7 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  build: (args: BuildPluginArgs) => Promise<{
+  build: (args: { platform: Platform }) => Promise<{
     buildPath: string;
     bundleId: string;
   }>;
