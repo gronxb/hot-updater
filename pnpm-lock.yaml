@@ -13,6 +13,7 @@ overrides:
   '@hot-updater/metro': workspace:*
   '@hot-updater/react-native': workspace:*
   '@hot-updater/postgres': workspace:*
+  '@hot-updater/supabase': workspace:*
   '@hot-updater/js': workspace:*
 
 importers:
@@ -256,9 +257,9 @@ importers:
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
-      '@hot-updater/postgres':
+      '@hot-updater/supabase':
         specifier: workspace:*
-        version: link:../../plugins/postgres
+        version: link:../../plugins/supabase
       '@react-native-community/cli':
         specifier: 15.0.0
         version: 15.0.0(typescript@5.0.4)
@@ -13880,9 +13881,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
@@ -13894,7 +13893,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-color@2.1.0': {}
 

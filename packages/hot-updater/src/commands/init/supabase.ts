@@ -1,6 +1,41 @@
 import * as p from "@clack/prompts";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
+
 import { ExecaError, execa } from "execa";
+
+// const CONFIG_TEMPLATE = `
+// export default defineConfig({
+//   console: {
+//     gitUrl: "https://github.com/gronxb/hot-updater",
+//   },
+//   build: metro(),
+//   storage: s3Storage(
+//     {
+//       forcePathStyle: true,
+//       endpoint: "%%AWS_ENDPOINT%%",
+//       region: "%%AWS_REGION%%",
+//       credentials: {
+//         accessKeyId: "%%AWS_ACCESS_KEY_ID%%",
+//         secretAccessKey: "%%AWS_SECRET_ACCESS_KEY%%",
+//         sessionToken: "%%AWS_SESSION_TOKEN%%",
+//       },
+//       bucketName: "%%AWS_S3_BUCKET_NAME%%",
+//     },
+//     {
+//       transformFileUrl: (key) => {
+//         return \`\${%%AWS_PUBLIC_URL%%}/\${key}\`;
+//       },
+//     },
+//   ),
+//   database: postgres({
+//     host: %%POSTGRES_HOST%%,
+//     port: Number(%%POSTGRES_PORT%%),
+//     database: %%POSTGRES_DATABASE%%,
+//     user: %%POSTGRES_USER%%,
+//     password: %%POSTGRES_PASSWORD%%,
+//   }),
+// });
+// `;
 
 const selectBucket = async (supabase: SupabaseClient) => {
   const publicBuckets = (
@@ -39,6 +74,7 @@ const selectBucket = async (supabase: SupabaseClient) => {
     });
     return null;
   }
+
   return selectedStorageId;
 };
 
@@ -169,10 +205,10 @@ export const initSupabase = async () => {
     serviceRoleKey.api_key,
   );
 
-  let selectedStorageId: string | null = null;
+  let bucketId: string | null = null;
   do {
-    selectedStorageId = await selectBucket(supabase);
-  } while (!selectedStorageId);
+    bucketId = await selectBucket(supabase);
+  } while (!bucketId);
 
-  console.log(selectedStorageId);
+  console.log(bucketId);
 };

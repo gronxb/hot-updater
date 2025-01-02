@@ -1,6 +1,6 @@
 import { s3Storage } from "@hot-updater/aws";
 import { metro } from "@hot-updater/metro";
-import { postgres } from "@hot-updater/postgres";
+import { supabase } from "@hot-updater/supabase";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
@@ -33,11 +33,8 @@ export default defineConfig({
       },
     },
   ),
-  database: postgres({
-    host: process.env.POSTGRES_HOST!,
-    port: Number(process.env.POSTGRES_PORT!),
-    database: process.env.POSTGRES_DATABASE!,
-    user: process.env.POSTGRES_USER!,
-    password: process.env.POSTGRES_PASSWORD!,
+  database: supabase({
+    supabaseUrl: process.env.SUPABASE_URL!,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY!,
   }),
 });
