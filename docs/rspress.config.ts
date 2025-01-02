@@ -11,6 +11,9 @@ export default defineConfig({
     dark: "/logo.png",
   },
   base: "/hot-updater/",
+  markdown: {
+    defaultWrapCode: true,
+  },
   themeConfig: {
     socialLinks: [
       {
