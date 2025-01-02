@@ -1,5 +1,46 @@
 import * as p from "@clack/prompts";
+import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 import { ExecaError, execa } from "execa";
+
+const selectBucket = async (supabase: SupabaseClient) => {
+  const publicBuckets = (
+    (await supabase.storage.listBuckets()).data ?? []
+  ).filter((bucket) => bucket.public);
+
+  const identityCreate = `create/${Math.random().toString(36).substring(2, 15)}`;
+  const selectedStorageId = await p.select({
+    message: "Select your storage",
+    options: [
+      ...publicBuckets.map((bucket) => ({
+        label: bucket.name,
+        value: bucket.id,
+      })),
+      {
+        label: "Create new public bucket",
+        value: identityCreate,
+      },
+    ],
+  });
+
+  if (p.isCancel(selectedStorageId)) {
+    process.exit(0);
+  }
+
+  if (selectedStorageId === identityCreate) {
+    const bucketName = await p.text({
+      message: "Enter your bucket name",
+    });
+    if (p.isCancel(bucketName)) {
+      process.exit(0);
+    }
+
+    await supabase.storage.createBucket(bucketName, {
+      public: true,
+    });
+    return null;
+  }
+  return selectedStorageId;
+};
 
 export const initSupabase = async () => {
   const spinner = p.spinner();
@@ -95,6 +136,9 @@ export const initSupabase = async () => {
   }
 
   const project = projectsProcess.find((p) => p.id === selectedProjectId);
+  if (!project) {
+    throw new Error("Project not found");
+  }
 
   spinner.start(`Getting api keys (${project?.name})`);
   const apisKeysProcess = await execa("npx", [
@@ -114,14 +158,21 @@ export const initSupabase = async () => {
     name: string;
   }[];
 
-  const anonKey = apiKeys.find((key) => key.name === "anon");
+  const serviceRoleKey = apiKeys.find((key) => key.name === "service_role");
 
-  if (!anonKey) {
-    throw new Error("Anon key not found");
+  if (!serviceRoleKey) {
+    throw new Error("Service role key not found");
   }
-  console.log(anonKey.api_key);
-  //   const supabase = createClient(
-  //     "https://ctgmjxoyblmtnvftsotj.supabase.co",
-  //     anonKey.api_key,
-  //   );
+
+  const supabase = createClient(
+    `https://${project.id}.supabase.co`,
+    serviceRoleKey.api_key,
+  );
+
+  let selectedStorageId: string | null = null;
+  do {
+    selectedStorageId = await selectBucket(supabase);
+  } while (!selectedStorageId);
+
+  console.log(selectedStorageId);
 };
