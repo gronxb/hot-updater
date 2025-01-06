@@ -249,9 +249,9 @@ export const initSupabase = async () => {
     process.exit(1);
   }
 
-  // await execa("npx", ["supabase", "db", "push"], {
-  //   stdio: "inherit",
-  // });
+  await execa("npx", ["supabase", "db", "push"], {
+    stdio: "inherit",
+  });
   // TODO: db migration, edge functions deploy만 하면 끝
   // TODO: db storage upload / remove 테스트
 };
