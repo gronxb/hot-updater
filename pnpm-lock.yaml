@@ -447,9 +447,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      '@supabase/supabase-js':
-        specifier: ^2.47.10
-        version: 2.47.10
+      '@hot-updater/supabase':
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       commander:
         specifier: ^11.1.0
         version: 11.1.0
@@ -13881,7 +13881,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
@@ -13893,9 +13895,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-color@2.1.0': {}
 

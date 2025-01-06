@@ -1,8 +1,10 @@
+import { getPackageManager } from "@/utils/getPackageManager";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
-import { type SupabaseClient, createClient } from "@supabase/supabase-js";
+import { type SupabaseApi, supabaseApi } from "@hot-updater/supabase";
 
 import { ExecaError, execa } from "execa";
+import { readPackageUp } from "read-package-up";
 
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
@@ -29,10 +31,9 @@ export default defineConfig({
 });
 `;
 
-const selectBucket = async (supabase: SupabaseClient) => {
-  const publicBuckets = (
-    (await supabase.storage.listBuckets()).data ?? []
-  ).filter((bucket) => bucket.public);
+const selectBucket = async (api: SupabaseApi) => {
+  const buckets = await api.listBuckets();
+  const publicBuckets = buckets.filter((bucket: any) => bucket.isPublic);
 
   const identityCreate = `create/${Math.random().toString(36).substring(2, 15)}`;
   const selectedStorageId = await p.select({
@@ -61,7 +62,7 @@ const selectBucket = async (supabase: SupabaseClient) => {
       process.exit(0);
     }
 
-    await supabase.storage.createBucket(bucketName, {
+    await api.createBucket(bucketName, {
       public: true,
     });
     return null;
@@ -70,8 +71,32 @@ const selectBucket = async (supabase: SupabaseClient) => {
   return selectedStorageId;
 };
 
+const PACKAGE_NAME = "@hot-updater/supabase";
+
 export const initSupabase = async () => {
   const spinner = p.spinner();
+
+  await p.tasks([
+    {
+      title: `Checking ${PACKAGE_NAME}`,
+      task: async (message) => {
+        const packageJson = await readPackageUp();
+        if (
+          packageJson?.packageJson.dependencies?.[PACKAGE_NAME] ||
+          packageJson?.packageJson.devDependencies?.[PACKAGE_NAME]
+        ) {
+          return `Installed ${PACKAGE_NAME}`;
+        }
+
+        const packageManager = getPackageManager();
+        message(`Installing ${PACKAGE_NAME}`);
+
+        await execa(packageManager, ["install", PACKAGE_NAME]);
+        return `Installed ${PACKAGE_NAME}`;
+      },
+    },
+  ]);
+
   const confirmed = await p.confirm({
     message: "Do you have supabsae organization?",
     initialValue: true,
@@ -192,14 +217,14 @@ export const initSupabase = async () => {
     throw new Error("Service role key not found");
   }
 
-  const supabase = createClient(
+  const api = supabaseApi(
     `https://${project.id}.supabase.co`,
     serviceRoleKey.api_key,
   );
 
   let bucketId: string | null = null;
   do {
-    bucketId = await selectBucket(supabase);
+    bucketId = await selectBucket(api);
   } while (!bucketId);
 
   console.log(bucketId);
@@ -211,4 +236,22 @@ export const initSupabase = async () => {
       SUPABASE_BUCKET_NAME: bucketId,
     }),
   );
+
+  try {
+    await execa("npx", ["supabase", "link", "--project-ref", project.id], {
+      stdio: "inherit",
+    });
+    // ignore warning ?
+  } catch (err) {
+    if (err instanceof ExecaError) {
+      console.log(err.stderr);
+    }
+    process.exit(1);
+  }
+
+  // await execa("npx", ["supabase", "db", "push"], {
+  //   stdio: "inherit",
+  // });
+  // TODO: db migration, edge functions deploy만 하면 끝
+  // TODO: db storage upload / remove 테스트
 };

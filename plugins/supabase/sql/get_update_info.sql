@@ -1,3 +1,4 @@
+--HotUpdater.get_update_info
 CREATE OR REPLACE FUNCTION get_update_info (
     app_platform   platforms,
     app_version text,
@@ -10,7 +11,7 @@ RETURNS TABLE (
     file_hash     text,
     status        text
 )
-LANGUAGE plpgsql
+LANGUAGE plpgsql 
 AS
 $$
 DECLARE

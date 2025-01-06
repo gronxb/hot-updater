@@ -19,6 +19,7 @@
   "files": [
     "dist",
     "sql",
+    "supabase",
     "package.json"
   ],
   "scripts": {
