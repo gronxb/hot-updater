@@ -1,5 +1,4 @@
 import path from "path";
-import {} from "@aws-sdk/client-s3";
 import type {
   BasePluginArgs,
   StoragePlugin,
