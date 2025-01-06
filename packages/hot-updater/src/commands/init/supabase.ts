@@ -1,10 +1,15 @@
 import { getPackageManager } from "@/utils/getPackageManager";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
-import { type SupabaseApi, supabaseApi } from "@hot-updater/supabase";
+import {
+  type SupabaseApi,
+  supabaseApi,
+  supabaseConfigTomlTemplate,
+} from "@hot-updater/supabase";
+import fs from "fs/promises";
 
+import path from "path";
 import { ExecaError, execa } from "execa";
-import { readPackageUp } from "read-package-up";
 
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
@@ -80,11 +85,8 @@ export const initSupabase = async () => {
     {
       title: `Checking ${PACKAGE_NAME}`,
       task: async (message) => {
-        const packageJson = await readPackageUp();
-        if (
-          packageJson?.packageJson.dependencies?.[PACKAGE_NAME] ||
-          packageJson?.packageJson.devDependencies?.[PACKAGE_NAME]
-        ) {
+        const supabasePath = require.resolve("@hot-updater/supabase");
+        if (supabasePath) {
           return `Installed ${PACKAGE_NAME}`;
         }
 
@@ -227,31 +229,76 @@ export const initSupabase = async () => {
     bucketId = await selectBucket(api);
   } while (!bucketId);
 
-  console.log(bucketId);
-
-  console.log(
-    transformTemplate(CONFIG_TEMPLATE, {
-      SUPABASE_ANON_KEY: serviceRoleKey.api_key,
-      SUPABASE_URL: `https://${project.id}.supabase.co`,
-      SUPABASE_BUCKET_NAME: bucketId,
-    }),
+  const supabasePath = path.resolve(
+    require.resolve("@hot-updater/supabase"),
+    "..",
+    "..",
   );
 
-  try {
-    await execa("npx", ["supabase", "link", "--project-ref", project.id], {
-      stdio: "inherit",
-    });
-    // ignore warning ?
-  } catch (err) {
-    if (err instanceof ExecaError) {
-      console.log(err.stderr);
-    }
-    process.exit(1);
-  }
+  await p.tasks([
+    {
+      title: "Supabase linking",
+      task: async () => {
+        try {
+          await fs.writeFile(
+            path.join(supabasePath, "supabase", "config.toml"),
+            transformTemplate(supabaseConfigTomlTemplate, {
+              projectId: project.id,
+            }),
+          );
 
-  await execa("npx", ["supabase", "db", "push"], {
-    stdio: "inherit",
+          await execa(
+            "npx",
+            [
+              "supabase",
+              "link",
+              "--project-ref",
+              project.id,
+              "--workdir",
+              supabasePath,
+            ],
+            {
+              input: "",
+              stdio: ["pipe", "pipe", "pipe"],
+            },
+          );
+          return "Supabase linked";
+        } catch (err) {
+          if (err instanceof ExecaError) {
+            console.log(err.stderr);
+          } else {
+            console.log(err);
+          }
+          process.exit(1);
+        }
+      },
+    },
+    {
+      title: "Supabase db push",
+      task: async () => {
+        try {
+          const dbPush = await execa("npx", ["supabase", "db", "push"], {
+            cwd: supabasePath,
+          });
+          return dbPush.stdout;
+        } catch (err) {
+          if (err instanceof ExecaError) {
+            console.log(err.stderr);
+          } else {
+            console.log(err);
+          }
+          process.exit(1);
+        }
+      },
+    },
+  ]);
+
+  transformTemplate(CONFIG_TEMPLATE, {
+    SUPABASE_ANON_KEY: serviceRoleKey.api_key,
+    SUPABASE_URL: `https://${project.id}.supabase.co`,
+    SUPABASE_BUCKET_NAME: bucketId,
   });
+
   // TODO: db migration, edge functions deploy만 하면 끝
   // TODO: db storage upload / remove 테스트
 };
