@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.15",
-    "camelcase-keys": "^9.1.3"
+    "camelcase-keys": "^9.1.3",
+    "mime": "^4.0.4"
   }
 }
