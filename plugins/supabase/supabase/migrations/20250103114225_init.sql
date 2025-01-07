@@ -1,3 +1,5 @@
+-- HotUpdater.bundles
+
 CREATE TYPE platforms AS ENUM ('ios', 'android');
 
 CREATE TABLE bundles (
@@ -14,7 +16,9 @@ CREATE TABLE bundles (
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 
---HotUpdater.get_update_info
+
+-- HotUpdater.get_update_info
+
 CREATE OR REPLACE FUNCTION get_update_info (
     app_platform   platforms,
     app_version text,
@@ -27,7 +31,7 @@ RETURNS TABLE (
     file_hash     text,
     status        text
 )
-LANGUAGE plpgsql 
+LANGUAGE plpgsql
 AS
 $$
 DECLARE
@@ -94,6 +98,8 @@ BEGIN
 
 END;
 $$;
+
+-- HotUpdater.semver_satisfies
 
 CREATE OR REPLACE FUNCTION semver_satisfies(range_expression TEXT, version TEXT)
 RETURNS BOOLEAN AS $$
@@ -191,3 +197,4 @@ BEGIN
     RETURN satisfies;
 END;
 $$ LANGUAGE plpgsql;
+

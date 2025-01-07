@@ -1,3 +1,5 @@
+-- HotUpdater.bundles
+
 CREATE TYPE platforms AS ENUM ('ios', 'android');
 
 CREATE TABLE bundles (
