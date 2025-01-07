@@ -11,8 +11,6 @@ import {
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 
-/* ----------------------------- CONFIG TEMPLATE ----------------------------- */
-
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
@@ -37,8 +35,6 @@ export default defineConfig({
 });
 `;
 
-/* ------------------------ 1. Install Package if Needed --------------------- */
-
 const PACKAGE_NAME = "@hot-updater/supabase";
 
 const ensureSupabasePackageInstalled = async () => {
@@ -61,8 +57,6 @@ const ensureSupabasePackageInstalled = async () => {
     },
   ]);
 };
-
-/* --------------------- 2. Select or Create Organization -------------------- */
 
 const selectOrCreateOrganization = async () => {
   const confirmed = await p.confirm({
@@ -94,8 +88,6 @@ const selectOrCreateOrganization = async () => {
     process.exit(1);
   }
 };
-
-/* ----------------------- 3. Select or Create Project ----------------------- */
 
 const selectProject = async () => {
   const spinner = p.spinner();
@@ -170,8 +162,6 @@ const selectProject = async () => {
   return selectedProject;
 };
 
-/* ------------------------ 4. Select or Create Bucket ----------------------- */
-
 const selectBucket = async (api: SupabaseApi) => {
   let buckets: { id: string; name: string; isPublic: boolean }[] = [];
   let retryCount = 0;
@@ -183,7 +173,9 @@ const selectBucket = async (api: SupabaseApi) => {
         while (retryCount < 60 * 5) {
           try {
             if (retryCount === 5) {
-              message("Supabase project is not ready yet. Please wait...");
+              message(
+                "Supabase project is not ready yet. This may take a few minutes.",
+              );
             }
 
             buckets = await api.listBuckets();
@@ -246,17 +238,9 @@ const selectBucket = async (api: SupabaseApi) => {
   return selectedBucketId;
 };
 
-/* ----------------- 5. Link Supabase & Push Database Changes --------------- */
-
-const linkAndPushSupabase = async (projectId: string) => {
+const linkSupabase = async (supabasePath: string, projectId: string) => {
   const spinner = p.spinner();
   spinner.start("Linking Supabase...");
-
-  const supabasePath = path.resolve(
-    require.resolve("@hot-updater/supabase"),
-    "..",
-    "..",
-  );
 
   try {
     // Write the config.toml with correct projectId
@@ -293,8 +277,9 @@ const linkAndPushSupabase = async (projectId: string) => {
     }
     process.exit(1);
   }
+};
 
-  // Push DB changes
+const pushDB = async (supabasePath: string) => {
   await p.tasks([
     {
       title: "Supabase db push",
@@ -317,19 +302,48 @@ const linkAndPushSupabase = async (projectId: string) => {
   ]);
 };
 
-/* ------------------------ 6. Main initSupabase Function -------------------- */
+const deployEdgeFunction = async (supabasePath: string, projectId: string) => {
+  await p.tasks([
+    {
+      title: "Supabase edge function deploy. This may take a few minutes.",
+      task: async () => {
+        try {
+          const dbPush = await execa(
+            "npx",
+            [
+              "supabase",
+              "functions",
+              "deploy",
+              "update-server",
+              "--project-ref",
+              projectId,
+              "--no-verify-jwt",
+            ],
+            {
+              cwd: supabasePath,
+            },
+          );
+          return dbPush.stdout;
+        } catch (err) {
+          if (err instanceof ExecaError && err.stderr) {
+            p.log.error(err.stderr);
+          } else {
+            console.error(err);
+          }
+          process.exit(1);
+        }
+      },
+    },
+  ]);
+};
 
 export const initSupabase = async () => {
-  // 1. Ensure package installed
   await ensureSupabasePackageInstalled();
 
-  // 2. Select or create an organization
   await selectOrCreateOrganization();
 
-  // 3. Select or create a project
   const project = await selectProject();
 
-  // 4. Fetch service role key
   const spinner = p.spinner();
   spinner.start(`Getting API keys for ${project.name}...`);
   let apiKeys: { api_key: string; name: string }[] = [];
@@ -357,23 +371,33 @@ export const initSupabase = async () => {
     throw new Error("Service role key not found");
   }
 
-  // 5. Select or create a bucket
   const api = supabaseApi(
     `https://${project.id}.supabase.co`,
     serviceRoleKey.api_key,
   );
   const bucketId = await selectBucket(api);
 
-  // 6. Link & push DB changes
-  await linkAndPushSupabase(project.id);
+  const supabasePath = path.resolve(
+    require.resolve("@hot-updater/supabase"),
+    "..",
+    "..",
+  );
 
-  // 7. (Optional) Generate config file content (if you want to save it locally)
+  await linkSupabase(supabasePath, project.id);
+  await pushDB(supabasePath);
+  await deployEdgeFunction(supabasePath, project.id);
+
+  // (Optional) Generate config file content (if you want to save it locally)
   //    This is just the transform, you can decide how/where you want to write it.
   const finalConfig = transformTemplate(CONFIG_TEMPLATE, {
     SUPABASE_ANON_KEY: serviceRoleKey.api_key,
     SUPABASE_URL: `https://${project.id}.supabase.co`,
     SUPABASE_BUCKET_NAME: bucketId,
   });
+
+  // edge function push하고
+  // config 만들고
+  // 네이티브 코드 변경하고 끝
 
   // e.g., you can write out finalConfig to a file or just log it
   // await fs.writeFile("hot-updater.config.ts", finalConfig);
