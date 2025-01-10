@@ -5,7 +5,7 @@ import { initSupabase } from "./init/supabase";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv", "hot-updater", "dotenv"],
+  devDependencies: ["dotenv", "hot-updater"],
 };
 
 const PACKAGE_MAP = {

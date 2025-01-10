@@ -1,45 +1,32 @@
 import * as p from "@clack/prompts";
 
 import { getPackageManager } from "@/utils/getPackageManager";
+import { getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import { readPackageUp } from "read-package-up";
 
 export const ensureInstallPackages = async (buildPluginPackages: {
   dependencies: string[];
   devDependencies: string[];
 }) => {
+  const packages = await readPackageUp({ cwd: getCwd() });
   const dependenciesToInstall = buildPluginPackages.dependencies.filter(
     (pkg) => {
-      try {
-        require.resolve(pkg);
-        return false;
-      } catch {
-        return true;
-      }
+      return !packages?.packageJson?.dependencies?.[pkg];
     },
   );
 
   const devDependenciesToInstall = buildPluginPackages.devDependencies.filter(
     (pkg) => {
-      try {
-        require.resolve(pkg);
-        return false;
-      } catch {
-        return true;
-      }
+      return !packages?.packageJson?.devDependencies?.[pkg];
     },
   );
-
-  if (
-    dependenciesToInstall.length === 0 &&
-    devDependenciesToInstall.length === 0
-  ) {
-    return;
-  }
 
   const packageManager = getPackageManager();
 
   await p.tasks([
     {
+      enabled: dependenciesToInstall.length > 0,
       title: "Checking packages",
       task: async (message) => {
         message(`Installing ${dependenciesToInstall.join(", ")}...`);
@@ -48,6 +35,7 @@ export const ensureInstallPackages = async (buildPluginPackages: {
       },
     },
     {
+      enabled: devDependenciesToInstall.length > 0,
       title: "Installing dev dependencies",
       task: async (message) => {
         message(`Installing ${devDependenciesToInstall.join(", ")}...`);
