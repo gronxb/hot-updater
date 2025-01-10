@@ -55,7 +55,7 @@ export interface StoragePluginHooks {
 }
 
 export type Config = {
-  console: {
+  console?: {
     /**
      * Git repository URL
      * If git commit hash exists in console, it allows viewing commit history from the git repository

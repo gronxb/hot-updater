@@ -3,7 +3,7 @@ import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
 import { initSupabase } from "./init/supabase";
 
-const REQUIRED_PACKAGES = ["@hot-updater/react-native"];
+const REQUIRED_PACKAGES = ["hot-updater", "@hot-updater/react-native"];
 
 const PACKAGE_MAP = {
   supabase: ["@hot-updater/supabase"],

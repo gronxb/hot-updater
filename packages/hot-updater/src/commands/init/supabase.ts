@@ -13,12 +13,7 @@ import fs from "fs/promises";
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
-
-config({
-  override: true,
-});
 
 export default defineConfig({
   build: metro(),
@@ -373,7 +368,6 @@ export const initSupabase = async () => {
   // 네이티브 코드 변경하고 끝
 
   // e.g., you can write out finalConfig to a file or just log it
-  // await fs.writeFile("hot-updater.config.ts", finalConfig);
-  p.note(finalConfig);
+  await fs.writeFile("hot-updater.config.ts", finalConfig);
   p.log.success("Generated hot-updater.config.ts with Supabase settings.");
 };
