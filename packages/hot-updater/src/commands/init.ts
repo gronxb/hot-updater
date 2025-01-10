@@ -3,11 +3,20 @@ import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
 import { initSupabase } from "./init/supabase";
 
-const REQUIRED_PACKAGES = ["hot-updater", "@hot-updater/react-native"];
+const REQUIRED_PACKAGES = {
+  dependencies: ["@hot-updater/react-native"],
+  devDependencies: ["dotenv", "hot-updater", "dotenv"],
+};
 
 const PACKAGE_MAP = {
-  supabase: ["@hot-updater/supabase"],
-  aws: ["@hot-updater/aws"],
+  supabase: {
+    dependencies: [],
+    devDependencies: ["@hot-updater/supabase"],
+  },
+  aws: {
+    dependencies: [],
+    devDependencies: ["@hot-updater/aws"],
+  },
 } as const;
 
 export const init = async () => {
@@ -31,11 +40,16 @@ export const init = async () => {
     process.exit(0);
   }
 
-  await ensureInstallPackages([
-    ...REQUIRED_PACKAGES,
-    ...PACKAGE_MAP[provider],
-    buildPluginPackage,
-  ]);
+  await ensureInstallPackages({
+    dependencies: [
+      ...REQUIRED_PACKAGES.dependencies,
+      ...PACKAGE_MAP[provider].dependencies,
+    ],
+    devDependencies: [
+      ...REQUIRED_PACKAGES.devDependencies,
+      ...PACKAGE_MAP[provider].devDependencies,
+    ],
+  });
 
   switch (provider) {
     case "supabase":
