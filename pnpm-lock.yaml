@@ -251,9 +251,6 @@ importers:
       '@babel/runtime':
         specifier: ^7.25.0
         version: 7.26.0
-      '@hot-updater/aws':
-        specifier: workspace:*
-        version: link:../../plugins/aws
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro

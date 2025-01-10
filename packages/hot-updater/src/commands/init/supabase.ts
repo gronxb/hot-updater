@@ -1,6 +1,5 @@
 import path from "path";
 import { delay } from "@/utils/delay";
-import { getPackageManager } from "@/utils/getPackageManager";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
 import {
@@ -34,29 +33,6 @@ export default defineConfig({
   }),
 });
 `;
-
-const PACKAGE_NAME = "@hot-updater/supabase";
-
-const ensureSupabasePackageInstalled = async () => {
-  await p.tasks([
-    {
-      title: `Checking ${PACKAGE_NAME}`,
-      task: async (message) => {
-        try {
-          // If require.resolve succeeds, package is installed
-          require.resolve("@hot-updater/supabase");
-          return `Installed ${PACKAGE_NAME}`;
-        } catch {
-          // If require.resolve fails, install the package
-          const packageManager = getPackageManager();
-          message(`Installing ${PACKAGE_NAME}...`);
-          await execa(packageManager, ["install", PACKAGE_NAME]);
-          return `Installed ${PACKAGE_NAME}`;
-        }
-      },
-    },
-  ]);
-};
 
 const selectOrCreateOrganization = async () => {
   const confirmed = await p.confirm({
@@ -338,8 +314,6 @@ const deployEdgeFunction = async (supabasePath: string, projectId: string) => {
 };
 
 export const initSupabase = async () => {
-  await ensureSupabasePackageInstalled();
-
   await selectOrCreateOrganization();
 
   const project = await selectProject();
@@ -395,7 +369,6 @@ export const initSupabase = async () => {
     SUPABASE_BUCKET_NAME: bucketId,
   });
 
-  // edge function push하고
   // config 만들고
   // 네이티브 코드 변경하고 끝
 
