@@ -1,5 +1,5 @@
 import { getUpdateInfo } from "@hot-updater/js";
-import { ensureBundles } from "./ensureBundles";
+import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { init } from "./init";
 import {
   addListener,
@@ -26,7 +26,7 @@ export const HotUpdater = {
   getBundleId,
   addListener,
 
-  ensureBundles,
+  ensureUpdateInfo,
   updateBundle,
   getUpdateInfo,
 };
