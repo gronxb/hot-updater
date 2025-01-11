@@ -6,10 +6,16 @@ import * as t from "@babel/types";
 import { uuidv7 } from "uuidv7";
 
 export default function replaceHotUpdaterBundleId(): PluginObj {
-  const bundleIdPath = path.join(
-    process.env["BUILD_OUT_DIR"] ?? "dist",
-    "BUNDLE_ID",
-  );
+  const buildOutDir = process.env["BUILD_OUT_DIR"];
+
+  if (!buildOutDir) {
+    return {
+      name: "replace-hot-updater-bundle-id",
+      visitor: {},
+    };
+  }
+
+  const bundleIdPath = path.join(buildOutDir, "BUNDLE_ID");
 
   let bundleId = uuidv7();
 
