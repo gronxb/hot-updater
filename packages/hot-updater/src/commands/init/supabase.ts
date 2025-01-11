@@ -1,5 +1,6 @@
 import path from "path";
 import { delay } from "@/utils/delay";
+import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
 import {
@@ -14,17 +15,18 @@ const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
+import "dotenv";
 
 export default defineConfig({
   build: metro(),
   storage: supabaseStorage({
-    supabaseUrl: "%%SUPABASE_URL%%",
-    supabaseAnonKey: "%%SUPABASE_ANON_KEY%%",
-    bucketName: "%%SUPABASE_BUCKET_NAME%%",
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
-    supabaseUrl: "%%SUPABASE_URL%%",
-    supabaseAnonKey: "%%SUPABASE_ANON_KEY%%",
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
 });
 `;
@@ -356,18 +358,14 @@ export const initSupabase = async () => {
   await pushDB(supabasePath);
   await deployEdgeFunction(supabasePath, project.id);
 
-  // (Optional) Generate config file content (if you want to save it locally)
-  //    This is just the transform, you can decide how/where you want to write it.
-  const finalConfig = transformTemplate(CONFIG_TEMPLATE, {
-    SUPABASE_ANON_KEY: serviceRoleKey.api_key,
-    SUPABASE_URL: `https://${project.id}.supabase.co`,
-    SUPABASE_BUCKET_NAME: bucketId,
-  });
-
-  // config 만들고
-  // 네이티브 코드 변경하고 끝
-
   // e.g., you can write out finalConfig to a file or just log it
-  await fs.writeFile("hot-updater.config.ts", finalConfig);
+  await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+
+  await makeEnv({
+    HOT_UPDATER_SUPABASE_ANON_KEY: serviceRoleKey.api_key,
+    HOT_UPDATER_SUPABASE_BUCKET_NAME: bucketId,
+    HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
+  });
   p.log.success("Generated hot-updater.config.ts with Supabase settings.");
 };
+// 네이티브 코드 변경하고 끝
