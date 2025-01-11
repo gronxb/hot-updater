@@ -31,6 +31,13 @@ export default defineConfig({
 });
 `;
 
+const SOURCE_TEMPLATE = `import { HotUpdater } from "@hot-updater/react-native";
+      
+HotUpdater.init({
+  source: "%%source%%",
+});
+`;
+
 const selectOrCreateOrganization = async () => {
   const confirmed = await p.confirm({
     message: "Do you already have a Supabase organization?",
@@ -358,7 +365,6 @@ export const initSupabase = async () => {
   await pushDB(supabasePath);
   await deployEdgeFunction(supabasePath, project.id);
 
-  // e.g., you can write out finalConfig to a file or just log it
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
 
   await makeEnv({
@@ -367,5 +373,11 @@ export const initSupabase = async () => {
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
   p.log.success("Generated hot-updater.config.ts with Supabase settings.");
+
+  p.note(
+    transformTemplate(SOURCE_TEMPLATE, {
+      source: `https://${project.id}.supabase.co/functions/v1/update-server`,
+    }),
+  );
+  p.log.success("Done! 🎉");
 };
-// 네이티브 코드 변경하고 끝
