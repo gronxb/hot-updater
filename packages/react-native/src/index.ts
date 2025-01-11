@@ -1,4 +1,3 @@
-import { NIL_UUID } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
 import { ensureBundles } from "./ensureBundles";
 import { init } from "./init";
@@ -30,8 +29,4 @@ export const HotUpdater = {
   ensureBundles,
   updateBundle,
   getUpdateInfo,
-  /**
-   * In production environment, this value will be replaced with a uuidv7.
-   */
-  HOT_UPDATER_BUNDLE_ID: NIL_UUID,
 };

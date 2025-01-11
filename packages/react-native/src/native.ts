@@ -1,6 +1,10 @@
 import { NIL_UUID } from "@hot-updater/core";
 import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 
+const HotUpdater = {
+  HOT_UPDATER_BUNDLE_ID: NIL_UUID,
+};
+
 const LINKING_ERROR =
   // biome-ignore lint/style/useTemplate: <explanation>
   `The package '@hot-updater/react-native' doesn't seem to be linked. Make sure: \n\n` +
@@ -42,16 +46,6 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
 };
 
 /**
- * Fetches the current bundle version id.
- *
- * @async
- * @returns {Promise<string>} Resolves with the current version id or null if not available.
- */
-export const getBundleId = (): string => {
-  return HotUpdater.HOT_UPDATER_BUNDLE_ID ?? NIL_UUID;
-};
-
-/**
  * Downloads files from given URLs.
  *
  * @param {string} bundleId - identifier for the bundle version.
@@ -77,4 +71,14 @@ export const getAppVersion = (): Promise<string | null> => {
  */
 export const reload = () => {
   HotUpdaterNative.reload();
+};
+
+/**
+ * Fetches the current bundle version id.
+ *
+ * @async
+ * @returns {Promise<string>} Resolves with the current version id or null if not available.
+ */
+export const getBundleId = (): string => {
+  return HotUpdater.HOT_UPDATER_BUNDLE_ID;
 };
