@@ -1,7 +1,7 @@
-import type { BundleArg, UpdateInfo } from "@hot-updater/core";
+import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
 import { Platform } from "react-native";
-import { ensureBundles } from "./ensureBundles";
+import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { HotUpdaterError } from "./error";
 import { getAppVersion, getBundleId, reload, updateBundle } from "./native";
 
@@ -41,7 +41,7 @@ export const init = async (config: HotUpdaterInitConfig) => {
     throw error;
   }
 
-  const bundles = await ensureBundles(
+  const ensuredUpdateInfo = await ensureUpdateInfo(
     config.source,
     {
       appVersion: currentAppVersion,
@@ -52,8 +52,10 @@ export const init = async (config: HotUpdaterInitConfig) => {
   );
 
   let updateInfo: UpdateInfo | null = null;
-  if (Array.isArray(bundles)) {
+  if (Array.isArray(ensuredUpdateInfo)) {
     // Direct comparison
+    const bundles: Bundle[] = ensuredUpdateInfo;
+
     updateInfo = await getUpdateInfo(bundles, {
       appVersion: currentAppVersion,
       bundleId: currentBundleId,
@@ -61,7 +63,7 @@ export const init = async (config: HotUpdaterInitConfig) => {
     });
   } else {
     // Already verified from server
-    updateInfo = bundles;
+    updateInfo = ensuredUpdateInfo;
   }
 
   if (!updateInfo) {

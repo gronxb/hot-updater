@@ -11,8 +11,10 @@ import { useEffect, useState } from "react";
 import { Button, Image, SafeAreaView, Text } from "react-native";
 
 HotUpdater.init({
-  source: "https://gronxb.s3.ap-northeast-2.amazonaws.com/update.json",
+  source: "https://inodtkixxqmthzanatwg.supabase.co/functions/v1/update-server",
 });
+
+console.log(HotUpdater, HotUpdater.getBundleId());
 
 function extractTimestampFromUUIDv7(uuid: string) {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -38,10 +40,8 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView>
       <Text>Progress: {Math.round(progress * 100)}%</Text>
-      <Text>Babel {HotUpdater.HOT_UPDATER_BUNDLE_ID}</Text>
-      <Text>
-        Babel {extractTimestampFromUUIDv7(HotUpdater.HOT_UPDATER_BUNDLE_ID)}
-      </Text>
+      <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>Babel {extractTimestampFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
         style={{
           marginVertical: 20,

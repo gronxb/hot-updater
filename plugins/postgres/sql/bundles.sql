@@ -1,3 +1,5 @@
+-- HotUpdater.bundles
+
 CREATE TYPE platforms AS ENUM ('ios', 'android');
 
 CREATE TABLE bundles (
@@ -11,3 +13,5 @@ CREATE TABLE bundles (
     git_commit_hash text,
     message text
 );
+
+CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);

@@ -5,16 +5,16 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 
-export const ensureBundles = async (
-  bundle: BundleArg,
+export const ensureUpdateInfo = async (
+  source: BundleArg,
   { appVersion, bundleId, platform }: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
 ): Promise<Bundle[] | UpdateInfo> => {
   try {
     let bundles: Bundle[] | null = null;
-    if (typeof bundle === "string") {
-      if (bundle.startsWith("http")) {
-        return await fetch(bundle, {
+    if (typeof source === "string") {
+      if (source.startsWith("http")) {
+        return await fetch(source, {
           headers: {
             "x-app-platform": platform,
             "x-app-version": appVersion,
@@ -23,10 +23,10 @@ export const ensureBundles = async (
           },
         }).then((res) => res.json());
       }
-    } else if (typeof bundle === "function") {
-      bundles = await bundle();
+    } else if (typeof source === "function") {
+      bundles = await source();
     } else {
-      bundles = bundle;
+      bundles = source;
     }
 
     return bundles ?? [];
