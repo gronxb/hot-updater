@@ -4,7 +4,7 @@ import { type DeployOptions, deploy } from "@/commands/deploy";
 import { generateSecretKey } from "@/commands/generateSecretKey";
 import { init } from "@/commands/init";
 import { prune } from "@/commands/prune";
-import { banner } from "@/components/banner";
+import { banner, printBanner } from "@/components/banner";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
@@ -55,6 +55,8 @@ program
   .command("console")
   .description("open the console")
   .action(async () => {
+    printBanner();
+
     const port = await getConsolePort();
 
     await openConsole(port, (info) => {

@@ -50,8 +50,13 @@ export const supabaseStorage =
         }
 
         hooks?.onStorageUploaded?.();
+
+        const fileUrl = new URL(
+          `storage/v1/object/public/${fullPath}`,
+          config.supabaseUrl,
+        ).toString();
         return {
-          fileUrl: hooks?.transformFileUrl?.(fullPath) ?? fullPath,
+          fileUrl: hooks?.transformFileUrl?.(fullPath) ?? fileUrl,
         };
       },
     };
