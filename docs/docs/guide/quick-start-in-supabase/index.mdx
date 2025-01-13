@@ -1,122 +1,228 @@
 import { PackageManagerTabs } from '@theme';
 
-# Quick Start in Supabase
 
-## Install Supabase CLI
+# Quick Start: Initialize Supabase with `hot-updater`
 
-Please install the Supabase CLI from the link below.
+This guide walks you through setting up `hot-updater` with Supabase in a React Native project. You'll configure the environment, install required packages, and initialize Supabase for seamless updates.
 
-https://supabase.com/docs/guides/local-development/cli/getting-started
+## Prerequisites
 
+Before starting, ensure you have the following:
+- **Node.js** (v20 or higher recommended)
+- Supabase CLI (`npx supabase`)
+- Supabase Account
 
-## Create Supabase Organization
+## Steps to Initialize
 
-Create a Supabase Organization through the Supabase Console using the command below.
+### Step 1: Install Required Packages
 
-```sh
-> supabase orgs create <organization-name>
-```
-
-
-## Create Supabase Project
-
-Create a Supabase Project through the Supabase Console using the command below.
-
-```sh
-> supabase projects create <project-name>
-```
-
-## Setup Supabase Storage
-
-![](./supabase-storage-sidebar.png)
-
-
-
-## Install
-
-Install in your React Native project as follows:
+Run the following command to install dependencies:
 
 <PackageManagerTabs command={
   {
-    npm: "npm install hot-updater @hot-updater/react-native --save-dev\nnpm run hot-updater init",
-    pnpm: "pnpm add hot-updater @hot-updater/react-native -D\npnpm hot-updater init",
-    yarn: "yarn add hot-updater @hot-updater/react-native -D\nyarn hot-updater init",
+    npm: "npm install hot-updater --save-dev\nnpm run hot-updater init",
+    pnpm: "pnpm add hot-updater -D\npnpm hot-updater init",
+    yarn: "yarn add hot-updater -D\nyarn hot-updater init",
   }
 } />
 
+### Step 2: Run the Initialization Script
 
-## Config
-```tsx title="hot-updater.config.ts"
-import { s3Storage } from "@hot-updater/aws";
+Run the init function to start the interactive setup process:
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run hot-updater init",
+    pnpm: "pnpm hot-updater init",
+    yarn: "yarn hot-updater init",
+  }
+} />
+
+You’ll be prompted to:
+-	Select a Build Plugin (e.g., Metro)
+-	Select a Provider (e.g., Supabase)
+
+### Step 4: Configure Supabase
+During the setup, you’ll:
+1.	Create or select a Supabase Organization.
+2.	Create or select a Project.
+3.	Choose a Storage Bucket or create a new public bucket.
+
+Follow the prompts to complete each step.
+
+
+After initialization, a `.env` file will be generated with the following keys:
+
+```env
+HOT_UPDATER_SUPABASE_ANON_KEY=your-anon-key
+HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
+HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
+```
+
+Ensure these variables are correctly set in your environment.
+
+### Step 6: Deploy Edge Functions
+
+The script automatically deploys a Supabase edge function (update-server). Verify its deployment in your Supabase dashboard under the Edge Functions section.
+
+### Step 7: Generated Configurations
+
+The script generates the following files:
+- hot-updater.config.ts: Contains your Supabase integration settings.
+
+Example snippet from `hot-updater.config.ts`:
+```ts title=hot-updater.config.ts
 import { metro } from "@hot-updater/metro";
-import { postgres } from "@hot-updater/postgres";
-import { config } from "dotenv";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
-
-config({
-  override: true,
-});
+import "dotenv/config";
 
 export default defineConfig({
-  console: {
-    gitUrl: "https://github.com/gronxb/hot-updater",
-  },
   build: metro(),
-  storage: s3Storage(
-    {
-      // supabase s3
-      forcePathStyle: true,
-      endpoint: process.env.AWS_ENDPOINT!,
-
-      // common s3
-      region: process.env.AWS_REGION!,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
-      bucketName: process.env.AWS_S3_BUCKET_NAME!,
-    },
-    {
-      transformFileUrl: (key) => {
-        return `${process.env.AWS_PUBLIC_URL!}/${key}`;
-      },
-    },
-  ),
-  database: postgres({
-    host: process.env.POSTGRES_HOST!,
-    port: Number(process.env.POSTGRES_PORT!),
-    database: process.env.POSTGRES_DATABASE!,
-    user: process.env.POSTGRES_USER!,
-    password: process.env.POSTGRES_PASSWORD!,
+  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  }),
+  database: supabaseDatabase({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
 });
 ```
 
-## Usage
-
-```tsx title="App.tsx"
+## Step 8: Add HotUpdater to Your Project
+```tsx title=App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
 
 function App() {
   return (
     <View>
-      <Text>Hello</Text>
+      <Text>Hello World</Text>
     </View>
   );
 }
 
-export default HotUpdater(App)({
-  source: "", // update source
-  requestHeaders: {
-    "Authorization": "Bearer 1234567890",
-  },
-  onSuccess: (status) => {
-    console.log("status", status);
-  },
-  onError: (error) => {
-    console.error(error);
-  },
-});
+export default HotUpdater.wrap({ 
+  source: "https://<project-id>.supabase.co/functions/v1/update-server",
+  fallbackComponent: ({ progress = 0 }) => (
+    <Modal transparent visible={true}>
+      <View
+        style={{
+          flex: 1,
+          padding: 20,
+          borderRadius: 10,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          Updating...
+        </Text>
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {Math.round(progress * 100)}%
+        </Text>
+      </View>
+    </Modal>
+  ),
+})(App);
 
 ```
+
+## Step 9: Add Native Code
+
+```kt title=android/app/src/main/java/com/<your-app-name>/MainActivity.kt
+package com.hotupdaterexample
+
+import android.app.Application
+import android.util.Log
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeHost
+import com.facebook.react.ReactPackage
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.facebook.react.defaults.DefaultReactNativeHost
+import com.facebook.react.soloader.OpenSourceMergedSoMapping
+import com.facebook.soloader.SoLoader
+import com.hotupdater.HotUpdater  // [!code focus]
+
+class MainApplication :
+    Application(),
+    ReactApplication {
+    override val reactNativeHost: ReactNativeHost =
+        object : DefaultReactNativeHost(this) {
+            override fun getPackages(): List<ReactPackage> =
+                PackageList(this).packages.apply {
+                    // Packages that cannot be autolinked yet can be added manually here, for example:
+                    // add(MyReactNativePackage())
+                }
+
+            override fun getJSMainModuleName(): String = "index"
+
+            override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+
+            override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+            override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+
+            override fun getJSBundleFile(): String? {  // [!code focus]
+                return HotUpdater.getJSBundleFile(applicationContext)  // [!code focus]
+            }  // [!code focus]
+        }
+    
+    override val reactHost: ReactHost
+              get() = getDefaultReactHost(applicationContext, reactNativeHost)
+
+    override fun onCreate() {
+        super.onCreate()
+        SoLoader.init(this, OpenSourceMergedSoMapping)
+
+        if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+            // If you opted-in for the New Architecture, we load the native entry point for this app.
+            load()
+        }
+    }
+}
+```
+
+```objc title=ios/<your-app-name>/AppDelegate.mm
+#import "AppDelegate.h"
+#import <HotUpdater/HotUpdater.h> // [!code focus]
+#import <React/RCTBundleURLProvider.h>
+
+@implementation AppDelegate
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+  self.moduleName = @"HotUpdaterExample";
+  // You can add your custom initial props in the dictionary below.
+  // They will be passed down to the ViewController used by React Native.
+  self.initialProps = @{};
+
+  return [super application:application didFinishLaunchingWithOptions:launchOptions];
+}
+
+- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
+{
+  return [self bundleURL];
+}
+
+- (NSURL *)bundleURL
+{
+  return [HotUpdater bundleURL];  // [!code focus]
+}
+
+@end
+```
+
+
+#### Verifying the Setup
+1. Check your Supabase dashboard for the newly created bucket and edge function.
+2. Test the HotUpdater integration in your React Native app.
+
+
+You’re all set! 🎉 Start using hot-updater with Supabase for seamless updates in your React Native app.
+
+This document simplifies the initialization process, making it easy for developers to get started with minimal friction.
