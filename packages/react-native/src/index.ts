@@ -1,7 +1,5 @@
-import { NIL_UUID } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
-import { ensureBundles } from "./ensureBundles";
-import { init } from "./init";
+import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import {
   addListener,
   getAppVersion,
@@ -10,8 +8,9 @@ import {
   updateBundle,
 } from "./native";
 import { hotUpdaterStore } from "./store";
+import { wrap } from "./wrap";
 
-export type * from "./init";
+export type * from "./wrap";
 export type * from "./native";
 
 export * from "./store";
@@ -21,17 +20,14 @@ addListener("onProgress", ({ progress }) => {
 });
 
 export const HotUpdater = {
-  init,
+  wrap,
+
   reload,
   getAppVersion,
   getBundleId,
   addListener,
 
-  ensureBundles,
+  ensureUpdateInfo,
   updateBundle,
   getUpdateInfo,
-  /**
-   * In production environment, this value will be replaced with a uuidv7.
-   */
-  HOT_UPDATER_BUNDLE_ID: NIL_UUID,
 };

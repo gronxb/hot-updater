@@ -1,9 +1,9 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "React Native OTA solution for self-hosted",
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "source": "src/index.ts",
   "react-native": "src/index.ts",
   "types": "dist/index.d.ts",
@@ -80,9 +80,9 @@
     "react": "18.3.1",
     "react-native": "0.76.2",
     "react-native-builder-bob": "^0.33.1",
-    "@hot-updater/js": "0.2.0"
+    "@hot-updater/js": "0.3.0"
   },
   "dependencies": {
-    "@hot-updater/core": "0.2.0"
+    "@hot-updater/core": "0.3.0"
   }
 }

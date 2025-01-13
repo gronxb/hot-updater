@@ -2,8 +2,9 @@
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { generateSecretKey } from "@/commands/generateSecretKey";
+import { init } from "@/commands/init";
 import { prune } from "@/commands/prune";
-import { banner } from "@/components/banner";
+import { banner, printBanner } from "@/components/banner";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
@@ -19,12 +20,7 @@ program
   .description(banner)
   .version(version as string);
 
-program
-  .command("init")
-  .description("Initialize Hot Updater")
-  .action(() => {
-    console.log("Initializing Hot Updater");
-  });
+program.command("init").description("Initialize Hot Updater").action(init);
 
 program
   .command("deploy")
@@ -59,6 +55,8 @@ program
   .command("console")
   .description("open the console")
   .action(async () => {
+    printBanner();
+
     const port = await getConsolePort();
 
     await openConsole(port, (info) => {
