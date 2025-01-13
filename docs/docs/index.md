@@ -17,12 +17,15 @@ hero:
     alt: Logo
 features:
   - title: React Native OTA
-    details: Hot Updater is a self-hosted React Native OTA solution that enables seamless app updates without App Store submissions.
+    details: Deliver over-the-air (OTA) updates for your React Native apps without needing App Store or Google Play submissions.
     icon: 🚀
-  - title: Plugin System
-    details: Built with a flexible plugin architecture that enables compatibility with various platforms through customizable build and deployment processes.
-    icon: 🧩
-  - title: New / Old Architecture
-    details: Supports both new and old architectures of React Native.
+  - title: Reliable Rollbacks
+    details: Instantly revert to the previous version of your app in case of issues, ensuring stability for your users.
+    icon: ♻️
+  - title: Flexible Plugin Architecture
+    details: Customize build and deployment processes using a plugin system that supports integration with various platforms.
+    icon: 🛠️
+  - title: Support New / Old Architecture
+    details: Compatible with both the new and old React Native architectures, offering maximum flexibility for your projects
     icon: 📦
 ---
