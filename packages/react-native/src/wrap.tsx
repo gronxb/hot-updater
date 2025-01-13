@@ -2,7 +2,6 @@ import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
 import type React from "react";
 import { useEffect, useState } from "react";
-import {} from "react-native";
 import { Platform } from "react-native";
 import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { HotUpdaterError } from "./error";
