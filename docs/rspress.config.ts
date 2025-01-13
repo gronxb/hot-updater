@@ -1,7 +1,9 @@
 import * as path from "node:path";
+import { pluginShiki } from "@rspress/plugin-shiki";
 import { defineConfig } from "rspress/config";
 
 export default defineConfig({
+  plugins: [pluginShiki()],
   root: path.join(__dirname, "docs"),
   title: "Hot Updater",
   icon: "/logo.png",

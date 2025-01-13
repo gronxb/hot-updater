@@ -7,10 +7,8 @@
     "build": "rspress build",
     "preview": "rspress preview"
   },
-  "dependencies": {
-    "rspress": "^1.38.0"
-  },
   "devDependencies": {
+    "rspress": "^1.39.4",
     "@rspress/plugin-shiki": "^1.39.4",
     "@types/node": "^18.11.17"
   }
