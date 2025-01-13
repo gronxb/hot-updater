@@ -1,6 +1,5 @@
 import { getUpdateInfo } from "@hot-updater/js";
 import { ensureUpdateInfo } from "./ensureUpdateInfo";
-import { init } from "./init";
 import {
   addListener,
   getAppVersion,
@@ -9,8 +8,9 @@ import {
   updateBundle,
 } from "./native";
 import { hotUpdaterStore } from "./store";
+import { wrap } from "./wrap";
 
-export type * from "./init";
+export type * from "./wrap";
 export type * from "./native";
 
 export * from "./store";
@@ -20,7 +20,8 @@ addListener("onProgress", ({ progress }) => {
 });
 
 export const HotUpdater = {
-  init,
+  wrap,
+
   reload,
   getAppVersion,
   getBundleId,
