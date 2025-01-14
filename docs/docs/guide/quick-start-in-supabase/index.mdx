@@ -2,16 +2,17 @@ import { Tab, Tabs } from 'rspress/theme';
 import { PackageManagerTabs } from '@theme';
 
 
-# Quick Start: Initialize Supabase with `hot-updater`
+# Quick Start With Supabase
 
 This guide walks you through setting up `hot-updater` with Supabase in a React Native project. You'll configure the environment, install required packages, and initialize Supabase for seamless updates.
 
 ## Prerequisites
 
-Before starting, ensure you have the following:
-- **Node.js** (v20 or higher recommended)
-- Supabase CLI (`npx supabase`)
-- Supabase Account
+Before you begin, make sure the following are ready:
+- **Node.js**: Version 20 or later is recommended.
+- **Supabase CLI**: Install it via `npx supabase`.
+- **Supabase Account**: Sign up at [Supabase](https://supabase.com) if you don’t have one.
+
 
 ## Step 1: Install Required Packages
 
@@ -25,9 +26,9 @@ Run the following command to install dependencies:
   }
 } />
 
-## Step 2: Run the Initialization Script
+## Step 2: Configure Supabase
 
-Run the init function to start the interactive setup process:
+Run the initialization script to start the interactive setup process. Use the following command with your preferred package manager:
 
 <PackageManagerTabs command={
   {
@@ -37,20 +38,22 @@ Run the init function to start the interactive setup process:
   }
 } />
 
-You’ll be prompted to:
--	Select a Build Plugin (e.g., Metro)
--	Select a Provider (e.g., Supabase)
+::: details {title="Interactive Setup Steps"}
 
-## Step 4: Configure Supabase
-During the setup, you’ll:
-1.	Create or select a Supabase Organization.
-2.	Create or select a Project.
-3.	Choose a Storage Bucket or create a new public bucket.
+### Interactive Setup Steps:
+1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Metro for React Native).
+2. **Select a Provider**: Select Supabase as the provider for handling updates.
 
-Follow the prompts to complete each step.
+During the setup, you will be prompted to:
+1. **Create or Select a Supabase Organization**: Choose an existing organization or create a new one.
+2. **Create or Select a Project**: Choose an existing project or create a new one within your organization.
+3. **Configure Storage**: Select an existing storage bucket or create a new public bucket to store updates.
+4. **Database Migration**: create a new one to store updates.
+5. **Deploy Edge Function**: Deploy a Supabase Edge Function called `update-server`.
 
+:::
 
-After initialization, a `.env` file will be generated with the following keys:
+Once the setup is complete, a `.env` file will be generated containing the following keys:
 
 ```
 HOT_UPDATER_SUPABASE_ANON_KEY=your-anon-key
@@ -58,15 +61,18 @@ HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
 ```
 
-Ensure these variables are correctly set in your environment.
 
-## Step 6: Deploy Edge Functions
 
-The script automatically deploys a Supabase edge function (update-server). Verify its deployment in your Supabase dashboard under the Edge Functions section.
+::: warning
 
-## Step 7: Generated Configurations
+The .env file should remain secure, as it contains sensitive keys required for the hot-updater to function.
 
-The script generates the following files:
+:::
+
+
+## Step 5: Generated Configurations
+
+The setup generates the following files:
 - hot-updater.config.ts: Contains your Supabase integration settings.
 
 Example snippet from `hot-updater.config.ts`:
@@ -90,7 +96,10 @@ export default defineConfig({
 });
 ```
 
-## Step 8: Add HotUpdater to Your Project
+## Step 6: Add HotUpdater to Your Project
+
+The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
+
 ```tsx title=App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
@@ -104,6 +113,9 @@ function App() {
 
 export default HotUpdater.wrap({ 
   source: "https://<project-id>.supabase.co/functions/v1/update-server",
+  requestHeaders: {
+    // if you want to use the request headers, you can add them here
+  },
   fallbackComponent: ({ progress = 0 }) => (
     <Modal transparent visible={true}>
       <View
@@ -129,9 +141,12 @@ export default HotUpdater.wrap({
 
 ```
 
-## Step 9: Add Native Code
+## Step 7: Add Native Code
 
- 
+To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
+
+### Android
+
 <Tabs>
     <Tab label="Kotlin">
 ```kt title=android/app/src/main/java/com/<your-app-name>/MainActivity.kt
@@ -267,7 +282,7 @@ public class MainApplication extends Application implements ReactApplication {
 </Tabs>
 
 
-
+### iOS
 ```objc title=ios/<your-app-name>/AppDelegate.mm
 #import "AppDelegate.h"
 #import <HotUpdater/HotUpdater.h> // [!code ++]
