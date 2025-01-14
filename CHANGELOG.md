@@ -1,3 +1,14 @@
+## 0.3.0 (2025-01-13)
+
+### 🚀 Features
+
+- **react-native:** HotUpdater.wrap Component ([#41](https://github.com/gronxb/hot-updater/pull/41))
+- **supabase:** init `supabase` command ([#40](https://github.com/gronxb/hot-updater/pull/40))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.2.0 (2025-01-02)
 
 ### 🚀 Features

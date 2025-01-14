@@ -1,11 +1,15 @@
 {
   "name": "@hot-updater/docs",
+  "version": "0.2.0",
+  "private": true,
   "scripts": {
-    "docs:dev": "vitepress dev",
-    "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "dev": "rspress dev",
+    "build": "rspress build",
+    "preview": "rspress preview"
   },
   "devDependencies": {
-    "vitepress": "1.0.0-rc.24"
+    "@rspress/plugin-shiki": "^1.39.4",
+    "@types/node": "^18.11.17",
+    "rspress": "^1.39.4"
   }
 }

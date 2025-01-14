@@ -33,8 +33,6 @@ class MainApplication :
             override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
 
             override fun getJSBundleFile(): String? {
-                // This field
-                Log.d("HotUpdater", "getJSBundleFile: ${HotUpdater.getJSBundleFile(applicationContext)}")
                 return HotUpdater.getJSBundleFile(applicationContext)
             }
         }
