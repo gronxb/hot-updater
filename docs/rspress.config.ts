@@ -1,9 +1,17 @@
 import * as path from "node:path";
-import { pluginShiki } from "@rspress/plugin-shiki";
+import {
+  createTransformerDiff,
+  createTransformerHighlight,
+  pluginShiki,
+} from "@rspress/plugin-shiki";
 import { defineConfig } from "rspress/config";
 
 export default defineConfig({
-  plugins: [pluginShiki()],
+  plugins: [
+    pluginShiki({
+      transformers: [createTransformerHighlight(), createTransformerDiff()],
+    }),
+  ],
   root: path.join(__dirname, "docs"),
   title: "Hot Updater",
   icon: "/logo.png",
