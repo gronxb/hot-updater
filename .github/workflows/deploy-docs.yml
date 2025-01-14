@@ -39,7 +39,7 @@ jobs:
       - name: Build with Rspress
         run: |
           pnpm run build
-          working-directory: ./docs
+        working-directory: ./docs
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
