@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
-import { generateSecretKey } from "@/commands/generateSecretKey";
 import { init } from "@/commands/init";
 import { prune } from "@/commands/prune";
 import { banner, printBanner } from "@/components/banner";
@@ -67,11 +66,6 @@ program
       );
     });
   });
-
-program
-  .command("generate-secret-key")
-  .description("generate a new secret key")
-  .action(generateSecretKey);
 
 program
   .command("app-version")
