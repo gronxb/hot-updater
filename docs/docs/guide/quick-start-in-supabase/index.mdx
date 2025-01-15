@@ -40,7 +40,6 @@ Run the initialization script to start the interactive setup process. Use the fo
 
 ::: details {title="Interactive Setup Steps"}
 
-### Interactive Setup Steps:
 1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Metro for React Native).
 2. **Select a Provider**: Select Supabase as the provider for handling updates.
 
@@ -70,7 +69,7 @@ The .env file should remain secure, as it contains sensitive keys required for t
 :::
 
 
-## Step 5: Generated Configurations
+## Step 3: Generated Configurations
 
 The setup generates the following files:
 - hot-updater.config.ts: Contains your Supabase integration settings.
@@ -96,7 +95,7 @@ export default defineConfig({
 });
 ```
 
-## Step 6: Add HotUpdater to Your Project
+## Step 4: Add HotUpdater to Your Project
 
 The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
 
@@ -141,7 +140,7 @@ export default HotUpdater.wrap({
 
 ```
 
-## Step 7: Add Native Code
+## Step 5: Add Native Code
 
 To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
 
