@@ -1,4 +1,5 @@
 import path from "path";
+import { link } from "@/components/banner";
 import { delay } from "@/utils/delay";
 import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
@@ -31,12 +32,16 @@ export default defineConfig({
 });
 `;
 
-const SOURCE_TEMPLATE = `import { HotUpdater } from "@hot-updater/react-native";
-      
-HotUpdater.init({
+const SOURCE_TEMPLATE = `// add this to your App.tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function App() {
+  return ...
+}
+
+export default HotUpdater.wrap({
   source: "%%source%%",
-});
-`;
+})(App);`;
 
 const selectOrCreateOrganization = async () => {
   const confirmed = await p.confirm({
@@ -378,6 +383,12 @@ export const initSupabase = async () => {
     transformTemplate(SOURCE_TEMPLATE, {
       source: `https://${project.id}.supabase.co/functions/v1/update-server`,
     }),
+  );
+
+  p.log.message(
+    `Next step: ${link(
+      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-in-supabase.html#step-4-add-hotupdater-to-your-project",
+    )}`,
   );
   p.log.success("Done! 🎉");
 };
