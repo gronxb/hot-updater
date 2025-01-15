@@ -1,1 +1,10 @@
-["quick-start-in-supabase/index"]
+[
+  {
+    "type": "dir",
+    "name": "getting-started",
+    "label": "Getting Started",
+    "collapsible": true,
+    "collapsed": false
+  },
+  "plugin-system"
+]
