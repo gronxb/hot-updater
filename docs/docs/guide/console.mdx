@@ -1,0 +1,44 @@
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
+# Console
+The console provides the following features:
+- Rollback
+- Force update flag
+- Quick access to git history for updates
+
+## Configuration
+You can configure additional console settings in the `hot-updater.config.ts` file.
+
+The `storage` and `database` plugins must be exist.
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `console.gitUrl` | Enables commit shortcuts by linking to git commit hashes | - |
+| `console.port` | Sets the console server port | `1422` |
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  console: { // [!code hl]
+    gitUrl: "https://github.com/gronxb/hot-updater", // [!code hl]
+    port: 3000, // [!code hl]
+  }, // [!code hl]
+  build: ...,
+  storage: ...,
+  database: ...,
+});
+
+```
+
+## Usage
+Execute the following command:
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run hot-updater console",
+    pnpm: "pnpm hot-updater console",
+    yarn: "yarn hot-updater console",
+  }
+} />

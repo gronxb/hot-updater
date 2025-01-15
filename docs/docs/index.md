@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: brand
       text: Quick Start
-      link: /guide/getting-started/quick-start-in-supabase
+      link: /guide/getting-started/quick-start-with-supabase
     - theme: alt
       text: GitHub
       link: https://github.com/gronxb/hot-updater
