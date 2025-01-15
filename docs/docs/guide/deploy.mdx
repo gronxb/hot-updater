@@ -1,0 +1,67 @@
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
+# Deploy
+This command is used to deploy the update to the specified platform.
+
+<video src={normalizeImagePath("/guide/deploy/deploy.mov")}  autoPlay loop muted />
+
+## Checklist
+1. Ensure `hot-updater.config.ts` is properly configured.
+2. Wrap your components using `HotUpdater.wrap`.
+3. Register the `babel-plugin`.
+4. Include the native code.
+
+If you haven’t completed these steps, refer to the quick-start guide.
+
+## Usage (Interactive Mode)
+Execute the following command:
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run hot-updater deploy -i",
+    pnpm: "pnpm run hot-updater deploy -i",
+    yarn: "yarn run hot-updater deploy -i",
+  }
+} />
+
+The `-i` (or `--interactive`) flag enables interactive keyboard input.
+- This mode allows you to proceed through deployment steps interactively.
+
+## Usage (For CD Pipeline)
+
+Execute the following command:
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
+    pnpm: "pnpm run hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
+    yarn: "yarn run hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
+  }
+} />
+
+```
+Options:
+  -p, --platform <platform>                    specify the platform (choices: "ios", "android")
+  -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
+  -f, --force-update                           force update the app (default: false)
+  -i, --interactive                            interactive mode (default: false)
+  -h, --help                                   display help for command
+```
+- This mode is suitable for Continuous Deployment (CD) pipelines.
+
+
+## Target App Version Range Expression Table
+
+This is a range expression that specifies which version the deployed bundle will be applied to.
+
+| Range Expression | Who gets the update |
+| --- | --- |
+| 1.2.3 | Only devices running the specific binary app store version 1.2.3 of your app |
+| * | Any device configured to consume updates from your CodePush app |
+| 1.2.x | Devices running major version 1, minor version 2 and any patch version of your app |
+| 1.2.3 - 1.2.7 | Devices running any binary version between 1.2.3 (inclusive) and 1.2.7 (inclusive) |
+| >=1.2.3 < 1.2.7 | Devices running any binary version between 1.2.3 (inclusive) and 1.2.7 (exclusive) |
+| 1.2 | Equivalent to >=1.2.0 < 1.3.0 |
+| ~1.2.3 | Equivalent to >=1.2.3 < 1.3.0 |
+| ^1.2.3 | Equivalent to >=1.2.3 < 2.0.0 |

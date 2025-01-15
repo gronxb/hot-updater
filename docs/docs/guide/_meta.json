@@ -1,4 +1,5 @@
 [
+  "plugin-system",
   {
     "type": "dir",
     "name": "getting-started",
@@ -6,5 +7,5 @@
     "collapsible": true,
     "collapsed": false
   },
-  "plugin-system"
+  "deploy"
 ]
