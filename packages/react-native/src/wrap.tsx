@@ -121,7 +121,7 @@ export function wrap<P>(
 
       if (
         config.fallbackComponent &&
-        (!isCheckUpdateCompleted || progress > 0)
+        (!isCheckUpdateCompleted || (progress > 0 && progress < 1))
       ) {
         const Fallback = config.fallbackComponent;
         return <Fallback progress={progress} />;
