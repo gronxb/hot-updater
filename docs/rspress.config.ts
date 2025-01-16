@@ -24,6 +24,7 @@ export default defineConfig({
   markdown: {
     defaultWrapCode: true,
   },
+  globalStyles: path.join(__dirname, "styles/index.css"),
   themeConfig: {
     socialLinks: [
       {

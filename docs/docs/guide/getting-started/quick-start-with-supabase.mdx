@@ -324,8 +324,7 @@ public class MainApplication extends Application implements ReactApplication {
 
 - (NSURL *)bundleURL
 {
-// [!code ++:2]
-  return [HotUpdater bundleURL];  
+  return [HotUpdater bundleURL]; // [!code ++]
 }
 
 @end
