@@ -154,11 +154,11 @@ class HotUpdaterModule internal constructor(
         promise.resolve(true)
     }
 
-    fun addListener(eventName: String?) {
+    override fun addListener(eventName: String?) {
         // No-op
     }
 
-    fun removeListeners(count: Double) {
+    override fun removeListeners(count: Double) {
         // No-op
     }
 
