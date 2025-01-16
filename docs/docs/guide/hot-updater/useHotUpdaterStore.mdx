@@ -6,17 +6,15 @@ A store related to updates.
 
 `progress` is a number representing the bundle download progress. It has a value between 0 and 1.
 
-If the current state is 1, it means the bundle download is complete and the update will be applied when `HotUpdater.reload()` is called.
+When `isBundleUpdated` is `true`, it means the bundle download is complete and the update will be applied when `HotUpdater.reload()` is called. The `isBundleUpdated` becomes `true` when the `progress` value reaches 1.
 
 ```tsx
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import { Button, Text, View } from "react-native";
 
 function App() {
-  const { progress } = useHotUpdaterStore();
+  const { progress, isBundleUpdated } = useHotUpdaterStore();
 
-  const isUpdateReady = progress === 1;
-  
   return (
     <View>
       <Text>Hello World</Text>
@@ -24,7 +22,7 @@ function App() {
       <Button
         title="Reload"
         onPress={() => HotUpdater.reload()}
-        disabled={!isUpdateReady}
+        disabled={!isBundleUpdated}
       />
     </View>
   );

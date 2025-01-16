@@ -2,14 +2,16 @@ import { useSyncExternalStore } from "react";
 
 export type HotUpdaterState = {
   progress: number;
+  isBundleUpdated: boolean;
 };
 
 const createHotUpdaterStore = () => {
   let state: HotUpdaterState = {
     progress: 0,
+    isBundleUpdated: false,
   };
 
-  const getState = () => {
+  const getSnapshot = () => {
     return state;
   };
 
@@ -21,10 +23,10 @@ const createHotUpdaterStore = () => {
     }
   };
 
-  const setState = (newState: Partial<HotUpdaterState>) => {
+  const setProgress = (progress: number) => {
     state = {
-      ...state,
-      ...newState,
+      isBundleUpdated: progress === 1,
+      progress,
     };
     emitChange();
   };
@@ -34,7 +36,7 @@ const createHotUpdaterStore = () => {
     return () => listeners.delete(listener);
   };
 
-  return { getState, setState, subscribe };
+  return { getSnapshot, setProgress, subscribe };
 };
 
 export const hotUpdaterStore = createHotUpdaterStore();
@@ -42,7 +44,7 @@ export const hotUpdaterStore = createHotUpdaterStore();
 export const useHotUpdaterStore = () => {
   return useSyncExternalStore(
     hotUpdaterStore.subscribe,
-    hotUpdaterStore.getState,
-    hotUpdaterStore.getState,
+    hotUpdaterStore.getSnapshot,
+    hotUpdaterStore.getSnapshot,
   );
 };

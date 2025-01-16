@@ -16,7 +16,7 @@ export type * from "./native";
 export * from "./store";
 
 addListener("onProgress", ({ progress }) => {
-  hotUpdaterStore.setState({ progress });
+  hotUpdaterStore.setProgress(progress);
 });
 
 export const HotUpdater = {
