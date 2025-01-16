@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/gronxb/hot-updater.git", :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm}"
-  if ENV['RCT_NEW_ARCH_ENABLED'] == '0' then
+  if ENV['RCT_NEW_ARCH_ENABLED'] != '1' then
     s.exclude_files = "ios/generated/**/*"
   end
 
