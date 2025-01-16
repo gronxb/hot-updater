@@ -75,12 +75,12 @@ importers:
       '@babel/runtime':
         specifier: ^7.20.0
         version: 7.26.0
-      '@hot-updater/aws':
-        specifier: workspace:*
-        version: link:../../plugins/aws
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
+      '@hot-updater/supabase':
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       '@react-native-community/cli-platform-android':
         specifier: 10.2.0
         version: 10.2.0(encoding@0.1.13)

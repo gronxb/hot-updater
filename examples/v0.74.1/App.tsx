@@ -8,7 +8,7 @@
 import { HotUpdater } from "@hot-updater/react-native";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { Button, Image, SafeAreaView, Text } from "react-native";
+import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
@@ -73,5 +73,25 @@ function App(): React.JSX.Element {
 
 export default HotUpdater.wrap({
   source: "https://inodtkixxqmthzanatwg.supabase.co/functions/v1/update-server",
-  fallbackComponent: ({ progress }) => <Text>{progress}</Text>,
+  fallbackComponent: ({ progress }) => (
+    <Modal transparent visible={true}>
+      <View
+        style={{
+          flex: 1,
+          padding: 20,
+          borderRadius: 10,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          Updating...
+        </Text>
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {Math.round(progress * 100)}%
+        </Text>
+      </View>
+    </Modal>
+  ),
 })(App);

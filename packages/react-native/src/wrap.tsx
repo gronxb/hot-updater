@@ -1,7 +1,7 @@
 import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { HotUpdaterError } from "./error";
@@ -87,6 +87,7 @@ export function wrap<P>(
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
       const { progress, isBundleUpdated } = useHotUpdaterStore();
+      const [isUpdating, setIsUpdating] = useState(false);
 
       useEffect(() => {
         config.onProgress?.(progress);
@@ -96,18 +97,20 @@ export function wrap<P>(
         const initHotUpdater = async () => {
           try {
             const updateInfo = await checkUpdate(config);
-
             if (!updateInfo) {
               config.onCheckUpdateCompleted?.({ isBundleUpdated: false });
               return;
             }
+            setIsUpdating(true);
 
             const isSuccess = await installUpdate(updateInfo);
             config.onCheckUpdateCompleted?.({ isBundleUpdated: isSuccess });
+            setIsUpdating(false);
           } catch (error) {
             if (error instanceof HotUpdaterError) {
               config.onError?.(error);
             }
+            setIsUpdating(false);
             throw error;
           }
         };
@@ -115,7 +118,7 @@ export function wrap<P>(
         initHotUpdater();
       }, [config.source, config.requestHeaders]);
 
-      if (!isBundleUpdated && config.fallbackComponent) {
+      if (config.fallbackComponent && isUpdating) {
         const Fallback = config.fallbackComponent;
         return <Fallback progress={progress} />;
       }
