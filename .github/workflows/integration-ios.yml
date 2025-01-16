@@ -37,7 +37,7 @@ jobs:
       - name: Build iOS
         run: |
           cd examples/v0.76.1-new-arch/ios
-          RCT_NEW_ARCH_ENABLED=1 pod install
+          pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
 
@@ -67,6 +67,6 @@ jobs:
       - name: Build iOS
         run: |
           cd examples/v0.71.19/ios
-          RCT_NEW_ARCH_ENABLED=0 pod install
+          pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
