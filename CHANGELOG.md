@@ -1,3 +1,17 @@
+## 0.4.0 (2025-01-16)
+
+### 🚀 Features
+
+- **react-native:** HotUpdater.wrap add onCheckUpdateCompleted ([#50](https://github.com/gronxb/hot-updater/pull/50))
+
+### 🩹 Fixes
+
+- **ios:** old arch build ([#52](https://github.com/gronxb/hot-updater/pull/52))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.3.1 (2025-01-16)
 
 ### 🚀 Features
