@@ -324,6 +324,11 @@ public class MainApplication extends Application implements ReactApplication {
 
 - (NSURL *)bundleURL
 {
+#if DEBUG // [!code --]
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"]; // [!code --]
+#else // [!code --]
+  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
+#endif // [!code --]
   return [HotUpdater bundleURL]; // [!code ++]
 }
 
