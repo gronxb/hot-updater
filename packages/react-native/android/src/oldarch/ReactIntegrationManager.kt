@@ -9,7 +9,7 @@ import java.lang.reflect.Field
 class ReactIntegrationManager(
     context: Context,
 ) : ReactIntegrationManagerBase(context) {
-    public fun setJSBundle(
+    fun setJSBundle(
         application: ReactApplication,
         bundleURL: String,
     ) {
@@ -21,12 +21,21 @@ class ReactIntegrationManager(
             bundleLoaderField.isAccessible = true
 
             if (bundleLoader != null) {
-                bundleLoaderField.set(instanceManager, bundleLoader)
+                bundleLoaderField.set(
+                    instanceManager,
+                    bundleLoader
+                )
             } else {
-                bundleLoaderField.set(instanceManager, null)
+                bundleLoaderField.set(
+                    instanceManager,
+                    null
+                )
             }
         } catch (e: Exception) {
-            Log.d("HotUpdater", "Failed to setJSBundle: ${e.message}")
+            Log.d(
+                "HotUpdater",
+                "Failed to setJSBundle: ${e.message}"
+            )
             throw IllegalAccessException("Could not setJSBundle")
         }
     }
@@ -34,7 +43,7 @@ class ReactIntegrationManager(
     /**
      * Reload the React Native application.
      */
-    public fun reload(application: ReactApplication) {
+    fun reload(application: ReactApplication) {
         val reactNativeHost = application.reactNativeHost
         reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
     }

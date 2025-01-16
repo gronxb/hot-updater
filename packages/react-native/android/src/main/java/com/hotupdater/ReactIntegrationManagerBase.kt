@@ -9,22 +9,19 @@ open class ReactIntegrationManagerBase(
     private val context: Context,
 ) {
     fun getJSBundlerLoader(bundleFileUrl: String): JSBundleLoader? {
-        val bundleLoader: JSBundleLoader?
-
-        if (bundleFileUrl.lowercase().startsWith("assets://")) {
-            bundleLoader =
-                JSBundleLoader.createAssetLoader(
-                    context,
-                    bundleFileUrl,
-                    true,
-                )
+        val bundleLoader: JSBundleLoader? = if (bundleFileUrl.lowercase().startsWith("assets://")) {
+            JSBundleLoader.createAssetLoader(
+                context,
+                bundleFileUrl,
+                true,
+            )
         } else {
-            bundleLoader = JSBundleLoader.createFileLoader(bundleFileUrl)
+            JSBundleLoader.createFileLoader(bundleFileUrl)
         }
         return bundleLoader
     }
 
-    public fun getReactApplication(application: Application?): ReactApplication {
+    fun getReactApplication(application: Application?): ReactApplication {
         if (application is ReactApplication) {
             return application
         } else {

@@ -1,19 +1,18 @@
 package com.hotupdater
 
-import com.facebook.react.TurboReactPackage
+import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
-import java.util.HashMap
 
-class HotUpdaterPackage : TurboReactPackage() {
+class HotUpdaterPackage : BaseReactPackage() {
     override fun getModule(
         name: String,
         reactContext: ReactApplicationContext,
     ): NativeModule? =
         if (name == HotUpdaterModule.NAME) {
-            HotUpdaterModule(reactContext)
+            HotUpdaterModule(context = reactContext)
         } else {
             null
         }
@@ -24,13 +23,12 @@ class HotUpdaterPackage : TurboReactPackage() {
             val isTurboModule: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
             moduleInfos[HotUpdaterModule.NAME] =
                 ReactModuleInfo(
-                    HotUpdaterModule.NAME,
-                    HotUpdaterModule.NAME,
-                    false, // canOverrideExistingModule
-                    false, // needsEagerInit
-                    true, // hasConstants
-                    false, // isCxxModule
-                    isTurboModule, // isTurboModule
+                    name = HotUpdaterModule.NAME,
+                    className = HotUpdaterModule.NAME,
+                    canOverrideExistingModule = false, // canOverrideExistingModule
+                    needsEagerInit = false, // needsEagerInit
+                    isCxxModule = false,
+                    isTurboModule = isTurboModule // isTurboModule
                 )
             moduleInfos
         }
