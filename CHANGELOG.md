@@ -1,3 +1,14 @@
+## 0.4.1-2 (2025-01-16)
+
+### 🩹 Fixes
+
+- ensure install package ([fb6aa8f](https://github.com/gronxb/hot-updater/commit/fb6aa8f))
+- **hot-updater:** metro select install ([f9af86c](https://github.com/gronxb/hot-updater/commit/f9af86c))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.4.1-1 (2025-01-16)
 
 ### 🩹 Fixes
