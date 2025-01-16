@@ -535,10 +535,10 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core
-    devDependencies:
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../../plugins/js
+    devDependencies:
       '@react-native-community/cli':
         specifier: 15.0.1
         version: 15.0.1(typescript@5.7.2)
