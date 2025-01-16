@@ -1,0 +1,41 @@
+# `HotUpdater.reload()`
+
+By default, the `forceUpdate` flag is `false`, the bundle is downloaded but not applied until the user restarts the app.
+
+Calling `HotUpdater.reload()` reloads the app. If there is a completed update bundle ready to be applied, it will be applied immediately.
+
+::: info
+The `forceUpdate` flag simply downloads the bundle and calls reload immediately.
+:::
+
+## Usage
+
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  const handleReload = () => {
+    // Immediately reapply if there is a downloaded bundle
+    HotUpdater.reload(); // [!code hl]
+  }
+
+  return (
+    <View>
+      <Text>Hello World</Text>
+
+      <Button title="Reload" onPress={handleReload} />>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "<your-update-server-url>",
+  // If you need to send request headers, you can use the `requestHeaders` option.
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
+})(App);
+```
+

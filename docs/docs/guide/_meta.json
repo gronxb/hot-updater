@@ -10,7 +10,13 @@
   "deploy",
   "console",
   "simulator-test",
-  "hot-updater-wrap-guide",
+  {
+    "type": "dir",
+    "name": "hot-updater",
+    "label": "HotUpdater API",
+    "collapsible": true,
+    "collapsed": false
+  },
   {
     "type": "dir",
     "name": "providers",
