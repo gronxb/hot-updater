@@ -1,3 +1,13 @@
+## 0.5.0 (2025-01-16)
+
+### 🩹 Fixes
+
+- **android:** set bundle ([#54](https://github.com/gronxb/hot-updater/pull/54))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.4.1-5 (2025-01-16)
 
 ### 🩹 Fixes
