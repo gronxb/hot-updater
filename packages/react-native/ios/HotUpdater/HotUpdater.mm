@@ -241,7 +241,7 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
 
 
 // Don't compile this code when we build for the old architecture.
-#ifdef RCT_NEW_ARCH_ENABLED
+#ifdef RCT_NEW_ARCH_ENABLED == 1
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
 (const facebook::react::ObjCTurboModule::InitParams &)params
 {
