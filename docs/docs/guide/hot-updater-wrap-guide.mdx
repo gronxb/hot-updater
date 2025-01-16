@@ -1,0 +1,81 @@
+# `HotUpdater.wrap()` Guide
+
+`HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy.
+
+## Usage
+Use the `source` option in `HotUpdater.wrap` to specify the update server URL, then wrap the App entry point.
+
+Since it uses fetch, if you need to pass headers along with it, you can use the `requestHeaders` option to pass headers.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "<your-update-server-url>",
+  // If you need to send request headers, you can use the `requestHeaders` option.
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
+})(App);
+```
+
+
+## Fallback Component
+
+When an update exists and the bundle is being downloaded, you can block access to the entry point and trigger a `fallbackComponent`.
+
+This allows you to show the progress while downloading the new bundle and safely enter the app with the new bundle.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text, Modal } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "https://inodtkixxqmthzanatwg.supabase.co/functions/v1/update-server",
+  fallbackComponent: ({ progress = 0 }) => (
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        borderRadius: 10,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+        Updating...
+      </Text>
+      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+        {Math.round(progress * 100)}%
+      </Text>
+    </View>
+  ),
+})(App);
+```
+
+
+
+## Update Strategy
+
+| Update Type   | When Applied                                              | How to Enable                              |
+|---------------|----------------------------------------------------------|-------------------------------------------|
+| Default       | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
+| Force Update  | Downloads the update bundle and applies it immediately.   | Use the `--force-update` flag or console. |
