@@ -1,0 +1,40 @@
+# `useHotUpdaterStore()`
+
+A store related to updates.
+
+## Download Progress
+
+`progress` is a number representing the bundle download progress. It has a value between 0 and 1.
+
+If the current state is 1, it means the bundle download is complete and the update will be applied when `HotUpdater.reload()` is called.
+
+```tsx
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { Button, Text, View } from "react-native";
+
+function App() {
+  const { progress } = useHotUpdaterStore();
+
+  const isUpdateReady = progress === 1;
+  
+  return (
+    <View>
+      <Text>Hello World</Text>
+      <Text>{Math.round(progress * 100)}%</Text>
+      <Button
+        title="Reload"
+        onPress={() => HotUpdater.reload()}
+        disabled={!isUpdateReady}
+      />
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "<your-update-server-url>",
+  // If you need to send request headers, you can use the `requestHeaders` option.
+  requestHeaders: {
+    Authorization: "Bearer <your-access-token>",
+  },
+})(App);
+```

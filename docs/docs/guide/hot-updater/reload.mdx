@@ -10,10 +10,14 @@ The `forceUpdate` flag simply downloads the bundle and calls reload immediately.
 
 ## Usage
 
+You can use it as shown below, but it is recommended to use it together with the `useHotUpdaterStore().progress value.
+
+Refer to [useHotUpdaterStore()](./useHotUpdaterStore.mdx) for more information.
+
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
+import { Button, Text, View } from "react-native";
 
 function App() {
   const handleReload = () => {
@@ -25,7 +29,7 @@ function App() {
     <View>
       <Text>Hello World</Text>
 
-      <Button title="Reload" onPress={handleReload} />>
+      <Button title="Reload" onPress={handleReload} />
     </View>
   );
 }
