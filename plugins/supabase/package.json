@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/supabase",
   "type": "module",
-  "version": "0.4.1-3",
+  "version": "0.4.1-4",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -34,13 +34,13 @@
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "0.4.1-3",
-    "@hot-updater/plugin-core": "0.4.1-3",
+    "@hot-updater/core": "0.4.1-4",
+    "@hot-updater/plugin-core": "0.4.1-4",
     "@supabase/supabase-js": "^2.47.10",
     "picocolors": "^1.0.0"
   },
   "devDependencies": {
-    "@hot-updater/postgres": "0.4.1-3",
+    "@hot-updater/postgres": "0.4.1-4",
     "dayjs": "^1.11.13",
     "mime": "^4.0.4"
   }

@@ -1,3 +1,18 @@
+## 0.4.1-4 (2025-01-16)
+
+### 🚀 Features
+
+- default version 1.0.x ([4204a89](https://github.com/gronxb/hot-updater/commit/4204a89))
+
+### 🩹 Fixes
+
+- **metro:** bundleId throw kind error ([09b56f4](https://github.com/gronxb/hot-updater/commit/09b56f4))
+- **react-native:** wrap ([26c926b](https://github.com/gronxb/hot-updater/commit/26c926b))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.4.1-3 (2025-01-16)
 
 ### 🩹 Fixes
