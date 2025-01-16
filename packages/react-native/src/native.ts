@@ -41,8 +41,11 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
   listener: (event: HotUpdaterEvent[T]) => void,
 ) => {
   const eventEmitter = new NativeEventEmitter(HotUpdaterNative);
+  const subscription = eventEmitter.addListener(eventName, listener);
 
-  eventEmitter?.addListener(eventName, listener);
+  return () => {
+    subscription.remove();
+  };
 };
 
 /**
