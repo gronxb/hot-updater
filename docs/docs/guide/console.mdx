@@ -1,7 +1,7 @@
 import { PackageManagerTabs } from '@theme';
 import { normalizeImagePath } from 'rspress/runtime';
 
-# Console
+# Console (Rollback & Force Update)
 
 Opens a localhost server based on plugins configured in `hot-updater.config.ts`.
 For security reasons, only localhost server is supported at the moment.
@@ -50,3 +50,16 @@ Execute the following command:
     yarn: "yarn hot-updater console",
   }
 } />
+
+
+
+## Rollback
+
+When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.
+
+<img src={normalizeImagePath("/guide/console/enabled.png")} />
+
+## Force Update
+When you set a bundle's `forceUpdate` status to `true` in the console, users who have that bundle will immediately force update to the **latest bundle**.
+
+<img src={normalizeImagePath("/guide/console/enabled.png")} />
