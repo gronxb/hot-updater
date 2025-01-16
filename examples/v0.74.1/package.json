@@ -26,6 +26,7 @@
     "@callstack/repack": "^4.0.0",
     "@hot-updater/aws": "0.4.0",
     "@hot-updater/metro": "0.4.0",
+    "@hot-updater/supabase": "0.4.0",
     "@react-native-community/cli-platform-android": "13.6.6",
     "@react-native/babel-preset": "0.74.83",
     "@react-native/eslint-config": "0.74.83",

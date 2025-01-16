@@ -4,11 +4,7 @@ import { delay } from "@/utils/delay";
 import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
-import {
-  type SupabaseApi,
-  supabaseApi,
-  supabaseConfigTomlTemplate,
-} from "@hot-updater/supabase";
+import type { SupabaseApi } from "@hot-updater/supabase";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 
@@ -80,15 +76,16 @@ const selectProject = async () => {
 
   let projectsProcess: { id: string; name: string; region: string }[] = [];
   try {
-    const listProjects = await execa("npx", [
-      "-y",
-      "supabase",
-      "projects",
-      "list",
-      "--output",
-      "json",
-    ]);
-    projectsProcess = JSON.parse(listProjects.stdout ?? "[]");
+    const listProjects = await execa(
+      "npx",
+      ["-y", "supabase", "projects", "list", "--output", "json"],
+      {},
+    );
+
+    projectsProcess =
+      listProjects.stdout === "null"
+        ? []
+        : JSON.parse(listProjects?.stdout ?? "[]");
   } catch (err) {
     spinner.stop();
     console.error("Failed to list Supabase projects:", err);
@@ -228,6 +225,9 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
   spinner.start("Linking Supabase...");
 
   try {
+    const { supabaseConfigTomlTemplate } = await import(
+      "@hot-updater/supabase"
+    );
     // Write the config.toml with correct projectId
     await fs.writeFile(
       path.join(supabasePath, "supabase", "config.toml"),
@@ -354,6 +354,7 @@ export const initSupabase = async () => {
     throw new Error("Service role key not found");
   }
 
+  const { supabaseApi } = await import("@hot-updater/supabase");
   const api = supabaseApi(
     `https://${project.id}.supabase.co`,
     serviceRoleKey.api_key,
