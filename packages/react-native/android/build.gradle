@@ -127,7 +127,7 @@ dependencies {
 if (isNewArchitectureEnabled()) {
     react {
         jsRootDir = file("../src/")
-        libraryName = "HotUpdater"
+        libraryName = "HotUpdaterModule"
         codegenJavaPackageName = "com.hotupdater"
     }
 }
