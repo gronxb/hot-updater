@@ -24,7 +24,15 @@ export const init = async () => {
 
   const buildPluginPackage = await select({
     message: "Select a build plugin",
-    options: [{ value: "@hot-updater/metro", label: "Metro" }],
+    options: [
+      {
+        value: {
+          dependencies: ["@hot-updater/metro"],
+          devDependencies: [],
+        },
+        label: "Metro",
+      },
+    ],
   });
 
   if (isCancel(buildPluginPackage)) {
@@ -42,10 +50,12 @@ export const init = async () => {
 
   await ensureInstallPackages({
     dependencies: [
+      ...buildPluginPackage.dependencies,
       ...REQUIRED_PACKAGES.dependencies,
       ...PACKAGE_MAP[provider].dependencies,
     ],
     devDependencies: [
+      ...buildPluginPackage.devDependencies,
       ...REQUIRED_PACKAGES.devDependencies,
       ...PACKAGE_MAP[provider].devDependencies,
     ],
