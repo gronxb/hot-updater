@@ -62,6 +62,7 @@
     "type": "modules",
     "jsSrcsDir": "src/specs",
     "outputDir": {
+      "ios": "generated",
       "android": "android/generated"
     },
     "android": {
