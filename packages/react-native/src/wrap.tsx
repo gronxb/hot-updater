@@ -86,8 +86,9 @@ export function wrap<P>(
 ): (WrappedComponent: React.ComponentType) => React.ComponentType<P> {
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
-      const { progress, isBundleUpdated } = useHotUpdaterStore();
-      const [isUpdating, setIsUpdating] = useState(false);
+      const { progress } = useHotUpdaterStore();
+      const [isCheckUpdateCompleted, setIsCheckUpdateCompleted] =
+        useState(false);
 
       useEffect(() => {
         config.onProgress?.(progress);
@@ -99,18 +100,18 @@ export function wrap<P>(
             const updateInfo = await checkUpdate(config);
             if (!updateInfo) {
               config.onCheckUpdateCompleted?.({ isBundleUpdated: false });
+              setIsCheckUpdateCompleted(true);
               return;
             }
-            setIsUpdating(true);
 
             const isSuccess = await installUpdate(updateInfo);
             config.onCheckUpdateCompleted?.({ isBundleUpdated: isSuccess });
-            setIsUpdating(false);
+            setIsCheckUpdateCompleted(true);
           } catch (error) {
             if (error instanceof HotUpdaterError) {
               config.onError?.(error);
             }
-            setIsUpdating(false);
+            setIsCheckUpdateCompleted(true);
             throw error;
           }
         };
@@ -118,7 +119,10 @@ export function wrap<P>(
         initHotUpdater();
       }, [config.source, config.requestHeaders]);
 
-      if (config.fallbackComponent && isUpdating) {
+      if (
+        config.fallbackComponent &&
+        (!isCheckUpdateCompleted || progress > 0)
+      ) {
         const Fallback = config.fallbackComponent;
         return <Fallback progress={progress} />;
       }
