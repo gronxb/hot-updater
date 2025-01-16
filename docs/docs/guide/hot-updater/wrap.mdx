@@ -6,7 +6,6 @@
 Use the `source` option in `HotUpdater.wrap` to specify the update server URL, then wrap the App entry point.
 
 Since it uses fetch, if you need to pass headers along with it, you can use the `requestHeaders` option to pass headers.
-
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
@@ -70,6 +69,40 @@ export default HotUpdater.wrap({
   ),
 })(App);
 ```
+
+## onCheckUpdateCompleted
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "<your-update-server-url>",
+  // If you need to send request headers, you can use the `requestHeaders` option.
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
+  onCheckUpdateCompleted: ({ isBundleUpdated }) => {
+    // if isBundleUpdated is true, `HotUpdater.reload()` or restart the app to apply the new bundle
+    // if isBundleUpdated is false, the app is up to date
+    console.log("Bundle updated:", isBundleUpdated);
+  },
+
+  // If you need to show the progress while downloading the new bundle, you can use the `onProgress` option.
+  onProgress: ({ progress }) => {
+    console.log("Bundle downloading progress:", progress);
+  },
+})(App);
+```
+
 
 
 
