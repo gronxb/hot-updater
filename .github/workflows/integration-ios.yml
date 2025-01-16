@@ -25,14 +25,14 @@ jobs:
 
       - name: Build iOS (new arch)
         run: |
-          cd example/v0.76.1-new-arch/ios
+          cd examples/v0.76.1-new-arch/ios
           pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
 
       - name: Build iOS (old arch)
         run: |
-          cd example/v0.71.19/ios
+          cd examples/v0.71.19/ios
           pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..

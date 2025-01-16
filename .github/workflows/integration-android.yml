@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Build Android (new arch)
-        run: cd example/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
+        run: cd examples/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
 
       - name: Build Android (old arch)
-        run: cd example/v0.71.19/android && ./gradlew assembleDebug --build-cache && cd ../..
+        run: cd examples/v0.71.19/android && ./gradlew assembleDebug --build-cache && cd ../..
