@@ -173,8 +173,8 @@ importers:
         specifier: workspace:*
         version: link:../../plugins/metro
       '@hot-updater/supabase':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       '@react-native-community/cli-platform-android':
         specifier: 13.6.6
         version: 13.6.6(encoding@0.1.13)
@@ -2358,9 +2358,6 @@ packages:
     peerDependencies:
       hono: '>=3.9.0'
       valibot: ^1.0.0 || ^1.0.0-beta || ^1.0.0-rc
-
-  '@hot-updater/supabase@0.4.0':
-    resolution: {integrity: sha512-VOYpNab5WmvuoWNATLYUWHaqx3w5JOOlFJgkXZKphvjQdpCpQZLEr1jsBU4TR1N9SZgdfHHrRYAjwwr24BKeRg==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -12504,16 +12501,6 @@ snapshots:
     dependencies:
       hono: 4.6.3
       valibot: 0.42.1(typescript@5.6.3)
-
-  '@hot-updater/supabase@0.4.0':
-    dependencies:
-      '@hot-updater/core': link:packages/core
-      '@hot-updater/plugin-core': link:plugins/plugin-core
-      '@supabase/supabase-js': 2.47.10
-      picocolors: 1.1.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
