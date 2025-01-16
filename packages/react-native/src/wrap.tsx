@@ -1,14 +1,12 @@
 import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo } from "@hot-updater/js";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Platform } from "react-native";
 import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { HotUpdaterError } from "./error";
 import { getAppVersion, getBundleId, reload, updateBundle } from "./native";
-import { useHotUpdaterStore } from "./store";
-
-export type HotUpdaterStatus = "INSTALLING_UPDATE" | "UP_TO_DATE" | "UPDATING";
+import { type HotUpdaterState, useHotUpdaterStore } from "./store";
 
 export interface CheckUpdateConfig {
   source: BundleArg;
@@ -16,16 +14,12 @@ export interface CheckUpdateConfig {
 }
 
 export interface HotUpdaterConfig extends CheckUpdateConfig {
-  fallbackComponent?: React.FC<HotUpdaterFallbackProps>;
-}
-
-export interface HotUpdaterFallbackProps {
-  progress: number;
-}
-
-export interface WithHotUpdaterProps {
-  updateStatus: HotUpdaterStatus | null;
-  updateError: HotUpdaterError | null;
+  fallbackComponent?: React.FC<Pick<HotUpdaterState, "progress">>;
+  onError?: (error: HotUpdaterError) => void;
+  onProgress?: (progress: number) => void;
+  onCheckUpdateCompleted?: ({
+    isBundleUpdated,
+  }: { isBundleUpdated: boolean }) => void;
 }
 
 export async function checkUpdate(config: CheckUpdateConfig) {
@@ -89,19 +83,14 @@ async function installUpdate(updateInfo: UpdateInfo) {
 
 export function wrap<P>(
   config: HotUpdaterConfig,
-): (
-  WrappedComponent: React.ComponentType<P & WithHotUpdaterProps>,
-) => React.ComponentType<P> {
+): (WrappedComponent: React.ComponentType) => React.ComponentType<P> {
   return (WrappedComponent) => {
-    const HotUpdaterHOC: React.FC<P> = (props) => {
-      const [updateStatus, setUpdateStatus] = useState<HotUpdaterStatus | null>(
-        null,
-      );
-      const [updateError, setUpdateError] = useState<HotUpdaterError | null>(
-        null,
-      );
+    const HotUpdaterHOC: React.FC<P> = () => {
+      const { progress, isBundleUpdated } = useHotUpdaterStore();
 
-      const { progress } = useHotUpdaterStore();
+      useEffect(() => {
+        config.onProgress?.(progress);
+      }, [progress]);
 
       useEffect(() => {
         const initHotUpdater = async () => {
@@ -109,18 +98,15 @@ export function wrap<P>(
             const updateInfo = await checkUpdate(config);
 
             if (!updateInfo) {
-              setUpdateStatus("UP_TO_DATE");
+              config.onCheckUpdateCompleted?.({ isBundleUpdated: false });
               return;
             }
 
-            setUpdateStatus("UPDATING");
             const isSuccess = await installUpdate(updateInfo);
-            if (isSuccess) {
-              setUpdateStatus("INSTALLING_UPDATE");
-            }
+            config.onCheckUpdateCompleted?.({ isBundleUpdated: isSuccess });
           } catch (error) {
             if (error instanceof HotUpdaterError) {
-              setUpdateError(error);
+              config.onError?.(error);
             }
             throw error;
           }
@@ -129,18 +115,12 @@ export function wrap<P>(
         initHotUpdater();
       }, [config.source, config.requestHeaders]);
 
-      if (updateStatus === "UPDATING" && config.fallbackComponent) {
+      if (!isBundleUpdated && config.fallbackComponent) {
         const Fallback = config.fallbackComponent;
         return <Fallback progress={progress} />;
       }
 
-      return (
-        <WrappedComponent
-          {...props}
-          updateStatus={updateStatus}
-          updateError={updateError}
-        />
-      );
+      return <WrappedComponent />;
     };
 
     return HotUpdaterHOC;
