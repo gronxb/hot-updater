@@ -1,9 +1,17 @@
 import * as p from "@clack/prompts";
 
+import { version } from "@/packageJson";
 import { getPackageManager } from "@/utils/getPackageManager";
 import { getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import { readPackageUp } from "read-package-up";
+
+const ensurePackageVersion = (pkg: string) => {
+  if (pkg === "hot-updater" || pkg.startsWith("@hot-updater/")) {
+    return `${pkg}@${version}`;
+  }
+  return pkg;
+};
 
 export const ensureInstallPackages = async (buildPluginPackages: {
   dependencies: string[];
@@ -30,7 +38,11 @@ export const ensureInstallPackages = async (buildPluginPackages: {
       title: "Checking packages",
       task: async (message) => {
         message(`Installing ${dependenciesToInstall.join(", ")}...`);
-        await execa(packageManager, ["install", ...dependenciesToInstall]);
+        await execa(packageManager, [
+          "install",
+          ...dependenciesToInstall.map(ensurePackageVersion),
+          packageManager === "yarn" ? "--dev" : "--save-dev",
+        ]);
         return `Installed ${dependenciesToInstall.join(", ")}`;
       },
     },
@@ -41,7 +53,7 @@ export const ensureInstallPackages = async (buildPluginPackages: {
         message(`Installing ${devDependenciesToInstall.join(", ")}...`);
         await execa(packageManager, [
           "install",
-          ...devDependenciesToInstall,
+          ...devDependenciesToInstall.map(ensurePackageVersion),
           packageManager === "yarn" ? "--dev" : "--save-dev",
         ]);
         return `Installed ${devDependenciesToInstall.join(", ")}`;
