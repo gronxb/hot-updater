@@ -66,11 +66,24 @@ export const getDefaultTargetAppVersion = async (
   cwd: string,
   platform: Platform,
 ): Promise<string | null> => {
+  let version: string | null = null;
+
   switch (platform) {
     case "ios":
-      return getIOSVersion(cwd);
+      version = await getIOSVersion(cwd);
+      break;
     case "android":
-      return getAndroidVersion(cwd);
+      version = await getAndroidVersion(cwd);
+      break;
   }
-  return null;
+
+  if (!version) return null;
+
+  // If version only has one dot (e.g. 1.0), append .x
+  const dotCount = version.split(".").length - 1;
+  if (dotCount === 1) {
+    version = `${version}.x`;
+  }
+
+  return version;
 };

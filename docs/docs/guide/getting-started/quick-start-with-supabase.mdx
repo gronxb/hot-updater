@@ -36,7 +36,7 @@ Run the initialization script to start the interactive setup process. Use the fo
 
 <PackageManagerTabs command={
   {
-    npm: "npm exec hot-updater init",
+    npm: "npx hot-updater init",
     pnpm: "pnpm hot-updater init",
     yarn: "yarn hot-updater init",
   }
@@ -324,6 +324,11 @@ public class MainApplication extends Application implements ReactApplication {
 
 - (NSURL *)bundleURL
 {
+#if DEBUG // [!code --]
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"]; // [!code --]
+#else // [!code --]
+  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
+#endif // [!code --]
   return [HotUpdater bundleURL]; // [!code ++]
 }
 

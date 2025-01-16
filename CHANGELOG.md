@@ -1,3 +1,49 @@
+## 0.4.1-5 (2025-01-16)
+
+### 🩹 Fixes
+
+- **react-native:** wrap progress ([0ab3201](https://github.com/gronxb/hot-updater/commit/0ab3201))
+
+### ❤️ Thank You
+
+- gronxb
+
+## 0.4.1-4 (2025-01-16)
+
+### 🚀 Features
+
+- default version 1.0.x ([4204a89](https://github.com/gronxb/hot-updater/commit/4204a89))
+
+### 🩹 Fixes
+
+- **metro:** bundleId throw kind error ([09b56f4](https://github.com/gronxb/hot-updater/commit/09b56f4))
+- **react-native:** wrap ([26c926b](https://github.com/gronxb/hot-updater/commit/26c926b))
+
+### ❤️ Thank You
+
+- gronxb
+
+## 0.4.1-3 (2025-01-16)
+
+### 🩹 Fixes
+
+- **react-native:** js deps ([a9b264f](https://github.com/gronxb/hot-updater/commit/a9b264f))
+
+### ❤️ Thank You
+
+- gronxb
+
+## 0.4.1-2 (2025-01-16)
+
+### 🩹 Fixes
+
+- ensure install package ([fb6aa8f](https://github.com/gronxb/hot-updater/commit/fb6aa8f))
+- **hot-updater:** metro select install ([f9af86c](https://github.com/gronxb/hot-updater/commit/f9af86c))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.4.1-1 (2025-01-16)
 
 ### 🩹 Fixes

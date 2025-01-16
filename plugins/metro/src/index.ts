@@ -53,13 +53,16 @@ const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
     }
   }
 
-  const bundleId = await fs.readFile(
-    path.join(buildPath, "BUNDLE_ID"),
-    "utf-8",
-  );
+  const bundleId = await fs
+    .readFile(path.join(buildPath, "BUNDLE_ID"), "utf-8")
+    .catch(() => null);
 
   if (!bundleId) {
-    throw new Error("Bundle ID not found");
+    throw new Error(`Please check if 'hot-updater/babel-plugin' is configured in babel.config.js
+Example:
+{
+  plugins: ['hot-updater/babel-plugin']
+}`);
   }
 
   return bundleId;
