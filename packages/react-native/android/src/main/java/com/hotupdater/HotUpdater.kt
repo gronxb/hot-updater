@@ -59,6 +59,13 @@ class HotUpdater : ReactPackage {
                 putString("HotUpdaterBundleURL", bundleURL)
                 apply()
             }
+            val reactIntegrationManager = ReactIntegrationManager(context)
+
+            val activity: Activity? = getCurrentActivity(context)
+            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
+            val bundleURL = getJSBundleFile(context)
+
+            reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
         }
 
         private fun extractZipFileAtPath(
@@ -94,8 +101,10 @@ class HotUpdater : ReactPackage {
 
         fun reload(context: Context) {
             val activity: Activity? = getCurrentActivity(context)
+
             val reactIntegrationManager = ReactIntegrationManager(context)
 
+            val activity: Activity? = getCurrentActivity(context)
             val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
             val bundleURL = getJSBundleFile(context)
 
