@@ -1,3 +1,15 @@
+## 0.4.1-0 (2025-01-16)
+
+### 🩹 Fixes
+
+- lock ([ce85e37](https://github.com/gronxb/hot-updater/commit/ce85e37))
+- **hot-updater:** supabase peer deps ([#53](https://github.com/gronxb/hot-updater/pull/53))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.4.0 (2025-01-16)
 
 ### 🚀 Features
