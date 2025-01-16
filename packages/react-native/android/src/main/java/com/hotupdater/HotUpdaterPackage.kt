@@ -23,12 +23,12 @@ class HotUpdaterPackage : BaseReactPackage() {
             val isTurboModule: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
             moduleInfos[HotUpdaterModule.NAME] =
                 ReactModuleInfo(
-                    name = HotUpdaterModule.NAME,
-                    className = HotUpdaterModule.NAME,
-                    canOverrideExistingModule = false, // canOverrideExistingModule
-                    needsEagerInit = false, // needsEagerInit
-                    isCxxModule = false,
-                    isTurboModule = isTurboModule // isTurboModule
+                    HotUpdaterModule.NAME,
+                    HotUpdaterModule.NAME,
+                    false, // canOverrideExistingModule
+                    false, // needsEagerInit
+                    false,
+                    isTurboModule // isTurboModule
                 )
             moduleInfos
         }
