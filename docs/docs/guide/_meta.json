@@ -8,5 +8,12 @@
     "collapsed": false
   },
   "deploy",
-  "console"
+  "console",
+  {
+    "type": "dir",
+    "name": "providers",
+    "label": "Providers",
+    "collapsible": true,
+    "collapsed": false
+  }
 ]
