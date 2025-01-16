@@ -15,6 +15,7 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/gronxb/hot-updater.git", :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm}"
+  s.exclude_files = "ios/generated/**/*"
 
   s.dependency "SSZipArchive", "~> 2.2.2"
 
