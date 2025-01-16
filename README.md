@@ -1,6 +1,6 @@
   # Hot Updater
 
-  A self-hostable OTA (Over-The-Air) update solution for React Native.
+  A self-hostable OTA update solution for React Native **(Alternative to CodePush)**
 
   ![hot-updater](https://raw.githubusercontent.com/gronxb/hot-updater/main/demo.gif)
 
