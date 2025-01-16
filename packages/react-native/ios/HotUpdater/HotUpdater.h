@@ -1,7 +1,7 @@
 #import <React/RCTEventEmitter.h>
 #import <React/RCTBundleURLProvider.h>
 
-#ifdef RCT_NEW_ARCH_ENABLED == 1
+#ifdef RCT_NEW_ARCH_ENABLED
 #import "HotUpdaterSpec.h"
 @interface HotUpdater : RCTEventEmitter <NativeHotUpdaterSpec>
 #else
