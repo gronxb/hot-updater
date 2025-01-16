@@ -1,3 +1,13 @@
+## 0.4.1-5 (2025-01-16)
+
+### 🩹 Fixes
+
+- **react-native:** wrap progress ([0ab3201](https://github.com/gronxb/hot-updater/commit/0ab3201))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.4.1-4 (2025-01-16)
 
 ### 🚀 Features
