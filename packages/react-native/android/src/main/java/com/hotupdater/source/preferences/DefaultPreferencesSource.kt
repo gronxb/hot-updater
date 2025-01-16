@@ -1,7 +1,6 @@
 package com.hotupdater.source.preferences
 
 import android.content.Context
-import androidx.core.content.edit
 
 private const val PREFS_NAME = "HotUpdaterPrefs"
 private const val KEY_BUNDLE_URL = "HotUpdaterBundleURL"
@@ -16,11 +15,12 @@ class DefaultPreferencesSource : PreferencesSource {
                 PREFS_NAME,
                 Context.MODE_PRIVATE,
             )
-        sharedPreferences.edit {
+        with(sharedPreferences.edit()) {
             putString(
                 KEY_BUNDLE_URL,
                 bundleURL,
             )
+            apply()
         }
     }
 
