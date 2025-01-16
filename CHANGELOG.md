@@ -1,3 +1,23 @@
+## 0.3.1 (2025-01-16)
+
+### 🚀 Features
+
+- init command change templates ([#44](https://github.com/gronxb/hot-updater/pull/44))
+- init video ([9a31d14](https://github.com/gronxb/hot-updater/commit/9a31d14))
+- providers ([54a38e2](https://github.com/gronxb/hot-updater/commit/54a38e2))
+- **react-native:** HotUpdater.wrap Component ([#41](https://github.com/gronxb/hot-updater/pull/41))
+- **supabase:** init `supabase` command ([#40](https://github.com/gronxb/hot-updater/pull/40))
+
+### 🩹 Fixes
+
+- remove generate-secret-key ([#45](https://github.com/gronxb/hot-updater/pull/45))
+- **docs:** order ([a9fe3c6](https://github.com/gronxb/hot-updater/commit/a9fe3c6))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.3.0 (2025-01-13)
 
 ### 🚀 Features

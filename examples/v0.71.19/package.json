@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/example-react-native-v71",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -10,7 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@hot-updater/react-native": "0.3.0",
+    "@hot-updater/react-native": "0.3.1",
     "react": "18.2.0",
     "react-native": "0.71.19"
   },
@@ -18,8 +18,8 @@
     "@babel/core": "^7.26.0",
     "@babel/preset-env": "^7.20.0",
     "@babel/runtime": "^7.20.0",
-    "@hot-updater/aws": "0.3.0",
-    "@hot-updater/metro": "0.3.0",
+    "@hot-updater/aws": "0.3.1",
+    "@hot-updater/metro": "0.3.1",
     "@react-native-community/cli-platform-android": "10.2.0",
     "@react-native-community/cli-platform-ios": "10.2.5",
     "@react-native-community/eslint-config": "^3.2.0",
@@ -32,7 +32,7 @@
     "babel-jest": "^29.2.1",
     "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
-    "hot-updater": "0.3.0",
+    "hot-updater": "0.3.1",
     "invariant": "^2.2.4",
     "jest": "^29.2.1",
     "metro-react-native-babel-preset": "0.73.10",
