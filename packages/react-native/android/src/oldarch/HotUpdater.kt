@@ -7,9 +7,7 @@ import com.facebook.react.uimanager.ReactShadowNode
 import com.facebook.react.uimanager.ViewManager
 
 class HotUpdater : ReactPackage {
-    override fun createViewManagers(
-        context: ReactApplicationContext
-    ): MutableList<ViewManager<View, ReactShadowNode<*>>> = mutableListOf()
+    override fun createViewManagers(context: ReactApplicationContext): MutableList<ViewManager<View, ReactShadowNode<*>>> = mutableListOf()
 
     override fun createNativeModules(context: ReactApplicationContext) = listOf(HotUpdaterModule(context = context))
 }
