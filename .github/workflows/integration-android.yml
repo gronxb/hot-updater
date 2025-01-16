@@ -34,6 +34,9 @@ jobs:
           cache: "pnpm"
       - run: pnpm install
 
+      - name: Library Build
+        run: pnpm build
+
       - name: Build Android (new arch)
         run: cd examples/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
 
