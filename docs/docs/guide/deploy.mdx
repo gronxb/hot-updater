@@ -19,7 +19,7 @@ Execute the following command:
 
 <PackageManagerTabs command={
   {
-    npm: "npm run hot-updater deploy -i",
+    npm: "npm exec hot-updater deploy -i",
     pnpm: "pnpm hot-updater deploy -i",
     yarn: "yarn hot-updater deploy -i",
   }
@@ -34,9 +34,9 @@ Execute the following command:
 
 <PackageManagerTabs command={
   {
-    npm: "npm run hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
-    pnpm: "pnpm run hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
-    yarn: "yarn run hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
+    npm: "npm exec hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
+    pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
+    yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\"",
   }
 } />
 

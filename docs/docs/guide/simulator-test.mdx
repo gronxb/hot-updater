@@ -35,7 +35,7 @@ Deploy with interactive mode and force update flag enabled in hot-updater deploy
 
 <PackageManagerTabs command={
   {
-    npm: "npm run hot-updater deploy -i --force-update",
+    npm: "npm exec hot-updater deploy -i --force-update",
     pnpm: "pnpm hot-updater deploy -i --force-update",
     yarn: "yarn hot-updater deploy -i --force-update",
   }
@@ -49,7 +49,7 @@ Open the console and set the bundle's `enabled` status to `false`.
 
 <PackageManagerTabs command={
   {
-    npm: "npm run hot-updater console",
+    npm: "npm exec hot-updater console",
     pnpm: "pnpm hot-updater console",
     yarn: "yarn hot-updater console",
   }
