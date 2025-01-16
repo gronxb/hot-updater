@@ -1,3 +1,13 @@
+## 0.4.1-3 (2025-01-16)
+
+### 🩹 Fixes
+
+- **react-native:** js deps ([a9b264f](https://github.com/gronxb/hot-updater/commit/a9b264f))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.4.1-2 (2025-01-16)
 
 ### 🩹 Fixes
