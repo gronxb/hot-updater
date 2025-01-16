@@ -1,0 +1,36 @@
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/react-native/android/**/*"
+  pull_request:
+    paths:
+      - "packages/react-native/android/**/*"
+
+name: Android Integration
+
+jobs:
+  ktlint:
+    runs-on: ubuntu-latest
+    name: Kotlin Lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: touchlab-lab/ktlint-action-setup@1.0.0
+        with:
+          ktlint_version: 1.3.1
+      - run: ktlint "packages/react-native/android/src/**/*.kt"
+
+  build:
+    runs-on: ubuntu-latest
+    name: Build Android
+    strategy:
+      matrix:
+        node-version: [22.x]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build Android (new arch)
+        run: cd example/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
+
+      - name: Build Android (old arch)
+        run: cd example/v0.71.19/android && ./gradlew assembleDebug --build-cache && cd ../..
