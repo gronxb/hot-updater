@@ -4,7 +4,7 @@ pageType: home
 hero:
   name: Hot Updater
   text: React Native OTA
-  tagline: CodePush Alternative
+  tagline: Alternative to CodePush
   actions:
     - theme: brand
       text: Quick Start
