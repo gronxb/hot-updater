@@ -8,7 +8,7 @@
   ## Documentation
 
   Full documentation is available at:
-  https://hot-updater.gronxb.io
+  https://gronxb.github.io/hot-updater
 
   ## Key Features
 
