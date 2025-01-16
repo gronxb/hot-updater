@@ -23,18 +23,18 @@ class ReactIntegrationManager(
             if (bundleLoader != null) {
                 bundleLoaderField.set(
                     instanceManager,
-                    bundleLoader
+                    bundleLoader,
                 )
             } else {
                 bundleLoaderField.set(
                     instanceManager,
-                    null
+                    null,
                 )
             }
         } catch (e: Exception) {
             Log.d(
                 "HotUpdater",
-                "Failed to setJSBundle: ${e.message}"
+                "Failed to setJSBundle: ${e.message}",
             )
             throw IllegalAccessException("Could not setJSBundle")
         }

@@ -32,7 +32,7 @@ class HotUpdaterModule internal constructor(
 
         reactIntegrationManager.setJSBundle(
             reactApplication,
-            bundleURL
+            bundleURL,
         )
         UiThreadUtil.runOnUiThread {
             reactIntegrationManager.reload(reactApplication)
@@ -41,13 +41,15 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun getAppVersion(promise: Promise) {
-        val versionName = runCatching {
-            val packageInfo = reactApplicationContext.packageManager.getPackageInfo(
-                reactApplicationContext.packageName,
-                0
-            )
-            packageInfo.versionName
-        }.getOrNull()
+        val versionName =
+            runCatching {
+                val packageInfo =
+                    reactApplicationContext.packageManager.getPackageInfo(
+                        reactApplicationContext.packageName,
+                        0,
+                    )
+                packageInfo.versionName
+            }.getOrNull()
         promise.resolve(versionName)
     }
 
@@ -60,21 +62,23 @@ class HotUpdaterModule internal constructor(
         if (zipUrl.isEmpty()) {
             preferencesSource.setBundleURL(
                 reactApplicationContext,
-                null
+                null,
             )
             promise.resolve(true)
             return
         }
 
         val downloadUrl = URL(zipUrl)
-        val basePath = fileDataSource.stripPrefix(
-            bundleId,
-            downloadUrl.path
-        )
-        val path = fileDataSource.convertFileSystemPath(
-            reactApplicationContext,
-            basePath
-        )
+        val basePath =
+            fileDataSource.stripPrefix(
+                bundleId,
+                downloadUrl.path,
+            )
+        val path =
+            fileDataSource.convertFileSystemPath(
+                reactApplicationContext,
+                basePath,
+            )
 
         var connection: HttpURLConnection? = null
         try {
@@ -99,7 +103,7 @@ class HotUpdaterModule internal constructor(
                         output.write(
                             buffer,
                             0,
-                            bytesRead
+                            bytesRead,
                         )
                         totalRead += bytesRead
                         val progress = (totalRead.toDouble() / totalSize)
@@ -107,7 +111,7 @@ class HotUpdaterModule internal constructor(
                             WritableNativeMap().apply {
                                 putDouble(
                                     "progress",
-                                    progress
+                                    progress,
                                 )
                             }
 
@@ -115,7 +119,7 @@ class HotUpdaterModule internal constructor(
                             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                             .emit(
                                 "onProgress",
-                                params
+                                params,
                             )
                     }
                 }
@@ -127,13 +131,14 @@ class HotUpdaterModule internal constructor(
             connection?.disconnect()
         }
 
-        val extractedPath = File(path).parentFile?.path ?: run {
-            promise.resolve(false)
-            return
-        }
+        val extractedPath =
+            File(path).parentFile?.path ?: run {
+                promise.resolve(false)
+                return
+            }
         if (!fileDataSource.extractZipFileAtPath(
                 path,
-                extractedPath
+                extractedPath,
             )
         ) {
             promise.resolve(false)
@@ -145,7 +150,7 @@ class HotUpdaterModule internal constructor(
         if (indexFile != null) {
             preferencesSource.setBundleURL(
                 reactApplicationContext,
-                indexFile.path
+                indexFile.path,
             )
         } else {
             promise.resolve(false)
@@ -163,6 +168,6 @@ class HotUpdaterModule internal constructor(
     }
 
     companion object {
-        const val NAME = "HotUpdater"
+        const val NAME = "HotUpdaterModule"
     }
 }

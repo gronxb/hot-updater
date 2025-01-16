@@ -5,16 +5,16 @@ import android.content.Context
 interface FileDataSource {
     fun convertFileSystemPath(
         context: Context,
-        basePath: String
+        basePath: String,
     ): String
 
     fun stripPrefix(
         prefix: String,
-        path: String
+        path: String,
     ): String
 
     fun extractZipFileAtPath(
         zipFilePath: String,
-        destinationPath: String
+        destinationPath: String,
     ): Boolean
 }

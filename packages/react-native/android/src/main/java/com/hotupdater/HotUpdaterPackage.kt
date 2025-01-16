@@ -28,7 +28,7 @@ class HotUpdaterPackage : BaseReactPackage() {
                     false, // canOverrideExistingModule
                     false, // needsEagerInit
                     false,
-                    isTurboModule // isTurboModule
+                    isTurboModule, // isTurboModule
                 )
             moduleInfos
         }

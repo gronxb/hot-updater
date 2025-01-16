@@ -5,9 +5,10 @@ import android.content.Context
 interface PreferencesSource {
     fun setBundleURL(
         context: Context,
-        bundleURL: String?
+        bundleURL: String?,
     )
 
     fun getBundleURL(context: Context): String?
+
     fun getAppVersion(context: Context): String?
 }

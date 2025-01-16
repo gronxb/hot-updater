@@ -8,7 +8,7 @@ import java.util.zip.ZipFile
 class DefaultFileDataSource : FileDataSource {
     override fun convertFileSystemPath(
         context: Context,
-        basePath: String
+        basePath: String,
     ): String {
         val documentsDir = context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath
         val separator = if (basePath.startsWith("/")) "" else "/"
@@ -17,11 +17,11 @@ class DefaultFileDataSource : FileDataSource {
 
     override fun stripPrefix(
         prefix: String,
-        path: String
+        path: String,
     ) = if (path.startsWith("/$prefix/")) {
         path.replaceFirst(
             "/$prefix/",
-            ""
+            "",
         )
     } else {
         path
@@ -29,15 +29,16 @@ class DefaultFileDataSource : FileDataSource {
 
     override fun extractZipFileAtPath(
         zipFilePath: String,
-        destinationPath: String
-    ): Boolean {
-        return try {
+        destinationPath: String,
+    ): Boolean =
+        try {
             ZipFile(zipFilePath).use { zip ->
                 zip.entries().asSequence().forEach { entry ->
-                    val file = File(
-                        destinationPath,
-                        entry.name
-                    )
+                    val file =
+                        File(
+                            destinationPath,
+                            entry.name,
+                        )
                     if (entry.isDirectory) {
                         file.mkdirs()
                     } else {
@@ -55,9 +56,8 @@ class DefaultFileDataSource : FileDataSource {
             Log.e(
                 "FileManager",
                 "Failed to unzip file",
-                e
+                e,
             )
             false
         }
-    }
 }

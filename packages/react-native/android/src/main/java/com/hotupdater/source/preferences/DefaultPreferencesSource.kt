@@ -9,40 +9,42 @@ private const val KEY_BUNDLE_URL = "HotUpdaterBundleURL"
 class DefaultPreferencesSource : PreferencesSource {
     override fun setBundleURL(
         context: Context,
-        bundleURL: String?
+        bundleURL: String?,
     ) {
-        val sharedPreferences = context.getSharedPreferences(
-            PREFS_NAME,
-            Context.MODE_PRIVATE
-        )
+        val sharedPreferences =
+            context.getSharedPreferences(
+                PREFS_NAME,
+                Context.MODE_PRIVATE,
+            )
         sharedPreferences.edit {
             putString(
                 KEY_BUNDLE_URL,
-                bundleURL
+                bundleURL,
             )
         }
     }
 
     override fun getBundleURL(context: Context): String? {
-        val sharedPreferences = context.getSharedPreferences(
-            PREFS_NAME,
-            Context.MODE_PRIVATE
-        )
+        val sharedPreferences =
+            context.getSharedPreferences(
+                PREFS_NAME,
+                Context.MODE_PRIVATE,
+            )
         return sharedPreferences.getString(
             KEY_BUNDLE_URL,
-            null
+            null,
         )
     }
 
-    override fun getAppVersion(context: Context): String? {
-        return try {
-            val packageInfo = context.packageManager.getPackageInfo(
-                context.packageName,
-                0
-            )
+    override fun getAppVersion(context: Context): String? =
+        try {
+            val packageInfo =
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    0,
+                )
             packageInfo.versionName
         } catch (e: Exception) {
             null
         }
-    }
 }
