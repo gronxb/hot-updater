@@ -1,4 +1,6 @@
   # Hot Updater
+  
+[![NPM](https://img.shields.io/npm/v/hot-updater)](https://www.npmjs.com/package/hot-updater)
 
   A self-hostable OTA update solution for React Native **(Alternative to CodePush)**
 
