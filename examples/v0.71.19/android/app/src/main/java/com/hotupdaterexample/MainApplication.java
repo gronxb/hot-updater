@@ -1,6 +1,9 @@
 package com.hotupdaterexample;
 
 import android.app.Application;
+import android.content.Context;
+import android.content.SharedPreferences;
+
 import com.facebook.react.PackageList;
 import com.facebook.react.ReactApplication;
 import com.facebook.react.ReactNativeHost;
@@ -8,8 +11,9 @@ import com.facebook.react.ReactPackage;
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint;
 import com.facebook.react.defaults.DefaultReactNativeHost;
 import com.facebook.soloader.SoLoader;
+
+import java.io.File;
 import java.util.List;
-import com.hotupdater.HotUpdater;
 
 public class MainApplication extends Application implements ReactApplication {
 
@@ -32,10 +36,28 @@ public class MainApplication extends Application implements ReactApplication {
         protected String getJSMainModuleName() {
           return "index";
         }
-        
+
         @Override
         protected String getJSBundleFile() {
-            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());
+            SharedPreferences sharedPreferences = getApplication().getSharedPreferences(
+                    "HotUpdaterPrefs",
+                    Context.MODE_PRIVATE
+            );
+            String urlString = sharedPreferences.getString(
+                    "HotUpdaterBundleURL",
+                    null
+            );
+            if (urlString == null || urlString.isEmpty()) {
+                return "assets://index.android.bundle";
+            }
+            File file = new File(urlString);
+            if (!file.exists()) {
+                sharedPreferences.edit()
+                        .putString("HotUpdaterBundleURL", null)
+                        .apply();
+                return "assets://index.android.bundle";
+            }
+            return urlString;
         }
 
         @Override
@@ -58,7 +80,7 @@ public class MainApplication extends Application implements ReactApplication {
   public void onCreate() {
     super.onCreate();
     SoLoader.init(this, /* native exopackage */ false);
-    
+
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.
       DefaultNewArchitectureEntryPoint.load();
