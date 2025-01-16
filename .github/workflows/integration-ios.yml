@@ -2,11 +2,11 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "packages/react-native/ios/**"
+    # paths:
+  # - "packages/react-native/ios/**"
   pull_request:
-    paths:
-      - "packages/react-native/ios/**"
+# paths:
+# - "packages/react-native/ios/**"
 
 name: iOS Integration
 
@@ -37,13 +37,13 @@ jobs:
       - name: Build iOS (new arch)
         run: |
           cd examples/v0.76.1-new-arch/ios
-          pod install
+          RCT_NEW_ARCH_ENABLED=1 pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
 
       - name: Build iOS (old arch)
         run: |
           cd examples/v0.71.19/ios
-          pod install
+          RCT_NEW_ARCH_ENABLED=0 pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
