@@ -13,7 +13,7 @@ Since hot-updater does not work in dev environment, you need to test it in Relea
 
 <PackageManagerTabs command={
   {
-    npm: "npm run react-native run-ios --mode Release",
+    npm: "npx react-native run-ios --mode Release",
     pnpm: "pnpm react-native run-ios --mode Release",
     yarn: "yarn react-native run-ios --mode Release",
   }
@@ -23,7 +23,7 @@ Since hot-updater does not work in dev environment, you need to test it in Relea
 
 <PackageManagerTabs command={
   {
-    npm: "npm run react-native run-android --mode Release",
+    npm: "npx react-native run-android --mode Release",
     pnpm: "pnpm react-native run-android --mode Release",
     yarn: "yarn react-native run-android --mode Release",
   }
@@ -35,7 +35,7 @@ Deploy with interactive mode and force update flag enabled in hot-updater deploy
 
 <PackageManagerTabs command={
   {
-    npm: "npm exec hot-updater deploy -i --force-update",
+    npm: "npx hot-updater deploy -i --force-update",
     pnpm: "pnpm hot-updater deploy -i --force-update",
     yarn: "yarn hot-updater deploy -i --force-update",
   }
@@ -49,7 +49,7 @@ Open the console and set the bundle's `enabled` status to `false`.
 
 <PackageManagerTabs command={
   {
-    npm: "npm exec hot-updater console",
+    npm: "npx hot-updater console",
     pnpm: "pnpm hot-updater console",
     yarn: "yarn hot-updater console",
   }
