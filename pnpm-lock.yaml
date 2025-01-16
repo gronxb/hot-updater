@@ -172,6 +172,9 @@ importers:
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
+      '@hot-updater/supabase':
+        specifier: 0.4.0
+        version: 0.4.0
       '@react-native-community/cli-platform-android':
         specifier: 13.6.6
         version: 13.6.6(encoding@0.1.13)
@@ -2355,6 +2358,9 @@ packages:
     peerDependencies:
       hono: '>=3.9.0'
       valibot: ^1.0.0 || ^1.0.0-beta || ^1.0.0-rc
+
+  '@hot-updater/supabase@0.4.0':
+    resolution: {integrity: sha512-VOYpNab5WmvuoWNATLYUWHaqx3w5JOOlFJgkXZKphvjQdpCpQZLEr1jsBU4TR1N9SZgdfHHrRYAjwwr24BKeRg==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -7329,10 +7335,6 @@ packages:
 
   memfs@3.5.3:
     resolution: {integrity: sha512-UERzLsxzllchadvbPs5aolHh65ISpKpM+ccLbOJ8/vvpBKmAWf+la7dXFy7Mr0ySHbdHrFv5kGFCUHHe6GFEmw==}
-    engines: {node: '>= 4.0.0'}
-
-  memfs@4.12.0:
-    resolution: {integrity: sha512-74wDsex5tQDSClVkeK1vtxqYCAgCoXxx+K4NSHzgU/muYVYByFqa+0RnrPO9NM6naWm1+G9JmZ0p6QHhXmeYfA==}
     engines: {node: '>= 4.0.0'}
 
   memfs@4.17.0:
@@ -12502,6 +12504,16 @@ snapshots:
     dependencies:
       hono: 4.6.3
       valibot: 0.42.1(typescript@5.6.3)
+
+  '@hot-updater/supabase@0.4.0':
+    dependencies:
+      '@hot-updater/core': link:packages/core
+      '@hot-updater/plugin-core': link:plugins/plugin-core
+      '@supabase/supabase-js': 2.47.10
+      picocolors: 1.1.1
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
@@ -19798,14 +19810,6 @@ snapshots:
     dependencies:
       fs-monkey: 1.0.6
 
-  memfs@4.12.0:
-    dependencies:
-      '@jsonjoy.com/json-pack': 1.1.0(tslib@2.8.1)
-      '@jsonjoy.com/util': 1.3.0(tslib@2.8.1)
-      tree-dump: 1.0.2(tslib@2.8.1)
-      tslib: 2.8.1
-    optional: true
-
   memfs@4.17.0:
     dependencies:
       '@jsonjoy.com/json-pack': 1.1.0(tslib@2.8.1)
@@ -23393,7 +23397,7 @@ snapshots:
   webpack-dev-middleware@7.4.2(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.15))):
     dependencies:
       colorette: 2.0.20
-      memfs: 4.12.0
+      memfs: 4.17.0
       mime-types: 2.1.35
       on-finished: 2.4.1
       range-parser: 1.2.1
