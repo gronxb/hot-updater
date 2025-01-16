@@ -9,6 +9,7 @@
   },
   "deploy",
   "console",
+  "simulator-test",
   {
     "type": "dir",
     "name": "providers",

@@ -1,0 +1,59 @@
+import { PackageManagerTabs } from '@theme';
+
+# Simulator Test
+
+Since hot-updater does not work in dev environment, you need to test it in Release mode as shown below.
+
+## Checklist
+- Make sure `hot-updater.config.ts` is properly configured.
+- Make sure `HotUpdater.wrap` is properly implemented.
+
+
+## iOS Simulator Test 
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run react-native run-ios --mode Release",
+    pnpm: "pnpm react-native run-ios --mode Release",
+    yarn: "yarn react-native run-ios --mode Release",
+  }
+} />
+
+## Android Simulator Test 
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run react-native run-android --mode Release",
+    pnpm: "pnpm react-native run-android --mode Release",
+    yarn: "yarn react-native run-android --mode Release",
+  }
+} />
+
+## Deploy
+
+Deploy with interactive mode and force update flag enabled in hot-updater deploy mode.
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run hot-updater deploy -i --force-update",
+    pnpm: "pnpm hot-updater deploy -i --force-update",
+    yarn: "yarn hot-updater deploy -i --force-update",
+  }
+} />
+
+## Rollback
+
+When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.
+
+Open the console and set the bundle's `enabled` status to `false`.
+
+<PackageManagerTabs command={
+  {
+    npm: "npm run hot-updater console",
+    pnpm: "pnpm hot-updater console",
+    yarn: "yarn hot-updater console",
+  }
+} />
+
+
+
