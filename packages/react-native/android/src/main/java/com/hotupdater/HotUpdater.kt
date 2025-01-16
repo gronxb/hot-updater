@@ -100,8 +100,6 @@ class HotUpdater : ReactPackage {
             }
 
         fun reload(context: Context) {
-            val activity: Activity? = getCurrentActivity(context)
-
             val reactIntegrationManager = ReactIntegrationManager(context)
 
             val activity: Activity? = getCurrentActivity(context)
