@@ -1,8 +1,6 @@
 package com.hotupdaterexample;
 
 import android.app.Application;
-import android.content.Context;
-import android.content.SharedPreferences;
 
 import com.facebook.react.PackageList;
 import com.facebook.react.ReactApplication;
@@ -11,8 +9,8 @@ import com.facebook.react.ReactPackage;
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint;
 import com.facebook.react.defaults.DefaultReactNativeHost;
 import com.facebook.soloader.SoLoader;
+import com.hotupdater.HotUpdater;
 
-import java.io.File;
 import java.util.List;
 
 public class MainApplication extends Application implements ReactApplication {
@@ -39,25 +37,7 @@ public class MainApplication extends Application implements ReactApplication {
 
         @Override
         protected String getJSBundleFile() {
-            SharedPreferences sharedPreferences = getApplication().getSharedPreferences(
-                    "HotUpdaterPrefs",
-                    Context.MODE_PRIVATE
-            );
-            String urlString = sharedPreferences.getString(
-                    "HotUpdaterBundleURL",
-                    null
-            );
-            if (urlString == null || urlString.isEmpty()) {
-                return "assets://index.android.bundle";
-            }
-            File file = new File(urlString);
-            if (!file.exists()) {
-                sharedPreferences.edit()
-                        .putString("HotUpdaterBundleURL", null)
-                        .apply();
-                return "assets://index.android.bundle";
-            }
-            return urlString;
+            return HotUpdater.getJSBundleFile(getApplication());
         }
 
         @Override
