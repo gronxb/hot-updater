@@ -3,7 +3,6 @@ package com.hotupdater
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.module.annotations.ReactModule
 
 abstract class HotUpdaterSpec internal constructor(
     context: ReactApplicationContext,
