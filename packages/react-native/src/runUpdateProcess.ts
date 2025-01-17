@@ -20,10 +20,11 @@ export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
   reloadOnForceUpdate?: boolean;
 }
 
-export const runUpdateProcess = async (
-  config: RunUpdateProcessConfig,
-): Promise<RunUpdateProcessResponse> => {
-  const updateInfo = await checkForUpdate(config);
+export const runUpdateProcess = async ({
+  reloadOnForceUpdate = false,
+  ...checkForUpdateConfig
+}: RunUpdateProcessConfig): Promise<RunUpdateProcessResponse> => {
+  const updateInfo = await checkForUpdate(checkForUpdateConfig);
   if (!updateInfo) {
     return {
       status: "UP_TO_DATE",
@@ -31,7 +32,7 @@ export const runUpdateProcess = async (
   }
 
   const isUpdated = await updateBundle(updateInfo.id, updateInfo.fileUrl);
-  if (isUpdated && updateInfo.forceUpdate && config.reloadOnForceUpdate) {
+  if (isUpdated && updateInfo.forceUpdate && reloadOnForceUpdate) {
     reload();
   }
 
