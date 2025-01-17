@@ -37,17 +37,8 @@ const EditBundleSheetForm = ({
     api.getConfig.$get().then((res) => res.json()),
   );
 
-  const gitInfo = createMemo(() => {
-    const gitUrl = config()?.console?.gitUrl;
-    const gitCommitHash = bundle.gitCommitHash;
-    if (!gitUrl || !gitCommitHash) {
-      return null;
-    }
-    return {
-      gitUrl,
-      gitCommitHash,
-    };
-  });
+  const gitUrl = createMemo(() => config()?.console?.gitUrl);
+  const gitCommitHash = createMemo(() => bundle.gitCommitHash);
 
   const form = createForm(() => ({
     defaultValues: {
@@ -197,17 +188,23 @@ const EditBundleSheetForm = ({
       </Button>
 
       <div class="flex justify-end">
-        <Show when={gitInfo()}>
-          {(gitInfo) => (
-            <a
-              href={`${gitInfo().gitUrl}/commit/${gitInfo().gitCommitHash}`}
-              target="_blank"
-              rel="noreferrer"
-              class="text-xs text-muted-foreground"
-            >
-              Commit Hash: {gitInfo().gitCommitHash.slice(0, 8)}
-            </a>
-          )}
+        <Show when={gitCommitHash()}>
+          {(gitCommitHash) =>
+            gitUrl() ? (
+              <a
+                href={`${gitUrl()}/commit/${gitCommitHash}`}
+                target="_blank"
+                rel="noreferrer"
+                class="text-xs text-muted-foreground"
+              >
+                Commit Hash: {gitCommitHash().slice(0, 8)}
+              </a>
+            ) : (
+              <p class="text-xs text-muted-foreground">
+                Commit Hash: {gitCommitHash().slice(0, 8)}
+              </p>
+            )
+          }
         </Show>
       </div>
     </form>
