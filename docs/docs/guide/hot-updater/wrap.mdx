@@ -18,7 +18,7 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({
+export default HotUpdater.wrap({ // [!code hl:7]
   source: "<your-update-server-url>",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
@@ -49,7 +49,7 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({
+export default HotUpdater.wrap({ // [!code hl:22]
   source: "<your-update-server-url>",
   fallbackComponent: ({ progress = 0 }) => (
     <View
@@ -73,7 +73,13 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-## onCheckUpdateCompleted
+## `reloadOnForceUpdate`
+
+When a force update bundle is downloaded, the app will automatically reload. If `false`, `isForceUpdate` will be returned as `true` in `onUpdateProcessCompleted` but the app won't reload. default is `true`.
+
+### `reloadOnForceUpdate` is `true`
+
+When a force update exists, the app will automatically reload.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -93,7 +99,74 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },
-  onCheckUpdateCompleted: ({ isBundleUpdated }) => {
+  reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code hl]
+})(App);
+```
+
+
+### `reloadOnForceUpdate` is `false`
+
+When a force update exists, the app will not reload. `isForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "<your-update-server-url>",
+  // If you need to send request headers, you can use the `requestHeaders` option.
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
+  reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
+  onUpdateProcessCompleted: ({ status, isForceUpdate, id }) => {  // [!code hl]
+    console.log("Bundle updated:", status, isForceUpdate, id);  // [!code hl]
+    if (isForceUpdate) { // [!code hl]
+      HotUpdater.reload(); // [!code hl]
+    } // [!code hl]
+  },  // [!code hl]
+})(App);
+```
+
+## onUpdateProcessCompleted
+
+The `onUpdateProcessCompleted` option allows you to perform additional actions after the update process is completed.
+
+### Callback Arguments
+
+| Property | Type | Description |
+|----------|-------------|-------------|
+| `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
+| `isForceUpdate` | boolean | Whether the update process is forced |
+| `id` | string | The ID of the bundle to update |
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "<your-update-server-url>",
+  // If you need to send request headers, you can use the `requestHeaders` option.
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
+  onUpdateProcessCompleted: ({ isBundleUpdated }) => {
     // if isBundleUpdated is true, `HotUpdater.reload()` or restart the app to apply the new bundle
     // if isBundleUpdated is false, the app is up to date
     console.log("Bundle updated:", isBundleUpdated);
@@ -105,9 +178,6 @@ export default HotUpdater.wrap({
   },
 })(App);
 ```
-
-
-
 
 ## Update Strategy
 

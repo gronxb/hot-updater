@@ -1,0 +1,59 @@
+# `HotUpdater.runUpdateProcess()`
+
+The `HotUpdater.runUpdateProcess` function allows you to manually check for and apply updates at any point in your application’s lifecycle. This flexibility is useful when updates need to align with specific user flows or app states, rather than being triggered automatically at the entry point.
+
+
+## Key Features
+
+- **Manual Update Control:** You can run the update process on demand, giving you more control over how and when updates occur.
+- **Configurable Restart Logic:** The `reloadOnForceUpdate` option lets you choose whether the app should automatically restart for forced updates or return control to the developer for handling the restart.
+
+## Usage
+
+Here's an example of how to use `HotUpdater.runUpdateProcess` to check for updates and handle them appropriately:
+
+
+### `reloadOnForceUpdate` is `true`
+
+When a force update exists, the app will automatically reload.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const result = await HotUpdater.runUpdateProcess({
+  source: "<your-update-server-url>",
+  requestHeaders: {
+    // Add any necessary request headers here
+  },
+  reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code hl]
+});
+```
+
+### `reloadOnForceUpdate` is `false`
+
+When a force update exists, the app will not reload. `isForceUpdate` will be returned as `true`.
+
+```tsx
+const result = await HotUpdater.runUpdateProcess({
+  source: "<your-update-server-url>",
+  requestHeaders: {
+    // Add any necessary request headers here
+  },
+  reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
+});
+
+if(result.isForceUpdate) {
+  // You can handle the restart manually here
+  HotUpdater.reload();
+}
+```
+
+## Return Value
+
+`HotUpdater.runUpdateProcess` returns an object with the following properties:
+
+| Property | Type | Description |
+|----------|-------------|-------------|
+| `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
+| `isForceUpdate` | boolean | Whether the update process is forced |
+| `id` | string | The ID of the bundle to update |

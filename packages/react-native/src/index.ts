@@ -1,5 +1,4 @@
-import { getUpdateInfo } from "@hot-updater/js";
-import { ensureUpdateInfo } from "./ensureUpdateInfo";
+import { checkForUpdate } from "./checkUpdate";
 import {
   addListener,
   getAppVersion,
@@ -7,6 +6,7 @@ import {
   reload,
   updateBundle,
 } from "./native";
+import { runUpdateProcess } from "./runUpdateProcess";
 import { hotUpdaterStore } from "./store";
 import { wrap } from "./wrap";
 
@@ -27,7 +27,7 @@ export const HotUpdater = {
   getBundleId,
   addListener,
 
-  ensureUpdateInfo,
+  checkForUpdate,
+  runUpdateProcess,
   updateBundle,
-  getUpdateInfo,
 };

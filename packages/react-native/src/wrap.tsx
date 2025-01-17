@@ -1,129 +1,122 @@
-import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
-import { getUpdateInfo } from "@hot-updater/js";
 import type React from "react";
-import { useEffect, useState } from "react";
-import { Platform } from "react-native";
-import { ensureUpdateInfo } from "./ensureUpdateInfo";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { type CheckForUpdateConfig, checkForUpdate } from "./checkUpdate";
 import { HotUpdaterError } from "./error";
-import { getAppVersion, getBundleId, reload, updateBundle } from "./native";
+import { useEventCallback } from "./hooks/useEventCallback";
+import { reload, updateBundle } from "./native";
+import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { type HotUpdaterState, useHotUpdaterStore } from "./store";
 
-export interface CheckUpdateConfig {
-  source: BundleArg;
-  requestHeaders?: Record<string, string>;
-}
-
-export interface HotUpdaterConfig extends CheckUpdateConfig {
+export interface HotUpdaterConfig extends CheckForUpdateConfig {
+  /**
+   * Component to show while downloading a new bundle update.
+   *
+   * When an update exists and the bundle is being downloaded, this component will block access
+   * to the entry point and show download progress.
+   *
+   * @see {@link https://gronxb.github.io/hot-updater/guide/hot-updater/wrap.html#fallback-component}
+   *
+   * ```tsx
+   * HotUpdater.wrap({
+   *   source: "<update-server-url>",
+   *   fallbackComponent: ({ progress = 0 }) => (
+   *     <View style={styles.container}>
+   *       <Text style={styles.text}>Updating... {progress}%</Text>
+   *     </View>
+   *   )
+   * })(App)
+   * ```
+   *
+   * If not defined, the bundle will download in the background without blocking the screen.
+   */
   fallbackComponent?: React.FC<Pick<HotUpdaterState, "progress">>;
   onError?: (error: HotUpdaterError) => void;
   onProgress?: (progress: number) => void;
-  onCheckUpdateCompleted?: ({
-    isBundleUpdated,
-  }: { isBundleUpdated: boolean }) => void;
-}
-
-export async function checkUpdate(config: CheckUpdateConfig) {
-  if (__DEV__) {
-    console.warn(
-      "[HotUpdater] __DEV__ is true, HotUpdater is only supported in production",
-    );
-    return null;
-  }
-
-  if (!["ios", "android"].includes(Platform.OS)) {
-    throw new HotUpdaterError(
-      "HotUpdater is only supported on iOS and Android",
-    );
-  }
-
-  const currentAppVersion = await getAppVersion();
-  const platform = Platform.OS as "ios" | "android";
-  const currentBundleId = await getBundleId();
-
-  if (!currentAppVersion) {
-    throw new HotUpdaterError("Failed to get app version");
-  }
-
-  const ensuredUpdateInfo = await ensureUpdateInfo(
-    config.source,
-    {
-      appVersion: currentAppVersion,
-      bundleId: currentBundleId,
-      platform,
-    },
-    config.requestHeaders,
-  );
-
-  let updateInfo: UpdateInfo | null = null;
-  if (Array.isArray(ensuredUpdateInfo)) {
-    const bundles: Bundle[] = ensuredUpdateInfo;
-
-    updateInfo = await getUpdateInfo(bundles, {
-      appVersion: currentAppVersion,
-      bundleId: currentBundleId,
-      platform,
-    });
-  } else {
-    updateInfo = ensuredUpdateInfo;
-  }
-
-  return updateInfo;
-}
-
-async function installUpdate(updateInfo: UpdateInfo) {
-  const isSuccess = await updateBundle(updateInfo.id, updateInfo.fileUrl || "");
-
-  if (isSuccess && updateInfo.forceUpdate) {
-    reload();
-    return true;
-  }
-
-  return isSuccess;
+  /**
+   * When a force update exists, the app will automatically reload.
+   * If `false`, When a force update exists, the app will not reload. `isForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
+   * If `true`, When a force update exists, the app will automatically reload.
+   * @default true
+   */
+  reloadOnForceUpdate?: boolean;
+  /**
+   * Callback function that is called when the update process is completed.
+   *
+   * @see {@link https://gronxb.github.io/hot-updater/guide/hot-updater/wrap.html#onupdateprocesscompleted}
+   */
+  onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 }
 
 export function wrap<P>(
   config: HotUpdaterConfig,
 ): (WrappedComponent: React.ComponentType) => React.ComponentType<P> {
+  const { reloadOnForceUpdate = true, ...restConfig } = config;
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
       const { progress } = useHotUpdaterStore();
-      const [isCheckUpdateCompleted, setIsCheckUpdateCompleted] =
-        useState(false);
+      const [status, setStatus] = useState<
+        "IDLE" | "CHECK_FOR_UPDATE" | "UPDATING" | "UPDATE_PROCESS_COMPLETED"
+      >("IDLE");
+
+      const initHotUpdater = useEventCallback(async () => {
+        try {
+          setStatus("CHECK_FOR_UPDATE");
+          const updateInfo = await checkForUpdate({
+            source: restConfig.source,
+            requestHeaders: restConfig.requestHeaders,
+          });
+          if (!updateInfo) {
+            restConfig.onUpdateProcessCompleted?.({
+              status: "UP_TO_DATE",
+            });
+            setStatus("UPDATE_PROCESS_COMPLETED");
+            return;
+          }
+
+          setStatus("UPDATING");
+
+          const isSuccess = await updateBundle(
+            updateInfo.id,
+            updateInfo.fileUrl,
+          );
+          if (!isSuccess) {
+            throw new Error(
+              "New update was found but failed to download the bundle.",
+            );
+          }
+
+          if (updateInfo.forceUpdate && reloadOnForceUpdate) {
+            reload();
+          }
+
+          restConfig.onUpdateProcessCompleted?.({
+            id: updateInfo.id,
+            status: updateInfo.status,
+            isForceUpdate: updateInfo.forceUpdate,
+          });
+          setStatus("UPDATE_PROCESS_COMPLETED");
+        } catch (error) {
+          if (error instanceof HotUpdaterError) {
+            restConfig.onError?.(error);
+          }
+          setStatus("UPDATE_PROCESS_COMPLETED");
+          throw error;
+        }
+      });
 
       useEffect(() => {
-        config.onProgress?.(progress);
+        restConfig.onProgress?.(progress);
       }, [progress]);
 
-      useEffect(() => {
-        const initHotUpdater = async () => {
-          try {
-            const updateInfo = await checkUpdate(config);
-            if (!updateInfo) {
-              config.onCheckUpdateCompleted?.({ isBundleUpdated: false });
-              setIsCheckUpdateCompleted(true);
-              return;
-            }
-
-            const isSuccess = await installUpdate(updateInfo);
-            config.onCheckUpdateCompleted?.({ isBundleUpdated: isSuccess });
-            setIsCheckUpdateCompleted(true);
-          } catch (error) {
-            if (error instanceof HotUpdaterError) {
-              config.onError?.(error);
-            }
-            setIsCheckUpdateCompleted(true);
-            throw error;
-          }
-        };
-
+      useLayoutEffect(() => {
         initHotUpdater();
-      }, [config.source, config.requestHeaders]);
+      }, []);
 
       if (
-        config.fallbackComponent &&
-        (!isCheckUpdateCompleted || (progress > 0 && progress < 1))
+        restConfig.fallbackComponent &&
+        status !== "UPDATE_PROCESS_COMPLETED"
       ) {
-        const Fallback = config.fallbackComponent;
+        const Fallback = restConfig.fallbackComponent;
         return <Fallback progress={progress} />;
       }
 
