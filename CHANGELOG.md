@@ -1,3 +1,13 @@
+## 0.5.2 (2025-01-17)
+
+### 🚀 Features
+
+- **react-native:** HotUpdater.runUpdateProcess ([#55](https://github.com/gronxb/hot-updater/pull/55))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.0 (2025-01-16)
 
 ### 🩹 Fixes
