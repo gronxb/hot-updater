@@ -1,29 +1,44 @@
 # `HotUpdater.runUpdateProcess()`
 
-The `HotUpdater.runUpdateProcess` function allows you to manually check for and apply updates at any point in your application's lifecycle. This flexibility is useful when updates need to align with specific user flows or app states, rather than being triggered automatically at the entry point.
+The `HotUpdater.runUpdateProcess` function allows you to manually check for and apply updates at any point in your application’s lifecycle. This flexibility is useful when updates need to align with specific user flows or app states, rather than being triggered automatically at the entry point.
+
 
 ## Key Features
 
 - **Manual Update Control:** You can run the update process on demand, giving you more control over how and when updates occur.
-- **User-Centric Restart Logic:** While the function determines if a restart is required, you decide when and how to restart the app, ensuring a seamless user experience.
+- **Configurable Restart Logic:** The `reloadOnForceUpdate` option lets you choose whether the app should automatically restart for forced updates or return control to the developer for handling the restart.
 
 ## Usage
 
 Here's an example of how to use `HotUpdater.runUpdateProcess` to check for updates and handle them appropriately:
 
 
+### `reloadOnForceUpdate` is `true`
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 const result = await HotUpdater.runUpdateProcess({
   source: "<your-update-server-url>",
   requestHeaders: {
-    // if you want to use the request headers, you can add them here
+    // Add any necessary request headers here
   },
+  reloadOnForceUpdate: true, // Automatically reload the app on force updates
+});
+```
+
+### `reloadOnForceUpdate` is `false`
+```tsx
+const result = await HotUpdater.runUpdateProcess({
+  source: "<your-update-server-url>",
+  requestHeaders: {
+    // Add any necessary request headers here
+  },
+  reloadOnForceUpdate: false, // The app won't reload on force updates
 });
 
 if(result.isForceUpdate) {
-  HotUpdater.reload(); // The app will restart and apply the new bundle
+  // You can handle the restart manually here
+  HotUpdater.reload();
 }
 ```
 
