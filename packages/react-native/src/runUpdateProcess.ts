@@ -30,9 +30,13 @@ export const runUpdateProcess = async (
     };
   }
 
-  await updateBundle(updateInfo.id, updateInfo.fileUrl);
-  if (updateInfo.forceUpdate && config.reloadOnForceUpdate) {
+  const isUpdated = await updateBundle(updateInfo.id, updateInfo.fileUrl);
+  if (isUpdated && updateInfo.forceUpdate && config.reloadOnForceUpdate) {
     reload();
+  }
+
+  if (!isUpdated) {
+    throw new Error("New update was found but failed to download the bundle.");
   }
   return {
     status: updateInfo.status,
