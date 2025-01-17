@@ -1,3 +1,13 @@
+## 0.5.3 (2025-01-17)
+
+### 🚀 Features
+
+- **console:** always show gitCommitHash ([#56](https://github.com/gronxb/hot-updater/pull/56))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.2 (2025-01-17)
 
 ### 🚀 Features
