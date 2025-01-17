@@ -14,6 +14,9 @@ Here's an example of how to use `HotUpdater.runUpdateProcess` to check for updat
 
 
 ### `reloadOnForceUpdate` is `true`
+
+When a force update exists, the app will automatically reload.
+
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
@@ -22,18 +25,21 @@ const result = await HotUpdater.runUpdateProcess({
   requestHeaders: {
     // Add any necessary request headers here
   },
-  reloadOnForceUpdate: true, // Automatically reload the app on force updates
+  reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code hl]
 });
 ```
 
 ### `reloadOnForceUpdate` is `false`
+
+When a force update exists, the app will not reload. `isForceUpdate` will be returned as `true`.
+
 ```tsx
 const result = await HotUpdater.runUpdateProcess({
   source: "<your-update-server-url>",
   requestHeaders: {
     // Add any necessary request headers here
   },
-  reloadOnForceUpdate: false, // The app won't reload on force updates
+  reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
 });
 
 if(result.isForceUpdate) {
