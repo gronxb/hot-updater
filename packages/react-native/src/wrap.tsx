@@ -1,73 +1,18 @@
-import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
-import { getUpdateInfo } from "@hot-updater/js";
+import type { UpdateInfo } from "@hot-updater/core";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
-import { ensureUpdateInfo } from "./ensureUpdateInfo";
+import { type CheckForUpdateConfig, checkForUpdate } from "./checkUpdate";
 import { HotUpdaterError } from "./error";
-import { getAppVersion, getBundleId, reload, updateBundle } from "./native";
+import { reload, updateBundle } from "./native";
 import { type HotUpdaterState, useHotUpdaterStore } from "./store";
 
-export interface CheckUpdateConfig {
-  source: BundleArg;
-  requestHeaders?: Record<string, string>;
-}
-
-export interface HotUpdaterConfig extends CheckUpdateConfig {
+export interface HotUpdaterConfig extends CheckForUpdateConfig {
   fallbackComponent?: React.FC<Pick<HotUpdaterState, "progress">>;
   onError?: (error: HotUpdaterError) => void;
   onProgress?: (progress: number) => void;
   onCheckUpdateCompleted?: ({
     isBundleUpdated,
   }: { isBundleUpdated: boolean }) => void;
-}
-
-export async function checkUpdate(config: CheckUpdateConfig) {
-  if (__DEV__) {
-    console.warn(
-      "[HotUpdater] __DEV__ is true, HotUpdater is only supported in production",
-    );
-    return null;
-  }
-
-  if (!["ios", "android"].includes(Platform.OS)) {
-    throw new HotUpdaterError(
-      "HotUpdater is only supported on iOS and Android",
-    );
-  }
-
-  const currentAppVersion = await getAppVersion();
-  const platform = Platform.OS as "ios" | "android";
-  const currentBundleId = await getBundleId();
-
-  if (!currentAppVersion) {
-    throw new HotUpdaterError("Failed to get app version");
-  }
-
-  const ensuredUpdateInfo = await ensureUpdateInfo(
-    config.source,
-    {
-      appVersion: currentAppVersion,
-      bundleId: currentBundleId,
-      platform,
-    },
-    config.requestHeaders,
-  );
-
-  let updateInfo: UpdateInfo | null = null;
-  if (Array.isArray(ensuredUpdateInfo)) {
-    const bundles: Bundle[] = ensuredUpdateInfo;
-
-    updateInfo = await getUpdateInfo(bundles, {
-      appVersion: currentAppVersion,
-      bundleId: currentBundleId,
-      platform,
-    });
-  } else {
-    updateInfo = ensuredUpdateInfo;
-  }
-
-  return updateInfo;
 }
 
 async function installUpdate(updateInfo: UpdateInfo) {
@@ -97,7 +42,7 @@ export function wrap<P>(
       useEffect(() => {
         const initHotUpdater = async () => {
           try {
-            const updateInfo = await checkUpdate(config);
+            const updateInfo = await checkForUpdate(config);
             if (!updateInfo) {
               config.onCheckUpdateCompleted?.({ isBundleUpdated: false });
               setIsCheckUpdateCompleted(true);
@@ -121,7 +66,9 @@ export function wrap<P>(
 
       if (
         config.fallbackComponent &&
-        (!isCheckUpdateCompleted || (progress > 0 && progress < 1))
+        !isCheckUpdateCompleted &&
+        progress > 0 &&
+        progress < 1
       ) {
         const Fallback = config.fallbackComponent;
         return <Fallback progress={progress} />;
