@@ -75,7 +75,7 @@ export default HotUpdater.wrap({ // [!code hl:22]
 
 ## `reloadOnForceUpdate`
 
-When a force update bundle is downloaded, the app will automatically reload. If `false`, `isForceUpdate` will be returned as `true` in `onUpdateProcessCompleted` but the app won't reload. default is `true`.
+When a force update bundle is downloaded, the app will automatically reload. If `false`, `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted` but the app won't reload. default is `true`.
 
 ### `reloadOnForceUpdate` is `true`
 
@@ -106,7 +106,7 @@ export default HotUpdater.wrap({
 
 ### `reloadOnForceUpdate` is `false`
 
-When a force update exists, the app will not reload. `isForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
+When a force update exists, the app will not reload. `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -127,9 +127,9 @@ export default HotUpdater.wrap({
     "Authorization": "Bearer <your-access-token>",
   },
   reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
-  onUpdateProcessCompleted: ({ status, isForceUpdate, id }) => {  // [!code hl]
-    console.log("Bundle updated:", status, isForceUpdate, id);  // [!code hl]
-    if (isForceUpdate) { // [!code hl]
+  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id }) => {  // [!code hl]
+    console.log("Bundle updated:", status, shouldForceUpdate, id);  // [!code hl]
+    if (shouldForceUpdate) { // [!code hl]
       HotUpdater.reload(); // [!code hl]
     } // [!code hl]
   },  // [!code hl]
@@ -145,7 +145,7 @@ The `onUpdateProcessCompleted` option allows you to perform additional actions a
 | Property | Type | Description |
 |----------|-------------|-------------|
 | `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
-| `isForceUpdate` | boolean | Whether the update process is forced |
+| `shouldForceUpdate` | boolean | Whether the update process is forced |
 | `id` | string | The ID of the bundle to update |
 
 ```tsx

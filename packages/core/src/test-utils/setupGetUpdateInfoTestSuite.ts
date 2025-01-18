@@ -23,7 +23,7 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "*",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -39,7 +39,7 @@ export const setupGetUpdateInfoTestSuite = ({
       id: "00000000-0000-0000-0000-000000000001",
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       status: "UPDATE",
     });
   });
@@ -62,7 +62,7 @@ export const setupGetUpdateInfoTestSuite = ({
         targetAppVersion: "1.1",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
-        forceUpdate: false,
+        shouldForceUpdate: false,
       },
     ];
 
@@ -81,14 +81,14 @@ export const setupGetUpdateInfoTestSuite = ({
         targetAppVersion: "1.x.x",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
-        forceUpdate: false,
+        shouldForceUpdate: false,
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
-        forceUpdate: false,
+        shouldForceUpdate: false,
       },
     ];
 
@@ -99,21 +99,21 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000002",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
     });
   });
 
-  it("applies an update if forceUpdate is true for a matching version", async () => {
+  it("applies an update if shouldForceUpdate is true for a matching version", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
-        forceUpdate: true,
+        shouldForceUpdate: true,
       },
     ];
     const update = await getUpdateInfo(bundles, {
@@ -124,21 +124,21 @@ export const setupGetUpdateInfoTestSuite = ({
 
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
-      forceUpdate: true,
+      shouldForceUpdate: true,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
     });
   });
 
-  it("applies an update for a matching version even if forceUpdate is false", async () => {
+  it("applies an update for a matching version even if shouldForceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
-        forceUpdate: false,
+        shouldForceUpdate: false,
       },
     ];
 
@@ -149,7 +149,7 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
@@ -161,7 +161,7 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000005",
       },
@@ -174,7 +174,7 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000005",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
       status: "UPDATE",
@@ -186,14 +186,14 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: true,
+        shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -208,7 +208,7 @@ export const setupGetUpdateInfoTestSuite = ({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000001",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       status: "UPDATE",
     });
   });
@@ -218,14 +218,14 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: true,
+        shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -244,14 +244,14 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: true,
+        shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -269,7 +269,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        forceUpdate: false,
+        shouldForceUpdate: false,
         fileUrl: "20240722210327/build.zip",
         fileHash:
           "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
@@ -287,7 +287,7 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "20240722210327/build.zip",
       fileHash:
@@ -307,7 +307,7 @@ export const setupGetUpdateInfoTestSuite = ({
       fileUrl: null,
       fileHash: null,
       id: NIL_UUID,
-      forceUpdate: true, // Cause the app to reload
+      shouldForceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
     });
   });
@@ -317,14 +317,14 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -343,7 +343,7 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -358,31 +358,31 @@ export const setupGetUpdateInfoTestSuite = ({
       fileHash: "hash",
       fileUrl: "http://example.com/bundle.zip",
       id: "00000000-0000-0000-0000-000000000001",
-      forceUpdate: true,
+      shouldForceUpdate: true,
       status: "ROLLBACK",
     });
   });
 
-  it("selects the next available bundle even if forceUpdate is false", async () => {
+  it("selects the next available bundle even if shouldForceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -397,7 +397,7 @@ export const setupGetUpdateInfoTestSuite = ({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000003",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       status: "UPDATE",
     });
   });
@@ -407,14 +407,14 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000005", // Higher than the current version
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000004",
       },
@@ -422,21 +422,21 @@ export const setupGetUpdateInfoTestSuite = ({
         ...DEFAULT_BUNDLE,
         platform: "ios",
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -451,7 +451,7 @@ export const setupGetUpdateInfoTestSuite = ({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000005",
-      forceUpdate: false,
+      shouldForceUpdate: false,
       status: "UPDATE",
     });
   });
@@ -461,21 +461,21 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: true,
+        shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: true,
+        shouldForceUpdate: true,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -494,14 +494,14 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: true,
+        shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -517,7 +517,7 @@ export const setupGetUpdateInfoTestSuite = ({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000001",
-      forceUpdate: true, // Cause the app to reload
+      shouldForceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
     });
   });
@@ -527,14 +527,14 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: true,
+        shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
         ...DEFAULT_BUNDLE,
         targetAppVersion: "1.0",
-        forceUpdate: false,
+        shouldForceUpdate: false,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000001",
       },
@@ -549,7 +549,7 @@ export const setupGetUpdateInfoTestSuite = ({
       id: NIL_UUID,
       fileUrl: null,
       fileHash: null,
-      forceUpdate: true, // Cause the app to reload
+      shouldForceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
     });
   });

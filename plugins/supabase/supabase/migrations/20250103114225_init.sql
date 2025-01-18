@@ -6,7 +6,7 @@ CREATE TABLE bundles (
     id uuid PRIMARY KEY,
     platform platforms NOT NULL,
     target_app_version text NOT NULL,
-    force_update boolean NOT NULL,
+    should_force_update boolean NOT NULL,
     enabled boolean NOT NULL,
     file_url text NOT NULL,
     file_hash text NOT NULL,
@@ -26,7 +26,7 @@ CREATE OR REPLACE FUNCTION get_update_info (
 )
 RETURNS TABLE (
     id            uuid,
-    force_update  boolean,
+    should_force_update  boolean,
     file_url      text,
     file_hash     text,
     status        text
@@ -41,8 +41,8 @@ BEGIN
     WITH rollback_candidate AS (
         SELECT
             b.id,
-            -- If status is 'ROLLBACK', force_update is always TRUE
-            TRUE AS force_update,
+            -- If status is 'ROLLBACK', should_force_update is always TRUE
+            TRUE AS should_force_update,
             b.file_url,
             b.file_hash,
             'ROLLBACK' AS status
@@ -56,7 +56,7 @@ BEGIN
     update_candidate AS (
         SELECT
             b.id,
-            b.force_update,
+            b.should_force_update,
             b.file_url,
             b.file_hash,
             'UPDATE' AS status
@@ -85,11 +85,11 @@ BEGIN
     /*
       When there are no final results and bundle_id != NIL_UUID,
       add one fallback row.
-      This fallback row is also ROLLBACK so forceUpdate = TRUE.
+      This fallback row is also ROLLBACK so shouldForceUpdate = TRUE.
     */
     SELECT
         NIL_UUID      AS id,
-        TRUE          AS force_update,  -- Always TRUE
+        TRUE          AS should_force_update,  -- Always TRUE
         NULL          AS file_url,
         NULL          AS file_hash,
         'ROLLBACK'    AS status

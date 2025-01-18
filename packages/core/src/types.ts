@@ -16,7 +16,7 @@ export interface Bundle {
   /**
    * Whether the bundle should force an update.
    */
-  forceUpdate: boolean;
+  shouldForceUpdate: boolean;
   /**
    * Whether the bundle is enabled.
    */
@@ -49,7 +49,7 @@ export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
 export interface UpdateInfo {
   id: string;
-  forceUpdate: boolean;
+  shouldForceUpdate: boolean;
   fileUrl: string | null;
   fileHash: string | null;
   status: UpdateStatus;

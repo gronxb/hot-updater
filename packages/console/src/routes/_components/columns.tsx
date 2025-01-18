@@ -42,7 +42,7 @@ export const columns: ColumnDef<Bundle>[] = [
       ),
   },
   {
-    accessorKey: "forceUpdate",
+    accessorKey: "shouldForceUpdate",
     header: "Force Update",
     cell: (info) =>
       info.getValue() ? (
