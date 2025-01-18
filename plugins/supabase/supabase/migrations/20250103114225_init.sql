@@ -190,6 +190,34 @@ BEGIN
             satisfies := (version >= lower_bound AND version < upper_bound);
         END;
 
+    -- [Added] 1) Single major version pattern '^(\d+)$'
+    ELSIF range_expression ~ '^\d+$' THEN
+        /*
+            e.g.) "1" is interpreted as (>=1.0.0 <2.0.0) in semver range
+                  "2" would be interpreted as (>=2.0.0 <3.0.0)
+         */
+        DECLARE
+            major_range INT := range_expression::INT;
+            lower_bound TEXT := major_range || '.0.0';
+            upper_bound TEXT := (major_range + 1) || '.0.0';
+        BEGIN
+            satisfies := (version >= lower_bound AND version < upper_bound);
+        END;
+
+    -- [Added] 2) major.x pattern '^(\d+)\.x$'
+    ELSIF range_expression ~ '^\d+\.x$' THEN
+        /*
+            e.g.) "2.x" => as long as major=2 matches, any minor and patch is OK
+                  effectively works like (>=2.0.0 <3.0.0)
+         */
+        DECLARE
+            major_range INT := split_part(range_expression, '.', 1)::INT;
+            lower_bound TEXT := major_range || '.0.0';
+            upper_bound TEXT := (major_range + 1) || '.0.0';
+        BEGIN
+            satisfies := (version >= lower_bound AND version < upper_bound);
+        END;
+
     ELSE
         RAISE EXCEPTION 'Unsupported range expression: %', range_expression;
     END IF;

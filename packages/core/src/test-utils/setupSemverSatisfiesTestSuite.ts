@@ -136,4 +136,96 @@ export const setupSemverSatisfiesTestSuite = ({
   it("^1.2.3 should not satisfy version 2.0.0", async () => {
     expect(await semverSatisfies("^1.2.3", "2.0.0")).toBe(false);
   });
+
+  it("version 1.2 should satisfy version 1.2.0 (equivalent to >=1.2.0 <1.3.0)", async () => {
+    expect(await semverSatisfies("1.2", "1.2.0")).toBe(true);
+  });
+
+  it("version 1.2 should satisfy version 1.2.99 (equivalent to >=1.2.0 <1.3.0)", async () => {
+    expect(await semverSatisfies("1.2", "1.2.99")).toBe(true);
+  });
+
+  it("version 1.2 should not satisfy version 1.3.0", async () => {
+    expect(await semverSatisfies("1.2", "1.3.0")).toBe(false);
+  });
+
+  it("single-major '1' should satisfy version 1.0.0 (equivalent to >=1.0.0 <2.0.0)", async () => {
+    expect(await semverSatisfies("1", "1.0.0")).toBe(true);
+  });
+
+  it("single-major '1' should satisfy version 1.99.99", async () => {
+    expect(await semverSatisfies("1", "1.99.99")).toBe(true);
+  });
+
+  it("single-major '1' should not satisfy version 2.0.0", async () => {
+    expect(await semverSatisfies("1", "2.0.0")).toBe(false);
+  });
+
+  it("0.x.x should satisfy version 0.5.10", async () => {
+    expect(await semverSatisfies("0.x.x", "0.5.10")).toBe(true);
+  });
+
+  it("0.x.x should not satisfy version 1.0.0", async () => {
+    expect(await semverSatisfies("0.x.x", "1.0.0")).toBe(false);
+  });
+
+  it("2.x should satisfy version 2.0.0", async () => {
+    expect(await semverSatisfies("2.x", "2.0.0")).toBe(true);
+  });
+
+  it("2.x should satisfy version 2.10.1", async () => {
+    expect(await semverSatisfies("2.x", "2.10.1")).toBe(true);
+  });
+
+  it("2.x should not satisfy version 3.0.0", async () => {
+    expect(await semverSatisfies("2.x", "3.0.0")).toBe(false);
+  });
+
+  it("simple star * should satisfy any version, e.g. 10.11.12", async () => {
+    expect(await semverSatisfies("*", "10.11.12")).toBe(true);
+  });
+
+  it("simple star * should satisfy any version, e.g. 0.0.1", async () => {
+    expect(await semverSatisfies("*", "0.0.1")).toBe(true);
+  });
+
+  it("2.x.x should satisfy version 2.0.0", async () => {
+    expect(await semverSatisfies("2.x.x", "2.0.0")).toBe(true);
+  });
+
+  it("2.x.x should satisfy version 2.9.9", async () => {
+    expect(await semverSatisfies("2.x.x", "2.9.9")).toBe(true);
+  });
+
+  it("2.x.x should not satisfy version 3.0.0", async () => {
+    expect(await semverSatisfies("2.x.x", "3.0.0")).toBe(false);
+  });
+
+  it("0.x.x should satisfy version 0.1.0", async () => {
+    expect(await semverSatisfies("0.x.x", "0.1.0")).toBe(true);
+  });
+
+  it("0.x.x should satisfy version 0.9.9", async () => {
+    expect(await semverSatisfies("0.x.x", "0.9.9")).toBe(true);
+  });
+
+  it("0.x.x should not satisfy version 1.0.0", async () => {
+    expect(await semverSatisfies("0.x.x", "1.0.0")).toBe(false);
+  });
+
+  it("range 1.2.3 - 2.0.0 should satisfy version 1.2.4", async () => {
+    expect(await semverSatisfies("1.2.3 - 2.0.0", "1.2.4")).toBe(true);
+  });
+
+  it("range 1.2.3 - 2.0.0 should satisfy version 2.0.0", async () => {
+    expect(await semverSatisfies("1.2.3 - 2.0.0", "2.0.0")).toBe(true);
+  });
+
+  it("range 1.2.3 - 2.0.0 should satisfy version 1.5.0", async () => {
+    expect(await semverSatisfies("1.2.3 - 2.0.0", "1.5.0")).toBe(true);
+  });
+
+  it("range 1.2.3 - 2.0.0 should not satisfy version 2.0.1", async () => {
+    expect(await semverSatisfies("1.2.3 - 2.0.0", "2.0.1")).toBe(false);
+  });
 };
