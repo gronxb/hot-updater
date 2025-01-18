@@ -4,7 +4,7 @@ import { reload, updateBundle } from "./native";
 export type RunUpdateProcessResponse =
   | {
       status: "ROLLBACK" | "UPDATE";
-      isForceUpdate: boolean;
+      shouldForceUpdate: boolean;
       id: string;
     }
   | {
@@ -14,7 +14,7 @@ export type RunUpdateProcessResponse =
 export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
   /**
    * If `true`, the app will be reloaded when the downloaded bundle is a force update.
-   * If `false`, isForceUpdate will be returned as true but the app won't reload.
+   * If `false`, shouldForceUpdate will be returned as true but the app won't reload.
    * @default false
    */
   reloadOnForceUpdate?: boolean;
@@ -32,7 +32,7 @@ export const runUpdateProcess = async ({
   }
 
   const isUpdated = await updateBundle(updateInfo.id, updateInfo.fileUrl);
-  if (isUpdated && updateInfo.forceUpdate && reloadOnForceUpdate) {
+  if (isUpdated && updateInfo.shouldForceUpdate && reloadOnForceUpdate) {
     reload();
   }
 
@@ -41,7 +41,7 @@ export const runUpdateProcess = async ({
   }
   return {
     status: updateInfo.status,
-    isForceUpdate: updateInfo.forceUpdate,
+    shouldForceUpdate: updateInfo.shouldForceUpdate,
     id: updateInfo.id,
   };
 };

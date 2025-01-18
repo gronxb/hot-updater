@@ -24,7 +24,7 @@ import { printBanner } from "@/components/banner";
 export interface DeployOptions {
   targetAppVersion?: string;
   platform?: Platform;
-  forceUpdate: boolean;
+  shouldForceUpdate: boolean;
   interactive: boolean;
 }
 
@@ -145,7 +145,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           await databasePlugin.appendBundle({
-            forceUpdate: options.forceUpdate,
+            shouldForceUpdate: options.shouldForceUpdate,
             platform,
             fileUrl,
             fileHash,

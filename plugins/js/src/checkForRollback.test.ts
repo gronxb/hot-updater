@@ -5,7 +5,7 @@ import { checkForRollback } from "./checkForRollback";
 const DEFAULT_BUNDLE = {
   fileUrl: "",
   fileHash: "",
-  forceUpdate: false,
+  shouldForceUpdate: false,
   platform: "ios",
   gitCommitHash: null,
   message: null,

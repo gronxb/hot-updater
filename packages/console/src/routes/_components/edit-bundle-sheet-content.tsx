@@ -45,7 +45,7 @@ const EditBundleSheetForm = ({
       message: bundle.message,
       targetAppVersion: bundle.targetAppVersion,
       enabled: bundle.enabled,
-      forceUpdate: bundle.forceUpdate,
+      shouldForceUpdate: bundle.shouldForceUpdate,
     } as Partial<Bundle>,
     onSubmit: async ({ value }) => {
       // Do something with form data
@@ -162,7 +162,7 @@ const EditBundleSheetForm = ({
 
       <div>
         <div class="flex items-center space-x-2">
-          <form.Field name="forceUpdate">
+          <form.Field name="shouldForceUpdate">
             {(field) => (
               <Switch
                 class="flex items-center space-x-2"

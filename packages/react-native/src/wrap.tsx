@@ -34,7 +34,7 @@ export interface HotUpdaterConfig extends CheckForUpdateConfig {
   onProgress?: (progress: number) => void;
   /**
    * When a force update exists, the app will automatically reload.
-   * If `false`, When a force update exists, the app will not reload. `isForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
+   * If `false`, When a force update exists, the app will not reload. `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
    * If `true`, When a force update exists, the app will automatically reload.
    * @default true
    */
@@ -85,14 +85,14 @@ export function wrap<P>(
             );
           }
 
-          if (updateInfo.forceUpdate && reloadOnForceUpdate) {
+          if (updateInfo.shouldForceUpdate && reloadOnForceUpdate) {
             reload();
           }
 
           restConfig.onUpdateProcessCompleted?.({
             id: updateInfo.id,
             status: updateInfo.status,
-            isForceUpdate: updateInfo.forceUpdate,
+            shouldForceUpdate: updateInfo.shouldForceUpdate,
           });
           setStatus("UPDATE_PROCESS_COMPLETED");
         } catch (error) {

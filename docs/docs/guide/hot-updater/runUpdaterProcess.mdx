@@ -31,7 +31,7 @@ const result = await HotUpdater.runUpdateProcess({
 
 ### `reloadOnForceUpdate` is `false`
 
-When a force update exists, the app will not reload. `isForceUpdate` will be returned as `true`.
+When a force update exists, the app will not reload. `shouldForceUpdate` will be returned as `true`.
 
 ```tsx
 const result = await HotUpdater.runUpdateProcess({
@@ -42,7 +42,7 @@ const result = await HotUpdater.runUpdateProcess({
   reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
 });
 
-if(result.isForceUpdate) {
+if(result.shouldForceUpdate) {
   // You can handle the restart manually here
   HotUpdater.reload();
 }
@@ -55,5 +55,5 @@ if(result.isForceUpdate) {
 | Property | Type | Description |
 |----------|-------------|-------------|
 | `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
-| `isForceUpdate` | boolean | Whether the update process is forced |
+| `shouldForceUpdate` | boolean | Whether the update process is forced |
 | `id` | string | The ID of the bundle to update |

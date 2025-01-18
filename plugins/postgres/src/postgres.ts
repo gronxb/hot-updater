@@ -45,7 +45,7 @@ export const postgres =
                 id: bundle.id,
                 enabled: bundle.enabled,
                 file_url: bundle.fileUrl,
-                force_update: bundle.forceUpdate,
+                should_force_update: bundle.shouldForceUpdate,
                 file_hash: bundle.fileHash,
                 git_commit_hash: bundle.gitCommitHash,
                 message: bundle.message,
@@ -56,7 +56,7 @@ export const postgres =
                 oc.column("id").doUpdateSet({
                   enabled: bundle.enabled,
                   file_url: bundle.fileUrl,
-                  force_update: bundle.forceUpdate,
+                  should_force_update: bundle.shouldForceUpdate,
                   file_hash: bundle.fileHash,
                   git_commit_hash: bundle.gitCommitHash,
                   message: bundle.message,
@@ -100,7 +100,7 @@ export const postgres =
         return {
           enabled: data.enabled,
           fileUrl: data.file_url,
-          forceUpdate: data.force_update,
+          shouldForceUpdate: data.should_force_update,
           fileHash: data.file_hash,
           gitCommitHash: data.git_commit_hash,
           id: data.id,
@@ -122,7 +122,7 @@ export const postgres =
         return data.map((bundle) => ({
           enabled: bundle.enabled,
           fileUrl: bundle.file_url,
-          forceUpdate: bundle.force_update,
+          shouldForceUpdate: bundle.should_force_update,
           fileHash: bundle.file_hash,
           gitCommitHash: bundle.git_commit_hash,
           id: bundle.id,

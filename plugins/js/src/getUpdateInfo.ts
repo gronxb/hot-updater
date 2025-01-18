@@ -33,7 +33,7 @@ export const getUpdateInfo = async (
     if (isRollback) {
       return {
         id: NIL_UUID,
-        forceUpdate: true,
+        shouldForceUpdate: true,
         fileUrl: null,
         fileHash: null,
         status: "ROLLBACK" as UpdateStatus,
@@ -51,7 +51,7 @@ export const getUpdateInfo = async (
       if (latestBundle.id.localeCompare(bundleId) > 0) {
         return {
           id: latestBundle.id,
-          forceUpdate: latestBundle.forceUpdate,
+          shouldForceUpdate: latestBundle.shouldForceUpdate,
           fileUrl: latestBundle.fileUrl,
           fileHash: latestBundle.fileHash,
           status: "UPDATE" as UpdateStatus,
@@ -59,7 +59,7 @@ export const getUpdateInfo = async (
       }
       return {
         id: latestBundle.id,
-        forceUpdate: true,
+        shouldForceUpdate: true,
         fileUrl: latestBundle.fileUrl,
         fileHash: latestBundle.fileHash,
         status: "ROLLBACK" as UpdateStatus,
@@ -69,7 +69,7 @@ export const getUpdateInfo = async (
   if (latestBundle.id.localeCompare(bundleId) > 0) {
     return {
       id: latestBundle.id,
-      forceUpdate: latestBundle.forceUpdate,
+      shouldForceUpdate: latestBundle.shouldForceUpdate,
       fileUrl: latestBundle.fileUrl,
       fileHash: latestBundle.fileHash,
       status: "UPDATE" as UpdateStatus,

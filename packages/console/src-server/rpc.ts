@@ -12,7 +12,7 @@ export const bundleSchema = v.object({
   platform: v.union([v.literal("ios"), v.literal("android")]),
   targetAppVersion: v.string(),
   id: v.string(),
-  forceUpdate: v.boolean(),
+  shouldForceUpdate: v.boolean(),
   enabled: v.boolean(),
   fileUrl: v.string(),
   fileHash: v.string(),
