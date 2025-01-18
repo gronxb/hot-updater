@@ -1,3 +1,7 @@
+## 0.5.5 (2025-01-18)
+
+This was a version bump only, there were no code changes.
+
 ## 0.5.4 (2025-01-18)
 
 ### 🩹 Fixes
