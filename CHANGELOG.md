@@ -1,3 +1,13 @@
+## 0.5.4 (2025-01-18)
+
+### 🩹 Fixes
+
+- **postgres:** semver_match more test ([#57](https://github.com/gronxb/hot-updater/pull/57))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.3 (2025-01-17)
 
 ### 🚀 Features
