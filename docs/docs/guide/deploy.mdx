@@ -14,7 +14,23 @@ This command is used to deploy the update to the specified platform.
 
 If you haven’t completed these steps, refer to the [quick-start](./getting-started/quick-start-with-supabase.mdx) guide.
 
-## Usage (Interactive Mode)
+## Options
+
+```
+Options:
+  -p, --platform <platform>                    specify the platform (choices: "ios", "android")
+  -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
+  -f, --force-update                           force update the app (default: false)
+  -i, --interactive                            interactive mode (default: false)
+  -h, --help                                   display help for command
+```
+
+## Usage
+
+### Interactive Mode
+
+Interactive mode guides you through the deployment steps via keyboard inputs.
+
 Execute the following command:
 
 <PackageManagerTabs command={
@@ -28,9 +44,11 @@ Execute the following command:
 The `-i` (or `--interactive`) flag enables interactive keyboard input.
 - This mode allows you to proceed through deployment steps interactively.
 
-## Usage (For CD Pipeline)
+## For Continuous Deployment (CD) Pipelines
 
-Execute the following command:
+Use this mode for automating deployment in CI/CD pipelines.
+
+Run the following command:
 
 <PackageManagerTabs command={
   {
@@ -40,20 +58,27 @@ Execute the following command:
   }
 } />
 
-```
-Options:
-  -p, --platform <platform>                    specify the platform (choices: "ios", "android")
-  -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
-  -f, --force-update                           force update the app (default: false)
-  -i, --interactive                            interactive mode (default: false)
-  -h, --help                                   display help for command
-```
 - This mode is suitable for Continuous Deployment (CD) pipelines.
+
+## Usage (Force Update)
+
+Deploy a forced update for emergency purposes. This will immediately apply the update.
+
+Run the following command:
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -f",
+    pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -f",
+    yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -f",
+  }
+} />
+
 
 
 ## Target App Version Range Expression Table
 
-This is a range expression that specifies which version the deployed bundle will be applied to.
+This is a range expression that specifies which app version the deployed bundle will be applied to.
 
 | Range Expression | Who gets the update |
 | --- | --- |
