@@ -1,6 +1,7 @@
 import { printBanner } from "@/components/banner";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
+import { initCloudflareD1R2 } from "./init/cloudflareD1R2";
 import { initSupabase } from "./init/supabase";
 
 const REQUIRED_PACKAGES = {
@@ -16,6 +17,10 @@ const PACKAGE_MAP = {
   aws: {
     dependencies: [],
     devDependencies: ["@hot-updater/aws"],
+  },
+  "cloudflare-d1-r2": {
+    dependencies: [],
+    devDependencies: ["@hot-updater/cloudflare"],
   },
 } as const;
 
@@ -41,7 +46,10 @@ export const init = async () => {
 
   const provider = await select({
     message: "Select a provider",
-    options: [{ value: "supabase", label: "Supabase" }],
+    options: [
+      { value: "supabase", label: "Supabase" },
+      { value: "cloudflare-d1-r2", label: "Cloudflare D1 + R2" },
+    ],
   });
 
   if (isCancel(provider)) {
@@ -64,6 +72,9 @@ export const init = async () => {
   switch (provider) {
     case "supabase":
       await initSupabase();
+      break;
+    case "cloudflare-d1-r2":
+      await initCloudflareD1R2();
       break;
     default:
       throw new Error("Invalid provider");
