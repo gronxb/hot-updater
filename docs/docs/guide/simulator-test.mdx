@@ -1,6 +1,9 @@
-import { PackageManagerTabs } from '@theme';
 
-# Simulator Test
+import { Tab, Tabs } from 'rspress/theme';
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
+# Simulate Release Mode
 
 Since hot-updater does not work in dev environment, you need to test it in Release mode as shown below.
 
@@ -9,29 +12,62 @@ Since hot-updater does not work in dev environment, you need to test it in Relea
 - Make sure `HotUpdater.wrap` is properly implemented.
 
 
-## iOS Simulator Test 
+## Step 1: Simulator Release Mode
 
-<PackageManagerTabs command={
-  {
-    npm: "npx react-native run-ios --mode Release",
-    pnpm: "pnpm react-native run-ios --mode Release",
-    yarn: "yarn react-native run-ios --mode Release",
-  }
-} />
+Use the commands below to simulate downloading from the app store. Running in Release mode will lock the bundle to your current code.
 
-## Android Simulator Test 
+<Tabs>
+    <Tab label="iOS">
+    ```sh
+    cd ios && pod install && cd ..
+    ```
+    <PackageManagerTabs command={
+      {
+        npm: "npx react-native run-ios --mode Release",
+        pnpm: "pnpm react-native run-ios --mode Release",
+        yarn: "cd ios && pod install && cd ..\nyarn react-native run-ios --mode Release",
+      }
+    } />
+  </Tab>
+  <Tab label="Android">
+  <PackageManagerTabs command={
+    {
+      npm: "npx react-native run-android --mode Release",
+      pnpm: "pnpm react-native run-android --mode Release",
+      yarn: "yarn react-native run-android --mode Release",
+    }
+  } />
+</Tab>
+</Tabs>
 
-<PackageManagerTabs command={
-  {
-    npm: "npx react-native run-android --mode Release",
-    pnpm: "pnpm react-native run-android --mode Release",
-    yarn: "yarn react-native run-android --mode Release",
-  }
-} />
-
-## Deploy
+## Step 2: Deploy
 
 Deploy with interactive mode and force update flag enabled in hot-updater deploy mode.
+
+When [`HotUpdater.wrap`](./hot-updater/wrap.mdx) is set up, updates will be applied either when you restart the app or call [`HotUpdater.runUpdateProcess`](./hot-updater/runUpdateProcess.mdx).
+
+You can check the update progress status using [`useHotUpdaterStore`](./hot-updater/useHotUpdaterStore.mdx).
+
+
+<video src={normalizeImagePath("/guide/deploy/deploy.mov")}  controls autoPlay loop muted />
+
+
+### For Normal Deployment
+
+This is the standard deployment mode. After an update is created, users need to restart their app after downloading the bundle for the update to take effect.
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater deploy -i",
+    pnpm: "pnpm hot-updater deploy -i",
+    yarn: "yarn hot-updater deploy -i",
+  }
+} />
+
+
+### For Emergency Deployment
+
+This is the emergency deployment mode. After an update is created, the bundle will automatically reload and apply the update as soon as users download it.
 
 <PackageManagerTabs command={
   {
@@ -41,7 +77,10 @@ Deploy with interactive mode and force update flag enabled in hot-updater deploy
   }
 } />
 
-## Rollback
+
+## Step 3: Rollback
+
+<video src={normalizeImagePath("/guide/console/console.mov")} controls autoPlay loop muted />
 
 When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.
 
@@ -54,6 +93,5 @@ Open the console and set the bundle's `enabled` status to `false`.
     yarn: "yarn hot-updater console",
   }
 } />
-
 
 
