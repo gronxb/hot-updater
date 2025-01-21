@@ -41,7 +41,6 @@ export const ensureInstallPackages = async (buildPluginPackages: {
         await execa(packageManager, [
           packageManager === "yarn" ? "add" : "install",
           ...dependenciesToInstall.map(ensurePackageVersion),
-          packageManager === "yarn" ? "--dev" : "--save-dev",
         ]);
         return `Installed ${dependenciesToInstall.join(", ")}`;
       },

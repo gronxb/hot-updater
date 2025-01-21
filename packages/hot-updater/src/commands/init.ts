@@ -27,8 +27,8 @@ export const init = async () => {
     options: [
       {
         value: {
-          dependencies: ["@hot-updater/metro"],
-          devDependencies: [],
+          dependencies: [],
+          devDependencies: ["@hot-updater/metro"],
         },
         label: "Metro",
       },
