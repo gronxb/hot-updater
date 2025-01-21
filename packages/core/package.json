@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/core",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,

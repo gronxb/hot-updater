@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/plugin-core",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -42,7 +42,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.5.7",
+    "@hot-updater/core": "0.5.8",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
     "workspace-tools": "^0.36.4"

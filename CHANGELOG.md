@@ -1,3 +1,14 @@
+## 0.5.8 (2025-01-21)
+
+### 🩹 Fixes
+
+- **hot-updater:** move Metro package to devDependencies and remove unused dependencies ([#66](https://github.com/gronxb/hot-updater/pull/66))
+- **supabase:** update log messages for generated configuration files ([#65](https://github.com/gronxb/hot-updater/pull/65))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.7 (2025-01-21)
 
 ### 🩹 Fixes
