@@ -1,3 +1,13 @@
+## 0.5.6 (2025-01-21)
+
+### 🩹 Fixes
+
+- **cli:** yarn add ([#62](https://github.com/gronxb/hot-updater/pull/62))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.5 (2025-01-18)
 
 This was a version bump only, there were no code changes.
