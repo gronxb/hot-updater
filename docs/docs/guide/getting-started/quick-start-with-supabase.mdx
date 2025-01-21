@@ -13,6 +13,7 @@ This guide walks you through setting up `hot-updater` with Supabase in a React N
 ## Prerequisites
 
 Before you begin, make sure the following are ready:
+- **Docker Or OrbStack**: Install it via [Docker](https://docs.docker.com/get-docker/) or [OrbStack](https://orbstack.dev/).
 - **Node.js**: Version 20 or later is recommended.
 - **Supabase CLI**: Install it via `npx supabase`.
 - **Supabase Account**: Sign up at [Supabase](https://supabase.com) if you don’t have one.
@@ -36,9 +37,9 @@ Run the initialization script to start the interactive setup process. Use the fo
 
 <PackageManagerTabs command={
   {
-    npm: "npx hot-updater init",
-    pnpm: "pnpm hot-updater init",
-    yarn: "yarn hot-updater init",
+    npm: "npx -y supabase login\nnpx hot-updater init",
+    pnpm: "npx -y supabase login\npnpm hot-updater init",
+    yarn: "npx -y supabase login\nyarn hot-updater init",
   }
 } />
 

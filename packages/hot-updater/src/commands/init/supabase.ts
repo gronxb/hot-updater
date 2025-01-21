@@ -265,26 +265,21 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
 };
 
 const pushDB = async (supabasePath: string) => {
-  await p.tasks([
-    {
-      title: "Supabase db push",
-      task: async () => {
-        try {
-          const dbPush = await execa("npx", ["supabase", "db", "push"], {
-            cwd: supabasePath,
-          });
-          return dbPush.stdout;
-        } catch (err) {
-          if (err instanceof ExecaError && err.stderr) {
-            p.log.error(err.stderr);
-          } else {
-            console.error(err);
-          }
-          process.exit(1);
-        }
-      },
-    },
-  ]);
+  try {
+    const dbPush = await execa("npx", ["supabase", "db", "push"], {
+      cwd: supabasePath,
+      stdio: "inherit",
+    });
+    p.log.success("DB pushed ✔");
+    return dbPush.stdout;
+  } catch (err) {
+    if (err instanceof ExecaError && err.stderr) {
+      p.log.error(err.stderr);
+    } else {
+      console.error(err);
+    }
+    process.exit(1);
+  }
 };
 
 const deployEdgeFunction = async (supabasePath: string, projectId: string) => {
@@ -378,7 +373,10 @@ export const initSupabase = async () => {
     HOT_UPDATER_SUPABASE_BUCKET_NAME: bucketId,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
-  p.log.success("Generated hot-updater.config.ts with Supabase settings.");
+  p.log.success("Generated '.env' file with Supabase settings.");
+  p.log.success(
+    "Generated 'hot-updater.config.ts' file with Supabase settings.",
+  );
 
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {

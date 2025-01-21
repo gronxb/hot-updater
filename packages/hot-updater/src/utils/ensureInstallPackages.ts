@@ -39,9 +39,8 @@ export const ensureInstallPackages = async (buildPluginPackages: {
       task: async (message) => {
         message(`Installing ${dependenciesToInstall.join(", ")}...`);
         await execa(packageManager, [
-          "install",
+          packageManager === "yarn" ? "add" : "install",
           ...dependenciesToInstall.map(ensurePackageVersion),
-          packageManager === "yarn" ? "--dev" : "--save-dev",
         ]);
         return `Installed ${dependenciesToInstall.join(", ")}`;
       },
@@ -52,7 +51,7 @@ export const ensureInstallPackages = async (buildPluginPackages: {
       task: async (message) => {
         message(`Installing ${devDependenciesToInstall.join(", ")}...`);
         await execa(packageManager, [
-          "install",
+          packageManager === "yarn" ? "add" : "install",
           ...devDependenciesToInstall.map(ensurePackageVersion),
           packageManager === "yarn" ? "--dev" : "--save-dev",
         ]);
