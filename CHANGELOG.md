@@ -1,3 +1,13 @@
+## 0.5.7 (2025-01-21)
+
+### 🩹 Fixes
+
+- **supabase:** db pushing stdio inherit ([#64](https://github.com/gronxb/hot-updater/pull/64))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.6 (2025-01-21)
 
 ### 🩹 Fixes
