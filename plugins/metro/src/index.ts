@@ -9,12 +9,18 @@ import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 
 interface RunBundleArgs {
+  entryFile: string;
   cwd: string;
   platform: string;
   buildPath: string;
 }
 
-const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
+const runBundle = async ({
+  entryFile,
+  cwd,
+  platform,
+  buildPath,
+}: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native");
   const cliPath = path.resolve(reactNativePath, "..", "cli.js");
 
@@ -29,7 +35,7 @@ const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
     "--dev",
     String(false),
     "--entry-file",
-    "index.js",
+    entryFile,
     "--platform",
     String(platform),
     "--sourcemap-output",
@@ -68,11 +74,14 @@ Example:
   return bundleId;
 };
 
-export interface MetroPluginConfig extends BuildPluginConfig {}
+export interface MetroPluginConfig extends BuildPluginConfig {
+  entryFile?: string;
+}
 
 export const metro =
   (
     config: MetroPluginConfig = {
+      entryFile: "index.js",
       outDir: "dist",
     },
   ) =>
@@ -85,7 +94,12 @@ export const metro =
         await fs.rm(buildPath, { recursive: true, force: true });
         await fs.mkdir(buildPath, { recursive: true });
 
-        const bundleId = await runBundle({ cwd, platform, buildPath });
+        const bundleId = await runBundle({
+          entryFile: config.entryFile ?? "index.js",
+          cwd,
+          platform,
+          buildPath,
+        });
 
         return {
           buildPath,
