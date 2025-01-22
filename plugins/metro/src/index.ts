@@ -39,10 +39,10 @@ const runBundle = async ({
     "--entry-file",
     entryFile,
     "--platform",
-    String(platform),
-    sourcemap && ["--sourcemap-output", `${bundleOutput}.map`],
+    platform,
+    ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
     "--reset-cache",
-  ].filter(Boolean) as string[];
+  ];
 
   log.normal("\n");
 
