@@ -1,3 +1,14 @@
+## 0.5.9 (2025-01-22)
+
+### 🚀 Features
+
+- **cli:** get-plugin-env ([#70](https://github.com/gronxb/hot-updater/pull/70))
+- **metro:** add `entryFile`, `sourcemap` parameter to metro() ([#69](https://github.com/gronxb/hot-updater/pull/69))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.8 (2025-01-21)
 
 ### 🩹 Fixes
