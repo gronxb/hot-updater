@@ -39,7 +39,7 @@ const r2Bucket = async (command: "list" | "create", ...args: string[]) => {
   return parseR2Output(stdout);
 };
 
-export const initCloudflareD1R2 = async () => {
+export const initCloudflareD1R2Worker = async () => {
   p.tasks([
     {
       title: "Checking D1 List...",

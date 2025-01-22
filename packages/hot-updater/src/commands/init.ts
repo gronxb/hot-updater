@@ -1,8 +1,8 @@
 import { printBanner } from "@/components/banner";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
-import { initCloudflareD1R2 } from "./init/cloudflareD1R2";
-import { initSupabase } from "./init/initSupabase";
+import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
+import { initSupabase } from "./init/supabase";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -18,7 +18,7 @@ const PACKAGE_MAP = {
     dependencies: [],
     devDependencies: ["@hot-updater/aws"],
   },
-  "cloudflare-d1-r2": {
+  "cloudflare-d1-r2-worker": {
     dependencies: [],
     devDependencies: [],
     // devDependencies: ["@hot-updater/cloudflare"],
@@ -49,7 +49,10 @@ export const init = async () => {
     message: "Select a provider",
     options: [
       { value: "supabase", label: "Supabase" },
-      { value: "cloudflare-d1-r2", label: "Cloudflare D1 + R2" },
+      {
+        value: "cloudflare-d1-r2-worker",
+        label: "Cloudflare D1 + R2 + Worker",
+      },
     ],
   });
 
@@ -74,8 +77,8 @@ export const init = async () => {
     case "supabase":
       await initSupabase();
       break;
-    case "cloudflare-d1-r2":
-      await initCloudflareD1R2();
+    case "cloudflare-d1-r2-worker":
+      await initCloudflareD1R2Worker();
       break;
     default:
       throw new Error("Invalid provider");
