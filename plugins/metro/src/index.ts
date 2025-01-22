@@ -13,6 +13,7 @@ interface RunBundleArgs {
   cwd: string;
   platform: string;
   buildPath: string;
+  sourcemap: boolean;
 }
 
 const runBundle = async ({
@@ -20,6 +21,7 @@ const runBundle = async ({
   cwd,
   platform,
   buildPath,
+  sourcemap,
 }: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native");
   const cliPath = path.resolve(reactNativePath, "..", "cli.js");
@@ -38,10 +40,9 @@ const runBundle = async ({
     entryFile,
     "--platform",
     String(platform),
-    "--sourcemap-output",
-    [bundleOutput, "map"].join("."),
+    sourcemap && ["--sourcemap-output", `${bundleOutput}.map`],
     "--reset-cache",
-  ];
+  ].filter(Boolean) as string[];
 
   log.normal("\n");
 
@@ -75,7 +76,16 @@ Example:
 };
 
 export interface MetroPluginConfig extends BuildPluginConfig {
+  /**
+   * @default "index.js"
+   * The entry file to bundle.
+   */
   entryFile?: string;
+  /**
+   * @default false
+   * Whether to generate sourcemap for the bundle.
+   */
+  sourcemap?: boolean;
 }
 
 export const metro =
@@ -83,10 +93,15 @@ export const metro =
     config: MetroPluginConfig = {
       entryFile: "index.js",
       outDir: "dist",
+      sourcemap: false,
     },
   ) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => {
-    const { outDir = "dist" } = config;
+    const {
+      outDir = "dist",
+      sourcemap = false,
+      entryFile = "index.js",
+    } = config;
     return {
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
@@ -95,10 +110,11 @@ export const metro =
         await fs.mkdir(buildPath, { recursive: true });
 
         const bundleId = await runBundle({
-          entryFile: config.entryFile ?? "index.js",
+          entryFile,
           cwd,
           platform,
           buildPath,
+          sourcemap,
         });
 
         return {
