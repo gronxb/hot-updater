@@ -1,7 +1,7 @@
 import { printBanner } from "@/components/banner";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
-import { initSupabase } from "./init/supabase";
+import { initSupabase } from "./init/initSupabase";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
