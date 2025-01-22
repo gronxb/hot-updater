@@ -9,12 +9,20 @@ import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 
 interface RunBundleArgs {
+  entryFile: string;
   cwd: string;
   platform: string;
   buildPath: string;
+  sourcemap: boolean;
 }
 
-const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
+const runBundle = async ({
+  entryFile,
+  cwd,
+  platform,
+  buildPath,
+  sourcemap,
+}: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native");
   const cliPath = path.resolve(reactNativePath, "..", "cli.js");
 
@@ -29,11 +37,10 @@ const runBundle = async ({ cwd, platform, buildPath }: RunBundleArgs) => {
     "--dev",
     String(false),
     "--entry-file",
-    "index.js",
+    entryFile,
     "--platform",
-    String(platform),
-    "--sourcemap-output",
-    [bundleOutput, "map"].join("."),
+    platform,
+    ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
     "--reset-cache",
   ];
 
@@ -68,16 +75,33 @@ Example:
   return bundleId;
 };
 
-export interface MetroPluginConfig extends BuildPluginConfig {}
+export interface MetroPluginConfig extends BuildPluginConfig {
+  /**
+   * @default "index.js"
+   * The entry file to bundle.
+   */
+  entryFile?: string;
+  /**
+   * @default false
+   * Whether to generate sourcemap for the bundle.
+   */
+  sourcemap?: boolean;
+}
 
 export const metro =
   (
     config: MetroPluginConfig = {
+      entryFile: "index.js",
       outDir: "dist",
+      sourcemap: false,
     },
   ) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => {
-    const { outDir = "dist" } = config;
+    const {
+      outDir = "dist",
+      sourcemap = false,
+      entryFile = "index.js",
+    } = config;
     return {
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
@@ -85,7 +109,13 @@ export const metro =
         await fs.rm(buildPath, { recursive: true, force: true });
         await fs.mkdir(buildPath, { recursive: true });
 
-        const bundleId = await runBundle({ cwd, platform, buildPath });
+        const bundleId = await runBundle({
+          entryFile,
+          cwd,
+          platform,
+          buildPath,
+          sourcemap,
+        });
 
         return {
           buildPath,
