@@ -23,5 +23,6 @@
     "label": "Providers",
     "collapsible": true,
     "collapsed": false
-  }
+  },
+  "get-plugin-env"
 ]
