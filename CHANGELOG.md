@@ -1,3 +1,13 @@
+## 0.5.10 (2025-01-22)
+
+### 🩹 Fixes
+
+- **supabase:** improve error message for upload failures in supabaseStorage ([ab6f9f5](https://github.com/gronxb/hot-updater/commit/ab6f9f5))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.5.9 (2025-01-22)
 
 ### 🚀 Features
