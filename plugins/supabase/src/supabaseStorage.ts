@@ -46,7 +46,9 @@ export const supabaseStorage =
 
         const fullPath = upload.data?.fullPath;
         if (!fullPath) {
-          throw new Error("Upload Failed");
+          throw new Error(
+            "Upload failed. The Supabase key might be incorrect. Please verify the key using the `hot-updater get-plugin-env` command.",
+          );
         }
 
         hooks?.onStorageUploaded?.();
