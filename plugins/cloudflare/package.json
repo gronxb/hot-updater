@@ -29,8 +29,7 @@
   ],
   "scripts": {
     "build": "rslib build",
-    "test:type": "tsc --noEmit",
-    "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
+    "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "@hot-updater/core": "0.5.10",
