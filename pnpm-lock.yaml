@@ -375,6 +375,9 @@ importers:
       '@react-native/eslint-config':
         specifier: 0.77.0
         version: 0.77.0(eslint@8.57.0)(jest@29.7.0(@types/node@22.9.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.15))(@types/node@22.9.0)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)
+      '@react-native/gradle-plugin':
+        specifier: ^0.77.0
+        version: 0.77.0
       '@react-native/metro-config':
         specifier: 0.77.0
         version: 0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
@@ -14712,9 +14715,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
@@ -14726,7 +14727,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-color@2.1.0': {}
 
