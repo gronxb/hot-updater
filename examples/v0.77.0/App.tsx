@@ -7,119 +7,102 @@
 
 import { HotUpdater } from "@hot-updater/react-native";
 import type React from "react";
-import type { PropsWithChildren } from "react";
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
-  useColorScheme,
-} from "react-native";
-
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from "react-native/Libraries/NewAppScreen";
-
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({ children, title }: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === "dark";
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}
-      >
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}
-      >
-        {children}
-      </Text>
-    </View>
-  );
-}
+import { useEffect, useState } from "react";
+import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === "dark";
+  const [bundleId, setBundleId] = useState<string | null>(null);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
+  useEffect(() => {
+    const bundleId = HotUpdater.getBundleId();
+    setBundleId(bundleId);
+  }, []);
+
+  // @ts-expect-error
+  const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? "light-content" : "dark-content"}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}
+    <SafeAreaView>
+      <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
       >
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}
-        >
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
+        Hot Updater 1
+      </Text>
+
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        BundleId: {bundleId}
+      </Text>
+
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        isTurboModuleEnabled: {isTurboModuleEnabled ? "true" : "false"}
+      </Text>
+
+      <Image
+        style={{
+          width: 100,
+          height: 100,
+        }}
+        // source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
+      />
+
+      <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button
+        title="HotUpdater.runUpdateProcess()"
+        onPress={() =>
+          HotUpdater.runUpdateProcess({
+            source:
+              "https://xupgbkfsqgmkshopgsvp.supabase.co/functions/v1/update-server",
+          }).then((status) => {
+            console.log("Update process completed", JSON.stringify(status));
+          })
+        }
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "600",
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: "400",
-  },
-  highlight: {
-    fontWeight: "700",
-  },
-});
-
 export default HotUpdater.wrap({
   source: "https://xupgbkfsqgmkshopgsvp.supabase.co/functions/v1/update-server",
+  fallbackComponent: ({ progress = 0 }) => (
+    <Modal transparent visible={true}>
+      <View
+        style={{
+          flex: 1,
+          padding: 20,
+          borderRadius: 10,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          Updating...
+        </Text>
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {Math.round(progress * 100)}%
+        </Text>
+      </View>
+    </Modal>
+  ),
 })(App);

@@ -355,11 +355,11 @@ importers:
         specifier: ^7.25.0
         version: 7.26.0
       '@hot-updater/metro':
-        specifier: 0.5.10
-        version: 0.5.10
+        specifier: workspace:*
+        version: link:../../plugins/metro
       '@hot-updater/supabase':
-        specifier: 0.5.10
-        version: 0.5.10
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       '@react-native-community/cli':
         specifier: 15.0.1
         version: 15.0.1(typescript@5.0.4)
@@ -2449,12 +2449,6 @@ packages:
     peerDependencies:
       hono: '>=3.9.0'
       valibot: ^1.0.0 || ^1.0.0-beta || ^1.0.0-rc
-
-  '@hot-updater/metro@0.5.10':
-    resolution: {integrity: sha512-zSkW+VC/GZhwwm01vT9eTkJtLFC3oPG/ODEGt45InmEE7PIa28UcdmHXlYNmySCHmhC/4Y0AoJqI9dvqRdphEA==}
-
-  '@hot-updater/supabase@0.5.10':
-    resolution: {integrity: sha512-gFcxn20uMOH3s0YM83JUMjJiL+Bf2oi01IAh3j5qmc0LE/5kq2ypWFCvbQuFuimpJbgLJ/AbOu8P/EKrvpCyBA==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -12742,20 +12736,6 @@ snapshots:
       hono: 4.6.3
       valibot: 0.42.1(typescript@5.6.3)
 
-  '@hot-updater/metro@0.5.10':
-    dependencies:
-      '@hot-updater/plugin-core': link:plugins/plugin-core
-
-  '@hot-updater/supabase@0.5.10':
-    dependencies:
-      '@hot-updater/core': link:packages/core
-      '@hot-updater/plugin-core': link:plugins/plugin-core
-      '@supabase/supabase-js': 2.47.10
-      picocolors: 1.1.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
       '@humanwhocodes/object-schema': 2.0.3
@@ -14732,7 +14712,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
@@ -14744,9 +14726,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-color@2.1.0': {}
 

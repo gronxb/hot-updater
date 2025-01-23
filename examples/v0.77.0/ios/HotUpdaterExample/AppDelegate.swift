@@ -2,6 +2,7 @@ import UIKit
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
+import HotUpdater
 
 @main
 class AppDelegate: RCTAppDelegate {
