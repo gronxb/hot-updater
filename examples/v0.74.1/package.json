@@ -45,6 +45,7 @@
     "invariant": "^2.2.4",
     "jest": "^29.6.3",
     "prettier": "2.8.8",
+    "react-native-dotenv": "^3.4.11",
     "react-test-renderer": "18.2.0",
     "terser-webpack-plugin": "^5.3.10",
     "webpack": "^5.91.0"
