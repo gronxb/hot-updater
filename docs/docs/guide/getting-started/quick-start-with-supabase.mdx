@@ -3,8 +3,7 @@ import { PackageManagerTabs } from '@theme';
 import { normalizeImagePath } from 'rspress/runtime';
 
 
-
-# Quick Start With Supabase
+# Supabase Provider
 
 This guide walks you through setting up `hot-updater` with Supabase in a React Native project. You'll configure the environment, install required packages, and initialize Supabase for seamless updates.
 
@@ -304,6 +303,9 @@ public class MainApplication extends Application implements ReactApplication {
 
 
 ### iOS
+
+<Tabs>
+    <Tab label="Objective-C">
 ```objc title=ios/<your-app-name>/AppDelegate.mm
 #import "AppDelegate.h"
 #import <HotUpdater/HotUpdater.h> // [!code ++]
@@ -338,6 +340,45 @@ public class MainApplication extends Application implements ReactApplication {
 
 @end
 ```
+</Tab>
+<Tab label="Swift">
+```swift title=ios/<your-app-name>/AppDelegate.swift
+import UIKit
+import React
+import React_RCTAppDelegate
+import ReactAppDependencyProvider
+import HotUpdater // [!code ++]
+
+@main
+class AppDelegate: RCTAppDelegate {
+  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    self.moduleName = "HotUpdaterExample"
+    self.dependencyProvider = RCTAppDependencyProvider()
+
+    // You can add your custom initial props in the dictionary below.
+    // They will be passed down to the ViewController used by React Native.
+    self.initialProps = [:]
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    self.bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+#if DEBUG // [!code --]
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index") // [!code --]
+#else // [!code --]
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+#endif // [!code --]
+    HotUpdater.bundleURL() // [!code ++]
+  }
+}
+
+```
+</Tab>
+</Tabs>
 
 
 ## Verifying the Setup
