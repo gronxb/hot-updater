@@ -682,9 +682,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
-      picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
     devDependencies:
       dayjs:
         specifier: ^1.11.13
@@ -692,6 +689,9 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.0.4
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.1.1
 
   plugins/js:
     dependencies:
@@ -14740,9 +14740,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.23.2(@babel/core@7.26.0))':
     dependencies:
@@ -14753,7 +14751,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':

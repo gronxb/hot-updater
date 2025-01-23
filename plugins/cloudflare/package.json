@@ -33,10 +33,10 @@
   },
   "dependencies": {
     "@hot-updater/core": "0.5.10",
-    "@hot-updater/plugin-core": "0.5.10",
-    "picocolors": "^1.0.0"
+    "@hot-updater/plugin-core": "0.5.10"
   },
   "devDependencies": {
+    "picocolors": "^1.0.0",
     "dayjs": "^1.11.13",
     "mime": "^4.0.4"
   }
