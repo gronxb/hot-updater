@@ -32,7 +32,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 0
+        Hot Updater 1
       </Text>
 
       <Text
@@ -62,18 +62,29 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
+        // source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button
+        title="HotUpdater.runUpdateProcess()"
+        onPress={() =>
+          HotUpdater.runUpdateProcess({
+            source:
+              "https://xupgbkfsqgmkshopgsvp.supabase.co/functions/v1/update-server",
+          }).then((status) => {
+            console.log("Update process completed", JSON.stringify(status));
+          })
+        }
+      />
     </SafeAreaView>
   );
 }
 
 export default HotUpdater.wrap({
   source: "https://xupgbkfsqgmkshopgsvp.supabase.co/functions/v1/update-server",
-  fallbackComponent: ({ progress }) => (
+  fallbackComponent: ({ progress = 0 }) => (
     <Modal transparent visible={true}>
       <View
         style={{
