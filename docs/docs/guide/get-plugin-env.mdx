@@ -23,11 +23,12 @@ Run the following command:
 
 The `.env` file should remain secure, as it contains sensitive keys required for the hot-updater to function.
 
-If you are using `react-native-dotenv`, be cautious as environment variables may be included in the bundle.
+If you are using `react-native-dotenv`, you can either:
 
-You can separate your environment variables into two files:
-- `.env`: Contains sensitive variables that should not be included in the bundle
-- `.env.public`: Contains variables that can be safely included in the bundle
+- Configure the `allowlist` option to only include safe environment variables in the bundle
+- Split your environment variables into separate files:
+  - `.env`: For sensitive variables that should be excluded from the bundle 
+  - `.env.public`: For non-sensitive variables that can be included in the bundle
 
 :::
 
