@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/js",
-  "version": "0.5.10",
+  "version": "0.6.0",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -42,7 +42,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.5.10"
+    "@hot-updater/core": "0.6.0"
   },
   "devDependencies": {
     "semver": "^7.6.3",

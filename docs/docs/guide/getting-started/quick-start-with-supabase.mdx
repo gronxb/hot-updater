@@ -3,8 +3,7 @@ import { PackageManagerTabs } from '@theme';
 import { normalizeImagePath } from 'rspress/runtime';
 
 
-
-# Quick Start With Supabase
+# Supabase Provider
 
 This guide walks you through setting up `hot-updater` with Supabase in a React Native project. You'll configure the environment, install required packages, and initialize Supabase for seamless updates.
 
@@ -71,11 +70,12 @@ HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
 
 The `.env` file should remain secure, as it contains sensitive keys required for the hot-updater to function.
 
-If you are using `react-native-dotenv`, be cautious as environment variables may be included in the bundle.
+If you are using `react-native-dotenv`, you can either:
 
-You can separate your environment variables into two files:
-- `.env`: Contains sensitive variables that should not be included in the bundle
-- `.env.public`: Contains variables that can be safely included in the bundle
+- Configure the `allowlist` option to only include safe environment variables in the bundle
+- Split your environment variables into separate files:
+  - `.env`: For sensitive variables that should be excluded from the bundle 
+  - `.env.public`: For non-sensitive variables that can be included in the bundle
 
 :::
 
@@ -173,11 +173,10 @@ To complete the integration of `hot-updater`, you'll need to add native code mod
 
 <Tabs>
     <Tab label="Kotlin">
-```kt title=android/app/src/main/java/com/<your-app-name>/MainActivity.kt
+```kt title=android/app/src/main/java/com/<your-app-name>/MainApplication.kt
 package com.hotupdaterexample
 
 import android.app.Application
-import android.util.Log
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -190,47 +189,45 @@ import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 import com.hotupdater.HotUpdater // [!code ++]
 
-class MainApplication :
-    Application(),
-    ReactApplication {
-    override val reactNativeHost: ReactNativeHost =
-        object : DefaultReactNativeHost(this) {
-            override fun getPackages(): List<ReactPackage> =
-                PackageList(this).packages.apply {
-                    // Packages that cannot be autolinked yet can be added manually here, for example:
-                    // add(MyReactNativePackage())
-                }
+class MainApplication : Application(), ReactApplication {
 
-            override fun getJSMainModuleName(): String = "index"
+  override val reactNativeHost: ReactNativeHost =
+      object : DefaultReactNativeHost(this) {
+        override fun getPackages(): List<ReactPackage> =
+            PackageList(this).packages.apply {
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+            }
 
-            override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+        override fun getJSMainModuleName(): String = "index"
 
-            override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-            override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+        override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
-            override fun getJSBundleFile(): String? {  // [!code ++]
-                return HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
-            }  // [!code ++]
-        }
-    
-    override val reactHost: ReactHost
-              get() = getDefaultReactHost(applicationContext, reactNativeHost)
+        override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+        override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
 
-    override fun onCreate() {
-        super.onCreate()
-        SoLoader.init(this, OpenSourceMergedSoMapping)
+        override fun getJSBundleFile(): String? {  // [!code ++]
+          return HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
+        }  // [!code ++]
+      }
 
-        if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-            // If you opted-in for the New Architecture, we load the native entry point for this app.
-            load()
-        }
+  override val reactHost: ReactHost
+    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+
+  override fun onCreate() {
+    super.onCreate()
+    SoLoader.init(this, OpenSourceMergedSoMapping)
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      load()
     }
+  }
 }
 ```
 
 </Tab>
     <Tab label="Java">
-  ```java title=android/app/src/main/java/com/<your-app-name>/MainActivity.java
+  ```java title=android/app/src/main/java/com/<your-app-name>/MainApplication.java
 
 package com.hotupdaterexample;
 
@@ -307,6 +304,9 @@ public class MainApplication extends Application implements ReactApplication {
 
 
 ### iOS
+
+<Tabs>
+    <Tab label="Objective-C">
 ```objc title=ios/<your-app-name>/AppDelegate.mm
 #import "AppDelegate.h"
 #import <HotUpdater/HotUpdater.h> // [!code ++]
@@ -341,6 +341,45 @@ public class MainApplication extends Application implements ReactApplication {
 
 @end
 ```
+</Tab>
+<Tab label="Swift">
+```swift title=ios/<your-app-name>/AppDelegate.swift
+import UIKit
+import React
+import React_RCTAppDelegate
+import ReactAppDependencyProvider
+import HotUpdater // [!code ++]
+
+@main
+class AppDelegate: RCTAppDelegate {
+  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    self.moduleName = "HotUpdaterExample"
+    self.dependencyProvider = RCTAppDependencyProvider()
+
+    // You can add your custom initial props in the dictionary below.
+    // They will be passed down to the ViewController used by React Native.
+    self.initialProps = [:]
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    self.bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+#if DEBUG // [!code --]
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index") // [!code --]
+#else // [!code --]
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+#endif // [!code --]
+    HotUpdater.bundleURL() // [!code ++]
+  }
+}
+
+```
+</Tab>
+</Tabs>
 
 
 ## Verifying the Setup

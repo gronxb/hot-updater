@@ -1,3 +1,17 @@
+## 0.6.0 (2025-01-23)
+
+### 🚀 Features
+
+- **react-native:** support 0.77.0 swift template ([#72](https://github.com/gronxb/hot-updater/pull/72))
+
+### 🩹 Fixes
+
+- **supabase:** improve error message for upload failures in supabaseStorage ([#71](https://github.com/gronxb/hot-updater/pull/71))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.5.10 (2025-01-22)
 
 ### 🩹 Fixes

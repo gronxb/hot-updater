@@ -10,6 +10,8 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
+import { HOT_UPDATER_SUPABASE_URL } from "@env";
+
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
 
@@ -67,13 +69,23 @@ function App(): React.JSX.Element {
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button
+        title="HotUpdater.runUpdateProcess()"
+        onPress={() =>
+          HotUpdater.runUpdateProcess({
+            source: `https://${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+          }).then((status) => {
+            console.log("Update process completed", JSON.stringify(status));
+          })
+        }
+      />
     </SafeAreaView>
   );
 }
 
 export default HotUpdater.wrap({
-  source: "https://inodtkixxqmthzanatwg.supabase.co/functions/v1/update-server",
-  fallbackComponent: ({ progress }) => (
+  source: `https://${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  fallbackComponent: ({ progress = 0 }) => (
     <Modal transparent visible={true}>
       <View
         style={{
