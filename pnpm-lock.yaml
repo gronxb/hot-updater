@@ -574,6 +574,25 @@ importers:
         specifier: ^4.0.4
         version: 4.0.4
 
+  plugins/cloudflare:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.1.1
+    devDependencies:
+      dayjs:
+        specifier: ^1.11.13
+        version: 1.11.13
+      mime:
+        specifier: ^4.0.4
+        version: 4.0.4
+
   plugins/js:
     dependencies:
       '@hot-updater/core':
@@ -664,9 +683,6 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.47.10
         version: 2.47.10
-      picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
     devDependencies:
       '@hot-updater/postgres':
         specifier: workspace:*
@@ -677,6 +693,9 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.0.4
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.1.1
 
 packages:
 

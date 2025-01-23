@@ -1,0 +1,44 @@
+{
+  "name": "@hot-updater/cloudflare",
+  "type": "module",
+  "version": "0.5.10",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "sql",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "rslib build",
+    "test:type": "tsc --noEmit",
+    "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
+  },
+  "dependencies": {
+    "@hot-updater/core": "0.5.10",
+    "@hot-updater/plugin-core": "0.5.10",
+    "picocolors": "^1.0.0"
+  },
+  "devDependencies": {
+    "dayjs": "^1.11.13",
+    "mime": "^4.0.4"
+  }
+}

@@ -52,6 +52,14 @@ const cloudflareApi = {
     );
     return stdout;
   },
+  getR2AccessTokens: async () => {
+    const { stdout } = await execa(
+      "npx",
+      ["-y", "wrangler", "r2", "bucket", "access-tokens", "list"],
+      {},
+    );
+    return stdout;
+  },
 };
 
 export const initCloudflareD1R2Worker = async () => {
