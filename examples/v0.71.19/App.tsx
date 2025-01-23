@@ -72,7 +72,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: "https://inodtkixxqmthzanatwg.supabase.co/functions/v1/update-server",
+  source: "https://xupgbkfsqgmkshopgsvp.supabase.co/functions/v1/update-server",
   fallbackComponent: ({ progress }) => (
     <Modal transparent visible={true}>
       <View
