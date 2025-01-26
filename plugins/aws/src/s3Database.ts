@@ -14,8 +14,7 @@ import type {
 import mime from "mime";
 import { streamToString } from "./utils/streamToString";
 
-export interface S3DatabaseConfig
-  extends Pick<S3ClientConfig, "credentials" | "region"> {
+export interface S3DatabaseConfig extends S3ClientConfig {
   bucketName: string;
 }
 
