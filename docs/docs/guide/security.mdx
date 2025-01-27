@@ -1,10 +1,11 @@
 # Security
 
-Developers may worry that sensitive tokens defined in the `hot-updater.config.ts` file might be bundled into the app and exposed in production.
 
 ## Plugin Token Protection
 
-Using environment variables is simply for populating the token value in the hot-updater.config. This is, in fact, unrelated to React Native.
+Developers may worry that sensitive tokens defined in the `hot-updater.config.ts` file might be bundled into the app and exposed in production.
+
+Using environment variables is simply for populating the token value in the `hot-updater.config.ts` file. This is, in fact, unrelated to React Native.
 
 ```ts title="hot-updater.config.ts"
 import { metro } from "@hot-updater/metro";
