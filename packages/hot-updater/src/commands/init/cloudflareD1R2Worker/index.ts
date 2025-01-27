@@ -135,4 +135,6 @@ export const initCloudflareD1R2Worker = async () => {
   } else {
     p.log.info(`Selected D1: ${selectedD1}`);
   }
+
+  // await execa("npx", ["-y", "wrangler", "d1", "migrate", selectedD1]);
 };
