@@ -64,19 +64,12 @@ HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
 ```
 
-
-
 ::: warning
 
-The `.env` file should remain secure, as it contains sensitive keys required for the hot-updater to function.
+If you’re **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you’re still concerned,
 
-If you are using `react-native-dotenv`, you can either:
-
-- Configure the `allowlist` option to only include safe environment variables in the bundle
-- Split your environment variables into separate files:
-  - `.env`: For sensitive variables that should be excluded from the bundle 
-  - `.env.public`: For non-sensitive variables that can be included in the bundle
-
+please refer to the article below for more details:
+[Security](../security.mdx#plugin-token-protection)
 :::
 
 
