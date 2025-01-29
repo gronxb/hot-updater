@@ -1,21 +1,28 @@
+import minify from "pg-minify";
+
 import type {
   BasePluginArgs,
   Bundle,
   DatabasePlugin,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
-import { CloudflareD1 } from "./context/CloudflareD1";
+import Cloudflare from "cloudflare";
+
 import type { BundlesTable } from "./types";
 
 export interface D1DatabaseConfig {
-  name: string;
+  databaseId: string;
+  accountId: string;
   cloudflareApiToken: string;
 }
 
 export const d1Database =
   (config: D1DatabaseConfig, hooks?: DatabasePluginHooks) =>
-  (plugin: BasePluginArgs): DatabasePlugin => {
-    const db = new CloudflareD1({ ...config, cwd: plugin.cwd });
+  (_: BasePluginArgs): DatabasePlugin => {
+    const cloudflare = new Cloudflare({
+      apiToken: config.cloudflareApiToken,
+    });
+
     let bundles: Bundle[] = [];
 
     const changedIds = new Set<string>();
@@ -35,23 +42,25 @@ export const d1Database =
           return;
         }
 
+        const params: (string | number | boolean | null)[] = [];
         const valuesSql = changedBundles
-          .map(
-            (b) => `(
-            '${b.id}',
-            ${b.enabled ? 1 : 0},
-            '${b.fileUrl}',
-            ${b.shouldForceUpdate ? 1 : 0},
-            '${b.fileHash}',
-            ${b.gitCommitHash ? `'${b.gitCommitHash}'` : "NULL"},
-            ${b.message ? `'${b.message}'` : "NULL"},
-            '${b.platform}',
-            '${b.targetAppVersion}'
-          )`,
-          )
+          .map((b) => {
+            params.push(
+              b.id,
+              b.enabled ? 1 : 0,
+              b.fileUrl,
+              b.shouldForceUpdate ? 1 : 0,
+              b.fileHash,
+              b.gitCommitHash || null,
+              b.message || null,
+              b.platform,
+              b.targetAppVersion,
+            );
+            return "(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+          })
           .join(",\n");
 
-        const command = `
+        const sql = minify(/* sql */ `
           INSERT OR REPLACE INTO bundles (
             id,
             enabled,
@@ -64,9 +73,15 @@ export const d1Database =
             target_app_version
           )
           VALUES
-          ${valuesSql};`;
+          ${valuesSql};`);
 
-        await db.execute(command);
+        await cloudflare.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+
+          // why this type is string[] ?
+          params: params as string[],
+        });
 
         changedIds.clear();
 
@@ -101,15 +116,24 @@ export const d1Database =
           return found;
         }
 
-        const command =
-          "SELECT * FROM bundles WHERE id = '%%bundleId%%' LIMIT 1";
-        const { results: rows } = await db.execute<
-          typeof command,
-          BundlesTable
-        >(command, {
-          bundleId,
-        });
+        const sql = minify(
+          /* sql */ `
+          SELECT * FROM bundles WHERE id = ? LIMIT 1`,
+        );
+        const [response] = await cloudflare.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql,
+            params: [bundleId],
+          },
+        );
 
+        if (!response.success) {
+          return null;
+        }
+
+        const rows = response.results as BundlesTable[];
         if (!rows?.length) {
           return null;
         }
@@ -133,7 +157,8 @@ export const d1Database =
           return bundles;
         }
 
-        const command = `
+        const sql = minify(
+          /* sql */ `
           SELECT
             id,
             enabled,
@@ -146,12 +171,24 @@ export const d1Database =
             target_app_version
           FROM bundles
           ORDER BY id DESC
-        `;
-        const { results: rows } = await db.execute<
-          typeof command,
-          BundlesTable
-        >(command);
+        `,
+        );
 
+        const [response] = await cloudflare.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql,
+            params: [],
+          },
+        );
+
+        if (!response.success) {
+          bundles = [];
+          return bundles;
+        }
+
+        const rows = response.results as BundlesTable[];
         if (!rows?.length) {
           bundles = [];
         } else {
