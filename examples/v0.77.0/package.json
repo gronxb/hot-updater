@@ -18,6 +18,8 @@
     "@babel/core": "^7.25.2",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
+    "@hot-updater/aws": "0.6.0",
+    "@hot-updater/cloudflare": "0.6.0",
     "@hot-updater/metro": "0.6.0",
     "@hot-updater/supabase": "0.6.0",
     "@react-native-community/cli": "15.0.1",
@@ -40,7 +42,8 @@
     "prettier": "2.8.8",
     "react-native-dotenv": "^3.4.11",
     "react-test-renderer": "18.3.1",
-    "typescript": "5.0.4"
+    "typescript": "5.0.4",
+    "wrangler": "^3.105.1"
   },
   "engines": {
     "node": ">=18"

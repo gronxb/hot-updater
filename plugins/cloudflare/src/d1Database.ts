@@ -4,42 +4,71 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
+import type { BundlesTable } from "./types";
+import { D1Database } from "./utils/wrangler";
 
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./types";
-
-export interface SupabaseDatabaseConfig {
-  supabaseUrl: string;
-  supabaseAnonKey: string;
+export interface D1DatabaseConfig {
+  name: string;
+  cloudflareApiToken: string;
 }
 
 export const d1Database =
-  (config: SupabaseDatabaseConfig, hooks?: DatabasePluginHooks) =>
+  (config: D1DatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
-    const supabase = createClient<Database>(
-      config.supabaseUrl,
-      config.supabaseAnonKey,
-    );
-
+    const db = new D1Database(config);
     let bundles: Bundle[] = [];
 
     return {
-      name: "supabaseDatabase",
+      name: "d1Database",
       async commitBundle() {
-        await supabase.from("bundles").upsert(
-          bundles.map((bundle) => ({
-            id: bundle.id,
-            enabled: bundle.enabled,
-            file_url: bundle.fileUrl,
-            should_force_update: bundle.shouldForceUpdate,
-            file_hash: bundle.fileHash,
-            git_commit_hash: bundle.gitCommitHash,
-            message: bundle.message,
-            platform: bundle.platform,
-            target_app_version: bundle.targetAppVersion,
-          })),
-          { onConflict: "id" },
-        );
+        const command = `INSERT INTO bundles (
+            id,
+            enabled,
+            file_url,
+            should_force_update,
+            file_hash,
+            git_commit_hash,
+            message,
+            platform,
+            target_app_version
+          ) VALUES (
+            %%id%%,
+            %%enabled%%,
+            %%file_url%%,
+            %%should_force_update%%,
+            %%file_hash%%,
+            %%git_commit_hash%%,
+            %%message%%,
+            %%platform%%,
+            %%target_app_version%%
+        ) ON CONFLICT (id) DO UPDATE SET
+              enabled = %%enabled%%,
+              file_url = %%file_url%%,
+              should_force_update = %%should_force_update%%,
+              file_hash = %%file_hash%%,
+              git_commit_hash = %%git_commit_hash%%,
+              message = %%message%%,
+              platform = %%platform%%,
+              target_app_version = %%target_app_version%%
+`;
+
+        for (const bundle of bundles) {
+          await db.execute(command, {
+            id: `'${bundle.id}'`,
+            enabled: bundle.enabled ? String(1) : String(0),
+            file_url: `'${bundle.fileUrl}'`,
+            should_force_update: bundle.shouldForceUpdate
+              ? String(1)
+              : String(0),
+            file_hash: `'${bundle.fileHash}'`,
+            git_commit_hash: bundle.gitCommitHash
+              ? `'${bundle.gitCommitHash}'`
+              : String(null),
+            message: bundle.message ? `'${bundle.message}'` : String(null),
+            platform: `'${bundle.platform}'`,
+            target_app_version: `'${bundle.targetAppVersion}'`,
+          });
+        }
 
         hooks?.onDatabaseUpdated?.();
       },
@@ -61,25 +90,29 @@ export const d1Database =
         bundles = inputBundles;
       },
       async getBundleById(bundleId) {
-        const { data } = await supabase
-          .from("bundles")
-          .select("*")
-          .eq("id", bundleId)
-          .single();
+        const command = "SELECT * FROM bundles WHERE id = '%%bundleId%%'";
+        const { results: rows } = await db.execute<
+          typeof command,
+          BundlesTable
+        >(command, {
+          bundleId,
+        });
 
-        if (!data) {
+        if (!rows?.length) {
           return null;
         }
+
+        const row = rows[0];
         return {
-          enabled: data.enabled,
-          fileUrl: data.file_url,
-          shouldForceUpdate: data.should_force_update,
-          fileHash: data.file_hash,
-          gitCommitHash: data.git_commit_hash,
-          id: data.id,
-          message: data.message,
-          platform: data.platform,
-          targetAppVersion: data.target_app_version,
+          enabled: Boolean(row.enabled),
+          fileUrl: row.file_url,
+          shouldForceUpdate: Boolean(row.should_force_update),
+          fileHash: row.file_hash,
+          gitCommitHash: row.git_commit_hash,
+          id: row.id,
+          message: row.message,
+          platform: row.platform,
+          targetAppVersion: row.target_app_version,
         } as Bundle;
       },
       async getBundles(refresh = false) {
@@ -87,25 +120,26 @@ export const d1Database =
           return bundles;
         }
 
-        const { data } = await supabase
-          .from("bundles")
-          .select("*")
-          .order("id", { ascending: false });
+        const command = "SELECT * FROM bundles ORDER BY id DESC";
+        const { results: rows } = await db.execute<
+          typeof command,
+          BundlesTable
+        >(command);
 
-        if (!data) {
+        if (!rows?.length) {
           return [];
         }
 
-        return data.map((bundle) => ({
-          enabled: bundle.enabled,
-          fileUrl: bundle.file_url,
-          shouldForceUpdate: bundle.should_force_update,
-          fileHash: bundle.file_hash,
-          gitCommitHash: bundle.git_commit_hash,
-          id: bundle.id,
-          message: bundle.message,
-          platform: bundle.platform,
-          targetAppVersion: bundle.target_app_version,
+        return rows.map((row) => ({
+          enabled: Boolean(row.enabled),
+          fileUrl: row.file_url,
+          shouldForceUpdate: Boolean(row.should_force_update),
+          fileHash: row.file_hash,
+          gitCommitHash: row.git_commit_hash,
+          id: row.id,
+          message: row.message,
+          platform: row.platform,
+          targetAppVersion: row.target_app_version,
         })) as Bundle[];
       },
     };

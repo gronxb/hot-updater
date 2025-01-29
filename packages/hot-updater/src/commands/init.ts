@@ -20,8 +20,7 @@ const PACKAGE_MAP = {
   },
   "cloudflare-d1-r2-worker": {
     dependencies: [],
-    devDependencies: [],
-    // devDependencies: ["@hot-updater/cloudflare"],
+    devDependencies: ["wrangler", "@hot-updater/cloudflare"],
   },
 } as const;
 

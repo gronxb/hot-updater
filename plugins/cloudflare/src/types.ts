@@ -14,20 +14,3 @@ type SnakeKeyObject<T> = T extends Record<string, any>
   : T;
 
 export type BundlesTable = SnakeKeyObject<Bundle>;
-
-export type Database = {
-  public: {
-    Tables: {
-      bundles: {
-        Row: BundlesTable;
-        Insert: BundlesTable;
-        Update: BundlesTable;
-        Relationships: [];
-      };
-    };
-    Views: {
-      [_ in never]: never;
-    };
-    Functions: any;
-  };
-};

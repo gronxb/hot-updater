@@ -37,6 +37,7 @@
       "@hot-updater/react-native": "workspace:*",
       "@hot-updater/postgres": "workspace:*",
       "@hot-updater/supabase": "workspace:*",
+      "@hot-updater/cloudflare": "workspace:*",
       "@hot-updater/js": "workspace:*"
     }
   },
