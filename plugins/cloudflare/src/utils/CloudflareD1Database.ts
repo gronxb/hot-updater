@@ -1,11 +1,10 @@
-import { getCwd } from "@hot-updater/plugin-core";
 import { type ExecaMethod, execa } from "execa";
 import {
   type TransformTemplateArgs,
   transformTemplate,
 } from "./transformTemplate";
 
-export class D1Database {
+export class CloudflareD1Database {
   private $: ExecaMethod<{
     extendEnv: true;
     env: {
@@ -17,12 +16,13 @@ export class D1Database {
 
   constructor({
     name,
+    cwd,
     cloudflareApiToken,
-  }: { name: string; cloudflareApiToken: string }) {
+  }: { name: string; cwd: string; cloudflareApiToken: string }) {
     this.name = name;
     this.$ = execa({
       extendEnv: true,
-      cwd: getCwd(),
+      cwd,
       env: {
         CLOUDFLARE_API_TOKEN: cloudflareApiToken,
       },
