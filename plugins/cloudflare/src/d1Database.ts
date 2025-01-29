@@ -4,8 +4,8 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
+import { CloudflareD1 } from "./context/CloudflareD1";
 import type { BundlesTable } from "./types";
-import { CloudflareD1Database } from "./utils/CloudflareD1Database";
 
 export interface D1DatabaseConfig {
   name: string;
@@ -15,7 +15,7 @@ export interface D1DatabaseConfig {
 export const d1Database =
   (config: D1DatabaseConfig, hooks?: DatabasePluginHooks) =>
   (plugin: BasePluginArgs): DatabasePlugin => {
-    const db = new CloudflareD1Database({ ...config, cwd: plugin.cwd });
+    const db = new CloudflareD1({ ...config, cwd: plugin.cwd });
     let bundles: Bundle[] = [];
 
     const changedIds = new Set<string>();

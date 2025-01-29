@@ -4,7 +4,7 @@ import {
   transformTemplate,
 } from "./transformTemplate";
 
-export class CloudflareD1Database {
+export class CloudflareD1 {
   private $: ExecaMethod<{
     extendEnv: true;
     env: {
