@@ -95,6 +95,7 @@ export const initCloudflareD1R2Worker = async () => {
     if (p.isCancel(name)) {
       process.exit(1);
     }
+    // TODO: allow public access
     const newR2 = await cloudflareApi.createR2Bucket(name);
     p.log.info(`Created new R2 Bucket: ${newR2}`);
   } else {
