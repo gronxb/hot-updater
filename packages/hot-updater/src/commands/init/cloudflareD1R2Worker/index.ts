@@ -64,6 +64,13 @@ const cloudflareApi = {
 
 export const initCloudflareD1R2Worker = async () => {
   // TODO:
+  // 자동으로 채울 수 있는 토큰
+  // cloudflareApiToken | ❌
+  // accountId (Common) | ✅ 지원 |	wrangler whoami
+  // databaseId (D1)    | ✅ 지원 |	wrangler d1 list or cloudflare api
+  // bucketName (R2)    | ✅ 지원 |	wrangler r2 bucket list or cloudflare api
+  // accessKeyId (R2)   | ❌
+
   // 1. Get Cloudflare API Token (R2 + D1 + Worker)
   // 2. Create R2 Bucket (allow public access)
   // 3. Create D1 Database

@@ -19,7 +19,7 @@ export interface D1DatabaseConfig {
 export const d1Database =
   (config: D1DatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
-    const cloudflare = new Cloudflare({
+    const cf = new Cloudflare({
       apiToken: config.cloudflareApiToken,
     });
 
@@ -75,7 +75,7 @@ export const d1Database =
           VALUES
           ${valuesSql};`);
 
-        await cloudflare.d1.database.query(config.databaseId, {
+        await cf.d1.database.query(config.databaseId, {
           account_id: config.accountId,
           sql,
 
@@ -120,14 +120,11 @@ export const d1Database =
           /* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`,
         );
-        const [response] = await cloudflare.d1.database.query(
-          config.databaseId,
-          {
-            account_id: config.accountId,
-            sql,
-            params: [bundleId],
-          },
-        );
+        const [response] = await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+          params: [bundleId],
+        });
 
         if (!response.success) {
           return null;
@@ -174,14 +171,11 @@ export const d1Database =
         `,
         );
 
-        const [response] = await cloudflare.d1.database.query(
-          config.databaseId,
-          {
-            account_id: config.accountId,
-            sql,
-            params: [],
-          },
-        );
+        const [response] = await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+          params: [],
+        });
 
         if (!response.success) {
           bundles = [];

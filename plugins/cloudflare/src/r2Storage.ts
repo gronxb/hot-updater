@@ -26,11 +26,11 @@ export const r2Storage =
   (config: R2StorageConfig, hooks?: StoragePluginHooks) =>
   async (_: BasePluginArgs): Promise<StoragePlugin> => {
     const { bucketName } = config;
-    const cloudflare = new Cloudflare({
+    const cf = new Cloudflare({
       apiToken: config.cloudflareApiToken,
     });
 
-    const credentials = await cloudflare.r2.temporaryCredentials.create({
+    const credentials = await cf.r2.temporaryCredentials.create({
       account_id: config.accountId,
       bucket: config.bucketName,
       ttlSeconds: 60 * 10, // 10 minutes
