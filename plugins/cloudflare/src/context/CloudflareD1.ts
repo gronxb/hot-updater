@@ -2,7 +2,7 @@ import { type ExecaMethod, execa } from "execa";
 import {
   type TransformTemplateArgs,
   transformTemplate,
-} from "./transformTemplate";
+} from "../utils/transformTemplate";
 
 export class CloudflareD1 {
   private $: ExecaMethod<{
