@@ -14,7 +14,7 @@ export const prune = async () => {
 
     const cwd = getCwd();
 
-    const databasePlugin = config.database({
+    const databasePlugin = await config.database({
       cwd,
     });
 
@@ -35,7 +35,7 @@ export const prune = async () => {
     await databasePlugin.commitBundle();
     await databasePlugin.onUnmount?.();
 
-    const storagePlugin = config.storage({
+    const storagePlugin = await config.storage({
       cwd,
     });
 

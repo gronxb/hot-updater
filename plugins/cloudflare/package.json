@@ -35,7 +35,9 @@
   "dependencies": {
     "@hot-updater/core": "0.5.10",
     "@hot-updater/plugin-core": "0.5.10",
-    "cloudflare": "^4.0.0"
+    "cloudflare": "^4.0.0",
+    "@aws-sdk/client-s3": "^3.685.0",
+    "@aws-sdk/lib-storage": "^3.685.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.6.4",

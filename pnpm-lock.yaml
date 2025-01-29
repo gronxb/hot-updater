@@ -686,6 +686,12 @@ importers:
 
   plugins/cloudflare:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.685.0
+        version: 3.685.0
+      '@aws-sdk/lib-storage':
+        specifier: ^3.685.0
+        version: 3.685.0(@aws-sdk/client-s3@3.685.0)
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -15326,9 +15332,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.23.2(@babel/core@7.26.0))':
     dependencies:
@@ -15339,7 +15343,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':

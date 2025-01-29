@@ -28,9 +28,9 @@ const prepareConfig = async () => {
   if (!config) {
     config = await loadConfig();
     databasePlugin =
-      config?.database({
+      (await config?.database({
         cwd: getCwd(),
-      }) ?? null;
+      })) ?? null;
   }
   return { config, databasePlugin };
 };
