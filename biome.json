@@ -9,6 +9,7 @@
       "**/dist/**",
       "**/build/**",
       "node_modules/**",
+      "**/worker/**",
 
       "**/*.js"
     ]
