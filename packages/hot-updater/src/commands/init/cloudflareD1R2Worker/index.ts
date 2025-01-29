@@ -63,6 +63,12 @@ const cloudflareApi = {
 };
 
 export const initCloudflareD1R2Worker = async () => {
+  // TODO:
+  // 1. Get Cloudflare API Token (R2 + D1 + Worker)
+  // 2. Create R2 Bucket (allow public access)
+  // 3. Create D1 Database
+  // 4. Create Worker
+
   const s = p.spinner();
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
