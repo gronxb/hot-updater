@@ -73,12 +73,14 @@ export const init = async () => {
   });
 
   switch (provider) {
-    case "supabase":
+    case "supabase": {
       await initSupabase();
       break;
-    case "cloudflare-d1-r2-worker":
+    }
+    case "cloudflare-d1-r2-worker": {
       await initCloudflareD1R2Worker();
       break;
+    }
     default:
       throw new Error("Invalid provider");
   }

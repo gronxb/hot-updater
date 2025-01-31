@@ -20,9 +20,10 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@nx/js": "^20.3.0",
-    "@rslib/core": "^0.2.2",
+    "@rslib/core": "^0.4.0",
     "nx": "20.3.0",
     "rimraf": "^5.0.7",
+    "tsup": "^8.3.6",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },

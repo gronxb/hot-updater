@@ -77,10 +77,14 @@
     "uuidv7": "^1.0.2"
   },
   "peerDependencies": {
-    "@hot-updater/supabase": "*"
+    "@hot-updater/supabase": "*",
+    "@hot-updater/cloudflare": "*"
   },
   "peerDependenciesMeta": {
     "@hot-updater/supabase": {
+      "optional": true
+    },
+    "@hot-updater/cloudflare": {
       "optional": true
     }
   }
