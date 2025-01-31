@@ -22,10 +22,16 @@ features:
   - title: Reliable Rollbacks
     details: Instantly revert to the previous version of your app in case of issues, ensuring stability for your users.
     icon: ♻️
-  - title: Flexible Plugin Architecture
+  - title: Flexible Plugin System
     details: Customize build and deployment processes using a plugin system that supports integration with various platforms.
     icon: 🛠️
   - title: Support New / Old Architecture
     details: Compatible with both the new and old React Native architectures, offering maximum flexibility for your projects
     icon: 📦
+  - title: Version Control
+    details: Precise control over which app versions receive updates using semantic versioning support.
+    icon: 🔖
+  - title: Web Console
+    details: Manage updates and control rollouts through an intuitive web interface.
+    icon: 🖥️
 ---
