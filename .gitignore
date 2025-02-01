@@ -90,3 +90,5 @@ docs/.vitepress/cache
 bundle.zip
 
 generated/
+
+.wrangler/
