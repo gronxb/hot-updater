@@ -51,7 +51,7 @@ export const getUpdateInfo = async (
       if (latestBundle.id.localeCompare(bundleId) > 0) {
         return {
           id: latestBundle.id,
-          shouldForceUpdate: latestBundle.shouldForceUpdate,
+          shouldForceUpdate: Boolean(latestBundle.shouldForceUpdate),
           fileUrl: latestBundle.fileUrl,
           fileHash: latestBundle.fileHash,
           status: "UPDATE" as UpdateStatus,
@@ -69,7 +69,7 @@ export const getUpdateInfo = async (
   if (latestBundle.id.localeCompare(bundleId) > 0) {
     return {
       id: latestBundle.id,
-      shouldForceUpdate: latestBundle.shouldForceUpdate,
+      shouldForceUpdate: Boolean(latestBundle.shouldForceUpdate),
       fileUrl: latestBundle.fileUrl,
       fileHash: latestBundle.fileHash,
       status: "UPDATE" as UpdateStatus,

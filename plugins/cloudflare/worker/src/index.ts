@@ -11,11 +11,12 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import { getUpdateInfo } from "./getUpdateInfo";
+import { Bundle, SnakeCaseBundle } from "@hot-updater/core";
+import { getUpdateInfo } from "@hot-updater/js";
+import camelcaseKeys from "camelcase-keys";
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
-    
     const bundleId = request.headers.get("x-bundle-id") as string;
     const appPlatform = request.headers.get("x-app-platform") as "ios" | "android";
     const appVersion = request.headers.get("x-app-version") as string;
@@ -24,7 +25,18 @@ export default {
       return new Response(JSON.stringify({ error: "Missing bundleId, appPlatform, or appVersion" }), { status: 400 });
     }
     
-    const updaterInfo = await getUpdateInfo(env, appPlatform, appVersion, bundleId);
+    const bundleStmt = env.DB.prepare(
+      `SELECT *
+       FROM bundles
+       WHERE enabled = 1 AND platform = ? AND id >= ?
+       ORDER BY id DESC`
+    );
+    const bundleResult = await bundleStmt.bind(appPlatform, bundleId).all<SnakeCaseBundle>();
+    
+    const transform = (bundle:SnakeCaseBundle) => camelcaseKeys(bundle) as Bundle
+    
+    const bundles = bundleResult.results.map(transform);
+    const updaterInfo = await getUpdateInfo(bundles, {platform: appPlatform, bundleId, appVersion});
     return new Response(JSON.stringify(updaterInfo));
   },
 } satisfies ExportedHandler<Env>;
