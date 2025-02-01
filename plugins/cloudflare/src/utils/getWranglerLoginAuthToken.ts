@@ -29,7 +29,7 @@ export const getWranglerLoginAuthToken = (): {
   expiration_time: string;
   refresh_token: string;
   scopes: string[];
-} => {
+} | null => {
   try {
     const wranglerConfigPath = getGlobalWranglerConfigPath();
     const wranglerConfig = fs.readFileSync(
@@ -38,6 +38,6 @@ export const getWranglerLoginAuthToken = (): {
     );
     return toml.parse(wranglerConfig);
   } catch (error) {
-    throw new Error("'npx wrangler login' is required to use this command");
+    return null;
   }
 };

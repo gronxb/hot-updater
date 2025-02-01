@@ -1,3 +1,4 @@
+import { link } from "@/components/banner";
 import * as p from "@clack/prompts";
 import { getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
@@ -21,25 +22,31 @@ export const initCloudflareD1R2Worker = async () => {
 
   const cwd = getCwd();
 
-  await execa(
-    "npx",
-    [
-      "wrangler",
-      "login",
-      "--scopes",
-      "account:read",
-      "user:read",
-      "d1:write",
-      "workers:write",
-    ],
-    { cwd },
-  );
-
   const { Cloudflare, getWranglerLoginAuthToken } = await import(
     "@hot-updater/cloudflare/utils"
   );
 
-  const auth = getWranglerLoginAuthToken();
+  let auth = getWranglerLoginAuthToken();
+
+  if (!auth) {
+    await execa(
+      "npx",
+      [
+        "wrangler",
+        "login",
+        "--scopes",
+        "account:read",
+        "user:read",
+        "d1:write",
+        "workers:write",
+      ],
+      { cwd },
+    );
+    auth = getWranglerLoginAuthToken();
+  }
+  if (!auth) {
+    throw new Error("'npx wrangler login' is required to use this command");
+  }
 
   // const wrangler = await createWrangler({
   //   cloudflareApiToken: auth.oauth_token,
@@ -66,6 +73,20 @@ export const initCloudflareD1R2Worker = async () => {
   });
 
   if (p.isCancel(accountId)) {
+    process.exit(1);
+  }
+  p.log.step(
+    `Please visit this link to create an API Token: ${link(
+      `https://dash.cloudflare.com/${accountId}/api-tokens`,
+    )}`,
+  );
+  p.log.step("You need edit permissions for both D1 and R2");
+
+  const apiToken = await p.text({
+    message: "Enter the API Token",
+  });
+
+  if (p.isCancel(apiToken)) {
     process.exit(1);
   }
 
