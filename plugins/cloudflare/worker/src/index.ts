@@ -11,8 +11,20 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+import { getUpdateInfo } from "./getUpdateInfo";
+
 export default {
   async fetch(request, env, ctx): Promise<Response> {
-    return new Response("Hello World!");
+    
+    const bundleId = request.headers.get("x-bundle-id") as string;
+    const appPlatform = request.headers.get("x-app-platform") as "ios" | "android";
+    const appVersion = request.headers.get("x-app-version") as string;
+
+    if (!bundleId || !appPlatform || !appVersion) {
+      return new Response(JSON.stringify({ error: "Missing bundleId, appPlatform, or appVersion" }), { status: 400 });
+    }
+    
+    const updaterInfo = await getUpdateInfo(env, appPlatform, appVersion, bundleId);
+    return new Response(JSON.stringify(updaterInfo));
   },
 } satisfies ExportedHandler<Env>;

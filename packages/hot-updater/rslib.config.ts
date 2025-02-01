@@ -20,5 +20,21 @@ export default defineConfig({
         },
       },
     },
+    {
+      format: "cjs",
+      dts: true,
+      source: {
+        entry: {
+          index: "./src/index.ts",
+          config: "./src/config.ts",
+          "plugins/babel": "./src/plugins/babel.ts",
+        },
+      },
+      shims: {
+        cjs: {
+          "import.meta.url": true,
+        },
+      },
+    },
   ],
 });

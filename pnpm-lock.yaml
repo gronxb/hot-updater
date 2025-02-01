@@ -716,6 +716,9 @@ importers:
       cloudflare:
         specifier: ^4.0.0
         version: 4.0.0(encoding@0.1.13)
+      semver:
+        specifier: ^7.6.3
+        version: 7.6.3
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.6.4
@@ -726,6 +729,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.12
+      '@types/semver':
+        specifier: ^7.5.8
+        version: 7.5.8
       better-sqlite3:
         specifier: ^11.8.1
         version: 11.8.1
