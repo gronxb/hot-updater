@@ -57,7 +57,7 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
 
     // Write the config.toml with correct projectId
     await fs.writeFile(
-      path.join(tmpDir, "config.toml"),
+      path.join(tmpDir, "supabase", "config.toml"),
       transformTemplate(supabaseConfigTomlTemplate, {
         projectId,
       }),
