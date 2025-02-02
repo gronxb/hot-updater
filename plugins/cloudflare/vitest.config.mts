@@ -5,7 +5,7 @@ export default defineWorkersConfig({
     globalSetup: "./vitest.global-setup.mts",
     poolOptions: {
       workers: {
-        wrangler: { configPath: "./worker/wrangler.json" },
+        wrangler: { configPath: "./worker/wrangler.test.json" },
       },
     },
   },
