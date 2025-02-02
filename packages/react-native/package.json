@@ -35,9 +35,12 @@
   },
   "keywords": [
     "react-native",
-    "code",
-    "push",
+    "react-native-code-push",
     "code-push",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
     "self-hosted"
   ],
   "license": "MIT",

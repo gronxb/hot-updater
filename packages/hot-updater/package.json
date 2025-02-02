@@ -26,6 +26,16 @@
     "dist",
     "package.json"
   ],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
   "description": "React Native OTA solution for self-hosted",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
