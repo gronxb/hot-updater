@@ -304,11 +304,16 @@ export const initCloudflareD1R2Worker = async () => {
       account_id: accountId,
       name,
     });
-    if (!newD1.uuid) {
+    if (!newD1.uuid || !newD1.name) {
       throw new Error("Failed to create new D1 Database");
     }
+
     selectedD1DatabaseId = newD1.uuid;
-    p.log.info(`Created new D1 Database: ${newD1}`);
+    availableD1List.push({
+      name: newD1.name,
+      uuid: newD1.uuid,
+    });
+    p.log.info(`Created new D1 Database: ${newD1.name} (${newD1.uuid})`);
   } else {
     p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
   }
