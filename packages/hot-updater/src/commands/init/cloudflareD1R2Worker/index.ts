@@ -77,11 +77,9 @@ const deployWorker = async (
     });
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    await wrangler("deploy", "--name", "update-server");
+    await wrangler("deploy", "--name", "hot-updater");
   } catch (error) {
     throw new Error("Failed to deploy worker", { cause: error });
-  } finally {
-    // await removeTmpDir();
   }
 };
 
@@ -147,6 +145,7 @@ export const initCloudflareD1R2Worker = async () => {
   if (p.isCancel(accountId)) {
     process.exit(1);
   }
+
   p.log.step(
     `Please visit this link to create an API Token: ${link(
       `https://dash.cloudflare.com/${accountId}/api-tokens`,
@@ -309,6 +308,10 @@ export const initCloudflareD1R2Worker = async () => {
     throw new Error("Failed to get D1 Database name");
   }
 
+  const subdomains = await cf.workers.subdomains.get({
+    account_id: accountId,
+  });
+
   await deployWorker(auth.oauth_token, {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
@@ -327,11 +330,13 @@ export const initCloudflareD1R2Worker = async () => {
     "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
   );
 
-  p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      source: `https://${accountId}.workers.dev/api/check-update`,
-    }),
-  );
+  if (subdomains.subdomain) {
+    p.note(
+      transformTemplate(SOURCE_TEMPLATE, {
+        source: `https://hot-updater.${subdomains.subdomain}.workers.dev/api/check-update`,
+      }),
+    );
+  }
 
   p.log.message(
     `Next step: ${link(
