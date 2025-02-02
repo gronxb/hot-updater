@@ -78,7 +78,7 @@ const deployWorker = async (
     });
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    await wrangler("deploy", "dist/index.js", "--name", "hot-updater");
+    await wrangler("deploy");
   } catch (error) {
     throw new Error("Failed to deploy worker", { cause: error });
   } finally {
