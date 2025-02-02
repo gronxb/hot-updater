@@ -359,7 +359,7 @@ export const initCloudflareD1R2Worker = async () => {
 
   p.log.message(
     `Next step: ${link(
-      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-with-cloudflare.html#step-4-add-hotupdater-to-your-project",
+      "https://gronxb.github.io/hot-updater/guide/providers/2_cloudflare.html#step-4-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");
