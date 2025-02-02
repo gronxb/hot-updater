@@ -1,3 +1,14 @@
+## 0.6.1 (2025-02-02)
+
+### 🚀 Features
+
+- introduce cloudflare d1 + r2 + wokrer ([#60](https://github.com/gronxb/hot-updater/pull/60))
+- **aws:** extendable `s3Database` config ([#74](https://github.com/gronxb/hot-updater/pull/74))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.6.1-rc.6 (2025-02-02)
 
 ### 🩹 Fixes
