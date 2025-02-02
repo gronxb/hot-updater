@@ -1,3 +1,13 @@
+## 0.6.1-rc.5 (2025-02-02)
+
+### 🩹 Fixes
+
+- available db ([3d2b83e](https://github.com/gronxb/hot-updater/commit/3d2b83e))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.6.1-rc.4 (2025-02-02)
 
 ### 🚀 Features
