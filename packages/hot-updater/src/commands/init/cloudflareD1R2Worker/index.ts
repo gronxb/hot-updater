@@ -1,25 +1,44 @@
 import { link } from "@/components/banner";
+import { makeEnv } from "@/utils/makeEnv";
 import * as p from "@clack/prompts";
 import { getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
+import fs from "fs/promises";
+
+const CONFIG_TEMPLATE = `
+import { metro } from "@hot-updater/metro";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+export default defineConfig({
+  build: metro(),
+  storage: r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
+});
+`;
+
+// const SOURCE_TEMPLATE = `// add this to your App.tsx
+// import { HotUpdater } from "@hot-updater/react-native";
+
+// function App() {
+//   return ...
+// }
+
+// export default HotUpdater.wrap({
+//   source: "%%source%%",
+// })(App);`;
+
 export const initCloudflareD1R2Worker = async () => {
-  // TODO:
-  // 자동으로 채울 수 있는 토큰
-  // npx wrangler login --scopes account:read user:read d1:write workers:write
-  // https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/get/
-
-  // cloudflareApiToken | ❌     |  npx wrangler login  --scopes "d1:write" Account API Tokens Write 로 로그인해서 꺼내오고 토큰 발급 및 생성하기
-  // accountId (Common) | ✅ 지원 |	await cf.accounts.list();
-  // databaseId (D1)    | ✅ 지원 |	cf.d1.database.list, cf.d1.database.create
-  // bucketName (R2)    | ✅ 지원 |	cf.r2.buckets.list , cf.r2.buckets.create
-
-  // 1. Get Cloudflare API Token (R2 + D1 + Worker)
-  // 2. Create R2 Bucket (allow public access)
-  // 3. Create D1 Database
-  // 4. Select API Token
-  // 5. Create Worker
-
   const cwd = getCwd();
 
   const { Cloudflare, getWranglerLoginAuthToken } = await import(
@@ -82,7 +101,7 @@ export const initCloudflareD1R2Worker = async () => {
   );
   p.log.step("You need edit permissions for both D1 and R2");
 
-  const apiToken = await p.text({
+  const apiToken = await p.password({
     message: "Enter the API Token",
   });
 
@@ -156,7 +175,7 @@ export const initCloudflareD1R2Worker = async () => {
     uuid: string;
   }[];
 
-  const selectedD1 = await p.select({
+  const selectedD1DatabaseId = await p.select({
     message: "D1 List",
     options: [
       ...availableD1List.map((d1) => ({
@@ -170,11 +189,11 @@ export const initCloudflareD1R2Worker = async () => {
     ],
   });
 
-  if (p.isCancel(selectedD1)) {
+  if (p.isCancel(selectedD1DatabaseId)) {
     process.exit(1);
   }
 
-  if (selectedD1 === createKey) {
+  if (selectedD1DatabaseId === createKey) {
     const name = await p.text({
       message: "Enter the name of the new D1 Database",
     });
@@ -187,6 +206,32 @@ export const initCloudflareD1R2Worker = async () => {
     });
     p.log.info(`Created new D1 Database: ${newD1}`);
   } else {
-    p.log.info(`Selected D1: ${selectedD1}`);
+    p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
   }
+
+  await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+
+  await makeEnv({
+    HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,
+    HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: accountId,
+    HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: selectedBucketName,
+    HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: selectedD1DatabaseId,
+  });
+  p.log.success("Generated '.env' file with Cloudflare settings.");
+  p.log.success(
+    "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
+  );
+
+  // p.note(
+  //   transformTemplate(SOURCE_TEMPLATE, {
+  //     source: `https://${project.id}.supabase.co/functions/v1/update-server`,
+  //   }),
+  // );
+
+  p.log.message(
+    `Next step: ${link(
+      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-with-cloudflare.html#step-4-add-hotupdater-to-your-project",
+    )}`,
+  );
+  p.log.success("Done! 🎉");
 };
