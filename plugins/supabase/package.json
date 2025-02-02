@@ -25,7 +25,8 @@
   "files": [
     "dist",
     "sql",
-    "supabase",
+    "supabase/functions",
+    "supabase/migrations",
     "package.json"
   ],
   "scripts": {
