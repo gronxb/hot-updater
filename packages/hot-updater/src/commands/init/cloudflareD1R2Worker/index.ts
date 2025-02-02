@@ -78,7 +78,16 @@ const deployWorker = async (
     });
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    await wrangler("deploy");
+    const workerName = await p.text({
+      message: "Enter the name of the worker",
+      defaultValue: "hot-updater",
+      placeholder: "hot-updater",
+    });
+    if (p.isCancel(workerName)) {
+      process.exit(1);
+    }
+
+    await wrangler("deploy", "--name", workerName);
   } catch (error) {
     throw new Error("Failed to deploy worker", { cause: error });
   } finally {
