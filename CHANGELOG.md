@@ -1,3 +1,13 @@
+## 0.6.1-rc.1 (2025-02-02)
+
+### 🩹 Fixes
+
+- files ([83d2302](https://github.com/gronxb/hot-updater/commit/83d2302))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.6.1-rc.0 (2025-02-02)
 
 ### 🚀 Features
