@@ -8,7 +8,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 
-import type { BundlesTable } from "./types";
+import type { SnakeCaseBundle } from "@hot-updater/core";
 
 export interface D1DatabaseConfig {
   databaseId: string;
@@ -130,7 +130,7 @@ export const d1Database =
           return null;
         }
 
-        const rows = response.results as BundlesTable[];
+        const rows = response.results as SnakeCaseBundle[];
         if (!rows?.length) {
           return null;
         }
@@ -182,7 +182,7 @@ export const d1Database =
           return bundles;
         }
 
-        const rows = response.results as BundlesTable[];
+        const rows = response.results as SnakeCaseBundle[];
         if (!rows?.length) {
           bundles = [];
         } else {
