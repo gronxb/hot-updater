@@ -1,3 +1,13 @@
+## 0.6.1-rc.3 (2025-02-02)
+
+### 🩹 Fixes
+
+- dist ([b7c68d8](https://github.com/gronxb/hot-updater/commit/b7c68d8))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.6.1-rc.2 (2025-02-02)
 
 ### 🩹 Fixes
