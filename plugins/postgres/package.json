@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/postgres",
   "type": "module",
-  "version": "0.6.0",
+  "version": "0.6.1-rc.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -33,8 +33,8 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/core": "0.6.0",
-    "@hot-updater/plugin-core": "0.6.0",
+    "@hot-updater/core": "0.6.1-rc.0",
+    "@hot-updater/plugin-core": "0.6.1-rc.0",
     "kysely": "^0.27.5",
     "pg": "^8.13.1"
   },

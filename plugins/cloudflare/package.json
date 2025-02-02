@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/cloudflare",
   "type": "module",
-  "version": "0.5.10",
+  "version": "0.6.1-rc.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@hot-updater/core": "0.5.10",
-    "@hot-updater/js": "0.6.0",
+    "@hot-updater/js": "0.6.1-rc.0",
     "@hot-updater/plugin-core": "0.5.10",
     "cloudflare": "^4.0.0"
   },

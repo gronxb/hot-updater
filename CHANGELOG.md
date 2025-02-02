@@ -1,3 +1,52 @@
+## 0.6.1-rc.0 (2025-02-02)
+
+### 🚀 Features
+
+- command ([b3c0f7a](https://github.com/gronxb/hot-updater/commit/b3c0f7a))
+- d2 + r2 list ([2081721](https://github.com/gronxb/hot-updater/commit/2081721))
+- make r2 + d1 ([60fe8f1](https://github.com/gronxb/hot-updater/commit/60fe8f1))
+- unused script ([effa7b3](https://github.com/gronxb/hot-updater/commit/effa7b3))
+- init worker ([9d3ee22](https://github.com/gronxb/hot-updater/commit/9d3ee22))
+- d1 migrations ([0d3a3f0](https://github.com/gronxb/hot-updater/commit/0d3a3f0))
+- migration cloudflare api ([d0b8052](https://github.com/gronxb/hot-updater/commit/d0b8052))
+- r2 storage ([1fb9d49](https://github.com/gronxb/hot-updater/commit/1fb9d49))
+- init get cloudflare token ([dedbbcc](https://github.com/gronxb/hot-updater/commit/dedbbcc))
+- cloudflare worket end ([b6de9be](https://github.com/gronxb/hot-updater/commit/b6de9be))
+- worker get updater info ([5eb120b](https://github.com/gronxb/hot-updater/commit/5eb120b))
+- sep semver satisfies ([a956820](https://github.com/gronxb/hot-updater/commit/a956820))
+- filter compatible app versions ([0639e25](https://github.com/gronxb/hot-updater/commit/0639e25))
+- /api/check-update ([792aaa4](https://github.com/gronxb/hot-updater/commit/792aaa4))
+- init command ([67afea4](https://github.com/gronxb/hot-updater/commit/67afea4))
+- worker deploy ([977861f](https://github.com/gronxb/hot-updater/commit/977861f))
+- **aws:** extendable `s3Database` config ([#74](https://github.com/gronxb/hot-updater/pull/74))
+- **cloudflare:** d1Database ([67c44f1](https://github.com/gronxb/hot-updater/commit/67c44f1))
+- **r2Storage:** use wrangler ([b778377](https://github.com/gronxb/hot-updater/commit/b778377))
+
+### 🩹 Fixes
+
+- folder ([e5a6954](https://github.com/gronxb/hot-updater/commit/e5a6954))
+- move deps ([e0c2ca8](https://github.com/gronxb/hot-updater/commit/e0c2ca8))
+- chorE ([df5b453](https://github.com/gronxb/hot-updater/commit/df5b453))
+- rename file ([2e0bed6](https://github.com/gronxb/hot-updater/commit/2e0bed6))
+- lint ([867837b](https://github.com/gronxb/hot-updater/commit/867837b))
+- cloudflare ([59c4082](https://github.com/gronxb/hot-updater/commit/59c4082))
+- todo ([413f7f0](https://github.com/gronxb/hot-updater/commit/413f7f0))
+- test ([3c6f6f1](https://github.com/gronxb/hot-updater/commit/3c6f6f1))
+- comment ([e7a055c](https://github.com/gronxb/hot-updater/commit/e7a055c))
+- folder ([00f7d48](https://github.com/gronxb/hot-updater/commit/00f7d48))
+- cf ([88dc7e6](https://github.com/gronxb/hot-updater/commit/88dc7e6))
+- semver ([dc41a66](https://github.com/gronxb/hot-updater/commit/dc41a66))
+- semver ([917b917](https://github.com/gronxb/hot-updater/commit/917b917))
+- binding ([c625c83](https://github.com/gronxb/hot-updater/commit/c625c83))
+- docs ([5ecfdec](https://github.com/gronxb/hot-updater/commit/5ecfdec))
+- process ([f3d0547](https://github.com/gronxb/hot-updater/commit/f3d0547))
+- link ([4d2ceab](https://github.com/gronxb/hot-updater/commit/4d2ceab))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.6.0 (2025-01-23)
 
 ### 🚀 Features
