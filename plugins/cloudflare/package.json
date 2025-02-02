@@ -33,13 +33,14 @@
   "files": [
     "dist",
     "sql",
-    "worker/src",
+    "worker/dist",
     "worker/migrations",
     "worker/wrangler.json",
     "package.json"
   ],
   "scripts": {
     "build": "tsup",
+    "build:worker": "wrangler deploy worker/src/index.ts --dry-run --outdir ./worker/dist",
     "test:type": "tsc --noEmit",
     "dev": "wrangler dev worker/src/index.ts"
   },

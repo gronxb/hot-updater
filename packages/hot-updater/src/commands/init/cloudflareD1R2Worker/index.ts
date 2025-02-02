@@ -3,7 +3,7 @@ import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
-import { getCwd } from "@hot-updater/plugin-core";
+import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { execa } from "execa";
 import fs from "fs/promises";
@@ -49,12 +49,13 @@ const deployWorker = async (
 ) => {
   const workerPath = require.resolve("@hot-updater/cloudflare/worker");
   const workerDir = path.dirname(workerPath);
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(workerDir);
 
   try {
     const { createWrangler } = await import("@hot-updater/cloudflare/utils");
 
     const wranglerConfig = JSON.parse(
-      await fs.readFile(path.join(workerDir, "wrangler.json"), "utf-8"),
+      await fs.readFile(path.join(tmpDir, "wrangler.json"), "utf-8"),
     );
 
     wranglerConfig.d1_databases = [
@@ -66,20 +67,22 @@ const deployWorker = async (
     ];
 
     await fs.writeFile(
-      path.join(workerDir, "wrangler.json"),
+      path.join(tmpDir, "wrangler.json"),
       JSON.stringify(wranglerConfig, null, 2),
     );
 
     const wrangler = await createWrangler({
       stdio: "inherit",
       cloudflareApiToken: oauth_token,
-      cwd: workerDir,
+      cwd: tmpDir,
     });
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    await wrangler("deploy", "--name", "hot-updater");
+    await wrangler("deploy", "dist/index.js", "--name", "hot-updater");
   } catch (error) {
     throw new Error("Failed to deploy worker", { cause: error });
+  } finally {
+    await removeTmpDir();
   }
 };
 
