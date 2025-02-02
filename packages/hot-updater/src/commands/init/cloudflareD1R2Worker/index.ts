@@ -106,6 +106,7 @@ export const initCloudflareD1R2Worker = async () => {
         "user:read",
         "d1:write",
         "workers:write",
+        "workers_scripts:write",
       ],
       { cwd },
     );

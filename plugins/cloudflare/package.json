@@ -39,7 +39,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && pnpm build:worker",
     "build:worker": "wrangler deploy worker/src/index.ts --dry-run --outdir ./worker/dist",
     "test:type": "tsc --noEmit",
     "dev": "wrangler dev worker/src/index.ts"
