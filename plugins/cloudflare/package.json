@@ -33,7 +33,9 @@
   "files": [
     "dist",
     "sql",
-    "worker",
+    "worker/src",
+    "worker/migrations",
+    "worker/wrangler.json",
     "package.json"
   ],
   "scripts": {
