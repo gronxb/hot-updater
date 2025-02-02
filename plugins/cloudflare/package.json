@@ -15,6 +15,9 @@
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js",
       "require": "./dist/utils/index.cjs"
+    },
+    "./worker": {
+      "default": "./worker/wrangler.json"
     }
   },
   "license": "MIT",
@@ -30,6 +33,7 @@
   "files": [
     "dist",
     "sql",
+    "worker",
     "package.json"
   ],
   "scripts": {

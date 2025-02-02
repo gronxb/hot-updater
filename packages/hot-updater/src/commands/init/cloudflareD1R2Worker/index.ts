@@ -1,9 +1,11 @@
+import path from "path";
 import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
+import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
 import { getCwd } from "@hot-updater/plugin-core";
+import dayjs from "dayjs";
 import { execa } from "execa";
-
 import fs from "fs/promises";
 
 const CONFIG_TEMPLATE = `
@@ -27,16 +29,61 @@ export default defineConfig({
 });
 `;
 
-// const SOURCE_TEMPLATE = `// add this to your App.tsx
-// import { HotUpdater } from "@hot-updater/react-native";
+const SOURCE_TEMPLATE = `// add this to your App.tsx
+import { HotUpdater } from "@hot-updater/react-native";
 
-// function App() {
-//   return ...
-// }
+function App() {
+  return ...
+}
 
-// export default HotUpdater.wrap({
-//   source: "%%source%%",
-// })(App);`;
+export default HotUpdater.wrap({
+  source: "%%source%%",
+})(App);`;
+
+const deployWorker = async (
+  oauth_token: string,
+  {
+    d1DatabaseId,
+    d1DatabaseName,
+  }: { d1DatabaseId: string; d1DatabaseName: string },
+) => {
+  const workerPath = require.resolve("@hot-updater/cloudflare/worker");
+  const workerDir = path.dirname(workerPath);
+
+  try {
+    const { createWrangler } = await import("@hot-updater/cloudflare/utils");
+
+    const wranglerConfig = JSON.parse(
+      await fs.readFile(path.join(workerDir, "wrangler.json"), "utf-8"),
+    );
+
+    wranglerConfig.d1_databases = [
+      {
+        binding: "DB",
+        database_id: d1DatabaseId,
+        database_name: d1DatabaseName,
+      },
+    ];
+
+    await fs.writeFile(
+      path.join(workerDir, "wrangler.json"),
+      JSON.stringify(wranglerConfig, null, 2),
+    );
+
+    const wrangler = await createWrangler({
+      stdio: "inherit",
+      cloudflareApiToken: oauth_token,
+      cwd: workerDir,
+    });
+    await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
+
+    await wrangler("deploy", "--name", "update-server");
+  } catch (error) {
+    throw new Error("Failed to deploy worker", { cause: error });
+  } finally {
+    // await removeTmpDir();
+  }
+};
 
 export const initCloudflareD1R2Worker = async () => {
   const cwd = getCwd();
@@ -47,7 +94,7 @@ export const initCloudflareD1R2Worker = async () => {
 
   let auth = getWranglerLoginAuthToken();
 
-  if (!auth) {
+  if (!auth || dayjs(auth?.expiration_time).isBefore(dayjs())) {
     await execa(
       "npx",
       [
@@ -66,11 +113,6 @@ export const initCloudflareD1R2Worker = async () => {
   if (!auth) {
     throw new Error("'npx wrangler login' is required to use this command");
   }
-
-  // const wrangler = await createWrangler({
-  //   cloudflareApiToken: auth.oauth_token,
-  //   cwd: getCwd(),
-  // });
 
   const cf = new Cloudflare({
     apiToken: auth.oauth_token,
@@ -185,17 +227,22 @@ export const initCloudflareD1R2Worker = async () => {
   }
   p.log.info(`Selected R2: ${selectedBucketName}`);
 
-  await p.tasks([
-    {
-      title: "Making R2 bucket publicly accessible...",
-      task: async () => {
-        await cf.r2.buckets.domains.managed.update(selectedBucketName, {
-          account_id: accountId,
-          enabled: true,
-        });
+  const domains = await cf.r2.buckets.domains.managed.list(selectedBucketName, {
+    account_id: accountId,
+  });
+  if (!domains.enabled) {
+    await p.tasks([
+      {
+        title: "Making R2 bucket publicly accessible...",
+        task: async () => {
+          await cf.r2.buckets.domains.managed.update(selectedBucketName, {
+            account_id: accountId,
+            enabled: true,
+          });
+        },
       },
-    },
-  ]);
+    ]);
+  }
 
   const availableD1List: { name: string; uuid: string }[] = [];
   await p.tasks([
@@ -254,6 +301,19 @@ export const initCloudflareD1R2Worker = async () => {
     p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
   }
 
+  const d1DatabaseName = availableD1List.find(
+    (d1) => d1.uuid === selectedD1DatabaseId,
+  )?.name;
+
+  if (!d1DatabaseName) {
+    throw new Error("Failed to get D1 Database name");
+  }
+
+  await deployWorker(auth.oauth_token, {
+    d1DatabaseId: selectedD1DatabaseId,
+    d1DatabaseName,
+  });
+
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
 
   await makeEnv({
@@ -267,11 +327,11 @@ export const initCloudflareD1R2Worker = async () => {
     "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
   );
 
-  // p.note(
-  //   transformTemplate(SOURCE_TEMPLATE, {
-  //     source: `https://${project.id}.supabase.co/functions/v1/update-server`,
-  //   }),
-  // );
+  p.note(
+    transformTemplate(SOURCE_TEMPLATE, {
+      source: `https://${accountId}.workers.dev/api/check-update`,
+    }),
+  );
 
   p.log.message(
     `Next step: ${link(

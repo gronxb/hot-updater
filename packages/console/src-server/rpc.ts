@@ -49,7 +49,7 @@ export const rpc = new Hono()
   .get("/getBundles", async (c) => {
     const { databasePlugin } = await prepareConfig();
 
-    const bundles = await databasePlugin?.getBundles();
+    const bundles = await databasePlugin?.getBundles(true);
     return c.json((bundles ?? []) satisfies Bundle[]);
   })
   .post(

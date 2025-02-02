@@ -1,10 +1,16 @@
 import { execa } from "execa";
 
 export const createWrangler = ({
+  stdio,
   cloudflareApiToken,
   cwd,
-}: { cloudflareApiToken: string; cwd: string }) => {
+}: {
+  stdio?: "inherit" | "pipe" | "ignore" | "overlapped";
+  cloudflareApiToken: string;
+  cwd: string;
+}) => {
   const $ = execa({
+    stdio,
     extendsEnv: true,
     cwd,
     env: {
