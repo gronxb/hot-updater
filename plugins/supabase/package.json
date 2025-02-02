@@ -34,13 +34,13 @@
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "0.5.10",
-    "@hot-updater/plugin-core": "0.5.10",
+    "@hot-updater/core": "0.6.1-rc.1",
+    "@hot-updater/plugin-core": "0.6.1-rc.1",
     "@supabase/supabase-js": "^2.47.10"
   },
   "devDependencies": {
     "picocolors": "^1.0.0",
-    "@hot-updater/postgres": "0.5.10",
+    "@hot-updater/postgres": "0.6.1-rc.1",
     "dayjs": "^1.11.13",
     "mime": "^4.0.4"
   }
