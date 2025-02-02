@@ -1,3 +1,14 @@
+## 0.6.1-rc.2 (2025-02-02)
+
+### 🩹 Fixes
+
+- package.json ([55eb38b](https://github.com/gronxb/hot-updater/commit/55eb38b))
+- build worker ([6dddd48](https://github.com/gronxb/hot-updater/commit/6dddd48))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.6.1-rc.1 (2025-02-02)
 
 ### 🩹 Fixes
