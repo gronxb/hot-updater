@@ -1,3 +1,13 @@
+## 0.6.1-rc.6 (2025-02-02)
+
+### 🩹 Fixes
+
+- config toml ([406e200](https://github.com/gronxb/hot-updater/commit/406e200))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.6.1-rc.5 (2025-02-02)
 
 ### 🩹 Fixes
