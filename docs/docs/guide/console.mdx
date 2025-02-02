@@ -15,7 +15,10 @@ For security reasons, only localhost server is supported at the moment.
 <video src={normalizeImagePath("/guide/console/console.mov")} controls autoPlay loop muted />
 
 
-## Configuration
+## Configuration (Optional)
+
+This is a console configuration that does not affect the bundle.
+
 You can configure additional console settings in the `hot-updater.config.ts` file.
 
 The `storage` and `database` plugins must be exist.
@@ -30,7 +33,6 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   console: { // [!code hl]
-    gitUrl: "https://github.com/gronxb/hot-updater", // [!code hl]
     port: 3000, // [!code hl]
   }, // [!code hl]
   build: ...,

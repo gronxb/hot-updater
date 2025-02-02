@@ -6,7 +6,7 @@ export const semverSatisfies = (
 ) => {
   const currentCoerce = semver.coerce(currentVersion);
   if (!currentCoerce) {
-    throw new Error("Invalid current version");
+    return false;
   }
 
   return semver.satisfies(currentCoerce.version, targetAppVersion);

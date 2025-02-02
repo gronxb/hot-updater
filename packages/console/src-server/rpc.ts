@@ -2,6 +2,7 @@ import { vValidator } from "@hono/valibot-validator";
 import {
   type Bundle,
   type Config,
+  type DatabasePlugin,
   getCwd,
   loadConfig,
 } from "@hot-updater/plugin-core";
@@ -21,16 +22,23 @@ export const bundleSchema = v.object({
 });
 
 let config: Config | null = null;
+let databasePlugin: DatabasePlugin | null = null;
+
+const prepareConfig = async () => {
+  if (!config) {
+    config = await loadConfig();
+    databasePlugin =
+      (await config?.database({
+        cwd: getCwd(),
+      })) ?? null;
+  }
+  return { config, databasePlugin };
+};
 
 export const rpc = new Hono()
-  .get("/loadConfig", async (c) => {
-    config = await loadConfig();
-    return c.json(true);
-  })
   .get("/getConfig", async (c) => {
-    if (!config) {
-      config = await loadConfig();
-    }
+    const { config } = await prepareConfig();
+
     return c.json({
       console: config?.console,
     });
@@ -39,13 +47,9 @@ export const rpc = new Hono()
     return c.json(config !== null);
   })
   .get("/getBundles", async (c) => {
-    if (!config) {
-      config = await loadConfig();
-    }
-    const databasePlugin = config?.database({
-      cwd: getCwd(),
-    });
-    const bundles = await databasePlugin?.getBundles();
+    const { databasePlugin } = await prepareConfig();
+
+    const bundles = await databasePlugin?.getBundles(true);
     return c.json((bundles ?? []) satisfies Bundle[]);
   })
   .post(
@@ -53,12 +57,8 @@ export const rpc = new Hono()
     vValidator("json", v.object({ bundleId: v.string() })),
     async (c) => {
       const { bundleId } = c.req.valid("json");
-      if (!config) {
-        config = await loadConfig();
-      }
-      const databasePlugin = config?.database({
-        cwd: getCwd(),
-      });
+      const { databasePlugin } = await prepareConfig();
+
       const bundle = await databasePlugin?.getBundleById(bundleId);
       return c.json((bundle ?? null) satisfies Bundle | null);
     },
@@ -74,12 +74,8 @@ export const rpc = new Hono()
     ),
     async (c) => {
       const { targetBundleId, bundle } = c.req.valid("json");
-      if (!config) {
-        config = await loadConfig();
-      }
-      const databasePlugin = config?.database({
-        cwd: getCwd(),
-      });
+      const { databasePlugin } = await prepareConfig();
+
       await databasePlugin?.updateBundle(targetBundleId, bundle);
       await databasePlugin?.commitBundle();
       return c.json(true);

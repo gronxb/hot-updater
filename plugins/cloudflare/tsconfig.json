@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "@cloudflare/workers-types/experimental",
+      "@cloudflare/vitest-pool-workers"
+    ]
+  },
+  "include": ["src", "worker-configuration.d.ts", "worker"],
+  "exclude": ["lib", "supabase"]
+}

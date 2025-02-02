@@ -68,7 +68,7 @@ export type Config = {
      */
     port?: number;
   };
-  build: (args: BasePluginArgs) => BuildPlugin;
-  storage: (args: BasePluginArgs) => StoragePlugin;
-  database: (args: BasePluginArgs) => DatabasePlugin;
+  build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
+  storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
+  database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;
 };

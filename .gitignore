@@ -90,3 +90,7 @@ docs/.vitepress/cache
 bundle.zip
 
 generated/
+
+.wrangler/
+
+.hot-updater/

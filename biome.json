@@ -9,7 +9,6 @@
       "**/dist/**",
       "**/build/**",
       "node_modules/**",
-
       "**/*.js"
     ]
   },

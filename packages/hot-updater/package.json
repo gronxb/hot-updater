@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.6.0",
+  "version": "0.6.1-rc.6",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -26,6 +26,16 @@
     "dist",
     "package.json"
   ],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
   "description": "React Native OTA solution for self-hosted",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -43,9 +53,9 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.9.0",
-    "@hot-updater/console": "0.6.0",
-    "@hot-updater/core": "0.6.0",
-    "@hot-updater/plugin-core": "0.6.0",
+    "@hot-updater/console": "0.6.1-rc.6",
+    "@hot-updater/core": "0.6.1-rc.6",
+    "@hot-updater/plugin-core": "0.6.1-rc.6",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0"
@@ -63,6 +73,7 @@
     "@types/plist": "^3.0.5",
     "@types/semver": "^7.5.8",
     "boxen": "^8.0.1",
+    "dayjs": "^1.11.13",
     "execa": "^9.5.2",
     "is-port-reachable": "^4.0.0",
     "jszip": "^3.10.1",
@@ -74,10 +85,14 @@
     "uuidv7": "^1.0.2"
   },
   "peerDependencies": {
+    "@hot-updater/cloudflare": "*",
     "@hot-updater/supabase": "*"
   },
   "peerDependenciesMeta": {
     "@hot-updater/supabase": {
+      "optional": true
+    },
+    "@hot-updater/cloudflare": {
       "optional": true
     }
   }

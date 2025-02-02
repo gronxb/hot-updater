@@ -96,15 +96,17 @@ export const deploy = async (options: DeployOptions) => {
   let fileUrl: string;
   let fileHash: string;
 
-  const buildPlugin = config.build({
-    cwd,
-  });
-  const storagePlugin = config.storage({
-    cwd,
-  });
-  const databasePlugin = config.database({
-    cwd,
-  });
+  const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
+    config.build({
+      cwd,
+    }),
+    config.storage({
+      cwd,
+    }),
+    config.database({
+      cwd,
+    }),
+  ]);
 
   try {
     await p.tasks([

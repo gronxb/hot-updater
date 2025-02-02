@@ -1,0 +1,70 @@
+{
+  "name": "@hot-updater/cloudflare",
+  "type": "module",
+  "version": "0.6.1-rc.6",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js",
+      "require": "./dist/utils/index.cjs"
+    },
+    "./worker": {
+      "default": "./worker/wrangler.json"
+    }
+  },
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "sql",
+    "worker/dist",
+    "worker/migrations",
+    "worker/wrangler.json",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsup && pnpm build:worker",
+    "build:worker": "wrangler deploy worker/src/index.ts --dry-run --outdir ./worker/dist",
+    "test:type": "tsc --noEmit",
+    "dev": "wrangler dev worker/src/index.ts"
+  },
+  "dependencies": {
+    "@hot-updater/core": "0.6.1-rc.6",
+    "@hot-updater/js": "0.6.1-rc.6",
+    "@hot-updater/plugin-core": "0.6.1-rc.6",
+    "cloudflare": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.6.4",
+    "@cloudflare/workers-types": "^4.20250124.3",
+    "@types/node": "^22.13.0",
+    "@types/semver": "^7.5.8",
+    "dayjs": "^1.11.13",
+    "execa": "^9.5.2",
+    "mime": "^4.0.4",
+    "pg-minify": "^1.6.5",
+    "picocolors": "^1.0.0",
+    "semver": "^7.6.3",
+    "toml": "^3.0.0",
+    "typescript": "^5.5.2",
+    "vitest": "2.1.8",
+    "wrangler": "^3.101.0",
+    "xdg-app-paths": "^8.3.0"
+  }
+}
