@@ -1,3 +1,19 @@
+## 0.6.1-rc.4 (2025-02-02)
+
+### 🚀 Features
+
+- using tmp dir ([24d6bd6](https://github.com/gronxb/hot-updater/commit/24d6bd6))
+- worker name ([a6319f6](https://github.com/gronxb/hot-updater/commit/a6319f6))
+
+### 🩹 Fixes
+
+- files ([ef4b70f](https://github.com/gronxb/hot-updater/commit/ef4b70f))
+- name ([7756bb6](https://github.com/gronxb/hot-updater/commit/7756bb6))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.6.1-rc.3 (2025-02-02)
 
 ### 🩹 Fixes
