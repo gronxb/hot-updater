@@ -621,9 +621,6 @@ importers:
       boxen:
         specifier: ^8.0.1
         version: 8.0.1
-      cloudflare:
-        specifier: ^4.0.0
-        version: 4.0.0(encoding@0.1.13)
       dayjs:
         specifier: ^1.11.13
         version: 1.11.13
@@ -651,15 +648,9 @@ importers:
       semver:
         specifier: ^7.6.3
         version: 7.6.3
-      toml:
-        specifier: ^3.0.0
-        version: 3.0.0
       uuidv7:
         specifier: ^1.0.2
         version: 1.0.2
-      xdg-app-paths:
-        specifier: ^8.3.0
-        version: 8.3.0
 
   packages/react-native:
     dependencies:

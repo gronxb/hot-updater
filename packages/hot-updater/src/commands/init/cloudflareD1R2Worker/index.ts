@@ -88,6 +88,7 @@ const deployWorker = async (
     }
 
     await wrangler("deploy", "--name", workerName);
+    return workerName;
   } catch (error) {
     throw new Error("Failed to deploy worker", { cause: error });
   } finally {
@@ -330,7 +331,7 @@ export const initCloudflareD1R2Worker = async () => {
     account_id: accountId,
   });
 
-  await deployWorker(auth.oauth_token, {
+  const workerName = await deployWorker(auth.oauth_token, {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
   });
@@ -351,7 +352,7 @@ export const initCloudflareD1R2Worker = async () => {
   if (subdomains.subdomain) {
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
-        source: `https://hot-updater.${subdomains.subdomain}.workers.dev/api/check-update`,
+        source: `https://${workerName}.${subdomains.subdomain}.workers.dev/api/check-update`,
       }),
     );
   }

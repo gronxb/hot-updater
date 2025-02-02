@@ -63,7 +63,6 @@
     "@types/plist": "^3.0.5",
     "@types/semver": "^7.5.8",
     "boxen": "^8.0.1",
-    "cloudflare": "^4.0.0",
     "dayjs": "^1.11.13",
     "execa": "^9.5.2",
     "is-port-reachable": "^4.0.0",
@@ -73,9 +72,7 @@
     "plist": "^3.1.0",
     "read-package-up": "^11.0.0",
     "semver": "^7.6.3",
-    "toml": "^3.0.0",
-    "uuidv7": "^1.0.2",
-    "xdg-app-paths": "^8.3.0"
+    "uuidv7": "^1.0.2"
   },
   "peerDependencies": {
     "@hot-updater/cloudflare": "*",
