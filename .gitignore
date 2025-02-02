@@ -92,3 +92,5 @@ bundle.zip
 generated/
 
 .wrangler/
+
+.hot-updater/

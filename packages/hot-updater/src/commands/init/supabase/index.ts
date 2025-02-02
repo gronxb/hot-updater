@@ -9,6 +9,7 @@ import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
+import { copyDirToTmp } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 
@@ -51,9 +52,12 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
     const { supabaseConfigTomlTemplate } = await import(
       "@hot-updater/supabase"
     );
+
+    const { tmpDir, removeTmpDir } = await copyDirToTmp(supabasePath);
+
     // Write the config.toml with correct projectId
     await fs.writeFile(
-      path.join(supabasePath, "supabase", "config.toml"),
+      path.join(tmpDir, "config.toml"),
       transformTemplate(supabaseConfigTomlTemplate, {
         projectId,
       }),
@@ -62,20 +66,15 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
     // Link
     await execa(
       "npx",
-      [
-        "supabase",
-        "link",
-        "--project-ref",
-        projectId,
-        "--workdir",
-        supabasePath,
-      ],
+      ["supabase", "link", "--project-ref", projectId, "--workdir", tmpDir],
       {
+        cwd: tmpDir,
         input: "",
         stdio: ["pipe", "pipe", "pipe"],
       },
     );
     spinner.stop("Supabase linked ✔");
+    return { tmpDir, removeTmpDir };
   } catch (err) {
     spinner.stop();
     if (err instanceof ExecaError && err.stderr) {
@@ -185,9 +184,10 @@ export const initSupabase = async () => {
     "..",
   );
 
-  await linkSupabase(supabasePath, project.id);
-  await pushDB(supabasePath);
-  await deployEdgeFunction(supabasePath, project.id);
+  const { tmpDir, removeTmpDir } = await linkSupabase(supabasePath, project.id);
+  await pushDB(tmpDir);
+  await deployEdgeFunction(tmpDir, project.id);
+  await removeTmpDir();
 
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
 
