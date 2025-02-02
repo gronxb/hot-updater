@@ -1,37 +1,15 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.json`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+import { Platform, UpdateInfo, UpdateStatus } from "@hot-updater/core";
 
-import { Bundle, SnakeCaseBundle } from "@hot-updater/core";
-import { getUpdateInfo } from "@hot-updater/js";
-import camelcaseKeys from "camelcase-keys";
-
-export default {
-  async fetch(request, env, ctx): Promise<Response> {
-    const bundleId = request.headers.get("x-bundle-id") as string;
-    const appPlatform = request.headers.get("x-app-platform") as "ios" | "android";
-    const appVersion = request.headers.get("x-app-version") as string;
-
-    if (!bundleId || !appPlatform || !appVersion) {
-      return new Response(JSON.stringify({ error: "Missing bundleId, appPlatform, or appVersion" }), { status: 400 });
-    }
-    
-         // SQLite 전용 SQL 쿼리 – PostgreSQL의 semver_satisfies 모든 로직을 CASE 식으로 구현
-         const sql = `
+export const getUpdateInfo = async (
+    DB: D1Database,
+    {platform, appVersion, bundleId}:{platform: Platform, appVersion: string, bundleId: string},
+) => {
+    const sql = /* sql */`
          WITH input AS (
            SELECT 
-             ? AS app_platform,       -- 예: 'ios' 또는 'android'
-             ? AS app_version,        -- 예: '1.2.3'
-             ? AS bundle_id,          -- 현재 번들의 id (문자열)
+             ? AS app_platform,       -- e.g. 'ios' or 'android'
+             ? AS app_version,        -- e.g. '1.2.3'
+             ? AS bundle_id,          -- current bundle id (string)
              '00000000-0000-0000-0000-000000000000' AS nil_uuid
          ),
          update_candidates AS (
@@ -41,24 +19,23 @@ export default {
              b.file_url,
              b.file_hash,
              'UPDATE' AS status,
-             -- semver 조건 평가: PostgreSQL의 semver_satisfies의 모든 패턴을 구현
              CASE 
-               -- (1) 정확한 와일드카드: "*"
+               -- (1) Exact wildcard: "*"
                WHEN b.target_app_version = '*' THEN 1
          
-               -- (2) 정확한 버전: "N.M.P" (예: "1.2.3")
+               -- (2) Exact version: "N.M.P" (e.g. "1.2.3")
                WHEN b.target_app_version GLOB '[0-9]*.[0-9]*.[0-9]*'
                     AND b.target_app_version NOT LIKE '%x%' AND b.target_app_version NOT LIKE '%X%'
                  THEN CASE WHEN b.target_app_version = input.app_version THEN 1 ELSE 0 END
          
-               -- (3) major.x.x 패턴 (예: "1.x.x")
+               -- (3) major.x.x pattern (e.g. "1.x.x")
                WHEN b.target_app_version GLOB '[0-9]*.[xX].[xX]' 
                  THEN CASE 
                         WHEN CAST(substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) AS INTEGER) =
                              CAST(substr(input.app_version, 1, instr(input.app_version, '.') - 1) AS INTEGER)
                         THEN 1 ELSE 0 END
          
-               -- (4) major.minor.x 패턴 (예: "1.2.x")
+               -- (4) major.minor.x pattern (e.g. "1.2.x")
                WHEN b.target_app_version GLOB '[0-9]*.[0-9]*.[xX]'
                  THEN CASE 
                         WHEN CAST(substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) AS INTEGER) =
@@ -71,7 +48,7 @@ export default {
                                       instr(substr(input.app_version, instr(input.app_version, '.')+1), '.') - 1) AS INTEGER)
                         THEN 1 ELSE 0 END
          
-               -- (5) major.minor 패턴 (예: "1.2")
+               -- (5) major.minor pattern (e.g. "1.2")
                WHEN b.target_app_version GLOB '[0-9]*.[0-9]*'
                     AND NOT(b.target_app_version GLOB '*.[0-9]*.[0-9]*')
                  THEN CASE 
@@ -82,21 +59,21 @@ export default {
                              CAST(substr(input.app_version, instr(input.app_version, '.')+1) AS INTEGER)
                         THEN 1 ELSE 0 END
          
-               -- (6) dash 범위: "N.M.P - N.M.P" (예: "1.2.3 - 1.2.7")
+               -- (6) dash range: "N.M.P - N.M.P" (e.g. "1.2.3 - 1.2.7")
                WHEN b.target_app_version GLOB '* - *'
                  THEN CASE 
                         WHEN input.app_version >= trim(substr(b.target_app_version, 1, instr(b.target_app_version, '-') - 1))
                              AND input.app_version <= trim(substr(b.target_app_version, instr(b.target_app_version, '-')+1))
                         THEN 1 ELSE 0 END
          
-               -- (7) 부등호 범위: ">=N.M.P <N.M.P" (예: ">=1.2.3 <2.0.0")
+               -- (7) inequality range: ">=N.M.P <N.M.P" (e.g. ">=1.2.3 <2.0.0")
                WHEN b.target_app_version GLOB '>=* <*'
                  THEN CASE 
                         WHEN input.app_version >= trim(substr(b.target_app_version, 3, instr(b.target_app_version, ' ') - 3))
                              AND input.app_version < trim(substr(b.target_app_version, instr(b.target_app_version, '<')+1))
                         THEN 1 ELSE 0 END
          
-               -- (8) tilde(~) 패턴: "~N.M.P" (예: "~1.2.3" ⇒ >=1.2.3 AND <1.3.0)
+               -- (8) tilde(~) pattern: "~N.M.P" (e.g. "~1.2.3" ⇒ >=1.2.3 AND <1.3.0)
                WHEN b.target_app_version GLOB '~[0-9]*.[0-9]*.[0-9]*'
                  THEN CASE 
                         WHEN input.app_version >= substr(b.target_app_version, 2)
@@ -109,7 +86,7 @@ export default {
                              )
                         THEN 1 ELSE 0 END
          
-               -- (9) caret(^) 패턴: "^N.M.P" (예: "^1.2.3" ⇒ >=1.2.3 AND <2.0.0)
+               -- (9) caret(^) pattern: "^N.M.P" (e.g. "^1.2.3" ⇒ >=1.2.3 AND <2.0.0)
                WHEN b.target_app_version GLOB '\\^[0-9]*.[0-9]*.[0-9]*'
                  THEN CASE 
                         WHEN input.app_version >= substr(b.target_app_version, 2)
@@ -119,14 +96,14 @@ export default {
                              )
                         THEN 1 ELSE 0 END
          
-               -- (10) 단일 major 버전: "N" (예: "1" ⇒ >=1.0.0 AND <2.0.0)
+               -- (10) single major version: "N" (e.g. "1" ⇒ >=1.0.0 AND <2.0.0)
                WHEN b.target_app_version GLOB '[0-9]+'
                  THEN CASE 
                         WHEN input.app_version >= (b.target_app_version || '.0.0')
                              AND input.app_version < (CAST(b.target_app_version AS INTEGER) + 1 || '.0.0')
                         THEN 1 ELSE 0 END
          
-               -- (11) major.x 패턴: "N.x" (예: "1.x" ⇒ >=1.0.0 AND <2.0.0)
+               -- (11) major.x pattern: "N.x" (e.g. "1.x" ⇒ >=1.0.0 AND <2.0.0)
                WHEN b.target_app_version GLOB '[0-9]+\.x'
                  THEN CASE 
                         WHEN input.app_version >= (substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) || '.0.0')
@@ -183,16 +160,26 @@ export default {
          WHERE (SELECT COUNT(*) FROM final_result) = 0
            AND bundle_id <> nil_uuid;
                `;
-         
-               // 바인딩 순서: app_platform, app_version, bundle_id
-               const result = await env.DB.prepare(sql)
-                 .bind(appPlatform, appVersion, bundleId)
-                 .first();
-         
-               return new Response(JSON.stringify(result), {
-                 headers: { "Content-Type": "application/json" },
-                 status: 200
-               });
-    // return new Response(JSON.stringify(updaterInfo));
-  },
-} satisfies ExportedHandler<Env>;
+
+    const result = await DB.prepare(sql)
+        .bind(platform, appVersion, bundleId)
+        .first<{
+            id: string;
+            should_force_update: number;
+            file_url: string | null;
+            file_hash: string | null;
+            status: UpdateStatus;
+        }>();
+
+    if (!result) {
+        return null;
+    }
+
+    return {
+        id: result.id,
+        shouldForceUpdate: Boolean(result.should_force_update),
+        fileUrl: result.file_url,
+        fileHash: result.file_hash,
+        status: result.status,
+    } as UpdateInfo;
+};
