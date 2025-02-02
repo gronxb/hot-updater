@@ -20,7 +20,7 @@ export default defineConfig({
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   database: d1Database({
-    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_DATABASE_ID!,
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
@@ -76,16 +76,27 @@ export const initCloudflareD1R2Worker = async () => {
     apiToken: auth.oauth_token,
   });
 
-  const s = p.spinner();
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
-  s.start("Checking Account List...");
-  const accounts = await cf.accounts.list();
-  s.stop();
+  const accounts: { id: string; name: string }[] = [];
+
+  await p.tasks([
+    {
+      title: "Checking Account List...",
+      task: async () => {
+        accounts.push(
+          ...(await cf.accounts.list()).result.map((account) => ({
+            id: account.id,
+            name: account.name,
+          })),
+        );
+      },
+    },
+  ]);
 
   const accountId = await p.select({
     message: "Account List",
-    options: accounts.result.map((account) => ({
+    options: accounts.map((account) => ({
       value: account.id,
       label: `${account.name} (${account.id})`,
     })),
@@ -105,21 +116,37 @@ export const initCloudflareD1R2Worker = async () => {
     message: "Enter the API Token",
   });
 
+  if (!apiToken) {
+    p.log.warn(
+      "Skipping API Token. You can set it later in .env HOT_UPDATER_CLOUDFLARE_API_TOKEN file.",
+    );
+  }
+
   if (p.isCancel(apiToken)) {
     process.exit(1);
   }
 
-  s.start("Checking R2 Buckets...");
-  const buckets =
-    (
-      await cf.r2.buckets.list({
-        account_id: accountId,
-      })
-    ).buckets ?? [];
-  const availableBuckets = buckets.filter((bucket) => bucket.name) as {
-    name: string;
-  }[];
-  s.stop();
+  const availableBuckets: { name: string }[] = [];
+  await p.tasks([
+    {
+      title: "Checking R2 Buckets...",
+      task: async () => {
+        const buckets =
+          (
+            await cf.r2.buckets.list({
+              account_id: accountId,
+            })
+          ).buckets ?? [];
+        availableBuckets.push(
+          ...buckets
+            .filter((bucket) => bucket.name)
+            .map((bucket) => ({
+              name: bucket.name!,
+            })),
+        );
+      },
+    },
+  ]);
 
   let selectedBucketName = await p.select({
     message: "R2 List",
@@ -158,24 +185,38 @@ export const initCloudflareD1R2Worker = async () => {
   }
   p.log.info(`Selected R2: ${selectedBucketName}`);
 
-  s.start("Making R2 bucket publicly accessible...");
-  await cf.r2.buckets.domains.managed.update(selectedBucketName, {
-    account_id: accountId,
-    enabled: true,
-  });
-  s.stop();
+  await p.tasks([
+    {
+      title: "Making R2 bucket publicly accessible...",
+      task: async () => {
+        await cf.r2.buckets.domains.managed.update(selectedBucketName, {
+          account_id: accountId,
+          enabled: true,
+        });
+      },
+    },
+  ]);
 
-  s.start("Checking D1 List...");
-  const d1List =
-    (await cf.d1.database.list({ account_id: accountId })).result ?? [];
-  s.stop();
+  const availableD1List: { name: string; uuid: string }[] = [];
+  await p.tasks([
+    {
+      title: "Checking D1 List...",
+      task: async () => {
+        const d1List =
+          (await cf.d1.database.list({ account_id: accountId })).result ?? [];
+        availableD1List.push(
+          ...d1List
+            .filter((d1) => d1.name || d1.uuid)
+            .map((d1) => ({
+              name: d1.name!,
+              uuid: d1.uuid!,
+            })),
+        );
+      },
+    },
+  ]);
 
-  const availableD1List = d1List.filter((d1) => d1.name || d1.uuid) as {
-    name: string;
-    uuid: string;
-  }[];
-
-  const selectedD1DatabaseId = await p.select({
+  let selectedD1DatabaseId = await p.select({
     message: "D1 List",
     options: [
       ...availableD1List.map((d1) => ({
@@ -204,6 +245,10 @@ export const initCloudflareD1R2Worker = async () => {
       account_id: accountId,
       name,
     });
+    if (!newD1.uuid) {
+      throw new Error("Failed to create new D1 Database");
+    }
+    selectedD1DatabaseId = newD1.uuid;
     p.log.info(`Created new D1 Database: ${newD1}`);
   } else {
     p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
