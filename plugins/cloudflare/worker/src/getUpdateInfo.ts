@@ -1,5 +1,5 @@
+import { filterCompatibleAppVersions } from "@hot-updater/js";
 import { Platform, UpdateInfo, UpdateStatus } from "@hot-updater/core";
-import { SEMVER_SATISFIES_SQL } from "./semverSatisfies";
 
 export const getUpdateInfo = async (
   DB: D1Database,
@@ -9,6 +9,20 @@ export const getUpdateInfo = async (
     bundleId: string;
   },
 ) => {
+  const appVersionList = await DB.prepare(/* sql */ `
+    SELECT 
+      target_app_version
+    FROM bundles
+    WHERE platform = ?
+    GROUP BY target_app_version
+  `).bind(platform).all<{ target_app_version: string; count: number }>();
+
+  const targetAppVersionList = filterCompatibleAppVersions(
+    appVersionList.results.map((group) => group.target_app_version),
+    appVersion,
+  );
+
+
   const sql = /* sql */ `
   WITH input AS (
     SELECT 
@@ -17,24 +31,20 @@ export const getUpdateInfo = async (
       ? AS bundle_id,          -- 현재 번들 ID (문자열)
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
-  update_candidates AS (
+  update_candidate AS (
     SELECT 
       b.id,
       b.should_force_update,
       b.file_url,
       b.file_hash,
-      'UPDATE' AS status,
-      ${SEMVER_SATISFIES_SQL("b")} AS version_match
+      'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
       AND b.id >= input.bundle_id
-    ORDER BY b.id DESC
-  ),
-  update_candidate AS (
-    SELECT id, should_force_update, file_url, file_hash, status
-    FROM update_candidates
-    WHERE version_match = 1
+      AND b.target_app_version IN (${targetAppVersionList.map(version => `'${version}'`).join(",")})
+    ORDER BY b.id DESC 
+    -- semver 규칙에 따라 최신 버전을 선택 로직 ㄱㄱ
     LIMIT 1
   ),
   rollback_candidate AS (
