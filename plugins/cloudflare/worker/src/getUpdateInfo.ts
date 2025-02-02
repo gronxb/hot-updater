@@ -1,27 +1,35 @@
 import { filterCompatibleAppVersions } from "@hot-updater/js";
-import { Platform, UpdateInfo, UpdateStatus } from "@hot-updater/core";
+
+import type { Platform, UpdateInfo, UpdateStatus } from "@hot-updater/core";
 
 export const getUpdateInfo = async (
   DB: D1Database,
-  { platform, appVersion, bundleId }: {
+  {
+    platform,
+    appVersion,
+    bundleId,
+  }: {
     platform: Platform;
     appVersion: string;
     bundleId: string;
   },
 ) => {
-  const appVersionList = await DB.prepare(/* sql */ `
+  const appVersionList = await DB.prepare(
+    /* sql */ `
     SELECT 
       target_app_version
     FROM bundles
     WHERE platform = ?
     GROUP BY target_app_version
-  `).bind(platform).all<{ target_app_version: string; count: number }>();
+  `,
+  )
+    .bind(platform)
+    .all<{ target_app_version: string; count: number }>();
 
   const targetAppVersionList = filterCompatibleAppVersions(
     appVersionList.results.map((group) => group.target_app_version),
     appVersion,
   );
-
 
   const sql = /* sql */ `
   WITH input AS (
@@ -42,9 +50,8 @@ export const getUpdateInfo = async (
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
       AND b.id >= input.bundle_id
-      AND b.target_app_version IN (${targetAppVersionList.map(version => `'${version}'`).join(",")})
+      AND b.target_app_version IN (${targetAppVersionList.map((version) => `'${version}'`).join(",")})
     ORDER BY b.id DESC 
-    -- semver 규칙에 따라 최신 버전을 선택 로직 ㄱㄱ
     LIMIT 1
   ),
   rollback_candidate AS (
@@ -82,7 +89,7 @@ export const getUpdateInfo = async (
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id <> nil_uuid;
-        `;
+  `;
 
   const result = await DB.prepare(sql)
     .bind(platform, appVersion, bundleId)

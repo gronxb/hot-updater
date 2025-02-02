@@ -11,188 +11,34 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import { Bundle, SnakeCaseBundle } from "@hot-updater/core";
-import { getUpdateInfo } from "@hot-updater/js";
-import camelcaseKeys from "camelcase-keys";
+import { getUpdateInfo } from "./getUpdateInfo";
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const bundleId = request.headers.get("x-bundle-id") as string;
-    const appPlatform = request.headers.get("x-app-platform") as "ios" | "android";
+    const appPlatform = request.headers.get("x-app-platform") as
+      | "ios"
+      | "android";
     const appVersion = request.headers.get("x-app-version") as string;
 
     if (!bundleId || !appPlatform || !appVersion) {
-      return new Response(JSON.stringify({ error: "Missing bundleId, appPlatform, or appVersion" }), { status: 400 });
+      return new Response(
+        JSON.stringify({
+          error: "Missing bundleId, appPlatform, or appVersion",
+        }),
+        { status: 400 },
+      );
     }
-    
-         // SQLite 전용 SQL 쿼리 – PostgreSQL의 semver_satisfies 모든 로직을 CASE 식으로 구현
-         const sql = `
-         WITH input AS (
-           SELECT 
-             ? AS app_platform,       -- 예: 'ios' 또는 'android'
-             ? AS app_version,        -- 예: '1.2.3'
-             ? AS bundle_id,          -- 현재 번들의 id (문자열)
-             '00000000-0000-0000-0000-000000000000' AS nil_uuid
-         ),
-         update_candidates AS (
-           SELECT 
-             b.id,
-             b.should_force_update,
-             b.file_url,
-             b.file_hash,
-             'UPDATE' AS status,
-             -- semver 조건 평가: PostgreSQL의 semver_satisfies의 모든 패턴을 구현
-             CASE 
-               -- (1) 정확한 와일드카드: "*"
-               WHEN b.target_app_version = '*' THEN 1
-         
-               -- (2) 정확한 버전: "N.M.P" (예: "1.2.3")
-               WHEN b.target_app_version GLOB '[0-9]*.[0-9]*.[0-9]*'
-                    AND b.target_app_version NOT LIKE '%x%' AND b.target_app_version NOT LIKE '%X%'
-                 THEN CASE WHEN b.target_app_version = input.app_version THEN 1 ELSE 0 END
-         
-               -- (3) major.x.x 패턴 (예: "1.x.x")
-               WHEN b.target_app_version GLOB '[0-9]*.[xX].[xX]' 
-                 THEN CASE 
-                        WHEN CAST(substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) AS INTEGER) =
-                             CAST(substr(input.app_version, 1, instr(input.app_version, '.') - 1) AS INTEGER)
-                        THEN 1 ELSE 0 END
-         
-               -- (4) major.minor.x 패턴 (예: "1.2.x")
-               WHEN b.target_app_version GLOB '[0-9]*.[0-9]*.[xX]'
-                 THEN CASE 
-                        WHEN CAST(substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) AS INTEGER) =
-                             CAST(substr(input.app_version, 1, instr(input.app_version, '.') - 1) AS INTEGER)
-                          AND
-                             CAST(substr(b.target_app_version, instr(b.target_app_version, '.')+1, 
-                                      instr(substr(b.target_app_version, instr(b.target_app_version, '.')+1), '.') - 1) AS INTEGER)
-                             =
-                             CAST(substr(input.app_version, instr(input.app_version, '.')+1, 
-                                      instr(substr(input.app_version, instr(input.app_version, '.')+1), '.') - 1) AS INTEGER)
-                        THEN 1 ELSE 0 END
-         
-               -- (5) major.minor 패턴 (예: "1.2")
-               WHEN b.target_app_version GLOB '[0-9]*.[0-9]*'
-                    AND NOT(b.target_app_version GLOB '*.[0-9]*.[0-9]*')
-                 THEN CASE 
-                        WHEN CAST(substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) AS INTEGER) =
-                             CAST(substr(input.app_version, 1, instr(input.app_version, '.') - 1) AS INTEGER)
-                          AND
-                             CAST(substr(b.target_app_version, instr(b.target_app_version, '.')+1) AS INTEGER) =
-                             CAST(substr(input.app_version, instr(input.app_version, '.')+1) AS INTEGER)
-                        THEN 1 ELSE 0 END
-         
-               -- (6) dash 범위: "N.M.P - N.M.P" (예: "1.2.3 - 1.2.7")
-               WHEN b.target_app_version GLOB '* - *'
-                 THEN CASE 
-                        WHEN input.app_version >= trim(substr(b.target_app_version, 1, instr(b.target_app_version, '-') - 1))
-                             AND input.app_version <= trim(substr(b.target_app_version, instr(b.target_app_version, '-')+1))
-                        THEN 1 ELSE 0 END
-         
-               -- (7) 부등호 범위: ">=N.M.P <N.M.P" (예: ">=1.2.3 <2.0.0")
-               WHEN b.target_app_version GLOB '>=* <*'
-                 THEN CASE 
-                        WHEN input.app_version >= trim(substr(b.target_app_version, 3, instr(b.target_app_version, ' ') - 3))
-                             AND input.app_version < trim(substr(b.target_app_version, instr(b.target_app_version, '<')+1))
-                        THEN 1 ELSE 0 END
-         
-               -- (8) tilde(~) 패턴: "~N.M.P" (예: "~1.2.3" ⇒ >=1.2.3 AND <1.3.0)
-               WHEN b.target_app_version GLOB '~[0-9]*.[0-9]*.[0-9]*'
-                 THEN CASE 
-                        WHEN input.app_version >= substr(b.target_app_version, 2)
-                             AND input.app_version < (
-                               CAST(substr(substr(b.target_app_version,2), 1, instr(substr(b.target_app_version,2),'.')-1) AS TEXT)
-                               || '.' ||
-                               CAST(CAST(substr(substr(b.target_app_version,2), instr(substr(b.target_app_version,2),'.')+1, 
-                                      instr(substr(substr(b.target_app_version,2), instr(substr(b.target_app_version,2),'.')+1),'.') - 1) AS INTEGER) + 1 AS TEXT)
-                               || '.0'
-                             )
-                        THEN 1 ELSE 0 END
-         
-               -- (9) caret(^) 패턴: "^N.M.P" (예: "^1.2.3" ⇒ >=1.2.3 AND <2.0.0)
-               WHEN b.target_app_version GLOB '\\^[0-9]*.[0-9]*.[0-9]*'
-                 THEN CASE 
-                        WHEN input.app_version >= substr(b.target_app_version, 2)
-                             AND input.app_version < (
-                               CAST(CAST(substr(substr(b.target_app_version,2), 1, instr(substr(b.target_app_version,2),'.')-1) AS INTEGER) + 1 AS TEXT)
-                               || '.0.0'
-                             )
-                        THEN 1 ELSE 0 END
-         
-               -- (10) 단일 major 버전: "N" (예: "1" ⇒ >=1.0.0 AND <2.0.0)
-               WHEN b.target_app_version GLOB '[0-9]+'
-                 THEN CASE 
-                        WHEN input.app_version >= (b.target_app_version || '.0.0')
-                             AND input.app_version < (CAST(b.target_app_version AS INTEGER) + 1 || '.0.0')
-                        THEN 1 ELSE 0 END
-         
-               -- (11) major.x 패턴: "N.x" (예: "1.x" ⇒ >=1.0.0 AND <2.0.0)
-               WHEN b.target_app_version GLOB '[0-9]+\.x'
-                 THEN CASE 
-                        WHEN input.app_version >= (substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) || '.0.0')
-                             AND input.app_version < (CAST(substr(b.target_app_version, 1, instr(b.target_app_version, '.') - 1) AS INTEGER) + 1 || '.0.0')
-                        THEN 1 ELSE 0 END
-         
-               ELSE 0
-             END AS version_match
-           FROM bundles b, input
-           WHERE b.enabled = 1
-             AND b.platform = input.app_platform
-             AND b.id >= input.bundle_id
-           ORDER BY b.id DESC
-         ),
-         update_candidate AS (
-           SELECT id, should_force_update, file_url, file_hash, status
-           FROM update_candidates
-           WHERE version_match = 1
-           LIMIT 1
-         ),
-         rollback_candidate AS (
-           SELECT 
-             b.id,
-             1 AS should_force_update,
-             b.file_url,
-             b.file_hash,
-             'ROLLBACK' AS status
-           FROM bundles b, input
-           WHERE b.enabled = 1
-             AND b.platform = input.app_platform
-             AND b.id < input.bundle_id
-           ORDER BY b.id DESC
-           LIMIT 1
-         ),
-         final_result AS (
-           SELECT * FROM update_candidate
-           UNION ALL
-           SELECT * FROM rollback_candidate
-           WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
-         )
-         SELECT id, should_force_update, file_url, file_hash, status
-         FROM final_result, input
-         WHERE id <> bundle_id
-         
-         UNION ALL
-         
-         SELECT 
-           nil_uuid AS id,
-           1 AS should_force_update,
-           NULL AS file_url,
-           NULL AS file_hash,
-           'ROLLBACK' AS status
-         FROM input
-         WHERE (SELECT COUNT(*) FROM final_result) = 0
-           AND bundle_id <> nil_uuid;
-               `;
-         
-               // 바인딩 순서: app_platform, app_version, bundle_id
-               const result = await env.DB.prepare(sql)
-                 .bind(appPlatform, appVersion, bundleId)
-                 .first();
-         
-               return new Response(JSON.stringify(result), {
-                 headers: { "Content-Type": "application/json" },
-                 status: 200
-               });
-    // return new Response(JSON.stringify(updaterInfo));
+
+    const updateInfo = await getUpdateInfo(env.DB, {
+      appVersion,
+      bundleId,
+      platform: appPlatform,
+    });
+
+    return new Response(JSON.stringify(updateInfo), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
   },
 } satisfies ExportedHandler<Env>;
