@@ -17,7 +17,7 @@
   - **Self-Hosted**: Complete control over your update infrastructure
   - **Multi-Platform**: Support for both iOS and Android
   - **Web Console**: Intuitive update management interface
-  - **Plugin System**: Support for various storage providers (AWS S3, GitHub, etc.)
+  - **Plugin System**: Support for various storage providers (AWS S3, Cloudflare R2 + D1, etc.)
   - **Version Control**: Robust app version management through semantic versioning
   - **New Architecture**: Support for new architecture like React Native
 
@@ -29,8 +29,8 @@
   ### Plugin Types
 
   - **Build Plugin**: Support for bundlers like Metro, Re.pack
-  - **Storage Plugin**: Support for bundle storage like AWS S3, Supabase Storage
-  - **Database Plugin**: Support for metadata storage like Supabase Database, PostgreSQL
+  - **Storage Plugin**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
+  - **Database Plugin**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
 
   ### Configuration Example
 
