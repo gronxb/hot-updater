@@ -53,7 +53,7 @@ Using tools like react-native-dotenv can expose sensitive tokens in your app bui
 
 If you’re using tools like `react-native-dotenv` to read environment variables and inject them into the app during runtime, sensitive tokens might be exposed. To avoid this, ensure that only non-sensitive or publicly safe data is included in your app build.
 
-### Example: Babel Configuration
+### Example: If you are using `react-native-dotenv` Babel Configuration
 
 To ensure safe handling of environment variables, you can whitelist only the necessary variables using `react-native-dotenv` in your Babel configuration:
 ```js title="babel.config.js"
@@ -66,7 +66,8 @@ module.exports = {
       {
         envName: 'APP_ENV',
         moduleName: '@env',
-        allowlist: ['HOT_UPDATER_SUPABASE_URL'],
+        allowlist: ['HOT_UPDATER_SUPABASE_URL'], // ✅ Only allow tokens that are safe to expose
+        //  allowlist: ['HOT_UPDATER_SUPABASE_ANON_KEY', 'HOT_UPDATER_CLOUDFLARE_API_TOKEN'], ❌ Never allow private tokens
         path: '.env',
       },
     ],
