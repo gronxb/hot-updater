@@ -43,13 +43,11 @@ export const supabaseStorage =
         const upload = await bucket.upload(Key, Body, {
           contentType: ContentType,
         });
-
-        const fullPath = upload.data?.fullPath;
-        if (!fullPath) {
-          throw new Error(
-            "Upload failed. The Supabase key might be incorrect. Please verify the key using the `hot-updater get-plugin-env` command.",
-          );
+        if (upload.error) {
+          throw upload.error;
         }
+
+        const fullPath = upload.data.fullPath;
 
         hooks?.onStorageUploaded?.();
 
