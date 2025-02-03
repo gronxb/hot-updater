@@ -21,6 +21,7 @@ The **Storage Plugin** is utilized during the `hot-updater deploy` command to up
 ### Supported Plugins
 
 - **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.
+- **`@hot-updater/cloudflare`**: Provides `r2Storage` functionality, leveraging Cloudflare R2 for storage.
 - **`@hot-updater/aws`**: Provides `s3Storage` functionality, enabling the use of AWS S3 for storage.
 
 ## Database Plugin
@@ -32,6 +33,7 @@ The **Database Plugin** is responsible for storing the metadata required to chec
 - **`@hot-updater/supabase`**: Provides `supabaseDatabase` functionality, using Supabase as a database solution.
 - **`@hot-updater/aws`**: Provides `s3Database` functionality, utilizing AWS for database storage.
 - **`@hot-updater/postgres`**: Supports PostgreSQL for update metadata storage.
+- **`@hot-updater/cloudflare`**: Provides `d1Database` functionality, leveraging Cloudflare D1 for database storage.
 
 
 ## Example Usage
@@ -64,6 +66,36 @@ In this configuration:
 - `supabaseUrl`: The base URL of your Supabase project, typically obtained from the Supabase dashboard.
 - `supabaseAnonKey`: The anonymous API key for accessing Supabase, also available in the dashboard.
 - `bucketName`: The name of the bucket where update bundles will be stored.
+
+By using environment variables, sensitive information is kept secure and can be easily managed across environments.
+
+</Tab>
+
+
+ <Tab label="Cloudflare">
+Here’s an example of how to configure `r2Storage` and `d1Database` with environment variables for a seamless storage setup:
+
+```tsx
+import { metro } from "@hot-updater/metro";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+export default defineConfig({
+  build: metro(),
+  storage: r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
+});
+
+```
 
 By using environment variables, sensitive information is kept secure and can be easily managed across environments.
 
