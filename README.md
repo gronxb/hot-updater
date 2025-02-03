@@ -34,7 +34,7 @@
 
   ### Configuration Example
 
-  * **supabase**
+  * [Supabase](https://gronxb.github.io/hot-updater/guide/providers/1_supabase.html)
   ```tsx
   import { metro } from "@hot-updater/metro";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
@@ -55,7 +55,7 @@
   });
   ```
 
-* **Cloudflare**
+* [Cloudflare](https://gronxb.github.io/hot-updater/guide/providers/2_cloudflare.html)
 ```tsx
 import { metro } from "@hot-updater/metro";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
