@@ -28,10 +28,17 @@ class HotUpdater : ReactPackage {
             context: Context,
             basePath: String,
         ): String {
-            val documentsDir = context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath
-            val separator = if (basePath.startsWith("/")) "" else "/"
-
-            return "$documentsDir$separator$basePath"
+            val documentsDir =
+                context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath
+            val hotUpdaterDir = File(documentsDir, "HotUpdater")
+            if (!hotUpdaterDir.exists()) {
+                hotUpdaterDir.mkdirs()
+            }
+            val updateDir = File(hotUpdaterDir, basePath)
+            if (!updateDir.exists()) {
+                updateDir.mkdirs()
+            }
+            return File(updateDir, "update.zip").absolutePath
         }
 
         private fun stripPrefixFromPath(
@@ -60,12 +67,11 @@ class HotUpdater : ReactPackage {
                 apply()
             }
             val reactIntegrationManager = ReactIntegrationManager(context)
-
             val activity: Activity? = getCurrentActivity(context)
-            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
-            val bundleURL = getJSBundleFile(context)
-
-            reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
+            val reactApplication: ReactApplication =
+                reactIntegrationManager.getReactApplication(activity?.application)
+            val jsBundle = getJSBundleFile(context)
+            reactIntegrationManager.setJSBundle(reactApplication, jsBundle)
         }
 
         private fun extractZipFileAtPath(
@@ -101,33 +107,49 @@ class HotUpdater : ReactPackage {
 
         fun reload(context: Context) {
             val reactIntegrationManager = ReactIntegrationManager(context)
-
             val activity: Activity? = getCurrentActivity(context)
-            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
-            val bundleURL = getJSBundleFile(context)
-
-            reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
-
+            val reactApplication: ReactApplication =
+                reactIntegrationManager.getReactApplication(activity?.application)
+            val jsBundle = getJSBundleFile(context)
+            reactIntegrationManager.setJSBundle(reactApplication, jsBundle)
             Handler(Looper.getMainLooper()).post {
                 reactIntegrationManager.reload(reactApplication)
             }
         }
 
-        public fun getJSBundleFile(context: Context): String {
+        fun getJSBundleFile(context: Context): String {
             val sharedPreferences =
                 context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
             if (urlString.isNullOrEmpty()) {
                 return "assets://index.android.bundle"
             }
-
             val file = File(urlString)
             if (!file.exists()) {
                 setBundleURL(context, null)
                 return "assets://index.android.bundle"
             }
-
             return urlString
+        }
+
+        /**
+         * 현재 업데이트 폴더(currentUpdateDir) 이외의 HotUpdater 하위 모든 폴더를 삭제하여
+         * 불필요한 파일 누적으로 인한 디스크 누수를 방지합니다.
+         */
+        private fun cleanupOldBundlesExceptCurrent(
+            context: Context,
+            currentUpdateDir: String,
+        ) {
+            val documentsDir =
+                context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath
+            val hotUpdaterDir = File(documentsDir, "HotUpdater")
+            if (!hotUpdaterDir.exists()) return
+            hotUpdaterDir.listFiles()?.forEach { file ->
+                if (file.absolutePath != currentUpdateDir) {
+                    file.deleteRecursively()
+                    Log.d("HotUpdater", "Removed old bundle directory: ${file.absolutePath}")
+                }
+            }
         }
 
         fun updateBundle(
@@ -143,9 +165,9 @@ class HotUpdater : ReactPackage {
             }
 
             val downloadUrl = URL(zipUrl)
-
             val basePath = stripPrefixFromPath(bundleId, downloadUrl.path)
             val path = convertFileSystemPathFromBasePath(context, basePath)
+            val updateDir = File(path).parentFile ?: return false
 
             var connection: HttpURLConnection? = null
             try {
@@ -182,15 +204,13 @@ class HotUpdater : ReactPackage {
                 connection?.disconnect()
             }
 
-            val extractedPath = File(path).parentFile?.path ?: return false
-
+            val extractedPath = updateDir.absolutePath
             if (!extractZipFileAtPath(path, extractedPath)) {
                 Log.d("HotUpdater", "Failed to extract zip file.")
                 return false
             }
 
-            val extractedDirectory = File(extractedPath)
-            val indexFile = extractedDirectory.walk().find { it.name == "index.android.bundle" }
+            val indexFile = updateDir.walk().find { it.name == "index.android.bundle" }
 
             if (indexFile != null) {
                 val bundlePath = indexFile.path
