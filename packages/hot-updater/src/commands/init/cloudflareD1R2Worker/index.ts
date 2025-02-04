@@ -134,19 +134,26 @@ export const initCloudflareD1R2Worker = async () => {
 
   const accounts: { id: string; name: string }[] = [];
 
-  await p.tasks([
-    {
-      title: "Checking Account List...",
-      task: async () => {
-        accounts.push(
-          ...(await cf.accounts.list()).result.map((account) => ({
-            id: account.id,
-            name: account.name,
-          })),
-        );
+  try {
+    await p.tasks([
+      {
+        title: "Checking Account List...",
+        task: async () => {
+          accounts.push(
+            ...(await cf.accounts.list()).result.map((account) => ({
+              id: account.id,
+              name: account.name,
+            })),
+          );
+        },
       },
-    },
-  ]);
+    ]);
+  } catch (e) {
+    if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+    throw e;
+  }
 
   const accountId = await p.select({
     message: "Account List",
@@ -182,26 +189,34 @@ export const initCloudflareD1R2Worker = async () => {
   }
 
   const availableBuckets: { name: string }[] = [];
-  await p.tasks([
-    {
-      title: "Checking R2 Buckets...",
-      task: async () => {
-        const buckets =
-          (
-            await cf.r2.buckets.list({
-              account_id: accountId,
-            })
-          ).buckets ?? [];
-        availableBuckets.push(
-          ...buckets
-            .filter((bucket) => bucket.name)
-            .map((bucket) => ({
-              name: bucket.name!,
-            })),
-        );
+  try {
+    await p.tasks([
+      {
+        title: "Checking R2 Buckets...",
+        task: async () => {
+          const buckets =
+            (
+              await cf.r2.buckets.list({
+                account_id: accountId,
+              })
+            ).buckets ?? [];
+
+          availableBuckets.push(
+            ...buckets
+              .filter((bucket) => bucket.name)
+              .map((bucket) => ({
+                name: bucket.name!,
+              })),
+          );
+        },
       },
-    },
-  ]);
+    ]);
+  } catch (e) {
+    if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+    throw e;
+  }
 
   let selectedBucketName = await p.select({
     message: "R2 List",
@@ -244,37 +259,51 @@ export const initCloudflareD1R2Worker = async () => {
     account_id: accountId,
   });
   if (!domains.enabled) {
-    await p.tasks([
-      {
-        title: "Making R2 bucket publicly accessible...",
-        task: async () => {
-          await cf.r2.buckets.domains.managed.update(selectedBucketName, {
-            account_id: accountId,
-            enabled: true,
-          });
+    try {
+      await p.tasks([
+        {
+          title: "Making R2 bucket publicly accessible...",
+          task: async () => {
+            await cf.r2.buckets.domains.managed.update(selectedBucketName, {
+              account_id: accountId,
+              enabled: true,
+            });
+          },
         },
-      },
-    ]);
+      ]);
+    } catch (e) {
+      if (e instanceof Error) {
+        p.log.error(e.message);
+      }
+      throw e;
+    }
   }
 
   const availableD1List: { name: string; uuid: string }[] = [];
-  await p.tasks([
-    {
-      title: "Checking D1 List...",
-      task: async () => {
-        const d1List =
-          (await cf.d1.database.list({ account_id: accountId })).result ?? [];
-        availableD1List.push(
-          ...d1List
-            .filter((d1) => d1.name || d1.uuid)
-            .map((d1) => ({
-              name: d1.name!,
-              uuid: d1.uuid!,
-            })),
-        );
+  try {
+    await p.tasks([
+      {
+        title: "Checking D1 List...",
+        task: async () => {
+          const d1List =
+            (await cf.d1.database.list({ account_id: accountId })).result ?? [];
+          availableD1List.push(
+            ...d1List
+              .filter((d1) => d1.name || d1.uuid)
+              .map((d1) => ({
+                name: d1.name!,
+                uuid: d1.uuid!,
+              })),
+          );
+        },
       },
-    },
-  ]);
+    ]);
+  } catch (e) {
+    if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+    throw e;
+  }
 
   let selectedD1DatabaseId = await p.select({
     message: "D1 List",
