@@ -1,3 +1,18 @@
+## 0.6.3 (2025-02-04)
+
+### 🚀 Features
+
+- **cloudflare:** improve error handling for Cloudflare API calls ([09f7ef7](https://github.com/gronxb/hot-updater/commit/09f7ef7))
+
+### 🩹 Fixes
+
+- **supabase:** improve error handling for Supabase upload ([#77](https://github.com/gronxb/hot-updater/pull/77))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.6.2 (2025-02-02)
 
 This was a version bump only, there were no code changes.
