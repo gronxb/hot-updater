@@ -132,10 +132,17 @@ export const deploy = async (options: DeployOptions) => {
             throw new Error("Bundle ID not found");
           }
 
-          ({ fileUrl } = await storagePlugin.uploadBundle(
-            bundleId,
-            bundlePath,
-          ));
+          try {
+            ({ fileUrl } = await storagePlugin.uploadBundle(
+              bundleId,
+              bundlePath,
+            ));
+          } catch (e) {
+            if (e instanceof Error) {
+              p.log.error(e.message);
+            }
+            throw new Error("Failed to upload bundle to storage");
+          }
           return `✅ Upload Complete (${storagePlugin.name})`;
         },
       },
@@ -146,18 +153,25 @@ export const deploy = async (options: DeployOptions) => {
             throw new Error("Bundle ID not found");
           }
 
-          await databasePlugin.appendBundle({
-            shouldForceUpdate: options.forceUpdate,
-            platform,
-            fileUrl,
-            fileHash,
-            gitCommitHash,
-            message: gitMessage,
-            targetAppVersion,
-            id: bundleId,
-            enabled: true,
-          });
-          await databasePlugin.commitBundle();
+          try {
+            await databasePlugin.appendBundle({
+              shouldForceUpdate: options.forceUpdate,
+              platform,
+              fileUrl,
+              fileHash,
+              gitCommitHash,
+              message: gitMessage,
+              targetAppVersion,
+              id: bundleId,
+              enabled: true,
+            });
+            await databasePlugin.commitBundle();
+          } catch (e) {
+            if (e instanceof Error) {
+              p.log.error(e.message);
+            }
+            throw new Error("Failed to update database");
+          }
           await databasePlugin.onUnmount?.();
           await fs.rm(bundlePath);
 
