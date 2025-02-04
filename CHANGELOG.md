@@ -1,3 +1,14 @@
+## 0.7.0 (2025-02-04)
+
+### 🚀 Features
+
+- **hot-updater:** enhance error handling for deploy command ([fea57ff](https://github.com/gronxb/hot-updater/commit/fea57ff))
+- **hot-updater:** improve file management and update directory structure ([c001375](https://github.com/gronxb/hot-updater/commit/c001375))
+
+### ❤️ Thank You
+
+- gronxb
+
 ## 0.6.4 (2025-02-04)
 
 ### 🩹 Fixes
