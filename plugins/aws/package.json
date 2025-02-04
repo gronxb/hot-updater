@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/aws",
   "type": "module",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -28,7 +28,7 @@
     "mime": "^4.0.4"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "0.6.3",
+    "@hot-updater/plugin-core": "0.6.4",
     "@aws-sdk/client-s3": "^3.685.0",
     "@aws-sdk/lib-storage": "^3.685.0"
   }

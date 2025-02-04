@@ -1,3 +1,15 @@
+## 0.6.4 (2025-02-04)
+
+### 🩹 Fixes
+
+- **clouflare:** set cloudflare account id ([#81](https://github.com/gronxb/hot-updater/pull/81))
+- **deploy:** improve error handling for storage and database plugins ([bbaffa5](https://github.com/gronxb/hot-updater/commit/bbaffa5))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.6.3 (2025-02-04)
 
 ### 🚀 Features
