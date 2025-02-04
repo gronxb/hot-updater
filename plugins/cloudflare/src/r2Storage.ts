@@ -26,6 +26,7 @@ export const r2Storage =
       apiToken: cloudflareApiToken,
     });
     const wrangler = createWrangler({
+      accountId,
       cloudflareApiToken: cloudflareApiToken,
       cwd: process.cwd(),
     });
@@ -61,7 +62,7 @@ export const r2Storage =
           );
         } catch (error) {
           if (error instanceof ExecaError) {
-            throw new Error(error.stderr);
+            throw new Error(error.stderr || error.stdout);
           }
 
           throw error;

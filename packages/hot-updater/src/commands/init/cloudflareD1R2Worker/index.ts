@@ -42,6 +42,7 @@ export default HotUpdater.wrap({
 
 const deployWorker = async (
   oauth_token: string,
+  accountId: string,
   {
     d1DatabaseId,
     d1DatabaseName,
@@ -75,6 +76,7 @@ const deployWorker = async (
       stdio: "inherit",
       cloudflareApiToken: oauth_token,
       cwd: tmpDir,
+      accountId: accountId,
     });
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
@@ -360,7 +362,7 @@ export const initCloudflareD1R2Worker = async () => {
     account_id: accountId,
   });
 
-  const workerName = await deployWorker(auth.oauth_token, {
+  const workerName = await deployWorker(auth.oauth_token, accountId, {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
   });
