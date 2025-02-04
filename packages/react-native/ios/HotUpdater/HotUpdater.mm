@@ -10,7 +10,6 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - Bundle URL Management
 
-
 - (NSString *)getAppVersion {
     NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
     return appVersion;
@@ -37,7 +36,6 @@ RCT_EXPORT_MODULE();
 }
 
 + (NSURL *)fallbackURL {
-    // This Support React Native 0.72.6
 #if DEBUG
     return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
 #else
@@ -52,7 +50,34 @@ RCT_EXPORT_MODULE();
 #pragma mark - Utility Methods
 
 - (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
-    return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:basePath];
+    NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *hotUpdaterDir = [documentsPath stringByAppendingPathComponent:@"HotUpdater"];
+    
+    if (![[NSFileManager defaultManager] fileExistsAtPath:hotUpdaterDir]) {
+        NSError *error = nil;
+        [[NSFileManager defaultManager] createDirectoryAtPath:hotUpdaterDir
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:&error];
+        if (error) {
+            NSLog(@"Error creating HotUpdater directory: %@", error);
+        }
+    }
+    
+    // 업데이트 전용 하위 폴더 생성 (예: bundleId 또는 zip URL에서 파생된 값)
+    NSString *updateDir = [hotUpdaterDir stringByAppendingPathComponent:basePath];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:updateDir]) {
+        NSError *error = nil;
+        [[NSFileManager defaultManager] createDirectoryAtPath:updateDir
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:&error];
+        if (error) {
+            NSLog(@"Error creating update directory: %@", error);
+        }
+    }
+    
+    return [updateDir stringByAppendingPathComponent:@"update.zip"];
 }
 
 - (NSString *)stripPrefixFromPath:(NSString *)prefix path:(NSString *)path {
@@ -64,7 +89,11 @@ RCT_EXPORT_MODULE();
 
 - (BOOL)extractZipFileAtPath:(NSString *)filePath toDestination:(NSString *)destinationPath {
     NSError *error = nil;
-    BOOL success = [SSZipArchive unzipFileAtPath:filePath toDestination:destinationPath overwrite:YES password:nil error:&error];
+    BOOL success = [SSZipArchive unzipFileAtPath:filePath
+                                   toDestination:destinationPath
+                                       overwrite:YES
+                                        password:nil
+                                           error:&error];
     if (!success) {
         NSLog(@"Failed to unzip file: %@", error);
     }
@@ -79,6 +108,7 @@ RCT_EXPORT_MODULE();
     
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
+    NSString *updateDir = [path stringByDeletingLastPathComponent];
     
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
@@ -98,7 +128,6 @@ RCT_EXPORT_MODULE();
         NSFileManager *fileManager = [NSFileManager defaultManager];
         NSError *folderError;
         
-        // Ensure directory exists
         if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                     withIntermediateDirectories:YES
                                      attributes:nil
@@ -109,7 +138,6 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // Check if file already exists and remove it
         if ([fileManager fileExistsAtPath:path]) {
             NSError *removeError;
             if (![fileManager removeItemAtPath:path error:&removeError]) {
@@ -128,15 +156,14 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        NSString *extractedPath = [path stringByDeletingLastPathComponent];
-        if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
+        if (![self extractZipFileAtPath:path toDestination:updateDir]) {
             NSLog(@"Failed to extract zip file.");
             success = NO;
             dispatch_semaphore_signal(semaphore);
             return;
         }
         
-        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:updateDir];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
             if ([file isEqualToString:@"index.ios.bundle"]) {
@@ -146,7 +173,7 @@ RCT_EXPORT_MODULE();
         }
         
         if (filename) {
-            NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
+            NSString *bundlePath = [updateDir stringByAppendingPathComponent:filename];
             NSLog(@"Setting bundle URL: %@", bundlePath);
             [self setBundleURL:bundlePath];
             success = YES;
@@ -194,17 +221,17 @@ RCT_EXPORT_MODULE();
 
 
 #pragma mark - React Native Events
+
 - (NSArray<NSString *> *)supportedEvents {
     return @[@"onProgress"];
 }
 
-- (void)startObserving
-{
+- (void)startObserving {
     hasListeners = YES;
 }
 
-- (void)stopObserving
-{
+
+- (void)stopObserving {
     hasListeners = NO;
 }
 
