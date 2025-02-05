@@ -1,0 +1,52 @@
+{
+  "name": "@hot-updater/api",
+  "version": "0.6.5",
+  "type": "module",
+  "description": "React Native OTA solution for self-hosted",
+  "sideEffects": false,
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "rslib build",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/core": "0.6.5"
+  },
+  "devDependencies": {
+    "semver": "^7.6.3",
+    "@types/node": "^20.9.4",
+    "@types/semver": "^7.5.8"
+  }
+}
