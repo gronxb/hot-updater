@@ -1,5 +1,6 @@
-import { NIL_UUID } from "@hot-updater/core";
 import { NativeEventEmitter, NativeModules, Platform } from "react-native";
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 const HotUpdater = {
   HOT_UPDATER_BUNDLE_ID: NIL_UUID,

@@ -10,8 +10,8 @@ import { runUpdateProcess } from "./runUpdateProcess";
 import { hotUpdaterStore } from "./store";
 import { wrap } from "./wrap";
 
-export type * from "./wrap";
-export type * from "./native";
+export type { HotUpdaterConfig } from "./wrap";
+export type { HotUpdaterEvent } from "./native";
 
 export * from "./store";
 
