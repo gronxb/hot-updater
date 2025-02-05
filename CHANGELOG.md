@@ -1,3 +1,13 @@
+## 0.6.5 (2025-02-05)
+
+### 🩹 Fixes
+
+- **react-native:** compatibility with TypeScript 4 ([#82](https://github.com/gronxb/hot-updater/pull/82))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.6.4 (2025-02-04)
 
 ### 🩹 Fixes

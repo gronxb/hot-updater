@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -53,9 +53,9 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.9.0",
-    "@hot-updater/console": "0.6.4",
-    "@hot-updater/core": "0.6.4",
-    "@hot-updater/plugin-core": "0.6.4",
+    "@hot-updater/console": "0.6.5",
+    "@hot-updater/core": "0.6.5",
+    "@hot-updater/plugin-core": "0.6.5",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0"
