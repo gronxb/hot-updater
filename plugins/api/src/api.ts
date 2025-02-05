@@ -58,7 +58,7 @@ export const api =
       async setBundles(inputBundles: Bundle[]) {
         bundles = inputBundles;
       },
-      async getBundleById(bundleId: string): Bundle | null {
+      async getBundleById(bundleId: string): Promise<Bundle | null> {
         try {
           const response = await fetch(`${config.endpoint}/${bundleId}`, {
             method: "GET",
