@@ -3,14 +3,10 @@ import { reload, updateBundle } from "./native";
 
 export type RunUpdateProcessResponse =
   | {
-      status: "ROLLBACK" | "UPDATE";
-      shouldForceUpdate: boolean;
-      id: string;
+      status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
+      shouldForceUpdate?: boolean;
+      id?: string;
     }
-  | {
-      status: "UP_TO_DATE";
-    };
-
 export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
   /**
    * If `true`, the app will be reloaded when the downloaded bundle is a force update.
