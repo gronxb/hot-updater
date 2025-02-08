@@ -42,7 +42,8 @@ const result = await HotUpdater.runUpdateProcess({
   reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
 });
 
-if(result.shouldForceUpdate) {
+// If status is UP_TO_DATE, other fields shouldForceUpdate, id will not be present.
+if(result.status !== "UP_TO_DATE" && result.shouldForceUpdate) {
   // You can handle the restart manually here
   HotUpdater.reload();
 }
