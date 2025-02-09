@@ -28,11 +28,15 @@
   ],
   "scripts": {
     "build": "rslib build",
-    "test:type": "tsc --noEmit"
+    "test:type": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@hot-updater/core": "0.6.5",
     "@hot-updater/plugin-core": "0.6.5"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "vitest": "2.1.8"
+  }
 }
