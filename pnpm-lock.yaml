@@ -16,6 +16,7 @@ overrides:
   '@hot-updater/supabase': workspace:*
   '@hot-updater/cloudflare': workspace:*
   '@hot-updater/js': workspace:*
+  '@hot-updater/mock': workspace:*
 
 importers:
 
@@ -376,6 +377,9 @@ importers:
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
+      '@hot-updater/mock':
+        specifier: workspace:*
+        version: link:../../plugins/mock
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -788,6 +792,15 @@ importers:
       uuidv7:
         specifier: ^1.0.2
         version: 1.0.2
+
+  plugins/mock:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
 
   plugins/plugin-core:
     dependencies:
