@@ -23,11 +23,24 @@ export const supabaseDatabase =
 
     let bundles: Bundle[] = [];
 
+    const changedIds = new Set<string>();
+    function markChanged(id: string) {
+      changedIds.add(id);
+    }
+
     return {
       name: "supabaseDatabase",
       async commitBundle() {
+        if (changedIds.size === 0) {
+          return;
+        }
+        const changedBundles = bundles.filter((b) => changedIds.has(b.id));
+        if (changedBundles.length === 0) {
+          return;
+        }
+
         await supabase.from("bundles").upsert(
-          bundles.map((bundle) => ({
+          changedBundles.map((bundle) => ({
             id: bundle.id,
             enabled: bundle.enabled,
             file_url: bundle.fileUrl,
@@ -41,6 +54,7 @@ export const supabaseDatabase =
           { onConflict: "id" },
         );
 
+        changedIds.clear();
         hooks?.onDatabaseUpdated?.();
       },
       async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
@@ -52,13 +66,21 @@ export const supabaseDatabase =
         }
 
         Object.assign(bundles[targetIndex], newBundle);
+        markChanged(targetBundleId);
       },
       async appendBundle(inputBundle) {
         bundles = await this.getBundles();
         bundles.unshift(inputBundle);
+        markChanged(inputBundle.id);
       },
-      async setBundles(inputBundles) {
-        bundles = inputBundles;
+      async removeBundle(bundleId) {
+        bundles = await this.getBundles();
+        const targetIndex = bundles.findIndex((u) => u.id === bundleId);
+        if (targetIndex === -1) {
+          throw new Error("target bundle version not found");
+        }
+        bundles.splice(targetIndex, 1);
+        markChanged(bundleId);
       },
       async getBundleById(bundleId) {
         const { data } = await supabase

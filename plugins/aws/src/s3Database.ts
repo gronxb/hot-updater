@@ -71,8 +71,13 @@ export const s3Database =
         bundles = await this.getBundles();
         bundles.unshift(inputBundle);
       },
-      async setBundles(inputBundles) {
-        bundles = inputBundles;
+      async removeBundle(bundleId) {
+        bundles = await this.getBundles();
+        const targetIndex = bundles.findIndex((u) => u.id === bundleId);
+        if (targetIndex === -1) {
+          throw new Error("target bundle version not found");
+        }
+        bundles.splice(targetIndex, 1);
       },
       async getBundleById(bundleId) {
         const bundles = await this.getBundles();

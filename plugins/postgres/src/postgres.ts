@@ -25,6 +25,11 @@ export const postgres =
     });
     let bundles: Bundle[] = [];
 
+    const changedIds = new Set<string>();
+    function markChanged(id: string) {
+      changedIds.add(id);
+    }
+
     let isUnmount = false;
 
     return {
@@ -35,10 +40,18 @@ export const postgres =
         }
         isUnmount = true;
         await pool.end();
+        changedIds.clear();
       },
       async commitBundle() {
+        if (changedIds.size === 0) {
+          return;
+        }
+        const changedBundles = bundles.filter((b) => changedIds.has(b.id));
+        if (changedBundles.length === 0) {
+          return;
+        }
         await db.transaction().execute(async (tx) => {
-          for (const bundle of bundles) {
+          for (const bundle of changedBundles) {
             await tx
               .insertInto("bundles")
               .values({
@@ -68,6 +81,7 @@ export const postgres =
           }
         });
 
+        changedIds.clear();
         hooks?.onDatabaseUpdated?.();
       },
       async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
@@ -79,13 +93,21 @@ export const postgres =
         }
 
         Object.assign(bundles[targetIndex], newBundle);
+        markChanged(targetBundleId);
       },
       async appendBundle(inputBundle) {
         bundles = await this.getBundles();
         bundles.unshift(inputBundle);
+        markChanged(inputBundle.id);
       },
-      async setBundles(inputBundles) {
-        bundles = inputBundles;
+      async removeBundle(bundleId) {
+        bundles = await this.getBundles();
+        const targetIndex = bundles.findIndex((u) => u.id === bundleId);
+        if (targetIndex === -1) {
+          throw new Error("target bundle version not found");
+        }
+        bundles.splice(targetIndex, 1);
+        markChanged(bundleId);
       },
       async getBundleById(bundleId) {
         const data = await db

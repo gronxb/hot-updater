@@ -21,7 +21,6 @@ export const prune = async () => {
     s.start("Checking existing updates");
     const bundles = await databasePlugin.getBundles();
 
-    const activeBundles = bundles.filter((bundle) => bundle.enabled);
     const inactiveBundles = bundles.filter((bundle) => !bundle.enabled);
 
     if (inactiveBundles.length === 0) {
@@ -31,7 +30,10 @@ export const prune = async () => {
 
     s.message("Pruning updates");
 
-    await databasePlugin.setBundles(activeBundles);
+    for (const bundle of inactiveBundles) {
+      await databasePlugin.removeBundle(bundle.id);
+    }
+
     await databasePlugin.commitBundle();
     await databasePlugin.onUnmount?.();
 
