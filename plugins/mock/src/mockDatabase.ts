@@ -12,7 +12,7 @@ export interface MockDatabaseConfig {
 export const mockDatabase =
   (config: MockDatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
-    let bundles: Bundle[] = config.initialBundles ?? [];
+    const bundles: Bundle[] = config.initialBundles ?? [];
 
     return {
       name: "mockDatabase",
@@ -28,9 +28,6 @@ export const mockDatabase =
       },
       async appendBundle(inputBundle: Bundle) {
         bundles.unshift(inputBundle);
-      },
-      async setBundles(newBundles: Bundle[]) {
-        bundles = newBundles;
       },
       async getBundleById(bundleId: string) {
         return bundles.find((b) => b.id === bundleId) ?? null;

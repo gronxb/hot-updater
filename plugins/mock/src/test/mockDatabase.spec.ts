@@ -75,16 +75,6 @@ describe("mockDatabase", () => {
     ]);
   });
 
-  it("should set bundles", async () => {
-    const plugin = mockDatabase({})({ cwd: "" });
-
-    await plugin.setBundles(DEFAULT_BUNDLES_MOCK);
-
-    const bundles = await plugin.getBundles();
-
-    expect(bundles).toEqual(DEFAULT_BUNDLES_MOCK);
-  });
-
   it("should get bundle by id", async () => {
     const plugin = mockDatabase({
       initialBundles: DEFAULT_BUNDLES_MOCK,

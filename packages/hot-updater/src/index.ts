@@ -3,7 +3,6 @@ import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { getPluginEnv } from "@/commands/getPluginEnv";
 import { init } from "@/commands/init";
-import { prune } from "@/commands/prune";
 import { banner, printBanner } from "@/components/banner";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
@@ -86,8 +85,4 @@ program
     log.info(`iOS version: ${iosVersion}`);
   });
 
-program
-  .command("prune")
-  .description("prune all the inactive versions")
-  .action(prune);
 program.parse(process.argv);

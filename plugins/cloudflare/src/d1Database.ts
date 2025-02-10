@@ -102,14 +102,6 @@ export const d1Database =
 
         markChanged(inputBundle.id);
       },
-
-      async setBundles(inputBundles: Bundle[]) {
-        bundles = inputBundles;
-        for (const b of inputBundles) {
-          markChanged(b.id);
-        }
-      },
-
       async getBundleById(bundleId: string) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
