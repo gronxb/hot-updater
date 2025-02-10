@@ -61,7 +61,7 @@ describe("mockDatabase", () => {
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     })({ cwd: "" });
 
-    await plugin.updateBundle("1", {
+    await plugin.updateBundle(DEFAULT_BUNDLES_MOCK[0].id, {
       enabled: false,
     });
 
@@ -90,7 +90,7 @@ describe("mockDatabase", () => {
       initialBundles: DEFAULT_BUNDLES_MOCK,
     })({ cwd: "" });
 
-    const bundle = await plugin.getBundleById("1");
+    const bundle = await plugin.getBundleById(DEFAULT_BUNDLES_MOCK[0].id);
 
     expect(bundle).toEqual(DEFAULT_BUNDLES_MOCK[0]);
   });
@@ -101,7 +101,9 @@ describe("mockDatabase", () => {
     })({ cwd: "" });
 
     await expect(
-      plugin.updateBundle("2", { enabled: false }),
+      plugin.updateBundle("00000000-0000-0000-0000-000000000001", {
+        enabled: false,
+      }),
     ).rejects.toThrowError("target bundle version not found");
   });
 
