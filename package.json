@@ -39,7 +39,8 @@
       "@hot-updater/postgres": "workspace:*",
       "@hot-updater/supabase": "workspace:*",
       "@hot-updater/cloudflare": "workspace:*",
-      "@hot-updater/js": "workspace:*"
+      "@hot-updater/js": "workspace:*",
+      "@hot-updater/mock": "workspace:*"
     }
   },
   "packageManager": "pnpm@9.15.4"
