@@ -1,5 +1,6 @@
 {
   "name": "@hot-updater/mock",
+  "private": true,
   "type": "module",
   "version": "0.6.5",
   "description": "React Native OTA solution for self-hosted",
@@ -19,9 +20,6 @@
     "url": "https://github.com/gronxb/hot-updater/issues"
   },
   "homepage": "https://github.com/gronxb/hot-updater#readme",
-  "publishConfig": {
-    "access": "public"
-  },
   "files": [
     "dist",
     "package.json"
