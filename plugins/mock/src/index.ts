@@ -1,1 +1,1 @@
-export * from './mockDatabase';
+export * from "./mockDatabase";
