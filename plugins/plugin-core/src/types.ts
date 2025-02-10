@@ -17,10 +17,8 @@ export interface DatabasePlugin {
     targetBundleId: string,
     newBundle: Partial<Bundle>,
   ) => Promise<void>;
-  setBundles: (bundles: Bundle[]) => Promise<void>;
   appendBundle: (bundles: Bundle) => Promise<void>;
   commitBundle: () => Promise<void>;
-
   onUnmount?: () => Promise<void>;
   name: string;
 }
