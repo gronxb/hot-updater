@@ -29,8 +29,8 @@ export const mockDatabase =
       async appendBundle(inputBundle: Bundle) {
         bundles.unshift(inputBundle);
       },
-      async setBundles(newBundles: Bundle[]) {
-        bundles = newBundles;
+      async removeBundle(bundleId: string) {
+        bundles = bundles.filter((u) => u.id !== bundleId);
       },
       async getBundleById(bundleId: string) {
         return bundles.find((b) => b.id === bundleId) ?? null;
