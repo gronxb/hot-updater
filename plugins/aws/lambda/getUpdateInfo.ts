@@ -11,7 +11,6 @@ export interface UpdateInfo {
   status: "UPDATE" | "ROLLBACK";
 }
 
-// S3 설정
 const BUCKET_NAME = process.env.HOT_UPDATER_AWS_S3_BUCKET_NAME;
 const METADATA_KEY = "update.json";
 const s3 = new S3Client({ region: process.env.HOT_UPDATER_AWS_REGION });
@@ -54,7 +53,7 @@ export const getUpdateInfo = async ({
           b.id >= bundleId &&
           targetAppVersionList.includes(b.targetAppVersion)
       )
-      .sort((a, b) => b.id.localeCompare(a.id))[0]; // 최신 버전 우선
+      .sort((a, b) => b.id.localeCompare(a.id))[0];
 
     if (updateCandidate) {
       return {
@@ -66,22 +65,20 @@ export const getUpdateInfo = async ({
       };
     }
 
-    // 🔹 롤백 가능한 번들 찾기 (ROLLBACK)
     const rollbackCandidate = platformBundles
       .filter((b) => b.enabled && b.id < bundleId)
-      .sort((a, b) => b.id.localeCompare(a.id))[0]; // 최신 버전 우선
+      .sort((a, b) => b.id.localeCompare(a.id))[0];
 
     if (rollbackCandidate) {
       return {
         id: rollbackCandidate.id,
-        shouldForceUpdate: true, // ROLLBACK은 강제 업데이트
+        shouldForceUpdate: true,
         fileUrl: rollbackCandidate.fileUrl,
         fileHash: rollbackCandidate.fileHash,
         status: "ROLLBACK",
       };
     }
 
-    // 🔹 업데이트도 롤백도 없을 경우
     return null;
   } catch (error) {
     console.error("Unhandled error in getUpdateInfo:", error);

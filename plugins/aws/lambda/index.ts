@@ -3,7 +3,6 @@ import { getUpdateInfo } from "./getUpdateInfo";
 
 export async function handler(event: APIGatewayEvent, context: Context) {
   try {
-    // 요청 헤더에서 필수 정보 가져오기
     const headers = event.headers;
     const bundleId = headers["x-bundle-id"];
     const appPlatform = headers["x-app-platform"] as "ios" | "android";
@@ -19,10 +18,8 @@ export async function handler(event: APIGatewayEvent, context: Context) {
       };
     }
 
-    // 🔹 업데이트 정보 가져오기
     const updateInfo = await getUpdateInfo({ platform: appPlatform, appVersion, bundleId });
 
-    // 🔹 업데이트 없음 (204 No Content)
     if (!updateInfo) {
       return {
         statusCode: 204,
@@ -31,7 +28,6 @@ export async function handler(event: APIGatewayEvent, context: Context) {
       };
     }
 
-    // 🔹 업데이트 정보 반환
     return {
       statusCode: 200,
       body: JSON.stringify(updateInfo),
