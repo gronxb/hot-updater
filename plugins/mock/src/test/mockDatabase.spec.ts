@@ -75,18 +75,6 @@ describe("mockDatabase", () => {
     ]);
   });
 
-  it("should remove a bundle", async () => {
-    const plugin = mockDatabase({
-      initialBundles: DEFAULT_BUNDLES_MOCK,
-    })({ cwd: "" });
-
-    await plugin.removeBundle(DEFAULT_BUNDLES_MOCK[0].id);
-
-    const bundles = await plugin.getBundles();
-
-    expect(bundles).toEqual([DEFAULT_BUNDLES_MOCK[1]]);
-  });
-
   it("should get bundle by id", async () => {
     const plugin = mockDatabase({
       initialBundles: DEFAULT_BUNDLES_MOCK,

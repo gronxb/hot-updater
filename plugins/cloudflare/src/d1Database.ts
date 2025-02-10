@@ -102,16 +102,6 @@ export const d1Database =
 
         markChanged(inputBundle.id);
       },
-
-      async removeBundle(bundleId: string) {
-        bundles = await this.getBundles();
-        const targetIndex = bundles.findIndex((u) => u.id === bundleId);
-        if (targetIndex === -1) {
-          throw new Error("target bundle version not found");
-        }
-        bundles.splice(targetIndex, 1);
-        markChanged(bundleId);
-      },
       async getBundleById(bundleId: string) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
