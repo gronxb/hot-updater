@@ -3,10 +3,15 @@ import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
+import type {
+  BucketLocationConstraint,
+  DistributionConfig,
+} from "@hot-updater/aws/sdk";
 import { getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { execa } from "execa";
 import fs from "fs/promises";
+import { regionLocationMap } from "./regionLocationMap";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE = `
@@ -52,7 +57,8 @@ const deployLambdaEdge = async (): Promise<{
   lambdaName: string;
   functionArn: string;
 }> => {
-  const AWS = await import("aws-sdk");
+  const { SDK } = await import("@hot-updater/aws/sdk");
+
   const cwd = getCwd();
   const lambdaDir = path.join(cwd, "lambda");
 
@@ -75,7 +81,8 @@ const deployLambdaEdge = async (): Promise<{
   }
 
   // Create Lambda client for us-east-1 region
-  const lambda = new AWS.Lambda({ region: "us-east-1" });
+  const Lambda = SDK.Lambda.Lambda;
+  const lambdaClient = new Lambda({ region: "us-east-1" });
 
   // Get IAM Role ARN for Lambda@Edge (user must create role in advance)
   const lambdaRoleArn = await p.text({
@@ -89,17 +96,15 @@ const deployLambdaEdge = async (): Promise<{
   let functionArn: string;
   try {
     // Create Lambda function (with Publish option to publish new version)
-    const createResp = await lambda
-      .createFunction({
-        FunctionName: lambdaName,
-        Runtime: "nodejs14.x",
-        Role: lambdaRoleArn,
-        Handler: "index.handler",
-        Code: { ZipFile: await fs.readFile(zipFilePath) },
-        Description: "Hot Updater Lambda@Edge function",
-        Publish: true,
-      })
-      .promise();
+    const createResp = await lambdaClient.createFunction({
+      FunctionName: lambdaName,
+      Runtime: "nodejs14.x",
+      Role: lambdaRoleArn,
+      Handler: "index.handler",
+      Code: { ZipFile: await fs.readFile(zipFilePath) },
+      Description: "Hot Updater Lambda@Edge function",
+      Publish: true,
+    });
     functionArn = createResp.FunctionArn!;
   } catch (error) {
     if (error instanceof Error) {
@@ -112,34 +117,38 @@ const deployLambdaEdge = async (): Promise<{
 };
 
 export const initAwsS3LambdaEdge = async () => {
-  const AWS = await import("aws-sdk");
+  const { SDK } = await import("@hot-updater/aws/sdk");
 
   // Enter region for AWS S3 bucket creation
-  const region = await p.text({
+  const $region = await p.select({
     message: "Enter AWS region for the S3 bucket",
-    defaultValue: "us-west-2",
-    placeholder: "us-west-2",
+    options: Object.values(SDK.S3.BucketLocationConstraint).map((r) => ({
+      label: `${r} (${regionLocationMap[r]})` as string,
+      value: r as string,
+    })),
   });
-  if (p.isCancel(region)) process.exit(1);
+  if (p.isCancel($region)) process.exit(1);
 
+  const region = $region as BucketLocationConstraint;
   // Create S3 client
-  const s3 = new AWS.S3({ region });
+  const S3 = SDK.S3.S3;
+  const s3Client = new S3({ region });
 
   // Enter S3 bucket name (or use default)
   const bucketName = await p.text({
     message: "Enter the name for the S3 bucket",
-    defaultValue: "hot-updater-bucket",
-    placeholder: "hot-updater-bucket",
+    defaultValue: "bundles",
+    placeholder: "bundles",
   });
   if (p.isCancel(bucketName)) process.exit(1);
 
   try {
-    await s3
-      .createBucket({
-        Bucket: bucketName,
-        CreateBucketConfiguration: { LocationConstraint: region },
-      })
-      .promise();
+    await s3Client.createBucket({
+      Bucket: bucketName,
+      CreateBucketConfiguration: {
+        LocationConstraint: region,
+      },
+    });
     p.log.info(`Created S3 bucket: ${bucketName}`);
   } catch (error) {
     if (error instanceof Error) {
@@ -152,9 +161,10 @@ export const initAwsS3LambdaEdge = async () => {
   const { functionArn } = await deployLambdaEdge();
 
   // Create CloudFront distribution: Use S3 as origin and connect Lambda@Edge function to viewer-request event
-  const cloudfront = new AWS.CloudFront();
+  const Cloudfront = SDK.CloudFront.CloudFront;
+  const cloudfrontClient = new Cloudfront({ region });
 
-  const distributionConfig = {
+  const distributionConfig: DistributionConfig = {
     CallerReference: dayjs().format(),
     Comment: "Hot Updater CloudFront distribution",
     Enabled: true,
@@ -199,9 +209,9 @@ export const initAwsS3LambdaEdge = async () => {
   let distributionId: string;
   let distributionDomain: string;
   try {
-    const distResp = await cloudfront
-      .createDistribution({ DistributionConfig: distributionConfig })
-      .promise();
+    const distResp = await cloudfrontClient.createDistribution({
+      DistributionConfig: distributionConfig,
+    });
     distributionId = distResp.Distribution?.Id!;
     distributionDomain = distResp.Distribution?.DomainName!;
     p.log.info(`Created CloudFront distribution with ID: ${distributionId}`);
