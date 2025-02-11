@@ -266,8 +266,10 @@ export const initAwsS3LambdaEdge = async () => {
   await makeEnv({
     HOT_UPDATER_AWS_S3_BUCKET_NAME: bucketName,
     HOT_UPDATER_AWS_REGION: region,
-    HOT_UPDATER_AWS_ACCESS_KEY_ID: functionArn,
-    HOT_UPDATER_AWS_SECRET_ACCESS_KEY: functionArn,
+
+    // FIXME: only s3 access key id and secret access key are needed
+    HOT_UPDATER_AWS_ACCESS_KEY_ID: credentials.accessKeyId,
+    HOT_UPDATER_AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
   });
 
   p.log.success("Generated '.env' file with AWS settings.");
