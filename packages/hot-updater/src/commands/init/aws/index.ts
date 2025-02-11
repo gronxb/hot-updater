@@ -9,9 +9,10 @@ import type {
 } from "@hot-updater/aws/sdk";
 import { getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
-import { execa } from "execa";
 import fs from "fs/promises";
 import { regionLocationMap } from "./regionLocationMap";
+
+import { ExecaError, execa } from "execa";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE = `
@@ -136,6 +137,20 @@ export const initAwsS3LambdaEdge = async () => {
     p.log.error(
       `AWS CLI is not installed. Please visit ${link("https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")} for installation instructions`,
     );
+    process.exit(1);
+  }
+
+  // 1. Start IAM Identity Center
+  // 2. Add permission set with S3FullAccess, LambdaFullAccess, CloudFrontFullAccess
+  // 3. Add account
+
+  try {
+    const { stdout } = await execa("aws", ["sso", "login"]);
+    console.log(stdout);
+  } catch (error) {
+    if (error instanceof ExecaError) {
+      p.log.error(error.stdout || error.stderr || error.message);
+    }
     process.exit(1);
   }
 
