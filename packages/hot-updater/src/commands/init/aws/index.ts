@@ -149,7 +149,7 @@ export const initAwsS3LambdaEdge = async () => {
   }
 
   // Deploy Lambda@Edge function (us-east-1)
-  const { lambdaName, functionArn } = await deployLambdaEdge();
+  const { functionArn } = await deployLambdaEdge();
 
   // Create CloudFront distribution: Use S3 as origin and connect Lambda@Edge function to viewer-request event
   const cloudfront = new AWS.CloudFront();
