@@ -1,44 +1,60 @@
 import { APIGatewayEvent, Context } from "aws-lambda";
-import { getUpdateInfo } from "./getUpdateInfo";
+import { filterCompatibleAppVersions, getUpdateInfo } from '@hot-updater/js'
 
-export async function handler(event: APIGatewayEvent, context: Context) {
-  try {
-    const headers = event.headers;
-    const bundleId = headers["x-bundle-id"];
-    const appPlatform = headers["x-app-platform"] as "ios" | "android";
-    const appVersion = headers["x-app-version"];
+export async function handler(event, context) {
+  const request = event.Records[0].cf.request;
+  const headers = request.headers;
 
-    if (!bundleId || !appPlatform || !appVersion) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          error: "Missing x-bundle-id, x-app-platform, or x-app-version",
-        }),
-        headers: { "Content-Type": "application/json" },
-      };
-    }
-
-    const updateInfo = await getUpdateInfo({ platform: appPlatform, appVersion, bundleId });
-
-    if (!updateInfo) {
-      return {
-        statusCode: 204,
-        body: JSON.stringify({ message: "No update available" }),
-        headers: { "Content-Type": "application/json" },
-      };
-    }
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify(updateInfo),
-      headers: { "Content-Type": "application/json" },
-    };
-  } catch (error) {
-    console.error("Unhandled error:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Internal Server Error" }),
-      headers: { "Content-Type": "application/json" },
-    };
+  if (request.uri !== '/api/check-update') {
+    return new Response("Not found", { status: 404 });
   }
+
+  const distributionDomain = headers["host"][0]?.value;
+
+  const bundleId = headers["x-bundle-id"][0]?.value;
+  const appVersion = headers["x-app-version"][0]?.value;
+  const appPlatform = headers["x-app-platform"][0]?.value;
+
+  if (!bundleId || !appPlatform || !appVersion) {
+    return new Response(
+      JSON.stringify({
+        error: "Missing bundleId, appPlatform, or appVersion",
+      }),
+      { status: 400 },
+    );
+  }
+
+  const targetAppVersionListUrl = `https://${distributionDomain}/${appPlatform}/targetAppVersionList.json`;
+
+  const targetAppVersionListResponse = await fetch(targetAppVersionListUrl, { method: "GET" });
+  if (!targetAppVersionListResponse.ok) {
+    return new Response("Failed to fetch targetAppVersionList.json", { status: 404 });
+  }
+
+  const targetAppVersionList = await targetAppVersionListResponse.json();
+
+  const matchingVersionList = filterCompatibleAppVersions(targetAppVersionList.files, appVersion);
+
+  if (!matchingVersionList) {
+    return new Response(JSON.stringify(null), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
+  }
+
+  const results = await Promise.allSettled(
+    matchingVersionList.map((version: string) => {
+      const updateJsonUrl = `https://${distributionDomain}/${appPlatform}/${version}/update.json`;
+      return fetch(updateJsonUrl, { method: "GET" }).then(res => res.json())
+    })
+  )
+
+  const bundles = results.filter(result => result.status === 'fulfilled').map(result => result.value);
+
+  const updateInfo = getUpdateInfo(bundles, { appPlatform, bundleId, appVersion });
+
+  return new Response(JSON.stringify(updateInfo), {
+    headers: { "Content-Type": "application/json" },
+    status: 200,
+  });
 }
