@@ -119,8 +119,27 @@ const deployLambdaEdge = async (credentials: {
   return { lambdaName, functionArn };
 };
 
+const checkIfAwsCliInstalled = async () => {
+  try {
+    await execa("aws", ["--version"]);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
 export const initAwsS3LambdaEdge = async () => {
   const { SDK } = await import("@hot-updater/aws/sdk");
+
+  const isAwsCliInstalled = await checkIfAwsCliInstalled();
+  if (!isAwsCliInstalled) {
+    p.log.error(
+      `AWS CLI is not installed. Please visit ${link("https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")} for installation instructions`,
+    );
+    process.exit(1);
+  }
+
+  // TODO: sso login
 
   p.log.step(
     "Please login with an account that has permissions to create S3, CloudFront, and Lambda",
