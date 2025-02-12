@@ -1,7 +1,7 @@
-import { APIGatewayEvent, Context } from "aws-lambda";
 import { filterCompatibleAppVersions, getUpdateInfo } from '@hot-updater/js'
+import type { CloudFrontRequestEvent } from 'aws-lambda'
 
-export async function handler(event, context) {
+export async function handler(event: CloudFrontRequestEvent) {
   const request = event.Records[0].cf.request;
   const headers = request.headers;
 
@@ -11,9 +11,11 @@ export async function handler(event, context) {
 
   const distributionDomain = headers["host"][0]?.value;
 
-  const bundleId = headers["x-bundle-id"][0]?.value;
-  const appVersion = headers["x-app-version"][0]?.value;
-  const appPlatform = headers["x-app-platform"][0]?.value;
+  const bundleId = headers["x-bundle-id"][0]?.value as string;
+  const appPlatform = headers["x-app-platform"][0]?.value as
+    | "ios"
+    | "android";
+  const appVersion = headers["x-app-version"][0]?.value as string;
 
   if (!bundleId || !appPlatform || !appVersion) {
     return new Response(
@@ -43,15 +45,16 @@ export async function handler(event, context) {
   }
 
   const results = await Promise.allSettled(
-    matchingVersionList.map((version: string) => {
+    matchingVersionList.map(async (version: string) => {
       const updateJsonUrl = `https://${distributionDomain}/${appPlatform}/${version}/update.json`;
-      return fetch(updateJsonUrl, { method: "GET" }).then(res => res.json())
+      const res = await fetch(updateJsonUrl, { method: "GET" });
+      return await res.json();
     })
   )
 
   const bundles = results.filter(result => result.status === 'fulfilled').map(result => result.value);
 
-  const updateInfo = getUpdateInfo(bundles, { appPlatform, bundleId, appVersion });
+  const updateInfo = await getUpdateInfo(bundles, { platform: appPlatform, bundleId, appVersion });
 
   return new Response(JSON.stringify(updateInfo), {
     headers: { "Content-Type": "application/json" },

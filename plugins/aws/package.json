@@ -36,6 +36,7 @@
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
     "mime": "^4.0.4"
   },
   "dependencies": {
