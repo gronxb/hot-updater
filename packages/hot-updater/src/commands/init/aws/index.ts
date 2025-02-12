@@ -54,10 +54,14 @@ export default HotUpdater.wrap({
  * - Zip the local ./lambda folder, create a function in us-east-1 region,
  * - Publish a new version of the function
  */
-const deployLambdaEdge = async (credentials: {
-  accessKeyId: string;
-  secretAccessKey: string;
-}): Promise<{
+const deployLambdaEdge = async (
+  credentials:
+    | {
+        accessKeyId: string;
+        secretAccessKey: string;
+      }
+    | undefined,
+): Promise<{
   lambdaName: string;
   functionArn: string;
 }> => {
@@ -144,53 +148,83 @@ export const initAwsS3LambdaEdge = async () => {
   // 2. Add permission set with S3FullAccess, LambdaFullAccess, CloudFrontFullAccess
   // 3. Add account
 
-  try {
-    const { stdout } = await execa("aws", ["sso", "login"]);
-    console.log(stdout);
-  } catch (error) {
-    if (error instanceof ExecaError) {
-      p.log.error(error.stdout || error.stderr || error.message);
+  let credentials:
+    | {
+        accessKeyId: string;
+        secretAccessKey: string;
+      }
+    | undefined = undefined;
+
+  const mode = await p.select({
+    message: "Select the mode to login to AWS",
+    options: [
+      { label: "AWS SSO Login", value: "sso" },
+      { label: "AWS Access Key ID & Secret Access Key", value: "account" },
+    ],
+  });
+  if (p.isCancel(mode)) process.exit(1);
+
+  if (mode === "sso") {
+    try {
+      const profile = await p.text({
+        message: "Enter the profile name",
+        defaultValue: "default",
+        placeholder: "default",
+      });
+      if (p.isCancel(profile)) {
+        process.exit(1);
+      }
+
+      const { stdout } = await execa(
+        "aws",
+        ["sso", "login", "--profile", profile],
+        {
+          stdio: "inherit",
+        },
+      );
+      console.log(stdout);
+    } catch (error) {
+      if (error instanceof ExecaError) {
+        p.log.error(error.stdout || error.stderr || error.message);
+      }
+      process.exit(1);
     }
-    process.exit(1);
+  } else {
+    p.log.step(
+      "Please login with an account that has permissions to create S3, CloudFront, and Lambda",
+    );
+
+    credentials = await p.group({
+      accessKeyId: () =>
+        p.text({
+          message: "Enter your AWS Access Key ID",
+          validate: (value) => {
+            if (!value) {
+              return "Access Key ID is required";
+            }
+            return;
+          },
+        }),
+      secretAccessKey: () =>
+        p.text({
+          message: "Enter your AWS Secret Access Key",
+          validate: (value) => {
+            if (!value) {
+              return "Secret Access Key is required";
+            }
+
+            return;
+          },
+        }),
+    });
+
+    if (p.isCancel(credentials)) process.exit(1);
+
+    credentials = {
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+    };
   }
-
-  // TODO: sso login
-
-  p.log.step(
-    "Please login with an account that has permissions to create S3, CloudFront, and Lambda",
-  );
-
-  const accessKeyId = await p.text({
-    message: "Enter your AWS Access Key ID",
-    validate: (value) => {
-      if (!value) {
-        return "Access Key ID is required";
-      }
-      return;
-    },
-  });
-  if (p.isCancel(accessKeyId)) {
-    process.exit(1);
-  }
-
-  const secretAccessKey = await p.text({
-    message: "Enter your AWS Secret Access Key",
-    validate: (value) => {
-      if (!value) {
-        return "Secret Access Key is required";
-      }
-      return;
-    },
-  });
-
-  if (p.isCancel(secretAccessKey)) {
-    process.exit(1);
-  }
-
-  const credentials = {
-    accessKeyId,
-    secretAccessKey,
-  };
 
   // Enter region for AWS S3 bucket creation
   const $region = await p.select({
@@ -302,8 +336,8 @@ export const initAwsS3LambdaEdge = async () => {
     HOT_UPDATER_AWS_REGION: region,
 
     // FIXME: only s3 access key id and secret access key are needed
-    HOT_UPDATER_AWS_ACCESS_KEY_ID: credentials.accessKeyId,
-    HOT_UPDATER_AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
+    HOT_UPDATER_AWS_ACCESS_KEY_ID: credentials?.accessKeyId ?? "",
+    HOT_UPDATER_AWS_SECRET_ACCESS_KEY: credentials?.secretAccessKey ?? "",
   });
 
   p.log.success("Generated '.env' file with AWS settings.");
