@@ -24,7 +24,7 @@ export async function handler(event, context) {
     );
   }
 
-  const targetAppVersionListUrl = `https://${distributionDomain}/${appPlatform}/targetAppVersionList.json`;
+  const targetAppVersionListUrl = `https://${distributionDomain}/${appPlatform}/target-app-versions.json`;
 
   const targetAppVersionListResponse = await fetch(targetAppVersionListUrl, { method: "GET" });
   if (!targetAppVersionListResponse.ok) {
