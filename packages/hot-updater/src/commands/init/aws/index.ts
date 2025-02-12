@@ -175,14 +175,13 @@ export const initAwsS3LambdaEdge = async () => {
         process.exit(1);
       }
 
-      const { stdout } = await execa(
-        "aws",
-        ["sso", "login", "--profile", profile],
-        {
-          stdio: "inherit",
-        },
-      );
-      console.log(stdout);
+      await execa("aws", ["sso", "login", "--profile", profile], {
+        stdio: "inherit",
+      });
+
+      credentials = await SDK.CredentialsProvider.fromSSO({
+        profile,
+      })();
     } catch (error) {
       if (error instanceof ExecaError) {
         p.log.error(error.stdout || error.stderr || error.message);

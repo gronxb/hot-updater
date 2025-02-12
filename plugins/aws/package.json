@@ -42,6 +42,7 @@
     "@aws-sdk/client-cloudfront": "^3.745.0",
     "@aws-sdk/client-lambda": "^3.744.0",
     "@aws-sdk/client-s3": "^3.685.0",
+    "@aws-sdk/credential-providers": "^3.744.0",
     "@aws-sdk/lib-storage": "^3.685.0",
     "@hot-updater/plugin-core": "0.6.5"
   }
