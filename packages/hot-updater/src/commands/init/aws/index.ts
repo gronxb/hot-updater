@@ -65,10 +65,10 @@ const deployLambdaEdge = async (
   lambdaName: string;
   functionArn: string;
 }> => {
+  const lambdaPath = require.resolve("@hot-updater/aws/lambda");
   const { SDK } = await import("@hot-updater/aws/sdk");
 
   const cwd = getCwd();
-  const lambdaDir = path.join(cwd, "lambda");
 
   // Enter Lambda function name (default: hot-updater-edge)
   const lambdaName = await p.text({
@@ -83,13 +83,12 @@ const deployLambdaEdge = async (
 
   // Compress lambda directory using zip command (zip must be installed)
   try {
-    await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaDir });
+    await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaPath });
   } catch (error) {
     throw new Error("Failed to create zip archive of Lambda function code");
   }
 
   // Create Lambda client for us-east-1 region
-  const Lambda = SDK.Lambda.Lambda;
   const lambdaClient = new Lambda({ region: "us-east-1", credentials });
 
   // Get IAM Role ARN for Lambda@Edge (user must create role in advance)
