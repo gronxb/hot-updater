@@ -33,7 +33,7 @@ export async function handler(event, context) {
 
   const targetAppVersionList = await targetAppVersionListResponse.json();
 
-  const matchingVersionList = filterCompatibleAppVersions(targetAppVersionList.files, appVersion);
+  const matchingVersionList = filterCompatibleAppVersions(targetAppVersionList, appVersion);
 
   if (!matchingVersionList) {
     return new Response(JSON.stringify(null), {
