@@ -17,7 +17,7 @@ const PACKAGE_MAP = {
   },
   aws: {
     dependencies: [],
-    devDependencies: ["@hot-updater/aws", "aws-sdk"],
+    devDependencies: ["@hot-updater/aws"],
   },
   "cloudflare-d1-r2-worker": {
     dependencies: [],

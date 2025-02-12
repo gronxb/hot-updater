@@ -72,7 +72,6 @@
     "@types/node": "^22.9.0",
     "@types/plist": "^3.0.5",
     "@types/semver": "^7.5.8",
-    "aws-sdk": "^2.1692.0",
     "boxen": "^8.0.1",
     "dayjs": "^1.11.13",
     "execa": "^9.5.2",
@@ -88,7 +87,7 @@
   "peerDependencies": {
     "@hot-updater/cloudflare": "*",
     "@hot-updater/supabase": "*",
-    "aws-sdk": "*"
+    "@hot-updater/aws": "*"
   },
   "peerDependenciesMeta": {
     "@hot-updater/supabase": {
@@ -97,7 +96,7 @@
     "@hot-updater/cloudflare": {
       "optional": true
     },
-    "aws-sdk": {
+    "@hot-updater/aws": {
       "optional": true
     }
   }

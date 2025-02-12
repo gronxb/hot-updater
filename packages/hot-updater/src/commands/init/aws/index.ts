@@ -3,10 +3,16 @@ import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
+import type {
+  BucketLocationConstraint,
+  DistributionConfig,
+} from "@hot-updater/aws/sdk";
 import { getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
-import { execa } from "execa";
 import fs from "fs/promises";
+import { regionLocationMap } from "./regionLocationMap";
+
+import { ExecaError, execa } from "execa";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE = `
@@ -48,12 +54,20 @@ export default HotUpdater.wrap({
  * - Zip the local ./lambda folder, create a function in us-east-1 region,
  * - Publish a new version of the function
  */
-const deployLambdaEdge = async (): Promise<{
+const deployLambdaEdge = async (
+  credentials:
+    | {
+        accessKeyId: string;
+        secretAccessKey: string;
+      }
+    | undefined,
+): Promise<{
   lambdaName: string;
   functionArn: string;
 }> => {
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
-  const AWS = await import("aws-sdk");
+  const { SDK } = await import("@hot-updater/aws/sdk");
+
   const cwd = getCwd();
 
   // Enter Lambda function name (default: hot-updater-edge)
@@ -75,7 +89,7 @@ const deployLambdaEdge = async (): Promise<{
   }
 
   // Create Lambda client for us-east-1 region
-  const lambda = new AWS.Lambda({ region: 'us-east-1' });
+  const lambdaClient = new Lambda({ region: "us-east-1", credentials });
 
   // Get IAM Role ARN for Lambda@Edge (user must create role in advance)
   const lambdaRoleArn = await p.text({
@@ -89,17 +103,15 @@ const deployLambdaEdge = async (): Promise<{
   let functionArn: string;
   try {
     // Create Lambda function (with Publish option to publish new version)
-    const createResp = await lambda
-      .createFunction({
-        FunctionName: lambdaName,
-        Runtime: "nodejs14.x",
-        Role: lambdaRoleArn,
-        Handler: "index.handler",
-        Code: { ZipFile: await fs.readFile(zipFilePath) },
-        Description: "Hot Updater Lambda@Edge function",
-        Publish: true,
-      })
-      .promise();
+    const createResp = await lambdaClient.createFunction({
+      FunctionName: lambdaName,
+      Runtime: "nodejs14.x",
+      Role: lambdaRoleArn,
+      Handler: "index.handler",
+      Code: { ZipFile: await fs.readFile(zipFilePath) },
+      Description: "Hot Updater Lambda@Edge function",
+      Publish: true,
+    });
     functionArn = createResp.FunctionArn!;
   } catch (error) {
     if (error instanceof Error) {
@@ -111,35 +123,137 @@ const deployLambdaEdge = async (): Promise<{
   return { lambdaName, functionArn };
 };
 
+const checkIfAwsCliInstalled = async () => {
+  try {
+    await execa("aws", ["--version"]);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
 export const initAwsS3LambdaEdge = async () => {
-  const AWS = await import("aws-sdk");
+  const { SDK } = await import("@hot-updater/aws/sdk");
+
+  const isAwsCliInstalled = await checkIfAwsCliInstalled();
+  if (!isAwsCliInstalled) {
+    p.log.error(
+      `AWS CLI is not installed. Please visit ${link("https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")} for installation instructions`,
+    );
+    process.exit(1);
+  }
+
+  // 1. Start IAM Identity Center
+  // 2. Add permission set with S3FullAccess, LambdaFullAccess, CloudFrontFullAccess
+  // 3. Add account
+
+  let credentials:
+    | {
+        accessKeyId: string;
+        secretAccessKey: string;
+      }
+    | undefined = undefined;
+
+  const mode = await p.select({
+    message: "Select the mode to login to AWS",
+    options: [
+      { label: "AWS SSO Login", value: "sso" },
+      { label: "AWS Access Key ID & Secret Access Key", value: "account" },
+    ],
+  });
+  if (p.isCancel(mode)) process.exit(1);
+
+  if (mode === "sso") {
+    try {
+      const profile = await p.text({
+        message: "Enter the profile name",
+        defaultValue: "default",
+        placeholder: "default",
+      });
+      if (p.isCancel(profile)) {
+        process.exit(1);
+      }
+
+      await execa("aws", ["sso", "login", "--profile", profile], {
+        stdio: "inherit",
+      });
+
+      credentials = await SDK.CredentialsProvider.fromSSO({
+        profile,
+      })();
+    } catch (error) {
+      if (error instanceof ExecaError) {
+        p.log.error(error.stdout || error.stderr || error.message);
+      }
+      process.exit(1);
+    }
+  } else {
+    p.log.step(
+      "Please login with an account that has permissions to create S3, CloudFront, and Lambda",
+    );
+
+    credentials = await p.group({
+      accessKeyId: () =>
+        p.text({
+          message: "Enter your AWS Access Key ID",
+          validate: (value) => {
+            if (!value) {
+              return "Access Key ID is required";
+            }
+            return;
+          },
+        }),
+      secretAccessKey: () =>
+        p.text({
+          message: "Enter your AWS Secret Access Key",
+          validate: (value) => {
+            if (!value) {
+              return "Secret Access Key is required";
+            }
+
+            return;
+          },
+        }),
+    });
+
+    if (p.isCancel(credentials)) process.exit(1);
+
+    credentials = {
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+    };
+  }
 
   // Enter region for AWS S3 bucket creation
-  const region = await p.text({
+  const $region = await p.select({
     message: "Enter AWS region for the S3 bucket",
-    defaultValue: "us-west-2",
-    placeholder: "us-west-2",
+    options: Object.values(SDK.S3.BucketLocationConstraint).map((r) => ({
+      label: `${r} (${regionLocationMap[r]})` as string,
+      value: r as string,
+    })),
   });
-  if (p.isCancel(region)) process.exit(1);
+  if (p.isCancel($region)) process.exit(1);
 
+  const region = $region as BucketLocationConstraint;
   // Create S3 client
-  const s3 = new AWS.S3({ region });
+  const S3 = SDK.S3.S3;
+  const s3Client = new S3({ region, credentials });
 
   // Enter S3 bucket name (or use default)
   const bucketName = await p.text({
     message: "Enter the name for the S3 bucket",
-    defaultValue: "hot-updater-bucket",
-    placeholder: "hot-updater-bucket",
+    defaultValue: "bundles",
+    placeholder: "bundles",
   });
   if (p.isCancel(bucketName)) process.exit(1);
 
   try {
-    await s3
-      .createBucket({
-        Bucket: bucketName,
-        CreateBucketConfiguration: { LocationConstraint: region },
-      })
-      .promise();
+    await s3Client.createBucket({
+      Bucket: bucketName,
+      CreateBucketConfiguration: {
+        LocationConstraint: region,
+      },
+    });
     p.log.info(`Created S3 bucket: ${bucketName}`);
   } catch (error) {
     if (error instanceof Error) {
@@ -149,12 +263,13 @@ export const initAwsS3LambdaEdge = async () => {
   }
 
   // Deploy Lambda@Edge function (us-east-1)
-  const { functionArn } = await deployLambdaEdge();
+  const { functionArn } = await deployLambdaEdge(credentials);
 
   // Create CloudFront distribution: Use S3 as origin and connect Lambda@Edge function to viewer-request event
-  const cloudfront = new AWS.CloudFront();
+  const Cloudfront = SDK.CloudFront.CloudFront;
+  const cloudfrontClient = new Cloudfront({ region, credentials });
 
-  const distributionConfig = {
+  const distributionConfig: DistributionConfig = {
     CallerReference: dayjs().format(),
     Comment: "Hot Updater CloudFront distribution",
     Enabled: true,
@@ -199,9 +314,9 @@ export const initAwsS3LambdaEdge = async () => {
   let distributionId: string;
   let distributionDomain: string;
   try {
-    const distResp = await cloudfront
-      .createDistribution({ DistributionConfig: distributionConfig })
-      .promise();
+    const distResp = await cloudfrontClient.createDistribution({
+      DistributionConfig: distributionConfig,
+    });
     distributionId = distResp.Distribution?.Id!;
     distributionDomain = distResp.Distribution?.DomainName!;
     p.log.info(`Created CloudFront distribution with ID: ${distributionId}`);
@@ -217,7 +332,10 @@ export const initAwsS3LambdaEdge = async () => {
   await makeEnv({
     HOT_UPDATER_AWS_S3_BUCKET_NAME: bucketName,
     HOT_UPDATER_AWS_REGION: region,
-    HOT_UPDATER_AWS_LAMBDA_ARN: functionArn,
+
+    // FIXME: only s3 access key id and secret access key are needed
+    HOT_UPDATER_AWS_ACCESS_KEY_ID: credentials?.accessKeyId ?? "",
+    HOT_UPDATER_AWS_SECRET_ACCESS_KEY: credentials?.secretAccessKey ?? "",
   });
 
   p.log.success("Generated '.env' file with AWS settings.");
