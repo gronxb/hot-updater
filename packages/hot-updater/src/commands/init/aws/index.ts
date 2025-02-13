@@ -260,7 +260,7 @@ export const initAwsS3LambdaEdge = async () => {
     if (error instanceof Error) {
       p.log.error(`Failed to create S3 bucket: ${error.message}`);
     }
-    // throw error;
+    throw error;
   }
 
   // Deploy Lambda@Edge function (us-east-1)
