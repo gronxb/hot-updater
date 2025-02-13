@@ -709,8 +709,8 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
       cloudflare:
-        specifier: ^4.0.0
-        version: 4.0.0(encoding@0.1.13)
+        specifier: 4.1.0
+        version: 4.1.0(encoding@0.1.13)
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.6.4
@@ -5861,8 +5861,8 @@ packages:
     resolution: {integrity: sha512-JQHZ2QMW6l3aH/j6xCqQThY/9OH4D/9ls34cgkUBiEeocRTU04tHfKPBsUK1PqZCUQM7GiA0IIXJSuXHI64Kbg==}
     engines: {node: '>=0.8'}
 
-  cloudflare@4.0.0:
-    resolution: {integrity: sha512-0o3rUVLTZoHKcM+83UbkeeFdWdsaEaF2e8QA7e8hNwTku8EwO14JoYyeBF+DJZnRdnoJGPbAjA9lDKQ7f6ylUg==}
+  cloudflare@4.1.0:
+    resolution: {integrity: sha512-TySwSEGGQhuVHFVjKRUHkzZum0MSGJkgfVjep+KBJxuxScEvjoTckQFbxlYThPp5kLm8IUi4C7oJeVr5e9etVw==}
 
   clsx@2.0.0:
     resolution: {integrity: sha512-rQ1+kcj+ttHG0MKVGBUXwayCCF1oh39BF5COIpRzuCEv8Mwjv0XucrI2ExNTOn9IlLifGClWQcU9BrZORvtw6Q==}
@@ -18438,7 +18438,7 @@ snapshots:
 
   clone@1.0.4: {}
 
-  cloudflare@4.0.0(encoding@0.1.13):
+  cloudflare@4.1.0(encoding@0.1.13):
     dependencies:
       '@types/node': 18.19.33
       '@types/node-fetch': 2.6.12

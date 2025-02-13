@@ -48,7 +48,7 @@
     "@hot-updater/core": "0.6.5",
     "@hot-updater/js": "0.6.5",
     "@hot-updater/plugin-core": "0.6.5",
-    "cloudflare": "^4.0.0"
+    "cloudflare": "4.1.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.6.4",
