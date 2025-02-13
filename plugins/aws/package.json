@@ -27,6 +27,7 @@
       "require": "./dist/sdk.cjs"
     },
     "./lambda": {
+      "import": "./dist/lambda/index.js",
       "require": "./dist/lambda/index.cjs"
     }
   },
