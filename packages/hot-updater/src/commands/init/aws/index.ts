@@ -106,7 +106,7 @@ const deployLambdaEdge = async (
     // Create Lambda function (with Publish option to publish new version)
     const createResp = await lambdaClient.createFunction({
       FunctionName: lambdaName,
-      Runtime: "nodejs18.x", // Lambda@Edge supports Node.js 18.x and 20.x
+      Runtime: "nodejs20.x", // Lambda@Edge supports Node.js 18.x and 20.x
       Role: lambdaRoleArn,
       Handler: "index.handler",
       Code: { ZipFile: await fs.readFile(zipFilePath) },
