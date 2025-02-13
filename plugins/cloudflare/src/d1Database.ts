@@ -118,7 +118,7 @@ export const d1Database =
           params: [bundleId],
         });
         const response = singlePage.result[0];
-        if (!response) {
+        if (!response.success) {
           return null;
         }
 
@@ -169,7 +169,7 @@ export const d1Database =
           params: [],
         });
         const response = singlePage.result[0];
-        if (!response) {
+        if (!response.success) {
           bundles = [];
           return bundles;
         }
