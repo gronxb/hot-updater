@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/sdk.ts"],
+  entry: ["src/index.ts", "src/sdk.ts", "lambda/index.ts"],
   format: ["esm", "cjs"],
   dts: true,
   banner: {
