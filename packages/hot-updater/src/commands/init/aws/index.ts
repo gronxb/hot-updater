@@ -66,6 +66,7 @@ const deployLambdaEdge = async (
   functionArn: string;
 }> => {
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
+  const lambdaDir = path.dirname(lambdaPath);
   const { SDK } = await import("@hot-updater/aws/sdk");
 
   const cwd = getCwd();
@@ -83,13 +84,13 @@ const deployLambdaEdge = async (
 
   // Compress lambda directory using zip command (zip must be installed)
   try {
-    await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaPath });
+    await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaDir });
   } catch (error) {
     throw new Error("Failed to create zip archive of Lambda function code");
   }
 
   // Create Lambda client for us-east-1 region
-  const lambdaClient = new Lambda({ region: "us-east-1", credentials });
+  const lambdaClient = new SDK.Lambda.Lambda({ region: "us-east-1", credentials });
 
   // Get IAM Role ARN for Lambda@Edge (user must create role in advance)
   const lambdaRoleArn = await p.text({
@@ -105,7 +106,7 @@ const deployLambdaEdge = async (
     // Create Lambda function (with Publish option to publish new version)
     const createResp = await lambdaClient.createFunction({
       FunctionName: lambdaName,
-      Runtime: "nodejs14.x",
+      Runtime: "nodejs20.x", // Lambda@Edge supports Node.js 18.x and 20.x
       Role: lambdaRoleArn,
       Handler: "index.handler",
       Code: { ZipFile: await fs.readFile(zipFilePath) },

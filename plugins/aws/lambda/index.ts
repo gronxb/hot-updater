@@ -1,12 +1,16 @@
 import { filterCompatibleAppVersions, getUpdateInfo } from '@hot-updater/js'
-import type { CloudFrontRequestEvent } from 'aws-lambda'
+import type { CloudFrontRequestHandler } from 'aws-lambda'
+import type { Bundle } from '@hot-updater/core'
 
-export async function handler(event: CloudFrontRequestEvent) {
+export const handler: CloudFrontRequestHandler = async (event) => {
   const request = event.Records[0].cf.request;
   const headers = request.headers;
 
   if (request.uri !== '/api/check-update') {
-    return new Response("Not found", { status: 404 });
+    return {
+      status: '404',
+      statusDescription: "Not found"
+    }
   }
 
   const distributionDomain = headers["host"][0]?.value;
@@ -18,30 +22,36 @@ export async function handler(event: CloudFrontRequestEvent) {
   const appVersion = headers["x-app-version"][0]?.value as string;
 
   if (!bundleId || !appPlatform || !appVersion) {
-    return new Response(
-      JSON.stringify({
+    return {
+      status: "400",
+      body: JSON.stringify({
         error: "Missing bundleId, appPlatform, or appVersion",
-      }),
-      { status: 400 },
-    );
+      })
+    }
   }
 
   const targetAppVersionListUrl = `https://${distributionDomain}/${appPlatform}/target-app-versions.json`;
 
   const targetAppVersionListResponse = await fetch(targetAppVersionListUrl, { method: "GET" });
   if (!targetAppVersionListResponse.ok) {
-    return new Response("Failed to fetch targetAppVersionList.json", { status: 404 });
+    return {
+      status: "404",
+      body: JSON.stringify({
+        error: "Failed to fetch targetAppVersionList.json",
+      })
+    }
   }
 
-  const targetAppVersionList = await targetAppVersionListResponse.json();
+  const targetAppVersionList = await targetAppVersionListResponse.json() as string[];
 
   const matchingVersionList = filterCompatibleAppVersions(targetAppVersionList, appVersion);
 
   if (!matchingVersionList) {
-    return new Response(JSON.stringify(null), {
-      headers: { "Content-Type": "application/json" },
-      status: 200,
-    });
+    return {
+      status: "200",
+      headers: { "Content-Type": [{ key: "Content-Type", value: "application/json" }] },
+      body: JSON.stringify(null)
+    }
   }
 
   const results = await Promise.allSettled(
@@ -52,12 +62,13 @@ export async function handler(event: CloudFrontRequestEvent) {
     })
   )
 
-  const bundles = results.filter(result => result.status === 'fulfilled').map(result => result.value);
+  const bundles = results.filter(result => result.status === 'fulfilled').map(result => result.value) as Bundle[];
 
   const updateInfo = await getUpdateInfo(bundles, { platform: appPlatform, bundleId, appVersion });
 
-  return new Response(JSON.stringify(updateInfo), {
-    headers: { "Content-Type": "application/json" },
-    status: 200,
-  });
+  return {
+    status: "200",
+    headers: { "Content-Type": [{ key: "Content-Type", value: "application/json" }] },
+    body: JSON.stringify(updateInfo)
+  }
 }

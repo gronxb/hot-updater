@@ -25,6 +25,10 @@
       "types": "./dist/sdk.d.ts",
       "import": "./dist/sdk.js",
       "require": "./dist/sdk.cjs"
+    },
+    "./lambda": {
+      "import": "./dist/lambda/index.js",
+      "require": "./dist/lambda/index.cjs"
     }
   },
   "files": [
@@ -37,6 +41,7 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.147",
+    "@types/node": "^22.13.1",
     "mime": "^4.0.4"
   },
   "dependencies": {
