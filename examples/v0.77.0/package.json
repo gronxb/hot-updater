@@ -19,7 +19,7 @@
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
     "@hot-updater/aws": "0.6.5",
-    "@hot-updater/cloudflare": "0.6.0",
+    "@hot-updater/cloudflare": "0.6.5",
     "@hot-updater/metro": "0.6.5",
     "@hot-updater/supabase": "0.6.5",
     "@react-native-community/cli": "15.0.1",

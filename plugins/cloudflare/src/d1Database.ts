@@ -112,13 +112,13 @@ export const d1Database =
           /* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`,
         );
-        const [response] = await cf.d1.database.query(config.databaseId, {
+        const singlePage = await cf.d1.database.query(config.databaseId, {
           account_id: config.accountId,
           sql,
           params: [bundleId],
         });
-
-        if (!response.success) {
+        const response = singlePage.result[0];
+        if (!response) {
           return null;
         }
 
@@ -163,13 +163,13 @@ export const d1Database =
         `,
         );
 
-        const [response] = await cf.d1.database.query(config.databaseId, {
+        const singlePage = await cf.d1.database.query(config.databaseId, {
           account_id: config.accountId,
           sql,
           params: [],
         });
-
-        if (!response.success) {
+        const response = singlePage.result[0];
+        if (!response) {
           bundles = [];
           return bundles;
         }
