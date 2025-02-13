@@ -117,13 +117,14 @@ export const d1Database =
           sql,
           params: [bundleId],
         });
-        const response = singlePage.result[0];
-        if (!response.success) {
-          return null;
+
+        const rows = [] as SnakeCaseBundle[];
+        for await (const page of singlePage.iterPages()) {
+          const data = page.result.flatMap((r) => r.results);
+          rows.push(...(data as SnakeCaseBundle[]));
         }
 
-        const rows = response.results as SnakeCaseBundle[];
-        if (!rows?.length) {
+        if (rows.length === 0) {
           return null;
         }
 
@@ -168,14 +169,13 @@ export const d1Database =
           sql,
           params: [],
         });
-        const response = singlePage.result[0];
-        if (!response.success) {
-          bundles = [];
-          return bundles;
+        const rows = [] as SnakeCaseBundle[];
+        for await (const page of singlePage.iterPages()) {
+          const data = page.result.flatMap((r) => r.results);
+          rows.push(...(data as SnakeCaseBundle[]));
         }
 
-        const rows = response.results as SnakeCaseBundle[];
-        if (!rows?.length) {
+        if (rows.length === 0) {
           bundles = [];
         } else {
           bundles = rows.map((row) => ({
