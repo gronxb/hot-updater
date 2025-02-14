@@ -75,9 +75,11 @@ export default HotUpdater.wrap({ // [!code hl:22]
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
           {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
         </Text>
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {Math.round(progress * 100)}%
-        </Text>
+        {progress > 0 ? (
+          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+            {Math.round(progress * 100)}%
+          </Text>
+        ) : null}
       </View>
     );
   })(App);
