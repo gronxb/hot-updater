@@ -59,6 +59,11 @@ class HotUpdater : ReactPackage {
                 putString("HotUpdaterBundleURL", bundleURL)
                 apply()
             }
+
+            if (bundleURL == null) {
+                return
+            }
+
             val reactIntegrationManager = ReactIntegrationManager(context)
 
             val activity: Activity? = getCurrentActivity(context)
@@ -133,11 +138,11 @@ class HotUpdater : ReactPackage {
         fun updateBundle(
             context: Context,
             bundleId: String,
-            zipUrl: String,
+            zipUrl: String?,
             progressCallback: ((Double) -> Unit),
         ): Boolean {
             Log.d("HotUpdater", "updateBundle bundleId $bundleId zipUrl $zipUrl")
-            if (zipUrl.isEmpty()) {
+            if (zipUrl.isNullOrEmpty()) {
                 setBundleURL(context, null)
                 return true
             }
