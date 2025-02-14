@@ -6,7 +6,8 @@
  */
 
 import { HotUpdater } from "@hot-updater/react-native";
-import type React from "react";
+// biome-ignore lint/style/useImportType: <explanation>
+import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
@@ -20,7 +21,6 @@ function App(): React.JSX.Element {
     setBundleId(bundleId);
   }, []);
 
-  // @ts-expect-error
   const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
   return (
