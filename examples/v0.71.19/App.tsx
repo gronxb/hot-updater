@@ -73,7 +73,7 @@ function App(): React.JSX.Element {
         title="HotUpdater.runUpdateProcess()"
         onPress={() =>
           HotUpdater.runUpdateProcess({
-            source: `https://${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
           }).then((status) => {
             console.log("Update process completed", JSON.stringify(status));
           })
@@ -84,7 +84,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `https://${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
   fallbackComponent: ({ progress = 0 }) => (
     <Modal transparent visible={true}>
       <View
