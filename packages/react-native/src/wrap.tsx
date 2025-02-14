@@ -32,8 +32,7 @@ export interface HotUpdaterConfig extends CheckForUpdateConfig {
    * If not defined, the bundle will download in the background without blocking the screen.
    */
   fallbackComponent?: React.FC<
-    {
-      shouldForceUpdate: boolean;
+    { 
       status: StatusType;
       progress: number;
     }
@@ -62,8 +61,7 @@ export function wrap<P>(
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
       const { progress } = useHotUpdaterStore();
-      const [status, setStatus] = useState<StatusType>("IDLE");
-      const [shouldForceUpdate, setShouldForceUpdate] = useState(false);
+      const [status, setStatus] = useState<StatusType>("IDLE"); 
 
       const initHotUpdater = useEventCallback(async () => {
         try {
@@ -79,8 +77,6 @@ export function wrap<P>(
             setStatus("UPDATE_PROCESS_COMPLETED");
             return;
           }
-
-          setShouldForceUpdate(updateInfo.shouldForceUpdate);
 
           setStatus("UPDATING");
 
@@ -126,7 +122,7 @@ export function wrap<P>(
         status !== "UPDATE_PROCESS_COMPLETED"
       ) {
         const Fallback = restConfig.fallbackComponent;
-        return <Fallback progress={progress} shouldForceUpdate={shouldForceUpdate} status={status} />;
+        return <Fallback progress={progress} status={status} />;
       }
 
       return <WrappedComponent />;
