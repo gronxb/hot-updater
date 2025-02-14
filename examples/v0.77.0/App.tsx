@@ -5,8 +5,9 @@
  * @format
  */
 
-import { HotUpdater } from "@hot-updater/react-native";
-import type React from "react";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+// biome-ignore lint/style/useImportType: <explanation>
+import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
@@ -20,9 +21,9 @@ function App(): React.JSX.Element {
     setBundleId(bundleId);
   }, []);
 
-  // @ts-expect-error
   const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
+  const { progress } = useHotUpdaterStore();
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
@@ -37,6 +38,16 @@ function App(): React.JSX.Element {
         Hot Updater 0
       </Text>
 
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Update {Math.round(progress * 100)}%
+      </Text>
       <Text
         style={{
           marginVertical: 20,
@@ -102,9 +113,11 @@ export default HotUpdater.wrap({
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
           {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
         </Text>
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {Math.round(progress * 100)}%
-        </Text>
+        {progress > 0 ? (
+          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+            {Math.round(progress * 100)}%
+          </Text>
+        ) : null}
       </View>
     </Modal>
   ),

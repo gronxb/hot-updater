@@ -80,8 +80,19 @@ export function wrap<P>(
             return;
           }
 
-          setUpdateStatus("UPDATING");
+          if (updateInfo.shouldForceUpdate === false) {
+            void updateBundle(updateInfo.id, updateInfo.fileUrl);
+            restConfig.onUpdateProcessCompleted?.({
+              id: updateInfo.id,
+              status: updateInfo.status,
+              shouldForceUpdate: updateInfo.shouldForceUpdate,
+            });
+            setUpdateStatus("UPDATE_PROCESS_COMPLETED");
+            return;
+          }
 
+          // Force Update Scenario
+          setUpdateStatus("UPDATING");
           const isSuccess = await updateBundle(
             updateInfo.id,
             updateInfo.fileUrl,
@@ -92,7 +103,7 @@ export function wrap<P>(
             );
           }
 
-          if (updateInfo.shouldForceUpdate && reloadOnForceUpdate) {
+          if (reloadOnForceUpdate) {
             reload();
           }
 
