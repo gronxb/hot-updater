@@ -7,7 +7,11 @@ import { reload, updateBundle } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
-type StatusType = "IDLE" | "CHECK_FOR_UPDATE" | "UPDATING" | "UPDATE_PROCESS_COMPLETED";
+type StatusType =
+  | "IDLE"
+  | "CHECK_FOR_UPDATE"
+  | "UPDATING"
+  | "UPDATE_PROCESS_COMPLETED";
 
 export interface HotUpdaterConfig extends CheckForUpdateConfig {
   /**
@@ -31,12 +35,10 @@ export interface HotUpdaterConfig extends CheckForUpdateConfig {
    *
    * If not defined, the bundle will download in the background without blocking the screen.
    */
-  fallbackComponent?: React.FC<
-    { 
-      status: StatusType;
-      progress: number;
-    }
-  >;
+  fallbackComponent?: React.FC<{
+    status: StatusType;
+    progress: number;
+  }>;
   onError?: (error: HotUpdaterError) => void;
   onProgress?: (progress: number) => void;
   /**
@@ -61,7 +63,7 @@ export function wrap<P>(
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
       const { progress } = useHotUpdaterStore();
-      const [status, setStatus] = useState<StatusType>("IDLE"); 
+      const [status, setStatus] = useState<StatusType>("IDLE");
 
       const initHotUpdater = useEventCallback(async () => {
         try {

@@ -40,8 +40,6 @@ The `fallbackComponent` receives two props: `progress` and `shouldForceUpdate`.
 
 - **progress**: This prop indicates the download progress of the new bundle. You can use this to display a progress bar or percentage to the user.
   
-- **shouldForceUpdate**: This boolean prop indicates whether a force update is required. If `true`, it means the update is critical, and you should ensure the user cannot bypass the update process.
-
 - **status**: This prop indicates the current status of the update process. It can be one of the following: `"IDLE"`, `"CHECK_FOR_UPDATE"`, `"UPDATING"`, or `"UPDATE_PROCESS_COMPLETED"`. You can use this to display different messages or UI elements based on the update status.
 
 By using these props, you can customize the user interface to provide feedback during the update process, ensuring a smooth transition to the updated version of your app.
@@ -60,9 +58,7 @@ function App() {
 
 export default HotUpdater.wrap({ // [!code hl:22]
   source: "<your-update-server-url>",
-  fallbackComponent: ({ progress = 0, shouldForceUpdate }) => {
-    if(!shouldForceUpdate) return null;
-    return (
+  fallbackComponent: ({ progress = 0, status }) => (
       <View
         style={{
           flex: 1,
@@ -81,8 +77,7 @@ export default HotUpdater.wrap({ // [!code hl:22]
         </Text>
       </View>
     );
-  },
-})(App);
+  })(App);
 ```
 
 ## `reloadOnForceUpdate`
