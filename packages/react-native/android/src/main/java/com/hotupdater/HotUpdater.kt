@@ -59,6 +59,11 @@ class HotUpdater : ReactPackage {
                 putString("HotUpdaterBundleURL", bundleURL)
                 apply()
             }
+
+            if (bundleURL == null) {
+                return
+            }
+
             val reactIntegrationManager = ReactIntegrationManager(context)
 
             val activity: Activity? = getCurrentActivity(context)
