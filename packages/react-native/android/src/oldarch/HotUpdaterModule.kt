@@ -26,7 +26,7 @@ class HotUpdaterModule internal constructor(
     @ReactMethod
     override fun updateBundle(
         bundleId: String,
-        zipUrl: String,
+        zipUrl: String?,
         promise: Promise,
     ) {
         val isSuccess =

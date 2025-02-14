@@ -9,7 +9,7 @@ abstract class HotUpdaterSpec internal constructor(
 ) : ReactContextBaseJavaModule(context) {
     abstract fun updateBundle(
         bundleId: String,
-        zipUrl: String,
+        zipUrl: String?,
         promise: Promise,
     )
 
