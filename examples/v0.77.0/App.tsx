@@ -85,7 +85,7 @@ function App(): React.JSX.Element {
 
 export default HotUpdater.wrap({
   source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-  fallbackComponent: ({ progress = 0 }) => (
+  fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View
         style={{
@@ -97,8 +97,10 @@ export default HotUpdater.wrap({
           backgroundColor: "rgba(0, 0, 0, 0.5)",
         }}
       >
+        {/* You can put a splash image here. */}
+
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          Updating...
+          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
         </Text>
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
           {Math.round(progress * 100)}%
