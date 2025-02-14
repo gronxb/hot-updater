@@ -1,3 +1,13 @@
+## 0.7.0 (2025-02-14)
+
+### 🩹 Fixes
+
+- **android:** Prevent bundle loading when URL is null ([#103](https://github.com/gronxb/hot-updater/pull/103))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.6.7 (2025-02-14)
 
 ### 🚀 Features
