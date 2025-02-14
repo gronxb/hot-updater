@@ -7,8 +7,7 @@ import { reload, updateBundle } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
-type StatusType =
-  | "IDLE"
+type UpdateStatus =
   | "CHECK_FOR_UPDATE"
   | "UPDATING"
   | "UPDATE_PROCESS_COMPLETED";
@@ -36,7 +35,7 @@ export interface HotUpdaterConfig extends CheckForUpdateConfig {
    * If not defined, the bundle will download in the background without blocking the screen.
    */
   fallbackComponent?: React.FC<{
-    status: StatusType;
+    status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
     progress: number;
   }>;
   onError?: (error: HotUpdaterError) => void;
@@ -63,11 +62,12 @@ export function wrap<P>(
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
       const { progress } = useHotUpdaterStore();
-      const [status, setStatus] = useState<StatusType>("IDLE");
+      const [updateStatus, setUpdateStatus] =
+        useState<UpdateStatus>("CHECK_FOR_UPDATE");
 
       const initHotUpdater = useEventCallback(async () => {
         try {
-          setStatus("CHECK_FOR_UPDATE");
+          setUpdateStatus("CHECK_FOR_UPDATE");
           const updateInfo = await checkForUpdate({
             source: restConfig.source,
             requestHeaders: restConfig.requestHeaders,
@@ -76,11 +76,11 @@ export function wrap<P>(
             restConfig.onUpdateProcessCompleted?.({
               status: "UP_TO_DATE",
             });
-            setStatus("UPDATE_PROCESS_COMPLETED");
+            setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;
           }
 
-          setStatus("UPDATING");
+          setUpdateStatus("UPDATING");
 
           const isSuccess = await updateBundle(
             updateInfo.id,
@@ -101,12 +101,12 @@ export function wrap<P>(
             status: updateInfo.status,
             shouldForceUpdate: updateInfo.shouldForceUpdate,
           });
-          setStatus("UPDATE_PROCESS_COMPLETED");
+          setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         } catch (error) {
           if (error instanceof HotUpdaterError) {
             restConfig.onError?.(error);
           }
-          setStatus("UPDATE_PROCESS_COMPLETED");
+          setUpdateStatus("UPDATE_PROCESS_COMPLETED");
           throw error;
         }
       });
@@ -121,10 +121,10 @@ export function wrap<P>(
 
       if (
         restConfig.fallbackComponent &&
-        status !== "UPDATE_PROCESS_COMPLETED"
+        updateStatus !== "UPDATE_PROCESS_COMPLETED"
       ) {
         const Fallback = restConfig.fallbackComponent;
-        return <Fallback progress={progress} status={status} />;
+        return <Fallback progress={progress} status={updateStatus} />;
       }
 
       return <WrappedComponent />;
