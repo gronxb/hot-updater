@@ -36,6 +36,15 @@ This allows you to show the progress while downloading the new bundle and safely
 
 If you don't define a `fallbackComponent`, the bundle will be downloaded without blocking the screen.
 
+The `fallbackComponent` receives two props: `progress` and `shouldForceUpdate`.
+
+- **progress**: This prop indicates the download progress of the new bundle. You can use this to display a progress bar or percentage to the user.
+  
+- **shouldForceUpdate**: This boolean prop indicates whether a force update is required. If `true`, it means the update is critical, and you should ensure the user cannot bypass the update process.
+
+- **status**: This prop indicates the current status of the update process. It can be one of the following: `"IDLE"`, `"CHECK_FOR_UPDATE"`, `"UPDATING"`, or `"UPDATE_PROCESS_COMPLETED"`. You can use this to display different messages or UI elements based on the update status.
+
+By using these props, you can customize the user interface to provide feedback during the update process, ensuring a smooth transition to the updated version of your app.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -51,25 +60,28 @@ function App() {
 
 export default HotUpdater.wrap({ // [!code hl:22]
   source: "<your-update-server-url>",
-  fallbackComponent: ({ progress = 0 }) => (
-    <View
-      style={{
-        flex: 1,
-        padding: 20,
-        borderRadius: 10,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "rgba(0, 0, 0, 0.5)",
-      }}
-    >
-      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-        Updating...
-      </Text>
-      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-        {Math.round(progress * 100)}%
-      </Text>
-    </View>
-  ),
+  fallbackComponent: ({ progress = 0, shouldForceUpdate }) => {
+    if(!shouldForceUpdate) return null;
+    return (
+      <View
+        style={{
+          flex: 1,
+          padding: 20,
+          borderRadius: 10,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {status === "UPDATING" ? "Updating..." : "Preparing Update..."}
+        </Text>
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {Math.round(progress * 100)}%
+        </Text>
+      </View>
+    );
+  },
 })(App);
 ```
 
