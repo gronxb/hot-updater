@@ -15,7 +15,7 @@ export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
   /**
    * If `true`, the app will be reloaded when the downloaded bundle is a force update.
    * If `false`, shouldForceUpdate will be returned as true but the app won't reload.
-   * @default false
+   * @default true
    */
   reloadOnForceUpdate?: boolean;
 }
@@ -26,7 +26,7 @@ export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
  * @param {RunUpdateProcessConfig} config - Update process configuration
  * @param {string} config.source - Update server URL
  * @param {Record<string, string>} [config.requestHeaders] - Request headers
- * @param {boolean} [config.reloadOnForceUpdate=false] - Whether to automatically reload on force update
+ * @param {boolean} [config.reloadOnForceUpdate=true] - Whether to automatically reload on force update
  *
  * @example
  * ```ts
@@ -53,7 +53,7 @@ export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
  * @returns {Promise<RunUpdateProcessResponse>} The result of the update process
  */
 export const runUpdateProcess = async ({
-  reloadOnForceUpdate = false,
+  reloadOnForceUpdate = true,
   ...checkForUpdateConfig
 }: RunUpdateProcessConfig): Promise<RunUpdateProcessResponse> => {
   const updateInfo = await checkForUpdate(checkForUpdateConfig);
