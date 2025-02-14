@@ -30,20 +30,21 @@ export default HotUpdater.wrap({ // [!code hl:7]
 
 ## Fallback Component
 
-When an update exists and the bundle is being downloaded, you can block access to the entry point and trigger a `fallbackComponent`.
+During an update check, access to the entry point is temporarily blocked while communicating with the server.
 
-This allows you to show the progress while downloading the new bundle and safely enter the app with the new bundle.
+- If the update is **force update**, the entry point remains blocked, and the progress updates as the bundle downloads.  
+- If **not force update**, the entry point is only blocked during the update check.
 
-If you don't define a `fallbackComponent`, the bundle will be downloaded without blocking the screen.
+Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 
-The `fallbackComponent` receives two props: `progress` and `shouldForceUpdate`.
+### `fallbackComponent` Props:
+- **`progress`**: Download progress (e.g., for a progress bar).  
+- **`status`**: Update state:
+  - `CHECK_FOR_UPDATE`: Checking for updates.  
+  - `UPDATING`: Downloading the new bundle.  
 
-- **progress**: This prop indicates the download progress of the new bundle. You can use this to display a progress bar or percentage to the user.
-  
-- **status**: This prop indicates the current status of the update process. It can be one of the following: `CHECK_FOR_UPDATE`, `UPDATING`. You can use this to display different messages or UI elements based on the update status.
-
-By using these props, you can customize the user interface to provide feedback during the update process, ensuring a smooth transition to the updated version of your app.
-
+Using these props, you can ensure a smooth UI transition.  
+It is also recommended to include a **splash image** for a better user experience.
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text, Modal } from "react-native";
