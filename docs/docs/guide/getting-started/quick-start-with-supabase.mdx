@@ -118,26 +118,28 @@ export default HotUpdater.wrap({
   requestHeaders: {
     // if you want to use the request headers, you can add them here
   },
-  fallbackComponent: ({ progress = 0 }) => (
-    <Modal transparent visible={true}>
-      <View
-        style={{
-          flex: 1,
-          padding: 20,
-          borderRadius: 10,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-        }}
-      >
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          Updating...
-        </Text>
+  fallbackComponent: ({ progress, status }) => (
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        borderRadius: 10,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      {/* You can put a splash image here. */}
+
+      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+        {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+      </Text>
+      {progress > 0 ? (
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
           {Math.round(progress * 100)}%
         </Text>
-      </View>
-    </Modal>
+      ) : null}
+    </View>
   ),
 })(App);
 
