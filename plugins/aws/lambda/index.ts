@@ -1,6 +1,6 @@
+import type { Bundle } from "@hot-updater/core";
 import { filterCompatibleAppVersions, getUpdateInfo } from "@hot-updater/js";
 import type { CloudFrontRequestHandler } from "aws-lambda";
-import type { Bundle } from "@hot-updater/core";
 
 export const handler: CloudFrontRequestHandler = async (event) => {
   const request = event.Records[0].cf.request;
