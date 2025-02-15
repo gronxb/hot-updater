@@ -90,18 +90,71 @@ const deployLambdaEdge = async (
   }
 
   // Create Lambda client for us-east-1 region
-  const lambdaClient = new SDK.Lambda.Lambda({ region: "us-east-1", credentials });
-
-  // Get IAM Role ARN for Lambda@Edge (user must create role in advance)
-  const lambdaRoleArn = await p.text({
-    message:
-      "Enter the IAM Role ARN for Lambda@Edge (must have necessary permissions)",
-    defaultValue: "",
-    placeholder: "arn:aws:iam::ACCOUNT_ID:role/your-lambda-role",
+  const lambdaClient = new SDK.Lambda.Lambda({
+    region: "us-east-1",
+    credentials,
   });
-  if (p.isCancel(lambdaRoleArn) || !lambdaRoleArn) process.exit(1);
 
-  let functionArn: string;
+  const defaultRoleName = "hot-updater-edge-role";
+  let lambdaRoleArn: string | null = null;
+  try {
+    const iamClient = new SDK.IAM.IAM({ region: "us-east-1", credentials });
+    // 역할 목록에서 defaultRoleName 검색
+    const { Roles } = await iamClient.listRoles({});
+    const existingRole = Roles?.find(
+      (role) => role.RoleName === defaultRoleName,
+    );
+    if (existingRole) {
+      lambdaRoleArn = existingRole.Arn ?? null;
+      p.log.info(
+        `Using existing IAM role: ${defaultRoleName} (${lambdaRoleArn})`,
+      );
+    } else {
+      // Lambda@Edge가 사용할 수 있도록 trust policy 설정
+      const assumeRolePolicyDocument = JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: {
+              Service: "lambda.amazonaws.com",
+            },
+            Action: "sts:AssumeRole",
+          },
+        ],
+      });
+      const createRoleResp = await iamClient.createRole({
+        RoleName: defaultRoleName,
+        AssumeRolePolicyDocument: assumeRolePolicyDocument,
+        Description: "Role for Lambda@Edge to access S3",
+      });
+      lambdaRoleArn = createRoleResp.Role?.Arn!;
+      p.log.info(`Created IAM role: ${defaultRoleName} (${lambdaRoleArn})`);
+      // 필수 정책 부착: CloudWatch Logs에 로그 전송, S3 접근 권한
+      await iamClient.attachRolePolicy({
+        RoleName: defaultRoleName,
+        PolicyArn:
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+      });
+      await iamClient.attachRolePolicy({
+        RoleName: defaultRoleName,
+        PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+      });
+      p.log.info(
+        `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${defaultRoleName}`,
+      );
+    }
+  } catch (error: any) {
+    p.log.error(`Error setting up IAM role for Lambda@Edge: ${error.message}`);
+    process.exit(1);
+  }
+
+  if (!lambdaRoleArn) {
+    p.log.error("Failed to create IAM role for Lambda@Edge");
+    process.exit(1);
+  }
+
+  let functionArn: string | null = null;
   try {
     // Create Lambda function (with Publish option to publish new version)
     const createResp = await lambdaClient.createFunction({
@@ -113,14 +166,17 @@ const deployLambdaEdge = async (
       Description: "Hot Updater Lambda@Edge function",
       Publish: true,
     });
-    functionArn = createResp.FunctionArn!;
+    functionArn = createResp.FunctionArn ?? null;
   } catch (error) {
     if (error instanceof Error) {
       p.log.error(`Failed to create Lambda function: ${error.message}`);
     }
     throw error;
   }
-
+  if (!functionArn) {
+    p.log.error("Failed to create Lambda function");
+    process.exit(1);
+  }
   return { lambdaName, functionArn };
 };
 
@@ -167,7 +223,7 @@ export const initAwsS3LambdaEdge = async () => {
   if (mode === "sso") {
     try {
       const profile = await p.text({
-        message: "Enter the profile name",
+        message: "Enter the SSO profile name",
         defaultValue: "default",
         placeholder: "default",
       });
@@ -190,7 +246,7 @@ export const initAwsS3LambdaEdge = async () => {
     }
   } else {
     p.log.step(
-      "Please login with an account that has permissions to create S3, CloudFront, and Lambda",
+      "Please login with an account that has permissions to create S3, CloudFront, and Lambda (these permissions are only needed once during initialization)",
     );
 
     credentials = await p.group({
@@ -239,29 +295,77 @@ export const initAwsS3LambdaEdge = async () => {
   // Create S3 client
   const S3 = SDK.S3.S3;
   const s3Client = new S3({ region, credentials });
-
-  // Enter S3 bucket name (or use default)
-  const bucketName = await p.text({
-    message: "Enter the name for the S3 bucket",
-    defaultValue: "bundles",
-    placeholder: "bundles",
-  });
-  if (p.isCancel(bucketName)) process.exit(1);
-
+  const availableBuckets: { name: string }[] = [];
   try {
-    await s3Client.createBucket({
-      Bucket: bucketName,
-      CreateBucketConfiguration: {
-        LocationConstraint: region,
+    await p.tasks([
+      {
+        title: "Checking S3 Buckets...",
+        task: async () => {
+          const buckets = await s3Client.listBuckets({});
+          availableBuckets.push(
+            ...(buckets.Buckets ?? [])
+              .filter((bucket) => bucket.Name)
+              .map((bucket) => ({
+                name: bucket.Name!,
+              })),
+          );
+        },
       },
-    });
-    p.log.info(`Created S3 bucket: ${bucketName}`);
-  } catch (error) {
-    if (error instanceof Error) {
-      p.log.error(`Failed to create S3 bucket: ${error.message}`);
+    ]);
+  } catch (e) {
+    if (e instanceof Error) {
+      p.log.error(e.message);
     }
-    throw error;
+    throw e;
   }
+
+  const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
+
+  let bucketName = await p.select({
+    message: "S3 Bucket List",
+    options: [
+      ...availableBuckets.map((bucket) => ({
+        value: bucket.name,
+        label: bucket.name,
+      })),
+      {
+        value: createKey,
+        label: "Create New S3 Bucket",
+      },
+    ],
+  });
+
+  if (p.isCancel(bucketName)) {
+    process.exit(1);
+  }
+
+  if (bucketName === createKey) {
+    const name = await p.text({
+      message: "Enter the name of the new S3 Bucket",
+      defaultValue: "bundles",
+      placeholder: "bundles",
+    });
+    if (p.isCancel(name)) {
+      process.exit(1);
+    }
+    bucketName = name;
+
+    try {
+      await s3Client.createBucket({
+        Bucket: name,
+        CreateBucketConfiguration: {
+          LocationConstraint: region,
+        },
+      });
+      p.log.info(`Created S3 bucket: ${bucketName}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        p.log.error(`Failed to create S3 bucket: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+  p.log.info(`Selected S3 Bucket: ${bucketName}`);
 
   // Deploy Lambda@Edge function (us-east-1)
   const { functionArn } = await deployLambdaEdge(credentials);
