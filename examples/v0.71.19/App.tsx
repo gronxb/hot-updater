@@ -5,8 +5,9 @@
  * @format
  */
 
-import { HotUpdater } from "@hot-updater/react-native";
-import type React from "react";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+// biome-ignore lint/style/useImportType: <explanation>
+import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
@@ -23,6 +24,7 @@ function App(): React.JSX.Element {
   // @ts-expect-error
   const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
+  const { progress } = useHotUpdaterStore();
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
@@ -37,6 +39,16 @@ function App(): React.JSX.Element {
         Hot Updater 0
       </Text>
 
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Update {Math.round(progress * 100)}%
+      </Text>
       <Text
         style={{
           marginVertical: 20,
@@ -73,7 +85,7 @@ function App(): React.JSX.Element {
         title="HotUpdater.runUpdateProcess()"
         onPress={() =>
           HotUpdater.runUpdateProcess({
-            source: `https://${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
           }).then((status) => {
             console.log("Update process completed", JSON.stringify(status));
           })
@@ -84,8 +96,8 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `https://${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-  fallbackComponent: ({ progress = 0 }) => (
+  source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View
         style={{
@@ -97,12 +109,16 @@ export default HotUpdater.wrap({
           backgroundColor: "rgba(0, 0, 0, 0.5)",
         }}
       >
+        {/* You can put a splash image here. */}
+
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          Updating...
+          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
         </Text>
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {Math.round(progress * 100)}%
-        </Text>
+        {progress > 0 ? (
+          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+            {Math.round(progress * 100)}%
+          </Text>
+        ) : null}
       </View>
     </Modal>
   ),

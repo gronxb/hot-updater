@@ -1,3 +1,49 @@
+## 0.7.0 (2025-02-14)
+
+### 🩹 Fixes
+
+- **android:** Prevent bundle loading when URL is null ([#103](https://github.com/gronxb/hot-updater/pull/103))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.6.7 (2025-02-14)
+
+### 🚀 Features
+
+- **database:** changeset-based `commitBundle` and remove `setBundles` interface ([#93](https://github.com/gronxb/hot-updater/pull/93))
+- **mock:** `mockDatabase` for console development ([#89](https://github.com/gronxb/hot-updater/pull/89))
+- **react-native:** change default `reloadOnForceUpdate` to `true` ([#100](https://github.com/gronxb/hot-updater/pull/100))
+
+### 🩹 Fixes
+
+- **cloudflare:** change cloudflare 4.1.0 api spec ([#98](https://github.com/gronxb/hot-updater/pull/98))
+- **react-native:** If `shouldForceUpdate` is false, fallbackComponent pass ([#102](https://github.com/gronxb/hot-updater/pull/102))
+
+### ❤️ Thank You
+
+- max.cha @Coreight98
+- Sungyu Kang
+
+## 0.6.6 (2025-02-13)
+
+### 🚀 Features
+
+- **database:** changeset-based `commitBundle` and remove `setBundles` interface ([#93](https://github.com/gronxb/hot-updater/pull/93))
+- **mock:** `mockDatabase` for console development ([#89](https://github.com/gronxb/hot-updater/pull/89))
+
+### 🩹 Fixes
+
+- loop ([27789a4](https://github.com/gronxb/hot-updater/commit/27789a4))
+- **cloudflare:** change cloudflare 4.1.0 api spec ([3128f05](https://github.com/gronxb/hot-updater/commit/3128f05))
+
+### ❤️ Thank You
+
+- gronxb
+- max.cha @Coreight98
+- Sungyu Kang
+
 ## 0.6.5 (2025-02-05)
 
 ### 🩹 Fixes
