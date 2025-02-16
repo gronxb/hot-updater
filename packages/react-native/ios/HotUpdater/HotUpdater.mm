@@ -71,71 +71,66 @@ RCT_EXPORT_MODULE();
     return success;
 }
 
-- (BOOL)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl {
+- (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl completion:(void (^)(BOOL success))completion {
     if (!zipUrl) {
-        [self setBundleURL:nil];
-        return YES;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setBundleURL:nil];
+            if (completion) completion(YES);
+        });
+        return;
     }
-    
+
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
-    
+
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
-    
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    __block BOOL success = NO;
-    
+
     NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
                                                         completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
             NSLog(@"Failed to download data from URL: %@, error: %@", zipUrl, error);
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         NSFileManager *fileManager = [NSFileManager defaultManager];
         NSError *folderError;
-        
+
         // Ensure directory exists
         if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                     withIntermediateDirectories:YES
                                      attributes:nil
                                           error:&folderError]) {
             NSLog(@"Failed to create folder: %@", folderError);
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         // Check if file already exists and remove it
         if ([fileManager fileExistsAtPath:path]) {
             NSError *removeError;
             if (![fileManager removeItemAtPath:path error:&removeError]) {
                 NSLog(@"Failed to remove existing file: %@", removeError);
-                success = NO;
-                dispatch_semaphore_signal(semaphore);
+                if (completion) completion(NO);
                 return;
             }
         }
-        
+
         NSError *moveError;
         if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:path] error:&moveError]) {
             NSLog(@"Failed to save data: %@", moveError);
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         NSString *extractedPath = [path stringByDeletingLastPathComponent];
         if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
             NSLog(@"Failed to extract zip file.");
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
@@ -144,34 +139,21 @@ RCT_EXPORT_MODULE();
                 break;
             }
         }
-        
+
         if (filename) {
             NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
             NSLog(@"Setting bundle URL: %@", bundlePath);
-            [self setBundleURL:bundlePath];
-            success = YES;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self setBundleURL:bundlePath];
+                if (completion) completion(YES);
+            });
         } else {
             NSLog(@"index.ios.bundle not found.");
-            success = NO;
+            if (completion) completion(NO);
         }
-        
-        dispatch_semaphore_signal(semaphore);
     }];
-    
-    // Add observer for progress updates
-    [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesReceived"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
-    [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesExpectedToReceive"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
-    
+
     [downloadTask resume];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    
-    return success;
 }
 
 #pragma mark - Progress Updates
@@ -234,9 +216,12 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
     if (![zipUrlString isEqualToString:@""]) {
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
-    
-    BOOL result = [self updateBundle:bundleId zipUrl:zipUrl];
-    resolve(@[@(result)]);
+
+    [self updateBundle:bundleId zipUrl:zipUrl completion:^(BOOL success) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            resolve(@[@(success)]);
+        });
+    }];
 }
 
 
