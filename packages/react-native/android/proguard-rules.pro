@@ -20,6 +20,3 @@
 -keepclassmembers class com.facebook.react.ReactInstanceManager {
     private final ** mBundleLoader;
 }
-
-# Can't find referenced class org.bouncycastle.**
--dontwarn com.nimbusds.jose.**
