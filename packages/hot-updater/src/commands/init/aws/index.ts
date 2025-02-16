@@ -95,21 +95,40 @@ const deployLambdaEdge = async (
     credentials,
   });
 
-  const defaultRoleName = "hot-updater-edge-role";
+  const iamClient = new SDK.IAM.IAM({ region: "us-east-1", credentials });
+
+  // 역할 목록 가져오기
+  const { Roles } = await iamClient.listRoles({});
+  const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
+
+  let roleName = await p.select({
+    message: "IAM Role List",
+    options: [
+      ...(Roles ?? []).map((role) => ({
+        value: role.RoleName!,
+        label: `${role.RoleName} (${role.Arn})`,
+      })),
+      {
+        value: createKey,
+        label: "Create New IAM Role",
+      },
+    ],
+  });
+
+  if (p.isCancel(roleName)) process.exit(1);
+
   let lambdaRoleArn: string | null = null;
-  try {
-    const iamClient = new SDK.IAM.IAM({ region: "us-east-1", credentials });
-    // 역할 목록에서 defaultRoleName 검색
-    const { Roles } = await iamClient.listRoles({});
-    const existingRole = Roles?.find(
-      (role) => role.RoleName === defaultRoleName,
-    );
-    if (existingRole) {
-      lambdaRoleArn = existingRole.Arn ?? null;
-      p.log.info(
-        `Using existing IAM role: ${defaultRoleName} (${lambdaRoleArn})`,
-      );
-    } else {
+
+  if (roleName === createKey) {
+    const name = await p.text({
+      message: "Enter the name of the new IAM Role",
+      defaultValue: "hot-updater-edge-role",
+      placeholder: "hot-updater-edge-role",
+    });
+    if (p.isCancel(name)) process.exit(1);
+    roleName = name;
+
+    try {
       // Lambda@Edge가 사용할 수 있도록 trust policy 설정
       const assumeRolePolicyDocument = JSON.stringify({
         Version: "2012-10-17",
@@ -123,30 +142,40 @@ const deployLambdaEdge = async (
           },
         ],
       });
+
       const createRoleResp = await iamClient.createRole({
-        RoleName: defaultRoleName,
+        RoleName: roleName,
         AssumeRolePolicyDocument: assumeRolePolicyDocument,
         Description: "Role for Lambda@Edge to access S3",
       });
       lambdaRoleArn = createRoleResp.Role?.Arn!;
-      p.log.info(`Created IAM role: ${defaultRoleName} (${lambdaRoleArn})`);
+      p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
+
       // 필수 정책 부착: CloudWatch Logs에 로그 전송, S3 접근 권한
       await iamClient.attachRolePolicy({
-        RoleName: defaultRoleName,
+        RoleName: roleName,
         PolicyArn:
           "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
       });
       await iamClient.attachRolePolicy({
-        RoleName: defaultRoleName,
+        RoleName: roleName,
         PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
       });
       p.log.info(
-        `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${defaultRoleName}`,
+        `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${roleName}`,
       );
+    } catch (error) {
+      if (error instanceof Error) {
+        p.log.error(
+          `Error setting up IAM role for Lambda@Edge: ${error.message}`,
+        );
+      }
+      process.exit(1);
     }
-  } catch (error: any) {
-    p.log.error(`Error setting up IAM role for Lambda@Edge: ${error.message}`);
-    process.exit(1);
+  } else {
+    const selectedRole = Roles?.find((role) => role.RoleName === roleName);
+    lambdaRoleArn = selectedRole?.Arn ?? null;
+    p.log.info(`Using existing IAM role: ${roleName} (${lambdaRoleArn})`);
   }
 
   if (!lambdaRoleArn) {
