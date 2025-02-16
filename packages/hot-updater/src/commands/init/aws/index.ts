@@ -97,7 +97,7 @@ export async function createOrSelectIamRole(iamClient: any): Promise<string> {
         {
           Effect: "Allow",
           Principal: {
-            Service: "lambda.amazonaws.com",
+            Service: ["lambda.amazonaws.com", "edgelambda.amazonaws.com"],
           },
           Action: "sts:AssumeRole",
         },
@@ -167,13 +167,10 @@ export const deployLambdaEdge = async (
   lambdaName: string;
   functionArn: string;
 }> => {
-  const lambdaPath = require.resolve("@hot-updater/aws/lambda");
-  const lambdaDir = path.dirname(lambdaPath);
   const { SDK } = await import("@hot-updater/aws/sdk");
-
   const cwd = getCwd();
 
-  // Enter Lambda function name
+  // 1. Lambda 함수 이름
   const lambdaName = await p.text({
     message: "Enter the name of the Lambda@Edge function",
     defaultValue: "hot-updater-edge",
@@ -181,77 +178,203 @@ export const deployLambdaEdge = async (
   });
   if (p.isCancel(lambdaName)) process.exit(1);
 
-  // Create temporary zip file
+  // 2. zip 파일 생성
+  const lambdaPath = require.resolve("@hot-updater/aws/lambda");
+  const lambdaDir = path.dirname(lambdaPath);
   const zipFilePath = path.join(cwd, `${lambdaName}.zip`);
 
-  // Compress Lambda code to zip
-  try {
-    await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaDir });
-  } catch (error) {
-    throw new Error("Failed to create zip archive of Lambda function code");
-  }
-
-  // Lambda client (us-east-1)
+  // 3. Lambda 클라이언트
   const lambdaClient = new SDK.Lambda.Lambda({
     region: "us-east-1",
     credentials,
   });
 
-  // Create or update Lambda function
-  let functionArn: string | null = null;
-  let functionVersion: string | null = null;
+  const functionArn: {
+    arn: string | null;
+    version: string | null;
+  } = {
+    arn: null,
+    version: null,
+  };
+
+  // 4. p.tasks를 이용해 단계별 인디케이터 표시
+  await p.tasks([
+    {
+      title: "Compressing Lambda code to zip",
+      task: async () => {
+        try {
+          await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaDir });
+        } catch (error) {
+          throw new Error(
+            "Failed to create zip archive of Lambda function code",
+          );
+        }
+      },
+    },
+    {
+      title: "Creating or Updating Lambda function",
+      task: async () => {
+        try {
+          // Create new function
+          const createResp = await lambdaClient.createFunction({
+            FunctionName: lambdaName,
+            Runtime: "nodejs20.x",
+            Role: lambdaRoleArn,
+            Handler: "index.handler",
+            Code: { ZipFile: await fs.readFile(zipFilePath) },
+            Description: "Hot Updater Lambda@Edge function",
+            Publish: true,
+          });
+
+          functionArn.arn = createResp.FunctionArn ?? null;
+          functionArn.version = createResp.Version ?? null;
+        } catch (error) {
+          // 이미 함수가 존재하면 업데이트
+          if (
+            error instanceof Error &&
+            error.name === "ResourceConflictException"
+          ) {
+            p.log.info(
+              `Function "${lambdaName}" already exists. Updating function code...`,
+            );
+
+            const updateResp = await lambdaClient.updateFunctionCode({
+              FunctionName: lambdaName,
+              ZipFile: await fs.readFile(zipFilePath),
+              Publish: true,
+            });
+            functionArn.arn = updateResp.FunctionArn ?? null;
+            functionArn.version = updateResp.Version ?? null;
+          } else {
+            // 다른 에러는 그대로
+            if (error instanceof Error) {
+              p.log.error(
+                `Failed to create or update Lambda function: ${error.message}`,
+              );
+            }
+            throw error;
+          }
+        }
+      },
+    },
+    {
+      title: "Waiting for Lambda function to become Active",
+      task: async () => {
+        // Lambda ARN은 "unqualified ARN" + :버전 형태여야 함
+        // ex) "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:2"
+        const qualifiedName = `${lambdaName}:${functionArn.version}`;
+
+        // 상태가 Active 될 때까지 반복 체크
+        while (true) {
+          const resp = await lambdaClient.getFunctionConfiguration({
+            FunctionName: qualifiedName,
+          });
+          if (resp.State === "Active") {
+            break;
+          }
+
+          if (resp.State === "Failed") {
+            // Lambda가 Failed 상태면 배포 중단
+            throw new Error(
+              `Lambda function is in a Failed state. Reason: ${resp.StateReason}`,
+            );
+          }
+
+          // 잠시 대기 후 재시도
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      },
+    },
+  ]);
+
+  if (!functionArn.arn || !functionArn.version) {
+    throw new Error("Failed to create or update Lambda function");
+  }
+
+  // 5. Lambda@Edge 용 Qualified ARN 세팅
+  //    (createFunction 결과로 자동으로 붙지 않은 경우 대비)
+  if (!functionArn.arn.includes(`:${functionArn.version}`)) {
+    functionArn.arn = `${functionArn.arn}:${functionArn.version}`;
+  }
+  p.log.info(`Using Lambda ARN: ${functionArn.arn}`);
+
+  return { lambdaName, functionArn: functionArn.arn };
+};
+
+export const createCloudFrontDistribution = async (
+  credentials:
+    | {
+        accessKeyId: string;
+        secretAccessKey: string;
+      }
+    | undefined,
+  region: string,
+  bucketName: string,
+  functionArn: string,
+): Promise<{
+  distributionId: string;
+  distributionDomain: string;
+}> => {
+  const { SDK } = await import("@hot-updater/aws/sdk");
+  const Cloudfront = SDK.CloudFront.CloudFront;
+  const cloudfrontClient = new Cloudfront({ region, credentials });
+
+  const distributionConfig: DistributionConfig = {
+    CallerReference: dayjs().format(),
+    Comment: "Hot Updater CloudFront distribution",
+    Enabled: true,
+    Origins: {
+      Quantity: 1,
+      Items: [
+        {
+          Id: bucketName,
+          DomainName: `${bucketName}.s3.${region}.amazonaws.com`,
+          S3OriginConfig: { OriginAccessIdentity: "" },
+        },
+      ],
+    },
+    DefaultCacheBehavior: {
+      TargetOriginId: bucketName,
+      ViewerProtocolPolicy: "redirect-to-https",
+      LambdaFunctionAssociations: {
+        Quantity: 1,
+        Items: [
+          {
+            EventType: "viewer-request",
+            LambdaFunctionARN: functionArn,
+          },
+        ],
+      },
+      ForwardedValues: {
+        QueryString: false,
+        Cookies: { Forward: "none" },
+      },
+      MinTTL: 0,
+    },
+    DefaultRootObject: "index.html",
+    ViewerCertificate: { CloudFrontDefaultCertificate: true },
+    Restrictions: {
+      GeoRestriction: {
+        RestrictionType: "none",
+        Quantity: 0,
+      },
+    },
+  };
 
   try {
-    // Create new function
-    const createResp = await lambdaClient.createFunction({
-      FunctionName: lambdaName,
-      Runtime: "nodejs20.x",
-      Role: lambdaRoleArn,
-      Handler: "index.handler",
-      Code: { ZipFile: await fs.readFile(zipFilePath) },
-      Description: "Hot Updater Lambda@Edge function",
-      Publish: true,
+    const distResp = await cloudfrontClient.createDistribution({
+      DistributionConfig: distributionConfig,
     });
-
-    functionArn = createResp.FunctionArn ?? null;
-    functionVersion = createResp.Version ?? null;
+    const distributionId = distResp.Distribution?.Id!;
+    const distributionDomain = distResp.Distribution?.DomainName!;
+    p.log.info(`Created CloudFront distribution with ID: ${distributionId}`);
+    return { distributionId, distributionDomain };
   } catch (error) {
-    // If function already exists -> updateFunctionCode
-    if (error instanceof Error && error.name === "ResourceConflictException") {
-      p.log.info(
-        `Function "${lambdaName}" already exists. Updating function code...`,
-      );
-      const updateResp = await lambdaClient.updateFunctionCode({
-        FunctionName: lambdaName,
-        ZipFile: await fs.readFile(zipFilePath),
-        Publish: true,
-      });
-      functionArn = updateResp.FunctionArn ?? null;
-      functionVersion = updateResp.Version ?? null;
-    } else {
-      // Pass through other errors
-      if (error instanceof Error) {
-        p.log.error(
-          `Failed to create or update Lambda function: ${error.message}`,
-        );
-      }
-      throw error;
+    if (error instanceof Error) {
+      p.log.error(`Failed to create CloudFront distribution: ${error.message}`);
     }
+    throw error;
   }
-
-  if (!functionArn || !functionVersion) {
-    p.log.error("Failed to create or update Lambda function");
-    process.exit(1);
-  }
-
-  // Lambda@Edge requires ARN with version
-  if (!functionArn.includes(`:${functionVersion}`)) {
-    functionArn = `${functionArn}:${functionVersion}`;
-  }
-
-  p.log.info(`Using Lambda ARN: ${functionArn}`);
-
-  return { lambdaName, functionArn };
 };
 
 export const initAwsS3LambdaEdge = async () => {
@@ -438,67 +561,13 @@ export const initAwsS3LambdaEdge = async () => {
   // Deploy Lambda@Edge function (us-east-1)
   const { functionArn } = await deployLambdaEdge(credentials, lambdaRoleArn);
 
-  // Create CloudFront distribution: Use S3 as origin and connect Lambda@Edge function to viewer-request event
-  const Cloudfront = SDK.CloudFront.CloudFront;
-  const cloudfrontClient = new Cloudfront({ region, credentials });
-
-  const distributionConfig: DistributionConfig = {
-    CallerReference: dayjs().format(),
-    Comment: "Hot Updater CloudFront distribution",
-    Enabled: true,
-    Origins: {
-      Quantity: 1,
-      Items: [
-        {
-          Id: bucketName,
-          DomainName: `${bucketName}.s3.${region}.amazonaws.com`,
-          S3OriginConfig: { OriginAccessIdentity: "" },
-        },
-      ],
-    },
-    DefaultCacheBehavior: {
-      TargetOriginId: bucketName,
-      ViewerProtocolPolicy: "redirect-to-https",
-      LambdaFunctionAssociations: {
-        Quantity: 1,
-        Items: [
-          {
-            EventType: "viewer-request",
-            LambdaFunctionARN: functionArn, // Use published version ARN
-          },
-        ],
-      },
-      ForwardedValues: {
-        QueryString: false,
-        Cookies: { Forward: "none" },
-      },
-      MinTTL: 0,
-    },
-    DefaultRootObject: "index.html",
-    ViewerCertificate: { CloudFrontDefaultCertificate: true },
-    Restrictions: {
-      GeoRestriction: {
-        RestrictionType: "none",
-        Quantity: 0,
-      },
-    },
-  };
-
-  let distributionId: string;
-  let distributionDomain: string;
-  try {
-    const distResp = await cloudfrontClient.createDistribution({
-      DistributionConfig: distributionConfig,
-    });
-    distributionId = distResp.Distribution?.Id!;
-    distributionDomain = distResp.Distribution?.DomainName!;
-    p.log.info(`Created CloudFront distribution with ID: ${distributionId}`);
-  } catch (error) {
-    if (error instanceof Error) {
-      p.log.error(`Failed to create CloudFront distribution: ${error.message}`);
-    }
-    throw error;
-  }
+  // Create CloudFront distribution
+  const { distributionDomain } = await createCloudFrontDistribution(
+    credentials,
+    region,
+    bucketName,
+    functionArn,
+  );
 
   // Create config file and environment variable file
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
