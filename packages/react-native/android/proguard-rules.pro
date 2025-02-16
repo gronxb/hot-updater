@@ -11,5 +11,5 @@
 }
 
 -keepclassmembers class * implements com.facebook.react.runtime.ReactHostDelegate {
-    private final ** jsBundleLoader;
+    ** jsBundleLoader;
 }
