@@ -1,3 +1,19 @@
+## 0.8.0 (2025-02-16)
+
+### 🩹 Fixes
+
+- ensure that the UI thread is not blocked when updating ([#106](https://github.com/gronxb/hot-updater/pull/106))
+- **android:** Prevent bundle loading when URL is null ([#103](https://github.com/gronxb/hot-updater/pull/103))
+- **android:** prevent ProGuard from blocking access to `mBundleLoader` ([#107](https://github.com/gronxb/hot-updater/pull/107))
+- **android:** new arch ProGuard ([#108](https://github.com/gronxb/hot-updater/pull/108))
+- **ios:** Add progress tracking for download tasks in HotUpdater ([#109](https://github.com/gronxb/hot-updater/pull/109))
+
+### ❤️ Thank You
+
+- Elijah Windsor
+- mustafa MEDENi @mstfmedeni
+- Sungyu Kang
+
 ## 0.7.0 (2025-02-14)
 
 ### 🩹 Fixes
