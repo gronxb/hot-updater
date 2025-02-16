@@ -49,62 +49,25 @@ export default HotUpdater.wrap({
   source: "%%source%%",
 })(App);`;
 
-/**
- * Deploy Lambda@Edge function
- * - Zip the local ./lambda folder, create a function in us-east-1 region,
- * - Publish a new version of the function
- */
-const deployLambdaEdge = async (
-  credentials:
-    | {
-        accessKeyId: string;
-        secretAccessKey: string;
-      }
-    | undefined,
-): Promise<{
-  lambdaName: string;
-  functionArn: string;
-}> => {
-  const lambdaPath = require.resolve("@hot-updater/aws/lambda");
-  const lambdaDir = path.dirname(lambdaPath);
-  const { SDK } = await import("@hot-updater/aws/sdk");
-
-  const cwd = getCwd();
-
-  // Enter Lambda function name (default: hot-updater-edge)
-  const lambdaName = await p.text({
-    message: "Enter the name of the Lambda@Edge function",
-    defaultValue: "hot-updater-edge",
-    placeholder: "hot-updater-edge",
-  });
-  if (p.isCancel(lambdaName)) process.exit(1);
-
-  // Temporary zip file path (e.g. hot-updater-edge.zip)
-  const zipFilePath = path.join(cwd, `${lambdaName}.zip`);
-
-  // Compress lambda directory using zip command (zip must be installed)
+const checkIfAwsCliInstalled = async () => {
   try {
-    await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaDir });
+    await execa("aws", ["--version"]);
+    return true;
   } catch (error) {
-    throw new Error("Failed to create zip archive of Lambda function code");
+    return false;
   }
+};
 
-  // Create Lambda client for us-east-1 region
-  const lambdaClient = new SDK.Lambda.Lambda({
-    region: "us-east-1",
-    credentials,
-  });
-
-  const iamClient = new SDK.IAM.IAM({ region: "us-east-1", credentials });
-
-  // 역할 목록 가져오기
+export async function createOrSelectIamRole(iamClient: any): Promise<string> {
+  // Get list of IAM Roles
   const { Roles } = await iamClient.listRoles({});
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
+  // Provide options to select existing Role or create new Role
   let roleName = await p.select({
     message: "IAM Role List",
     options: [
-      ...(Roles ?? []).map((role) => ({
+      ...(Roles ?? []).map((role: any) => ({
         value: role.RoleName!,
         label: `${role.RoleName} (${role.Arn})`,
       })),
@@ -117,8 +80,7 @@ const deployLambdaEdge = async (
 
   if (p.isCancel(roleName)) process.exit(1);
 
-  let lambdaRoleArn: string | null = null;
-
+  // Create new Role
   if (roleName === createKey) {
     const name = await p.text({
       message: "Enter the name of the new IAM Role",
@@ -128,30 +90,31 @@ const deployLambdaEdge = async (
     if (p.isCancel(name)) process.exit(1);
     roleName = name;
 
-    try {
-      // Lambda@Edge가 사용할 수 있도록 trust policy 설정
-      const assumeRolePolicyDocument = JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Effect: "Allow",
-            Principal: {
-              Service: "lambda.amazonaws.com",
-            },
-            Action: "sts:AssumeRole",
+    // Set trust policy for Lambda@Edge
+    const assumeRolePolicyDocument = JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Principal: {
+            Service: "lambda.amazonaws.com",
           },
-        ],
-      });
+          Action: "sts:AssumeRole",
+        },
+      ],
+    });
 
+    try {
       const createRoleResp = await iamClient.createRole({
         RoleName: roleName,
         AssumeRolePolicyDocument: assumeRolePolicyDocument,
         Description: "Role for Lambda@Edge to access S3",
       });
-      lambdaRoleArn = createRoleResp.Role?.Arn!;
+
+      const lambdaRoleArn = createRoleResp.Role?.Arn!;
       p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
 
-      // 필수 정책 부착: CloudWatch Logs에 로그 전송, S3 접근 권한
+      // Attach required policies
       await iamClient.attachRolePolicy({
         RoleName: roleName,
         PolicyArn:
@@ -164,6 +127,8 @@ const deployLambdaEdge = async (
       p.log.info(
         `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${roleName}`,
       );
+
+      return lambdaRoleArn;
     } catch (error) {
       if (error instanceof Error) {
         p.log.error(
@@ -173,49 +138,120 @@ const deployLambdaEdge = async (
       process.exit(1);
     }
   } else {
-    const selectedRole = Roles?.find((role) => role.RoleName === roleName);
-    lambdaRoleArn = selectedRole?.Arn ?? null;
+    // Use existing Role
+    const selectedRole = Roles?.find((role: any) => role.RoleName === roleName);
+    const lambdaRoleArn: string | null = selectedRole?.Arn ?? null;
+    if (!lambdaRoleArn) {
+      p.log.error("Failed to select existing IAM role for Lambda@Edge");
+      process.exit(1);
+    }
     p.log.info(`Using existing IAM role: ${roleName} (${lambdaRoleArn})`);
+    return lambdaRoleArn;
   }
+}
 
-  if (!lambdaRoleArn) {
-    p.log.error("Failed to create IAM role for Lambda@Edge");
-    process.exit(1);
-  }
+/**
+ * Deploy Lambda@Edge function
+ * - Zip the local ./lambda folder, create a function in us-east-1 region,
+ * - Publish a new version of the function
+ */
+export const deployLambdaEdge = async (
+  credentials:
+    | {
+        accessKeyId: string;
+        secretAccessKey: string;
+      }
+    | undefined,
+  lambdaRoleArn: string,
+): Promise<{
+  lambdaName: string;
+  functionArn: string;
+}> => {
+  const lambdaPath = require.resolve("@hot-updater/aws/lambda");
+  const lambdaDir = path.dirname(lambdaPath);
+  const { SDK } = await import("@hot-updater/aws/sdk");
 
-  let functionArn: string | null = null;
+  const cwd = getCwd();
+
+  // Enter Lambda function name
+  const lambdaName = await p.text({
+    message: "Enter the name of the Lambda@Edge function",
+    defaultValue: "hot-updater-edge",
+    placeholder: "hot-updater-edge",
+  });
+  if (p.isCancel(lambdaName)) process.exit(1);
+
+  // Create temporary zip file
+  const zipFilePath = path.join(cwd, `${lambdaName}.zip`);
+
+  // Compress Lambda code to zip
   try {
-    // Create Lambda function (with Publish option to publish new version)
+    await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaDir });
+  } catch (error) {
+    throw new Error("Failed to create zip archive of Lambda function code");
+  }
+
+  // Lambda client (us-east-1)
+  const lambdaClient = new SDK.Lambda.Lambda({
+    region: "us-east-1",
+    credentials,
+  });
+
+  // Create or update Lambda function
+  let functionArn: string | null = null;
+  let functionVersion: string | null = null;
+
+  try {
+    // Create new function
     const createResp = await lambdaClient.createFunction({
       FunctionName: lambdaName,
-      Runtime: "nodejs20.x", // Lambda@Edge supports Node.js 18.x and 20.x
+      Runtime: "nodejs20.x",
       Role: lambdaRoleArn,
       Handler: "index.handler",
       Code: { ZipFile: await fs.readFile(zipFilePath) },
       Description: "Hot Updater Lambda@Edge function",
       Publish: true,
     });
+
     functionArn = createResp.FunctionArn ?? null;
+    functionVersion = createResp.Version ?? null;
   } catch (error) {
-    if (error instanceof Error) {
-      p.log.error(`Failed to create Lambda function: ${error.message}`);
+    // If function already exists -> updateFunctionCode
+    if (error instanceof Error && error.name === "ResourceConflictException") {
+      p.log.info(
+        `Function "${lambdaName}" already exists. Updating function code...`,
+      );
+      const updateResp = await lambdaClient.updateFunctionCode({
+        FunctionName: lambdaName,
+        ZipFile: await fs.readFile(zipFilePath),
+        Publish: true,
+      });
+      functionArn = updateResp.FunctionArn ?? null;
+      functionVersion = updateResp.Version ?? null;
+    } else {
+      // Pass through other errors
+      if (error instanceof Error) {
+        p.log.error(
+          `Failed to create or update Lambda function: ${error.message}`,
+        );
+      }
+      throw error;
     }
-    throw error;
   }
-  if (!functionArn) {
-    p.log.error("Failed to create Lambda function");
+
+  if (!functionArn || !functionVersion) {
+    p.log.error("Failed to create or update Lambda function");
     process.exit(1);
   }
-  return { lambdaName, functionArn };
-};
 
-const checkIfAwsCliInstalled = async () => {
-  try {
-    await execa("aws", ["--version"]);
-    return true;
-  } catch (error) {
-    return false;
+  // Lambda@Edge requires ARN with version
+  if (!functionArn.includes(`:${functionVersion}`)) {
+    functionArn = `${functionArn}:${functionVersion}`;
   }
+
+  p.log.info(`Using Lambda ARN: ${functionArn}`);
+
+  return { lambdaName, functionArn };
 };
 
 export const initAwsS3LambdaEdge = async () => {
@@ -396,8 +432,11 @@ export const initAwsS3LambdaEdge = async () => {
   }
   p.log.info(`Selected S3 Bucket: ${bucketName}`);
 
+  const iamClient = new SDK.IAM.IAM({ region, credentials });
+  const lambdaRoleArn = await createOrSelectIamRole(iamClient);
+
   // Deploy Lambda@Edge function (us-east-1)
-  const { functionArn } = await deployLambdaEdge(credentials);
+  const { functionArn } = await deployLambdaEdge(credentials, lambdaRoleArn);
 
   // Create CloudFront distribution: Use S3 as origin and connect Lambda@Edge function to viewer-request event
   const Cloudfront = SDK.CloudFront.CloudFront;
