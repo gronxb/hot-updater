@@ -9,6 +9,7 @@
 -keepclassmembers class com.facebook.react.runtime.ReactHostImpl {
     private final ** mReactHostDelegate;
 }
--keepclassmembers class com.facebook.react.runtime.ReactHostDelegate {
-    private ** jsBundleLoader;
+
+-keepclassmembers class * implements com.facebook.react.runtime.ReactHostDelegate {
+    private final ** jsBundleLoader;
 }
