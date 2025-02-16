@@ -227,7 +227,7 @@ export const deployLambdaEdge = async (
           });
 
           functionArn.arn = createResp.FunctionArn ?? null;
-          functionArn.version = createResp.Version ?? null;
+          functionArn.version = createResp.Version ?? "1";
         } catch (error) {
           // 이미 함수가 존재하면 업데이트
           if (
@@ -244,7 +244,7 @@ export const deployLambdaEdge = async (
               Publish: true,
             });
             functionArn.arn = updateResp.FunctionArn ?? null;
-            functionArn.version = updateResp.Version ?? null;
+            functionArn.version = updateResp.Version ?? "1";
           } else {
             // 다른 에러는 그대로
             if (error instanceof Error) {
