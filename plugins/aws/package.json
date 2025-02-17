@@ -42,7 +42,9 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "^22.13.1",
-    "mime": "^4.0.4"
+    "mime": "^4.0.4",
+    "@hot-updater/core": "0.9.0",
+    "@hot-updater/js": "0.9.0"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "^3.745.0",
@@ -51,8 +53,6 @@
     "@aws-sdk/client-s3": "^3.685.0",
     "@aws-sdk/credential-providers": "^3.744.0",
     "@aws-sdk/lib-storage": "^3.685.0",
-    "@hot-updater/core": "0.6.5",
-    "@hot-updater/js": "0.6.5",
     "@hot-updater/plugin-core": "0.9.0",
     "aws-lambda": "^1.0.7"
   }

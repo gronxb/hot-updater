@@ -704,12 +704,6 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.685.0
         version: 3.685.0(@aws-sdk/client-s3@3.685.0)
-      '@hot-updater/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../js
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -717,6 +711,12 @@ importers:
         specifier: ^1.0.7
         version: 1.0.7
     devDependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@hot-updater/js':
+        specifier: workspace:*
+        version: link:../js
       '@types/aws-lambda':
         specifier: ^8.10.147
         version: 8.10.147
