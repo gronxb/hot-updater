@@ -6,6 +6,15 @@
     bool hasListeners;
 }
 
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _lastUpdateTime = 0;
+    }
+    return self;
+}
+
 RCT_EXPORT_MODULE();
 
 #pragma mark - Bundle URL Management
@@ -179,8 +188,16 @@ RCT_EXPORT_MODULE();
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
             
-            // Send progress to React Native
-            [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
+            // Get current timestamp
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // Convert to milliseconds
+            
+            // Send event only if 200ms has passed OR progress is 100%
+            if ((currentTime - self.lastUpdateTime) >= 200 || progress >= 1.0) {
+                self.lastUpdateTime = currentTime; // Update last event timestamp
+
+                // Send progress to React Native
+                [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
+            }
         }
     }
 }

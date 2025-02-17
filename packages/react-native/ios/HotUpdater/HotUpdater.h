@@ -9,6 +9,7 @@
 @interface HotUpdater : RCTEventEmitter <RCTBridgeModule>
 #endif // RCT_NEW_ARCH_ENABLED
 
+@property (nonatomic, assign) NSTimeInterval lastUpdateTime;
 + (NSURL *)bundleURL;
 
 @end
