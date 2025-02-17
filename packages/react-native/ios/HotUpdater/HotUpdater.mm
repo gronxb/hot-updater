@@ -162,27 +162,26 @@ RCT_EXPORT_MODULE();
         }
     }];
 
-
+    
     // Add observer for progress updates
     [downloadTask addObserver:self
-        forKeyPath:@"countOfBytesReceived"
-        options:NSKeyValueObservingOptionNew
-        context:nil];
+                forKeyPath:@"countOfBytesReceived"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
     [downloadTask addObserver:self
-        forKeyPath:@"countOfBytesExpectedToReceive"
-        options:NSKeyValueObservingOptionNew
-        context:nil];
+                forKeyPath:@"countOfBytesExpectedToReceive"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
 
-    __weak typeof(self) weakSelf = self;
-    [downloadTask setTaskDescription:@"HotUpdaterDownloadTask"];
+    __block HotUpdater *weakSelf = self;
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSURLSessionDownloadTaskDidFinishDownloadingNotification
+        object:downloadTask
+        queue:[NSOperationQueue mainQueue]
+    usingBlock:^(NSNotification * _Nonnull note) {
+        [weakSelf removeObserversForTask:downloadTask];
+    }];
     [downloadTask resume];
 
-    NSURLSessionDownloadTask *task = downloadTask;
-    [task setCompletionHandler:^{
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [weakSelf removeObserversForTask:task];
-        });
-    }];
 }
 
 #pragma mark - Progress Updates
@@ -197,6 +196,7 @@ RCT_EXPORT_MODULE();
         NSLog(@"Failed to remove observers: %@", exception);
     }
 }
+
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
