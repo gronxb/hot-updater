@@ -67,7 +67,7 @@ export const handler: CloudFrontRequestHandler = async (event) => {
 
   const bundles = results
     .filter((result) => result.status === "fulfilled")
-    .map((result) => result.value).flat() as Bundle[];
+    .flatMap((result) => result.value) as Bundle[];
 
   const updateInfo = await getUpdateInfo(bundles, {
     platform: appPlatform,
