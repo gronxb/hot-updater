@@ -1,6 +1,7 @@
 #import "HotUpdater.h"
 #import <React/RCTReloadCommand.h>
 #import <SSZipArchive/SSZipArchive.h>
+#import <Foundation/NSURLSession.h>
 
 @implementation HotUpdater {
     bool hasListeners;
@@ -174,7 +175,7 @@ RCT_EXPORT_MODULE();
                     context:nil];
 
     __block HotUpdater *weakSelf = self;
-    [[NSNotificationCenter defaultCenter] addObserverForName:NSURLSessionDownloadTaskDidFinishDownloadingNotification
+    [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
         object:downloadTask
         queue:[NSOperationQueue mainQueue]
     usingBlock:^(NSNotification * _Nonnull note) {
