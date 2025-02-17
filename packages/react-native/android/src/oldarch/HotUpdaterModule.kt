@@ -50,9 +50,11 @@ class HotUpdaterModule internal constructor(
 
                         // Ensure UI updates on the main thread
                         launch(Dispatchers.Main) {
-                            mReactApplicationContext
-                                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                                .emit("onProgress", params)
+                            if (mReactApplicationContext.hasActiveCatalystInstance()) {
+                                mReactApplicationContext
+                                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                    .emit("onProgress", params)
+                            }
                         }
                     }
                 }
