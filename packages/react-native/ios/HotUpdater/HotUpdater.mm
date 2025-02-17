@@ -165,13 +165,13 @@ RCT_EXPORT_MODULE();
 
     // Add observer for progress updates
     [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesReceived"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
+        forKeyPath:@"countOfBytesReceived"
+        options:NSKeyValueObservingOptionNew
+        context:nil];
     [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesExpectedToReceive"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
+        forKeyPath:@"countOfBytesExpectedToReceive"
+        options:NSKeyValueObservingOptionNew
+        context:nil];
 
     __weak typeof(self) weakSelf = self;
     [downloadTask setTaskDescription:@"HotUpdaterDownloadTask"];
