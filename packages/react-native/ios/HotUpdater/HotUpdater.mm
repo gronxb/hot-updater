@@ -214,7 +214,7 @@ RCT_EXPORT_MODULE();
             // Get current timestamp
             NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // Convert to milliseconds
             
-            // Send event only if 200ms has passed OR progress is 100%
+            // Send event only if 100ms has passed OR progress is 100%
             if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
                 self.lastUpdateTime = currentTime; // Update last event timestamp
 
