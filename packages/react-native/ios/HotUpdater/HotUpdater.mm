@@ -165,18 +165,38 @@ RCT_EXPORT_MODULE();
 
     // Add observer for progress updates
     [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesReceived"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
+                forKeyPath:@"countOfBytesReceived"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
     [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesExpectedToReceive"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
+                forKeyPath:@"countOfBytesExpectedToReceive"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
 
+    __weak typeof(self) weakSelf = self;
+    [downloadTask setTaskDescription:@"HotUpdaterDownloadTask"];
     [downloadTask resume];
+
+    NSURLSessionDownloadTask *task = downloadTask;
+    [task setCompletionHandler:^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf removeObserversForTask:task];
+        });
+    }];
 }
 
 #pragma mark - Progress Updates
+
+
+- (void)removeObserversForTask:(NSURLSessionDownloadTask *)task {
+    @try {
+        [task removeObserver:self forKeyPath:@"countOfBytesReceived"];
+        [task removeObserver:self forKeyPath:@"countOfBytesExpectedToReceive"];
+        NSLog(@"KVO observers removed successfully for task: %@", task);
+    } @catch (NSException *exception) {
+        NSLog(@"Failed to remove observers: %@", exception);
+    }
+}
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
