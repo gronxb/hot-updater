@@ -1,6 +1,7 @@
 #import "HotUpdater.h"
 #import <React/RCTReloadCommand.h>
 #import <SSZipArchive/SSZipArchive.h>
+#import <Foundation/NSURLSession.h>
 
 @implementation HotUpdater {
     bool hasListeners;
@@ -162,21 +163,43 @@ RCT_EXPORT_MODULE();
         }
     }];
 
-
+    
     // Add observer for progress updates
     [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesReceived"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
+                forKeyPath:@"countOfBytesReceived"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
     [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesExpectedToReceive"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
+                forKeyPath:@"countOfBytesExpectedToReceive"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
 
+    __block HotUpdater *weakSelf = self;
+    [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
+        object:downloadTask
+        queue:[NSOperationQueue mainQueue]
+    usingBlock:^(NSNotification * _Nonnull note) {
+        [weakSelf removeObserversForTask:downloadTask];
+    }];
     [downloadTask resume];
+
 }
 
 #pragma mark - Progress Updates
+
+
+- (void)removeObserversForTask:(NSURLSessionDownloadTask *)task {
+    @try {
+        if ([task observationInfo]) {
+            [task removeObserver:self forKeyPath:@"countOfBytesReceived"];
+            [task removeObserver:self forKeyPath:@"countOfBytesExpectedToReceive"];
+            NSLog(@"KVO observers removed successfully for task: %@", task);
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"Failed to remove observers: %@", exception);
+    }
+}
+
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
@@ -191,8 +214,8 @@ RCT_EXPORT_MODULE();
             // Get current timestamp
             NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // Convert to milliseconds
             
-            // Send event only if 200ms has passed OR progress is 100%
-            if ((currentTime - self.lastUpdateTime) >= 200 || progress >= 1.0) {
+            // Send event only if 100ms has passed OR progress is 100%
+            if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
                 self.lastUpdateTime = currentTime; // Update last event timestamp
 
                 // Send progress to React Native
