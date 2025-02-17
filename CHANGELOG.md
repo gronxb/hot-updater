@@ -1,3 +1,15 @@
+## 0.9.0 (2025-02-17)
+
+### 🩹 Fixes
+
+- **ios:** ensure UI thread is not blocked by sending events, spreading out by 200ms ([#111](https://github.com/gronxb/hot-updater/pull/111))
+- **ios:** Improve KVO observer management for download tasks ([#112](https://github.com/gronxb/hot-updater/pull/112))
+
+### ❤️ Thank You
+
+- Elijah Windsor
+- Sungyu Kang
+
 ## 0.8.0 (2025-02-16)
 
 ### 🩹 Fixes
