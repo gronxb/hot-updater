@@ -190,9 +190,11 @@ RCT_EXPORT_MODULE();
 
 - (void)removeObserversForTask:(NSURLSessionDownloadTask *)task {
     @try {
-        [task removeObserver:self forKeyPath:@"countOfBytesReceived"];
-        [task removeObserver:self forKeyPath:@"countOfBytesExpectedToReceive"];
-        NSLog(@"KVO observers removed successfully for task: %@", task);
+        if ([task observationInfo]) {
+            [task removeObserver:self forKeyPath:@"countOfBytesReceived"];
+            [task removeObserver:self forKeyPath:@"countOfBytesExpectedToReceive"];
+            NSLog(@"KVO observers removed successfully for task: %@", task);
+        }
     } @catch (NSException *exception) {
         NSLog(@"Failed to remove observers: %@", exception);
     }
