@@ -7,7 +7,7 @@ export const handler: CloudFrontRequestHandler = async (event) => {
   const headers = request.headers;
 
   if (request.uri !== "/api/check-update") {
-    return request
+    return request;
   }
 
   const distributionDomain = headers["host"][0]?.value;
