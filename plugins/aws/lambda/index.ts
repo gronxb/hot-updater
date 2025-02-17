@@ -7,10 +7,7 @@ export const handler: CloudFrontRequestHandler = async (event) => {
   const headers = request.headers;
 
   if (request.uri !== "/api/check-update") {
-    return {
-      status: "404",
-      statusDescription: "Not found",
-    };
+    return request
   }
 
   const distributionDomain = headers["host"][0]?.value;
@@ -37,7 +34,7 @@ export const handler: CloudFrontRequestHandler = async (event) => {
     return {
       status: "404",
       body: JSON.stringify({
-        error: "Failed to fetch targetAppVersionList.json",
+        error: `Failed to fetch ${appPlatform}/target-app-versions.json`,
       }),
     };
   }
@@ -70,7 +67,7 @@ export const handler: CloudFrontRequestHandler = async (event) => {
 
   const bundles = results
     .filter((result) => result.status === "fulfilled")
-    .map((result) => result.value) as Bundle[];
+    .map((result) => result.value).flat() as Bundle[];
 
   const updateInfo = await getUpdateInfo(bundles, {
     platform: appPlatform,
