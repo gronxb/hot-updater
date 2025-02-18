@@ -21,9 +21,10 @@ import { cn } from "@/lib/utils";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createAsync } from "@solidjs/router";
 import { createForm } from "@tanstack/solid-form";
+import { LoaderCircle } from "lucide-solid";
 import semverValid from "semver/ranges/valid";
 import { Show, createMemo, createSignal } from "solid-js";
-import { LoaderCircle } from "lucide-solid";
+import { toast } from "solid-sonner";
 
 interface EditBundleSheetFormProps {
   bundle: Bundle;
@@ -56,8 +57,10 @@ const EditBundleSheetForm = ({
             bundle: value,
           },
         });
-      } catch {
-        console.error("error");
+      } catch (e) {
+        if (e instanceof Error) {
+          toast(e.message);
+        }
       } finally {
         setIsSubmitting(false);
         onEditSuccess();
@@ -189,9 +192,18 @@ const EditBundleSheetForm = ({
         </p>
       </div>
 
-      <Button type="submit" class="mt-4" disabled={!isValid()}>
-        {isSubmitting() ? <LoaderCircle class="animate-spin" /> : "Save"}
-      </Button>
+      <Show
+        when={!isSubmitting()}
+        fallback={
+          <Button type="submit" class="mt-4" disabled>
+            <LoaderCircle class="animate-spin" />
+          </Button>
+        }
+      >
+        <Button type="submit" class="mt-4" disabled={!isValid()}>
+          Save
+        </Button>
+      </Show>
 
       <div class="flex justify-end">
         <Show when={gitCommitHash()}>
