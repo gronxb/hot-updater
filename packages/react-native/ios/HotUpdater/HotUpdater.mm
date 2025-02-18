@@ -252,6 +252,7 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(reload) {
     NSLog(@"HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
+        [super.bridge setValue:[HotUpdater bundleURL] forKey:@"bundleURL"];
         RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
     });
 }
