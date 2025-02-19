@@ -38,11 +38,13 @@ export const handler: CloudFrontRequestHandler = async (
     method: "GET",
   });
   if (!targetAppVersionListResponse.ok) {
+    // target-app-versions.json has not been created yet
     callback(null, {
-      status: "404",
-      body: JSON.stringify({
-        error: `Failed to fetch ${appPlatform}/target-app-versions.json`,
-      }),
+      status: "200",
+      headers: {
+        "Content-Type": [{ key: "Content-Type", value: "application/json" }],
+      },
+      body: JSON.stringify(null),
     });
     return;
   }
