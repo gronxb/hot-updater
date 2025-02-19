@@ -15,7 +15,7 @@ interface RunBundleArgs {
   platform: string;
   buildPath: string;
   sourcemap: boolean;
-  useHermes: boolean;
+  enableHermes: boolean;
 }
 
 const runBundle = async ({
@@ -24,7 +24,7 @@ const runBundle = async ({
   platform,
   buildPath,
   sourcemap,
-  useHermes,
+  enableHermes,
 }: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native");
   const cliPath = path.resolve(reactNativePath, "..", "cli.js");
@@ -76,7 +76,7 @@ Example:
 }`);
   }
 
-  if (useHermes) {
+  if (enableHermes) {
     await compileHermes({
       outputHbcFile: bundleOutput,
       inputJsFile: bundleOutput,
@@ -102,7 +102,7 @@ export interface MetroPluginConfig extends BuildPluginConfig {
    * Whether to use Hermes to compile the bundle.
    * @default false
    */
-  useHermes?: boolean;
+  enableHermes?: boolean;
 }
 
 export const metro =
@@ -118,7 +118,7 @@ export const metro =
       outDir = "dist",
       sourcemap = false,
       entryFile = "index.js",
-      useHermes = false,
+      enableHermes = false,
     } = config;
     return {
       build: async ({ platform }) => {
@@ -133,7 +133,7 @@ export const metro =
           platform,
           buildPath,
           sourcemap,
-          useHermes,
+          enableHermes,
         });
 
         return {

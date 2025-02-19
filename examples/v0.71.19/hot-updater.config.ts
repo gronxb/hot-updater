@@ -5,7 +5,7 @@ import "dotenv/config";
 
 export default defineConfig({
   build: metro({
-    useHermes: true,
+    enableHermes: true,
   }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
