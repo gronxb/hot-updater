@@ -31,6 +31,7 @@ export interface BuildPlugin {
   build: (args: { platform: Platform }) => Promise<{
     buildPath: string;
     bundleId: string;
+    stdout: string | null;
   }>;
   name: string;
 }

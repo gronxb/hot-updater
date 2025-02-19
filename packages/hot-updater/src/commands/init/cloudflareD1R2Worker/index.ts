@@ -48,7 +48,9 @@ const deployWorker = async (
     d1DatabaseName,
   }: { d1DatabaseId: string; d1DatabaseName: string },
 ) => {
-  const workerPath = require.resolve("@hot-updater/cloudflare/worker");
+  const workerPath = require.resolve("@hot-updater/cloudflare/worker", {
+    paths: [getCwd()],
+  });
   const workerDir = path.dirname(workerPath);
   const { tmpDir, removeTmpDir } = await copyDirToTmp(workerDir);
 

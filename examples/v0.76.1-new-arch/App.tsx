@@ -21,8 +21,11 @@ function App(): React.JSX.Element {
     setBundleId(bundleId);
   }, []);
 
-  // @ts-expect-error
+  // @ts-ignore
   const isTurboModuleEnabled = global.__turboModuleProxy != null;
+
+  // @ts-ignore
+  const isHermes = () => !!global.HermesInternal;
 
   const { progress } = useHotUpdaterStore();
   return (
@@ -69,6 +72,16 @@ function App(): React.JSX.Element {
         }}
       >
         isTurboModuleEnabled: {isTurboModuleEnabled ? "true" : "false"}
+      </Text>
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        isHermes: {isHermes() ? "true" : "false"}
       </Text>
 
       <Image
