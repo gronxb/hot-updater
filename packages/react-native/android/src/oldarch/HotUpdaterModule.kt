@@ -32,15 +32,21 @@ class HotUpdaterModule internal constructor(
         zipUrl: String?,
         promise: Promise,
     ) {
+        // Use lifecycleScope when currentActivity is FragmentActivity
         (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
             val isSuccess =
-                HotUpdater.updateBundle(mReactApplicationContext, bundleId, zipUrl) { progress ->
+                HotUpdater.updateBundle(
+                    mReactApplicationContext,
+                    bundleId,
+                    zipUrl,
+                ) { progress ->
                     val params =
                         WritableNativeMap().apply {
                             putDouble("progress", progress)
                         }
 
-                    this@HotUpdaterModule.mReactApplicationContext
+                    this@HotUpdaterModule
+                        .mReactApplicationContext
                         .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                         .emit("onProgress", params)
                 }
