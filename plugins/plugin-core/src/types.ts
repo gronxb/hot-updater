@@ -15,7 +15,7 @@ export interface DatabasePlugin {
   getBundles: (refresh?: boolean) => Promise<Bundle[]>;
   updateBundle: (
     targetBundleId: string,
-    newBundle: Partial<Bundle>
+    newBundle: Partial<Bundle>,
   ) => Promise<void>;
   setBundles: (bundles: Bundle[]) => Promise<void>;
   appendBundle: (bundles: Bundle) => Promise<void>;
@@ -29,10 +29,6 @@ export interface DatabasePluginHooks {
   onDatabaseUpdated?: () => Promise<void>;
 }
 
-export interface ApiPluginResponse {
-  success: boolean;
-}
-
 export interface BuildPlugin {
   build: (args: { platform: Platform }) => Promise<{
     buildPath: string;
@@ -44,7 +40,7 @@ export interface BuildPlugin {
 export interface StoragePlugin {
   uploadBundle: (
     bundleId: string,
-    bundlePath: string
+    bundlePath: string,
   ) => Promise<{
     fileUrl: string;
   }>;

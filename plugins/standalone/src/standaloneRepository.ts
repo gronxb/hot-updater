@@ -58,22 +58,18 @@ export const standaloneRepository =
     });
 
     let bundles: Bundle[] = [];
-    let lastCommittedBundles: Bundle[] = [];
+    const changedIds = new Set<string>();
 
-    const getChangedBundles = () => {
-      return bundles.filter((bundle, index) => {
-        const lastCommitted = lastCommittedBundles[index];
-        return (
-          !lastCommitted ||
-          JSON.stringify(bundle) !== JSON.stringify(lastCommitted)
-        );
-      });
-    };
+    function markChanged(id: string) {
+      changedIds.add(id);
+    }
 
     return {
       name: "standalone-repository",
       async commitBundle() {
-        const changedBundles = getChangedBundles();
+        if (changedIds.size === 0) return;
+
+        const changedBundles = bundles.filter((b) => changedIds.has(b.id));
         if (changedBundles.length === 0) return;
 
         const { path, headers: routeHeaders } = routes.upsert();
@@ -92,7 +88,7 @@ export const standaloneRepository =
           throw new Error("Failed to commit bundles");
         }
 
-        lastCommittedBundles = [...bundles];
+        changedIds.clear();
         hooks?.onDatabaseUpdated?.();
       },
       async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
@@ -104,13 +100,18 @@ export const standaloneRepository =
         }
 
         Object.assign(bundles[targetIndex], newBundle);
+        markChanged(targetBundleId);
       },
       async appendBundle(inputBundle: Bundle) {
         bundles = await this.getBundles();
         bundles.unshift(inputBundle);
+        markChanged(inputBundle.id);
       },
       async setBundles(inputBundles: Bundle[]) {
         bundles = inputBundles;
+        for (const bundle of inputBundles) {
+          markChanged(bundle.id);
+        }
       },
       async getBundleById(bundleId: string): Promise<Bundle | null> {
         try {
@@ -145,7 +146,6 @@ export const standaloneRepository =
         }
 
         bundles = (await response.json()) as Bundle[];
-        lastCommittedBundles = [...bundles];
         return bundles;
       },
     };
