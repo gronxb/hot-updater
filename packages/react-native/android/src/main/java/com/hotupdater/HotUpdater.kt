@@ -12,13 +12,16 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ReactShadowNode
 import com.facebook.react.uimanager.ViewManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipFile
 
 class HotUpdater : ReactPackage {
-    override fun createViewManagers(context: ReactApplicationContext): MutableList<ViewManager<View, ReactShadowNode<*>>> = mutableListOf()
+    override fun createViewManagers(context: ReactApplicationContext): MutableList<ViewManager<View, ReactShadowNode<*>>> =
+        mutableListOf()
 
     override fun createNativeModules(context: ReactApplicationContext): MutableList<NativeModule> =
         listOf(HotUpdaterModule(context)).toMutableList()
@@ -28,7 +31,8 @@ class HotUpdater : ReactPackage {
             context: Context,
             basePath: String,
         ): String {
-            val documentsDir = context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath
+            val documentsDir =
+                context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath
             val separator = if (basePath.startsWith("/")) "" else "/"
 
             return "$documentsDir$separator$basePath"
@@ -67,7 +71,8 @@ class HotUpdater : ReactPackage {
             val reactIntegrationManager = ReactIntegrationManager(context)
 
             val activity: Activity? = getCurrentActivity(context)
-            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
+            val reactApplication: ReactApplication =
+                reactIntegrationManager.getReactApplication(activity?.application)
             val bundleURL = getJSBundleFile(context)
 
             reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
@@ -108,7 +113,8 @@ class HotUpdater : ReactPackage {
             val reactIntegrationManager = ReactIntegrationManager(context)
 
             val activity: Activity? = getCurrentActivity(context)
-            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
+            val reactApplication: ReactApplication =
+                reactIntegrationManager.getReactApplication(activity?.application)
             val bundleURL = getJSBundleFile(context)
 
             reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
@@ -118,7 +124,7 @@ class HotUpdater : ReactPackage {
             }
         }
 
-        public fun getJSBundleFile(context: Context): String {
+        fun getJSBundleFile(context: Context): String {
             val sharedPreferences =
                 context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
@@ -135,7 +141,7 @@ class HotUpdater : ReactPackage {
             return urlString
         }
 
-        fun updateBundle(
+        suspend fun updateBundle(
             context: Context,
             bundleId: String,
             zipUrl: String?,
@@ -153,61 +159,68 @@ class HotUpdater : ReactPackage {
             val path = convertFileSystemPathFromBasePath(context, basePath)
 
             var connection: HttpURLConnection? = null
-            try {
-                connection = downloadUrl.openConnection() as HttpURLConnection
-                connection.connect()
+            val isSuccess = withContext(Dispatchers.IO) {
+                try {
+                    connection = downloadUrl.openConnection() as HttpURLConnection
+                    connection.connect()
 
-                val totalSize = connection.contentLength
-                if (totalSize <= 0) {
-                    Log.d("HotUpdater", "Invalid content length: $totalSize")
-                    return false
-                }
+                    val totalSize = connection.contentLength
+                    if (totalSize <= 0) {
+                        Log.d("HotUpdater", "Invalid content length: $totalSize")
+                        return@withContext false
+                    }
 
-                val file = File(path)
-                file.parentFile?.mkdirs()
+                    val file = File(path)
+                    file.parentFile?.mkdirs()
 
-                connection.inputStream.use { input ->
-                    file.outputStream().use { output ->
-                        val buffer = ByteArray(8 * 1024)
-                        var bytesRead: Int
-                        var totalRead = 0L
+                    connection.inputStream.use { input ->
+                        file.outputStream().use { output ->
+                            val buffer = ByteArray(8 * 1024)
+                            var bytesRead: Int
+                            var totalRead = 0L
 
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            totalRead += bytesRead
-                            val progress = (totalRead.toDouble() / totalSize)
-                            progressCallback.invoke(progress)
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                totalRead += bytesRead
+                                val progress = (totalRead.toDouble() / totalSize)
+                                progressCallback.invoke(progress)
+                            }
                         }
                     }
+                } catch (e: Exception) {
+                    Log.d(
+                        "HotUpdater",
+                        "Failed to download data from URL: $zipUrl, Error: ${e.message}"
+                    )
+                    return@withContext false
+                } finally {
+                    connection?.disconnect()
+                    connection = null
                 }
-            } catch (e: Exception) {
-                Log.d("HotUpdater", "Failed to download data from URL: $zipUrl, Error: ${e.message}")
-                return false
-            } finally {
-                connection?.disconnect()
+
+                val extractedPath = File(path).parentFile?.path ?: return@withContext false
+
+                if (!extractZipFileAtPath(path, extractedPath)) {
+                    Log.d("HotUpdater", "Failed to extract zip file.")
+                    return@withContext false
+                }
+
+                val extractedDirectory = File(extractedPath)
+                val indexFile = extractedDirectory.walk().find { it.name == "index.android.bundle" }
+
+                if (indexFile != null) {
+                    val bundlePath = indexFile.path
+                    Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
+                    setBundleURL(context, bundlePath)
+                } else {
+                    Log.d("HotUpdater", "index.android.bundle not found.")
+                    return@withContext false
+                }
+
+                Log.d("HotUpdater", "Downloaded and extracted file successfully.")
+                return@withContext true
             }
-
-            val extractedPath = File(path).parentFile?.path ?: return false
-
-            if (!extractZipFileAtPath(path, extractedPath)) {
-                Log.d("HotUpdater", "Failed to extract zip file.")
-                return false
-            }
-
-            val extractedDirectory = File(extractedPath)
-            val indexFile = extractedDirectory.walk().find { it.name == "index.android.bundle" }
-
-            if (indexFile != null) {
-                val bundlePath = indexFile.path
-                Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
-                setBundleURL(context, bundlePath)
-            } else {
-                Log.d("HotUpdater", "index.android.bundle not found.")
-                return false
-            }
-
-            Log.d("HotUpdater", "Downloaded and extracted file successfully.")
-            return true
+            return isSuccess
         }
     }
 }
