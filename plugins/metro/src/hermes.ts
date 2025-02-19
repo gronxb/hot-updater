@@ -104,31 +104,30 @@ export async function getHermesCommand(cwd: string): Promise<string> {
  *
  * @param cwd - The current working directory
  * @param inputJsFile - Path to the input JS file
- * @param outputHbcFile - Output HBC file path
- * @param sourcemapOutput - (Optional) Final sourcemap file path
+ * @param sourcemap - (Optional) Final sourcemap file path
  * @returns The full path to the compiled HBC file
  */
 export async function compileHermes({
   cwd,
-  outputHbcFile,
-  sourcemapOutput,
+  sourcemap,
   inputJsFile,
 }: {
   cwd: string;
-  outputHbcFile: string;
-  sourcemapOutput?: string;
+  sourcemap?: boolean;
   inputJsFile: string;
-}): Promise<{ hermesVersion: string; outputHbcFile: string }> {
+}): Promise<{ hermesVersion: string }> {
+  const outputHbcFile = `${inputJsFile}.hbc`;
+
   const hermesArgs = [
     "-w",
     "-emit-binary",
     "-max-diagnostic-width=80",
     "-out",
-    outputHbcFile,
-    inputJsFile,
+    outputHbcFile, // output file
+    inputJsFile, // input file
   ];
 
-  if (sourcemapOutput) {
+  if (sourcemap) {
     hermesArgs.push("-output-source-map");
   }
 
@@ -145,7 +144,7 @@ export async function compileHermes({
     throw new Error(`Failed to compile with Hermes: ${error}`);
   }
 
-  if (sourcemapOutput) {
+  if (sourcemap) {
     const hermesSourceMapFile = `${outputHbcFile}.map`;
     if (!fs.existsSync(hermesSourceMapFile)) {
       throw new Error(
@@ -161,6 +160,7 @@ export async function compileHermes({
     }
 
     try {
+      const sourcemapOutput = `${inputJsFile}.map`;
       await execa("node", [
         composeSourceMapsPath,
         sourcemapOutput,
@@ -179,5 +179,9 @@ export async function compileHermes({
     }
   }
 
-  return { hermesVersion: version.stdout, outputHbcFile };
+  // outputHbcFile을 inputJsFile로 덮어씌우기
+  fs.unlinkSync(inputJsFile);
+  fs.renameSync(outputHbcFile, inputJsFile);
+
+  return { hermesVersion: version.stdout };
 }

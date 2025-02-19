@@ -81,9 +81,8 @@ Example:
   if (enableHermes) {
     const { hermesVersion } = await compileHermes({
       cwd,
-      outputHbcFile: bundleOutput,
       inputJsFile: bundleOutput,
-      sourcemapOutput: sourcemap ? `${bundleOutput}.map` : undefined,
+      sourcemap,
     });
 
     return {
