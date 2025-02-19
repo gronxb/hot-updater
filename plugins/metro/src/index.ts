@@ -99,26 +99,22 @@ export interface MetroPluginConfig extends BuildPluginConfig {
    */
   sourcemap?: boolean;
   /**
-   * Whether to use Hermes to compile the bundle.
-   * @default false
+   * Whether to use Hermes to compile the bundle
+   * Since React Native v0.70+, Hermes is enabled by default, so it's recommended to enable it.
+   * @link https://reactnative.dev/docs/hermes
+   * @recommended true
    */
-  enableHermes?: boolean;
+  enableHermes: boolean;
 }
 
 export const metro =
-  (
-    config: MetroPluginConfig = {
-      entryFile: "index.js",
-      outDir: "dist",
-      sourcemap: false,
-    },
-  ) =>
+  (config: MetroPluginConfig) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => {
     const {
       outDir = "dist",
       sourcemap = false,
       entryFile = "index.js",
-      enableHermes = false,
+      enableHermes,
     } = config;
     return {
       build: async ({ platform }) => {
