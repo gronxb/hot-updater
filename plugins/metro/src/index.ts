@@ -77,7 +77,7 @@ Example:
   }
 
   if (useHermes) {
-    const hbcFile = await compileHermes({
+    await compileHermes({
       outputHbcFile: bundleOutput,
       inputJsFile: bundleOutput,
       sourcemapOutput: sourcemap ? `${bundleOutput}.map` : undefined,
