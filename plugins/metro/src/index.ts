@@ -26,8 +26,8 @@ const runBundle = async ({
   sourcemap,
   enableHermes,
 }: RunBundleArgs) => {
-  const reactNativePath = require.resolve("react-native");
-  const cliPath = path.resolve(reactNativePath, "..", "cli.js");
+  const reactNativePath = require.resolve("react-native/package.json");
+  const cliPath = path.join(path.dirname(reactNativePath), "cli.js");
 
   const filename = `index.${platform}`;
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
