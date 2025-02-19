@@ -77,10 +77,8 @@ Example:
   }
 
   if (useHermes) {
-    const hbcOutput = path.join(buildPath, `${filename}.hbc`);
     const hbcFile = await compileHermes({
-      fileName: hbcOutput,
-      outDir: buildPath,
+      outputHbcFile: bundleOutput,
       inputJsFile: bundleOutput,
       sourcemapOutput: sourcemap ? `${bundleOutput}.map` : undefined,
     });

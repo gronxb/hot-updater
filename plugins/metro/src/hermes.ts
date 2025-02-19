@@ -1,5 +1,5 @@
-import * as fs from "fs";
-import * as path from "path";
+import fs from "fs";
+import path from "path";
 import { execa } from "execa";
 
 /**
@@ -99,26 +99,21 @@ export async function getHermesCommand(): Promise<string> {
  * and merges the source maps if enabled.
  *
  * @param inputJsFile - Path to the input JS file
- * @param outDir - Output directory path
- * @param fileName - Output HBC file name (created inside outDir)
+ * @param outputHbcFile - Output HBC file path
  * @param sourcemapOutput - (Optional) Final sourcemap file path
  * @returns The full path to the compiled HBC file
  */
 export async function compileHermes({
-  fileName,
-  outDir,
+  outputHbcFile,
   sourcemapOutput,
   inputJsFile,
 }: {
-  fileName: string;
-  outDir: string;
+  outputHbcFile: string;
   sourcemapOutput?: string;
   inputJsFile: string;
 }): Promise<string> {
-  const outputHbcFilePath = path.join(outDir, fileName);
-  const hermesArgs = ["-emit-binary", "-out", outputHbcFilePath, inputJsFile];
+  const hermesArgs = ["-emit-binary", "-out", outputHbcFile, inputJsFile];
 
-  // If sourcemapOutput is provided, enable sourcemap generation.
   if (sourcemapOutput) {
     hermesArgs.push("-output-source-map");
   }
@@ -126,46 +121,47 @@ export async function compileHermes({
   const hermesCommand = await getHermesCommand();
 
   try {
-    await execa(hermesCommand, hermesArgs, { stdio: "inherit" });
-  } catch (error: any) {
-    throw new Error(`Failed to compile with Hermes: ${error.message}`);
+    await execa(hermesCommand, hermesArgs);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to compile with Hermes: ${error.message}`);
+    }
+    throw new Error(`Failed to compile with Hermes: ${error}`);
   }
 
-  // If sourcemapOutput is enabled, use compose-source-maps to generate the final sourcemap.
   if (sourcemapOutput) {
-    // Hermes-generated sourcemap is located at outputHbcFilePath + ".map".
-    const hermesSourceMapFile = `${outputHbcFilePath}.map`;
+    const hermesSourceMapFile = `${outputHbcFile}.map`;
     if (!fs.existsSync(hermesSourceMapFile)) {
       throw new Error(
         `Hermes-generated sourcemap file (${hermesSourceMapFile}) not found.`,
       );
     }
+
     const composeSourceMapsPath = getComposeSourceMapsPath();
     if (!composeSourceMapsPath) {
       throw new Error(
         "Could not find react-native's compose-source-maps.js script.",
       );
     }
+
     try {
-      await execa(
-        "node",
-        [
-          composeSourceMapsPath,
-          sourcemapOutput,
-          hermesSourceMapFile,
-          "-o",
-          sourcemapOutput,
-        ],
-        { stdio: "inherit" },
-      );
-      // Remove the temporary Hermes sourcemap file.
+      await execa("node", [
+        composeSourceMapsPath,
+        sourcemapOutput,
+        hermesSourceMapFile,
+        "-o",
+        sourcemapOutput,
+      ]);
       fs.unlinkSync(hermesSourceMapFile);
-    } catch (error: any) {
-      throw new Error(
-        `Failed to run compose-source-maps script: ${error.message}`,
-      );
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(
+          `Failed to run compose-source-maps script: ${error.message}`,
+        );
+      }
+      throw new Error(`Failed to run compose-source-maps script: ${error}`);
     }
   }
 
-  return outputHbcFilePath;
+  return outputHbcFile;
 }
