@@ -26,7 +26,9 @@ const runBundle = async ({
   sourcemap,
   enableHermes,
 }: RunBundleArgs) => {
-  const reactNativePath = require.resolve("react-native/package.json");
+  const reactNativePath = require.resolve("react-native/package.json", {
+    paths: [cwd],
+  });
   const cliPath = path.join(path.dirname(reactNativePath), "cli.js");
 
   const filename = `index.${platform}`;
@@ -77,14 +79,23 @@ Example:
   }
 
   if (enableHermes) {
-    await compileHermes({
+    const { hermesVersion } = await compileHermes({
+      cwd,
       outputHbcFile: bundleOutput,
       inputJsFile: bundleOutput,
       sourcemapOutput: sourcemap ? `${bundleOutput}.map` : undefined,
     });
+
+    return {
+      bundleId,
+      stdout: hermesVersion,
+    };
   }
 
-  return bundleId;
+  return {
+    bundleId,
+    stdout: null,
+  };
 };
 
 export interface MetroPluginConfig extends BuildPluginConfig {
@@ -123,7 +134,7 @@ export const metro =
         await fs.rm(buildPath, { recursive: true, force: true });
         await fs.mkdir(buildPath, { recursive: true });
 
-        const bundleId = await runBundle({
+        const { bundleId, stdout } = await runBundle({
           entryFile,
           cwd,
           platform,
@@ -135,6 +146,7 @@ export const metro =
         return {
           buildPath,
           bundleId,
+          stdout,
         };
       },
       name: "metro",

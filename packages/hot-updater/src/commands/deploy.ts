@@ -109,22 +109,39 @@ export const deploy = async (options: DeployOptions) => {
   ]);
 
   try {
+    const taskRef: {
+      buildResult: {
+        buildPath: string;
+        bundleId: string;
+        stdout: string | null;
+      } | null;
+    } = {
+      buildResult: null,
+    };
+
     await p.tasks([
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
-          const buildResult = await buildPlugin.build({
+          taskRef.buildResult = await buildPlugin.build({
             platform: platform,
           });
-          await createZip(buildResult.buildPath, "bundle.zip");
+          await createZip(taskRef.buildResult.buildPath, "bundle.zip");
 
-          bundleId = buildResult.bundleId;
+          bundleId = taskRef.buildResult.bundleId;
           bundlePath = path.join(getCwd(), "bundle.zip");
           fileHash = await getFileHashFromFile(bundlePath);
 
           return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
+    ]);
+
+    if (taskRef.buildResult?.stdout) {
+      p.log.success(taskRef.buildResult.stdout);
+    }
+
+    await p.tasks([
       {
         title: `📦 Uploading to Storage (${storagePlugin.name})`,
         task: async () => {

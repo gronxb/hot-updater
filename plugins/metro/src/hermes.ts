@@ -30,9 +30,13 @@ function getHermesOSExe(): string {
  * Returns the path to the react-native package.
  * Uses require.resolve to locate the path directly.
  */
-function getReactNativePackagePath(): string {
+function getReactNativePackagePath(cwd: string): string {
   try {
-    return path.dirname(require.resolve("react-native/package.json"));
+    return path.dirname(
+      require.resolve("react-native/package.json", {
+        paths: [cwd],
+      }),
+    );
   } catch (error) {
     return path.join("node_modules", "react-native");
   }
@@ -41,8 +45,8 @@ function getReactNativePackagePath(): string {
 /**
  * Returns the path to the react-native compose-source-maps.js script.
  */
-function getComposeSourceMapsPath(): string | null {
-  const rnPackagePath = getReactNativePackagePath();
+function getComposeSourceMapsPath(cwd: string): string | null {
+  const rnPackagePath = getReactNativePackagePath(cwd);
   const composeSourceMaps = path.join(
     rnPackagePath,
     "scripts",
@@ -58,7 +62,7 @@ function getComposeSourceMapsPath(): string | null {
  *
  * @returns Full path to the Hermes executable
  */
-export async function getHermesCommand(): Promise<string> {
+export async function getHermesCommand(cwd: string): Promise<string> {
   const fileExists = (file: string): boolean => {
     try {
       return fs.statSync(file).isFile();
@@ -69,7 +73,7 @@ export async function getHermesCommand(): Promise<string> {
 
   // Since react-native 0.69, Hermes is bundled with it.
   const bundledHermesEngine = path.join(
-    getReactNativePackagePath(),
+    getReactNativePackagePath(cwd),
     "sdks",
     "hermesc",
     getHermesOSBin(),
@@ -98,27 +102,39 @@ export async function getHermesCommand(): Promise<string> {
  * Compiles a JS bundle into an HBC file using the Hermes compiler,
  * and merges the source maps if enabled.
  *
+ * @param cwd - The current working directory
  * @param inputJsFile - Path to the input JS file
  * @param outputHbcFile - Output HBC file path
  * @param sourcemapOutput - (Optional) Final sourcemap file path
  * @returns The full path to the compiled HBC file
  */
 export async function compileHermes({
+  cwd,
   outputHbcFile,
   sourcemapOutput,
   inputJsFile,
 }: {
+  cwd: string;
   outputHbcFile: string;
   sourcemapOutput?: string;
   inputJsFile: string;
-}): Promise<string> {
-  const hermesArgs = ["-emit-binary", "-out", outputHbcFile, inputJsFile];
+}): Promise<{ hermesVersion: string; outputHbcFile: string }> {
+  const hermesArgs = [
+    "-w",
+    "-emit-binary",
+    "-max-diagnostic-width=80",
+    "-out",
+    outputHbcFile,
+    inputJsFile,
+  ];
 
   if (sourcemapOutput) {
     hermesArgs.push("-output-source-map");
   }
 
-  const hermesCommand = await getHermesCommand();
+  const hermesCommand = await getHermesCommand(cwd);
+
+  const version = await execa(hermesCommand, ["--version"]);
 
   try {
     await execa(hermesCommand, hermesArgs);
@@ -137,7 +153,7 @@ export async function compileHermes({
       );
     }
 
-    const composeSourceMapsPath = getComposeSourceMapsPath();
+    const composeSourceMapsPath = getComposeSourceMapsPath(cwd);
     if (!composeSourceMapsPath) {
       throw new Error(
         "Could not find react-native's compose-source-maps.js script.",
@@ -163,5 +179,5 @@ export async function compileHermes({
     }
   }
 
-  return outputHbcFile;
+  return { hermesVersion: version.stdout, outputHbcFile };
 }
