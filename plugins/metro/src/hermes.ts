@@ -179,7 +179,7 @@ export async function compileHermes({
     }
   }
 
-  // outputHbcFile을 inputJsFile로 덮어씌우기
+  // Overwrite inputJsFile with outputHbcFile
   fs.unlinkSync(inputJsFile);
   fs.renameSync(outputHbcFile, inputJsFile);
 
