@@ -82,8 +82,6 @@ Example:
       inputJsFile: bundleOutput,
       sourcemapOutput: sourcemap ? `${bundleOutput}.map` : undefined,
     });
-
-    console.log("hbcFile", hbcFile);
   }
 
   return bundleId;
