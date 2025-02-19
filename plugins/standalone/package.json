@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/api",
+  "name": "@hot-updater/standalone",
   "version": "0.6.5",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
@@ -42,7 +42,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.6.5"
+    "@hot-updater/core": "0.6.5",
+    "@hot-updater/plugin-core": "0.6.5"
   },
   "devDependencies": {
     "semver": "^7.6.3",
