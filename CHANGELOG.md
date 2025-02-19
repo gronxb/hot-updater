@@ -1,3 +1,22 @@
+## 0.10.1 (2025-02-19)
+
+### 🚀 Features
+
+- **console:** after clicking save, show loading icon ([#117](https://github.com/gronxb/hot-updater/pull/117))
+- **metro:** `enableHermes` options compile binary ([#120](https://github.com/gronxb/hot-updater/pull/120))
+
+### 🩹 Fixes
+
+- sets bundleUrl before reload for custom RCTBridges for brownfield app ([#119](https://github.com/gronxb/hot-updater/pull/119))
+- **android:** UI Blocking code in Android when fetching JS Bundle && Add kotlin config in to 0.71 sample ([#122](https://github.com/gronxb/hot-updater/pull/122))
+
+### ❤️ Thank You
+
+- HyunWoo Lee (Nunu Lee) @l2hyunwoo
+- jingjinge @jingjing2222
+- Sungyu Kang
+- wes4m
+
 ## 0.10.0 (2025-02-19)
 
 ### 🚀 Features
