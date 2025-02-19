@@ -7,6 +7,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
+import { compileHermes } from "./hermes";
 
 interface RunBundleArgs {
   entryFile: string;
@@ -14,6 +15,7 @@ interface RunBundleArgs {
   platform: string;
   buildPath: string;
   sourcemap: boolean;
+  useHermes: boolean;
 }
 
 const runBundle = async ({
@@ -22,11 +24,13 @@ const runBundle = async ({
   platform,
   buildPath,
   sourcemap,
+  useHermes,
 }: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native");
   const cliPath = path.resolve(reactNativePath, "..", "cli.js");
 
-  const bundleOutput = path.join(buildPath, `index.${platform}.bundle`);
+  const filename = `index.${platform}`;
+  const bundleOutput = path.join(buildPath, `${filename}.bundle`);
 
   const args = [
     "bundle",
@@ -72,6 +76,18 @@ Example:
 }`);
   }
 
+  if (useHermes) {
+    const hbcOutput = path.join(buildPath, `${filename}.hbc`);
+    const hbcFile = await compileHermes({
+      fileName: hbcOutput,
+      outDir: buildPath,
+      inputJsFile: bundleOutput,
+      sourcemapOutput: sourcemap ? `${bundleOutput}.map` : undefined,
+    });
+
+    console.log("hbcFile", hbcFile);
+  }
+
   return bundleId;
 };
 
@@ -86,6 +102,11 @@ export interface MetroPluginConfig extends BuildPluginConfig {
    * Whether to generate sourcemap for the bundle.
    */
   sourcemap?: boolean;
+  /**
+   * Whether to use Hermes to compile the bundle.
+   * @default false
+   */
+  useHermes?: boolean;
 }
 
 export const metro =
@@ -101,6 +122,7 @@ export const metro =
       outDir = "dist",
       sourcemap = false,
       entryFile = "index.js",
+      useHermes = false,
     } = config;
     return {
       build: async ({ platform }) => {
@@ -115,6 +137,7 @@ export const metro =
           platform,
           buildPath,
           sourcemap,
+          useHermes,
         });
 
         return {
