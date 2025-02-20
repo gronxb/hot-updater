@@ -1,3 +1,14 @@
+## 0.11.0 (2025-02-20)
+
+### 🩹 Fixes
+
+- **ios:** warn requiresMainQueueSetup ([#127](https://github.com/gronxb/hot-updater/pull/127))
+- **react-native:** wrap reload in requestAnimationFrame ([#129](https://github.com/gronxb/hot-updater/pull/129))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.10.2 (2025-02-20)
 
 ### 🚀 Features
