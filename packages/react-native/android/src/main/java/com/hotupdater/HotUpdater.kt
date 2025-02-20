@@ -26,8 +26,6 @@ class HotUpdater : ReactPackage {
         listOf(HotUpdaterModule(context)).toMutableList()
 
     companion object {
-
-
         fun getAppVersion(context: Context): String? {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             return packageInfo.versionName
