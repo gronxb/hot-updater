@@ -1,3 +1,18 @@
+## 0.10.2 (2025-02-20)
+
+### 🚀 Features
+
+- **standalone:** api-based `standaloneRepository` database plugin ([#83](https://github.com/gronxb/hot-updater/pull/83))
+
+### 🩹 Fixes
+
+- **cli:** getCwd bundle failed on cloudflareD1R2Worker ([#126](https://github.com/gronxb/hot-updater/pull/126))
+
+### ❤️ Thank You
+
+- Hieu Do @minhhieu76qng
+- Neil Agarwal
+
 ## 0.10.1 (2025-02-19)
 
 ### 🚀 Features

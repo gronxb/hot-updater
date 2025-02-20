@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "files": [
     "dist",
     "package.json"
@@ -57,7 +57,7 @@
     "valibot": "^0.42.1"
   },
   "dependencies": {
-    "@hot-updater/core": "0.10.1",
-    "@hot-updater/plugin-core": "0.10.1"
+    "@hot-updater/core": "0.10.2",
+    "@hot-updater/plugin-core": "0.10.2"
   }
 }
