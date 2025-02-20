@@ -22,7 +22,7 @@ const defaultRoutes: Routes = {
 
 const createRoute = (
   defaultRoute: RouteConfig,
-  customRoute?: Partial<RouteConfig>
+  customRoute?: Partial<RouteConfig>,
 ): RouteConfig => ({
   path: customRoute?.path ?? defaultRoute.path,
   headers: {
@@ -47,7 +47,7 @@ export const standaloneRepository =
       retrieve: (bundleId) =>
         createRoute(
           defaultRoutes.retrieve(bundleId),
-          config.routes?.retrieve?.(bundleId)
+          config.routes?.retrieve?.(bundleId),
         ),
     };
 
