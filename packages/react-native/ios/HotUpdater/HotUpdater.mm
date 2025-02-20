@@ -148,6 +148,25 @@ RCT_EXPORT_MODULE();
             if (completion) completion(NO);
         }
     }];
+
+
+    // Add observer for progress updates
+    [downloadTask addObserver:self
+                forKeyPath:@"countOfBytesReceived"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
+    [downloadTask addObserver:self
+                forKeyPath:@"countOfBytesExpectedToReceive"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
+
+    __block HotUpdater *weakSelf = self;
+    [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
+        object:downloadTask
+        queue:[NSOperationQueue mainQueue]
+    usingBlock:^(NSNotification * _Nonnull note) {
+        [weakSelf removeObserversForTask:downloadTask];
+    }];
     
     [downloadTask resume];
 }
