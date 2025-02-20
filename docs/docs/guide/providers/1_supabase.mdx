@@ -87,7 +87,7 @@ import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
 export default defineConfig({
-  build: metro(),
+  build: metro({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
@@ -120,26 +120,28 @@ export default HotUpdater.wrap({
   requestHeaders: {
     // if you want to use the request headers, you can add them here
   },
-  fallbackComponent: ({ progress = 0 }) => (
-    <Modal transparent visible={true}>
-      <View
-        style={{
-          flex: 1,
-          padding: 20,
-          borderRadius: 10,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-        }}
-      >
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          Updating...
-        </Text>
+  fallbackComponent: ({ progress, status }) => (
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        borderRadius: 10,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      {/* You can put a splash image here. */}
+
+      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+        {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+      </Text>
+      {progress > 0 ? (
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
           {Math.round(progress * 100)}%
         </Text>
-      </View>
-    </Modal>
+      ) : null}
+    </View>
   ),
 })(App);
 
@@ -222,6 +224,29 @@ class MainApplication : Application(), ReactApplication {
 
 </Tab>
     <Tab label="Java">
+  ```java title=android/app/build.gradle
+    buildscript {
+        ext {
+            buildToolsVersion = "33.0.0"
+            minSdkVersion = 21
+            compileSdkVersion = 33
+            targetSdkVersion = 33
+
+            // We use NDK 23 which has both M1 support and is the side-by-side NDK version from AGP.
+            ndkVersion = "23.1.7779620"
+            kotlinVersion = "1.9.24" // [!code ++]
+        }
+        repositories {
+            google()
+            mavenCentral()
+        }
+        dependencies {
+            classpath("com.android.tools.build:gradle:7.3.1")
+            classpath("com.facebook.react:react-native-gradle-plugin")
+            classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}") // [!code ++]
+        }
+    }
+  ```
   ```java title=android/app/src/main/java/com/<your-app-name>/MainApplication.java
 
 package com.hotupdaterexample;
@@ -292,7 +317,6 @@ public class MainApplication extends Application implements ReactApplication {
     ReactNativeFlipper.initializeFlipper(this, getReactNativeHost().getReactInstanceManager());
   }
 }
-
 ```  
   </Tab>
 </Tabs>

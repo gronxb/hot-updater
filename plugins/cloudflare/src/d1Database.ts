@@ -102,14 +102,6 @@ export const d1Database =
 
         markChanged(inputBundle.id);
       },
-
-      async setBundles(inputBundles: Bundle[]) {
-        bundles = inputBundles;
-        for (const b of inputBundles) {
-          markChanged(b.id);
-        }
-      },
-
       async getBundleById(bundleId: string) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
@@ -120,18 +112,19 @@ export const d1Database =
           /* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`,
         );
-        const [response] = await cf.d1.database.query(config.databaseId, {
+        const singlePage = await cf.d1.database.query(config.databaseId, {
           account_id: config.accountId,
           sql,
           params: [bundleId],
         });
 
-        if (!response.success) {
-          return null;
+        const rows = [] as SnakeCaseBundle[];
+        for await (const page of singlePage.iterPages()) {
+          const data = page.result.flatMap((r) => r.results);
+          rows.push(...(data as SnakeCaseBundle[]));
         }
 
-        const rows = response.results as SnakeCaseBundle[];
-        if (!rows?.length) {
+        if (rows.length === 0) {
           return null;
         }
 
@@ -171,19 +164,18 @@ export const d1Database =
         `,
         );
 
-        const [response] = await cf.d1.database.query(config.databaseId, {
+        const singlePage = await cf.d1.database.query(config.databaseId, {
           account_id: config.accountId,
           sql,
           params: [],
         });
-
-        if (!response.success) {
-          bundles = [];
-          return bundles;
+        const rows = [] as SnakeCaseBundle[];
+        for await (const page of singlePage.iterPages()) {
+          const data = page.result.flatMap((r) => r.results);
+          rows.push(...(data as SnakeCaseBundle[]));
         }
 
-        const rows = response.results as SnakeCaseBundle[];
-        if (!rows?.length) {
+        if (rows.length === 0) {
           bundles = [];
         } else {
           bundles = rows.map((row) => ({

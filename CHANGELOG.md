@@ -1,3 +1,115 @@
+## 0.10.1 (2025-02-19)
+
+### 🚀 Features
+
+- **console:** after clicking save, show loading icon ([#117](https://github.com/gronxb/hot-updater/pull/117))
+- **metro:** `enableHermes` options compile binary ([#120](https://github.com/gronxb/hot-updater/pull/120))
+
+### 🩹 Fixes
+
+- sets bundleUrl before reload for custom RCTBridges for brownfield app ([#119](https://github.com/gronxb/hot-updater/pull/119))
+- **android:** UI Blocking code in Android when fetching JS Bundle && Add kotlin config in to 0.71 sample ([#122](https://github.com/gronxb/hot-updater/pull/122))
+
+### ❤️ Thank You
+
+- HyunWoo Lee (Nunu Lee) @l2hyunwoo
+- jingjinge @jingjing2222
+- Sungyu Kang
+- wes4m
+
+## 0.10.0 (2025-02-19)
+
+### 🚀 Features
+
+- **console:** after clicking save, show loading icon ([#117](https://github.com/gronxb/hot-updater/pull/117))
+- **metro:** `enableHermes` options compile binary ([#120](https://github.com/gronxb/hot-updater/pull/120))
+
+### 🩹 Fixes
+
+- sets bundleUrl before reload for custom RCTBridges for brownfield app ([#119](https://github.com/gronxb/hot-updater/pull/119))
+- **android:** UI Blocking code in Android when fetching JS Bundle && Add kotlin config in to 0.71 sample ([#122](https://github.com/gronxb/hot-updater/pull/122))
+
+### ❤️ Thank You
+
+- HyunWoo Lee (Nunu Lee) @l2hyunwoo
+- jingjinge @jingjing2222
+- Sungyu Kang
+- wes4m
+
+## 0.9.0 (2025-02-17)
+
+### 🩹 Fixes
+
+- **ios:** ensure UI thread is not blocked by sending events, spreading out by 200ms ([#111](https://github.com/gronxb/hot-updater/pull/111))
+- **ios:** Improve KVO observer management for download tasks ([#112](https://github.com/gronxb/hot-updater/pull/112))
+
+### ❤️ Thank You
+
+- Elijah Windsor
+- Sungyu Kang
+
+## 0.8.0 (2025-02-16)
+
+### 🩹 Fixes
+
+- ensure that the UI thread is not blocked when updating ([#106](https://github.com/gronxb/hot-updater/pull/106))
+- **android:** Prevent bundle loading when URL is null ([#103](https://github.com/gronxb/hot-updater/pull/103))
+- **android:** prevent ProGuard from blocking access to `mBundleLoader` ([#107](https://github.com/gronxb/hot-updater/pull/107))
+- **android:** new arch ProGuard ([#108](https://github.com/gronxb/hot-updater/pull/108))
+- **ios:** Add progress tracking for download tasks in HotUpdater ([#109](https://github.com/gronxb/hot-updater/pull/109))
+
+### ❤️ Thank You
+
+- Elijah Windsor
+- mustafa MEDENi @mstfmedeni
+- Sungyu Kang
+
+## 0.7.0 (2025-02-14)
+
+### 🩹 Fixes
+
+- **android:** Prevent bundle loading when URL is null ([#103](https://github.com/gronxb/hot-updater/pull/103))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.6.7 (2025-02-14)
+
+### 🚀 Features
+
+- **database:** changeset-based `commitBundle` and remove `setBundles` interface ([#93](https://github.com/gronxb/hot-updater/pull/93))
+- **mock:** `mockDatabase` for console development ([#89](https://github.com/gronxb/hot-updater/pull/89))
+- **react-native:** change default `reloadOnForceUpdate` to `true` ([#100](https://github.com/gronxb/hot-updater/pull/100))
+
+### 🩹 Fixes
+
+- **cloudflare:** change cloudflare 4.1.0 api spec ([#98](https://github.com/gronxb/hot-updater/pull/98))
+- **react-native:** If `shouldForceUpdate` is false, fallbackComponent pass ([#102](https://github.com/gronxb/hot-updater/pull/102))
+
+### ❤️ Thank You
+
+- max.cha @Coreight98
+- Sungyu Kang
+
+## 0.6.6 (2025-02-13)
+
+### 🚀 Features
+
+- **database:** changeset-based `commitBundle` and remove `setBundles` interface ([#93](https://github.com/gronxb/hot-updater/pull/93))
+- **mock:** `mockDatabase` for console development ([#89](https://github.com/gronxb/hot-updater/pull/89))
+
+### 🩹 Fixes
+
+- loop ([27789a4](https://github.com/gronxb/hot-updater/commit/27789a4))
+- **cloudflare:** change cloudflare 4.1.0 api spec ([3128f05](https://github.com/gronxb/hot-updater/commit/3128f05))
+
+### ❤️ Thank You
+
+- gronxb
+- max.cha @Coreight98
+- Sungyu Kang
+
 ## 0.6.5 (2025-02-05)
 
 ### 🩹 Fixes

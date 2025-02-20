@@ -1,17 +1,18 @@
 {
-  "name": "@hot-updater/supabase",
+  "name": "@hot-updater/mock",
+  "private": true,
   "type": "module",
   "version": "0.10.1",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
+  "types": "dist/index.d.ts",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
@@ -19,30 +20,21 @@
     "url": "https://github.com/gronxb/hot-updater/issues"
   },
   "homepage": "https://github.com/gronxb/hot-updater#readme",
-  "publishConfig": {
-    "access": "public"
-  },
   "files": [
     "dist",
-    "sql",
-    "supabase/functions",
-    "supabase/migrations",
     "package.json"
   ],
   "scripts": {
     "build": "rslib build",
     "test:type": "tsc --noEmit",
-    "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@hot-updater/core": "0.10.1",
-    "@hot-updater/plugin-core": "0.10.1",
-    "@supabase/supabase-js": "^2.47.10"
+    "@hot-updater/plugin-core": "0.10.1"
   },
   "devDependencies": {
-    "picocolors": "^1.0.0",
-    "@hot-updater/postgres": "0.10.1",
-    "dayjs": "^1.11.13",
-    "mime": "^4.0.4"
+    "vitest": "2.1.8"
   }
 }

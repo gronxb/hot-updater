@@ -21,8 +21,10 @@ import { cn } from "@/lib/utils";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createAsync } from "@solidjs/router";
 import { createForm } from "@tanstack/solid-form";
+import { LoaderCircle } from "lucide-solid";
 import semverValid from "semver/ranges/valid";
-import { Show, createMemo } from "solid-js";
+import { Show, createMemo, createSignal } from "solid-js";
+import { toast } from "solid-sonner";
 
 interface EditBundleSheetFormProps {
   bundle: Bundle;
@@ -36,10 +38,9 @@ const EditBundleSheetForm = ({
   const config = createAsync(() =>
     api.getConfig.$get().then((res) => res.json()),
   );
-
+  const [isSubmitting, setIsSubmitting] = createSignal(false);
   const gitUrl = createMemo(() => config()?.console?.gitUrl);
   const gitCommitHash = createMemo(() => bundle.gitCommitHash);
-
   const form = createForm(() => ({
     defaultValues: {
       message: bundle.message,
@@ -48,15 +49,22 @@ const EditBundleSheetForm = ({
       shouldForceUpdate: bundle.shouldForceUpdate,
     } as Partial<Bundle>,
     onSubmit: async ({ value }) => {
-      // Do something with form data
-
-      await api.updateBundle.$post({
-        json: {
-          targetBundleId: bundle.id,
-          bundle: value,
-        },
-      });
-      onEditSuccess();
+      setIsSubmitting(true);
+      try {
+        await api.updateBundle.$post({
+          json: {
+            targetBundleId: bundle.id,
+            bundle: value,
+          },
+        });
+      } catch (e) {
+        if (e instanceof Error) {
+          toast(e.message);
+        }
+      } finally {
+        setIsSubmitting(false);
+        onEditSuccess();
+      }
     },
   }));
 
@@ -183,9 +191,19 @@ const EditBundleSheetForm = ({
           continuing to use the application.
         </p>
       </div>
-      <Button type="submit" class="mt-4" disabled={!isValid()}>
-        Save
-      </Button>
+
+      <Show
+        when={!isSubmitting()}
+        fallback={
+          <Button type="submit" class="mt-4" disabled>
+            <LoaderCircle class="animate-spin" />
+          </Button>
+        }
+      >
+        <Button type="submit" class="mt-4" disabled={!isValid()}>
+          Save
+        </Button>
+      </Show>
 
       <div class="flex justify-end">
         <Show when={gitCommitHash()}>
@@ -238,9 +256,11 @@ export const EditBundleSheetContent = ({
           </SheetDescription>
         }
       >
-        {(bundle) => (
-          <EditBundleSheetForm bundle={bundle()} onEditSuccess={onClose} />
-        )}
+        {(bundle) => {
+          return (
+            <EditBundleSheetForm bundle={bundle()} onEditSuccess={onClose} />
+          );
+        }}
       </Show>
     </SheetContent>
   );

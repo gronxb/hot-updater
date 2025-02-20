@@ -1,4 +1,7 @@
 {
   "extends": "@react-native/typescript-config/tsconfig.json",
-  "include": ["./env.d.ts", "src/**/*"]
+  "compilerOptions": {
+    "types": ["./env.d.ts"]
+  },
+  "include": ["src/**/*"]
 }

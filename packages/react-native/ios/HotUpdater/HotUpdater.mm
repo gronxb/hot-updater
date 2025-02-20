@@ -1,9 +1,19 @@
 #import "HotUpdater.h"
 #import <React/RCTReloadCommand.h>
 #import <SSZipArchive/SSZipArchive.h>
+#import <Foundation/NSURLSession.h>
 
 @implementation HotUpdater {
     bool hasListeners;
+}
+
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _lastUpdateTime = 0;
+    }
+    return self;
 }
 
 RCT_EXPORT_MODULE();
@@ -71,71 +81,66 @@ RCT_EXPORT_MODULE();
     return success;
 }
 
-- (BOOL)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl {
+- (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl completion:(void (^)(BOOL success))completion {
     if (!zipUrl) {
-        [self setBundleURL:nil];
-        return YES;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setBundleURL:nil];
+            if (completion) completion(YES);
+        });
+        return;
     }
-    
+
     NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
     NSString *path = [self convertFileSystemPathFromBasePath:basePath];
-    
+
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
-    
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    __block BOOL success = NO;
-    
+
     NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
                                                         completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
             NSLog(@"Failed to download data from URL: %@, error: %@", zipUrl, error);
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         NSFileManager *fileManager = [NSFileManager defaultManager];
         NSError *folderError;
-        
+
         // Ensure directory exists
         if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                     withIntermediateDirectories:YES
                                      attributes:nil
                                           error:&folderError]) {
             NSLog(@"Failed to create folder: %@", folderError);
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         // Check if file already exists and remove it
         if ([fileManager fileExistsAtPath:path]) {
             NSError *removeError;
             if (![fileManager removeItemAtPath:path error:&removeError]) {
                 NSLog(@"Failed to remove existing file: %@", removeError);
-                success = NO;
-                dispatch_semaphore_signal(semaphore);
+                if (completion) completion(NO);
                 return;
             }
         }
-        
+
         NSError *moveError;
         if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:path] error:&moveError]) {
             NSLog(@"Failed to save data: %@", moveError);
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         NSString *extractedPath = [path stringByDeletingLastPathComponent];
         if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
             NSLog(@"Failed to extract zip file.");
-            success = NO;
-            dispatch_semaphore_signal(semaphore);
+            if (completion) completion(NO);
             return;
         }
-        
+
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
@@ -144,37 +149,57 @@ RCT_EXPORT_MODULE();
                 break;
             }
         }
-        
+
         if (filename) {
             NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
             NSLog(@"Setting bundle URL: %@", bundlePath);
-            [self setBundleURL:bundlePath];
-            success = YES;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self setBundleURL:bundlePath];
+                if (completion) completion(YES);
+            });
         } else {
             NSLog(@"index.ios.bundle not found.");
-            success = NO;
+            if (completion) completion(NO);
         }
-        
-        dispatch_semaphore_signal(semaphore);
     }];
+
     
     // Add observer for progress updates
     [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesReceived"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
+                forKeyPath:@"countOfBytesReceived"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
     [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesExpectedToReceive"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
-    
+                forKeyPath:@"countOfBytesExpectedToReceive"
+                    options:NSKeyValueObservingOptionNew
+                    context:nil];
+
+    __block HotUpdater *weakSelf = self;
+    [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
+        object:downloadTask
+        queue:[NSOperationQueue mainQueue]
+    usingBlock:^(NSNotification * _Nonnull note) {
+        [weakSelf removeObserversForTask:downloadTask];
+    }];
     [downloadTask resume];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    
-    return success;
+
 }
 
 #pragma mark - Progress Updates
+
+
+- (void)removeObserversForTask:(NSURLSessionDownloadTask *)task {
+    @try {
+        if ([task observationInfo]) {
+            [task removeObserver:self forKeyPath:@"countOfBytesReceived"];
+            [task removeObserver:self forKeyPath:@"countOfBytesExpectedToReceive"];
+            NSLog(@"KVO observers removed successfully for task: %@", task);
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"Failed to remove observers: %@", exception);
+    }
+}
+
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
@@ -186,8 +211,16 @@ RCT_EXPORT_MODULE();
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
             
-            // Send progress to React Native
-            [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
+            // Get current timestamp
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // Convert to milliseconds
+            
+            // Send event only if 100ms has passed OR progress is 100%
+            if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
+                self.lastUpdateTime = currentTime; // Update last event timestamp
+
+                // Send progress to React Native
+                [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
+            }
         }
     }
 }
@@ -219,6 +252,7 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(reload) {
     NSLog(@"HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
+        [super.bridge setValue:[HotUpdater bundleURL] forKey:@"bundleURL"];
         RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
     });
 }
@@ -234,9 +268,12 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
     if (![zipUrlString isEqualToString:@""]) {
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
-    
-    BOOL result = [self updateBundle:bundleId zipUrl:zipUrl];
-    resolve(@[@(result)]);
+
+    [self updateBundle:bundleId zipUrl:zipUrl completion:^(BOOL success) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            resolve(@[@(success)]);
+        });
+    }];
 }
 
 
