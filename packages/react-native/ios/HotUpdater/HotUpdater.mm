@@ -83,14 +83,14 @@ RCT_EXPORT_MODULE();
         return;
     }
     
-    // 앱 전용 경로 설정 (동적으로 NSSearchPathForDirectoriesInDomains 사용)
+    // Set app-specific path (dynamically using NSSearchPathForDirectoriesInDomains)
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *updatedDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
     NSString *zipFilePath = [updatedDir stringByAppendingPathComponent:@"build.zip"];
     
-    // 기존 폴더 삭제
+    // Delete existing folder
     [self deleteFolderIfExists:updatedDir];
-    // 다운로드 받을 폴더 생성
+    // Create download folder
     [[NSFileManager defaultManager] createDirectoryAtPath:updatedDir withIntermediateDirectories:YES attributes:nil error:nil];
     
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
@@ -106,12 +106,12 @@ RCT_EXPORT_MODULE();
         
         NSFileManager *fileManager = [NSFileManager defaultManager];
         
-        // 기존 파일 제거
+        // Remove existing file
         if ([fileManager fileExistsAtPath:zipFilePath]) {
             [fileManager removeItemAtPath:zipFilePath error:nil];
         }
         
-        // 다운로드된 파일 이동
+        // Move downloaded file
         NSError *moveError;
         if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:zipFilePath] error:&moveError]) {
             NSLog(@"Failed to save data: %@", moveError);
@@ -119,14 +119,14 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // 압축 해제
+        // Extract zip
         if (![self extractZipFileAtPath:zipFilePath toDestination:updatedDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
         
-        // 번들 파일 탐색 (index.ios.bundle)
+        // Search for bundle file (index.ios.bundle)
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:updatedDir];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
@@ -189,7 +189,7 @@ RCT_EXPORT_MODULE();
         NSURLSessionDownloadTask *task = (NSURLSessionDownloadTask *)object;
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
-            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // 밀리초 단위
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // In milliseconds
             if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
                 self.lastUpdateTime = currentTime;
                 [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
