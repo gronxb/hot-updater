@@ -26,25 +26,7 @@ class HotUpdater : ReactPackage {
         listOf(HotUpdaterModule(context)).toMutableList()
 
     companion object {
-        private fun convertFileSystemPathFromBasePath(
-            context: Context,
-            basePath: String,
-        ): String {
-            val documentsDir =
-                context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath
-            val separator = if (basePath.startsWith("/")) "" else "/"
-            return "$documentsDir$separator$basePath"
-        }
 
-        private fun stripPrefixFromPath(
-            prefix: String,
-            path: String,
-        ): String =
-            if (path.startsWith("/$prefix/")) {
-                path.replaceFirst("/$prefix/", "")
-            } else {
-                path
-            }
 
         fun getAppVersion(context: Context): String? {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
@@ -146,12 +128,20 @@ class HotUpdater : ReactPackage {
                 return true
             }
 
-            val downloadUrl = URL(zipUrl)
-            val basePath = stripPrefixFromPath(bundleId, downloadUrl.path)
-            val path = convertFileSystemPathFromBasePath(context, basePath)
+            val baseDir = context.getExternalFilesDir(null)
+            val updatedDir = File(baseDir, "bundle-store")
+            val zipFilePath = File(updatedDir, "build.zip")
+
+            // Delete existing folder logic
+            if (updatedDir.exists()) {
+                updatedDir.deleteRecursively()
+                Log.d("HotUpdater", "Deleted existing 'updated' folder.")
+            }
+            updatedDir.mkdirs()
 
             val isSuccess =
                 withContext(Dispatchers.IO) {
+                    val downloadUrl = URL(zipUrl)
                     val conn =
                         try {
                             downloadUrl.openConnection() as HttpURLConnection
@@ -168,11 +158,9 @@ class HotUpdater : ReactPackage {
                             return@withContext false
                         }
 
-                        val file = File(path)
-                        file.parentFile?.mkdirs()
-
+                        // File download
                         conn.inputStream.use { input ->
-                            file.outputStream().use { output ->
+                            zipFilePath.outputStream().use { output ->
                                 val buffer = ByteArray(8 * 1024)
                                 var bytesRead: Int
                                 var totalRead = 0L
@@ -182,13 +170,12 @@ class HotUpdater : ReactPackage {
                                     output.write(buffer, 0, bytesRead)
                                     totalRead += bytesRead
                                     val currentTime = System.currentTimeMillis()
-                                    if (currentTime - lastProgressTime >= 100) { // Check every 100ms
+                                    if (currentTime - lastProgressTime >= 100) {
                                         val progress = totalRead.toDouble() / totalSize
                                         progressCallback.invoke(progress)
                                         lastProgressTime = currentTime
                                     }
                                 }
-                                // Send final progress (100%) after download completes
                                 progressCallback.invoke(1.0)
                             }
                         }
@@ -199,18 +186,17 @@ class HotUpdater : ReactPackage {
                         conn.disconnect()
                     }
 
-                    val extractedPath = File(path).parentFile?.path ?: return@withContext false
-
-                    if (!extractZipFileAtPath(path, extractedPath)) {
+                    // Extract zip
+                    if (!extractZipFileAtPath(zipFilePath.absolutePath, updatedDir.absolutePath)) {
                         Log.d("HotUpdater", "Failed to extract zip file.")
                         return@withContext false
                     }
 
-                    val extractedDirectory = File(extractedPath)
-                    val indexFile = extractedDirectory.walk().find { it.name == "index.android.bundle" }
+                    // Find index.android.bundle
+                    val indexFile = updatedDir.walk().find { it.name == "index.android.bundle" }
 
                     if (indexFile != null) {
-                        val bundlePath = indexFile.path
+                        val bundlePath = indexFile.absolutePath
                         Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
                         setBundleURL(context, bundlePath)
                     } else {
@@ -221,6 +207,7 @@ class HotUpdater : ReactPackage {
                     Log.d("HotUpdater", "Downloaded and extracted file successfully.")
                     true
                 }
+
             return isSuccess
         }
     }

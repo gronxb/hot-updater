@@ -23,7 +23,6 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - Bundle URL Management
 
-
 - (NSString *)getAppVersion {
     NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
     return appVersion;
@@ -50,7 +49,7 @@ RCT_EXPORT_MODULE();
 }
 
 + (NSURL *)fallbackURL {
-    // This Support React Native 0.72.6
+    // This supports React Native 0.72.6
 #if DEBUG
     return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
 #else
@@ -64,17 +63,6 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - Utility Methods
 
-- (NSString *)convertFileSystemPathFromBasePath:(NSString *)basePath {
-    return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:basePath];
-}
-
-- (NSString *)stripPrefixFromPath:(NSString *)prefix path:(NSString *)path {
-    if ([path hasPrefix:[NSString stringWithFormat:@"/%@/", prefix]]) {
-        return [path stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"/%@/", prefix] withString:@""];
-    }
-    return path;
-}
-
 - (BOOL)extractZipFileAtPath:(NSString *)filePath toDestination:(NSString *)destinationPath {
     NSError *error = nil;
     BOOL success = [SSZipArchive unzipFileAtPath:filePath toDestination:destinationPath overwrite:YES password:nil error:&error];
@@ -84,6 +72,8 @@ RCT_EXPORT_MODULE();
     return success;
 }
 
+#pragma mark - Update Bundle Method
+
 - (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl completion:(void (^)(BOOL success))completion {
     if (!zipUrl) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -92,13 +82,20 @@ RCT_EXPORT_MODULE();
         });
         return;
     }
-
-    NSString *basePath = [self stripPrefixFromPath:bundleId path:[zipUrl path]];
-    NSString *path = [self convertFileSystemPathFromBasePath:basePath];
-
+    
+    // 앱 전용 경로 설정 (동적으로 NSSearchPathForDirectoriesInDomains 사용)
+    NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *updatedDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
+    NSString *zipFilePath = [updatedDir stringByAppendingPathComponent:@"build.zip"];
+    
+    // 기존 폴더 삭제
+    [self deleteFolderIfExists:updatedDir];
+    // 다운로드 받을 폴더 생성
+    [[NSFileManager defaultManager] createDirectoryAtPath:updatedDir withIntermediateDirectories:YES attributes:nil error:nil];
+    
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
-
+    
     NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
                                                         completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
@@ -106,45 +103,31 @@ RCT_EXPORT_MODULE();
             if (completion) completion(NO);
             return;
         }
-
+        
         NSFileManager *fileManager = [NSFileManager defaultManager];
-        NSError *folderError;
-
-        // Ensure directory exists
-        if (![fileManager createDirectoryAtPath:[path stringByDeletingLastPathComponent]
-                    withIntermediateDirectories:YES
-                                     attributes:nil
-                                          error:&folderError]) {
-            NSLog(@"Failed to create folder: %@", folderError);
-            if (completion) completion(NO);
-            return;
+        
+        // 기존 파일 제거
+        if ([fileManager fileExistsAtPath:zipFilePath]) {
+            [fileManager removeItemAtPath:zipFilePath error:nil];
         }
-
-        // Check if file already exists and remove it
-        if ([fileManager fileExistsAtPath:path]) {
-            NSError *removeError;
-            if (![fileManager removeItemAtPath:path error:&removeError]) {
-                NSLog(@"Failed to remove existing file: %@", removeError);
-                if (completion) completion(NO);
-                return;
-            }
-        }
-
+        
+        // 다운로드된 파일 이동
         NSError *moveError;
-        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:path] error:&moveError]) {
+        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:zipFilePath] error:&moveError]) {
             NSLog(@"Failed to save data: %@", moveError);
             if (completion) completion(NO);
             return;
         }
-
-        NSString *extractedPath = [path stringByDeletingLastPathComponent];
-        if (![self extractZipFileAtPath:path toDestination:extractedPath]) {
+        
+        // 압축 해제
+        if (![self extractZipFileAtPath:zipFilePath toDestination:updatedDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
-
-        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedPath];
+        
+        // 번들 파일 탐색 (index.ios.bundle)
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:updatedDir];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
             if ([file isEqualToString:@"index.ios.bundle"]) {
@@ -152,9 +135,9 @@ RCT_EXPORT_MODULE();
                 break;
             }
         }
-
+        
         if (filename) {
-            NSString *bundlePath = [extractedPath stringByAppendingPathComponent:filename];
+            NSString *bundlePath = [updatedDir stringByAppendingPathComponent:filename];
             NSLog(@"Setting bundle URL: %@", bundlePath);
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self setBundleURL:bundlePath];
@@ -165,31 +148,26 @@ RCT_EXPORT_MODULE();
             if (completion) completion(NO);
         }
     }];
-
     
-    // Add observer for progress updates
-    [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesReceived"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
-    [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesExpectedToReceive"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
-
-    __block HotUpdater *weakSelf = self;
-    [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
-        object:downloadTask
-        queue:[NSOperationQueue mainQueue]
-    usingBlock:^(NSNotification * _Nonnull note) {
-        [weakSelf removeObserversForTask:downloadTask];
-    }];
     [downloadTask resume];
+}
 
+#pragma mark - Folder Deletion Utility
+
+- (void)deleteFolderIfExists:(NSString *)path {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    if ([fileManager fileExistsAtPath:path]) {
+        NSError *error;
+        [fileManager removeItemAtPath:path error:&error];
+        if (error) {
+            NSLog(@"Failed to delete existing folder: %@", error);
+        } else {
+            NSLog(@"Successfully deleted existing folder: %@", path);
+        }
+    }
 }
 
 #pragma mark - Progress Updates
-
 
 - (void)removeObserversForTask:(NSURLSessionDownloadTask *)task {
     @try {
@@ -203,52 +181,40 @@ RCT_EXPORT_MODULE();
     }
 }
 
-
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
                         change:(NSDictionary<NSKeyValueChangeKey, id> *)change
                        context:(void *)context {
     if ([keyPath isEqualToString:@"countOfBytesReceived"] || [keyPath isEqualToString:@"countOfBytesExpectedToReceive"]) {
         NSURLSessionDownloadTask *task = (NSURLSessionDownloadTask *)object;
-        
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
-            
-            // Get current timestamp
-            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // Convert to milliseconds
-            
-            // Send event only if 100ms has passed OR progress is 100%
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // 밀리초 단위
             if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
-                self.lastUpdateTime = currentTime; // Update last event timestamp
-
-                // Send progress to React Native
+                self.lastUpdateTime = currentTime;
                 [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
             }
         }
     }
 }
 
-
 #pragma mark - React Native Events
+
 - (NSArray<NSString *> *)supportedEvents {
     return @[@"onProgress"];
 }
 
-- (void)startObserving
-{
+- (void)startObserving {
     hasListeners = YES;
 }
 
-- (void)stopObserving
-{
+- (void)stopObserving {
     hasListeners = NO;
 }
-
 
 - (void)sendEventWithName:(NSString * _Nonnull)name result:(NSDictionary *)result {
     [self sendEventWithName:name body:result];
 }
-
 
 #pragma mark - React Native Exports
 
@@ -260,8 +226,7 @@ RCT_EXPORT_METHOD(reload) {
     });
 }
 
-RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
     NSString *version = [self getAppVersion];
     resolve(version ?: [NSNull null]);
 }
@@ -271,7 +236,6 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
     if (![zipUrlString isEqualToString:@""]) {
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
-
     [self updateBundle:bundleId zipUrl:zipUrl completion:^(BOOL success) {
         dispatch_async(dispatch_get_main_queue(), ^{
             resolve(@[@(success)]);
@@ -279,12 +243,8 @@ RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlStr
     }];
 }
 
-
-// Don't compile this code when we build for the old architecture.
 #ifdef RCT_NEW_ARCH_ENABLED
-- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
-(const facebook::react::ObjCTurboModule::InitParams &)params
-{
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
     return std::make_shared<facebook::react::NativeHotUpdaterSpecJSI>(params);
 }
 #endif
