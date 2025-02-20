@@ -15,7 +15,7 @@ import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
 export default defineConfig({
-  build: metro(),
+  build: metro({ enableHermes: true }),
   storage: r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
@@ -48,7 +48,10 @@ const deployWorker = async (
     d1DatabaseName,
   }: { d1DatabaseId: string; d1DatabaseName: string },
 ) => {
-  const workerPath = require.resolve("@hot-updater/cloudflare/worker");
+  const cwd = getCwd();
+  const workerPath = require.resolve("@hot-updater/cloudflare/worker", {
+    paths: [cwd],
+  });
   const workerDir = path.dirname(workerPath);
   const { tmpDir, removeTmpDir } = await copyDirToTmp(workerDir);
 

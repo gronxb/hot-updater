@@ -74,7 +74,9 @@ export const getAppVersion = (): Promise<string | null> => {
  * Reloads the app.
  */
 export const reload = () => {
-  HotUpdaterNative.reload();
+  requestAnimationFrame(() => {
+    HotUpdaterNative.reload();
+  });
 };
 
 /**

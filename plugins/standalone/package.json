@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/core",
+  "name": "@hot-updater/standalone",
   "version": "0.11.0",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
@@ -9,14 +9,8 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    },
-    "./test-utils": {
-      "types": "./src/test-utils/index.ts",
-      "import": "./src/test-utils/index.ts",
-      "require": "./src/test-utils/index.ts"
     }
   },
   "files": [
@@ -47,7 +41,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@hot-updater/core": "0.11.0",
+    "@hot-updater/plugin-core": "0.11.0"
+  },
   "devDependencies": {
-    "@types/node": "^20.9.4"
+    "@types/node": "^20.9.4",
+    "@types/semver": "^7.5.8",
+    "msw": "^2.7.0",
+    "semver": "^7.6.3",
+    "vitest": "^3.0.6"
   }
 }
