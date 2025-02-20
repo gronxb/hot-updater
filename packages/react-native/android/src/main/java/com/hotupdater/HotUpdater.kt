@@ -133,7 +133,6 @@ class HotUpdater : ReactPackage {
             // Delete existing folder logic
             if (bundleStoreDir.exists()) {
                 bundleStoreDir.deleteRecursively()
-                Log.d("HotUpdater", "Deleted existing 'bundle-store' folder.")
             }
             bundleStoreDir.mkdirs()
 
