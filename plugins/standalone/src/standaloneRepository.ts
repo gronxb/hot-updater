@@ -4,7 +4,7 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
-import type { Routes, RouteConfig } from "./types";
+import type { RouteConfig, Routes } from "./types";
 
 const defaultRoutes: Routes = {
   upsert: () => ({
