@@ -232,32 +232,22 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(postCalled).toBe(true);
   });
 
-  it("setBundles & commitBundle: sets the bundle list and commits all bundles", async () => {
-    await repo.setBundles(testBundles);
-
-    let postCalled = false;
-    server.use(
-      http.post("http://localhost/bundles", async ({ request }) => {
-        postCalled = true;
-        const body = await request.json();
-        expect(body).toEqual(testBundles);
-        return HttpResponse.json({ success: true });
-      }),
-    );
-
-    await repo.commitBundle();
-    expect(postCalled).toBe(true);
-  });
-
   it("commitBundle: does nothing if there are no changes", async () => {
     const spy = vi.spyOn(global, "fetch");
     await repo.commitBundle();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
-
   it("commitBundle: throws exception on API error", async () => {
-    await repo.setBundles(testBundles);
+    server.use(
+      http.get("http://localhost/bundles", () => {
+        return HttpResponse.json(testBundles);
+      }),
+    );
+
+    await repo.updateBundle("00000000-0000-0000-0000-000000000001", {
+      enabled: false,
+    });
 
     server.use(
       http.post("http://localhost/bundles", () => {
@@ -268,8 +258,8 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await expect(repo.commitBundle()).rejects.toThrow(
-      "API Error: Internal Server Error",
+    await expect(repo.commitBundle()).rejects.toStrictEqual(
+      new Error("API Error: Internal Server Error"),
     );
   });
 });

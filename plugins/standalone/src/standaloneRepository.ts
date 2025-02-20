@@ -4,7 +4,17 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
-import type { RouteConfig, Routes } from "./types";
+
+export interface RouteConfig {
+  path: string;
+  headers?: Record<string, string>;
+}
+
+export interface Routes {
+  upsert: () => RouteConfig;
+  list: () => RouteConfig;
+  retrieve: (bundleId: string) => RouteConfig;
+}
 
 const defaultRoutes: Routes = {
   upsert: () => ({
@@ -106,12 +116,6 @@ export const standaloneRepository =
         bundles = await this.getBundles();
         bundles.unshift(inputBundle);
         markChanged(inputBundle.id);
-      },
-      async setBundles(inputBundles: Bundle[]) {
-        bundles = inputBundles;
-        for (const bundle of inputBundles) {
-          markChanged(bundle.id);
-        }
       },
       async getBundleById(bundleId: string): Promise<Bundle | null> {
         try {
