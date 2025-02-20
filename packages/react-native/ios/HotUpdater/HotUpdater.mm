@@ -7,6 +7,9 @@
     bool hasListeners;
 }
 
++ (BOOL)requiresMainQueueSetup {
+  return YES;
+}
 
 - (instancetype)init {
     self = [super init];
