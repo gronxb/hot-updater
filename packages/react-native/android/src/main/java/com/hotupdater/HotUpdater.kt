@@ -127,15 +127,15 @@ class HotUpdater : ReactPackage {
             }
 
             val baseDir = context.getExternalFilesDir(null)
-            val updatedDir = File(baseDir, "bundle-store")
-            val zipFilePath = File(updatedDir, "build.zip")
+            val bundleStoreDir = File(baseDir, "bundle-store")
+            val zipFilePath = File(bundleStoreDir, "build.zip")
 
             // Delete existing folder logic
-            if (updatedDir.exists()) {
-                updatedDir.deleteRecursively()
-                Log.d("HotUpdater", "Deleted existing 'updated' folder.")
+            if (bundleStoreDir.exists()) {
+                bundleStoreDir.deleteRecursively()
+                Log.d("HotUpdater", "Deleted existing 'bundle-store' folder.")
             }
-            updatedDir.mkdirs()
+            bundleStoreDir.mkdirs()
 
             val isSuccess =
                 withContext(Dispatchers.IO) {
@@ -185,13 +185,13 @@ class HotUpdater : ReactPackage {
                     }
 
                     // Extract zip
-                    if (!extractZipFileAtPath(zipFilePath.absolutePath, updatedDir.absolutePath)) {
+                    if (!extractZipFileAtPath(zipFilePath.absolutePath, bundleStoreDir.absolutePath)) {
                         Log.d("HotUpdater", "Failed to extract zip file.")
                         return@withContext false
                     }
 
                     // Find index.android.bundle
-                    val indexFile = updatedDir.walk().find { it.name == "index.android.bundle" }
+                    val indexFile = bundleStoreDir.walk().find { it.name == "index.android.bundle" }
 
                     if (indexFile != null) {
                         val bundlePath = indexFile.absolutePath

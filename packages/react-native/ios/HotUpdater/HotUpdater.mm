@@ -85,13 +85,13 @@ RCT_EXPORT_MODULE();
     
     // Set app-specific path (dynamically using NSSearchPathForDirectoriesInDomains)
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *updatedDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
-    NSString *zipFilePath = [updatedDir stringByAppendingPathComponent:@"build.zip"];
+    NSString *bundleStoreDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
+    NSString *zipFilePath = [bundleStoreDir stringByAppendingPathComponent:@"build.zip"];
     
     // Delete existing folder
-    [self deleteFolderIfExists:updatedDir];
+    [self deleteFolderIfExists:bundleStoreDir];
     // Create download folder
-    [[NSFileManager defaultManager] createDirectoryAtPath:updatedDir withIntermediateDirectories:YES attributes:nil error:nil];
+    [[NSFileManager defaultManager] createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
     
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
@@ -120,14 +120,14 @@ RCT_EXPORT_MODULE();
         }
         
         // Extract zip
-        if (![self extractZipFileAtPath:zipFilePath toDestination:updatedDir]) {
+        if (![self extractZipFileAtPath:zipFilePath toDestination:bundleStoreDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
         
         // Search for bundle file (index.ios.bundle)
-        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:updatedDir];
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:bundleStoreDir];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
             if ([file isEqualToString:@"index.ios.bundle"]) {
@@ -137,7 +137,7 @@ RCT_EXPORT_MODULE();
         }
         
         if (filename) {
-            NSString *bundlePath = [updatedDir stringByAppendingPathComponent:filename];
+            NSString *bundlePath = [bundleStoreDir stringByAppendingPathComponent:filename];
             NSLog(@"Setting bundle URL: %@", bundlePath);
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self setBundleURL:bundlePath];
