@@ -137,6 +137,8 @@ class HotUpdater : ReactPackage {
                 Log.d("HotUpdater", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
                 val existingIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
                 if (existingIndexFile != null) {
+                    // Update directory modification time to current time after update
+                    finalBundleDir.setLastModified(System.currentTimeMillis())
                     setBundleURL(context, existingIndexFile.absolutePath)
                     cleanupOldBundles(bundleStoreDir)
                     return true
@@ -163,6 +165,7 @@ class HotUpdater : ReactPackage {
                             downloadUrl.openConnection() as HttpURLConnection
                         } catch (e: Exception) {
                             Log.d("HotUpdater", "Failed to open connection: ${e.message}")
+                            tempDir.deleteRecursively()
                             return@withContext false
                         }
 
@@ -171,6 +174,7 @@ class HotUpdater : ReactPackage {
                         val totalSize = conn.contentLength
                         if (totalSize <= 0) {
                             Log.d("HotUpdater", "Invalid content length: $totalSize")
+                            tempDir.deleteRecursively()
                             return@withContext false
                         }
                         conn.inputStream.use { input ->
@@ -195,6 +199,7 @@ class HotUpdater : ReactPackage {
                         }
                     } catch (e: Exception) {
                         Log.d("HotUpdater", "Failed to download data from URL: $zipUrl, Error: ${e.message}")
+                        tempDir.deleteRecursively()
                         return@withContext false
                     } finally {
                         conn.disconnect()
@@ -202,16 +207,21 @@ class HotUpdater : ReactPackage {
 
                     if (!extractZipFileAtPath(tempZipFile.absolutePath, extractedDir.absolutePath)) {
                         Log.d("HotUpdater", "Failed to extract zip file.")
+                        tempDir.deleteRecursively()
                         return@withContext false
                     }
                     true
                 }
 
-            if (!isSuccess) return false
+            if (!isSuccess) {
+                tempDir.deleteRecursively()
+                return false
+            }
 
             val indexFileExtracted = extractedDir.walk().find { it.name == "index.android.bundle" }
             if (indexFileExtracted == null) {
                 Log.d("HotUpdater", "index.android.bundle not found in extracted files.")
+                tempDir.deleteRecursively()
                 return false
             }
 
@@ -227,8 +237,12 @@ class HotUpdater : ReactPackage {
             val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
             if (finalIndexFile == null) {
                 Log.d("HotUpdater", "index.android.bundle not found in final directory.")
+                tempDir.deleteRecursively()
                 return false
             }
+
+            // Update final bundle directory modification time to current time after bundle update
+            finalBundleDir.setLastModified(System.currentTimeMillis())
 
             val bundlePath = finalIndexFile.absolutePath
             Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
@@ -237,17 +251,22 @@ class HotUpdater : ReactPackage {
             // Clean up old bundles in the bundle store to keep only up to 2 bundles
             cleanupOldBundles(bundleStoreDir)
 
+            // Clean up temp directory
+            tempDir.deleteRecursively()
+
             Log.d("HotUpdater", "Downloaded and extracted file successfully.")
             return true
         }
 
         // Helper function to delete old bundles, keeping only up to 2 bundles in the bundle-store folder
         private fun cleanupOldBundles(bundleStoreDir: File) {
-            // Get list of all directories in bundle-store
+            // Get list of all directories in bundle-store folder
             val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
-            // Sort by uuidv7 string in descending order => oldest bundles at the bottom
-            val sortedBundles = bundles.sortedByDescending { it.name }
-            // If more than 2 bundles exist, delete from the 3rd one onwards
+
+            // Sort by last modified time in descending order to keep most recently updated bundles at the top
+            val sortedBundles = bundles.sortedByDescending { it.lastModified() }
+
+            // Delete all bundles except the top 2
             if (sortedBundles.size > 2) {
                 sortedBundles.drop(2).forEach { oldBundle ->
                     Log.d("HotUpdater", "Removing old bundle: ${oldBundle.name}")

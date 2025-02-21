@@ -71,46 +71,44 @@ RCT_EXPORT_MODULE();
     return success;
 }
 
-- (void)deleteFolderIfExists:(NSString *)path {
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    if ([fileManager fileExistsAtPath:path]) {
-        NSError *error;
-        [fileManager removeItemAtPath:path error:&error];
-        if (error) {
-            NSLog(@"Failed to delete existing folder: %@", error);
-        } else {
-            NSLog(@"Successfully deleted existing folder: %@", path);
-        }
-    }
-}
+#pragma mark - Cleanup Old Bundles
 
-// Helper function to keep only the latest 2 bundles in bundle-store, sorted by uuidv7 string in descending order
-- (void)cleanupOldBundles:(NSString *)bundleStoreDirPath {
+- (void)cleanupOldBundlesAtDirectory:(NSString *)bundleStoreDir {
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSError *error = nil;
-    NSArray *contents = [fileManager contentsOfDirectoryAtPath:bundleStoreDirPath error:&error];
+    NSArray *contents = [fileManager contentsOfDirectoryAtPath:bundleStoreDir error:&error];
     if (error) {
-        NSLog(@"Error listing bundle store directory: %@", error);
+        NSLog(@"Failed to list bundle store directory: %@", error);
         return;
     }
+    
     NSMutableArray *bundleDirs = [NSMutableArray array];
     for (NSString *item in contents) {
-        NSString *fullPath = [bundleStoreDirPath stringByAppendingPathComponent:item];
+        NSString *fullPath = [bundleStoreDir stringByAppendingPathComponent:item];
         BOOL isDir = NO;
         if ([fileManager fileExistsAtPath:fullPath isDirectory:&isDir] && isDir) {
-            [bundleDirs addObject:item];
+            [bundleDirs addObject:fullPath];
         }
     }
-    // Sort in descending order (oldest bundles at the end)
-    NSArray *sortedBundleDirs = [bundleDirs sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
-        return [b compare:a];
+    
+    // 수정 시간 기준 내림차순 정렬 (최신 2개 유지)
+    [bundleDirs sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
+        NSDictionary *attr1 = [fileManager attributesOfItemAtPath:path1 error:nil];
+        NSDictionary *attr2 = [fileManager attributesOfItemAtPath:path2 error:nil];
+        NSDate *date1 = attr1[NSFileModificationDate] ?: [NSDate dateWithTimeIntervalSince1970:0];
+        NSDate *date2 = attr2[NSFileModificationDate] ?: [NSDate dateWithTimeIntervalSince1970:0];
+        return [date2 compare:date1];
     }];
-    if ([sortedBundleDirs count] > 2) {
-        NSArray *toDelete = [sortedBundleDirs subarrayWithRange:NSMakeRange(2, sortedBundleDirs.count - 2)];
-        for (NSString *oldBundle in toDelete) {
-            NSString *oldBundlePath = [bundleStoreDirPath stringByAppendingPathComponent:oldBundle];
-            NSLog(@"Removing old bundle: %@", oldBundlePath);
-            [self deleteFolderIfExists:oldBundlePath];
+    
+    if (bundleDirs.count > 2) {
+        NSArray *oldBundles = [bundleDirs subarrayWithRange:NSMakeRange(2, bundleDirs.count - 2)];
+        for (NSString *oldBundle in oldBundles) {
+            NSError *delError = nil;
+            if ([fileManager removeItemAtPath:oldBundle error:&delError]) {
+                NSLog(@"Removed old bundle: %@", oldBundle);
+            } else {
+                NSLog(@"Failed to remove old bundle %@: %@", oldBundle, delError);
+            }
         }
     }
 }
@@ -126,132 +124,154 @@ RCT_EXPORT_MODULE();
         return;
     }
     
-    // Get documents directory path
+    // 문서 디렉토리 경로 및 번들 저장소 경로 설정
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    
-    // Directory for storing all bundles (bundle-store) and final bundle for given bundleId
     NSString *bundleStoreDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
-    NSString *finalBundleDir = [bundleStoreDir stringByAppendingPathComponent:bundleId];
     
     NSFileManager *fileManager = [NSFileManager defaultManager];
+    if (![fileManager fileExistsAtPath:bundleStoreDir]) {
+        [fileManager createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
+    }
     
-    // If bundle for this bundleId already exists, check for index.ios.bundle and use it directly
+    // 최종 번들 경로 (bundle-store/<bundleId>)
+    NSString *finalBundleDir = [bundleStoreDir stringByAppendingPathComponent:bundleId];
+    
+    // 이미 캐시된 번들이 있는지 확인
     if ([fileManager fileExistsAtPath:finalBundleDir]) {
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:finalBundleDir];
-        NSString *filename = nil;
+        NSString *foundBundle = nil;
         for (NSString *file in enumerator) {
             if ([file isEqualToString:@"index.ios.bundle"]) {
-                filename = file;
+                foundBundle = file;
                 break;
             }
         }
-        if (filename) {
-            NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:filename];
-            NSLog(@"Bundle for bundleId %@ already exists. Using cached bundle.", bundleId);
+        if (foundBundle) {
+            // 최종 번들의 수정 시간을 업데이트
+            NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
+            [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
+            NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:foundBundle];
+            NSLog(@"Using cached bundle at path: %@", bundlePath);
+            [self setBundleURL:bundlePath];
+            [self cleanupOldBundlesAtDirectory:bundleStoreDir];
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self setBundleURL:bundlePath];
-                [self cleanupOldBundles:bundleStoreDir];
                 if (completion) completion(YES);
             });
             return;
         } else {
-            // If directory exists but no index.ios.bundle, delete and redownload
-            [self deleteFolderIfExists:finalBundleDir];
+            [fileManager removeItemAtPath:finalBundleDir error:nil];
         }
     }
     
-    // Prepare temporary directory (bundle-temp) and extraction folder (extracted)
+    // 임시 폴더 설정 (다운로드 및 압축 해제를 위한)
     NSString *tempDir = [documentsPath stringByAppendingPathComponent:@"bundle-temp"];
-    NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
-    NSString *zipFilePath = [tempDir stringByAppendingPathComponent:@"build.zip"];
-    
-    // Delete and recreate temporary directory
-    [self deleteFolderIfExists:tempDir];
+    if ([fileManager fileExistsAtPath:tempDir]) {
+        [fileManager removeItemAtPath:tempDir error:nil];
+    }
     [fileManager createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
+    
+    NSString *tempZipFile = [tempDir stringByAppendingPathComponent:@"build.zip"];
+    NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
     [fileManager createDirectoryAtPath:extractedDir withIntermediateDirectories:YES attributes:nil error:nil];
     
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
     
-    NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
-                                                        completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+    NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
             NSLog(@"Failed to download data from URL: %@, error: %@", zipUrl, error);
             if (completion) completion(NO);
             return;
         }
         
-        // Delete existing zip file if present
-        if ([fileManager fileExistsAtPath:zipFilePath]) {
-            [self deleteFolderIfExists:zipFilePath];
+        // 임시 zip 파일 저장
+        if ([fileManager fileExistsAtPath:tempZipFile]) {
+            [fileManager removeItemAtPath:tempZipFile error:nil];
         }
         
-        NSError *moveError;
-        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:zipFilePath] error:&moveError]) {
+        NSError *moveError = nil;
+        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:tempZipFile] error:&moveError]) {
             NSLog(@"Failed to save downloaded file: %@", moveError);
             if (completion) completion(NO);
             return;
         }
         
-        // Extract zip file
-        if (![self extractZipFileAtPath:zipFilePath toDestination:extractedDir]) {
+        // zip 압축 해제
+        if (![self extractZipFileAtPath:tempZipFile toDestination:extractedDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
         
-        // Search for index.ios.bundle in extractedDir
-        NSDirectoryEnumerator *extractedEnumerator = [fileManager enumeratorAtPath:extractedDir];
-        NSString *foundFilename = nil;
-        for (NSString *file in extractedEnumerator) {
+        // 압축 해제된 폴더 내에서 index.ios.bundle 검색
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedDir];
+        NSString *foundBundle = nil;
+        for (NSString *file in enumerator) {
             if ([file isEqualToString:@"index.ios.bundle"]) {
-                foundFilename = file;
+                foundBundle = file;
                 break;
             }
         }
         
-        if (foundFilename) {
-            // Move to finalBundleDir (delete existing folder)
-            [self deleteFolderIfExists:finalBundleDir];
-            
-            NSError *moveFinalError = nil;
-            BOOL moved = [fileManager moveItemAtPath:extractedDir toPath:finalBundleDir error:&moveFinalError];
-            if (!moved) {
-                NSLog(@"Failed to move extracted folder to final directory: %@. Attempting to copy...", moveFinalError);
-                NSError *copyError = nil;
-                BOOL copySuccess = [fileManager copyItemAtPath:extractedDir toPath:finalBundleDir error:&copyError];
-                if (!copySuccess) {
-                    NSLog(@"Failed to copy extracted folder to final directory: %@", copyError);
-                    if (completion) completion(NO);
-                    return;
-                }
-                [self deleteFolderIfExists:extractedDir];
-            }
-            
-            NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:foundFilename];
-            NSLog(@"Setting bundle URL: %@", bundlePath);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self setBundleURL:bundlePath];
-                [self cleanupOldBundles:bundleStoreDir];
-                if (completion) completion(YES);
-            });
-        } else {
-            NSLog(@"index.ios.bundle not found.");
+        if (!foundBundle) {
+            NSLog(@"index.ios.bundle not found in extracted files.");
             if (completion) completion(NO);
+            return;
         }
+        
+        // 압축 해제된 폴더를 최종 번들 폴더로 이동
+        if ([fileManager fileExistsAtPath:finalBundleDir]) {
+            [fileManager removeItemAtPath:finalBundleDir error:nil];
+        }
+        NSError *moveFinalError = nil;
+        BOOL moved = [fileManager moveItemAtPath:extractedDir toPath:finalBundleDir error:&moveFinalError];
+        if (!moved) {
+            // 이동 실패 시 복사 후 삭제 시도
+            BOOL copied = [fileManager copyItemAtPath:extractedDir toPath:finalBundleDir error:&moveFinalError];
+            if (copied) {
+                [fileManager removeItemAtPath:extractedDir error:nil];
+            } else {
+                NSLog(@"Failed to move or copy extracted bundle: %@", moveFinalError);
+                if (completion) completion(NO);
+                return;
+            }
+        }
+        
+        // 최종 폴더 내 index.ios.bundle 재확인
+        NSDirectoryEnumerator *finalEnum = [fileManager enumeratorAtPath:finalBundleDir];
+        NSString *finalFoundBundle = nil;
+        for (NSString *file in finalEnum) {
+            if ([file isEqualToString:@"index.ios.bundle"]) {
+                finalFoundBundle = file;
+                break;
+            }
+        }
+        
+        if (!finalFoundBundle) {
+            NSLog(@"index.ios.bundle not found in final directory.");
+            if (completion) completion(NO);
+            return;
+        }
+        
+        // 최종 번들의 수정 시간 업데이트
+        NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
+        [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
+        
+        NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:finalFoundBundle];
+        NSLog(@"Setting bundle URL: %@", bundlePath);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setBundleURL:bundlePath];
+            [self cleanupOldBundlesAtDirectory:bundleStoreDir];
+            [fileManager removeItemAtPath:tempDir error:nil];
+            if (completion) completion(YES);
+        });
     }];
     
-    // Add observer for progress updates via KVO
-    [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesReceived"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
-    [downloadTask addObserver:self
-                   forKeyPath:@"countOfBytesExpectedToReceive"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
+    // 진행률 업데이트를 위한 KVO 등록
+    [downloadTask addObserver:self forKeyPath:@"countOfBytesReceived" options:NSKeyValueObservingOptionNew context:nil];
+    [downloadTask addObserver:self forKeyPath:@"countOfBytesExpectedToReceive" options:NSKeyValueObservingOptionNew context:nil];
     
-    __block HotUpdater *weakSelf = self;
+    __weak HotUpdater *weakSelf = self;
     [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
                                                       object:downloadTask
                                                        queue:[NSOperationQueue mainQueue]
@@ -260,6 +280,21 @@ RCT_EXPORT_MODULE();
     }];
     
     [downloadTask resume];
+}
+
+#pragma mark - Folder Deletion Utility
+
+- (void)deleteFolderIfExists:(NSString *)path {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    if ([fileManager fileExistsAtPath:path]) {
+        NSError *error;
+        [fileManager removeItemAtPath:path error:&error];
+        if (error) {
+            NSLog(@"Failed to delete existing folder: %@", error);
+        } else {
+            NSLog(@"Successfully deleted existing folder: %@", path);
+        }
+    }
 }
 
 #pragma mark - Progress Updates
@@ -284,7 +319,7 @@ RCT_EXPORT_MODULE();
         NSURLSessionDownloadTask *task = (NSURLSessionDownloadTask *)object;
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
-            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // 밀리초 단위
             if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
                 self.lastUpdateTime = currentTime;
                 [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
