@@ -84,7 +84,7 @@ RCT_EXPORT_MODULE();
     }
 }
 
-// bundle-store 내 번들을 최대 2개만 남기고, uuidv7 문자열 기준 역정렬하여 오래된 번들을 삭제하는 헬퍼 함수
+// Helper function to keep only the latest 2 bundles in bundle-store, sorted by uuidv7 string in descending order
 - (void)cleanupOldBundles:(NSString *)bundleStoreDirPath {
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSError *error = nil;
@@ -101,7 +101,7 @@ RCT_EXPORT_MODULE();
             [bundleDirs addObject:item];
         }
     }
-    // 문자열 기준 내림차순 정렬 (가장 뒤에 있는 것이 가장 오래된 번들)
+    // Sort in descending order (oldest bundles at the end)
     NSArray *sortedBundleDirs = [bundleDirs sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
         return [b compare:a];
     }];
@@ -135,7 +135,7 @@ RCT_EXPORT_MODULE();
     
     NSFileManager *fileManager = [NSFileManager defaultManager];
     
-    // 만약 해당 bundleId에 해당하는 번들이 이미 존재하면, index.ios.bundle이 있는지 확인하고 바로 사용
+    // If bundle for this bundleId already exists, check for index.ios.bundle and use it directly
     if ([fileManager fileExistsAtPath:finalBundleDir]) {
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:finalBundleDir];
         NSString *filename = nil;
@@ -155,17 +155,17 @@ RCT_EXPORT_MODULE();
             });
             return;
         } else {
-            // 폴더는 있으나 index.ios.bundle이 없으면 삭제 후 재다운로드
+            // If directory exists but no index.ios.bundle, delete and redownload
             [self deleteFolderIfExists:finalBundleDir];
         }
     }
     
-    // Temporary directory (bundle-temp) 및 압축 해제할 폴더 (extracted) 준비
+    // Prepare temporary directory (bundle-temp) and extraction folder (extracted)
     NSString *tempDir = [documentsPath stringByAppendingPathComponent:@"bundle-temp"];
     NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
     NSString *zipFilePath = [tempDir stringByAppendingPathComponent:@"build.zip"];
     
-    // 기존 임시 디렉토리 삭제 후 재생성
+    // Delete and recreate temporary directory
     [self deleteFolderIfExists:tempDir];
     [fileManager createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
     [fileManager createDirectoryAtPath:extractedDir withIntermediateDirectories:YES attributes:nil error:nil];
@@ -181,7 +181,7 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // 기존 zip 파일이 있으면 삭제
+        // Delete existing zip file if present
         if ([fileManager fileExistsAtPath:zipFilePath]) {
             [self deleteFolderIfExists:zipFilePath];
         }
@@ -193,14 +193,14 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // 압축 해제 진행
+        // Extract zip file
         if (![self extractZipFileAtPath:zipFilePath toDestination:extractedDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
         
-        // extractedDir 내에서 index.ios.bundle 파일 검색
+        // Search for index.ios.bundle in extractedDir
         NSDirectoryEnumerator *extractedEnumerator = [fileManager enumeratorAtPath:extractedDir];
         NSString *foundFilename = nil;
         for (NSString *file in extractedEnumerator) {
@@ -211,7 +211,7 @@ RCT_EXPORT_MODULE();
         }
         
         if (foundFilename) {
-            // finalBundleDir로 이동 (기존 폴더 삭제)
+            // Move to finalBundleDir (delete existing folder)
             [self deleteFolderIfExists:finalBundleDir];
             
             NSError *moveFinalError = nil;
@@ -241,7 +241,7 @@ RCT_EXPORT_MODULE();
         }
     }];
     
-    // KVO를 통한 진행률 업데이트용 옵저버 추가 (원래 코드와 동일)
+    // Add observer for progress updates via KVO
     [downloadTask addObserver:self
                    forKeyPath:@"countOfBytesReceived"
                       options:NSKeyValueObservingOptionNew

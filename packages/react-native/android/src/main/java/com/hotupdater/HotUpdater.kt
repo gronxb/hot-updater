@@ -215,7 +215,7 @@ class HotUpdater : ReactPackage {
                 return false
             }
 
-            // 임시 폴더의 내용을 finalBundleDir로 이동 (혹은 복사)
+            // Move (or copy) contents from temp folder to finalBundleDir
             if (finalBundleDir.exists()) {
                 finalBundleDir.deleteRecursively()
             }
@@ -234,20 +234,20 @@ class HotUpdater : ReactPackage {
             Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
             setBundleURL(context, bundlePath)
 
-            // 번들 저장소에서 최대 2개까지만 유지하도록 이전 번들을 정리합니다.
+            // Clean up old bundles in the bundle store to keep only up to 2 bundles
             cleanupOldBundles(bundleStoreDir)
 
             Log.d("HotUpdater", "Downloaded and extracted file successfully.")
             return true
         }
 
-// bundle-store 폴더 내에서 최대 2개의 번들만 남기도록 오래된 번들을 삭제하는 헬퍼 함수
+        // Helper function to delete old bundles, keeping only up to 2 bundles in the bundle-store folder
         private fun cleanupOldBundles(bundleStoreDir: File) {
-            // bundle-store 내의 모든 디렉토리 목록 가져오기
+            // Get list of all directories in bundle-store
             val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
-            // uuidv7 기준 문자열 역정렬 (내림차순) => 가장 아래가 가장 오래된 번들
+            // Sort by uuidv7 string in descending order => oldest bundles at the bottom
             val sortedBundles = bundles.sortedByDescending { it.name }
-            // 2개를 초과하는 경우, 3번째 이후부터 삭제
+            // If more than 2 bundles exist, delete from the 3rd one onwards
             if (sortedBundles.size > 2) {
                 sortedBundles.drop(2).forEach { oldBundle ->
                     Log.d("HotUpdater", "Removing old bundle: ${oldBundle.name}")
