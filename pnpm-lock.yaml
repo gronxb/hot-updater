@@ -489,6 +489,9 @@ importers:
       '@tanstack/solid-form':
         specifier: ^0.34.0
         version: 0.34.1(solid-js@1.9.3)
+      '@tanstack/solid-query':
+        specifier: ^5.66.4
+        version: 5.66.4(solid-js@1.9.3)
       '@tanstack/solid-table':
         specifier: ^8.20.5
         version: 8.20.5(solid-js@1.9.3)
@@ -4752,8 +4755,16 @@ packages:
   '@tanstack/form-core@0.34.1':
     resolution: {integrity: sha512-W8xRWcvlK5oek9V/JPblUyBf/cRb06nxqJTdEf7wZ6HxPnB0V9nNwZlWxvSfkMrbSkV+/H972Evy3cVc6WBB7g==}
 
+  '@tanstack/query-core@5.66.4':
+    resolution: {integrity: sha512-skM/gzNX4shPkqmdTCSoHtJAPMTtmIJNS0hE+xwTTUVYwezArCT34NMermABmBVUg5Ls5aiUXEDXfqwR1oVkcA==}
+
   '@tanstack/solid-form@0.34.1':
     resolution: {integrity: sha512-sZBc8HbFI0oaf7wZzkeMFNEj7CUbU0lU4I3ufQ/ovlTMXcjXPRJ+rgfu/nrq83/DzRlfSbIoPv1efeMUKUx3cQ==}
+    peerDependencies:
+      solid-js: ^1.6.0
+
+  '@tanstack/solid-query@5.66.4':
+    resolution: {integrity: sha512-j+ZvYTvEeOaSU72VBQPGsGq6Qiy0cRvtZPretI13ZRxdAAhrKVw+y8l161USfgWOMGzJ4Dlq9ZVlYYhvdsX06A==}
     peerDependencies:
       solid-js: ^1.6.0
 
@@ -17129,7 +17140,7 @@ snapshots:
       '@swc-node/sourcemap-support': 0.5.1
       '@swc/core': 1.7.42(@swc/helpers@0.5.15)
       colorette: 2.0.20
-      debug: 4.3.7
+      debug: 4.4.0
       oxc-resolver: 1.12.0
       pirates: 4.0.6
       tslib: 2.8.1
@@ -17213,10 +17224,17 @@ snapshots:
     dependencies:
       '@tanstack/store': 0.5.5
 
+  '@tanstack/query-core@5.66.4': {}
+
   '@tanstack/solid-form@0.34.1(solid-js@1.9.3)':
     dependencies:
       '@tanstack/form-core': 0.34.1
       '@tanstack/solid-store': 0.5.6(solid-js@1.9.3)
+      solid-js: 1.9.3
+
+  '@tanstack/solid-query@5.66.4(solid-js@1.9.3)':
+    dependencies:
+      '@tanstack/query-core': 5.66.4
       solid-js: 1.9.3
 
   '@tanstack/solid-store@0.5.6(solid-js@1.9.3)':
@@ -18046,7 +18064,7 @@ snapshots:
 
   agent-base@7.1.1:
     dependencies:
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
     optional: true
@@ -20532,7 +20550,7 @@ snapshots:
   http-proxy-agent@7.0.2:
     dependencies:
       agent-base: 7.1.1
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
     optional: true
@@ -20562,7 +20580,7 @@ snapshots:
   https-proxy-agent@7.0.5:
     dependencies:
       agent-base: 7.1.1
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
     optional: true
@@ -24953,7 +24971,7 @@ snapshots:
 
   spdy-transport@3.0.0:
     dependencies:
-      debug: 4.3.7
+      debug: 4.4.0
       detect-node: 2.1.0
       hpack.js: 2.1.6
       obuf: 1.1.2
@@ -24965,7 +24983,7 @@ snapshots:
 
   spdy@4.0.2:
     dependencies:
-      debug: 4.3.7
+      debug: 4.4.0
       handle-thing: 2.0.1
       http-deceiver: 1.2.7
       select-hose: 2.0.0
