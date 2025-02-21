@@ -91,7 +91,7 @@ RCT_EXPORT_MODULE();
         }
     }
     
-    // 수정 시간 기준 내림차순 정렬 (최신 2개 유지)
+    // Sort in descending order by modification time (keep latest 2)
     [bundleDirs sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
         NSDictionary *attr1 = [fileManager attributesOfItemAtPath:path1 error:nil];
         NSDictionary *attr2 = [fileManager attributesOfItemAtPath:path2 error:nil];
@@ -124,7 +124,7 @@ RCT_EXPORT_MODULE();
         return;
     }
     
-    // 문서 디렉토리 경로 및 번들 저장소 경로 설정
+    // Set document directory path and bundle store path
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *bundleStoreDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
     
@@ -133,10 +133,10 @@ RCT_EXPORT_MODULE();
         [fileManager createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
     }
     
-    // 최종 번들 경로 (bundle-store/<bundleId>)
+    // Final bundle path (bundle-store/<bundleId>)
     NSString *finalBundleDir = [bundleStoreDir stringByAppendingPathComponent:bundleId];
     
-    // 이미 캐시된 번들이 있는지 확인
+    // Check if cached bundle exists
     if ([fileManager fileExistsAtPath:finalBundleDir]) {
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:finalBundleDir];
         NSString *foundBundle = nil;
@@ -147,7 +147,7 @@ RCT_EXPORT_MODULE();
             }
         }
         if (foundBundle) {
-            // 최종 번들의 수정 시간을 업데이트
+            // Update modification time of final bundle
             NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
             [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
             NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:foundBundle];
@@ -163,7 +163,7 @@ RCT_EXPORT_MODULE();
         }
     }
     
-    // 임시 폴더 설정 (다운로드 및 압축 해제를 위한)
+    // Set up temporary folder (for download and extraction)
     NSString *tempDir = [documentsPath stringByAppendingPathComponent:@"bundle-temp"];
     if ([fileManager fileExistsAtPath:tempDir]) {
         [fileManager removeItemAtPath:tempDir error:nil];
@@ -184,7 +184,7 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // 임시 zip 파일 저장
+        // Save temporary zip file
         if ([fileManager fileExistsAtPath:tempZipFile]) {
             [fileManager removeItemAtPath:tempZipFile error:nil];
         }
@@ -196,14 +196,14 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // zip 압축 해제
+        // Extract zip
         if (![self extractZipFileAtPath:tempZipFile toDestination:extractedDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
         
-        // 압축 해제된 폴더 내에서 index.ios.bundle 검색
+        // Search for index.ios.bundle in extracted folder
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedDir];
         NSString *foundBundle = nil;
         for (NSString *file in enumerator) {
@@ -219,14 +219,14 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // 압축 해제된 폴더를 최종 번들 폴더로 이동
+        // Move extracted folder to final bundle folder
         if ([fileManager fileExistsAtPath:finalBundleDir]) {
             [fileManager removeItemAtPath:finalBundleDir error:nil];
         }
         NSError *moveFinalError = nil;
         BOOL moved = [fileManager moveItemAtPath:extractedDir toPath:finalBundleDir error:&moveFinalError];
         if (!moved) {
-            // 이동 실패 시 복사 후 삭제 시도
+            // Try copy and delete if move fails
             BOOL copied = [fileManager copyItemAtPath:extractedDir toPath:finalBundleDir error:&moveFinalError];
             if (copied) {
                 [fileManager removeItemAtPath:extractedDir error:nil];
@@ -237,7 +237,7 @@ RCT_EXPORT_MODULE();
             }
         }
         
-        // 최종 폴더 내 index.ios.bundle 재확인
+        // Recheck index.ios.bundle in final folder
         NSDirectoryEnumerator *finalEnum = [fileManager enumeratorAtPath:finalBundleDir];
         NSString *finalFoundBundle = nil;
         for (NSString *file in finalEnum) {
@@ -253,7 +253,7 @@ RCT_EXPORT_MODULE();
             return;
         }
         
-        // 최종 번들의 수정 시간 업데이트
+        // Update modification time of final bundle
         NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
         [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
         
@@ -267,7 +267,7 @@ RCT_EXPORT_MODULE();
         });
     }];
     
-    // 진행률 업데이트를 위한 KVO 등록
+    // Register KVO for progress updates
     [downloadTask addObserver:self forKeyPath:@"countOfBytesReceived" options:NSKeyValueObservingOptionNew context:nil];
     [downloadTask addObserver:self forKeyPath:@"countOfBytesExpectedToReceive" options:NSKeyValueObservingOptionNew context:nil];
     
@@ -319,7 +319,7 @@ RCT_EXPORT_MODULE();
         NSURLSessionDownloadTask *task = (NSURLSessionDownloadTask *)object;
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
-            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // 밀리초 단위
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // In milliseconds
             if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
                 self.lastUpdateTime = currentTime;
                 [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
