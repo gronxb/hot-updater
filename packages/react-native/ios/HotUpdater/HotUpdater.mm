@@ -83,15 +83,21 @@ RCT_EXPORT_MODULE();
         return;
     }
     
-    // Set app-specific path (dynamically using NSSearchPathForDirectoriesInDomains)
+    // Get documents directory path
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *bundleStoreDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
-    NSString *zipFilePath = [bundleStoreDir stringByAppendingPathComponent:@"build.zip"];
+    // Directory for storing final bundle (bundle-store)
+    NSString *finalDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
+    // Temporary directory (bundle-temp)
+    NSString *tempDir = [documentsPath stringByAppendingPathComponent:@"bundle-temp"];
+    // Directory for extracting zip file (extracted)
+    NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
+    // Path for temporarily storing zip file
+    NSString *zipFilePath = [tempDir stringByAppendingPathComponent:@"build.zip"];
     
-    // Delete existing folder
-    [self deleteFolderIfExists:bundleStoreDir];
-    // Create download folder
-    [[NSFileManager defaultManager] createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
+    // Initialize temporary directory
+    [self deleteFolderIfExists:tempDir];
+    [[NSFileManager defaultManager] createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
+    [[NSFileManager defaultManager] createDirectoryAtPath:extractedDir withIntermediateDirectories:YES attributes:nil error:nil];
     
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
@@ -106,28 +112,28 @@ RCT_EXPORT_MODULE();
         
         NSFileManager *fileManager = [NSFileManager defaultManager];
         
-        // Remove existing file
+        // 기존 zip 파일이 있으면 삭제
         if ([fileManager fileExistsAtPath:zipFilePath]) {
             [fileManager removeItemAtPath:zipFilePath error:nil];
         }
         
-        // Move downloaded file
+        // Move downloaded file to temporary zipFilePath
         NSError *moveError;
         if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:zipFilePath] error:&moveError]) {
-            NSLog(@"Failed to save data: %@", moveError);
+            NSLog(@"Failed to save downloaded file: %@", moveError);
             if (completion) completion(NO);
             return;
         }
         
-        // Extract zip
-        if (![self extractZipFileAtPath:zipFilePath toDestination:bundleStoreDir]) {
+        // Extract temporary zip file to extractedDir
+        if (![self extractZipFileAtPath:zipFilePath toDestination:extractedDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
         
-        // Search for bundle file (index.ios.bundle)
-        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:bundleStoreDir];
+        // Search for bundle file (index.ios.bundle) in extractedDir
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedDir];
         NSString *filename = nil;
         for (NSString *file in enumerator) {
             if ([file isEqualToString:@"index.ios.bundle"]) {
@@ -137,7 +143,27 @@ RCT_EXPORT_MODULE();
         }
         
         if (filename) {
-            NSString *bundlePath = [bundleStoreDir stringByAppendingPathComponent:filename];
+            // Delete existing finalDir (bundle-store) before setBundleURL
+            [self deleteFolderIfExists:finalDir];
+            
+            NSError *moveFinalError = nil;
+            // Move entire extractedDir to finalDir (moveItemAtPath can be used within same parent directory)
+            BOOL moved = [fileManager moveItemAtPath:extractedDir toPath:finalDir error:&moveFinalError];
+            if (!moved) {
+                NSLog(@"Failed to move extracted folder to final directory: %@. Attempting to copy...", moveFinalError);
+                // Manual copy if move fails
+                NSError *copyError = nil;
+                BOOL copySuccess = [fileManager copyItemAtPath:extractedDir toPath:finalDir error:&copyError];
+                if (!copySuccess) {
+                    NSLog(@"Failed to copy extracted folder to final directory: %@", copyError);
+                    if (completion) completion(NO);
+                    return;
+                }
+                [self deleteFolderIfExists:extractedDir];
+            }
+            
+            // Construct final bundle file path
+            NSString *bundlePath = [finalDir stringByAppendingPathComponent:filename];
             NSLog(@"Setting bundle URL: %@", bundlePath);
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self setBundleURL:bundlePath];
@@ -148,23 +174,22 @@ RCT_EXPORT_MODULE();
             if (completion) completion(NO);
         }
     }];
-
-
-    // Add observer for progress updates
+    
+    // Add observer for progress updates via KVO
     [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesReceived"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
+                   forKeyPath:@"countOfBytesReceived"
+                      options:NSKeyValueObservingOptionNew
+                      context:nil];
     [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesExpectedToReceive"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
-
+                   forKeyPath:@"countOfBytesExpectedToReceive"
+                      options:NSKeyValueObservingOptionNew
+                      context:nil];
+    
     __block HotUpdater *weakSelf = self;
     [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
-        object:downloadTask
-        queue:[NSOperationQueue mainQueue]
-    usingBlock:^(NSNotification * _Nonnull note) {
+                                                      object:downloadTask
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification * _Nonnull note) {
         [weakSelf removeObserversForTask:downloadTask];
     }];
     

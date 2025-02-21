@@ -127,14 +127,17 @@ class HotUpdater : ReactPackage {
             }
 
             val baseDir = context.getExternalFilesDir(null)
-            val bundleStoreDir = File(baseDir, "bundle-store")
-            val zipFilePath = File(bundleStoreDir, "build.zip")
+            val finalDir = File(baseDir, "bundle-store")
+            val tempDir = File(baseDir, "bundle-temp")
 
-            // Delete existing folder logic
-            if (bundleStoreDir.exists()) {
-                bundleStoreDir.deleteRecursively()
+            if (tempDir.exists()) {
+                tempDir.deleteRecursively()
             }
-            bundleStoreDir.mkdirs()
+            tempDir.mkdirs()
+
+            val tempZipFile = File(tempDir, "build.zip")
+            val extractedDir = File(tempDir, "extracted")
+            extractedDir.mkdirs()
 
             val isSuccess =
                 withContext(Dispatchers.IO) {
@@ -155,9 +158,8 @@ class HotUpdater : ReactPackage {
                             return@withContext false
                         }
 
-                        // File download
                         conn.inputStream.use { input ->
-                            zipFilePath.outputStream().use { output ->
+                            tempZipFile.outputStream().use { output ->
                                 val buffer = ByteArray(8 * 1024)
                                 var bytesRead: Int
                                 var totalRead = 0L
@@ -183,23 +185,34 @@ class HotUpdater : ReactPackage {
                         conn.disconnect()
                     }
 
-                    // Extract zip
-                    if (!extractZipFileAtPath(zipFilePath.absolutePath, bundleStoreDir.absolutePath)) {
+                    if (!extractZipFileAtPath(tempZipFile.absolutePath, extractedDir.absolutePath)) {
                         Log.d("HotUpdater", "Failed to extract zip file.")
                         return@withContext false
                     }
 
-                    // Find index.android.bundle
-                    val indexFile = bundleStoreDir.walk().find { it.name == "index.android.bundle" }
-
-                    if (indexFile != null) {
-                        val bundlePath = indexFile.absolutePath
-                        Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
-                        setBundleURL(context, bundlePath)
-                    } else {
-                        Log.d("HotUpdater", "index.android.bundle not found.")
+                    val indexFile = extractedDir.walk().find { it.name == "index.android.bundle" }
+                    if (indexFile == null) {
+                        Log.d("HotUpdater", "index.android.bundle not found in extracted files.")
                         return@withContext false
                     }
+
+                    if (finalDir.exists()) {
+                        finalDir.deleteRecursively()
+                    }
+                    if (!extractedDir.renameTo(finalDir)) {
+                        extractedDir.copyRecursively(finalDir, overwrite = true)
+                        extractedDir.deleteRecursively()
+                    }
+
+                    val finalIndexFile = finalDir.walk().find { it.name == "index.android.bundle" }
+                    if (finalIndexFile == null) {
+                        Log.d("HotUpdater", "index.android.bundle not found in final directory.")
+                        return@withContext false
+                    }
+
+                    val bundlePath = finalIndexFile.absolutePath
+                    Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
+                    setBundleURL(context, bundlePath)
 
                     Log.d("HotUpdater", "Downloaded and extracted file successfully.")
                     true
