@@ -127,9 +127,25 @@ class HotUpdater : ReactPackage {
             }
 
             val baseDir = context.getExternalFilesDir(null)
-            val finalDir = File(baseDir, "bundle-store")
-            val tempDir = File(baseDir, "bundle-temp")
+            val bundleStoreDir = File(baseDir, "bundle-store")
+            if (!bundleStoreDir.exists()) {
+                bundleStoreDir.mkdirs()
+            }
 
+            val finalBundleDir = File(bundleStoreDir, bundleId)
+            if (finalBundleDir.exists()) {
+                Log.d("HotUpdater", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
+                val existingIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
+                if (existingIndexFile != null) {
+                    setBundleURL(context, existingIndexFile.absolutePath)
+                    cleanupOldBundles(bundleStoreDir)
+                    return true
+                } else {
+                    finalBundleDir.deleteRecursively()
+                }
+            }
+
+            val tempDir = File(baseDir, "bundle-temp")
             if (tempDir.exists()) {
                 tempDir.deleteRecursively()
             }
@@ -157,7 +173,6 @@ class HotUpdater : ReactPackage {
                             Log.d("HotUpdater", "Invalid content length: $totalSize")
                             return@withContext false
                         }
-
                         conn.inputStream.use { input ->
                             tempZipFile.outputStream().use { output ->
                                 val buffer = ByteArray(8 * 1024)
@@ -189,36 +204,56 @@ class HotUpdater : ReactPackage {
                         Log.d("HotUpdater", "Failed to extract zip file.")
                         return@withContext false
                     }
-
-                    val indexFile = extractedDir.walk().find { it.name == "index.android.bundle" }
-                    if (indexFile == null) {
-                        Log.d("HotUpdater", "index.android.bundle not found in extracted files.")
-                        return@withContext false
-                    }
-
-                    if (finalDir.exists()) {
-                        finalDir.deleteRecursively()
-                    }
-                    if (!extractedDir.renameTo(finalDir)) {
-                        extractedDir.copyRecursively(finalDir, overwrite = true)
-                        extractedDir.deleteRecursively()
-                    }
-
-                    val finalIndexFile = finalDir.walk().find { it.name == "index.android.bundle" }
-                    if (finalIndexFile == null) {
-                        Log.d("HotUpdater", "index.android.bundle not found in final directory.")
-                        return@withContext false
-                    }
-
-                    val bundlePath = finalIndexFile.absolutePath
-                    Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
-                    setBundleURL(context, bundlePath)
-
-                    Log.d("HotUpdater", "Downloaded and extracted file successfully.")
                     true
                 }
 
-            return isSuccess
+            if (!isSuccess) return false
+
+            val indexFileExtracted = extractedDir.walk().find { it.name == "index.android.bundle" }
+            if (indexFileExtracted == null) {
+                Log.d("HotUpdater", "index.android.bundle not found in extracted files.")
+                return false
+            }
+
+            // 임시 폴더의 내용을 finalBundleDir로 이동 (혹은 복사)
+            if (finalBundleDir.exists()) {
+                finalBundleDir.deleteRecursively()
+            }
+            if (!extractedDir.renameTo(finalBundleDir)) {
+                extractedDir.copyRecursively(finalBundleDir, overwrite = true)
+                extractedDir.deleteRecursively()
+            }
+
+            val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
+            if (finalIndexFile == null) {
+                Log.d("HotUpdater", "index.android.bundle not found in final directory.")
+                return false
+            }
+
+            val bundlePath = finalIndexFile.absolutePath
+            Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
+            setBundleURL(context, bundlePath)
+
+            // 번들 저장소에서 최대 2개까지만 유지하도록 이전 번들을 정리합니다.
+            cleanupOldBundles(bundleStoreDir)
+
+            Log.d("HotUpdater", "Downloaded and extracted file successfully.")
+            return true
+        }
+
+// bundle-store 폴더 내에서 최대 2개의 번들만 남기도록 오래된 번들을 삭제하는 헬퍼 함수
+        private fun cleanupOldBundles(bundleStoreDir: File) {
+            // bundle-store 내의 모든 디렉토리 목록 가져오기
+            val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
+            // uuidv7 기준 문자열 역정렬 (내림차순) => 가장 아래가 가장 오래된 번들
+            val sortedBundles = bundles.sortedByDescending { it.name }
+            // 2개를 초과하는 경우, 3번째 이후부터 삭제
+            if (sortedBundles.size > 2) {
+                sortedBundles.drop(2).forEach { oldBundle ->
+                    Log.d("HotUpdater", "Removing old bundle: ${oldBundle.name}")
+                    oldBundle.deleteRecursively()
+                }
+            }
         }
     }
 }
