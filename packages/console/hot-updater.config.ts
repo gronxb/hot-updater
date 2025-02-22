@@ -1,11 +1,6 @@
-import { metro } from "@hot-updater/metro";
 import { mockDatabase } from "@hot-updater/mock";
-import "dotenv/config";
 
 export default {
-  build: metro({
-    enableHermes: true,
-  }),
   database: mockDatabase({
     initialBundles: [
       {
