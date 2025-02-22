@@ -58,7 +58,6 @@ const checkIfAwsCliInstalled = async () => {
     return false;
   }
 };
-
 export async function createOrSelectIamRole({
   region,
   credentials,
@@ -88,85 +87,55 @@ export async function createOrSelectIamRole({
 
   // Get list of IAM Roles
   const { Roles } = await iamClient.listRoles({});
-  const roles =
-    Roles?.filter(
-      (role) =>
-        role.AssumeRolePolicyDocument &&
-        decodeURIComponent(role.AssumeRolePolicyDocument) ===
-          decodeURIComponent(assumeRolePolicyDocument),
-    ) ?? [];
-  const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
+  const existingRole = Roles?.find(
+    (role) =>
+      role.AssumeRolePolicyDocument &&
+      decodeURIComponent(role.AssumeRolePolicyDocument) ===
+        decodeURIComponent(assumeRolePolicyDocument),
+  );
 
-  // Provide options to select existing Role or create new Role
-  let roleName = await p.select({
-    message: "IAM Role List",
-    options: [
-      ...roles.map((role) => ({
-        value: role.RoleName!,
-        label: `${role.RoleName} (${role.Arn})`,
-      })),
-      {
-        value: createKey,
-        label: "Create New IAM Role",
-      },
-    ],
-  });
-
-  if (p.isCancel(roleName)) process.exit(1);
-
-  // Create new Role
-  if (roleName === createKey) {
-    const name = await p.text({
-      message: "Enter the name of the new IAM Role",
-      defaultValue: "hot-updater-edge-role",
-      placeholder: "hot-updater-edge-role",
-    });
-    if (p.isCancel(name)) process.exit(1);
-    roleName = name;
-
-    try {
-      const createRoleResp = await iamClient.createRole({
-        RoleName: roleName,
-        AssumeRolePolicyDocument: assumeRolePolicyDocument,
-        Description: "Role for Lambda@Edge to access S3",
-      });
-
-      const lambdaRoleArn = createRoleResp.Role?.Arn!;
-      p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
-
-      // Attach required policies
-      await iamClient.attachRolePolicy({
-        RoleName: roleName,
-        PolicyArn:
-          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-      });
-      await iamClient.attachRolePolicy({
-        RoleName: roleName,
-        PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
-      });
-      p.log.info(
-        `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${roleName}`,
-      );
-
-      return lambdaRoleArn;
-    } catch (error) {
-      if (error instanceof Error) {
-        p.log.error(
-          `Error setting up IAM role for Lambda@Edge: ${error.message}`,
-        );
-      }
-      process.exit(1);
-    }
-  } else {
+  if (existingRole) {
     // Use existing Role
-    const selectedRole = Roles?.find((role) => role.RoleName === roleName);
-    const lambdaRoleArn: string | null = selectedRole?.Arn ?? null;
-    if (!lambdaRoleArn) {
-      p.log.error("Failed to select existing IAM role for Lambda@Edge");
-      process.exit(1);
-    }
+    const roleName = existingRole.RoleName!;
+    const lambdaRoleArn = existingRole.Arn!;
     p.log.info(`Using existing IAM role: ${roleName} (${lambdaRoleArn})`);
     return lambdaRoleArn;
+  }
+
+  // Create new Role if none exists
+  const roleName = "hot-updater-edge-role";
+  try {
+    const createRoleResp = await iamClient.createRole({
+      RoleName: roleName,
+      AssumeRolePolicyDocument: assumeRolePolicyDocument,
+      Description: "Role for Lambda@Edge to access S3",
+    });
+
+    const lambdaRoleArn = createRoleResp.Role?.Arn!;
+    p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
+
+    // Attach required policies
+    await iamClient.attachRolePolicy({
+      RoleName: roleName,
+      PolicyArn:
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+    });
+    await iamClient.attachRolePolicy({
+      RoleName: roleName,
+      PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+    });
+    p.log.info(
+      `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${roleName}`,
+    );
+
+    return lambdaRoleArn;
+  } catch (error) {
+    if (error instanceof Error) {
+      p.log.error(
+        `Error setting up IAM role for Lambda@Edge: ${error.message}`,
+      );
+    }
+    process.exit(1);
   }
 }
 
@@ -343,6 +312,79 @@ export const createCloudFrontDistribution = async (
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
 
+  // S3 버킷에 해당하는 도메인
+  const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
+
+  // 1. 기존 CloudFront 배포 목록 중 S3 도메인과 일치하는 항목 필터링
+  const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
+  try {
+    const listResp = await cloudfrontClient.listDistributions({});
+    const items = listResp.DistributionList?.Items || [];
+    for (const dist of items) {
+      const origins = dist.Origins?.Items || [];
+      if (origins.some((origin) => origin.DomainName === bucketDomain)) {
+        matchingDistributions.push({
+          Id: dist.Id!,
+          DomainName: dist.DomainName!,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error listing CloudFront distributions:", error);
+  }
+
+  let selectedDistribution: { Id: string; DomainName: string } | null = null;
+  if (matchingDistributions.length === 1) {
+    // 1개인 경우 바로 선택
+    selectedDistribution = matchingDistributions[0] ?? null;
+  } else if (matchingDistributions.length > 1) {
+    // 2개 이상인 경우 사용자 선택
+    const selectedDistributionStr = await p.select({
+      message:
+        "여러 CloudFront 배포가 발견되었습니다. 사용하실 배포를 선택해 주세요:",
+      options: matchingDistributions.map((dist) => ({
+        value: JSON.stringify(dist),
+        label: `${dist.Id} (${dist.DomainName})`,
+      })),
+    });
+    if (p.isCancel(selectedDistributionStr)) {
+      process.exit(0);
+    }
+    selectedDistribution = JSON.parse(selectedDistributionStr);
+  }
+
+  if (selectedDistribution) {
+    // 기존 배포가 선택된 경우 캐시 무효화 요청 진행
+    console.info(
+      `기존 CloudFront 배포가 선택되었습니다. 배포 ID: ${selectedDistribution.Id}. 캐시 무효화를 진행합니다.`,
+    );
+    try {
+      await cloudfrontClient.createInvalidation({
+        DistributionId: selectedDistribution.Id,
+        InvalidationBatch: {
+          CallerReference: dayjs().format(),
+          Paths: {
+            Quantity: 1,
+            Items: ["/*"],
+          },
+        },
+      });
+      console.info("캐시 무효화 요청이 완료되었습니다.");
+    } catch (error) {
+      console.error(
+        `CloudFront 무효화 요청 실패: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      throw error;
+    }
+    return {
+      distributionId: selectedDistribution.Id,
+      distributionDomain: selectedDistribution.DomainName,
+    };
+  }
+
+  // 2. 일치하는 배포가 없으면 새로운 CloudFront 배포 생성
   const distributionConfig: DistributionConfig = {
     CallerReference: dayjs().format(),
     Comment: "Hot Updater CloudFront distribution",
@@ -352,7 +394,7 @@ export const createCloudFrontDistribution = async (
       Items: [
         {
           Id: bucketName,
-          DomainName: `${bucketName}.s3.${region}.amazonaws.com`,
+          DomainName: bucketDomain,
           S3OriginConfig: { OriginAccessIdentity: "" },
         },
       ],
@@ -391,16 +433,19 @@ export const createCloudFrontDistribution = async (
     });
     const distributionId = distResp.Distribution?.Id!;
     const distributionDomain = distResp.Distribution?.DomainName!;
-    p.log.info(`Created CloudFront distribution with ID: ${distributionId}`);
+    console.info(
+      `새로운 CloudFront 배포를 생성했습니다. 배포 ID: ${distributionId}`,
+    );
     return { distributionId, distributionDomain };
   } catch (error) {
-    if (error instanceof Error) {
-      p.log.error(`Failed to create CloudFront distribution: ${error.message}`);
-    }
+    console.error(
+      `CloudFront 배포 생성 실패: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
     throw error;
   }
 };
-
 export const initAwsS3LambdaEdge = async () => {
   const { SDK } = await import("@hot-updater/aws/sdk");
 
