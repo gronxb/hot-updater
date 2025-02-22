@@ -1,7 +1,6 @@
 import { Sheet } from "@/components/ui/sheet";
-import { api } from "@/lib/api";
+import { createBundlesQuery } from "@/lib/api";
 import { useNavigate, useParams } from "@solidjs/router";
-import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import { createMemo } from "solid-js";
 import {
   Show,
@@ -17,16 +16,10 @@ import { EditBundleSheetContent } from "./_components/edit-bundle-sheet-content"
 export default function Home() {
   const params = useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const bundleId = params.bundleId;
 
-  const data = createQuery(() => ({
-    queryKey: ["getBundles"],
-    queryFn: () => {
-      return api.getBundles.$get().then((res) => res.json());
-    },
-  }));
+  const data = createBundlesQuery();
 
   const [selectedBundleId, setSelectedBundleId] = createSignal<string | null>(
     bundleId,
@@ -47,7 +40,6 @@ export default function Home() {
   const handleClose = () => {
     start(() => {
       setSelectedBundleId(null);
-      queryClient.invalidateQueries({ queryKey: ["getBundles"] });
     });
   };
 
