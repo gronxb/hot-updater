@@ -455,12 +455,6 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core
-      '@hot-updater/metro':
-        specifier: workspace:*
-        version: link:../../plugins/metro
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
@@ -477,6 +471,9 @@ importers:
       '@hono/vite-dev-server':
         specifier: ^0.18.1
         version: 0.18.1(hono@4.6.3)(miniflare@3.20250124.0)(wrangler@3.105.1(@cloudflare/workers-types@4.20250124.3))
+      '@hot-updater/mock':
+        specifier: workspace:*
+        version: link:../../plugins/mock
       '@kobalte/core':
         specifier: ^0.13.7
         version: 0.13.7(solid-js@1.9.3)
