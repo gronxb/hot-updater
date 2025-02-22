@@ -1,14 +1,9 @@
 import { Sheet } from "@/components/ui/sheet";
 import { createBundlesQuery } from "@/lib/api";
+import { sleep } from "@/lib/utils";
 import { useNavigate, useParams } from "@solidjs/router";
-import { createMemo } from "solid-js";
-import {
-  Show,
-  Suspense,
-  createEffect,
-  createSignal,
-  useTransition,
-} from "solid-js";
+import { createEffect, createMemo } from "solid-js";
+import { Show, Suspense, createSignal } from "solid-js";
 import { columns } from "./_components/columns";
 import { DataTable } from "./_components/data-table";
 import { EditBundleSheetContent } from "./_components/edit-bundle-sheet-content";
@@ -25,8 +20,6 @@ export default function Home() {
     bundleId,
   );
 
-  const [_, start] = useTransition();
-
   createEffect(() => {
     if (!selectedBundleId()) {
       navigate("/", { replace: true });
@@ -35,35 +28,28 @@ export default function Home() {
     navigate(`/${selectedBundleId()}`, { replace: true });
   });
 
+  createEffect(() => {
+    if (open()) return;
+    sleep(500).then(() => setSelectedBundleId(null));
+  });
+
   const dataForTable = createMemo(() => data.data || []);
+  const [open, setOpen] = createSignal(true);
 
   const handleClose = () => {
-    start(() => {
-      setSelectedBundleId(null);
-    });
+    setOpen(false);
   };
 
   return (
     <>
-      <DataTable
-        columns={columns}
-        data={dataForTable}
-        onRowClick={(row) => {
-          start(() => {
+      <Sheet open={open()} onOpenChange={setOpen}>
+        <DataTable
+          columns={columns}
+          data={dataForTable}
+          onRowClick={(row) => {
             setSelectedBundleId(row.id);
-          });
-        }}
-      />
-
-      <Sheet
-        open={selectedBundleId() !== null}
-        onOpenChange={(open) =>
-          !open &&
-          start(() => {
-            setSelectedBundleId(null);
-          })
-        }
-      >
+          }}
+        />
         <Show when={selectedBundleId()}>
           <Suspense>
             <EditBundleSheetContent
