@@ -452,13 +452,13 @@ export const createCloudFrontDistribution = async (
               if (status.Distribution?.Status === "Deployed") {
                 return "CloudFront distribution deployment completed.";
               }
-              if (retryCount >= 5) {
+              throw new Error("Retry");
+            } catch (err) {
+              if (retryCount++ >= 5) {
                 message(
                   `CloudFront distribution is still in progress. This may take several minutes. (${retryCount})`,
                 );
               }
-            } catch (err) {
-              retryCount++;
               await delay(1000);
             }
           }
