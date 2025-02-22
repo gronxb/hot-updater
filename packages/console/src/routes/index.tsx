@@ -29,7 +29,7 @@ export default function Home() {
   });
 
   createEffect(() => {
-    if (open()) {
+    if (isOpen()) {
       return;
     }
     sleep(500).then(() => setSelectedBundleId(null));
