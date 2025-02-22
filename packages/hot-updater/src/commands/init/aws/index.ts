@@ -456,7 +456,7 @@ export const createCloudFrontDistribution = async (
             } catch (err) {
               if (retryCount++ >= 5) {
                 message(
-                  `CloudFront distribution is still in progress. This may take several minutes. (${retryCount})`,
+                  `CloudFront distribution is still in progress. This may take few minutes. (${retryCount})`,
                 );
               }
               await delay(1000);
