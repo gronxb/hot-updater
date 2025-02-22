@@ -12,6 +12,7 @@ import dayjs from "dayjs";
 import fs from "fs/promises";
 import { regionLocationMap } from "./regionLocationMap";
 
+import { createZip } from "@/utils/createZip";
 import { ExecaError, execa } from "execa";
 
 // Template file: hot-updater.config.ts
@@ -89,7 +90,10 @@ export async function createOrSelectIamRole({
   const { Roles } = await iamClient.listRoles({});
   const roles =
     Roles?.filter(
-      (role) => role.AssumeRolePolicyDocument === assumeRolePolicyDocument,
+      (role) =>
+        role.AssumeRolePolicyDocument &&
+        decodeURIComponent(role.AssumeRolePolicyDocument) ===
+          decodeURIComponent(assumeRolePolicyDocument),
     ) ?? [];
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
@@ -197,7 +201,6 @@ export const deployLambdaEdge = async (
   // 2. zip 파일 생성
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
   const lambdaDir = path.dirname(lambdaPath);
-  const zipFilePath = path.join(cwd, `${lambdaName}.zip`);
 
   // 3. Lambda 클라이언트
   const lambdaClient = new SDK.Lambda.Lambda({
@@ -213,13 +216,22 @@ export const deployLambdaEdge = async (
     version: null,
   };
 
+  const ref: {
+    zipFilePath: string | null;
+  } = {
+    zipFilePath: null,
+  };
   // 4. p.tasks를 이용해 단계별 인디케이터 표시
   await p.tasks([
     {
       title: "Compressing Lambda code to zip",
       task: async () => {
         try {
-          await execa("zip", ["-r", zipFilePath, "."], { cwd: lambdaDir });
+          ref.zipFilePath = await createZip({
+            filename: `${lambdaName}.zip`,
+            outDir: cwd,
+            targetDir: lambdaDir,
+          });
         } catch (error) {
           throw new Error(
             "Failed to create zip archive of Lambda function code",
@@ -237,7 +249,7 @@ export const deployLambdaEdge = async (
             Runtime: "nodejs20.x",
             Role: lambdaRoleArn,
             Handler: "index.handler",
-            Code: { ZipFile: await fs.readFile(zipFilePath) },
+            Code: { ZipFile: await fs.readFile(ref.zipFilePath!) },
             Description: "Hot Updater Lambda@Edge function",
             Publish: true,
           });
@@ -256,7 +268,7 @@ export const deployLambdaEdge = async (
 
             const updateResp = await lambdaClient.updateFunctionCode({
               FunctionName: lambdaName,
-              ZipFile: await fs.readFile(zipFilePath),
+              ZipFile: await fs.readFile(ref.zipFilePath!),
               Publish: true,
             });
             functionArn.arn = updateResp.FunctionArn ?? null;
