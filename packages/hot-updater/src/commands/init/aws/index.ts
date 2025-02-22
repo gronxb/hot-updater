@@ -204,7 +204,7 @@ export const deployLambdaEdge = async (
     },
     {
       title: "Creating or Updating Lambda function",
-      task: async () => {
+      task: async (message) => {
         try {
           // Create new function
           const createResp = await lambdaClient.createFunction({
@@ -225,7 +225,7 @@ export const deployLambdaEdge = async (
             error instanceof Error &&
             error.name === "ResourceConflictException"
           ) {
-            p.log.info(
+            message(
               `Function "${lambdaName}" already exists. Updating function code...`,
             );
 
@@ -440,7 +440,7 @@ export const createCloudFrontDistribution = async (
       {
         title: "Waiting for CloudFront distribution to complete...",
         task: async (message) => {
-          while (retryCount < 60 * 5) {
+          while (retryCount < 60 * 10) {
             try {
               const status = await cloudfrontClient.getDistribution({
                 Id: distributionId,
