@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "files": [
     "dist",
     "package.json"
@@ -35,6 +35,7 @@
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.14.10",
     "@tanstack/solid-form": "^0.34.0",
+    "@tanstack/solid-query": "^5.66.4",
     "@tanstack/solid-table": "^8.20.5",
     "@tanstack/valibot-form-adapter": "^0.34.0",
     "@types/node": "^22.8.6",
@@ -57,7 +58,7 @@
     "valibot": "^0.42.1"
   },
   "dependencies": {
-    "@hot-updater/core": "0.11.0",
-    "@hot-updater/plugin-core": "0.11.0"
+    "@hot-updater/core": "0.12.0",
+    "@hot-updater/plugin-core": "0.12.0"
   }
 }

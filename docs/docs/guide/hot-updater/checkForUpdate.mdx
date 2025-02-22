@@ -1,0 +1,73 @@
+# `HotUpdater.checkForUpdate()`
+
+The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server’s bundle information.
+
+## Usage
+
+Use `checkForUpdate` to verify if an update bundle is available. You need to provide the source of the update server and optionally, request headers.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function checkForAppUpdate() {
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      source: "<your-update-server-url>",
+      requestHeaders: {
+        Authorization: "Bearer <your-access-token>",
+      },
+    });
+
+    if (!updateInfo) {
+      return {
+        status: "UP_TO_DATE",
+      };
+    }
+
+    return updateInfo;
+  } catch (error) {
+    console.error("Failed to check for update:", error);
+    return null;
+  }
+}
+
+checkForAppUpdate();
+```
+
+## Parameters
+
+The `checkForUpdate` function accepts the following parameters:
+
+| Parameter       | Type                | Required | Description                                      |
+|-----------------|---------------------|----------|--------------------------------------------------|
+| `source`        | `string`            | ✅        | The URL of the update server.                     |
+| `requestHeaders`| `Record<string, string>` | ❌        | Optional headers to include in the update request. |
+
+## Return Value
+
+The function returns an object of type `UpdateInfo` or `null` if the app is up to date.
+
+```ts
+export type UpdateStatus = "ROLLBACK" | "UPDATE";
+
+export interface UpdateInfo {
+  id: string;
+  shouldForceUpdate: boolean;
+  fileUrl: string | null;
+  fileHash: string | null;
+  status: UpdateStatus;
+}
+```
+
+### Example Return Value
+
+```json
+{
+  "id": "01952bbd-e7b2-7931-aee8-2e2187caa0ce",
+  "shouldForceUpdate": true,
+  "status": "UPDATE",
+  "fileUrl": "https://example.com/bundles/update.bundle",
+  "fileHash": "abc123",
+}
+```
+

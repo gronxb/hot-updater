@@ -1,4 +1,4 @@
-import { checkForUpdate } from "./checkUpdate";
+import { checkForUpdate } from "./checkForUpdate";
 import {
   addListener,
   getAppVersion,

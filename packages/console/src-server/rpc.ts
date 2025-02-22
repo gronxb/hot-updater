@@ -52,11 +52,11 @@ export const rpc = new Hono()
     const bundles = await databasePlugin?.getBundles(true);
     return c.json((bundles ?? []) satisfies Bundle[]);
   })
-  .post(
+  .get(
     "/getBundleById",
-    vValidator("json", v.object({ bundleId: v.string() })),
+    vValidator("query", v.object({ bundleId: v.string() })),
     async (c) => {
-      const { bundleId } = c.req.valid("json");
+      const { bundleId } = c.req.valid("query");
       const { databasePlugin } = await prepareConfig();
 
       const bundle = await databasePlugin?.getBundleById(bundleId);

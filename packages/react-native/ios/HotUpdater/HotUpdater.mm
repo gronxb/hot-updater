@@ -49,7 +49,6 @@ RCT_EXPORT_MODULE();
 }
 
 + (NSURL *)fallbackURL {
-    // This supports React Native 0.72.6
 #if DEBUG
     return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
 #else
@@ -72,6 +71,48 @@ RCT_EXPORT_MODULE();
     return success;
 }
 
+#pragma mark - Cleanup Old Bundles
+
+- (void)cleanupOldBundlesAtDirectory:(NSString *)bundleStoreDir {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *error = nil;
+    NSArray *contents = [fileManager contentsOfDirectoryAtPath:bundleStoreDir error:&error];
+    if (error) {
+        NSLog(@"Failed to list bundle store directory: %@", error);
+        return;
+    }
+    
+    NSMutableArray *bundleDirs = [NSMutableArray array];
+    for (NSString *item in contents) {
+        NSString *fullPath = [bundleStoreDir stringByAppendingPathComponent:item];
+        BOOL isDir = NO;
+        if ([fileManager fileExistsAtPath:fullPath isDirectory:&isDir] && isDir) {
+            [bundleDirs addObject:fullPath];
+        }
+    }
+    
+    // Sort in descending order by modification time (keep latest 2)
+    [bundleDirs sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
+        NSDictionary *attr1 = [fileManager attributesOfItemAtPath:path1 error:nil];
+        NSDictionary *attr2 = [fileManager attributesOfItemAtPath:path2 error:nil];
+        NSDate *date1 = attr1[NSFileModificationDate] ?: [NSDate dateWithTimeIntervalSince1970:0];
+        NSDate *date2 = attr2[NSFileModificationDate] ?: [NSDate dateWithTimeIntervalSince1970:0];
+        return [date2 compare:date1];
+    }];
+    
+    if (bundleDirs.count > 2) {
+        NSArray *oldBundles = [bundleDirs subarrayWithRange:NSMakeRange(2, bundleDirs.count - 2)];
+        for (NSString *oldBundle in oldBundles) {
+            NSError *delError = nil;
+            if ([fileManager removeItemAtPath:oldBundle error:&delError]) {
+                NSLog(@"Removed old bundle: %@", oldBundle);
+            } else {
+                NSLog(@"Failed to remove old bundle %@: %@", oldBundle, delError);
+            }
+        }
+    }
+}
+
 #pragma mark - Update Bundle Method
 
 - (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl completion:(void (^)(BOOL success))completion {
@@ -83,88 +124,158 @@ RCT_EXPORT_MODULE();
         return;
     }
     
-    // Set app-specific path (dynamically using NSSearchPathForDirectoriesInDomains)
+    // Set document directory path and bundle store path
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *bundleStoreDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
-    NSString *zipFilePath = [bundleStoreDir stringByAppendingPathComponent:@"build.zip"];
     
-    // Delete existing folder
-    [self deleteFolderIfExists:bundleStoreDir];
-    // Create download folder
-    [[NSFileManager defaultManager] createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    if (![fileManager fileExistsAtPath:bundleStoreDir]) {
+        [fileManager createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+    
+    // Final bundle path (bundle-store/<bundleId>)
+    NSString *finalBundleDir = [bundleStoreDir stringByAppendingPathComponent:bundleId];
+    
+    // Check if cached bundle exists
+    if ([fileManager fileExistsAtPath:finalBundleDir]) {
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:finalBundleDir];
+        NSString *foundBundle = nil;
+        for (NSString *file in enumerator) {
+            if ([file isEqualToString:@"index.ios.bundle"]) {
+                foundBundle = file;
+                break;
+            }
+        }
+        if (foundBundle) {
+            // Update modification time of final bundle
+            NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
+            [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
+            NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:foundBundle];
+            NSLog(@"Using cached bundle at path: %@", bundlePath);
+            [self setBundleURL:bundlePath];
+            [self cleanupOldBundlesAtDirectory:bundleStoreDir];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(YES);
+            });
+            return;
+        } else {
+            [fileManager removeItemAtPath:finalBundleDir error:nil];
+        }
+    }
+    
+    // Set up temporary folder (for download and extraction)
+    NSString *tempDir = [documentsPath stringByAppendingPathComponent:@"bundle-temp"];
+    if ([fileManager fileExistsAtPath:tempDir]) {
+        [fileManager removeItemAtPath:tempDir error:nil];
+    }
+    [fileManager createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
+    
+    NSString *tempZipFile = [tempDir stringByAppendingPathComponent:@"build.zip"];
+    NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
+    [fileManager createDirectoryAtPath:extractedDir withIntermediateDirectories:YES attributes:nil error:nil];
     
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
     
-    NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl
-                                                        completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+    NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
             NSLog(@"Failed to download data from URL: %@, error: %@", zipUrl, error);
             if (completion) completion(NO);
             return;
         }
         
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        
-        // Remove existing file
-        if ([fileManager fileExistsAtPath:zipFilePath]) {
-            [fileManager removeItemAtPath:zipFilePath error:nil];
+        // Save temporary zip file
+        if ([fileManager fileExistsAtPath:tempZipFile]) {
+            [fileManager removeItemAtPath:tempZipFile error:nil];
         }
         
-        // Move downloaded file
-        NSError *moveError;
-        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:zipFilePath] error:&moveError]) {
-            NSLog(@"Failed to save data: %@", moveError);
+        NSError *moveError = nil;
+        if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:tempZipFile] error:&moveError]) {
+            NSLog(@"Failed to save downloaded file: %@", moveError);
             if (completion) completion(NO);
             return;
         }
         
         // Extract zip
-        if (![self extractZipFileAtPath:zipFilePath toDestination:bundleStoreDir]) {
+        if (![self extractZipFileAtPath:tempZipFile toDestination:extractedDir]) {
             NSLog(@"Failed to extract zip file.");
             if (completion) completion(NO);
             return;
         }
         
-        // Search for bundle file (index.ios.bundle)
-        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:bundleStoreDir];
-        NSString *filename = nil;
+        // Search for index.ios.bundle in extracted folder
+        NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedDir];
+        NSString *foundBundle = nil;
         for (NSString *file in enumerator) {
             if ([file isEqualToString:@"index.ios.bundle"]) {
-                filename = file;
+                foundBundle = file;
                 break;
             }
         }
         
-        if (filename) {
-            NSString *bundlePath = [bundleStoreDir stringByAppendingPathComponent:filename];
-            NSLog(@"Setting bundle URL: %@", bundlePath);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self setBundleURL:bundlePath];
-                if (completion) completion(YES);
-            });
-        } else {
-            NSLog(@"index.ios.bundle not found.");
+        if (!foundBundle) {
+            NSLog(@"index.ios.bundle not found in extracted files.");
             if (completion) completion(NO);
+            return;
         }
+        
+        // Move extracted folder to final bundle folder
+        if ([fileManager fileExistsAtPath:finalBundleDir]) {
+            [fileManager removeItemAtPath:finalBundleDir error:nil];
+        }
+        NSError *moveFinalError = nil;
+        BOOL moved = [fileManager moveItemAtPath:extractedDir toPath:finalBundleDir error:&moveFinalError];
+        if (!moved) {
+            // Try copy and delete if move fails
+            BOOL copied = [fileManager copyItemAtPath:extractedDir toPath:finalBundleDir error:&moveFinalError];
+            if (copied) {
+                [fileManager removeItemAtPath:extractedDir error:nil];
+            } else {
+                NSLog(@"Failed to move or copy extracted bundle: %@", moveFinalError);
+                if (completion) completion(NO);
+                return;
+            }
+        }
+        
+        // Recheck index.ios.bundle in final folder
+        NSDirectoryEnumerator *finalEnum = [fileManager enumeratorAtPath:finalBundleDir];
+        NSString *finalFoundBundle = nil;
+        for (NSString *file in finalEnum) {
+            if ([file isEqualToString:@"index.ios.bundle"]) {
+                finalFoundBundle = file;
+                break;
+            }
+        }
+        
+        if (!finalFoundBundle) {
+            NSLog(@"index.ios.bundle not found in final directory.");
+            if (completion) completion(NO);
+            return;
+        }
+        
+        // Update modification time of final bundle
+        NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
+        [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
+        
+        NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:finalFoundBundle];
+        NSLog(@"Setting bundle URL: %@", bundlePath);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setBundleURL:bundlePath];
+            [self cleanupOldBundlesAtDirectory:bundleStoreDir];
+            [fileManager removeItemAtPath:tempDir error:nil];
+            if (completion) completion(YES);
+        });
     }];
-
-
-    // Add observer for progress updates
-    [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesReceived"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
-    [downloadTask addObserver:self
-                forKeyPath:@"countOfBytesExpectedToReceive"
-                    options:NSKeyValueObservingOptionNew
-                    context:nil];
-
-    __block HotUpdater *weakSelf = self;
+    
+    // Register KVO for progress updates
+    [downloadTask addObserver:self forKeyPath:@"countOfBytesReceived" options:NSKeyValueObservingOptionNew context:nil];
+    [downloadTask addObserver:self forKeyPath:@"countOfBytesExpectedToReceive" options:NSKeyValueObservingOptionNew context:nil];
+    
+    __weak HotUpdater *weakSelf = self;
     [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
-        object:downloadTask
-        queue:[NSOperationQueue mainQueue]
-    usingBlock:^(NSNotification * _Nonnull note) {
+                                                      object:downloadTask
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification * _Nonnull note) {
         [weakSelf removeObserversForTask:downloadTask];
     }];
     

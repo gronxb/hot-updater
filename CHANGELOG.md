@@ -1,3 +1,18 @@
+## 0.12.0 (2025-02-21)
+
+### 🚀 Features
+
+- **native:** manage up to two bundles for immediate rollback ([#130](https://github.com/gronxb/hot-updater/pull/130))
+
+### 🩹 Fixes
+
+- **ios:** remove comment ([07b3c15](https://github.com/gronxb/hot-updater/commit/07b3c15))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.11.0 (2025-02-20)
 
 ### 🩹 Fixes
