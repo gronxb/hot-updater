@@ -642,8 +642,8 @@ export const initAwsS3LambdaEdge = async () => {
   if (bucketName === createKey) {
     const name = await p.text({
       message: "Enter the name of the new S3 Bucket",
-      defaultValue: "bundles",
-      placeholder: "bundles",
+      defaultValue: "bundle-storage",
+      placeholder: "bundle-storage",
     });
     if (p.isCancel(name)) {
       process.exit(1);

@@ -126,13 +126,14 @@ export const deploy = async (options: DeployOptions) => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
           });
+          bundlePath = path.join(getCwd(), "bundle.zip");
+
           await createZip({
-            outfile: path.join(taskRef.buildResult.buildPath, "bundle.zip"),
+            outfile: bundlePath,
             targetDir: taskRef.buildResult.buildPath,
           });
 
           bundleId = taskRef.buildResult.bundleId;
-          bundlePath = path.join(getCwd(), "bundle.zip");
           fileHash = await getFileHashFromFile(bundlePath);
 
           return `✅ Build Complete (${buildPlugin.name})`;
