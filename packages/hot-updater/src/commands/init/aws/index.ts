@@ -642,8 +642,8 @@ export const initAwsS3LambdaEdge = async () => {
   if (bucketName === createKey) {
     const name = await p.text({
       message: "Enter the name of the new S3 Bucket",
-      defaultValue: "hot-updater",
-      placeholder: "hot-updater",
+      defaultValue: "hot-updater-storage",
+      placeholder: "hot-updater-storage",
     });
     if (p.isCancel(name)) {
       process.exit(1);
