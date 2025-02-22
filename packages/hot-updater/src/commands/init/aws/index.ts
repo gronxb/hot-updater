@@ -235,7 +235,8 @@ export const deployLambdaEdge = async (
           // Create new function
           const createResp = await lambdaClient.createFunction({
             FunctionName: lambdaName,
-            Runtime: "nodejs20.x",
+            Runtime: "nodejs22.x",
+            Architectures: ["arm64"],
             Role: lambdaRoleArn,
             Handler: "index.handler",
             Code: { ZipFile: await fs.readFile(zipFilePath) },
