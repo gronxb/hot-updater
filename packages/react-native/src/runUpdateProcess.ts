@@ -1,4 +1,4 @@
-import { type CheckForUpdateConfig, checkForUpdate } from "./checkUpdate";
+import { type CheckForUpdateConfig, checkForUpdate } from "./checkForUpdate";
 import { reload, updateBundle } from "./native";
 
 export type RunUpdateProcessResponse =
