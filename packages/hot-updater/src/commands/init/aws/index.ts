@@ -219,8 +219,8 @@ export const deployLambdaEdge = async (
             Publish: true,
           });
 
-          functionArn.arn = createResp.FunctionArn ?? null;
-          functionArn.version = createResp.Version ?? "1";
+          functionArn.arn = createResp.FunctionArn || null;
+          functionArn.version = createResp.Version || "1";
           return `Created Lambda "${lambdaName}" function`;
         } catch (error) {
           // Update if function already exists
@@ -238,8 +238,8 @@ export const deployLambdaEdge = async (
               Publish: true,
             });
             void fs.rm(zipFilePath, { force: true });
-            functionArn.arn = updateResp.FunctionArn ?? null;
-            functionArn.version = updateResp.Version ?? "1";
+            functionArn.arn = updateResp.FunctionArn || null;
+            functionArn.version = updateResp.Version || "1";
           } else {
             // Pass through other errors
             if (error instanceof Error) {
