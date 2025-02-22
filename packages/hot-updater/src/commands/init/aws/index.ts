@@ -18,6 +18,30 @@ import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
 
 // Template file: hot-updater.config.ts
+const CONFIG_TEMPLATE_WITH_SESSION = `
+import { metro } from "@hot-updater/metro";
+import { s3Storage, s3Database } from "@hot-updater/aws";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+const options = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: {
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+    // This token may expire. For permanent use, it's recommended to get a key with S3FullAccess permission and remove this field.
+    sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
+  },
+};
+
+export default defineConfig({
+  build: metro({ enableHermes: true }),
+  storage: s3Storage(options),
+  database: s3Database(options),
+});
+`;
+
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
 import { s3Storage, s3Database } from "@hot-updater/aws";
@@ -490,21 +514,21 @@ export const initAwsS3LambdaEdge = async () => {
     process.exit(1);
   }
 
-  // 1. Start IAM Identity Center
-  // 2. Add permission set with S3FullAccess, LambdaFullAccess, CloudFrontFullAccess
-  // 3. Add account
-
   let credentials:
     | {
         accessKeyId: string;
         secretAccessKey: string;
+        sessionToken?: string;
       }
     | undefined = undefined;
 
   const mode = await p.select({
     message: "Select the mode to login to AWS",
     options: [
-      { label: "AWS Access Key ID & Secret Access Key", value: "account" },
+      {
+        label: "AWS Access Key ID & Secret Access Key (Recommend)",
+        value: "account",
+      },
       { label: "AWS SSO Login", value: "sso" },
     ],
   });
@@ -681,7 +705,11 @@ export const initAwsS3LambdaEdge = async () => {
   );
 
   // Create config file and environment variable file
-  await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+  if (mode === "sso") {
+    await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE_WITH_SESSION);
+  } else {
+    await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+  }
 
   const comment =
     mode === "account"
@@ -698,6 +726,9 @@ export const initAwsS3LambdaEdge = async () => {
       comment,
       value: credentials?.secretAccessKey ?? "",
     },
+    ...(mode === "sso" && {
+      HOT_UPDATER_S3_SESSION_TOKEN: credentials.sessionToken,
+    }),
   });
   p.log.success("Generated '.env' file with AWS settings.");
   p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
