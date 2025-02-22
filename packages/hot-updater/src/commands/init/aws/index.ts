@@ -31,7 +31,7 @@ const options = {
 };
 
 export default defineConfig({
-  build: metro(),
+  build: metro({ enableHermes: true }),
   storage: s3Storage(options),
   database: s3Database(options),
 });
@@ -58,16 +58,46 @@ const checkIfAwsCliInstalled = async () => {
   }
 };
 
-export async function createOrSelectIamRole(iamClient: any): Promise<string> {
+export async function createOrSelectIamRole({
+  region,
+  credentials,
+}: {
+  region: BucketLocationConstraint;
+  credentials: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}): Promise<string> {
+  const { SDK } = await import("@hot-updater/aws/sdk");
+  const iamClient = new SDK.IAM.IAM({ region, credentials });
+
+  // Set trust policy for Lambda@Edge
+  const assumeRolePolicyDocument = JSON.stringify({
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Principal: {
+          Service: ["lambda.amazonaws.com", "edgelambda.amazonaws.com"],
+        },
+        Action: "sts:AssumeRole",
+      },
+    ],
+  });
+
   // Get list of IAM Roles
   const { Roles } = await iamClient.listRoles({});
+  const roles =
+    Roles?.filter(
+      (role) => role.AssumeRolePolicyDocument === assumeRolePolicyDocument,
+    ) ?? [];
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
   // Provide options to select existing Role or create new Role
   let roleName = await p.select({
     message: "IAM Role List",
     options: [
-      ...(Roles ?? []).map((role: any) => ({
+      ...roles.map((role) => ({
         value: role.RoleName!,
         label: `${role.RoleName} (${role.Arn})`,
       })),
@@ -89,20 +119,6 @@ export async function createOrSelectIamRole(iamClient: any): Promise<string> {
     });
     if (p.isCancel(name)) process.exit(1);
     roleName = name;
-
-    // Set trust policy for Lambda@Edge
-    const assumeRolePolicyDocument = JSON.stringify({
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Principal: {
-            Service: ["lambda.amazonaws.com", "edgelambda.amazonaws.com"],
-          },
-          Action: "sts:AssumeRole",
-        },
-      ],
-    });
 
     try {
       const createRoleResp = await iamClient.createRole({
@@ -139,7 +155,7 @@ export async function createOrSelectIamRole(iamClient: any): Promise<string> {
     }
   } else {
     // Use existing Role
-    const selectedRole = Roles?.find((role: any) => role.RoleName === roleName);
+    const selectedRole = Roles?.find((role) => role.RoleName === roleName);
     const lambdaRoleArn: string | null = selectedRole?.Arn ?? null;
     if (!lambdaRoleArn) {
       p.log.error("Failed to select existing IAM role for Lambda@Edge");
@@ -555,8 +571,7 @@ export const initAwsS3LambdaEdge = async () => {
   }
   p.log.info(`Selected S3 Bucket: ${bucketName}`);
 
-  const iamClient = new SDK.IAM.IAM({ region, credentials });
-  const lambdaRoleArn = await createOrSelectIamRole(iamClient);
+  const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 
   // Deploy Lambda@Edge function (us-east-1)
   const { functionArn } = await deployLambdaEdge(credentials, lambdaRoleArn);
