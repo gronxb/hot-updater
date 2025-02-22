@@ -6,6 +6,7 @@ import Layout from "@/components/ui/layout";
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
 import { Suspense } from "solid-js";
 import Home from "./routes";
+
 const queryClient = new QueryClient();
 
 export default function App() {
