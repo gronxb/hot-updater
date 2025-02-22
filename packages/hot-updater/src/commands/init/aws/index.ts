@@ -15,6 +15,7 @@ import { regionLocationMap } from "./regionLocationMap";
 import { createZip } from "@/utils/createZip";
 import { delay } from "@/utils/delay";
 import { ExecaError, execa } from "execa";
+import picocolors from "picocolors";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE = `
@@ -509,6 +510,20 @@ export const initAwsS3LambdaEdge = async () => {
   });
   if (p.isCancel(mode)) process.exit(1);
 
+  p.log.message(picocolors.blue("The following permissions are required:"));
+  p.log.message(
+    `${picocolors.blue("AmazonS3FullAccess")}: Create and read S3 buckets`,
+  );
+  p.log.message(
+    `${picocolors.blue("AWSLambda_FullAccess")}: Create and update Lambda functions`,
+  );
+  p.log.message(
+    `${picocolors.blue("CloudFrontFullAccess")}: Create and update CloudFront distributions`,
+  );
+  p.log.message(
+    `${picocolors.blue("IAMFullAccess")}: Get or create IAM roles for Lambda@Edge`,
+  );
+
   if (mode === "sso") {
     try {
       const profile = await p.text({
@@ -534,8 +549,18 @@ export const initAwsS3LambdaEdge = async () => {
       process.exit(1);
     }
   } else {
-    p.log.step(
-      "Please login with an account that has permissions to create S3, CloudFront, and Lambda (these permissions are only needed once during initialization)",
+    p.log.message(picocolors.yellow("The following permissions are required:"));
+    p.log.message(
+      `${picocolors.yellow("AmazonS3FullAccess")}: Create and read S3 buckets`,
+    );
+    p.log.message(
+      `${picocolors.yellow("AWSLambda_FullAccess")}: Create and update Lambda functions`,
+    );
+    p.log.message(
+      `${picocolors.yellow("CloudFrontFullAccess")}: Create and update CloudFront distributions`,
+    );
+    p.log.message(
+      `${picocolors.yellow("IAMFullAccess")}: Get or create IAM roles for Lambda@Edge`,
     );
 
     credentials = await p.group({
