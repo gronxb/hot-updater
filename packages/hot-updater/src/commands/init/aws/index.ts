@@ -1,6 +1,5 @@
 import path from "path";
 import { link } from "@/components/banner";
-import { makeEnv } from "@/utils/makeEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
 import type {
@@ -14,6 +13,7 @@ import { regionLocationMap } from "./regionLocationMap";
 
 import { createZip } from "@/utils/createZip";
 import { delay } from "@/utils/delay";
+import { makeEnv } from "@/utils/makeEnv";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
 
@@ -25,11 +25,11 @@ import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
 const options = {
-  bucketName: process.env.HOT_UPDATER_AWS_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_AWS_REGION!,
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
-    accessKeyId: process.env.HOT_UPDATER_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_AWS_SECRET_ACCESS_KEY!,
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
   },
 };
 
@@ -549,20 +549,6 @@ export const initAwsS3LambdaEdge = async () => {
       process.exit(1);
     }
   } else {
-    p.log.message(picocolors.yellow("The following permissions are required:"));
-    p.log.message(
-      `${picocolors.yellow("AmazonS3FullAccess")}: Create and read S3 buckets`,
-    );
-    p.log.message(
-      `${picocolors.yellow("AWSLambda_FullAccess")}: Create and update Lambda functions`,
-    );
-    p.log.message(
-      `${picocolors.yellow("CloudFrontFullAccess")}: Create and update CloudFront distributions`,
-    );
-    p.log.message(
-      `${picocolors.yellow("IAMFullAccess")}: Get or create IAM roles for Lambda@Edge`,
-    );
-
     credentials = await p.group({
       accessKeyId: () =>
         p.text({
@@ -696,15 +682,23 @@ export const initAwsS3LambdaEdge = async () => {
 
   // Create config file and environment variable file
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+
+  const comment =
+    mode === "account"
+      ? "The current key may have excessive permissions. Update it with an S3FullAccess-only key."
+      : "This key was generated via SSO login and may expire. Update it with an S3FullAccess-only key.";
   await makeEnv({
-    HOT_UPDATER_AWS_S3_BUCKET_NAME: bucketName,
-    HOT_UPDATER_AWS_REGION: region,
-
-    // FIXME: only s3 access key id and secret access key are needed
-    HOT_UPDATER_AWS_ACCESS_KEY_ID: credentials?.accessKeyId ?? "",
-    HOT_UPDATER_AWS_SECRET_ACCESS_KEY: credentials?.secretAccessKey ?? "",
+    HOT_UPDATER_S3_BUCKET_NAME: bucketName,
+    HOT_UPDATER_S3_REGION: region,
+    HOT_UPDATER_S3_ACCESS_KEY_ID: {
+      comment,
+      value: credentials?.accessKeyId ?? "",
+    },
+    HOT_UPDATER_S3_SECRET_ACCESS_KEY: {
+      comment,
+      value: credentials?.secretAccessKey ?? "",
+    },
   });
-
   p.log.success("Generated '.env' file with AWS settings.");
   p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
 
