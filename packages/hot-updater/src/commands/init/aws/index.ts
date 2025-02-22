@@ -195,6 +195,7 @@ export const deployLambdaEdge = async (
             outfile: zipFilePath,
             targetDir: lambdaDir,
           });
+          return "Compressed Lambda code to zip";
         } catch (error) {
           throw new Error(
             "Failed to create zip archive of Lambda function code",
@@ -264,7 +265,7 @@ export const deployLambdaEdge = async (
             FunctionName: qualifiedName,
           });
           if (resp.State === "Active") {
-            break;
+            return "Lambda function is now active";
           }
 
           if (resp.State === "Failed") {
