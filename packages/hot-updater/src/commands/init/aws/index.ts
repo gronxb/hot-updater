@@ -13,6 +13,7 @@ import fs from "fs/promises";
 import { regionLocationMap } from "./regionLocationMap";
 
 import { createZip } from "@/utils/createZip";
+import { delay } from "@/utils/delay";
 import { ExecaError, execa } from "execa";
 
 // Template file: hot-updater.config.ts
@@ -58,6 +59,7 @@ const checkIfAwsCliInstalled = async () => {
     return false;
   }
 };
+
 export async function createOrSelectIamRole({
   region,
   credentials,
@@ -85,58 +87,55 @@ export async function createOrSelectIamRole({
     ],
   });
 
-  // Get list of IAM Roles
-  const { Roles } = await iamClient.listRoles({});
-  const existingRole = Roles?.find(
-    (role) =>
-      role.AssumeRolePolicyDocument &&
-      decodeURIComponent(role.AssumeRolePolicyDocument) ===
-        decodeURIComponent(assumeRolePolicyDocument),
-  );
-
-  if (existingRole) {
-    // Use existing Role
-    const roleName = existingRole.RoleName!;
-    const lambdaRoleArn = existingRole.Arn!;
-    p.log.info(`Using existing IAM role: ${roleName} (${lambdaRoleArn})`);
-    return lambdaRoleArn;
-  }
-
-  // Create new Role if none exists
   const roleName = "hot-updater-edge-role";
+
   try {
-    const createRoleResp = await iamClient.createRole({
+    // Check if role already exists
+    const { Role: existingRole } = await iamClient.getRole({
       RoleName: roleName,
-      AssumeRolePolicyDocument: assumeRolePolicyDocument,
-      Description: "Role for Lambda@Edge to access S3",
     });
 
-    const lambdaRoleArn = createRoleResp.Role?.Arn!;
-    p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
-
-    // Attach required policies
-    await iamClient.attachRolePolicy({
-      RoleName: roleName,
-      PolicyArn:
-        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-    });
-    await iamClient.attachRolePolicy({
-      RoleName: roleName,
-      PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
-    });
-    p.log.info(
-      `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${roleName}`,
-    );
-
-    return lambdaRoleArn;
-  } catch (error) {
-    if (error instanceof Error) {
-      p.log.error(
-        `Error setting up IAM role for Lambda@Edge: ${error.message}`,
-      );
+    if (existingRole?.Arn) {
+      p.log.info(`Using existing IAM role: ${roleName} (${existingRole.Arn})`);
+      return existingRole.Arn;
     }
-    process.exit(1);
+  } catch (error) {
+    // Role doesn't exist, create new one
+    try {
+      const createRoleResp = await iamClient.createRole({
+        RoleName: roleName,
+        AssumeRolePolicyDocument: assumeRolePolicyDocument,
+        Description: "Role for Lambda@Edge to access S3",
+      });
+
+      const lambdaRoleArn = createRoleResp.Role?.Arn!;
+      p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
+
+      // Attach required policies
+      await iamClient.attachRolePolicy({
+        RoleName: roleName,
+        PolicyArn:
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+      });
+      await iamClient.attachRolePolicy({
+        RoleName: roleName,
+        PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+      });
+      p.log.info(
+        `Attached AWSLambdaBasicExecutionRole and AmazonS3ReadOnlyAccess policies to ${roleName}`,
+      );
+
+      return lambdaRoleArn;
+    } catch (createError) {
+      if (createError instanceof Error) {
+        p.log.error(
+          `Error setting up IAM role for Lambda@Edge: ${createError.message}`,
+        );
+      }
+      process.exit(1);
+    }
   }
+  throw new Error("Failed to create or get IAM role");
 }
 
 /**
@@ -159,7 +158,7 @@ export const deployLambdaEdge = async (
   const { SDK } = await import("@hot-updater/aws/sdk");
   const cwd = getCwd();
 
-  // 1. Lambda 함수 이름
+  // 1. Lambda function name
   const lambdaName = await p.text({
     message: "Enter the name of the Lambda@Edge function",
     defaultValue: "hot-updater-edge",
@@ -167,11 +166,11 @@ export const deployLambdaEdge = async (
   });
   if (p.isCancel(lambdaName)) process.exit(1);
 
-  // 2. zip 파일 생성
+  // 2. Create zip file
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
   const lambdaDir = path.dirname(lambdaPath);
 
-  // 3. Lambda 클라이언트
+  // 3. Lambda client
   const lambdaClient = new SDK.Lambda.Lambda({
     region: "us-east-1",
     credentials,
@@ -186,7 +185,7 @@ export const deployLambdaEdge = async (
   };
 
   const zipFilePath = path.join(cwd, `${lambdaName}.zip`);
-  // 4. p.tasks를 이용해 단계별 인디케이터 표시
+  // 4. Show step-by-step indicators using p.tasks
   await p.tasks([
     {
       title: "Compressing Lambda code to zip",
@@ -221,7 +220,7 @@ export const deployLambdaEdge = async (
           functionArn.arn = createResp.FunctionArn ?? null;
           functionArn.version = createResp.Version ?? "1";
         } catch (error) {
-          // 이미 함수가 존재하면 업데이트
+          // Update if function already exists
           if (
             error instanceof Error &&
             error.name === "ResourceConflictException"
@@ -239,7 +238,7 @@ export const deployLambdaEdge = async (
             functionArn.arn = updateResp.FunctionArn ?? null;
             functionArn.version = updateResp.Version ?? "1";
           } else {
-            // 다른 에러는 그대로
+            // Pass through other errors
             if (error instanceof Error) {
               p.log.error(
                 `Failed to create or update Lambda function: ${error.message}`,
@@ -253,11 +252,11 @@ export const deployLambdaEdge = async (
     {
       title: "Waiting for Lambda function to become Active",
       task: async () => {
-        // Lambda ARN은 "unqualified ARN" + :버전 형태여야 함
+        // Lambda ARN should be "unqualified ARN" + :version
         // ex) "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:2"
         const qualifiedName = `${lambdaName}:${functionArn.version}`;
 
-        // 상태가 Active 될 때까지 반복 체크
+        // Check repeatedly until state becomes Active
         while (true) {
           const resp = await lambdaClient.getFunctionConfiguration({
             FunctionName: qualifiedName,
@@ -267,13 +266,13 @@ export const deployLambdaEdge = async (
           }
 
           if (resp.State === "Failed") {
-            // Lambda가 Failed 상태면 배포 중단
+            // Stop deployment if Lambda is in Failed state
             throw new Error(
               `Lambda function is in a Failed state. Reason: ${resp.StateReason}`,
             );
           }
 
-          // 잠시 대기 후 재시도
+          // Wait before retrying
           await new Promise((r) => setTimeout(r, 2000));
         }
       },
@@ -284,8 +283,8 @@ export const deployLambdaEdge = async (
     throw new Error("Failed to create or update Lambda function");
   }
 
-  // 5. Lambda@Edge 용 Qualified ARN 세팅
-  //    (createFunction 결과로 자동으로 붙지 않은 경우 대비)
+  // 5. Set Qualified ARN for Lambda@Edge
+  //    (In case version is not automatically appended from createFunction result)
   if (!functionArn.arn.includes(`:${functionArn.version}`)) {
     functionArn.arn = `${functionArn.arn}:${functionArn.version}`;
   }
@@ -312,10 +311,10 @@ export const createCloudFrontDistribution = async (
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
 
-  // S3 버킷에 해당하는 도메인
+  // Domain for S3 bucket
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
-  // 1. 기존 CloudFront 배포 목록 중 S3 도메인과 일치하는 항목 필터링
+  // 1. Filter existing CloudFront distributions matching S3 domain
   const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
   try {
     const listResp = await cloudfrontClient.listDistributions({});
@@ -335,13 +334,13 @@ export const createCloudFrontDistribution = async (
 
   let selectedDistribution: { Id: string; DomainName: string } | null = null;
   if (matchingDistributions.length === 1) {
-    // 1개인 경우 바로 선택
+    // Select directly if only one exists
     selectedDistribution = matchingDistributions[0] ?? null;
   } else if (matchingDistributions.length > 1) {
-    // 2개 이상인 경우 사용자 선택
+    // Let user select if multiple exist
     const selectedDistributionStr = await p.select({
       message:
-        "여러 CloudFront 배포가 발견되었습니다. 사용하실 배포를 선택해 주세요:",
+        "Multiple CloudFront distributions found. Please select one to use:",
       options: matchingDistributions.map((dist) => ({
         value: JSON.stringify(dist),
         label: `${dist.Id} (${dist.DomainName})`,
@@ -354,9 +353,9 @@ export const createCloudFrontDistribution = async (
   }
 
   if (selectedDistribution) {
-    // 기존 배포가 선택된 경우 캐시 무효화 요청 진행
-    console.info(
-      `기존 CloudFront 배포가 선택되었습니다. 배포 ID: ${selectedDistribution.Id}. 캐시 무효화를 진행합니다.`,
+    // Process cache invalidation for selected distribution
+    p.log.success(
+      `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}. Processing cache invalidation.`,
     );
     try {
       await cloudfrontClient.createInvalidation({
@@ -369,10 +368,10 @@ export const createCloudFrontDistribution = async (
           },
         },
       });
-      console.info("캐시 무효화 요청이 완료되었습니다.");
+      p.log.success("Cache invalidation request completed.");
     } catch (error) {
       console.error(
-        `CloudFront 무효화 요청 실패: ${
+        `CloudFront invalidation request failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -384,7 +383,7 @@ export const createCloudFrontDistribution = async (
     };
   }
 
-  // 2. 일치하는 배포가 없으면 새로운 CloudFront 배포 생성
+  // 2. Create new CloudFront distribution if no match found
   const distributionConfig: DistributionConfig = {
     CallerReference: dayjs().format(),
     Comment: "Hot Updater CloudFront distribution",
@@ -433,19 +432,49 @@ export const createCloudFrontDistribution = async (
     });
     const distributionId = distResp.Distribution?.Id!;
     const distributionDomain = distResp.Distribution?.DomainName!;
-    console.info(
-      `새로운 CloudFront 배포를 생성했습니다. 배포 ID: ${distributionId}`,
+    p.log.success(
+      `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
     );
+    let retryCount = 0;
+    await p.tasks([
+      {
+        title: "Waiting for CloudFront distribution to complete...",
+        task: async (message) => {
+          while (retryCount < 60 * 5) {
+            try {
+              const status = await cloudfrontClient.getDistribution({
+                Id: distributionId,
+              });
+              if (status.Distribution?.Status === "Deployed") {
+                return "CloudFront distribution deployment completed.";
+              }
+              if (retryCount >= 5) {
+                message(
+                  `CloudFront distribution is still in progress. This may take several minutes. (${retryCount})`,
+                );
+              }
+            } catch (err) {
+              retryCount++;
+              await delay(1000);
+            }
+          }
+          p.log.error("CloudFront distribution deployment timed out.");
+          process.exit(1);
+        },
+      },
+    ]);
+
     return { distributionId, distributionDomain };
   } catch (error) {
     console.error(
-      `CloudFront 배포 생성 실패: ${
+      `CloudFront distribution creation failed: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
     throw error;
   }
 };
+
 export const initAwsS3LambdaEdge = async () => {
   const { SDK } = await import("@hot-updater/aws/sdk");
 
