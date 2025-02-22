@@ -29,20 +29,22 @@ export default function Home() {
   });
 
   createEffect(() => {
-    if (open()) return;
+    if (open()) {
+      return;
+    }
     sleep(500).then(() => setSelectedBundleId(null));
   });
 
   const dataForTable = createMemo(() => data.data || []);
-  const [open, setOpen] = createSignal(true);
+  const [isOpen, setIsOpen] = createSignal(true);
 
   const handleClose = () => {
-    setOpen(false);
+    setIsOpen(false);
   };
 
   return (
     <>
-      <Sheet open={open()} onOpenChange={setOpen}>
+      <Sheet open={isOpen()} onOpenChange={setIsOpen}>
         <DataTable
           columns={columns}
           data={dataForTable}
