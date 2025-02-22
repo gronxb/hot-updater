@@ -127,8 +127,7 @@ export const deploy = async (options: DeployOptions) => {
             platform: platform,
           });
           await createZip({
-            filename: "bundle.zip",
-            outDir: taskRef.buildResult.buildPath,
+            outfile: path.join(taskRef.buildResult.buildPath, "bundle.zip"),
             targetDir: taskRef.buildResult.buildPath,
           });
 

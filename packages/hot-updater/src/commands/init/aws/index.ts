@@ -216,20 +216,15 @@ export const deployLambdaEdge = async (
     version: null,
   };
 
-  const ref: {
-    zipFilePath: string | null;
-  } = {
-    zipFilePath: null,
-  };
+  const zipFilePath = path.join(cwd, `${lambdaName}.zip`);
   // 4. p.tasks를 이용해 단계별 인디케이터 표시
   await p.tasks([
     {
       title: "Compressing Lambda code to zip",
       task: async () => {
         try {
-          ref.zipFilePath = await createZip({
-            filename: `${lambdaName}.zip`,
-            outDir: cwd,
+          await createZip({
+            outfile: zipFilePath,
             targetDir: lambdaDir,
           });
         } catch (error) {
@@ -249,7 +244,7 @@ export const deployLambdaEdge = async (
             Runtime: "nodejs20.x",
             Role: lambdaRoleArn,
             Handler: "index.handler",
-            Code: { ZipFile: await fs.readFile(ref.zipFilePath!) },
+            Code: { ZipFile: await fs.readFile(zipFilePath) },
             Description: "Hot Updater Lambda@Edge function",
             Publish: true,
           });
@@ -268,9 +263,10 @@ export const deployLambdaEdge = async (
 
             const updateResp = await lambdaClient.updateFunctionCode({
               FunctionName: lambdaName,
-              ZipFile: await fs.readFile(ref.zipFilePath!),
+              ZipFile: await fs.readFile(zipFilePath),
               Publish: true,
             });
+            void fs.rm(zipFilePath, { force: true });
             functionArn.arn = updateResp.FunctionArn ?? null;
             functionArn.version = updateResp.Version ?? "1";
           } else {
