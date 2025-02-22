@@ -503,8 +503,8 @@ export const initAwsS3LambdaEdge = async () => {
   const mode = await p.select({
     message: "Select the mode to login to AWS",
     options: [
-      { label: "AWS SSO Login", value: "sso" },
       { label: "AWS Access Key ID & Secret Access Key", value: "account" },
+      { label: "AWS SSO Login", value: "sso" },
     ],
   });
   if (p.isCancel(mode)) process.exit(1);
@@ -692,7 +692,7 @@ export const initAwsS3LambdaEdge = async () => {
   );
 
   p.log.message(
-    `Next step: ${link("https://your-aws-integration-guide-url.com")}`,
+    `Next step: ${link("https://gronxb.github.io/hot-updater/guide/providers/3_aws-s3-lambda-edge.html")}`,
   );
   p.log.success("Done! 🎉");
 };
