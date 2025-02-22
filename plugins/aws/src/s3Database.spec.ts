@@ -11,6 +11,8 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { s3Database } from "./s3Database";
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const DEFAULT_BUNDLE = {
   fileUrl: "http://example.com/bundle.zip",
   fileHash: "hash",
@@ -34,7 +36,6 @@ const createBundleJson = (
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
 
-// Mock Upload from @aws-sdk/lib-storage to record to fakeStore when uploading to S3
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
     Upload: class {
@@ -45,17 +46,18 @@ vi.mock("@aws-sdk/lib-storage", () => {
         this.params = params;
       }
       async done() {
+        await delay(10);
         fakeStore[this.params.Key] = this.params.Body;
       }
     },
   };
 });
 
-// Mock S3Client.send to operate based on fakeStore
 beforeEach(() => {
   fakeStore = {};
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
+      await delay(5);
       if (command instanceof ListObjectsV2Command) {
         const prefix = command.input.Prefix ?? "";
         const keys = Object.keys(fakeStore).filter((key) =>
@@ -69,19 +71,18 @@ beforeEach(() => {
       if (command instanceof GetObjectCommand) {
         const key = command.input.Key;
         if (key && fakeStore[key] !== undefined) {
-          // Make Body stream return a Buffer
+          await delay(7);
           return { Body: Readable.from([Buffer.from(fakeStore[key])]) };
         }
         const error = new Error("NoSuchKey");
-        // Set prototype to make it an instance of S3 SDK's NoSuchKey error
         Object.setPrototypeOf(error, NoSuchKey.prototype);
         throw error;
       }
       if (command.constructor.name === "DeleteObjectCommand") {
-        // Handle DeleteObjectCommand: delete key from fakeStore
         const key = command.input.Key;
+        await delay(10);
         delete fakeStore[key];
-        return {}; // Return empty response
+        return {};
       }
       throw new Error("Unsupported command in fake S3 client");
     },

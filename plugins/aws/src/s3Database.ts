@@ -161,6 +161,7 @@ export const s3Database =
         const changedBundlesByKey: Record<string, Bundle[]> = {};
         const removalsByKey: Record<string, string[]> = {};
 
+        // 스냅샷을 기반으로 변경된 번들을 그룹화
         for (const bundle of bundles) {
           if (changedIds.has(bundle.id)) {
             if (bundle._oldUpdateJsonKey) {
@@ -181,21 +182,18 @@ export const s3Database =
           }
         }
 
-        // Execute tasks in parallel
-        await Promise.all([
-          // 1) Remove bundles to be moved from existing files
-          ...Object.keys(removalsByKey).map((oldKey) =>
-            processRemovals(oldKey, removalsByKey[oldKey]),
-          ),
-          // 2) Merge changed bundles into respective update.json files
-          ...Object.keys(changedBundlesByKey).map((key) =>
-            mergeChangedBundles(key, changedBundlesByKey[key]),
-          ),
-          // 3) Update target-app-versions for each platform
-          ...PLATFORMS.map((platform) =>
-            updateTargetVersionsForPlatform(platform),
-          ),
-        ]);
+        // 순차적으로 S3 업데이트 실행 (동시성 문제 해결)
+        for (const oldKey of Object.keys(removalsByKey)) {
+          await processRemovals(oldKey, removalsByKey[oldKey]);
+        }
+
+        for (const key of Object.keys(changedBundlesByKey)) {
+          await mergeChangedBundles(key, changedBundlesByKey[key]);
+        }
+
+        for (const platform of PLATFORMS) {
+          await updateTargetVersionsForPlatform(platform);
+        }
 
         changedIds.clear();
         hooks?.onDatabaseUpdated?.();
@@ -240,7 +238,7 @@ export const s3Database =
             ({ _updateJsonKey, _oldUpdateJsonKey, ...bundle }) => bundle,
           );
         }
-        // Load update.json files for each platform in parallel
+
         const platformPromises = PLATFORMS.map(async (platform) => {
           const keys = await listUpdateJsonKeys(platform);
           const filePromises = keys.map(async (key) => {
