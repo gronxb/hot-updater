@@ -219,6 +219,7 @@ export const deployLambdaEdge = async (
 
           functionArn.arn = createResp.FunctionArn ?? null;
           functionArn.version = createResp.Version ?? "1";
+          return `Created Lambda "${lambdaName}" function`;
         } catch (error) {
           // Update if function already exists
           if (
@@ -246,6 +247,7 @@ export const deployLambdaEdge = async (
             }
             throw error;
           }
+          return `Updated Lambda "${lambdaName}" function`;
         }
       },
     },
