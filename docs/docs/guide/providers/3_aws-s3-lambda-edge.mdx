@@ -1,3 +1,449 @@
+import { Tab, Tabs } from 'rspress/theme';
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
 # AWS S3 Storage + Lambda@Edge Function
 
-Coming Soon
+This guide walks you through setting up `hot-updater` with AWS S3 Storage and Lambda@Edge Function in a React Native project. You'll configure the environment, install required packages, and initialize AWS for seamless updates.
+
+<video src={normalizeImagePath("/guide/getting-started/init-aws.mov")} controls autoPlay loop muted />
+
+## Prerequisites
+
+Before you begin, make sure the following are ready:
+- **Node.js**: Version 20 or later is recommended.
+- **AWS Account**: Sign up at [AWS](https://aws.amazon.com) if you don't have one.
+- **AWS CLI**: Install the AWS CLI and configure your credentials.
+
+## Required AWS Permissions
+
+Hot Updater requires specific AWS IAM permissions for setup and ongoing usage:
+
+### 1. Initialization (One-Time Setup)
+
+Used for `hot-updater init`:
+* `AmazonS3FullAccess`: Create and read S3 buckets.
+* `AWSLambda_FullAccess`: Create and update Lambda functions.
+* `CloudFrontFullAccess`: Manage CloudFront distributions.
+* `IAMFullAccess`: Create IAM roles for Lambda@Edge.
+
+### 2. Ongoing Usage
+
+Used for `hot-updater deploy` and `hot-updater console`:
+* `AmazonS3FullAccess`: Manage bundles and metadata in the S3 bucket.
+
+For ongoing usage, create a separate access token with limited permissions.
+
+## Step 1: Install Required Packages
+
+Run the following command to install dependencies:
+
+<PackageManagerTabs command={
+  {
+    npm: "npm install hot-updater --save-dev",
+    pnpm: "pnpm add hot-updater -D",
+    yarn: "yarn add hot-updater -D",
+  }
+} />
+
+## Step 2: Configure AWS
+
+Run the initialization script to start the interactive setup process. Use the following command with your preferred package manager:
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater init",
+    pnpm: "pnpm hot-updater init",
+    yarn: "yarn hot-updater init",
+  }
+} />
+
+::: details {title="Interactive Setup Steps"}
+
+1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Metro for React Native).
+2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
+During the setup, you will be prompted to:
+1. **Choose AWS Login Method**: Select between AWS Access Key or SSO login
+2. **Enter AWS Credentials**: Input your AWS credentials with required permissions
+3. **Select Region**: Choose an AWS region for your S3 bucket
+4. **Select S3 Bucket**: Choose an existing bucket or create a new one
+5. **Create IAM Role**: Create or select an IAM role for Lambda@Edge
+6. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
+7. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
+
+:::
+
+Once the setup is complete, a `.env` file will be generated containing the following keys:
+
+```
+# This key was generated via SSO login and may expire. Update it with an S3FullAccess-only key.
+HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
+# This key was generated via SSO login and may expire. Update it with an S3FullAccess-only key.
+HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
+
+HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
+HOT_UPDATER_S3_REGION=your-region
+```
+
+
+
+::: warning
+
+If you’re **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you’re still concerned,
+
+please refer to the article below for more details:
+[Security](../security.mdx#plugin-token-protection)
+:::
+
+
+## Step 3: Generated Configurations
+During the initialization process, the following file is automatically generated:
+
+- `hot-updater.config.ts`: This file contains the configuration settings for integrating AWS with your project.
+
+```ts title=hot-updater.config.ts
+
+import { metro } from "@hot-updater/metro";
+import { s3Storage, s3Database } from "@hot-updater/aws";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+const options = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: {
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+  },
+};
+
+export default defineConfig({
+  build: metro({ enableHermes: true }),
+  storage: s3Storage(options),
+  database: s3Database(options),
+});
+```
+
+## Step 4: Change `.env` file (Optional)
+
+By this point, the .env file should already be created. The token inside was generated when you ran the `hot-updater init` command.
+
+The token may have excessive permissions due to infrastructure setup or expire if SSO was used.
+
+To avoid issues, update it with a permanent token with `S3FullAccess` only.
+
+```ts title=.env
+HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
+HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
+```
+
+
+## Step 5: Add HotUpdater to Your Project
+
+The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
+
+```tsx title=App.tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({ 
+  source: "https://<your-distribution-id>.cloudfront.net/api/check-update", // [!code ++]
+  requestHeaders: {
+    // if you want to use the request headers, you can add them here
+  },
+  fallbackComponent: ({ progress, status }) => (
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        borderRadius: 10,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      {/* You can put a splash image here. */}
+
+      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+        {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+      </Text>
+      {progress > 0 ? (
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {Math.round(progress * 100)}%
+        </Text>
+      ) : null}
+    </View>
+  ),
+})(App);
+
+```
+
+## Step 6: Add Babel Plugin to Your Project
+
+In this step, you will configure Babel to set the bundle ID at build time. This is necessary for integrating the `hot-updater` plugin into your project.
+
+Add the following to your `babel.config.js` file:
+
+```js title=babel.config.js
+module.exports = {
+  presets: ['module:@react-native/babel-preset'],
+  plugins: [
+    'hot-updater/babel-plugin', // [!code ++]
+  ],
+};
+```
+
+## Step 7: Add Native Code
+
+To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
+
+### Android
+
+<Tabs>
+    <Tab label="Kotlin">
+```kt title=android/app/src/main/java/com/<your-app-name>/MainApplication.kt
+package com.hotupdaterexample
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeHost
+import com.facebook.react.ReactPackage
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.facebook.react.defaults.DefaultReactNativeHost
+import com.facebook.react.soloader.OpenSourceMergedSoMapping
+import com.facebook.soloader.SoLoader
+import com.hotupdater.HotUpdater // [!code ++]
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactNativeHost: ReactNativeHost =
+      object : DefaultReactNativeHost(this) {
+        override fun getPackages(): List<ReactPackage> =
+            PackageList(this).packages.apply {
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+            }
+
+        override fun getJSMainModuleName(): String = "index"
+
+        override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+
+        override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+        override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+
+        override fun getJSBundleFile(): String? {  // [!code ++]
+          return HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
+        }  // [!code ++]
+      }
+
+  override val reactHost: ReactHost
+    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+
+  override fun onCreate() {
+    super.onCreate()
+    SoLoader.init(this, OpenSourceMergedSoMapping)
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      load()
+    }
+  }
+}
+```
+
+</Tab>
+    <Tab label="Java">
+  ```java title=android/app/build.gradle
+    buildscript {
+        ext {
+            buildToolsVersion = "33.0.0"
+            minSdkVersion = 21
+            compileSdkVersion = 33
+            targetSdkVersion = 33
+
+            // We use NDK 23 which has both M1 support and is the side-by-side NDK version from AGP.
+            ndkVersion = "23.1.7779620"
+            kotlinVersion = "1.9.24" // [!code ++]
+        }
+        repositories {
+            google()
+            mavenCentral()
+        }
+        dependencies {
+            classpath("com.android.tools.build:gradle:7.3.1")
+            classpath("com.facebook.react:react-native-gradle-plugin")
+            classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}") // [!code ++]
+        }
+    }
+  ```
+  ```java title=android/app/src/main/java/com/<your-app-name>/MainApplication.java
+
+package com.hotupdaterexample;
+
+import android.app.Application;
+import com.facebook.react.PackageList;
+import com.facebook.react.ReactApplication;
+import com.facebook.react.ReactNativeHost;
+import com.facebook.react.ReactPackage;
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint;
+import com.facebook.react.defaults.DefaultReactNativeHost;
+import com.facebook.soloader.SoLoader;
+import java.util.List;
+import com.hotupdater.HotUpdater;  // [!code ++]
+
+public class MainApplication extends Application implements ReactApplication {
+
+  private final ReactNativeHost mReactNativeHost =
+      new DefaultReactNativeHost(this) {
+        @Override
+        public boolean getUseDeveloperSupport() {
+          return BuildConfig.DEBUG;
+        }
+
+        @Override
+        protected List<ReactPackage> getPackages() {
+          @SuppressWarnings("UnnecessaryLocalVariable")
+          List<ReactPackage> packages = new PackageList(this).getPackages();
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          return packages;
+        }
+
+        @Override
+        protected String getJSMainModuleName() {
+          return "index";
+        }
+        
+        @Override // [!code ++]
+        protected String getJSBundleFile() {  // [!code ++]
+            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  // [!code ++]
+        }  // [!code ++]
+
+        @Override
+        protected boolean isNewArchEnabled() {
+          return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED;
+        }
+
+        @Override
+        protected Boolean isHermesEnabled() {
+          return BuildConfig.IS_HERMES_ENABLED;
+        }
+      };
+
+  @Override
+  public ReactNativeHost getReactNativeHost() {
+    return mReactNativeHost;
+  }
+
+  @Override
+  public void onCreate() {
+    super.onCreate();
+    SoLoader.init(this, /* native exopackage */ false);
+    
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      DefaultNewArchitectureEntryPoint.load();
+    }
+    ReactNativeFlipper.initializeFlipper(this, getReactNativeHost().getReactInstanceManager());
+  }
+}
+```
+  </Tab>
+</Tabs>
+
+
+### iOS
+
+<Tabs>
+    <Tab label="Objective-C">
+```objc title=ios/<your-app-name>/AppDelegate.mm
+#import "AppDelegate.h"
+#import <HotUpdater/HotUpdater.h> // [!code ++]
+#import <React/RCTBundleURLProvider.h>
+
+@implementation AppDelegate
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+  self.moduleName = @"HotUpdaterExample";
+  // You can add your custom initial props in the dictionary below.
+  // They will be passed down to the ViewController used by React Native.
+  self.initialProps = @{};
+
+  return [super application:application didFinishLaunchingWithOptions:launchOptions];
+}
+
+- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
+{
+  return [self bundleURL];
+}
+
+- (NSURL *)bundleURL
+{
+#if DEBUG // [!code --]
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"]; // [!code --]
+#else // [!code --]
+  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
+#endif // [!code --]
+  return [HotUpdater bundleURL]; // [!code ++]
+}
+
+@end
+```
+</Tab>
+<Tab label="Swift">
+```swift title=ios/<your-app-name>/AppDelegate.swift
+import UIKit
+import React
+import React_RCTAppDelegate
+import ReactAppDependencyProvider
+import HotUpdater // [!code ++]
+
+@main
+class AppDelegate: RCTAppDelegate {
+  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    self.moduleName = "HotUpdaterExample"
+    self.dependencyProvider = RCTAppDependencyProvider()
+
+    // You can add your custom initial props in the dictionary below.
+    // They will be passed down to the ViewController used by React Native.
+    self.initialProps = [:]
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    self.bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+#if DEBUG // [!code --]
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index") // [!code --]
+#else // [!code --]
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+#endif // [!code --]
+    HotUpdater.bundleURL() // [!code ++]
+  }
+}
+
+```
+</Tab>
+</Tabs>
+
+
+## Verifying the Setup
+1. Check your AWS dashboard for the newly created bucket, Lambda@Edge function, and CloudFront distribution.
+2. Test the HotUpdater integration in your React Native app.
+
+
+You're all set! 🎉 Start using hot-updater with AWS for seamless updates in your React Native app.
+
+This document simplifies the initialization process, making it easy for developers to get started with minimal friction.

@@ -909,7 +909,7 @@ export const initAwsS3LambdaEdge = async () => {
   );
 
   p.log.message(
-    `Next step: ${link("https://gronxb.github.io/hot-updater/guide/providers/3_aws-s3-lambda-edge.html")}`,
+    `Next step: ${link("https://gronxb.github.io/hot-updater/guide/providers/3_aws-s3-lambda-edge.html#step-4-changeenv-file-optional")}`,
   );
   p.log.success("Done! 🎉");
 };
