@@ -2,6 +2,7 @@ import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { mockClient } from "aws-sdk-client-mock";
+import { groupBy } from "es-toolkit";
 import { beforeEach, describe } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromS3 } from "./getUpdateInfo";
 
@@ -14,7 +15,10 @@ const createGetUpdateInfo =
     { appVersion, bundleId, platform }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     if (bundles.length > 0) {
-      // Mock S3 responses for target-app-versions.json
+      // target-app-versions.json 모킹
+      const targetVersions = [
+        ...new Set(bundles.map((b) => b.targetAppVersion)),
+      ];
       s3Mock
         .on(GetObjectCommand, {
           Bucket: bucketName,
@@ -23,25 +27,14 @@ const createGetUpdateInfo =
         .resolves({
           Body: {
             transformToString: () =>
-              Promise.resolve(
-                JSON.stringify(bundles.map((b) => b.targetAppVersion)),
-              ),
+              Promise.resolve(JSON.stringify(targetVersions)),
           },
         } as any);
 
-      // Mock S3 responses for each bundle's update.json
-      const bundlesByVersion = bundles.reduce(
-        (acc, bundle) => {
-          const version = bundle.targetAppVersion;
-          if (!acc[version]) {
-            acc[version] = [];
-          }
-          acc[version].push(bundle);
-          return acc;
-        },
-        {} as Record<string, Bundle[]>,
-      );
+      // 각 버전별 update.json 모킹
+      const bundlesByVersion = groupBy(bundles, (b) => b.targetAppVersion);
 
+      // 각 버전별로 update.json 응답 설정
       for (const [version, versionBundles] of Object.entries(
         bundlesByVersion,
       )) {
@@ -58,12 +51,8 @@ const createGetUpdateInfo =
           } as any);
       }
     } else {
-      // When no bundles, mock empty responses
-      s3Mock.on(GetObjectCommand).resolves({
-        Body: {
-          transformToString: () => Promise.resolve("[]"),
-        },
-      } as any);
+      // 번들이 없는 경우 NoSuchKey 에러 반환
+      s3Mock.on(GetObjectCommand).rejects(new Error("NoSuchKey"));
     }
 
     return getUpdateInfoFromS3(s3, bucketName, {

@@ -14,11 +14,8 @@ const getS3Json = async (s3: S3Client, bucket: string, key: string) => {
     }
     const jsonString = await Body.transformToString();
     return JSON.parse(jsonString);
-  } catch (error) {
-    if (error instanceof Error && error.name === "NoSuchKey") {
-      return null;
-    }
-    throw error;
+  } catch {
+    return null;
   }
 };
 
