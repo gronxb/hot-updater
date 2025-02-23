@@ -37,17 +37,11 @@ export const getUpdateInfo = async (
     bucketName,
     `${platform}/target-app-versions.json`,
   );
-  if (!targetAppVersions) {
-    return null;
-  }
 
   const matchingVersions = filterCompatibleAppVersions(
-    targetAppVersions,
+    targetAppVersions ?? [],
     appVersion,
   );
-  if (!matchingVersions?.length) {
-    return null;
-  }
 
   const results = await Promise.allSettled(
     matchingVersions.map((targetAppVersion) =>
