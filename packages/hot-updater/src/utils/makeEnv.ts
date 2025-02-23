@@ -1,50 +1,87 @@
 import fs from "fs/promises";
 
+type EnvVarValue = string | { comment: string; value: string };
+
 export const makeEnv = async (
-  newEnvVars: Record<string, string>,
+  newEnvVars: Record<string, EnvVarValue>,
   filePath = ".env",
 ): Promise<string> => {
   try {
-    // Read the existing .env file or initialize with an empty string
+    // Read the existing .env file or initialize with an empty string if not found
     const existingContent = await fs
       .readFile(filePath, "utf-8")
       .catch(() => "");
-
-    // Parse the existing content while preserving comments and formatting
-    const lines = existingContent.split("\n");
-    const envVars = new Map<string, string>();
+    // If file is empty, use an empty array to avoid an initial empty line.
+    const lines = existingContent ? existingContent.split("\n") : [];
+    const processedKeys = new Set<string>();
     const updatedLines: string[] = [];
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? "";
       const trimmedLine = line.trim();
 
-      if (!trimmedLine || trimmedLine.startsWith("#")) {
-        // Preserve empty lines and comments
+      // Handle empty lines: preserve them as-is.
+      if (trimmedLine === "") {
         updatedLines.push(line);
+        continue;
+      }
+
+      // Handle comment lines
+      if (trimmedLine.startsWith("#")) {
+        if (i + 1 < lines.length) {
+          const nextLine = (lines[i + 1] ?? "").trim();
+          if (nextLine && !nextLine.startsWith("#") && nextLine.includes("=")) {
+            const [possibleKey = ""] = nextLine.split("=");
+            if (
+              Object.prototype.hasOwnProperty.call(
+                newEnvVars,
+                possibleKey.trim(),
+              )
+            ) {
+              // Skip the current comment line if the following key is being updated
+              continue;
+            }
+          }
+        }
+        updatedLines.push(line);
+        continue;
+      }
+
+      // Process lines in key=value format
+      if (trimmedLine.includes("=")) {
+        const [keyPart] = line.split("=");
+        const key = keyPart?.trim() ?? "";
+        if (Object.prototype.hasOwnProperty.call(newEnvVars, key)) {
+          processedKeys.add(key);
+          const newValue = newEnvVars[key];
+          if (typeof newValue === "object" && newValue !== null) {
+            updatedLines.push(`# ${newValue.comment}`);
+            updatedLines.push(`${key}=${newValue.value}`);
+          } else {
+            updatedLines.push(`${key}=${newValue}`);
+          }
+        } else {
+          updatedLines.push(line);
+        }
       } else {
-        const [key, ...rest] = line.split("=");
-        const value = rest.join("=");
-        if (key) {
-          const trimmedKey = key.trim();
-          envVars.set(trimmedKey, value?.trim() ?? "");
-          // Add the updated variable or preserve existing if not updated
-          updatedLines.push(`${trimmedKey}=${newEnvVars[trimmedKey] ?? value}`);
+        updatedLines.push(line);
+      }
+    }
+
+    // Append new variables that do not exist in the file
+    for (const [key, val] of Object.entries(newEnvVars)) {
+      if (!processedKeys.has(key)) {
+        if (typeof val === "object" && val !== null) {
+          updatedLines.push(`# ${val.comment}`);
+          updatedLines.push(`${key}=${val.value}`);
+        } else {
+          updatedLines.push(`${key}=${val}`);
         }
       }
     }
 
-    // Append new variables that don't already exist
-    for (const [key, value] of Object.entries(newEnvVars)) {
-      if (!envVars.has(key)) {
-        updatedLines.push(`${key}=${value}`);
-      }
-    }
-
     const updatedContent = updatedLines.join("\n");
-
-    // Write the updated content back to the .env file
     await fs.writeFile(filePath, updatedContent, "utf-8");
-
     return updatedContent;
   } catch (error) {
     console.error("Error while updating .env file:", error);
