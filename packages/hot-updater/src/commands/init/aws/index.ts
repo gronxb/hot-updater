@@ -339,10 +339,8 @@ export const createCloudFrontDistribution = async (
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
 
-  // Domain for S3 bucket
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
-  // 1. Filter existing CloudFront distributions matching S3 domain
   const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
   try {
     const listResp = await cloudfrontClient.listDistributions({});
@@ -362,10 +360,8 @@ export const createCloudFrontDistribution = async (
 
   let selectedDistribution: { Id: string; DomainName: string } | null = null;
   if (matchingDistributions.length === 1) {
-    // Select directly if only one exists
     selectedDistribution = matchingDistributions[0] ?? null;
   } else if (matchingDistributions.length > 1) {
-    // Let user select if multiple exist
     const selectedDistributionStr = await p.select({
       message:
         "Multiple CloudFront distributions found. Please select one to use:",
@@ -379,13 +375,80 @@ export const createCloudFrontDistribution = async (
     }
     selectedDistribution = JSON.parse(selectedDistributionStr);
   }
-
+  // Apply newly deployed Lambda ARN
   if (selectedDistribution) {
-    // Process cache invalidation for selected distribution
     p.log.success(
-      `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}. Processing cache invalidation.`,
+      `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
     );
     try {
+      const { DistributionConfig, ETag } =
+        await cloudfrontClient.getDistributionConfig({
+          Id: selectedDistribution.Id,
+        });
+      let updateRequired = false;
+      let hasOriginRequest = false;
+
+      if (!DistributionConfig?.DefaultCacheBehavior) {
+        throw new Error("Distribution config or default behavior is missing");
+      }
+
+      const defaultBehavior = DistributionConfig.DefaultCacheBehavior;
+      const lambdaAssociations = defaultBehavior.LambdaFunctionAssociations;
+
+      if (
+        lambdaAssociations?.Quantity &&
+        lambdaAssociations.Quantity > 0 &&
+        lambdaAssociations.Items
+      ) {
+        for (const [index, assoc] of lambdaAssociations.Items.entries()) {
+          if (assoc.EventType === "origin-request") {
+            hasOriginRequest = true;
+            if (
+              assoc.LambdaFunctionARN !== functionArn &&
+              lambdaAssociations.Items[index]
+            ) {
+              p.log.info(
+                `Updating Lambda association from ${assoc.LambdaFunctionARN} to ${functionArn}`,
+              );
+              lambdaAssociations.Items[index].LambdaFunctionARN = functionArn;
+              updateRequired = true;
+            }
+          }
+        }
+      }
+
+      if (!hasOriginRequest) {
+        updateRequired = true;
+        if (!defaultBehavior.LambdaFunctionAssociations) {
+          defaultBehavior.LambdaFunctionAssociations = {
+            Quantity: 0,
+            Items: [],
+          };
+        }
+
+        const associations = defaultBehavior.LambdaFunctionAssociations;
+        associations.Items = [];
+        associations.Items.push({
+          EventType: "origin-request",
+          LambdaFunctionARN: functionArn,
+        });
+        associations.Quantity = 1;
+      }
+
+      if (updateRequired) {
+        await cloudfrontClient.updateDistribution({
+          Id: selectedDistribution.Id,
+          IfMatch: ETag,
+          DistributionConfig,
+        });
+        p.log.success(
+          "CloudFront distribution updated with new Lambda function ARN.",
+        );
+      } else {
+        p.log.info(
+          "CloudFront distribution already has the correct Lambda function association.",
+        );
+      }
       await cloudfrontClient.createInvalidation({
         DistributionId: selectedDistribution.Id,
         InvalidationBatch: {
@@ -397,21 +460,20 @@ export const createCloudFrontDistribution = async (
         },
       });
       p.log.success("Cache invalidation request completed.");
-    } catch (error) {
-      console.error(
-        `CloudFront invalidation request failed: ${
-          error instanceof Error ? error.message : String(error)
+      return {
+        distributionId: selectedDistribution.Id,
+        distributionDomain: selectedDistribution.DomainName,
+      };
+    } catch (err) {
+      p.log.error(
+        `Failed to update CloudFront distribution: ${
+          err instanceof Error ? err.message : String(err)
         }`,
       );
-      throw error;
+      throw err;
     }
-    return {
-      distributionId: selectedDistribution.Id,
-      distributionDomain: selectedDistribution.DomainName,
-    };
   }
 
-  // 2. Create new CloudFront distribution if no match found
   const distributionConfig: DistributionConfig = {
     CallerReference: dayjs().format(),
     Comment: "Hot Updater CloudFront distribution",
@@ -433,7 +495,7 @@ export const createCloudFrontDistribution = async (
         Quantity: 1,
         Items: [
           {
-            EventType: "viewer-request",
+            EventType: "origin-request",
             LambdaFunctionARN: functionArn,
           },
         ],
@@ -491,10 +553,9 @@ export const createCloudFrontDistribution = async (
         },
       },
     ]);
-
     return { distributionId, distributionDomain };
   } catch (error) {
-    console.error(
+    p.log.error(
       `CloudFront distribution creation failed: ${
         error instanceof Error ? error.message : String(error)
       }`,
