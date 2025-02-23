@@ -161,7 +161,7 @@ export const s3Database =
         const changedBundlesByKey: Record<string, Bundle[]> = {};
         const removalsByKey: Record<string, string[]> = {};
 
-        // 스냅샷을 기반으로 변경된 번들을 그룹화
+        // Group changed bundles based on snapshot
         for (const bundle of bundles) {
           if (changedIds.has(bundle.id)) {
             if (bundle._oldUpdateJsonKey) {
@@ -182,7 +182,7 @@ export const s3Database =
           }
         }
 
-        // 순차적으로 S3 업데이트 실행 (동시성 문제 해결)
+        // Execute S3 updates sequentially (resolve concurrency issues)
         for (const oldKey of Object.keys(removalsByKey)) {
           await processRemovals(oldKey, removalsByKey[oldKey]);
         }
