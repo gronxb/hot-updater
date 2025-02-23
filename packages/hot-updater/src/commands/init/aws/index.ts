@@ -262,7 +262,6 @@ export const deployLambdaEdge = async (
               ZipFile: await fs.readFile(zipFilePath),
               Publish: true,
             });
-            void fs.rm(zipFilePath, { force: true });
             functionArn.arn = updateResp.FunctionArn || null;
             functionArn.version = updateResp.Version || "1";
           } else {
@@ -275,6 +274,8 @@ export const deployLambdaEdge = async (
             throw error;
           }
           return `Updated Lambda "${lambdaName}" function`;
+        } finally {
+          void fs.rm(zipFilePath, { force: true });
         }
       },
     },
