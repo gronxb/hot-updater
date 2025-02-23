@@ -3,13 +3,16 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { rpc } from "./rpc";
 
-const relativePathToScript = path.relative(process.cwd(), __dirname);
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const relativePathToScript = import.meta.env.PROD
+  ? path.relative(process.cwd(), __dirname)
+  : "/";
 
 const app = new Hono()
   .get("/ping", (c) => c.text("pong"))
   .route("/rpc", rpc)
   .use(
-    "/static/*",
+    "/assets/*",
     serveStatic({
       root: relativePathToScript,
     }),

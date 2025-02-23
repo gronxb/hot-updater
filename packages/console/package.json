@@ -17,21 +17,20 @@
     }
   },
   "scripts": {
-    "build": "rsbuild build && rslib build",
+    "build": "vite build --mode client && rslib build",
     "check": "biome check --write",
-    "dev": "rsbuild dev --open",
+    "dev": "vite",
     "format": "biome format --write",
-    "preview": "rsbuild preview",
+    "preview": "vite preview",
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@hono/node-server": "^1.13.4",
     "@hono/valibot-validator": "^0.4.1",
+    "@hono/vite-dev-server": "^0.18.1",
+    "@hot-updater/mock": "0.12.0",
     "@kobalte/core": "^0.13.7",
-    "@rsbuild/core": "^1.1.6",
-    "@rsbuild/plugin-babel": "^1.0.3",
-    "@rsbuild/plugin-solid": "^1.0.4",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.14.10",
     "@tanstack/solid-form": "^0.34.0",
@@ -55,7 +54,10 @@
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.6.3",
-    "valibot": "^0.42.1"
+    "valibot": "^0.42.1",
+    "vite": "^6.1.0",
+    "vite-plugin-solid": "^2.11.1",
+    "vite-tsconfig-paths": "^5.1.4"
   },
   "dependencies": {
     "@hot-updater/core": "0.12.0",
