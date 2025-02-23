@@ -41,7 +41,10 @@ function parseS3Url(url: string) {
 
 async function createPresignedUrl(url: string) {
   const { isS3Url, bucket, key } = parseS3Url(url);
-  if (!isS3Url || !bucket || !key) return url;
+  if (!isS3Url || !bucket || !key) {
+    return url;
+  }
+  // @ts-ignore
   return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: 60,
   });
