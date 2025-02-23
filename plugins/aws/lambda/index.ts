@@ -1,6 +1,7 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { Bundle } from "@hot-updater/core";
 import { filterCompatibleAppVersions, getUpdateInfo } from "@hot-updater/js";
+import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
@@ -117,4 +118,4 @@ app.get("*", async (c) => {
   c.env.callback(null, c.env.request);
 });
 
-export const handler = handle(app);
+export const handler = handle(app) as CloudFrontRequestHandler;
