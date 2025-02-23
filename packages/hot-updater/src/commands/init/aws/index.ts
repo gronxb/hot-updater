@@ -8,6 +8,7 @@ import type {
 } from "@hot-updater/aws/sdk";
 import { getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
+import { merge } from "es-toolkit";
 import fs from "fs/promises";
 import { regionLocationMap } from "./regionLocationMap";
 
@@ -387,19 +388,23 @@ export const createCloudFrontDistribution = async (
         });
       let updateRequired = false;
       let hasOriginRequest = false;
+      if (!DistributionConfig) {
+        throw new Error("Distribution config is missing");
+      }
 
+      let distributionConfig: DistributionConfig = DistributionConfig;
       if (!DistributionConfig?.DefaultCacheBehavior) {
         throw new Error("Distribution config or default behavior is missing");
       }
 
-      const defaultBehavior = DistributionConfig.DefaultCacheBehavior;
-      const lambdaAssociations = defaultBehavior.LambdaFunctionAssociations;
+      const defaultBehavior = distributionConfig.DefaultCacheBehavior;
+      const lambdaAssociations =
+        defaultBehavior?.LambdaFunctionAssociations ?? {
+          Quantity: 0,
+          Items: [],
+        };
 
-      if (
-        lambdaAssociations?.Quantity &&
-        lambdaAssociations.Quantity > 0 &&
-        lambdaAssociations.Items
-      ) {
+      if ((lambdaAssociations.Quantity ?? 0) > 0 && lambdaAssociations.Items) {
         for (const [index, assoc] of lambdaAssociations.Items.entries()) {
           if (assoc.EventType === "origin-request") {
             hasOriginRequest = true;
@@ -410,7 +415,19 @@ export const createCloudFrontDistribution = async (
               p.log.info(
                 `Updating Lambda association from ${assoc.LambdaFunctionARN} to ${functionArn}`,
               );
-              lambdaAssociations.Items[index].LambdaFunctionARN = functionArn;
+              distributionConfig = merge(distributionConfig, {
+                DefaultCacheBehavior: {
+                  LambdaFunctionAssociations: {
+                    Items: [
+                      {
+                        EventType: "origin-request",
+                        LambdaFunctionARN: functionArn,
+                      },
+                    ],
+                    Quantity: 1,
+                  },
+                },
+              });
               updateRequired = true;
             }
           }
@@ -419,27 +436,85 @@ export const createCloudFrontDistribution = async (
 
       if (!hasOriginRequest) {
         updateRequired = true;
-        if (!defaultBehavior.LambdaFunctionAssociations) {
-          defaultBehavior.LambdaFunctionAssociations = {
-            Quantity: 0,
-            Items: [],
-          };
+        if (!defaultBehavior?.LambdaFunctionAssociations) {
+          distributionConfig = merge(distributionConfig, {
+            DefaultCacheBehavior: {
+              LambdaFunctionAssociations: {
+                Quantity: 0,
+                Items: [],
+              },
+            },
+          });
         }
 
-        const associations = defaultBehavior.LambdaFunctionAssociations;
-        associations.Items = [];
-        associations.Items.push({
-          EventType: "origin-request",
-          LambdaFunctionARN: functionArn,
+        distributionConfig = merge(distributionConfig, {
+          DefaultCacheBehavior: {
+            LambdaFunctionAssociations: {
+              Items: [
+                {
+                  EventType: "origin-request",
+                  LambdaFunctionARN: functionArn,
+                },
+              ],
+              Quantity: 1,
+            },
+          },
         });
-        associations.Quantity = 1;
       }
 
       if (updateRequired) {
+        distributionConfig = merge(distributionConfig, {
+          CacheBehaviors: {
+            Quantity: 1,
+            Items: [
+              {
+                PathPattern: "/api/*",
+                TargetOriginId: bucketName,
+                ViewerProtocolPolicy: "redirect-to-https",
+                LambdaFunctionAssociations: {
+                  Quantity: 1,
+                  Items: [
+                    {
+                      EventType: "origin-request",
+                      LambdaFunctionARN: functionArn,
+                    },
+                  ],
+                },
+                MinTTL: 0,
+                DefaultTTL: 0,
+                MaxTTL: 0,
+                Compress: true,
+                SmoothStreaming: false,
+                FieldLevelEncryptionId: "",
+                AllowedMethods: {
+                  Quantity: 3,
+                  Items: ["GET", "HEAD", "OPTIONS"],
+                  CachedMethods: {
+                    Quantity: 2,
+                    Items: ["GET", "HEAD"],
+                  },
+                },
+                ForwardedValues: {
+                  QueryString: false,
+                  Cookies: { Forward: "none" },
+                  Headers: {
+                    Quantity: 3,
+                    Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
+                  },
+                  QueryStringCacheKeys: {
+                    Quantity: 0,
+                    Items: [],
+                  },
+                },
+              },
+            ],
+          },
+        });
+
         await cloudfrontClient.updateDistribution({
           Id: selectedDistribution.Id,
           IfMatch: ETag,
-          DistributionConfig,
+          DistributionConfig: distributionConfig,
         });
         p.log.success(
           "CloudFront distribution updated with new Lambda function ARN.",
@@ -505,6 +580,36 @@ export const createCloudFrontDistribution = async (
         Cookies: { Forward: "none" },
       },
       MinTTL: 0,
+    },
+    CacheBehaviors: {
+      Quantity: 1,
+      Items: [
+        {
+          PathPattern: "/api/*",
+          TargetOriginId: bucketName,
+          ViewerProtocolPolicy: "redirect-to-https",
+          LambdaFunctionAssociations: {
+            Quantity: 1,
+            Items: [
+              {
+                EventType: "origin-request",
+                LambdaFunctionARN: functionArn,
+              },
+            ],
+          },
+          MinTTL: 0,
+          DefaultTTL: 0,
+          MaxTTL: 0,
+          ForwardedValues: {
+            QueryString: false,
+            Cookies: { Forward: "none" },
+            Headers: {
+              Quantity: 3,
+              Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
+            },
+          },
+        },
+      ],
     },
     DefaultRootObject: "index.html",
     ViewerCertificate: { CloudFrontDefaultCertificate: true },

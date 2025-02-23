@@ -74,6 +74,7 @@
     "@types/semver": "^7.5.8",
     "boxen": "^8.0.1",
     "dayjs": "^1.11.13",
+    "es-toolkit": "^1.32.0",
     "execa": "^9.5.2",
     "is-port-reachable": "^4.0.0",
     "jszip": "^3.10.1",
@@ -85,9 +86,9 @@
     "uuidv7": "^1.0.2"
   },
   "peerDependencies": {
+    "@hot-updater/aws": "*",
     "@hot-updater/cloudflare": "*",
-    "@hot-updater/supabase": "*",
-    "@hot-updater/aws": "*"
+    "@hot-updater/supabase": "*"
   },
   "peerDependenciesMeta": {
     "@hot-updater/supabase": {
