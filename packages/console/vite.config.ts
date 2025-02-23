@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import devServer, { defaultOptions } from "@hono/vite-dev-server";
+import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 import tsconfigPaths from "vite-tsconfig-paths";
 
