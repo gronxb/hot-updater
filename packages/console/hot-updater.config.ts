@@ -2,7 +2,7 @@ import { mockDatabase } from "@hot-updater/mock";
 
 export default {
   database: mockDatabase({
-    maxLatency: 700,
+    latency: { min: 500, max: 700 },
     initialBundles: [
       {
         id: "1",

@@ -27,11 +27,11 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
   },
 ];
 
-const DEFAULT_LATENCY: number = 0;
+const DEFAULT_LATENCY = { min: 0, max: 0 };
 
 describe("mockDatabase", () => {
   it("should return a database plugin", async () => {
-    const plugin = mockDatabase({ maxLatency: DEFAULT_LATENCY })({ cwd: "" });
+    const plugin = mockDatabase({ latency: DEFAULT_LATENCY })({ cwd: "" });
 
     const bundles = await plugin.getBundles();
 
@@ -40,7 +40,7 @@ describe("mockDatabase", () => {
 
   it("should return a database plugin with initial bundles", async () => {
     const plugin = mockDatabase({
-      maxLatency: DEFAULT_LATENCY,
+      latency: DEFAULT_LATENCY,
       initialBundles: DEFAULT_BUNDLES_MOCK,
     })({ cwd: "" });
 
@@ -50,7 +50,7 @@ describe("mockDatabase", () => {
   });
 
   it("should append a bundle", async () => {
-    const plugin = mockDatabase({ maxLatency: DEFAULT_LATENCY })({ cwd: "" });
+    const plugin = mockDatabase({ latency: DEFAULT_LATENCY })({ cwd: "" });
 
     await plugin.appendBundle(DEFAULT_BUNDLES_MOCK[0]);
 
@@ -61,7 +61,7 @@ describe("mockDatabase", () => {
 
   it("should update a bundle", async () => {
     const plugin = mockDatabase({
-      maxLatency: DEFAULT_LATENCY,
+      latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     })({ cwd: "" });
 
@@ -81,7 +81,7 @@ describe("mockDatabase", () => {
 
   it("should get bundle by id", async () => {
     const plugin = mockDatabase({
-      maxLatency: DEFAULT_LATENCY,
+      latency: DEFAULT_LATENCY,
       initialBundles: DEFAULT_BUNDLES_MOCK,
     })({ cwd: "" });
 
@@ -92,7 +92,7 @@ describe("mockDatabase", () => {
 
   it("should throw error, if target bundle version not found", async () => {
     const plugin = mockDatabase({
-      maxLatency: DEFAULT_LATENCY,
+      latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     })({ cwd: "" });
 
@@ -105,7 +105,7 @@ describe("mockDatabase", () => {
 
   it("should sort bundles by id", async () => {
     const plugin = mockDatabase({
-      maxLatency: DEFAULT_LATENCY,
+      latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[1], DEFAULT_BUNDLES_MOCK[0]],
     })({ cwd: "" });
 
