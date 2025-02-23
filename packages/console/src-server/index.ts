@@ -18,7 +18,7 @@ const app = new Hono()
     }),
   )
   .get(
-    "/",
+    "*",
     serveStatic({
       root: relativePathToScript,
       path: "index.html",
