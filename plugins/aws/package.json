@@ -40,6 +40,7 @@
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
+    "@aws-sdk/s3-request-presigner": "^3.750.0",
     "@hot-updater/core": "0.9.0",
     "@hot-updater/js": "0.9.0",
     "@types/aws-lambda": "^8.10.147",

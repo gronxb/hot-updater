@@ -1,4 +1,5 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { Bundle } from "@hot-updater/core";
 import { filterCompatibleAppVersions, getUpdateInfo } from "@hot-updater/js";
 import type { CloudFrontRequestHandler } from "aws-lambda";
@@ -12,23 +13,46 @@ const getS3Json = async (bucket: string, key: string) => {
   try {
     const command = new GetObjectCommand({ Bucket: bucket, Key: key });
     const { Body } = await s3.send(command);
-
     if (!Body) {
-      console.warn(`S3 object not found: ${key}`);
       return null;
     }
-
     const jsonString = await Body.transformToString();
     return JSON.parse(jsonString);
   } catch (error) {
-    if ((error as any).name === "NoSuchKey") {
-      console.warn(`No such key: ${key}`);
+    if (error instanceof Error && error.name === "NoSuchKey") {
       return null;
     }
-    console.error(`Failed to get S3 object: ${key}`, error);
     throw error;
   }
 };
+
+function parseS3Url(url: string) {
+  try {
+    const parsedUrl = new URL(url);
+    const { hostname, pathname } = parsedUrl;
+    if (!hostname.includes(".s3.")) return { isS3Url: false };
+    const [bucket] = hostname.split(".s3");
+    const key = pathname.startsWith("/") ? pathname.slice(1) : pathname;
+    return { isS3Url: true, bucket, key };
+  } catch {
+    return { isS3Url: false };
+  }
+}
+
+async function createPresignedUrl(url: string) {
+  const { isS3Url, bucket, key } = parseS3Url(url);
+  if (!isS3Url || !bucket || !key) return url;
+  return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
+    expiresIn: 60,
+  });
+}
+
+async function signUpdateInfoFileUrl(updateInfo: any) {
+  if (updateInfo?.fileUrl) {
+    updateInfo.fileUrl = await createPresignedUrl(updateInfo.fileUrl);
+  }
+  return updateInfo;
+}
 
 type Bindings = {
   callback: Callback;
@@ -39,37 +63,22 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.get("/api/check-update", async (c) => {
   try {
-    const request = c.env.request;
-    const headers = request.headers;
-
+    const { headers, origin } = c.env.request;
     let bucketName: string | undefined;
-    if (request.origin?.s3?.domainName) {
-      const domainName = request.origin.s3.domainName;
+    if (origin?.s3?.domainName) {
+      const domainName = origin.s3.domainName;
       [bucketName] = domainName.split(".s3");
     }
-
     if (!bucketName) {
-      return c.json(
-        {
-          error: "Bucket name not found in request origin.",
-        },
-        500,
-      );
+      return c.json({ error: "Bucket name not found." }, 500);
     }
-
     const bundleId = headers["x-bundle-id"]?.[0]?.value;
     const appPlatform = headers["x-app-platform"]?.[0]?.value as
       | "ios"
       | "android";
     const appVersion = headers["x-app-version"]?.[0]?.value;
-
     if (!bundleId || !appPlatform || !appVersion) {
-      return c.json(
-        {
-          error: "Missing bundleId, appPlatform, or appVersion",
-        },
-        400,
-      );
+      return c.json({ error: "Missing required headers." }, 400);
     }
 
     const targetAppVersions = await getS3Json(
@@ -84,32 +93,30 @@ app.get("/api/check-update", async (c) => {
       targetAppVersions,
       appVersion,
     );
-    if (!matchingVersions || matchingVersions.length === 0) {
+    if (!matchingVersions?.length) {
       return c.json(null);
     }
 
     const results = await Promise.allSettled(
-      matchingVersions.map((version) =>
-        getS3Json(bucketName, `${appPlatform}/${version}/update.json`),
+      matchingVersions.map((v) =>
+        getS3Json(bucketName, `${appPlatform}/${v}/update.json`),
       ),
     );
 
     const bundles = results
       .filter(
-        (result): result is PromiseFulfilledResult<Bundle[]> =>
-          result.status === "fulfilled",
+        (r): r is PromiseFulfilledResult<Bundle[]> => r.status === "fulfilled",
       )
-      .flatMap((result) => result.value ?? []);
+      .flatMap((r) => r.value ?? []);
 
     const updateInfo = await getUpdateInfo(bundles, {
       platform: appPlatform,
       bundleId,
       appVersion,
     });
-
-    return c.json(updateInfo);
-  } catch (error) {
-    console.error("Error in check-update handler:", error);
+    const finalInfo = await signUpdateInfoFileUrl(updateInfo);
+    return c.json(finalInfo);
+  } catch {
     return c.json({ error: "Internal Server Error" }, 500);
   }
 });
