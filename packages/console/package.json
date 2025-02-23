@@ -17,7 +17,7 @@
     }
   },
   "scripts": {
-    "build": "vite build --mode client",
+    "build": "vite build --mode client && rslib build",
     "check": "biome check --write",
     "dev": "vite",
     "format": "biome format --write",
