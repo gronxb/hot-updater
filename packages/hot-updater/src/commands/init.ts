@@ -1,6 +1,7 @@
 import { printBanner } from "@/components/banner";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
+import { initAwsS3LambdaEdge } from "./init/aws";
 import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
 import { initSupabase } from "./init/supabase";
 
@@ -52,6 +53,7 @@ export const init = async () => {
         value: "cloudflare-d1-r2-worker",
         label: "Cloudflare D1 + R2 + Worker",
       },
+      { value: "aws", label: "AWS S3 + Lambda@Edge" },
     ],
   });
 
@@ -79,6 +81,10 @@ export const init = async () => {
     }
     case "cloudflare-d1-r2-worker": {
       await initCloudflareD1R2Worker();
+      break;
+    }
+    case "aws": {
+      await initAwsS3LambdaEdge();
       break;
     }
     default:

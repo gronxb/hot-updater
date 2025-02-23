@@ -3,9 +3,15 @@ import fs from "fs/promises";
 
 import JSZip from "jszip";
 
-export const createZip = async (dirPath: string, filename: string) => {
+export const createZip = async ({
+  outfile,
+  targetDir,
+}: {
+  targetDir: string;
+  outfile: string;
+}) => {
   const zip = new JSZip();
-  await fs.rm(path.join(dirPath, filename), { force: true });
+  await fs.rm(outfile, { force: true });
 
   async function addFiles(dir: string, zipFolder: JSZip) {
     const files = await fs.readdir(dir);
@@ -29,7 +35,7 @@ export const createZip = async (dirPath: string, filename: string) => {
     }
   }
 
-  await addFiles(dirPath, zip);
+  await addFiles(targetDir, zip);
 
   // fix hash
   zip.forEach((_, file) => {
@@ -45,5 +51,6 @@ export const createZip = async (dirPath: string, filename: string) => {
     platform: "UNIX",
   });
 
-  await fs.writeFile(filename, content);
+  await fs.writeFile(outfile, content);
+  return outfile;
 };
