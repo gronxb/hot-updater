@@ -6,6 +6,7 @@ import { groupBy } from "es-toolkit";
 import { beforeEach, describe } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromS3 } from "./getUpdateInfo";
 
+// @ts-expect-error: Type mismatch in aws-sdk-client-mock
 const s3Mock = mockClient(S3Client);
 
 const createGetUpdateInfo =
@@ -15,11 +16,12 @@ const createGetUpdateInfo =
     { appVersion, bundleId, platform }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     if (bundles.length > 0) {
-      // target-app-versions.json 모킹
+      // Mock target-app-versions.json
       const targetVersions = [
         ...new Set(bundles.map((b) => b.targetAppVersion)),
       ];
       s3Mock
+        // @ts-expect-error: Type mismatch in aws-sdk-client-mock
         .on(GetObjectCommand, {
           Bucket: bucketName,
           Key: `${platform}/target-app-versions.json`,
@@ -31,14 +33,16 @@ const createGetUpdateInfo =
           },
         } as any);
 
-      // 각 버전별 update.json 모킹
+      // Mock update.json for each version
       const bundlesByVersion = groupBy(bundles, (b) => b.targetAppVersion);
 
-      // 각 버전별로 update.json 응답 설정
+      // Set update.json response for each version
       for (const [version, versionBundles] of Object.entries(
         bundlesByVersion,
       )) {
         s3Mock
+
+          // @ts-expect-error: Type mismatch in aws-sdk-client-mock
           .on(GetObjectCommand, {
             Bucket: bucketName,
             Key: `${platform}/${version}/update.json`,
@@ -51,7 +55,8 @@ const createGetUpdateInfo =
           } as any);
       }
     } else {
-      // 번들이 없는 경우 NoSuchKey 에러 반환
+      // Return NoSuchKey error when there are no bundles
+      // @ts-expect-error: Type mismatch in aws-sdk-client-mock
       s3Mock.on(GetObjectCommand).rejects(new Error("NoSuchKey"));
     }
 
