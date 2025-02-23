@@ -1,3 +1,13 @@
+## 0.12.2 (2025-02-23)
+
+### 🩹 Fixes
+
+- **aws:** Lambda@Edge ARN version append ([#140](https://github.com/gronxb/hot-updater/pull/140))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.12.1 (2025-02-23)
 
 ### 🚀 Features
