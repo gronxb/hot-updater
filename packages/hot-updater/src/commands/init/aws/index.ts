@@ -315,7 +315,7 @@ export const deployLambdaEdge = async (
 
   // 5. Set Qualified ARN for Lambda@Edge
   //    (In case version is not automatically appended from createFunction result)
-  if (!functionArn.arn.includes(`:${functionArn.version}`)) {
+  if (!functionArn.arn.endsWith(`:${functionArn.version}`)) {
     functionArn.arn = `${functionArn.arn}:${functionArn.version}`;
   }
   p.log.info(`Using Lambda ARN: ${functionArn.arn}`);
