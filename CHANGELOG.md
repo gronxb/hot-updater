@@ -1,3 +1,24 @@
+## 0.12.1 (2025-02-23)
+
+### 🚀 Features
+
+- **aws:** introduce AWS S3 + Lambda@Edge infra ([#85](https://github.com/gronxb/hot-updater/pull/85))
+- **console:** Improve UX by preventing screen flickering ([#133](https://github.com/gronxb/hot-updater/pull/133))
+- **console:** improve sidebar with animation when save ([#137](https://github.com/gronxb/hot-updater/pull/137))
+- **console:** Modify to support HMR by migrating from Rsbuild to Vite ([#138](https://github.com/gronxb/hot-updater/pull/138))
+- **mock:** add delay to api calls ([#139](https://github.com/gronxb/hot-updater/pull/139))
+
+### 🩹 Fixes
+
+- **aws:** rm lambda zip ([b831c37](https://github.com/gronxb/hot-updater/commit/b831c37))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- max.cha @Coreight98
+- Sungyu Kang
+
 ## 0.12.0 (2025-02-21)
 
 ### 🚀 Features
