@@ -45,6 +45,7 @@
     "@hot-updater/js": "0.9.0",
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "^22.13.1",
+    "aws-sdk-client-mock": "^4.1.0",
     "hono": "^4.6.3",
     "mime": "^4.0.4"
   },

@@ -1,30 +1,12 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { Bundle } from "@hot-updater/core";
-import { filterCompatibleAppVersions, getUpdateInfo } from "@hot-updater/js";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
+import { getUpdateInfo } from "./getUpdateInfo";
 
 const s3 = new S3Client();
-
-const getS3Json = async (bucket: string, key: string) => {
-  try {
-    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    const { Body } = await s3.send(command);
-    if (!Body) {
-      return null;
-    }
-    const jsonString = await Body.transformToString();
-    return JSON.parse(jsonString);
-  } catch (error) {
-    if (error instanceof Error && error.name === "NoSuchKey") {
-      return null;
-    }
-    throw error;
-  }
-};
 
 function parseS3Url(url: string) {
   try {
@@ -75,48 +57,26 @@ app.get("/api/check-update", async (c) => {
     if (!bucketName) {
       return c.json({ error: "Bucket name not found." }, 500);
     }
+
     const bundleId = headers["x-bundle-id"]?.[0]?.value;
     const appPlatform = headers["x-app-platform"]?.[0]?.value as
       | "ios"
       | "android";
+
     const appVersion = headers["x-app-version"]?.[0]?.value;
     if (!bundleId || !appPlatform || !appVersion) {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const targetAppVersions = await getS3Json(
-      bucketName,
-      `${appPlatform}/target-app-versions.json`,
-    );
-    if (!targetAppVersions) {
-      return c.json(null);
-    }
-
-    const matchingVersions = filterCompatibleAppVersions(
-      targetAppVersions,
-      appVersion,
-    );
-    if (!matchingVersions?.length) {
-      return c.json(null);
-    }
-
-    const results = await Promise.allSettled(
-      matchingVersions.map((v) =>
-        getS3Json(bucketName, `${appPlatform}/${v}/update.json`),
-      ),
-    );
-
-    const bundles = results
-      .filter(
-        (r): r is PromiseFulfilledResult<Bundle[]> => r.status === "fulfilled",
-      )
-      .flatMap((r) => r.value ?? []);
-
-    const updateInfo = await getUpdateInfo(bundles, {
+    const updateInfo = await getUpdateInfo(s3, bucketName, {
       platform: appPlatform,
       bundleId,
       appVersion,
     });
+    if (!updateInfo) {
+      return c.json(null);
+    }
+
     const finalInfo = await signUpdateInfoFileUrl(updateInfo);
     return c.json(finalInfo);
   } catch {
