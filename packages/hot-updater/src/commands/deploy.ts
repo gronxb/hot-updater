@@ -30,12 +30,7 @@ export interface DeployOptions {
 
 export const deploy = async (options: DeployOptions) => {
   printBanner();
-
-  const config = await loadConfig();
-  if (!config) {
-    console.error("No config found. Please run `hot-updater init` first.");
-    process.exit(1);
-  }
+  
   const cwd = getCwd();
 
   const [gitCommitHash, gitMessage] = await Promise.all([
@@ -60,6 +55,12 @@ export const deploy = async (options: DeployOptions) => {
     return;
   }
 
+  const config = await loadConfig(platform);
+  if (!config) {
+    console.error("No config found. Please run `code-updater init` first.");
+    process.exit(1);
+  }
+  
   const defaultTargetAppVersion =
     (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
 
