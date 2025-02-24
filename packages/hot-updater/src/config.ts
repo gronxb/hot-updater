@@ -1,8 +1,4 @@
-import type { Config, Platform } from "@hot-updater/plugin-core";
-
-export interface HotUpdaterConfigOptions {
-  platform: Platform | "console";
-}
+import type { Config, HotUpdaterConfigOptions } from "@hot-updater/plugin-core";
 
 export const defineConfig = async (
   config:
