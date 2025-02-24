@@ -55,7 +55,7 @@ export const deploy = async (options: DeployOptions) => {
     return;
   }
 
-  const config = await loadConfig({ platform: platform });
+  const config = await loadConfig({ platform });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
