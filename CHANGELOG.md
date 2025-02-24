@@ -1,3 +1,13 @@
+## 0.12.3 (2025-02-24)
+
+### 🚀 Features
+
+- **config:** platform injected to config ([#143](https://github.com/gronxb/hot-updater/pull/143))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.12.2 (2025-02-23)
 
 ### 🩹 Fixes
