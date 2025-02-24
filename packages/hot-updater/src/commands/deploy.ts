@@ -30,7 +30,7 @@ export interface DeployOptions {
 
 export const deploy = async (options: DeployOptions) => {
   printBanner();
-  
+
   const cwd = getCwd();
 
   const [gitCommitHash, gitMessage] = await Promise.all([
@@ -60,7 +60,7 @@ export const deploy = async (options: DeployOptions) => {
     console.error("No config found. Please run `code-updater init` first.");
     process.exit(1);
   }
-  
+
   const defaultTargetAppVersion =
     (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
 
