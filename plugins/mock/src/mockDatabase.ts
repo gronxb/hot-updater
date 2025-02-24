@@ -36,11 +36,11 @@ export const mockDatabase =
       },
       async getBundleById(bundleId: string) {
         await sleep(minMax(latency.min, latency.max));
-        return (await bundles.find((b) => b.id === bundleId)) ?? null;
+        return bundles.find((b) => b.id === bundleId) ?? null;
       },
       async getBundles() {
         await sleep(minMax(latency.min, latency.max));
-        return await bundles.sort((a, b) => a.id.localeCompare(b.id));
+        return bundles.sort((a, b) => a.id.localeCompare(b.id));
       },
     };
   };
