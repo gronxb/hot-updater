@@ -1,9 +1,15 @@
 import { cosmiconfig } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { getCwd } from "./cwd.js";
-import type { Config } from "./types.js";
+import type { Config, Platform } from "./types.js";
 
-export const loadConfig = async (): Promise<Config | null> => {
+export interface HotUpdaterConfigOptions {
+  platform: Platform | "console";
+}
+
+export const loadConfig = async (
+  options: HotUpdaterConfigOptions,
+): Promise<Config | null> => {
   const result = await cosmiconfig("hot-updater", {
     stopDir: getCwd(),
     searchPlaces: [
@@ -24,6 +30,10 @@ export const loadConfig = async (): Promise<Config | null> => {
 
   if (!result?.config) {
     return null;
+  }
+
+  if (typeof result.config === "function") {
+    return await result.config(options);
   }
 
   return result.config as Config;
