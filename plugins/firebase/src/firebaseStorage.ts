@@ -19,10 +19,8 @@ import mime from "mime";
 
 export interface FirebaseStorageConfig {
   apiKey: string;
-  authDomain: string;
   projectId: string;
   storageBucket: string;
-  appId: string;
 }
 
 export const firebaseStorage =
