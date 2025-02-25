@@ -1,4 +1,4 @@
-// src/firebaseStorage.ts
+import path from "path";
 import type {
   BasePluginArgs,
   StoragePlugin,
@@ -6,33 +6,29 @@ import type {
 } from "@hot-updater/plugin-core";
 import { initializeApp } from "firebase/app";
 import {
-  getStorage,
-  ref,
+  type StorageReference,
   deleteObject,
   getDownloadURL,
-  uploadBytes,
+  getStorage,
   listAll,
-  type StorageReference,
+  ref,
+  uploadBytes,
 } from "firebase/storage";
-import mime from "mime";
 import fs from "fs/promises";
-import path from "path";
+import mime from "mime";
 
 export interface FirebaseStorageConfig {
-  firebaseConfig: {
-    apiKey: string;
-    authDomain: string;
-    projectId: string;
-    storageBucket: string;
-    messagingSenderId: string;
-    appId: string;
-  };
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  appId: string;
 }
 
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
-    const app = initializeApp(config.firebaseConfig);
+    const app = initializeApp(config);
     const storage = getStorage(app);
 
     return {
