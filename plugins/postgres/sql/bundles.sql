@@ -4,6 +4,7 @@ CREATE TYPE platforms AS ENUM ('ios', 'android');
 
 CREATE TABLE bundles (
     id uuid PRIMARY KEY,
+    app_name text NOT NULL,
     platform platforms NOT NULL,
     target_app_version text NOT NULL,
     should_force_update boolean NOT NULL,
