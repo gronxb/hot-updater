@@ -35,7 +35,6 @@ export const getUpdateInfo = async (
         id: NIL_UUID,
         shouldForceUpdate: true,
         fileUrl: null,
-        fileHash: null,
         status: "ROLLBACK" as UpdateStatus,
       };
     }
@@ -53,7 +52,6 @@ export const getUpdateInfo = async (
           id: latestBundle.id,
           shouldForceUpdate: Boolean(latestBundle.shouldForceUpdate),
           fileUrl: latestBundle.fileUrl,
-          fileHash: latestBundle.fileHash,
           status: "UPDATE" as UpdateStatus,
         };
       }
@@ -61,7 +59,6 @@ export const getUpdateInfo = async (
         id: latestBundle.id,
         shouldForceUpdate: true,
         fileUrl: latestBundle.fileUrl,
-        fileHash: latestBundle.fileHash,
         status: "ROLLBACK" as UpdateStatus,
       };
     }
@@ -71,7 +68,6 @@ export const getUpdateInfo = async (
       id: latestBundle.id,
       shouldForceUpdate: Boolean(latestBundle.shouldForceUpdate),
       fileUrl: latestBundle.fileUrl,
-      fileHash: latestBundle.fileHash,
       status: "UPDATE" as UpdateStatus,
     };
   }

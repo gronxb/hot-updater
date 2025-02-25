@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import * as v from "valibot";
 
 export const bundleSchema = v.object({
+  appName: v.string(),
   platform: v.union([v.literal("ios"), v.literal("android")]),
   targetAppVersion: v.string(),
   id: v.string(),

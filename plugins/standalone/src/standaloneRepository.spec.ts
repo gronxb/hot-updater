@@ -18,6 +18,7 @@ import {
 
 // ─── Default test bundle data ────────────────────────────────
 const DEFAULT_BUNDLE = {
+  appName: "test",
   fileUrl: "http://example.com/bundle.zip",
   fileHash: "hash",
   platform: "ios",

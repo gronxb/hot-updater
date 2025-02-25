@@ -56,6 +56,7 @@ export const postgres =
               .insertInto("bundles")
               .values({
                 id: bundle.id,
+                app_name: bundle.appName,
                 enabled: bundle.enabled,
                 file_url: bundle.fileUrl,
                 should_force_update: bundle.shouldForceUpdate,
@@ -68,6 +69,7 @@ export const postgres =
               .onConflict((oc) =>
                 oc.column("id").doUpdateSet({
                   enabled: bundle.enabled,
+                  app_name: bundle.appName,
                   file_url: bundle.fileUrl,
                   should_force_update: bundle.shouldForceUpdate,
                   file_hash: bundle.fileHash,
@@ -111,6 +113,7 @@ export const postgres =
           return null;
         }
         return {
+          appName: data.app_name,
           enabled: data.enabled,
           fileUrl: data.file_url,
           shouldForceUpdate: data.should_force_update,
@@ -133,6 +136,7 @@ export const postgres =
           .selectAll()
           .execute();
         return data.map((bundle) => ({
+          appName: bundle.app_name,
           enabled: bundle.enabled,
           fileUrl: bundle.file_url,
           shouldForceUpdate: bundle.should_force_update,

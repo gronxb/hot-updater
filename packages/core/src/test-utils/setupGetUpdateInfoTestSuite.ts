@@ -3,6 +3,7 @@ import type { Bundle, GetBundlesArgs, UpdateInfo } from "../types";
 import { NIL_UUID } from "../uuid";
 
 const DEFAULT_BUNDLE = {
+  appName: "test",
   fileUrl: "http://example.com/bundle.zip",
   fileHash: "hash",
   platform: "ios",
@@ -38,7 +39,6 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
       shouldForceUpdate: false,
       status: "UPDATE",
     });
@@ -102,7 +102,6 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
     });
   });
 
@@ -127,7 +126,6 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: true,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
     });
   });
 
@@ -152,7 +150,6 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
     });
   });
 
@@ -176,7 +173,6 @@ export const setupGetUpdateInfoTestSuite = ({
       id: "00000000-0000-0000-0000-000000000005",
       shouldForceUpdate: false,
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
       status: "UPDATE",
     });
   });
@@ -206,7 +202,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -271,8 +266,6 @@ export const setupGetUpdateInfoTestSuite = ({
         ...DEFAULT_BUNDLE,
         shouldForceUpdate: false,
         fileUrl: "20240722210327/build.zip",
-        fileHash:
-          "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
         message: "",
         targetAppVersion: "1.0",
         id: "00000000-0000-0000-0000-000000000001",
@@ -290,8 +283,6 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "20240722210327/build.zip",
-      fileHash:
-        "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
     });
   });
 
@@ -305,7 +296,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       fileUrl: null,
-      fileHash: null,
       id: NIL_UUID,
       shouldForceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
@@ -355,7 +345,6 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      fileHash: "hash",
       fileUrl: "http://example.com/bundle.zip",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: true,
@@ -395,7 +384,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000003",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -449,7 +437,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000005",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -515,7 +502,6 @@ export const setupGetUpdateInfoTestSuite = ({
 
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
@@ -548,7 +534,6 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual({
       id: NIL_UUID,
       fileUrl: null,
-      fileHash: null,
       shouldForceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
     });
