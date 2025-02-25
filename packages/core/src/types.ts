@@ -37,6 +37,10 @@ export interface Bundle {
    * The message of the bundle.
    */
   message: string | null;
+  /**
+   * The name of the app.
+   */
+  appName: string;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -66,7 +70,6 @@ export interface UpdateInfo {
   id: string;
   shouldForceUpdate: boolean;
   fileUrl: string | null;
-  fileHash: string | null;
   status: UpdateStatus;
 }
 
