@@ -42,6 +42,7 @@ export const supabaseDatabase =
         await supabase.from("bundles").upsert(
           changedBundles.map((bundle) => ({
             id: bundle.id,
+            app_name: bundle.appName,
             enabled: bundle.enabled,
             file_url: bundle.fileUrl,
             should_force_update: bundle.shouldForceUpdate,
@@ -85,6 +86,7 @@ export const supabaseDatabase =
         }
         return {
           enabled: data.enabled,
+          appName: data.app_name,
           fileUrl: data.file_url,
           shouldForceUpdate: data.should_force_update,
           fileHash: data.file_hash,
@@ -111,6 +113,7 @@ export const supabaseDatabase =
 
         return data.map((bundle) => ({
           enabled: bundle.enabled,
+          appName: bundle.app_name,
           fileUrl: bundle.file_url,
           shouldForceUpdate: bundle.should_force_update,
           fileHash: bundle.file_hash,

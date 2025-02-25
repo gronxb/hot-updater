@@ -8,10 +8,11 @@ import { prepareSql } from "./prepareSql";
 const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
-      id, file_url, file_hash, platform, target_app_version,
+      id, app_name, file_url, file_hash, platform, target_app_version,
       should_force_update, enabled, git_commit_hash, message
     ) VALUES (
       '${bundle.id}',
+      '${bundle.appName}',
       '${bundle.fileUrl}',
       '${bundle.fileHash}',
       '${bundle.platform}',
@@ -36,11 +37,11 @@ const createGetUpdateInfo =
       id: string;
       should_force_update: boolean;
       file_url: string;
-      file_hash: string;
       status: string;
     }>(
       `
-      SELECT * FROM get_update_info('${platform}', '${appVersion}', '${bundleId}')
+      // GROUP BY target_app_version
+      SELECT * FROM get_update_info('${platform}', '${appVersion}', '${bundleId}', '${bundles[0].appName}', '${bundles.map((b) => b.targetAppVersion).join(",")}')
     `,
     );
 

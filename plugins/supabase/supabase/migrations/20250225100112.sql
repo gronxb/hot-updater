@@ -1,11 +1,28 @@
+-- HotUpdater.bundles
+
+CREATE TYPE platforms AS ENUM ('ios', 'android');
+
+CREATE TABLE bundles (
+    id uuid PRIMARY KEY,
+    app_name text NOT NULL,
+    platform platforms NOT NULL,
+    target_app_version text NOT NULL,
+    should_force_update boolean NOT NULL,
+    enabled boolean NOT NULL,
+    file_url text NOT NULL,
+    file_hash text NOT NULL,
+    git_commit_hash text,
+    message text
+);
+
+CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
+
 -- HotUpdater.get_update_info
 
 CREATE OR REPLACE FUNCTION get_update_info (
     app_platform   platforms,
     app_version text,
-    bundle_id  uuid,
-    app_name text,
-    target_app_version_list text[]
+    bundle_id  uuid
 )
 RETURNS TABLE (
     id            uuid,
@@ -30,7 +47,6 @@ BEGIN
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.app_name = app_name
           AND b.id < bundle_id
         ORDER BY b.id DESC
         LIMIT 1
@@ -45,8 +61,7 @@ BEGIN
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= bundle_id
-          AND b.app_name = app_name
-          AND b.target_app_version IN (SELECT unnest(target_app_version_list))
+          AND semver_satisfies(b.target_app_version, app_version)
         ORDER BY b.id DESC
         LIMIT 1
     ),

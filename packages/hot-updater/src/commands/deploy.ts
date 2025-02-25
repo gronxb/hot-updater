@@ -177,6 +177,7 @@ export const deploy = async (options: DeployOptions) => {
 
           try {
             await databasePlugin.appendBundle({
+              appName: config.appName,
               shouldForceUpdate: options.forceUpdate,
               platform,
               fileUrl,
