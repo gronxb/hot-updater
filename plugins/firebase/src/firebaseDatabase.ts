@@ -72,7 +72,7 @@ export const firebaseDatabase =
               platform: bundle.platform,
               target_app_version: bundle.targetAppVersion,
             },
-            { merge: true }
+            { merge: true },
           );
         }
 
@@ -80,7 +80,11 @@ export const firebaseDatabase =
         hooks?.onDatabaseUpdated?.();
       },
       async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
-        bundles = await this.getBundles();
+        const bundles = await this.getBundles();
+
+        if (!bundles || bundles.length === 0) {
+          throw new Error("target bundle version not found");
+        }
 
         const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
         if (targetIndex === -1) {
