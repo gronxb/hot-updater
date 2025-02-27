@@ -1,21 +1,21 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type {
   BasePluginArgs,
   Bundle,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import {
-  getFirestore,
+  type QuerySnapshot,
   collection,
   doc,
-  setDoc,
   getDoc,
-  query,
-  orderBy,
   getDocs,
-  type QuerySnapshot,
+  getFirestore,
+  orderBy,
+  query,
+  setDoc,
 } from "firebase/firestore";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { firebaseDatabase } from "./firebaseDatabase";
 
 vi.mock("firebase/app", () => {

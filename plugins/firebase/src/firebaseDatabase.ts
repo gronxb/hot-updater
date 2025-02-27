@@ -5,16 +5,16 @@ import type {
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
 
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import {
-  getFirestore,
   collection,
   doc,
-  setDoc,
-  getDocs,
   getDoc,
-  query,
+  getDocs,
+  getFirestore,
   orderBy,
+  query,
+  setDoc,
 } from "firebase/firestore";
 
 export interface FirebaseDatabaseConfig {
