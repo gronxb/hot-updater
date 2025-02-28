@@ -1,14 +1,15 @@
 import path from "path";
 import fs from "fs/promises";
-
 import JSZip from "jszip";
 
 export const createZip = async ({
   outfile,
   targetDir,
+  excludeExts = [],
 }: {
   targetDir: string;
   outfile: string;
+  excludeExts?: string[];
 }) => {
   const zip = new JSZip();
   await fs.rm(outfile, { force: true });
@@ -18,8 +19,7 @@ export const createZip = async ({
     files.sort();
 
     for (const file of files) {
-      if (file.endsWith(".map")) {
-        // skip sourcemap files
+      if (excludeExts.some(pattern => file.includes(pattern))) {
         continue;
       }
 
