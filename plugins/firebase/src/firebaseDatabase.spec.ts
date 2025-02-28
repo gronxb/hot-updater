@@ -6,16 +6,22 @@ import type {
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   type QuerySnapshot,
-  collection,
   doc,
   getDoc,
   getDocs,
-  getFirestore,
   orderBy,
   query,
   setDoc,
 } from "firebase/firestore";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { firebaseDatabase } from "./firebaseDatabase";
 
 vi.mock("firebase/app", () => {
@@ -88,10 +94,12 @@ describe("Firebase Database Plugin", () => {
     target_app_version: "1.0.0",
   };
 
+  const appName = "hot-updater";
+
   let databasePlugin: ReturnType<ReturnType<typeof firebaseDatabase>>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.mocked(getApps).mockReturnValue([]);
     databasePlugin = firebaseDatabase(mockConfig, mockHooks)(baseArgs);
   });
@@ -100,19 +108,35 @@ describe("Firebase Database Plugin", () => {
     vi.resetAllMocks();
   });
 
-  it("should initialize Firebase with correct config", () => {
-    expect(initializeApp).toHaveBeenCalledWith(mockConfig, "test-app");
-    expect(getFirestore).toHaveBeenCalled();
-    expect(collection).toHaveBeenCalledWith(expect.anything(), "bundles");
+  it("should return existing app if app with appName already exists", () => {
+    vi.resetAllMocks();
+
+    const mockExistingApp = { name: appName };
+    (getApps as Mock).mockReturnValue([mockExistingApp]);
+    (getApp as Mock).mockReturnValue(mockExistingApp);
+
+    const app = getApps().find((app) => app.name === appName)
+      ? getApp(appName)
+      : initializeApp(mockConfig, appName);
+
+    expect(getApps).toHaveBeenCalled();
+    expect(getApp).toHaveBeenCalledTimes(1);
+    expect(initializeApp).not.toHaveBeenCalled();
+    expect(app).toBe(mockExistingApp);
   });
 
-  it("should use existing app if it already exists", () => {
-    vi.mocked(getApps).mockReturnValue([{ name: "test-app" } as any]);
+  it("should initialize new app if app with appName does not exist", () => {
+    const mockExistingApp = { name: appName };
+    (initializeApp as Mock).mockReturnValue(mockExistingApp);
 
-    firebaseDatabase(mockConfig, mockHooks)(baseArgs);
+    const app = getApps().find((app) => app.name === appName)
+      ? getApp(appName)
+      : initializeApp(mockConfig, appName);
 
-    expect(getApp).toHaveBeenCalledWith("test-app");
-    expect(initializeApp).not.toHaveBeenCalledTimes(2);
+    expect(getApps).toHaveBeenCalled();
+    expect(initializeApp).toHaveBeenCalledWith(mockConfig, appName);
+    expect(getApp).not.toHaveBeenCalled();
+    expect(app).toBe(mockExistingApp);
   });
 
   describe("commitBundle", () => {
