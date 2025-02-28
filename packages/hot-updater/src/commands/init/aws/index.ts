@@ -211,9 +211,9 @@ export const deployLambdaEdge = async ({
   await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
   removeTmpDir;
 
-  // 3. Lambda client
+  // 3. Lambda@Edge only region is us-east-1
   const lambdaClient = new SDK.Lambda.Lambda({
-    region,
+    region: "us-east-1",
     credentials,
   });
 
