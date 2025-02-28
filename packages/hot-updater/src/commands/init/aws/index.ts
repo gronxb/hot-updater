@@ -206,7 +206,7 @@ export const deployLambdaEdge = async ({
   const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
   const code = await defineRegion(
     await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
-    "us-east-1",
+    region,
   );
   await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
   removeTmpDir;
