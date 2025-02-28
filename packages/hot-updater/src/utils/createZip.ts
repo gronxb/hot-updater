@@ -18,6 +18,11 @@ export const createZip = async ({
     files.sort();
 
     for (const file of files) {
+      if (file.endsWith(".map")) {
+        // skip sourcemap files
+        continue;
+      }
+
       const fullPath = path.join(dir, file);
       const stats = await fs.stat(fullPath);
 
