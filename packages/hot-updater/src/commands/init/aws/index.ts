@@ -234,7 +234,7 @@ export const deployLambdaEdge = async ({
         try {
           await createZip({
             outfile: zipFilePath,
-            targetDir: lambdaDir,
+            targetDir: tmpDir,
           });
           return "Compressed Lambda code to zip";
         } catch (error) {
