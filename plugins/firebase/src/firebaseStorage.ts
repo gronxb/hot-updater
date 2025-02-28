@@ -22,6 +22,7 @@ export interface FirebaseStorageConfig {
   projectId: string;
   storageBucket: string;
 }
+
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
