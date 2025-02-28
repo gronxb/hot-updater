@@ -94,12 +94,12 @@ describe("Firebase Database Plugin", () => {
     target_app_version: "1.0.0",
   };
 
-  const appName = "hot-updater"; // 코드에서 사용하는 appName과 일치
+  const appName = "hot-updater";
 
   let databasePlugin: ReturnType<ReturnType<typeof firebaseDatabase>>;
 
   beforeEach(() => {
-    vi.resetAllMocks(); // 모든 모킹 정보 초기화
+    vi.resetAllMocks();
     vi.mocked(getApps).mockReturnValue([]);
     databasePlugin = firebaseDatabase(mockConfig, mockHooks)(baseArgs);
   });
