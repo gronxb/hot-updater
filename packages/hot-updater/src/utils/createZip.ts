@@ -19,7 +19,7 @@ export const createZip = async ({
     files.sort();
 
     for (const file of files) {
-      if (excludeExts.some(pattern => file.includes(pattern))) {
+      if (excludeExts.some((pattern) => file.includes(pattern))) {
         continue;
       }
 
