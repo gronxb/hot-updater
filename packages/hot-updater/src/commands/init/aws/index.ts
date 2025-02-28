@@ -6,7 +6,7 @@ import type {
   BucketLocationConstraint,
   DistributionConfig,
 } from "@hot-updater/aws/sdk";
-import { getCwd } from "@hot-updater/plugin-core";
+import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { merge } from "es-toolkit";
 import fs from "fs/promises";
@@ -17,6 +17,7 @@ import { delay } from "@/utils/delay";
 import { makeEnv } from "@/utils/makeEnv";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
+import { defineRegion } from "./define-region";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE_WITH_SESSION = `
@@ -169,15 +170,20 @@ export async function createOrSelectIamRole({
  * - Zip the local ./lambda folder, create a function in us-east-1 region,
  * - Publish a new version of the function
  */
-export const deployLambdaEdge = async (
+export const deployLambdaEdge = async ({
+  region,
+  credentials,
+  lambdaRoleArn,
+}: {
+  region: BucketLocationConstraint;
   credentials:
     | {
         accessKeyId: string;
         secretAccessKey: string;
       }
-    | undefined,
-  lambdaRoleArn: string,
-): Promise<{
+    | undefined;
+  lambdaRoleArn: string;
+}): Promise<{
   lambdaName: string;
   functionArn: string;
 }> => {
@@ -196,9 +202,18 @@ export const deployLambdaEdge = async (
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
   const lambdaDir = path.dirname(lambdaPath);
 
+  // lambdaDir copy to cwd/.hot-updater/lambda
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
+  const code = await defineRegion(
+    await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
+    "us-east-1",
+  );
+  await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
+  removeTmpDir;
+
   // 3. Lambda client
   const lambdaClient = new SDK.Lambda.Lambda({
-    region: "us-east-1",
+    region,
     credentials,
   });
 
@@ -861,7 +876,11 @@ export const initAwsS3LambdaEdge = async () => {
   const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 
   // Deploy Lambda@Edge function (us-east-1)
-  const { functionArn } = await deployLambdaEdge(credentials, lambdaRoleArn);
+  const { functionArn } = await deployLambdaEdge({
+    region,
+    credentials,
+    lambdaRoleArn,
+  });
 
   // Create CloudFront distribution
   const { distributionDomain } = await createCloudFrontDistribution(
