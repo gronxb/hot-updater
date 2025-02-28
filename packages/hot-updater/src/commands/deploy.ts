@@ -132,6 +132,7 @@ export const deploy = async (options: DeployOptions) => {
           await createZip({
             outfile: bundlePath,
             targetDir: taskRef.buildResult.buildPath,
+            excludeExts: [".map"],
           });
 
           bundleId = taskRef.buildResult.bundleId;
