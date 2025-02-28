@@ -1,7 +1,7 @@
 {
-  "name": "@rjwu95/hot-updater",
+  "name": "hot-updater",
   "type": "module",
-  "version": "0.12.4",
+  "version": "0.12.3",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -38,8 +38,8 @@
   ],
   "description": "React Native OTA solution for self-hosted",
   "license": "MIT",
-  "repository": "https://github.com/rjwu95/hot-updater",
-  "author": "rjwu95 <yugun000@gmail.com> (https://github.com/rjwu95)",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "bugs": {
     "url": "https://github.com/gronxb/hot-updater/issues"
   },
