@@ -22,11 +22,18 @@ export interface FirebaseStorageConfig {
   projectId: string;
   storageBucket: string;
 }
-
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
-    const appName = "firebase-instance";
+    /**
+     * `appName` for Firebase `initializeApp(config, appName)`.
+     *
+     * Allows creating multiple Firebase app instances within the same project,
+     * useful for different environments (dev/prod) or purposes, while sharing the same database.
+     * Firebase uses `appName` for caching app instances for performance.
+     * Not user-facing, for internal Firebase management.
+     */
+    const appName = "hot-updater";
     const app = getApps().find((app) => app.name === appName)
       ? getApp(appName)
       : initializeApp(config, appName);
