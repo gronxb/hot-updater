@@ -4,6 +4,7 @@ import { mockDatabase } from "../mockDatabase";
 
 const DEFAULT_BUNDLES_MOCK: Bundle[] = [
   {
+    appName: "test",
     id: "0194ed78-ee7f-7d55-88f2-0511cbacc8f1",
     enabled: true,
     fileUrl: "https://example.com/bundle.js",
@@ -15,6 +16,7 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
     message: null,
   },
   {
+    appName: "test",
     id: "0194ed78-d791-753c-ba37-abb7259edcc8",
     enabled: true,
     fileUrl: "https://example.com/bundle.js",

@@ -47,6 +47,7 @@ export const d1Database =
           .map((b) => {
             params.push(
               b.id,
+              b.appName,
               b.enabled ? 1 : 0,
               b.fileUrl,
               b.shouldForceUpdate ? 1 : 0,
@@ -56,13 +57,14 @@ export const d1Database =
               b.platform,
               b.targetAppVersion,
             );
-            return "(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
           })
           .join(",\n");
 
         const sql = minify(/* sql */ `
           INSERT OR REPLACE INTO bundles (
             id,
+            app_name,
             enabled,
             file_url,
             should_force_update,
@@ -130,6 +132,7 @@ export const d1Database =
 
         const row = rows[0];
         return {
+          appName: row.app_name,
           enabled: Boolean(row.enabled),
           fileUrl: row.file_url,
           shouldForceUpdate: Boolean(row.should_force_update),
@@ -151,6 +154,7 @@ export const d1Database =
           /* sql */ `
           SELECT
             id,
+            app_name,
             enabled,
             file_url,
             should_force_update,
@@ -180,6 +184,7 @@ export const d1Database =
         } else {
           bundles = rows.map((row) => ({
             id: row.id,
+            appName: row.app_name,
             enabled: Boolean(row.enabled),
             fileUrl: row.file_url,
             shouldForceUpdate: Boolean(row.should_force_update),
