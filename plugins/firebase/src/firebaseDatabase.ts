@@ -20,18 +20,20 @@ import {
 export interface FirebaseDatabaseConfig {
   apiKey: string;
   projectId: string;
-  authDomain?: string;
-  storageBucket?: string;
-  messagingSenderId?: string;
-  appId?: string;
-  appName?: string;
 }
 
 export const firebaseDatabase =
   (config: FirebaseDatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
-    const appName = config.appName || "hot-updater-firebase";
-
+    /**
+     * `appName` for Firebase `initializeApp(config, appName)`.
+     *
+     * Allows creating multiple Firebase app instances within the same project,
+     * useful for different environments (dev/prod) or purposes, while sharing the same database.
+     * Firebase uses `appName` for caching app instances for performance.
+     * Not user-facing, for internal Firebase management.
+     */
+    const appName = "hot-updater";
     const app = getApps().find((app) => app.name === appName)
       ? getApp(appName)
       : initializeApp(config, appName);
