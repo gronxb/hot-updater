@@ -20302,14 +20302,14 @@ snapshots:
       chai: 5.2.0
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@2.1.8(msw@2.7.0(@types/node@22.13.0)(typescript@5.7.2))(vite@5.4.8(@types/node@22.13.0)(sass-embedded@1.83.0)(terser@5.31.0))':
+  '@vitest/mocker@2.1.8(msw@2.7.0(@types/node@22.13.0)(typescript@5.7.2))(vite@5.4.8(@types/node@22.13.5)(sass-embedded@1.83.0)(terser@5.31.0))':
     dependencies:
       '@vitest/spy': 2.1.8
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
       msw: 2.7.0(@types/node@22.13.0)(typescript@5.7.2)
-      vite: 5.4.8(@types/node@22.13.0)(sass-embedded@1.83.0)(terser@5.31.0)
+      vite: 5.4.8(@types/node@22.13.5)(sass-embedded@1.83.0)(terser@5.31.0)
 
   '@vitest/mocker@2.1.8(msw@2.7.0(@types/node@22.13.5)(typescript@5.7.2))(vite@5.4.8(@types/node@22.13.5)(sass-embedded@1.83.0)(terser@5.31.0))':
     dependencies:
@@ -28809,7 +28809,7 @@ snapshots:
   vitest@2.1.8(@types/node@22.13.0)(jsdom@25.0.1)(msw@2.7.0(@types/node@22.13.0)(typescript@5.7.2))(sass-embedded@1.83.0)(terser@5.31.0):
     dependencies:
       '@vitest/expect': 2.1.8
-      '@vitest/mocker': 2.1.8(msw@2.7.0(@types/node@22.13.0)(typescript@5.7.2))(vite@5.4.8(@types/node@22.13.0)(sass-embedded@1.83.0)(terser@5.31.0))
+      '@vitest/mocker': 2.1.8(msw@2.7.0(@types/node@22.13.0)(typescript@5.7.2))(vite@5.4.8(@types/node@22.13.5)(sass-embedded@1.83.0)(terser@5.31.0))
       '@vitest/pretty-format': 2.1.8
       '@vitest/runner': 2.1.8
       '@vitest/snapshot': 2.1.8
