@@ -20,18 +20,12 @@ import {
 export interface FirebaseDatabaseConfig {
   apiKey: string;
   projectId: string;
-  authDomain?: string;
-  storageBucket?: string;
-  messagingSenderId?: string;
-  appId?: string;
-  appName?: string;
 }
 
 export const firebaseDatabase =
   (config: FirebaseDatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
-    const appName = config.appName || "hot-updater-firebase";
-
+    const appName = "firebase-instance";
     const app = getApps().find((app) => app.name === appName)
       ? getApp(appName)
       : initializeApp(config, appName);

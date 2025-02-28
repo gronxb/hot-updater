@@ -4,7 +4,7 @@ import type {
   StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
-import { initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   type StorageReference,
   deleteObject,
@@ -26,7 +26,10 @@ export interface FirebaseStorageConfig {
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
-    const app = initializeApp(config);
+    const appName = "firebase-instance";
+    const app = getApps().find((app) => app.name === appName)
+      ? getApp(appName)
+      : initializeApp(config, appName);
     const storage = getStorage(app);
 
     return {
