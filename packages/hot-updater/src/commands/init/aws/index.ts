@@ -355,6 +355,33 @@ export const createCloudFrontDistribution = async (
   const { SDK } = await import("@hot-updater/aws/sdk");
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
+  let oacId: string;
+  try {
+    const listOacResp = await cloudfrontClient.listOriginAccessControls({});
+    const existingOac = listOacResp.OriginAccessControlList?.Items?.find(
+      (oac) => oac.Name === "HotUpdaterOAC",
+    );
+
+    if (existingOac?.Id) {
+      oacId = existingOac.Id;
+    } else {
+      const createOacResp = await cloudfrontClient.createOriginAccessControl({
+        OriginAccessControlConfig: {
+          Name: "HotUpdaterOAC",
+          OriginAccessControlOriginType: "s3",
+          SigningBehavior: "always",
+          SigningProtocol: "sigv4",
+        },
+      });
+      oacId = createOacResp.OriginAccessControl?.Id!;
+    }
+  } catch (error) {
+    throw new Error("Failed to get or create Origin Access Control");
+  }
+
+  if (!oacId) {
+    throw new Error("Failed to get Origin Access Control ID");
+  }
 
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
@@ -412,6 +439,21 @@ export const createCloudFrontDistribution = async (
       if (!DistributionConfig?.DefaultCacheBehavior) {
         throw new Error("Distribution config or default behavior is missing");
       }
+
+      distributionConfig = merge(distributionConfig, {
+        Origins: {
+          Items: [
+            {
+              Id: bucketName,
+              DomainName: bucketDomain,
+              OriginAccessControlId: oacId,
+              S3OriginConfig: {
+                OriginAccessIdentity: "",
+              },
+            },
+          ],
+        },
+      });
 
       const defaultBehavior = distributionConfig.DefaultCacheBehavior;
       const lambdaAssociations =
@@ -575,7 +617,10 @@ export const createCloudFrontDistribution = async (
         {
           Id: bucketName,
           DomainName: bucketDomain,
-          S3OriginConfig: { OriginAccessIdentity: "" },
+          OriginAccessControlId: oacId,
+          S3OriginConfig: {
+            OriginAccessIdentity: "",
+          },
         },
       ],
     },
