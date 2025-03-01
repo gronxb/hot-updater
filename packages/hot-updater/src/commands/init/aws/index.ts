@@ -6,7 +6,7 @@ import type {
   BucketLocationConstraint,
   DistributionConfig,
 } from "@hot-updater/aws/sdk";
-import { getCwd } from "@hot-updater/plugin-core";
+import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { merge } from "es-toolkit";
 import fs from "fs/promises";
@@ -17,6 +17,7 @@ import { delay } from "@/utils/delay";
 import { makeEnv } from "@/utils/makeEnv";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
+import { defineRegion } from "./define-region";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE_WITH_SESSION = `
@@ -169,15 +170,20 @@ export async function createOrSelectIamRole({
  * - Zip the local ./lambda folder, create a function in us-east-1 region,
  * - Publish a new version of the function
  */
-export const deployLambdaEdge = async (
+export const deployLambdaEdge = async ({
+  region,
+  credentials,
+  lambdaRoleArn,
+}: {
+  region: BucketLocationConstraint;
   credentials:
     | {
         accessKeyId: string;
         secretAccessKey: string;
       }
-    | undefined,
-  lambdaRoleArn: string,
-): Promise<{
+    | undefined;
+  lambdaRoleArn: string;
+}): Promise<{
   lambdaName: string;
   functionArn: string;
 }> => {
@@ -196,7 +202,16 @@ export const deployLambdaEdge = async (
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
   const lambdaDir = path.dirname(lambdaPath);
 
-  // 3. Lambda client
+  // lambdaDir copy to cwd/.hot-updater/lambda
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
+  const code = await defineRegion(
+    await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
+    region,
+  );
+  await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
+  removeTmpDir;
+
+  // 3. Lambda@Edge only region is us-east-1
   const lambdaClient = new SDK.Lambda.Lambda({
     region: "us-east-1",
     credentials,
@@ -219,7 +234,7 @@ export const deployLambdaEdge = async (
         try {
           await createZip({
             outfile: zipFilePath,
-            targetDir: lambdaDir,
+            targetDir: tmpDir,
           });
           return "Compressed Lambda code to zip";
         } catch (error) {
@@ -340,6 +355,33 @@ export const createCloudFrontDistribution = async (
   const { SDK } = await import("@hot-updater/aws/sdk");
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
+  let oacId: string;
+  try {
+    const listOacResp = await cloudfrontClient.listOriginAccessControls({});
+    const existingOac = listOacResp.OriginAccessControlList?.Items?.find(
+      (oac) => oac.Name === "HotUpdaterOAC",
+    );
+
+    if (existingOac?.Id) {
+      oacId = existingOac.Id;
+    } else {
+      const createOacResp = await cloudfrontClient.createOriginAccessControl({
+        OriginAccessControlConfig: {
+          Name: "HotUpdaterOAC",
+          OriginAccessControlOriginType: "s3",
+          SigningBehavior: "always",
+          SigningProtocol: "sigv4",
+        },
+      });
+      oacId = createOacResp.OriginAccessControl?.Id!;
+    }
+  } catch (error) {
+    throw new Error("Failed to get or create Origin Access Control");
+  }
+
+  if (!oacId) {
+    throw new Error("Failed to get Origin Access Control ID");
+  }
 
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
@@ -397,6 +439,21 @@ export const createCloudFrontDistribution = async (
       if (!DistributionConfig?.DefaultCacheBehavior) {
         throw new Error("Distribution config or default behavior is missing");
       }
+
+      distributionConfig = merge(distributionConfig, {
+        Origins: {
+          Items: [
+            {
+              Id: bucketName,
+              DomainName: bucketDomain,
+              OriginAccessControlId: oacId,
+              S3OriginConfig: {
+                OriginAccessIdentity: "",
+              },
+            },
+          ],
+        },
+      });
 
       const defaultBehavior = distributionConfig.DefaultCacheBehavior;
       const lambdaAssociations =
@@ -560,7 +617,10 @@ export const createCloudFrontDistribution = async (
         {
           Id: bucketName,
           DomainName: bucketDomain,
-          S3OriginConfig: { OriginAccessIdentity: "" },
+          OriginAccessControlId: oacId,
+          S3OriginConfig: {
+            OriginAccessIdentity: "",
+          },
         },
       ],
     },
@@ -861,7 +921,11 @@ export const initAwsS3LambdaEdge = async () => {
   const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 
   // Deploy Lambda@Edge function (us-east-1)
-  const { functionArn } = await deployLambdaEdge(credentials, lambdaRoleArn);
+  const { functionArn } = await deployLambdaEdge({
+    region,
+    credentials,
+    lambdaRoleArn,
+  });
 
   // Create CloudFront distribution
   const { distributionDomain } = await createCloudFrontDistribution(

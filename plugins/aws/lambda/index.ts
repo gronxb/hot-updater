@@ -6,7 +6,15 @@ import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 import { getUpdateInfo } from "./getUpdateInfo";
 
-const s3 = new S3Client();
+declare global {
+  var HotUpdater: {
+    S3_REGION: string;
+  };
+}
+
+const s3 = new S3Client({
+  region: HotUpdater.S3_REGION,
+});
 
 function parseS3Url(url: string) {
   try {
@@ -26,6 +34,7 @@ async function createPresignedUrl(url: string) {
   if (!isS3Url || !bucket || !key) {
     return url;
   }
+
   // @ts-ignore
   return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: 60,
@@ -62,17 +71,24 @@ app.get("/api/check-update", async (c) => {
     const appPlatform = headers["x-app-platform"]?.[0]?.value as
       | "ios"
       | "android";
-
     const appVersion = headers["x-app-version"]?.[0]?.value;
     if (!bundleId || !appPlatform || !appVersion) {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const updateInfo = await getUpdateInfo(s3, bucketName, {
+    const cloudfrontDomain = headers.host?.[0]?.value;
+    if (!cloudfrontDomain) {
+      return c.json({ error: "Cloudfront domain not found." }, 500);
+    }
+
+    const cloudfrontBaseUrl = `https://${cloudfrontDomain}`;
+
+    const updateInfo = await getUpdateInfo(cloudfrontBaseUrl, {
       platform: appPlatform,
       bundleId,
       appVersion,
     });
+
     if (!updateInfo) {
       return c.json(null);
     }

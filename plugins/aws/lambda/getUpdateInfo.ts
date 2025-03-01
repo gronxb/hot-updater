@@ -1,27 +1,21 @@
-import { GetObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import type { Bundle, Platform } from "@hot-updater/core";
 import {
   filterCompatibleAppVersions,
   getUpdateInfo as getUpdateInfoJS,
 } from "@hot-updater/js";
 
-const getS3Json = async (s3: S3Client, bucket: string, key: string) => {
+const getCloudFrontJson = async <T>(url: string) => {
   try {
-    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    const { Body } = await s3.send(command);
-    if (!Body) {
-      return null;
-    }
-    const jsonString = await Body.transformToString();
-    return JSON.parse(jsonString);
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    return (await response.json()) as T[];
   } catch {
-    return null;
+    return [];
   }
 };
 
 export const getUpdateInfo = async (
-  s3: S3Client,
-  bucketName: string,
+  cloudfrontBaseUrl: string,
   {
     platform,
     appVersion,
@@ -32,29 +26,27 @@ export const getUpdateInfo = async (
     bundleId: string;
   },
 ) => {
-  const targetAppVersions = await getS3Json(
-    s3,
-    bucketName,
-    `${platform}/target-app-versions.json`,
-  );
+  const targetAppVersionsUrl = `${cloudfrontBaseUrl}/${platform}/target-app-versions.json`;
+  const targetAppVersions =
+    await getCloudFrontJson<string>(targetAppVersionsUrl);
 
   const matchingVersions = filterCompatibleAppVersions(
     targetAppVersions ?? [],
     appVersion,
   );
 
+  // 각 targetAppVersion에 대해 CloudFront URL을 사용해 update.json을 가져옴
   const results = await Promise.allSettled(
     matchingVersions.map((targetAppVersion) =>
-      getS3Json(s3, bucketName, `${platform}/${targetAppVersion}/update.json`),
+      getCloudFrontJson<Bundle>(
+        `${cloudfrontBaseUrl}/${platform}/${targetAppVersion}/update.json`,
+      ),
     ),
   );
 
-  const bundles = results
-    .filter(
-      (r): r is PromiseFulfilledResult<Bundle[]> => r.status === "fulfilled",
-    )
-    .flatMap((r) => r.value ?? []);
-
+  const bundles = results.flatMap((r) =>
+    r.status === "fulfilled" ? r.value : [],
+  );
   return getUpdateInfoJS(bundles, {
     platform,
     bundleId,
