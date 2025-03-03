@@ -761,8 +761,8 @@ export const initAwsS3LambdaEdge = async () => {
     message: "S3 Bucket List",
     options: [
       ...availableBuckets.map((bucket) => ({
-        value: `${bucket.name} (${bucket.region})`,
-        label: bucket.name,
+        value: bucket.name,
+        label: `${bucket.name} (${bucket.region})`,
       })),
       {
         value: createKey,
