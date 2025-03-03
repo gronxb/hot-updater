@@ -8,7 +8,6 @@ import type {
 } from "@hot-updater/aws/sdk";
 import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
-import { merge } from "es-toolkit";
 import fs from "fs/promises";
 import { regionLocationMap } from "./regionLocationMap";
 
@@ -359,12 +358,12 @@ export const createCloudFrontDistribution = async (
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
   let oacId: string;
+
   try {
     const listOacResp = await cloudfrontClient.listOriginAccessControls({});
     const existingOac = listOacResp.OriginAccessControlList?.Items?.find(
       (oac) => oac.Name === "HotUpdaterOAC",
     );
-
     if (existingOac?.Id) {
       oacId = existingOac.Id;
     } else {
@@ -381,10 +380,7 @@ export const createCloudFrontDistribution = async (
   } catch (error) {
     throw new Error("Failed to get or create Origin Access Control");
   }
-
-  if (!oacId) {
-    throw new Error("Failed to get Origin Access Control ID");
-  }
+  if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
@@ -407,7 +403,7 @@ export const createCloudFrontDistribution = async (
 
   let selectedDistribution: { Id: string; DomainName: string } | null = null;
   if (matchingDistributions.length === 1) {
-    selectedDistribution = matchingDistributions[0] ?? null;
+    selectedDistribution = matchingDistributions[0]!;
   } else if (matchingDistributions.length > 1) {
     const selectedDistributionStr = await p.select({
       message:
@@ -417,200 +413,11 @@ export const createCloudFrontDistribution = async (
         label: `${dist.Id} (${dist.DomainName})`,
       })),
     });
-    if (p.isCancel(selectedDistributionStr)) {
-      process.exit(0);
-    }
+    if (p.isCancel(selectedDistributionStr)) process.exit(0);
     selectedDistribution = JSON.parse(selectedDistributionStr);
   }
-  // Apply newly deployed Lambda ARN
-  if (selectedDistribution) {
-    p.log.success(
-      `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
-    );
-    try {
-      const { DistributionConfig, ETag } =
-        await cloudfrontClient.getDistributionConfig({
-          Id: selectedDistribution.Id,
-        });
-      let updateRequired = false;
-      let hasOriginRequest = false;
-      if (!DistributionConfig) {
-        throw new Error("Distribution config is missing");
-      }
 
-      let distributionConfig: DistributionConfig = DistributionConfig;
-      if (!DistributionConfig?.DefaultCacheBehavior) {
-        throw new Error("Distribution config or default behavior is missing");
-      }
-
-      distributionConfig = merge(distributionConfig, {
-        Origins: {
-          Items: [
-            {
-              Id: bucketName,
-              DomainName: bucketDomain,
-              OriginAccessControlId: oacId,
-              S3OriginConfig: {
-                OriginAccessIdentity: "",
-              },
-            },
-          ],
-        },
-      });
-
-      const defaultBehavior = distributionConfig.DefaultCacheBehavior;
-      const lambdaAssociations =
-        defaultBehavior?.LambdaFunctionAssociations ?? {
-          Quantity: 0,
-          Items: [],
-        };
-
-      if ((lambdaAssociations.Quantity ?? 0) > 0 && lambdaAssociations.Items) {
-        for (const [index, assoc] of lambdaAssociations.Items.entries()) {
-          if (assoc.EventType === "origin-request") {
-            hasOriginRequest = true;
-            if (
-              assoc.LambdaFunctionARN !== functionArn &&
-              lambdaAssociations.Items[index]
-            ) {
-              p.log.info(
-                `Updating Lambda association from ${assoc.LambdaFunctionARN} to ${functionArn}`,
-              );
-              distributionConfig = merge(distributionConfig, {
-                DefaultCacheBehavior: {
-                  LambdaFunctionAssociations: {
-                    Items: [
-                      {
-                        EventType: "origin-request",
-                        LambdaFunctionARN: functionArn,
-                      },
-                    ],
-                    Quantity: 1,
-                  },
-                },
-              });
-              updateRequired = true;
-            }
-          }
-        }
-      }
-
-      if (!hasOriginRequest) {
-        updateRequired = true;
-        if (!defaultBehavior?.LambdaFunctionAssociations) {
-          distributionConfig = merge(distributionConfig, {
-            DefaultCacheBehavior: {
-              LambdaFunctionAssociations: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          });
-        }
-
-        distributionConfig = merge(distributionConfig, {
-          DefaultCacheBehavior: {
-            LambdaFunctionAssociations: {
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: functionArn,
-                },
-              ],
-              Quantity: 1,
-            },
-          },
-        });
-      }
-
-      if (updateRequired) {
-        distributionConfig = merge(distributionConfig, {
-          CacheBehaviors: {
-            Quantity: 1,
-            Items: [
-              {
-                PathPattern: "/api/*",
-                TargetOriginId: bucketName,
-                ViewerProtocolPolicy: "redirect-to-https",
-                LambdaFunctionAssociations: {
-                  Quantity: 1,
-                  Items: [
-                    {
-                      EventType: "viewer-request",
-                      LambdaFunctionARN: functionArn,
-                    },
-                  ],
-                },
-                MinTTL: 0,
-                DefaultTTL: 0,
-                MaxTTL: 0,
-                Compress: true,
-                SmoothStreaming: false,
-                FieldLevelEncryptionId: "",
-                AllowedMethods: {
-                  Quantity: 3,
-                  Items: ["GET", "HEAD", "OPTIONS"],
-                  CachedMethods: {
-                    Quantity: 2,
-                    Items: ["GET", "HEAD"],
-                  },
-                },
-                ForwardedValues: {
-                  QueryString: false,
-                  Cookies: { Forward: "none" },
-                  Headers: {
-                    Quantity: 3,
-                    Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
-                  },
-                  QueryStringCacheKeys: {
-                    Quantity: 0,
-                    Items: [],
-                  },
-                },
-              },
-            ],
-          },
-        });
-
-        await cloudfrontClient.updateDistribution({
-          Id: selectedDistribution.Id,
-          IfMatch: ETag,
-          DistributionConfig: distributionConfig,
-        });
-        p.log.success(
-          "CloudFront distribution updated with new Lambda function ARN.",
-        );
-      } else {
-        p.log.info(
-          "CloudFront distribution already has the correct Lambda function association.",
-        );
-      }
-      await cloudfrontClient.createInvalidation({
-        DistributionId: selectedDistribution.Id,
-        InvalidationBatch: {
-          CallerReference: dayjs().format(),
-          Paths: {
-            Quantity: 1,
-            Items: ["/*"],
-          },
-        },
-      });
-      p.log.success("Cache invalidation request completed.");
-      return {
-        distributionId: selectedDistribution.Id,
-        distributionDomain: selectedDistribution.DomainName,
-      };
-    } catch (err) {
-      p.log.error(
-        `Failed to update CloudFront distribution: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      throw err;
-    }
-  }
-
-  const distributionConfig: DistributionConfig = {
+  const finalDistributionConfig: DistributionConfig = {
     CallerReference: dayjs().format(),
     Comment: "Hot Updater CloudFront distribution",
     Enabled: true,
@@ -634,7 +441,7 @@ export const createCloudFrontDistribution = async (
         Quantity: 1,
         Items: [
           {
-            EventType: "origin-request",
+            EventType: "viewer-request",
             LambdaFunctionARN: functionArn,
           },
         ],
@@ -676,7 +483,9 @@ export const createCloudFrontDistribution = async (
       ],
     },
     DefaultRootObject: "index.html",
-    ViewerCertificate: { CloudFrontDefaultCertificate: true },
+    ViewerCertificate: {
+      CloudFrontDefaultCertificate: true,
+    },
     Restrictions: {
       GeoRestriction: {
         RestrictionType: "none",
@@ -685,9 +494,50 @@ export const createCloudFrontDistribution = async (
     },
   };
 
+  if (selectedDistribution) {
+    p.log.success(
+      `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
+    );
+    try {
+      const { ETag } = await cloudfrontClient.getDistributionConfig({
+        Id: selectedDistribution.Id,
+      });
+      await cloudfrontClient.updateDistribution({
+        Id: selectedDistribution.Id,
+        IfMatch: ETag,
+        DistributionConfig: finalDistributionConfig,
+      });
+      p.log.success(
+        "CloudFront distribution updated with new Lambda function ARN.",
+      );
+      await cloudfrontClient.createInvalidation({
+        DistributionId: selectedDistribution.Id,
+        InvalidationBatch: {
+          CallerReference: dayjs().format(),
+          Paths: {
+            Quantity: 1,
+            Items: ["/*"],
+          },
+        },
+      });
+      p.log.success("Cache invalidation request completed.");
+      return {
+        distributionId: selectedDistribution.Id,
+        distributionDomain: selectedDistribution.DomainName,
+      };
+    } catch (err) {
+      p.log.error(
+        `Failed to update CloudFront distribution: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      throw err;
+    }
+  }
+
   try {
     const distResp = await cloudfrontClient.createDistribution({
-      DistributionConfig: distributionConfig,
+      DistributionConfig: finalDistributionConfig,
     });
     const distributionId = distResp.Distribution?.Id!;
     const distributionDomain = distResp.Distribution?.DomainName!;
@@ -699,7 +549,7 @@ export const createCloudFrontDistribution = async (
       {
         title: "Waiting for CloudFront distribution to complete...",
         task: async (message) => {
-          while (retryCount < 60 * 10) {
+          while (retryCount < 600) {
             try {
               const status = await cloudfrontClient.getDistribution({
                 Id: distributionId,
