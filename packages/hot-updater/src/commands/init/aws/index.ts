@@ -737,13 +737,28 @@ export const initAwsS3LambdaEdge = async () => {
         title: "Checking S3 Buckets...",
         task: async () => {
           const buckets = await s3Client.listBuckets({});
-          availableBuckets.push(
-            ...(buckets.Buckets ?? [])
+          const bucketsWithRegion = await Promise.allSettled(
+            (buckets.Buckets ?? [])
               .filter((bucket) => bucket.Name)
-              .map((bucket) => ({
-                name: bucket.Name!,
-                region: bucket.BucketRegion!,
-              })),
+              .map(async (bucket) => {
+                const { LocationConstraint: region } =
+                  await s3Client.getBucketLocation({
+                    Bucket: bucket.Name!,
+                  });
+
+                return {
+                  name: bucket.Name!,
+                  region: region as BucketLocationConstraint,
+                };
+              }),
+          );
+
+          availableBuckets.push(
+            ...bucketsWithRegion
+              .map((bucket) =>
+                bucket.status === "fulfilled" ? bucket.value : null,
+              )
+              .filter((bucket) => bucket !== null),
           );
         },
       },
@@ -775,6 +790,10 @@ export const initAwsS3LambdaEdge = async () => {
     process.exit(1);
   }
 
+  let region: BucketLocationConstraint = availableBuckets.find(
+    (bucket) => bucket.name === bucketName,
+  )?.region as BucketLocationConstraint;
+
   if (bucketName === createKey) {
     const name = await p.text({
       message: "Enter the name of the new S3 Bucket",
@@ -799,7 +818,7 @@ export const initAwsS3LambdaEdge = async () => {
         process.exit(1);
       }
 
-      const region = $region as BucketLocationConstraint;
+      region = $region as BucketLocationConstraint;
 
       await s3Client.createBucket({
         Bucket: name,
@@ -815,9 +834,6 @@ export const initAwsS3LambdaEdge = async () => {
       throw error;
     }
   }
-
-  const locationResp = await s3Client.getBucketLocation({ Bucket: bucketName });
-  const region = locationResp.LocationConstraint as BucketLocationConstraint;
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${region})`);
 
