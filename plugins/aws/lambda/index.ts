@@ -79,7 +79,12 @@ app.get("/api/check-update", async (c) => {
     const finalInfo = await signUpdateInfoFileUrl(updateInfo);
     return c.json(finalInfo);
   } catch {
-    return c.json({ error: "Internal Server Error" }, 500);
+    return c.json(
+      {
+        error: "Internal Server Error",
+      },
+      500,
+    );
   }
 });
 

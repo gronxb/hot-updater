@@ -289,6 +289,7 @@ export const deployLambdaEdge = async ({
           return `Updated Lambda "${lambdaName}" function`;
         } finally {
           void removeTmpDir();
+          void fs.rm(zipFilePath, { force: true });
         }
       },
     },
