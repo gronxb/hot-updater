@@ -51,13 +51,9 @@ export const getUpdateInfo = async (
     )
     .flatMap((r) => r.value ?? []);
 
-  return {
-    updateInfo: getUpdateInfoJS(bundles, {
-      platform,
-      bundleId,
-      appVersion,
-    }),
-    targetAppVersions,
-    bundles,
-  };
+  return getUpdateInfoJS(bundles, {
+    platform,
+    bundleId,
+    appVersion,
+  });
 };
