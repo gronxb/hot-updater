@@ -61,6 +61,9 @@
     "cosmiconfig-typescript-loader": "^5.0.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.26.9",
+    "@babel/generator": "^7.26.9",
+    "@types/babel__generator": "^7.6.8",
     "@babel/core": "^7.26.0",
     "@babel/traverse": "^7.25.9",
     "@babel/types": "^7.26.0",

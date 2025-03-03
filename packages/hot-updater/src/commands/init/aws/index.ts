@@ -6,17 +6,18 @@ import type {
   BucketLocationConstraint,
   DistributionConfig,
 } from "@hot-updater/aws/sdk";
-import { getCwd } from "@hot-updater/plugin-core";
+import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { merge } from "es-toolkit";
 import fs from "fs/promises";
-import { regionLocationMap } from "./regionLocationMap";
 
 import { createZip } from "@/utils/createZip";
 import { delay } from "@/utils/delay";
 import { makeEnv } from "@/utils/makeEnv";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
+import { regionLocationMap } from "./regionLocationMap";
+import { transformEnv } from "./transformEnv";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE_WITH_SESSION = `
@@ -169,18 +170,20 @@ export async function createOrSelectIamRole({
  * - Zip the local ./lambda folder, create a function in us-east-1 region,
  * - Publish a new version of the function
  */
-export const deployLambdaEdge = async (
-  credentials:
-    | {
-        accessKeyId: string;
-        secretAccessKey: string;
-      }
-    | undefined,
-  lambdaRoleArn: string,
-): Promise<{
-  lambdaName: string;
-  functionArn: string;
-}> => {
+export const deployLambdaEdge = async ({
+  region,
+  bucketName,
+  credentials,
+  lambdaRoleArn,
+}: {
+  region: BucketLocationConstraint;
+  bucketName: string;
+  credentials: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+  lambdaRoleArn: string;
+}) => {
   const { SDK } = await import("@hot-updater/aws/sdk");
   const cwd = getCwd();
 
@@ -195,6 +198,16 @@ export const deployLambdaEdge = async (
   // 2. Create zip file
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
   const lambdaDir = path.dirname(lambdaPath);
+
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
+  const code = await transformEnv(
+    await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
+    {
+      S3_REGION: region,
+      S3_BUCKET_NAME: bucketName,
+    },
+  );
+  await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
 
   // 3. Lambda client
   const lambdaClient = new SDK.Lambda.Lambda({
@@ -219,7 +232,7 @@ export const deployLambdaEdge = async (
         try {
           await createZip({
             outfile: zipFilePath,
-            targetDir: lambdaDir,
+            targetDir: tmpDir,
           });
           return "Compressed Lambda code to zip";
         } catch (error) {
@@ -275,6 +288,7 @@ export const deployLambdaEdge = async (
           }
           return `Updated Lambda "${lambdaName}" function`;
         } finally {
+          void removeTmpDir();
           void fs.rm(zipFilePath, { force: true });
         }
       },
@@ -359,10 +373,9 @@ export const createCloudFrontDistribution = async (
   } catch (error) {
     console.error("Error listing CloudFront distributions:", error);
   }
-
   let selectedDistribution: { Id: string; DomainName: string } | null = null;
   if (matchingDistributions.length === 1) {
-    selectedDistribution = matchingDistributions[0] ?? null;
+    selectedDistribution = matchingDistributions[0]!;
   } else if (matchingDistributions.length > 1) {
     const selectedDistributionStr = await p.select({
       message:
@@ -372,12 +385,73 @@ export const createCloudFrontDistribution = async (
         label: `${dist.Id} (${dist.DomainName})`,
       })),
     });
-    if (p.isCancel(selectedDistributionStr)) {
-      process.exit(0);
-    }
+    if (p.isCancel(selectedDistributionStr)) process.exit(0);
     selectedDistribution = JSON.parse(selectedDistributionStr);
   }
-  // Apply newly deployed Lambda ARN
+
+  const newOverrides: Partial<DistributionConfig> = {
+    Origins: {
+      Quantity: 1,
+      Items: [
+        {
+          Id: bucketName,
+          DomainName: bucketDomain,
+          S3OriginConfig: {
+            OriginAccessIdentity: "",
+          },
+        },
+      ],
+    },
+    DefaultCacheBehavior: {
+      TargetOriginId: bucketName,
+      ViewerProtocolPolicy: "redirect-to-https",
+      LambdaFunctionAssociations: {
+        Quantity: 1,
+        Items: [
+          {
+            EventType: "viewer-request",
+            LambdaFunctionARN: functionArn,
+          },
+        ],
+      },
+      ForwardedValues: {
+        QueryString: false,
+        Cookies: { Forward: "none" },
+      },
+      MinTTL: 0,
+    },
+    CacheBehaviors: {
+      Quantity: 1,
+      Items: [
+        {
+          PathPattern: "/api/*",
+          TargetOriginId: bucketName,
+          ViewerProtocolPolicy: "redirect-to-https",
+          LambdaFunctionAssociations: {
+            Quantity: 1,
+            Items: [
+              {
+                EventType: "viewer-request",
+                LambdaFunctionARN: functionArn,
+              },
+            ],
+          },
+          MinTTL: 0,
+          DefaultTTL: 0,
+          MaxTTL: 0,
+          ForwardedValues: {
+            QueryString: false,
+            Cookies: { Forward: "none" },
+            Headers: {
+              Quantity: 3,
+              Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
+            },
+          },
+        },
+      ],
+    },
+  };
+
   if (selectedDistribution) {
     p.log.success(
       `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
@@ -387,144 +461,16 @@ export const createCloudFrontDistribution = async (
         await cloudfrontClient.getDistributionConfig({
           Id: selectedDistribution.Id,
         });
-      let updateRequired = false;
-      let hasOriginRequest = false;
-      if (!DistributionConfig) {
-        throw new Error("Distribution config is missing");
-      }
 
-      let distributionConfig: DistributionConfig = DistributionConfig;
-      if (!DistributionConfig?.DefaultCacheBehavior) {
-        throw new Error("Distribution config or default behavior is missing");
-      }
-
-      const defaultBehavior = distributionConfig.DefaultCacheBehavior;
-      const lambdaAssociations =
-        defaultBehavior?.LambdaFunctionAssociations ?? {
-          Quantity: 0,
-          Items: [],
-        };
-
-      if ((lambdaAssociations.Quantity ?? 0) > 0 && lambdaAssociations.Items) {
-        for (const [index, assoc] of lambdaAssociations.Items.entries()) {
-          if (assoc.EventType === "origin-request") {
-            hasOriginRequest = true;
-            if (
-              assoc.LambdaFunctionARN !== functionArn &&
-              lambdaAssociations.Items[index]
-            ) {
-              p.log.info(
-                `Updating Lambda association from ${assoc.LambdaFunctionARN} to ${functionArn}`,
-              );
-              distributionConfig = merge(distributionConfig, {
-                DefaultCacheBehavior: {
-                  LambdaFunctionAssociations: {
-                    Items: [
-                      {
-                        EventType: "origin-request",
-                        LambdaFunctionARN: functionArn,
-                      },
-                    ],
-                    Quantity: 1,
-                  },
-                },
-              });
-              updateRequired = true;
-            }
-          }
-        }
-      }
-
-      if (!hasOriginRequest) {
-        updateRequired = true;
-        if (!defaultBehavior?.LambdaFunctionAssociations) {
-          distributionConfig = merge(distributionConfig, {
-            DefaultCacheBehavior: {
-              LambdaFunctionAssociations: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          });
-        }
-
-        distributionConfig = merge(distributionConfig, {
-          DefaultCacheBehavior: {
-            LambdaFunctionAssociations: {
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: functionArn,
-                },
-              ],
-              Quantity: 1,
-            },
-          },
-        });
-      }
-
-      if (updateRequired) {
-        distributionConfig = merge(distributionConfig, {
-          CacheBehaviors: {
-            Quantity: 1,
-            Items: [
-              {
-                PathPattern: "/api/*",
-                TargetOriginId: bucketName,
-                ViewerProtocolPolicy: "redirect-to-https",
-                LambdaFunctionAssociations: {
-                  Quantity: 1,
-                  Items: [
-                    {
-                      EventType: "origin-request",
-                      LambdaFunctionARN: functionArn,
-                    },
-                  ],
-                },
-                MinTTL: 0,
-                DefaultTTL: 0,
-                MaxTTL: 0,
-                Compress: true,
-                SmoothStreaming: false,
-                FieldLevelEncryptionId: "",
-                AllowedMethods: {
-                  Quantity: 3,
-                  Items: ["GET", "HEAD", "OPTIONS"],
-                  CachedMethods: {
-                    Quantity: 2,
-                    Items: ["GET", "HEAD"],
-                  },
-                },
-                ForwardedValues: {
-                  QueryString: false,
-                  Cookies: { Forward: "none" },
-                  Headers: {
-                    Quantity: 3,
-                    Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
-                  },
-                  QueryStringCacheKeys: {
-                    Quantity: 0,
-                    Items: [],
-                  },
-                },
-              },
-            ],
-          },
-        });
-
-        await cloudfrontClient.updateDistribution({
-          Id: selectedDistribution.Id,
-          IfMatch: ETag,
-          DistributionConfig: distributionConfig,
-        });
-        p.log.success(
-          "CloudFront distribution updated with new Lambda function ARN.",
-        );
-      } else {
-        p.log.info(
-          "CloudFront distribution already has the correct Lambda function association.",
-        );
-      }
+      const finalConfig = merge(DistributionConfig ?? {}, newOverrides);
+      await cloudfrontClient.updateDistribution({
+        Id: selectedDistribution.Id,
+        IfMatch: ETag,
+        DistributionConfig: finalConfig as DistributionConfig,
+      });
+      p.log.success(
+        "CloudFront distribution updated with new Lambda function ARN.",
+      );
       await cloudfrontClient.createInvalidation({
         DistributionId: selectedDistribution.Id,
         InvalidationBatch: {
@@ -550,7 +496,7 @@ export const createCloudFrontDistribution = async (
     }
   }
 
-  const distributionConfig: DistributionConfig = {
+  const finalDistributionConfig: DistributionConfig = {
     CallerReference: dayjs().format(),
     Comment: "Hot Updater CloudFront distribution",
     Enabled: true,
@@ -560,7 +506,9 @@ export const createCloudFrontDistribution = async (
         {
           Id: bucketName,
           DomainName: bucketDomain,
-          S3OriginConfig: { OriginAccessIdentity: "" },
+          S3OriginConfig: {
+            OriginAccessIdentity: "",
+          },
         },
       ],
     },
@@ -571,7 +519,7 @@ export const createCloudFrontDistribution = async (
         Quantity: 1,
         Items: [
           {
-            EventType: "origin-request",
+            EventType: "viewer-request",
             LambdaFunctionARN: functionArn,
           },
         ],
@@ -593,7 +541,7 @@ export const createCloudFrontDistribution = async (
             Quantity: 1,
             Items: [
               {
-                EventType: "origin-request",
+                EventType: "viewer-request",
                 LambdaFunctionARN: functionArn,
               },
             ],
@@ -613,18 +561,25 @@ export const createCloudFrontDistribution = async (
       ],
     },
     DefaultRootObject: "index.html",
-    ViewerCertificate: { CloudFrontDefaultCertificate: true },
+    ViewerCertificate: {
+      CloudFrontDefaultCertificate: true,
+    },
     Restrictions: {
       GeoRestriction: {
         RestrictionType: "none",
         Quantity: 0,
       },
     },
+    PriceClass: "PriceClass_All",
+    Aliases: {
+      Quantity: 0,
+      Items: [],
+    },
   };
 
   try {
     const distResp = await cloudfrontClient.createDistribution({
-      DistributionConfig: distributionConfig,
+      DistributionConfig: finalDistributionConfig,
     });
     const distributionId = distResp.Distribution?.Id!;
     const distributionDomain = distResp.Distribution?.DomainName!;
@@ -636,7 +591,7 @@ export const createCloudFrontDistribution = async (
       {
         title: "Waiting for CloudFront distribution to complete...",
         task: async (message) => {
-          while (retryCount < 60 * 10) {
+          while (retryCount < 600) {
             try {
               const status = await cloudfrontClient.getDistribution({
                 Id: distributionId,
@@ -772,33 +727,39 @@ export const initAwsS3LambdaEdge = async () => {
     };
   }
 
-  // Enter region for AWS S3 bucket creation
-  const $region = await p.select({
-    message: "Enter AWS region for the S3 bucket",
-    options: Object.values(SDK.S3.BucketLocationConstraint).map((r) => ({
-      label: `${r} (${regionLocationMap[r]})` as string,
-      value: r as string,
-    })),
-  });
-  if (p.isCancel($region)) process.exit(1);
-
-  const region = $region as BucketLocationConstraint;
   // Create S3 client
   const S3 = SDK.S3.S3;
-  const s3Client = new S3({ region, credentials });
-  const availableBuckets: { name: string }[] = [];
+
+  const s3Client = new S3({ region: "us-east-1", credentials });
+  const availableBuckets: { name: string; region: string }[] = [];
   try {
     await p.tasks([
       {
         title: "Checking S3 Buckets...",
         task: async () => {
           const buckets = await s3Client.listBuckets({});
-          availableBuckets.push(
-            ...(buckets.Buckets ?? [])
+          const bucketsWithRegion = await Promise.allSettled(
+            (buckets.Buckets ?? [])
               .filter((bucket) => bucket.Name)
-              .map((bucket) => ({
-                name: bucket.Name!,
-              })),
+              .map(async (bucket) => {
+                const { LocationConstraint: region } =
+                  await s3Client.getBucketLocation({
+                    Bucket: bucket.Name!,
+                  });
+
+                return {
+                  name: bucket.Name!,
+                  region: region as BucketLocationConstraint,
+                };
+              }),
+          );
+
+          availableBuckets.push(
+            ...bucketsWithRegion
+              .map((bucket) =>
+                bucket.status === "fulfilled" ? bucket.value : null,
+              )
+              .filter((bucket) => bucket !== null),
           );
         },
       },
@@ -817,7 +778,7 @@ export const initAwsS3LambdaEdge = async () => {
     options: [
       ...availableBuckets.map((bucket) => ({
         value: bucket.name,
-        label: bucket.name,
+        label: `${bucket.name} (${bucket.region})`,
       })),
       {
         value: createKey,
@@ -829,6 +790,10 @@ export const initAwsS3LambdaEdge = async () => {
   if (p.isCancel(bucketName)) {
     process.exit(1);
   }
+
+  let region: BucketLocationConstraint = availableBuckets.find(
+    (bucket) => bucket.name === bucketName,
+  )?.region as BucketLocationConstraint;
 
   if (bucketName === createKey) {
     const name = await p.text({
@@ -842,6 +807,20 @@ export const initAwsS3LambdaEdge = async () => {
     bucketName = name;
 
     try {
+      // Enter region for AWS S3 bucket creation
+      const $region = await p.select({
+        message: "Enter AWS region for the S3 bucket",
+        options: Object.values(SDK.S3.BucketLocationConstraint).map((r) => ({
+          label: `${r} (${regionLocationMap[r]})` as string,
+          value: r as string,
+        })),
+      });
+      if (p.isCancel($region)) {
+        process.exit(1);
+      }
+
+      region = $region as BucketLocationConstraint;
+
       await s3Client.createBucket({
         Bucket: name,
         CreateBucketConfiguration: {
@@ -856,12 +835,18 @@ export const initAwsS3LambdaEdge = async () => {
       throw error;
     }
   }
-  p.log.info(`Selected S3 Bucket: ${bucketName}`);
+
+  p.log.info(`Selected S3 Bucket: ${bucketName} (${region})`);
 
   const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 
   // Deploy Lambda@Edge function (us-east-1)
-  const { functionArn } = await deployLambdaEdge(credentials, lambdaRoleArn);
+  const { functionArn } = await deployLambdaEdge({
+    region,
+    bucketName,
+    credentials,
+    lambdaRoleArn,
+  });
 
   // Create CloudFront distribution
   const { distributionDomain } = await createCloudFrontDistribution(
