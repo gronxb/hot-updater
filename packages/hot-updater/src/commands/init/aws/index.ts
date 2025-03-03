@@ -8,6 +8,7 @@ import type {
 } from "@hot-updater/aws/sdk";
 import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
+import { merge } from "es-toolkit";
 import fs from "fs/promises";
 import { regionLocationMap } from "./regionLocationMap";
 
@@ -359,6 +360,7 @@ export const createCloudFrontDistribution = async (
   const cloudfrontClient = new Cloudfront({ region, credentials });
   let oacId: string;
 
+  // Origin Access Control (OAC) 조회 또는 생성
   try {
     const listOacResp = await cloudfrontClient.listOriginAccessControls({});
     const existingOac = listOacResp.OriginAccessControlList?.Items?.find(
@@ -384,6 +386,7 @@ export const createCloudFrontDistribution = async (
 
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
+  // 기존 CloudFront 배포판 중 bucketDomain과 일치하는 것을 찾음
   const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
   try {
     const listResp = await cloudfrontClient.listDistributions({});
@@ -417,10 +420,7 @@ export const createCloudFrontDistribution = async (
     selectedDistribution = JSON.parse(selectedDistributionStr);
   }
 
-  const finalDistributionConfig: DistributionConfig = {
-    CallerReference: dayjs().format(),
-    Comment: "Hot Updater CloudFront distribution",
-    Enabled: true,
+  const newOverrides: Partial<DistributionConfig> = {
     Origins: {
       Quantity: 1,
       Items: [
@@ -482,30 +482,24 @@ export const createCloudFrontDistribution = async (
         },
       ],
     },
-    DefaultRootObject: "index.html",
-    ViewerCertificate: {
-      CloudFrontDefaultCertificate: true,
-    },
-    Restrictions: {
-      GeoRestriction: {
-        RestrictionType: "none",
-        Quantity: 0,
-      },
-    },
   };
 
+  // 배포판 업데이트 또는 생성
   if (selectedDistribution) {
     p.log.success(
       `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
     );
     try {
-      const { ETag } = await cloudfrontClient.getDistributionConfig({
-        Id: selectedDistribution.Id,
-      });
+      const { DistributionConfig, ETag } =
+        await cloudfrontClient.getDistributionConfig({
+          Id: selectedDistribution.Id,
+        });
+
+      const finalConfig = merge(DistributionConfig ?? {}, newOverrides);
       await cloudfrontClient.updateDistribution({
         Id: selectedDistribution.Id,
         IfMatch: ETag,
-        DistributionConfig: finalDistributionConfig,
+        DistributionConfig: finalConfig as DistributionConfig,
       });
       p.log.success(
         "CloudFront distribution updated with new Lambda function ARN.",
@@ -534,6 +528,88 @@ export const createCloudFrontDistribution = async (
       throw err;
     }
   }
+
+  const finalDistributionConfig: DistributionConfig = {
+    CallerReference: dayjs().format(),
+    Comment: "Hot Updater CloudFront distribution",
+    Enabled: true,
+    Origins: {
+      Quantity: 1,
+      Items: [
+        {
+          Id: bucketName,
+          DomainName: bucketDomain,
+          OriginAccessControlId: oacId,
+          S3OriginConfig: {
+            OriginAccessIdentity: "",
+          },
+        },
+      ],
+    },
+    DefaultCacheBehavior: {
+      TargetOriginId: bucketName,
+      ViewerProtocolPolicy: "redirect-to-https",
+      LambdaFunctionAssociations: {
+        Quantity: 1,
+        Items: [
+          {
+            EventType: "origin-request",
+            LambdaFunctionARN: functionArn,
+          },
+        ],
+      },
+      ForwardedValues: {
+        QueryString: false,
+        Cookies: { Forward: "none" },
+      },
+      MinTTL: 0,
+    },
+    CacheBehaviors: {
+      Quantity: 1,
+      Items: [
+        {
+          PathPattern: "/api/*",
+          TargetOriginId: bucketName,
+          ViewerProtocolPolicy: "redirect-to-https",
+          LambdaFunctionAssociations: {
+            Quantity: 1,
+            Items: [
+              {
+                EventType: "viewer-request",
+                LambdaFunctionARN: functionArn,
+              },
+            ],
+          },
+          MinTTL: 0,
+          DefaultTTL: 0,
+          MaxTTL: 0,
+          ForwardedValues: {
+            QueryString: false,
+            Cookies: { Forward: "none" },
+            Headers: {
+              Quantity: 3,
+              Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
+            },
+          },
+        },
+      ],
+    },
+    DefaultRootObject: "index.html",
+    ViewerCertificate: {
+      CloudFrontDefaultCertificate: true,
+    },
+    Restrictions: {
+      GeoRestriction: {
+        RestrictionType: "none",
+        Quantity: 0,
+      },
+    },
+    PriceClass: "PriceClass_All",
+    Aliases: {
+      Quantity: 0,
+      Items: [],
+    },
+  };
 
   try {
     const distResp = await cloudfrontClient.createDistribution({
