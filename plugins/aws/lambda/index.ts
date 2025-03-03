@@ -1,6 +1,9 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { CloudFrontRequestHandler } from "aws-lambda";
+import type {
+  CloudFrontRequestEvent,
+  CloudFrontRequestHandler,
+} from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
@@ -51,6 +54,7 @@ async function signUpdateInfoFileUrl(updateInfo: any) {
 type Bindings = {
   callback: Callback;
   request: CloudFrontRequest;
+  event: CloudFrontRequestEvent;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -58,14 +62,6 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.get("/api/check-update", async (c) => {
   try {
     const { headers, origin } = c.env.request;
-    let bucketName: string | undefined;
-    if (origin?.s3?.domainName) {
-      const domainName = origin.s3.domainName;
-      [bucketName] = domainName.split(".s3");
-    }
-    if (!bucketName) {
-      return c.json({ error: "Bucket name not found." }, 500);
-    }
 
     const bundleId = headers["x-bundle-id"]?.[0]?.value;
     const appPlatform = headers["x-app-platform"]?.[0]?.value as
@@ -76,11 +72,11 @@ app.get("/api/check-update", async (c) => {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const cloudfrontDomain = headers.host?.[0]?.value;
+    const cloudfrontDomain =
+      c.env.event.Records[0].cf.config.distributionDomainName;
     if (!cloudfrontDomain) {
       return c.json({ error: "Cloudfront domain not found." }, 500);
     }
-
     const cloudfrontBaseUrl = `https://${cloudfrontDomain}`;
 
     const updateInfo = await getUpdateInfo(cloudfrontBaseUrl, {

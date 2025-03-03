@@ -533,7 +533,7 @@ export const createCloudFrontDistribution = async (
                   Quantity: 1,
                   Items: [
                     {
-                      EventType: "origin-request",
+                      EventType: "viewer-request",
                       LambdaFunctionARN: functionArn,
                     },
                   ],
@@ -653,7 +653,7 @@ export const createCloudFrontDistribution = async (
             Quantity: 1,
             Items: [
               {
-                EventType: "origin-request",
+                EventType: "viewer-request",
                 LambdaFunctionARN: functionArn,
               },
             ],

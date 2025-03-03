@@ -1,13 +1,13 @@
 import type { Bundle, Platform } from "@hot-updater/core";
-import {
-  filterCompatibleAppVersions,
-  getUpdateInfo as getUpdateInfoJS,
-} from "@hot-updater/js";
+import { filterCompatibleAppVersions } from "@hot-updater/js";
+import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
 
 const getCloudFrontJson = async <T>(url: string) => {
   try {
     const response = await fetch(url);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
     return (await response.json()) as T[];
   } catch {
     return [];
@@ -35,7 +35,6 @@ export const getUpdateInfo = async (
     appVersion,
   );
 
-  // 각 targetAppVersion에 대해 CloudFront URL을 사용해 update.json을 가져옴
   const results = await Promise.allSettled(
     matchingVersions.map((targetAppVersion) =>
       getCloudFrontJson<Bundle>(
