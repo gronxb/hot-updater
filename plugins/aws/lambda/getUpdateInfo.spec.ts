@@ -41,7 +41,7 @@ const createGetUpdateInfo =
     };
 
     try {
-      return await getUpdateInfo(cloudfrontBaseUrl, {
+      return await getUpdateInfo(cloudfrontBaseUrl, "", {
         appVersion,
         bundleId,
         platform,

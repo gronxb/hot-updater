@@ -12,6 +12,7 @@ import { getUpdateInfo } from "./getUpdateInfo";
 declare global {
   var HotUpdater: {
     S3_REGION: string;
+    INTERNAL_AUTH_TOKEN: string;
   };
 }
 
@@ -79,11 +80,15 @@ app.get("/api/check-update", async (c) => {
     }
     const cloudfrontBaseUrl = `https://${cloudfrontDomain}`;
 
-    const updateInfo = await getUpdateInfo(cloudfrontBaseUrl, {
-      platform: appPlatform,
-      bundleId,
-      appVersion,
-    });
+    const updateInfo = await getUpdateInfo(
+      cloudfrontBaseUrl,
+      HotUpdater.INTERNAL_AUTH_TOKEN,
+      {
+        platform: appPlatform,
+        bundleId,
+        appVersion,
+      },
+    );
 
     if (!updateInfo) {
       return c.json(null);
@@ -97,6 +102,12 @@ app.get("/api/check-update", async (c) => {
 });
 
 app.get("*", async (c) => {
+  const { headers } = c.env.request;
+  const authToken = headers["x-internal-auth-token"]?.[0]?.value;
+  if (authToken !== HotUpdater.INTERNAL_AUTH_TOKEN) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   c.env.callback(null, c.env.request);
 });
 

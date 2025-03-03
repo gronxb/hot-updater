@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { defineRegion } from "./define-region";
+import { transformEnv } from "./transformEnv";
 
-describe("defineRegion", () => {
+describe("transformEnv", () => {
   it("should replace HotUpdater.S3_REGION with 'hello'", async () => {
     const code = "const s3 = new S3Client({ region: HotUpdater.S3_REGION });";
 
-    const result = await defineRegion(code, "us-east-1");
+    const result = await transformEnv(code, { S3_REGION: "us-east-1" });
     expect(result).toContain('region: "us-east-1"');
   });
 
@@ -15,7 +15,7 @@ describe("defineRegion", () => {
       const region = "us-east-1";
     `;
 
-    const result = await defineRegion(code, "hello");
+    const result = await transformEnv(code, { S3_REGION: "hello" });
     expect(result).toContain(`"test"`);
     expect(result).toContain(`"us-east-1"`);
   });
@@ -30,7 +30,7 @@ describe("defineRegion", () => {
       });
     `;
 
-    const result = await defineRegion(code, "hello");
+    const result = await transformEnv(code, { S3_REGION: "hello" });
     const matches = result.match(/"hello"/g);
     expect(matches?.length).toBe(2);
   });

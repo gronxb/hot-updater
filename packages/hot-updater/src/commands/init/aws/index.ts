@@ -17,7 +17,7 @@ import { delay } from "@/utils/delay";
 import { makeEnv } from "@/utils/makeEnv";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
-import { defineRegion } from "./define-region";
+import { generateInternalToken, transformEnv } from "./transformEnv";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE_WITH_SESSION = `
@@ -204,9 +204,12 @@ export const deployLambdaEdge = async ({
 
   // lambdaDir copy to cwd/.hot-updater/lambda
   const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
-  const code = await defineRegion(
+  const code = await transformEnv(
     await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
-    region,
+    {
+      S3_REGION: region,
+      INTERNAL_AUTH_TOKEN: generateInternalToken(),
+    },
   );
   await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
   removeTmpDir;
