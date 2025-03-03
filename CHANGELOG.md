@@ -1,3 +1,21 @@
+## 0.12.4 (2025-03-03)
+
+### 🚀 Features
+
+- **firebase:** integration `firebaseStorage` ([#149](https://github.com/gronxb/hot-updater/pull/149))
+- **firebase:** integration `firebaseDatabase` ([#156](https://github.com/gronxb/hot-updater/pull/156))
+
+### 🩹 Fixes
+
+- **aws:** fetch the correct S3 bucket regardless of region ([#162](https://github.com/gronxb/hot-updater/pull/162))
+- **aws:** catch null S3 JSON retrieval ([294063a](https://github.com/gronxb/hot-updater/commit/294063a))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- Sungyu Kang
+
 ## 0.12.3 (2025-02-24)
 
 ### 🚀 Features
