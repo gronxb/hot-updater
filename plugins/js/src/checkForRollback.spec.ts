@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { checkForRollback } from "./checkForRollback";
 
 const DEFAULT_BUNDLE = {
+  appName: "test",
   fileUrl: "",
   fileHash: "",
   shouldForceUpdate: false,

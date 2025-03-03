@@ -4,6 +4,7 @@ import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
 export default defineConfig({
+  appName: "hot-updater-v0.76.1-new-arch",
   build: metro({
     enableHermes: true,
   }),

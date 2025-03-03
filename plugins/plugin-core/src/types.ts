@@ -54,6 +54,10 @@ export interface StoragePluginHooks {
 }
 
 export type Config = {
+  /**
+   * The name of the app.
+   */
+  appName: string;
   console?: {
     /**
      * Git repository URL
