@@ -730,7 +730,7 @@ export const initAwsS3LambdaEdge = async () => {
   const S3 = SDK.S3.S3;
 
   const s3Client = new S3({ region: "us-east-1", credentials });
-  const availableBuckets: { name: string }[] = [];
+  const availableBuckets: { name: string; region: string }[] = [];
   try {
     await p.tasks([
       {
@@ -742,6 +742,7 @@ export const initAwsS3LambdaEdge = async () => {
               .filter((bucket) => bucket.Name)
               .map((bucket) => ({
                 name: bucket.Name!,
+                region: bucket.BucketRegion!,
               })),
           );
         },
@@ -760,7 +761,7 @@ export const initAwsS3LambdaEdge = async () => {
     message: "S3 Bucket List",
     options: [
       ...availableBuckets.map((bucket) => ({
-        value: bucket.name,
+        value: `${bucket.name} (${bucket.region})`,
         label: bucket.name,
       })),
       {
