@@ -832,20 +832,9 @@ export const initAwsS3LambdaEdge = async () => {
     };
   }
 
-  // Enter region for AWS S3 bucket creation
-  const $region = await p.select({
-    message: "Enter AWS region for the S3 bucket",
-    options: Object.values(SDK.S3.BucketLocationConstraint).map((r) => ({
-      label: `${r} (${regionLocationMap[r]})` as string,
-      value: r as string,
-    })),
-  });
-  if (p.isCancel($region)) process.exit(1);
-
-  const region = $region as BucketLocationConstraint;
   // Create S3 client
   const S3 = SDK.S3.S3;
-  const s3Client = new S3({ region, credentials });
+  const s3Client = new S3({ region: "us-east-1", credentials });
   const availableBuckets: { name: string }[] = [];
   try {
     await p.tasks([
@@ -902,6 +891,20 @@ export const initAwsS3LambdaEdge = async () => {
     bucketName = name;
 
     try {
+      // Enter region for AWS S3 bucket creation
+      const $region = await p.select({
+        message: "Enter AWS region for the S3 bucket",
+        options: Object.values(SDK.S3.BucketLocationConstraint).map((r) => ({
+          label: `${r} (${regionLocationMap[r]})` as string,
+          value: r as string,
+        })),
+      });
+      if (p.isCancel($region)) {
+        process.exit(1);
+      }
+
+      const region = $region as BucketLocationConstraint;
+
       await s3Client.createBucket({
         Bucket: name,
         CreateBucketConfiguration: {
@@ -916,7 +919,11 @@ export const initAwsS3LambdaEdge = async () => {
       throw error;
     }
   }
-  p.log.info(`Selected S3 Bucket: ${bucketName}`);
+
+  const locationResp = await s3Client.getBucketLocation({ Bucket: bucketName });
+  const region = locationResp.LocationConstraint as BucketLocationConstraint;
+
+  p.log.info(`Selected S3 Bucket: ${bucketName} (${region})`);
 
   const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 
@@ -958,10 +965,18 @@ export const initAwsS3LambdaEdge = async () => {
     ],
   };
 
-  await s3Client.putBucketPolicy({
-    Bucket: bucketName,
-    Policy: JSON.stringify(bucketPolicy),
-  });
+  await p.tasks([
+    {
+      title: "Updating CloudFront access policy for S3 bucket...",
+      task: async () => {
+        const s3Client = new S3({ region, credentials });
+        await s3Client.putBucketPolicy({
+          Bucket: bucketName,
+          Policy: JSON.stringify(bucketPolicy),
+        });
+      },
+    },
+  ]);
   p.log.success("CloudFront access policy updated for S3 bucket.");
 
   // Create config file and environment variable file
