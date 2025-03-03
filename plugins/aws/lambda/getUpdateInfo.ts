@@ -6,13 +6,17 @@ import {
 } from "@hot-updater/js";
 
 const getS3Json = async (s3: S3Client, bucket: string, key: string) => {
-  const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-  const { Body } = await s3.send(command);
-  if (!Body) {
+  try {
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    const { Body } = await s3.send(command);
+    if (!Body) {
+      return null;
+    }
+    const jsonString = await Body.transformToString();
+    return JSON.parse(jsonString);
+  } catch {
     return null;
   }
-  const jsonString = await Body.transformToString();
-  return JSON.parse(jsonString);
 };
 
 export const getUpdateInfo = async (
