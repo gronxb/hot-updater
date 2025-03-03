@@ -360,7 +360,6 @@ export const createCloudFrontDistribution = async (
   const cloudfrontClient = new Cloudfront({ region, credentials });
   let oacId: string;
 
-  // Origin Access Control (OAC) 조회 또는 생성
   try {
     const listOacResp = await cloudfrontClient.listOriginAccessControls({});
     const existingOac = listOacResp.OriginAccessControlList?.Items?.find(
@@ -386,7 +385,6 @@ export const createCloudFrontDistribution = async (
 
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
-  // 기존 CloudFront 배포판 중 bucketDomain과 일치하는 것을 찾음
   const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
   try {
     const listResp = await cloudfrontClient.listDistributions({});
@@ -484,7 +482,6 @@ export const createCloudFrontDistribution = async (
     },
   };
 
-  // 배포판 업데이트 또는 생성
   if (selectedDistribution) {
     p.log.success(
       `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
@@ -553,7 +550,7 @@ export const createCloudFrontDistribution = async (
         Quantity: 1,
         Items: [
           {
-            EventType: "origin-request",
+            EventType: "viewer-request",
             LambdaFunctionARN: functionArn,
           },
         ],
