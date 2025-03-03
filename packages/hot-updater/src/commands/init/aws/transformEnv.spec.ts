@@ -34,4 +34,26 @@ describe("transformEnv", () => {
     const matches = result.match(/"hello"/g);
     expect(matches?.length).toBe(2);
   });
+
+  it("should replace all occurrences of HotUpdater.S3_REGION", async () => {
+    const code = `
+      const s3_1 = new S3Client({
+        region: HotUpdater.S3_REGION,
+      });
+      const s3_2 = new S3Client({
+        region: HotUpdater.S3_REGION,
+      });
+
+      console.log(HotUpdater.S3_BUCKET_NAME);
+    `;
+
+    const result = await transformEnv(code, {
+      S3_REGION: "ap-northeast-1",
+      S3_BUCKET_NAME: "bundles",
+    });
+    const matches = result.match(/"ap-northeast-1"/g);
+    expect(matches?.length).toBe(2);
+    const matches2 = result.match(/"bundles"/g);
+    expect(matches2?.length).toBe(1);
+  });
 });
