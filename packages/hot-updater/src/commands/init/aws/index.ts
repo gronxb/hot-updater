@@ -928,12 +928,41 @@ export const initAwsS3LambdaEdge = async () => {
   });
 
   // Create CloudFront distribution
-  const { distributionDomain } = await createCloudFrontDistribution(
-    credentials,
-    region,
-    bucketName,
-    functionArn,
-  );
+  const { distributionDomain, distributionId } =
+    await createCloudFrontDistribution(
+      credentials,
+      region,
+      bucketName,
+      functionArn,
+    );
+
+  const accountId = lambdaRoleArn.split(":")[4];
+  const bucketPolicy = {
+    Version: "2008-10-17",
+    Id: "PolicyForCloudFrontPrivateContent",
+    Statement: [
+      {
+        Sid: "AllowCloudFrontServicePrincipal",
+        Effect: "Allow",
+        Principal: {
+          Service: "cloudfront.amazonaws.com",
+        },
+        Action: "s3:GetObject",
+        Resource: `arn:aws:s3:::${bucketName}/*`,
+        Condition: {
+          StringEquals: {
+            "AWS:SourceArn": `arn:aws:cloudfront::${accountId}:distribution/${distributionId}`,
+          },
+        },
+      },
+    ],
+  };
+
+  await s3Client.putBucketPolicy({
+    Bucket: bucketName,
+    Policy: JSON.stringify(bucketPolicy),
+  });
+  p.log.success("CloudFront access policy updated for S3 bucket.");
 
   // Create config file and environment variable file
   if (mode === "sso") {
