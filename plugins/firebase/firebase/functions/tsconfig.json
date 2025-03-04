@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "module": "ES2020",
+    "module": "ES2015",
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "outDir": "lib",
