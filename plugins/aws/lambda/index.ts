@@ -6,7 +6,14 @@ import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 import { getUpdateInfo } from "./getUpdateInfo";
 
-const s3 = new S3Client();
+declare global {
+  var HotUpdater: {
+    S3_BUCKET_NAME: string;
+    S3_REGION: string;
+  };
+}
+
+const s3 = new S3Client({ region: HotUpdater.S3_REGION });
 
 function parseS3Url(url: string) {
   try {
@@ -48,15 +55,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.get("/api/check-update", async (c) => {
   try {
-    const { headers, origin } = c.env.request;
-    let bucketName: string | undefined;
-    if (origin?.s3?.domainName) {
-      const domainName = origin.s3.domainName;
-      [bucketName] = domainName.split(".s3");
-    }
-    if (!bucketName) {
-      return c.json({ error: "Bucket name not found." }, 500);
-    }
+    const { headers } = c.env.request;
 
     const bundleId = headers["x-bundle-id"]?.[0]?.value;
     const appPlatform = headers["x-app-platform"]?.[0]?.value as
@@ -68,7 +67,7 @@ app.get("/api/check-update", async (c) => {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const updateInfo = await getUpdateInfo(s3, bucketName, {
+    const updateInfo = await getUpdateInfo(s3, HotUpdater.S3_BUCKET_NAME, {
       platform: appPlatform,
       bundleId,
       appVersion,
@@ -80,7 +79,12 @@ app.get("/api/check-update", async (c) => {
     const finalInfo = await signUpdateInfoFileUrl(updateInfo);
     return c.json(finalInfo);
   } catch {
-    return c.json({ error: "Internal Server Error" }, 500);
+    return c.json(
+      {
+        error: "Internal Server Error",
+      },
+      500,
+    );
   }
 });
 
