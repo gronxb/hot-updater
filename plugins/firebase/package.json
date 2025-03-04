@@ -31,9 +31,11 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/core": "0.12.7",
-    "@hot-updater/plugin-core": "0.12.7",
-    "firebase": "^11.3.1"
+    "@hot-updater/core": "0.12.4",
+    "@hot-updater/plugin-core": "0.12.4",
+    "firebase": "^11.3.1",
+		"firebase-admin": "^13.1.0",
+		"firebase-functions": "^6.3.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
