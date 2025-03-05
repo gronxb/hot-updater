@@ -1,29 +1,34 @@
 import { printBanner } from "@/components/banner";
-import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
 import { initAwsS3LambdaEdge } from "./init/aws";
 import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
-import { initSupabase } from "./init/supabase";
 
-const REQUIRED_PACKAGES = {
-  dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv", "hot-updater"],
-};
+import { initSupabase } from "@/commands/init/supabase";
+import { initFirebase } from "./init/firebase";
 
-const PACKAGE_MAP = {
-  supabase: {
-    dependencies: [],
-    devDependencies: ["@hot-updater/supabase"],
-  },
-  aws: {
-    dependencies: [],
-    devDependencies: ["@hot-updater/aws"],
-  },
-  "cloudflare-d1-r2-worker": {
-    dependencies: [],
-    devDependencies: ["wrangler", "@hot-updater/cloudflare"],
-  },
-} as const;
+// const REQUIRED_PACKAGES = {
+//   dependencies: ["@hot-updater/react-native"],
+//   devDependencies: ["dotenv", "hot-updater"],
+// };
+
+// const PACKAGE_MAP = {
+//   supabase: {
+//     dependencies: [],
+//     devDependencies: ["@hot-updater/supabase"],
+//   },
+//   aws: {
+//     dependencies: [],
+//     devDependencies: ["@hot-updater/aws"],
+//   },
+//   "cloudflare-d1-r2-worker": {
+//     dependencies: [],
+//     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
+//   },
+//   firebase: {
+//     dependencies: [],
+//     devDependencies: ["@hot-updater/firebase"],
+//   },
+// } as const;
 
 export const init = async () => {
   printBanner();
@@ -54,6 +59,7 @@ export const init = async () => {
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
+      { value: "firebase", label: "Firebase" },
     ],
   });
 
@@ -61,18 +67,18 @@ export const init = async () => {
     process.exit(0);
   }
 
-  await ensureInstallPackages({
-    dependencies: [
-      ...buildPluginPackage.dependencies,
-      ...REQUIRED_PACKAGES.dependencies,
-      ...PACKAGE_MAP[provider].dependencies,
-    ],
-    devDependencies: [
-      ...buildPluginPackage.devDependencies,
-      ...REQUIRED_PACKAGES.devDependencies,
-      ...PACKAGE_MAP[provider].devDependencies,
-    ],
-  });
+  // await ensureInstallPackages({
+  //   dependencies: [
+  //     ...buildPluginPackage.dependencies,
+  //     ...REQUIRED_PACKAGES.dependencies,
+  //     ...PACKAGE_MAP[provider].dependencies,
+  //   ],
+  //   devDependencies: [
+  //     ...buildPluginPackage.devDependencies,
+  //     ...REQUIRED_PACKAGES.devDependencies,
+  //     ...PACKAGE_MAP[provider].devDependencies,
+  //   ],
+  // });
 
   switch (provider) {
     case "supabase": {
@@ -85,6 +91,10 @@ export const init = async () => {
     }
     case "aws": {
       await initAwsS3LambdaEdge();
+      break;
+    }
+    case "firebase": {
+      console.table(await initFirebase());
       break;
     }
     default:
