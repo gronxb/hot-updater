@@ -17,6 +17,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.zip.ZipFile
 
 class HotUpdater : ReactPackage {
@@ -273,6 +277,61 @@ class HotUpdater : ReactPackage {
                     oldBundle.deleteRecursively()
                 }
             }
+        }
+
+        fun BuildUUIDV7(): String = uuid
+
+        private val uuid: String by lazy {
+            val buildTimeString = BuildConfig.BUILD_TIME_STRING
+            val formatter = SimpleDateFormat("MMM d yyyy HH:mm:ss", Locale.US)
+            formatter.timeZone = TimeZone.getTimeZone("GMT")
+            val buildDate = formatter.parse(buildTimeString)
+                ?: throw IllegalStateException("빌드 시각 파싱 실패: $buildTimeString")
+            val buildTimestampMs = buildDate.time
+
+            val md = MessageDigest.getInstance("SHA-1")
+            val hash = md.digest(buildTimeString.toByteArray(Charsets.UTF_8))
+
+            val randA = (((hash[0].toInt() and 0xFF) shl 8) or (hash[1].toInt() and 0xFF)) shr 4
+
+            var r2: Long = 0
+            for (i in 2 until 10) {
+                r2 = (r2 shl 8) or (hash[i].toLong() and 0xFF)
+            }
+            r2 = r2 shr 2
+            val randBLo = (r2 and 0xFFFFFFFFL).toInt()
+            val randBHi = ((r2 shr 32) and 0x3FFFFFFFL).toInt()
+
+            val bytes = ByteArray(16)
+
+            bytes[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
+            bytes[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
+            bytes[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
+            bytes[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
+            bytes[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
+            bytes[5] = (buildTimestampMs and 0xFF).toByte()
+
+            bytes[6] = (0x70 or ((randA shr 8) and 0x0F)).toByte()
+            bytes[7] = (randA and 0xFF).toByte()
+
+            bytes[8] = (0x80 or ((randBHi shr 24) and 0xFF)).toByte()
+            bytes[9] = ((randBHi shr 16) and 0xFF).toByte()
+            bytes[10] = ((randBHi shr 8) and 0xFF).toByte()
+            bytes[11] = (randBHi and 0xFF).toByte()
+
+            bytes[12] = ((randBLo shr 24) and 0xFF).toByte()
+            bytes[13] = ((randBLo shr 16) and 0xFF).toByte()
+            bytes[14] = ((randBLo shr 8) and 0xFF).toByte()
+            bytes[15] = (randBLo and 0xFF).toByte()
+
+            String.format(
+                "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                bytes[0], bytes[1], bytes[2], bytes[3],
+                bytes[4], bytes[5],
+                bytes[6], bytes[7],
+                bytes[8], bytes[9],
+                bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+            )
         }
     }
 }
