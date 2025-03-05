@@ -10,7 +10,7 @@ interface Spec extends TurboModule {
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;
-  getConstants: () => {
+  readonly getConstants: () => {
     BUNDLE_ID_BUILD_TIME: string;
   };
 }
