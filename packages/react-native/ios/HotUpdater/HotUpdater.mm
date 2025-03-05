@@ -2,6 +2,47 @@
 #import <React/RCTReloadCommand.h>
 #import <SSZipArchive/SSZipArchive.h>
 #import <Foundation/NSURLSession.h>
+#import <CommonCrypto/CommonDigest.h>
+#import <React/RCTBundleURLProvider.h>
+#import <React/RCTEventEmitter.h>
+
+static NSString * BuildUUIDV7(void) {
+    // static NSString *uuid = nil;
+    // static dispatch_once_t onceToken;
+    // dispatch_once(&onceToken, ^{
+    //     NSString *buildTimeString = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+        
+    //     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    //     formatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
+    //     formatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+    //     formatter.dateFormat = @"MMM d yyyy HH:mm:ss";
+    //     NSDate *buildDate = [formatter dateFromString:buildTimeString];
+    //     uint64_t timestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000);
+        
+    //     unsigned char hash[CC_SHA1_DIGEST_LENGTH];
+    //     CC_SHA1(buildTimeString.UTF8String, (CC_LONG)[buildTimeString lengthOfBytesUsingEncoding:NSUTF8StringEncoding], hash);
+        
+    //     uint16_t r1 = (((uint16_t)hash[0] << 8) | hash[1]) >> 4;
+        
+    //     uint64_t r2 = 0;
+    //     for (int i = 2; i < 10; i++) {
+    //         r2 = (r2 << 8) | hash[i];
+    //     }
+    //     r2 = r2 >> 2;
+        
+    //     uint64_t uuidHigh = (timestampMs << 16) | (((uint64_t)r1) << 4) | (0x7);
+    //     uint64_t uuidLow = ((uint64_t)0x2 << 62) | (r2 & 0x3FFFFFFFFFFFFFFFULL);
+        
+    //     uuid = [NSString stringWithFormat:
+    //             @"%08llx-%04llx-%04llx-%04llx-%012llx",
+    //             (uuidHigh >> 32) & 0xFFFFFFFFULL,
+    //             (uuidHigh >> 16) & 0xFFFFULL,
+    //             uuidHigh & 0xFFFFULL,
+    //             (uuidLow >> 48) & 0xFFFFULL,
+    //             uuidLow & 0xFFFFFFFFFFFFULL];
+    // });
+    return @"Hello World";
+}
 
 @implementation HotUpdater {
     bool hasListeners;
@@ -20,6 +61,18 @@
 }
 
 RCT_EXPORT_MODULE();
+
+#pragma mark - React Native Constants
+
+- (NSDictionary *)constantsToExport {
+    return @{ @"BUNDLE_ID_BUILD_TIME": BuildUUIDV7() };
+}
+
+
+- (NSDictionary*) getConstants {
+  return [self constantsToExport];
+}
+
 
 #pragma mark - Bundle URL Management
 

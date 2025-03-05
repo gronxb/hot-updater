@@ -86,5 +86,11 @@ export const reload = () => {
  * @returns {Promise<string>} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  return HotUpdater.HOT_UPDATER_BUNDLE_ID;
+  const constants = HotUpdaterNative.getConstants();
+
+  return constants.BUNDLE_ID_BUILD_TIME.localeCompare(
+    HotUpdater.HOT_UPDATER_BUNDLE_ID,
+  ) >= 0
+    ? constants.BUNDLE_ID_BUILD_TIME
+    : HotUpdater.HOT_UPDATER_BUNDLE_ID;
 };
