@@ -1,234 +1,109 @@
+import path from "path";
+import { initFirebaseUser } from "@/commands/init/firebase/select";
+import { link } from "@/components/banner";
+import { makeEnv } from "@/utils/makeEnv";
 import * as p from "@clack/prompts";
+import { copyDirToTmp } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import fs from "fs/promises";
 
-interface Project {
-  projectId: string;
-  projectNumber: string;
-  displayName: string;
-  name: string;
-  resources?: {
-    hostingSite?: string;
-  };
-  state: string;
-  etag: string;
-}
+const firebaseDir = path.join(
+  "node_modules",
+  "@hot-updater",
+  "firebase",
+  "firebase",
+);
 
-interface WebApp {
-  appId: string;
-  displayName: string;
-  projectId: string;
-}
+const rootDir = process.cwd();
+const hotUpdaterDir = path.resolve(".hot-updater");
 
-export const selectOrCreateProject = async (): Promise<Project> => {
-  const confirmed = await p.confirm({
-    message: "Do you already have a Firebase project?",
-    initialValue: true,
-  });
+const CONFIG_TEMPLATE = `
+import { metro } from "@hot-updater/metro";
+import { firebaseStorage, firebaseDatabase } from "@hot-updater/firebase";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
 
-  if (p.isCancel(confirmed)) process.exit(0);
+export default defineConfig({
+  build: metro({
+    enableHermes: true,
+  }),
+  storage: firebaseStorage({
+    apiKey: process.env.HOT_UPDATER_FIREBASE_API_KEY,
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET,
+  }),
+  database: firebaseDatabase({
+    apiKey: process.env.HOT_UPDATER_FIREBASE_API_KEY,
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
+  }),
+});
+`;
 
+async function setupFirebaseEnv(webAppId: string) {
   try {
-    if (confirmed) {
-      // Fetch the existing projects list and let the user select one.
-      const listProjects = await execa(
-        "firebase",
-        ["projects:list", "--json"],
-        {
-          stdio: "pipe",
-        },
-      );
-      const projects: Project[] = JSON.parse(listProjects.stdout).result || [];
-
-      if (projects.length === 0) {
-        p.log.warn("No existing projects found. Creating a new project.");
-        return await createNewProject();
-      }
-
-      const selectedProject = (await p.select<Project>({
-        message: "Select a Firebase project",
-        options: projects.map((project) => ({
-          value: project,
-          label: `${project.displayName} (${project.projectId})`,
-        })),
-      })) as Project;
-
-      return selectedProject;
-      // biome-ignore lint/style/noUselessElse: <explanation>
-    } else {
-      // Create a new project.
-      return await createNewProject();
-    }
-  } catch (err) {
-    handleError(err);
-    process.exit(1);
-  }
-};
-
-// Delay function (Promise-based)
-const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
-
-const createNewProject = async (): Promise<Project> => {
-  const projectName = await p.text({
-    message: "Enter the name for your new Firebase project",
-    validate(value) {
-      if (!value || value === undefined) {
-        return "Project name is required.";
-      }
-      return;
-    },
-  });
-
-  if (p.isCancel(projectName)) process.exit(0);
-  const spin = p.spinner();
-  try {
-    await execa("firebase", ["projects:create", projectName as string], {
-      stdio: "inherit",
-    });
-
-    // Poll until the project appears in the list.
-    let newProject: Project | undefined;
-    const startTime = Date.now();
-    const timeout = 60000; // 60 seconds timeout
-    spin.start();
-
-    p.log.info(
-      `Checking for project '${projectName}' to appear (up to 30 seconds)...`,
+    const { stdout } = await execa(
+      "firebase",
+      ["apps:sdkconfig", "WEB", webAppId],
+      { cwd: hotUpdaterDir },
     );
 
-    while (!newProject) {
-      if (Date.now() - startTime > timeout) {
-        throw new Error(
-          `Timeout: Could not find project '${projectName}' within 30 seconds.`,
-        );
-      }
+    const firebaseConfig = JSON.parse(stdout);
 
-      await delay(1000); // 1 second delay
+    const newEnvVars = {
+      HOT_UPDATER_FIREBASE_API_KEY: firebaseConfig.apiKey,
+      HOT_UPDATER_FIREBASE_PROJECT_ID: firebaseConfig.projectId,
+      HOT_UPDATER_FIREBASE_STORAGE_BUCKET: firebaseConfig.storageBucket,
+    };
 
-      const listProjects = await execa(
-        "firebase",
-        ["projects:list", "--json"],
-        {
-          stdio: "pipe",
-        },
-      );
-      const projects: Project[] = JSON.parse(listProjects.stdout).result || [];
-      newProject = projects.find((p) => p.displayName === projectName);
-    }
-
-    p.log.success(`Project '${projectName}' has been confirmed!`);
-    spin.stop();
-    return newProject;
-  } catch (err) {
-    handleError(err);
-    process.exit(1);
+    await makeEnv(newEnvVars, path.join(rootDir, ".env"));
+  } catch (error) {
+    console.error("error in firebase apps:sdkconfig", error);
   }
-};
-
-const selectOrCreateWebApp = async (projectId: string): Promise<WebApp> => {
-  const confirmed = await p.confirm({
-    message: "Do you create a new web app?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(confirmed)) process.exit(0);
-
-  try {
-    if (confirmed) {
-      const appName = await p.text({
-        message: "Enter the name for your web app",
-        validate(value) {
-          if (!value || value === undefined) {
-            return "App name is required.";
-          }
-          return;
-        },
-      });
-
-      if (p.isCancel(appName)) process.exit(0);
-
-      await execa(
-        "firebase",
-        ["apps:create", "WEB", appName as string, "--project", projectId],
-        {
-          stdio: "inherit",
-        },
-      );
-
-      const listApps = await execa(
-        "firebase",
-        ["apps:list", "WEB", "--project", projectId, "--json"],
-        {
-          stdio: "pipe",
-        },
-      );
-      const apps: WebApp[] = JSON.parse(listApps.stdout).result || [];
-      const newApp = apps.find((app) => app.displayName === appName);
-      if (!newApp) {
-        throw new Error(`Could not find the new web app '${appName}'.`);
-      }
-      return newApp;
-      // biome-ignore lint/style/noUselessElse: <explanation>
-    } else {
-      const listApps = await execa(
-        "firebase",
-        ["apps:list", "WEB", "--project", projectId, "--json"],
-        {
-          stdio: "pipe",
-        },
-      );
-      const apps: WebApp[] = JSON.parse(listApps.stdout).result || [];
-
-      if (apps.length === 0) {
-        p.log.warn("No existing web apps found. Creating a new web app.");
-        return await selectOrCreateWebApp(projectId);
-      }
-
-      const selectedApp = (await p.select<WebApp>({
-        message: "Select a web app",
-        options: apps.map((app) => ({
-          value: app,
-          label: `${app.displayName} (${app.appId})`,
-        })),
-      })) as WebApp;
-
-      return selectedApp;
-    }
-  } catch (err) {
-    handleError(err);
-    process.exit(1);
-  }
-};
-
-const handleError = (err: unknown) => {
-  if (err instanceof Error) {
-    p.log.error(`Error occurred: ${err.message}`);
-  } else {
-    console.error("An unknown error occurred:", err);
-  }
-};
+}
 
 export const initFirebase = async () => {
+  const initializeVariable = await initFirebaseUser();
+
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
+  const functionsDir = path.join(tmpDir, "functions");
+  const oldPackagePath = path.join(functionsDir, "_package.json");
+  const newPackagePath = path.join(functionsDir, "package.json");
+
   try {
-    await execa("firebase", ["login"], {
-      stdio: "inherit",
+    await fs.rename(oldPackagePath, newPackagePath);
+  } catch (error) {
+    console.error("error in changing file name:", error);
+  }
+
+  try {
+    await execa("npm", ["install"], { cwd: functionsDir, stdio: "inherit" });
+  } catch (error) {
+    console.error("error in npm install", error);
+  }
+
+  try {
+    await execa("firebase", ["use", "--add", initializeVariable.projectId], {
+      cwd: hotUpdaterDir,
     });
-  } catch (err) {
-    handleError(err);
+  } catch (error) {
+    console.error("error in firebase use --add:", error);
   }
 
-  const selectedProject = await selectOrCreateProject();
-  if (!selectedProject) {
-    p.log.error("Failed to select or create a Firebase project.");
-    process.exit(1);
-  }
-  const selectedWebApp = await selectOrCreateWebApp(selectedProject.projectId);
-  if (!selectedWebApp) {
-    p.log.error("Failed to select or create a web app.");
-    process.exit(1);
-  }
+  setupFirebaseEnv(initializeVariable.webAppId);
 
-  return {
-    projectId: selectedProject.projectId,
-    webAppId: selectedWebApp.appId,
-  };
+  await execa("firebase", ["deploy"], {
+    cwd: hotUpdaterDir,
+    stdio: "inherit",
+  });
+
+  await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+
+  await removeTmpDir();
+
+  p.log.message(
+    `Next step: ${link(
+      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-with-supabase.html#step-4-add-hotupdater-to-your-project",
+    )}`,
+  );
+  p.log.success("Done! 🎉");
 };

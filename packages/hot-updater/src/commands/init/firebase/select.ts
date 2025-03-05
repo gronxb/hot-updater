@@ -1,0 +1,193 @@
+import * as p from "@clack/prompts";
+import { execa } from "execa";
+
+interface Project {
+  projectId: string;
+  projectNumber: string;
+  displayName: string;
+  name: string;
+  resources?: {
+    hostingSite?: string;
+  };
+  state: string;
+  etag: string;
+}
+
+interface WebApp {
+  appId: string;
+  displayName: string;
+  projectId: string;
+}
+
+export const selectOrCreateProject = async (): Promise<string> => {
+  try {
+    // Fetch the existing projects list
+    const listProjects = await execa("firebase", ["projects:list", "--json"], {
+      stdio: "pipe",
+    });
+    const projects: Project[] = JSON.parse(listProjects.stdout).result || [];
+
+    const projectOptions = [
+      ...projects.map((project) => ({
+        value: project.projectId,
+        label: `${project.displayName} (${project.projectId})`,
+      })),
+      {
+        value: "CREATE_NEW",
+        label: "Create a New Project",
+      },
+    ];
+
+    const selectedProjectId = await p.select({
+      message: "Select a Firebase project",
+      options: projectOptions,
+    });
+
+    if (selectedProjectId === "CREATE_NEW") {
+      const projectName = await p.text({
+        message: "Enter the name for your new Firebase project",
+        validate(value) {
+          if (!value || value === undefined) {
+            return "App name is required.";
+          }
+          return;
+        },
+      });
+
+      if (p.isCancel(projectName)) process.exit(0);
+
+      await execa("firebase", ["projects:create", projectName as string], {
+        stdio: "inherit",
+      });
+
+      return projectName as string;
+    }
+
+    return selectedProjectId as string;
+  } catch (err) {
+    handleError(err);
+    process.exit(1);
+  }
+};
+
+export const selectOrCreateWebApp = async (
+  projectId: string,
+): Promise<string> => {
+  try {
+    const listApps = await execa(
+      "firebase",
+      ["apps:list", "WEB", "--project", projectId, "--json"],
+      {
+        stdio: "pipe",
+      },
+    );
+    const apps: WebApp[] = JSON.parse(listApps.stdout).result || [];
+
+    // 앱 목록에 '새 웹 앱 생성' 옵션 추가
+    const appOptions = [
+      ...apps.map((app) => ({
+        value: app.appId,
+        label: `${app.displayName} (${app.appId})`,
+      })),
+      {
+        value: "CREATE_NEW",
+        label: "Create a New Web App",
+      },
+    ];
+
+    const selectedAppId = await p.select({
+      message: "Select a web app",
+      options: appOptions,
+    });
+
+    // 새 웹 앱 생성 선택 시
+    if (selectedAppId === "CREATE_NEW") {
+      const appName = await p.text({
+        message: "Enter the name for your web app",
+        validate(value) {
+          if (!value || value === undefined) {
+            return "App name is required.";
+          }
+          return;
+        },
+      });
+
+      if (p.isCancel(appName)) process.exit(0);
+
+      await execa(
+        "firebase",
+        ["apps:create", "WEB", appName as string, "--project", projectId],
+        {
+          stdio: "inherit",
+        },
+      );
+
+      const listNewApps = await execa(
+        "firebase",
+        ["apps:list", "WEB", "--project", projectId, "--json"],
+        {
+          stdio: "pipe",
+        },
+      );
+      const newApps: WebApp[] = JSON.parse(listNewApps.stdout).result || [];
+      const newApp = newApps.find((app) => app.displayName === appName);
+
+      if (!newApp) {
+        throw new Error(`Could not find the new web app '${appName}'.`);
+      }
+
+      return newApp.appId;
+    }
+
+    // 기존 앱 선택 시
+    return selectedAppId as string;
+  } catch (err) {
+    handleError(err);
+    process.exit(1);
+  }
+};
+
+const handleError = (err: unknown) => {
+  if (err instanceof Error) {
+    p.log.error(`Error occurred: ${err.message}`);
+  } else {
+    console.error("An unknown error occurred:", err);
+  }
+};
+
+export const initFirebaseUser = async () => {
+  try {
+    await execa("firebase", ["login"], {
+      stdio: "inherit",
+    });
+  } catch (err) {
+    handleError(err);
+  }
+
+  const selectedProject = await selectOrCreateProject();
+  if (!selectedProject) {
+    p.log.error("Failed to select or create a Firebase project.");
+    process.exit(1);
+  }
+  const selectedWebApp = await selectOrCreateWebApp(selectedProject);
+  if (!selectedWebApp) {
+    p.log.error("Failed to select or create a web app.");
+    process.exit(1);
+  }
+
+  p.log.info(`
+    ==================================================================================
+                              Storage Setup Instructions
+    ==================================================================================
+    1. Please complete the Storage and FireStore setup on the Firebase Console.
+    2. Note: Upgrading your plan to 'Blaze' is required to proceed.
+    storage: https://console.firebase.google.com/project/${selectedProject}/storage
+    firestore: https://console.firebase.google.com/project/${selectedProject}/firestore 
+    ==================================================================================
+    `);
+
+  return {
+    projectId: selectedProject,
+    webAppId: selectedWebApp,
+  };
+};
