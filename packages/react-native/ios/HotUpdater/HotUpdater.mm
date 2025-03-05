@@ -7,41 +7,53 @@
 #import <React/RCTEventEmitter.h>
 
 static NSString * BuildUUIDV7(void) {
-    // static NSString *uuid = nil;
-    // static dispatch_once_t onceToken;
-    // dispatch_once(&onceToken, ^{
-    //     NSString *buildTimeString = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
-        
-    //     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    //     formatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
-    //     formatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
-    //     formatter.dateFormat = @"MMM d yyyy HH:mm:ss";
-    //     NSDate *buildDate = [formatter dateFromString:buildTimeString];
-    //     uint64_t timestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000);
-        
-    //     unsigned char hash[CC_SHA1_DIGEST_LENGTH];
-    //     CC_SHA1(buildTimeString.UTF8String, (CC_LONG)[buildTimeString lengthOfBytesUsingEncoding:NSUTF8StringEncoding], hash);
-        
-    //     uint16_t r1 = (((uint16_t)hash[0] << 8) | hash[1]) >> 4;
-        
-    //     uint64_t r2 = 0;
-    //     for (int i = 2; i < 10; i++) {
-    //         r2 = (r2 << 8) | hash[i];
-    //     }
-    //     r2 = r2 >> 2;
-        
-    //     uint64_t uuidHigh = (timestampMs << 16) | (((uint64_t)r1) << 4) | (0x7);
-    //     uint64_t uuidLow = ((uint64_t)0x2 << 62) | (r2 & 0x3FFFFFFFFFFFFFFFULL);
-        
-    //     uuid = [NSString stringWithFormat:
-    //             @"%08llx-%04llx-%04llx-%04llx-%012llx",
-    //             (uuidHigh >> 32) & 0xFFFFFFFFULL,
-    //             (uuidHigh >> 16) & 0xFFFFULL,
-    //             uuidHigh & 0xFFFFULL,
-    //             (uuidLow >> 48) & 0xFFFFULL,
-    //             uuidLow & 0xFFFFFFFFFFFFULL];
-    // });
-    return @"Hello World";
+    static uint64_t buildTimestampMs = 0;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSString *buildTimeString = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+        formatter.dateFormat = @"MMM d yyyy HH:mm:ss";
+        NSDate *buildDate = [formatter dateFromString:buildTimeString];
+        buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
+    });
+    
+    uint16_t randA = (uint16_t)arc4random_uniform(0x1000);
+    uint32_t randBHi = (uint32_t)arc4random_uniform(0x40000000); 
+    uint32_t randBLo = arc4random();
+
+    unsigned char bytes[16];
+    
+    bytes[0] = (buildTimestampMs >> 40) & 0xFF;
+    bytes[1] = (buildTimestampMs >> 32) & 0xFF;
+    bytes[2] = (buildTimestampMs >> 24) & 0xFF;
+    bytes[3] = (buildTimestampMs >> 16) & 0xFF;
+    bytes[4] = (buildTimestampMs >> 8) & 0xFF;
+    bytes[5] = buildTimestampMs & 0xFF;
+    
+    bytes[6] = 0x70 | ((randA >> 8) & 0x0F);
+    bytes[7] = randA & 0xFF;
+    
+    bytes[8] = 0x80 | ((randBHi >> 24) & 0xFF);
+    bytes[9] = (randBHi >> 16) & 0xFF;
+    bytes[10] = (randBHi >> 8) & 0xFF;
+    bytes[11] = randBHi & 0xFF;
+    
+    bytes[12] = (randBLo >> 24) & 0xFF;
+    bytes[13] = (randBLo >> 16) & 0xFF;
+    bytes[14] = (randBLo >> 8) & 0xFF;
+    bytes[15] = randBLo & 0xFF;
+    
+    NSString *uuidString = [NSString stringWithFormat:
+        @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5],
+        bytes[6], bytes[7],
+        bytes[8], bytes[9],
+        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+    
+    return uuidString;
 }
 
 @implementation HotUpdater {
