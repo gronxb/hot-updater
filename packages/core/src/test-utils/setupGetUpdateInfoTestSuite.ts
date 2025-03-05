@@ -553,4 +553,34 @@ export const setupGetUpdateInfoTestSuite = ({
       status: "ROLLBACK",
     });
   });
+
+  it("returns null when bundleId is not found in database, indicating it's a build-time generated BUNDLE_ID and thus the latest version", async () => {
+    const bundles: Bundle[] = [];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: "01956886-e1e8-7a7a-9666-4573712f3d58",
+      platform: "ios",
+    });
+    expect(update).toStrictEqual(null);
+  });
+
+  it("returns null when bundleId is not found in database, indicating it's a build-time generated BUNDLE_ID and thus the latest version (2)", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        id: "01956886-0000-7a7a-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: "01956886-e1e8-7a7a-9666-4573712f3d58", // Current version not in bundles, meaning it's from build time
+      platform: "ios",
+    });
+    expect(update).toStrictEqual(null);
+  });
 };
