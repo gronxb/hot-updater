@@ -3,19 +3,22 @@ import { initFirebaseUser } from "@/commands/init/firebase/select";
 import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
 import * as p from "@clack/prompts";
-import { copyDirToTmp } from "@hot-updater/plugin-core";
+import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fs from "fs/promises";
 
 const firebaseDir = path.join(
-  "node_modules",
-  "@hot-updater",
-  "firebase",
+  path.dirname(
+    path.dirname(path.resolve(require.resolve("@hot-updater/firebase"))),
+  ),
   "firebase",
 );
-
-const rootDir = process.cwd();
+const rootDir = getCwd();
 const hotUpdaterDir = path.resolve(".hot-updater");
+const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
+const functionsDir = path.join(tmpDir, "functions");
+const oldPackagePath = path.join(functionsDir, "_package.json");
+const newPackagePath = path.join(functionsDir, "package.json");
 
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
@@ -64,22 +67,22 @@ async function setupFirebaseEnv(webAppId: string) {
 export const initFirebase = async () => {
   const initializeVariable = await initFirebaseUser();
 
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
-  const functionsDir = path.join(tmpDir, "functions");
-  const oldPackagePath = path.join(functionsDir, "_package.json");
-  const newPackagePath = path.join(functionsDir, "package.json");
-
   try {
     await fs.rename(oldPackagePath, newPackagePath);
   } catch (error) {
     console.error("error in changing file name:", error);
   }
 
+  const spin = p.spinner();
+  spin.start("install funcions modules, It's likely to take a while ...");
+
   try {
-    await execa("npm", ["install"], { cwd: functionsDir, stdio: "inherit" });
+    await execa("npm", ["install"], { cwd: functionsDir });
   } catch (error) {
     console.error("error in npm install", error);
   }
+
+  spin.stop("Success!");
 
   try {
     await execa("firebase", ["use", "--add", initializeVariable.projectId], {
