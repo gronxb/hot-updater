@@ -4,31 +4,32 @@ import { initAwsS3LambdaEdge } from "./init/aws";
 import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
 
 import { initSupabase } from "@/commands/init/supabase";
+import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { initFirebase } from "./init/firebase";
 
-// const REQUIRED_PACKAGES = {
-//   dependencies: ["@hot-updater/react-native"],
-//   devDependencies: ["dotenv", "hot-updater"],
-// };
+const REQUIRED_PACKAGES = {
+  dependencies: ["@hot-updater/react-native"],
+  devDependencies: ["dotenv", "hot-updater"],
+};
 
-// const PACKAGE_MAP = {
-//   supabase: {
-//     dependencies: [],
-//     devDependencies: ["@hot-updater/supabase"],
-//   },
-//   aws: {
-//     dependencies: [],
-//     devDependencies: ["@hot-updater/aws"],
-//   },
-//   "cloudflare-d1-r2-worker": {
-//     dependencies: [],
-//     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
-//   },
-//   firebase: {
-//     dependencies: [],
-//     devDependencies: ["@hot-updater/firebase"],
-//   },
-// } as const;
+const PACKAGE_MAP = {
+  supabase: {
+    dependencies: [],
+    devDependencies: ["@hot-updater/supabase"],
+  },
+  aws: {
+    dependencies: [],
+    devDependencies: ["@hot-updater/aws"],
+  },
+  "cloudflare-d1-r2-worker": {
+    dependencies: [],
+    devDependencies: ["wrangler", "@hot-updater/cloudflare"],
+  },
+  firebase: {
+    dependencies: [],
+    devDependencies: ["firebase-tools"],
+  },
+} as const;
 
 export const init = async () => {
   printBanner();
@@ -67,18 +68,18 @@ export const init = async () => {
     process.exit(0);
   }
 
-  // await ensureInstallPackages({
-  //   dependencies: [
-  //     ...buildPluginPackage.dependencies,
-  //     ...REQUIRED_PACKAGES.dependencies,
-  //     ...PACKAGE_MAP[provider].dependencies,
-  //   ],
-  //   devDependencies: [
-  //     ...buildPluginPackage.devDependencies,
-  //     ...REQUIRED_PACKAGES.devDependencies,
-  //     ...PACKAGE_MAP[provider].devDependencies,
-  //   ],
-  // });
+  await ensureInstallPackages({
+    dependencies: [
+      ...buildPluginPackage.dependencies,
+      ...REQUIRED_PACKAGES.dependencies,
+      ...PACKAGE_MAP[provider].dependencies,
+    ],
+    devDependencies: [
+      ...buildPluginPackage.devDependencies,
+      ...REQUIRED_PACKAGES.devDependencies,
+      ...PACKAGE_MAP[provider].devDependencies,
+    ],
+  });
 
   switch (provider) {
     case "supabase": {
