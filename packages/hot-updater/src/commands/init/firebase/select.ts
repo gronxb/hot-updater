@@ -19,12 +19,15 @@ interface WebApp {
   projectId: string;
 }
 
+const spin = p.spinner();
+
 export const selectOrCreateProject = async (): Promise<string> => {
+  spin.start("fetching projects list...");
   try {
-    // Fetch the existing projects list
     const listProjects = await execa("firebase", ["projects:list", "--json"], {
       stdio: "pipe",
     });
+    spin.stop();
     const projects: Project[] = JSON.parse(listProjects.stdout).result || [];
 
     const projectOptions = [
@@ -74,6 +77,7 @@ export const selectOrCreateWebApp = async (
   projectId: string,
 ): Promise<string> => {
   try {
+    spin.start("fetching apps list ...");
     const listApps = await execa(
       "firebase",
       ["apps:list", "WEB", "--project", projectId, "--json"],
@@ -81,9 +85,10 @@ export const selectOrCreateWebApp = async (
         stdio: "pipe",
       },
     );
+    spin.stop();
+
     const apps: WebApp[] = JSON.parse(listApps.stdout).result || [];
 
-    // 앱 목록에 '새 웹 앱 생성' 옵션 추가
     const appOptions = [
       ...apps.map((app) => ({
         value: app.appId,
@@ -100,7 +105,6 @@ export const selectOrCreateWebApp = async (
       options: appOptions,
     });
 
-    // 새 웹 앱 생성 선택 시
     if (selectedAppId === "CREATE_NEW") {
       const appName = await p.text({
         message: "Enter the name for your web app",
@@ -139,7 +143,6 @@ export const selectOrCreateWebApp = async (
       return newApp.appId;
     }
 
-    // 기존 앱 선택 시
     return selectedAppId as string;
   } catch (err) {
     handleError(err);
