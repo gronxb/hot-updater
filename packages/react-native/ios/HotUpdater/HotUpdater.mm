@@ -31,7 +31,6 @@ static NSString * BuildUUIDV7(void) {
             r2 = (r2 << 8) | hash[i];
         }
         r2 = r2 >> 2;
-        uint32_t randBLo = (uint32_t)(r2 & 0xFFFFFFFF);
         uint32_t randBHi = (uint32_t)((r2 >> 32) & 0x3FFFFFFF);
         
         unsigned char bytes[16];
@@ -48,13 +47,13 @@ static NSString * BuildUUIDV7(void) {
         
         bytes[8] = 0x80 | ((randBHi >> 24) & 0xFF);
         bytes[9] = (randBHi >> 16) & 0xFF;
-        bytes[10] = (randBHi >> 8) & 0xFF;
-        bytes[11] = randBHi & 0xFF;
         
-        bytes[12] = (randBLo >> 24) & 0xFF;
-        bytes[13] = (randBLo >> 16) & 0xFF;
-        bytes[14] = (randBLo >> 8) & 0xFF;
-        bytes[15] = randBLo & 0xFF;
+        bytes[10] = 0x00 & 0xFF;
+        bytes[11] = 0x00 & 0xFF;
+        bytes[12] = 0x00 & 0xFF;
+        bytes[13] = 0x00 & 0xFF;
+        bytes[14] = 0x00 & 0xFF;
+        bytes[15] = 0x00 & 0xFF;
         
         uuid = [NSString stringWithFormat:
                 @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
