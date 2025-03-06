@@ -613,14 +613,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
+        id: "0195688f-ffff-7a7a-9666-4573712f3d58", // A bundle from 5 minute after the bundleId in getUpdateInfo, i.e. an older bundle
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
       },
       {
         ...DEFAULT_BUNDLE,
-        id: "0195688f-ffff-7a7a-9666-4573712f3d58", // A bundle from 5 minute after the bundleId in getUpdateInfo, i.e. an older bundle
+        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
