@@ -10,6 +10,9 @@
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./firebase": {
+      "require": "./dist/firebase/index.cjs"
     }
   },
   "types": "dist/index.d.ts",
@@ -25,19 +28,24 @@
     "package.json"
   ],
   "scripts": {
-    "build": "rslib build",
+    "build": "rslib build && tsup",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/core": "0.12.4",
     "@hot-updater/plugin-core": "0.12.4",
     "firebase": "^11.3.1"
   },
   "devDependencies": {
+    "@hot-updater/core": "workspace:*",
     "@types/node": "^22.13.5",
+    "firebase-admin": "^13.2.0",
+    "firebase-functions": "^6.3.2",
+    "firebase-functions-test": "^3.4.0",
+    "fs": "0.0.1-security",
     "mime": "^4.0.4",
+    "tsup": "^8.3.6",
     "vitest": "2.1.8"
   }
 }

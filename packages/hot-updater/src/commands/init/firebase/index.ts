@@ -7,19 +7,6 @@ import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fs from "fs/promises";
 
-const firebaseDir = path.join(
-  path.dirname(
-    path.dirname(path.resolve(require.resolve("@hot-updater/firebase"))),
-  ),
-  "firebase",
-);
-const rootDir = getCwd();
-const hotUpdaterDir = path.resolve(".hot-updater");
-const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
-const functionsDir = path.join(tmpDir, "functions");
-const oldPackagePath = path.join(functionsDir, "_package.json");
-const newPackagePath = path.join(functionsDir, "package.json");
-
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
 import { firebaseStorage, firebaseDatabase } from "@hot-updater/firebase";
@@ -42,12 +29,19 @@ export default defineConfig({
 });
 `;
 
-async function setupFirebaseEnv(webAppId: string) {
+async function setupFirebaseEnv(webAppId: string, tmpDir: string) {
   try {
     const { stdout } = await execa(
-      "firebase",
-      ["apps:sdkconfig", "WEB", webAppId],
-      { cwd: hotUpdaterDir },
+      "pnpm",
+      [
+        "firebase",
+        "apps:sdkconfig",
+        "WEB",
+        webAppId,
+        "--config",
+        "./.hot-updater/firebase.json",
+      ],
+      { cwd: tmpDir },
     );
 
     const firebaseConfig = JSON.parse(stdout);
@@ -58,7 +52,7 @@ async function setupFirebaseEnv(webAppId: string) {
       HOT_UPDATER_FIREBASE_STORAGE_BUCKET: firebaseConfig.storageBucket,
     };
 
-    await makeEnv(newEnvVars, path.join(rootDir, ".env"));
+    await makeEnv(newEnvVars, path.join(getCwd(), ".env"));
   } catch (error) {
     console.error("error in firebase apps:sdkconfig", error);
   }
@@ -67,37 +61,80 @@ async function setupFirebaseEnv(webAppId: string) {
 export const initFirebase = async () => {
   const initializeVariable = await initFirebaseUser();
 
+  const firebaseDir = path.join(
+    path.dirname(
+      path.dirname(path.resolve(require.resolve("@hot-updater/firebase"))),
+    ),
+    "firebase",
+  );
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
+  const functionsDir = path.join(tmpDir, "functions");
+  const oldPackagePath = path.join(functionsDir, "_package.json");
+  const newPackagePath = path.join(functionsDir, "package.json");
+  const spin = p.spinner();
+
   try {
     await fs.rename(oldPackagePath, newPackagePath);
   } catch (error) {
     console.error("error in changing file name:", error);
   }
 
-  const spin = p.spinner();
-  spin.start("install funcions modules, It's likely to take a while ...");
+  const indexTsPath = path.join(functionsDir, "index.ts");
+  const tsconfigPath = path.join(functionsDir, "tsconfig.json");
 
   try {
-    await execa("npm", ["install"], { cwd: functionsDir });
+    await fs.rm(indexTsPath);
   } catch (error) {
-    console.error("error in npm install", error);
+    console.error(`Error deleting ${indexTsPath}:`, error);
   }
 
-  spin.stop("Success!");
-
   try {
-    await execa("firebase", ["use", "--add", initializeVariable.projectId], {
-      cwd: hotUpdaterDir,
+    await fs.rm(tsconfigPath);
+  } catch (error) {
+    console.error(`Error deleting ${tsconfigPath}:`, error);
+  }
+
+  spin.start("installing dependencies...");
+  try {
+    await execa("npm", ["install"], {
+      cwd: functionsDir,
     });
+    spin.stop("Done!");
   } catch (error) {
     console.error("error in firebase use --add:", error);
   }
 
-  setupFirebaseEnv(initializeVariable.webAppId);
+  spin.start(`firebase use --add ${initializeVariable.projectId}:`);
+  try {
+    await execa(
+      "pnpm",
+      [
+        "firebase",
+        "use",
+        "--add",
+        initializeVariable.projectId,
+        "--config",
+        "./.hot-updater/firebase.json",
+      ],
+      {
+        cwd: tmpDir,
+      },
+    );
+    spin.stop("Done!");
+  } catch (error) {
+    console.error("error in firebase use --add:", error);
+  }
 
-  await execa("firebase", ["deploy"], {
-    cwd: hotUpdaterDir,
-    stdio: "inherit",
-  });
+  setupFirebaseEnv(initializeVariable.webAppId, tmpDir);
+
+  await execa(
+    "pnpm",
+    ["firebase", "deploy", "--config", "./.hot-updater/firebase.json"],
+    {
+      cwd: tmpDir,
+      stdio: "inherit",
+    },
+  );
 
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
 
