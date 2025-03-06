@@ -562,14 +562,14 @@ export const setupGetUpdateInfoTestSuite = ({
       bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
       platform: "ios",
     });
-    expect(update).toStrictEqual(null);
+    expect(update).toBeNull();
   });
 
   it("returns null when bundleId is not found in database, indicating it's a build-time generated BUNDLE_ID and thus the latest version (2)", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        id: "01956886-0001-0000-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
+        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -581,6 +581,63 @@ export const setupGetUpdateInfoTestSuite = ({
       bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
       platform: "ios",
     });
-    expect(update).toStrictEqual(null);
+    expect(update).toBeNull();
+  });
+
+  it("returns null when bundleId is not found in database, indicating it's a build-time generated BUNDLE_ID and thus the latest version (3)", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        id: "0195688f-ffff-7a7a-9666-4573712f3d58", // A bundle from 5 minute after the bundleId in getUpdateInfo, i.e. an older bundle
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
+      platform: "ios",
+    });
+    expect(update).toStrictEqual({
+      fileUrl: "http://example.com/bundle.zip",
+      fileHash: "hash",
+      id: "0195688f-ffff-7a7a-9666-4573712f3d58",
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
+  });
+
+  it("returns null when bundleId is not found in database, indicating it's a build-time generated BUNDLE_ID and thus the latest version (4)", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        id: "0195688f-ffff-7a7a-9666-4573712f3d58", // A bundle from 5 minute after the bundleId in getUpdateInfo, i.e. an older bundle
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
+      platform: "ios",
+    });
+    expect(update).toStrictEqual({
+      fileUrl: "http://example.com/bundle.zip",
+      fileHash: "hash",
+      id: "0195688f-ffff-7a7a-9666-4573712f3d58",
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
   });
 };
