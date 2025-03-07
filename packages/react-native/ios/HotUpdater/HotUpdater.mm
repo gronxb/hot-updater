@@ -10,28 +10,32 @@ static NSString * BuildUUIDV7(void) {
     static NSString *uuid = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSString *buildTimeString = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+        NSString *dateStr = [NSString stringWithFormat:@"%s", __DATE__]; // 예: "Mar  6 2025"
+        NSString *timeStr = [NSString stringWithFormat:@"%s", __TIME__]; // 예: "12:34:56"
         
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-        formatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
-        formatter.dateFormat = @"MMM d yyyy HH:mm:ss";
-        NSDate *buildDate = [formatter dateFromString:buildTimeString];
+        NSDateFormatter *inputFormatter = [[NSDateFormatter alloc] init];
+        inputFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        inputFormatter.dateFormat = @"MMM d yyyy"; // 예: "Mar 6 2025"
+        NSDate *datePart = [inputFormatter dateFromString:dateStr];
+        
+        NSDateFormatter *timeFormatter = [[NSDateFormatter alloc] init];
+        timeFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        timeFormatter.dateFormat = @"HH:mm:ss"; // 예: "12:34:56"
+        NSDate *timePart = [timeFormatter dateFromString:timeStr];
+        
+        NSCalendar *calendar = [NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian];
+        NSDateComponents *dateComponents = [calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay) fromDate:datePart];
+        NSDateComponents *timeComponents = [calendar components:(NSCalendarUnitHour | NSCalendarUnitMinute | NSCalendarUnitSecond) fromDate:timePart];
+        dateComponents.hour = timeComponents.hour;
+        dateComponents.minute = timeComponents.minute;
+        dateComponents.second = timeComponents.second;
+        NSDate *buildDate = [calendar dateFromComponents:dateComponents];
+        
+        NSISO8601DateFormatter *isoFormatter = [[NSISO8601DateFormatter alloc] init];
+        isoFormatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+        NSString *isoString = [isoFormatter stringFromDate:buildDate];
+        
         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
-        
-        unsigned char hash[CC_SHA1_DIGEST_LENGTH];
-        CC_SHA1(buildTimeString.UTF8String,
-                (CC_LONG)[buildTimeString lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
-                hash);
-        
-        uint16_t randA = (((uint16_t)hash[0] << 8) | hash[1]) >> 4;
-        
-        uint64_t r2 = 0;
-        for (int i = 2; i < 10; i++) {
-            r2 = (r2 << 8) | hash[i];
-        }
-        r2 = r2 >> 2;
-        uint32_t randBHi = (uint32_t)((r2 >> 32) & 0x3FFFFFFF);
         
         unsigned char bytes[16];
         
@@ -42,18 +46,18 @@ static NSString * BuildUUIDV7(void) {
         bytes[4] = (buildTimestampMs >> 8) & 0xFF;
         bytes[5] = buildTimestampMs & 0xFF;
         
-        bytes[6] = 0x70 | ((randA >> 8) & 0x0F);
-        bytes[7] = randA & 0xFF;
+        bytes[6] = 0x70; 
+        bytes[7] = 0x00;
         
-        bytes[8] = 0x80 | ((randBHi >> 24) & 0xFF);
-        bytes[9] = (randBHi >> 16) & 0xFF;
+        bytes[8] = 0x80;
+        bytes[9] = 0x00;
         
-        bytes[10] = 0x00 & 0xFF;
-        bytes[11] = 0x00 & 0xFF;
-        bytes[12] = 0x00 & 0xFF;
-        bytes[13] = 0x00 & 0xFF;
-        bytes[14] = 0x00 & 0xFF;
-        bytes[15] = 0x00 & 0xFF;
+        bytes[10] = 0x00;
+        bytes[11] = 0x00;
+        bytes[12] = 0x00;
+        bytes[13] = 0x00;
+        bytes[14] = 0x00;
+        bytes[15] = 0x00;
         
         uuid = [NSString stringWithFormat:
                 @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",

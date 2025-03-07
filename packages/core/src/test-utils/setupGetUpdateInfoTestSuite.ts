@@ -559,7 +559,7 @@ export const setupGetUpdateInfoTestSuite = ({
 
     const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
-      bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
+      bundleId: "0195695b-8b50-7000-8000-000000000000", // Current version not in bundles and last digits are 7000-8000-000000000000, meaning it's from build time
       platform: "ios",
     });
     expect(update).toBeNull();
@@ -569,7 +569,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
+        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // old
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -578,7 +578,7 @@ export const setupGetUpdateInfoTestSuite = ({
 
     const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
-      bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
+      bundleId: "0195695b-8b50-7000-8000-000000000000", // Current version not in bundles and last digits are 7000-8000-000000000000, meaning it's from build time
       platform: "ios",
     });
     expect(update).toBeNull();
@@ -588,7 +588,7 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        id: "0195688f-ffff-7a7a-9666-4573712f3d58", // A bundle from 5 minute after the bundleId in getUpdateInfo, i.e. an older bundle
+        id: "0195695f-06ea-77b1-8afe-df3c00a22536", // new
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -597,13 +597,13 @@ export const setupGetUpdateInfoTestSuite = ({
 
     const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
-      bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
+      bundleId: "0195695b-8b50-7000-8000-000000000000", // Current version not in bundles and last digits are 7000-8000-000000000000, meaning it's from build time
       platform: "ios",
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
-      id: "0195688f-ffff-7a7a-9666-4573712f3d58",
+      id: "0195695f-06ea-77b1-8afe-df3c00a22536", // new
       shouldForceUpdate: false,
       status: "UPDATE",
     });
@@ -613,14 +613,14 @@ export const setupGetUpdateInfoTestSuite = ({
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        id: "0195688f-ffff-7a7a-9666-4573712f3d58", // A bundle from 5 minute after the bundleId in getUpdateInfo, i.e. an older bundle
+        id: "0195695f-06ea-77b1-8afe-df3c00a22536", // new
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
       },
       {
         ...DEFAULT_BUNDLE,
-        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // A bundle from 1 minute before the bundleId in getUpdateInfo, i.e. an older bundle
+        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // old
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -629,13 +629,13 @@ export const setupGetUpdateInfoTestSuite = ({
 
     const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
-      bundleId: "01956886-e1e8-7a7a-9666-000000000000", // Current version not in bundles and last digits are 000000000000, meaning it's from build time
+      bundleId: "0195695b-8b50-7000-8000-000000000000", // Current version not in bundles and last digits are 7000-8000-000000000000, meaning it's from build time
       platform: "ios",
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
       fileHash: "hash",
-      id: "0195688f-ffff-7a7a-9666-4573712f3d58",
+      id: "0195695f-06ea-77b1-8afe-df3c00a22536", // enw
       shouldForceUpdate: false,
       status: "UPDATE",
     });
