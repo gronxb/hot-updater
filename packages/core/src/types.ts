@@ -73,5 +73,6 @@ export interface UpdateInfo {
 export interface GetBundlesArgs {
   platform: Platform;
   bundleId: string;
+  minBundleId?: string;
   appVersion: string;
 }
