@@ -26,10 +26,12 @@ export const getUpdateInfo = async (
     platform,
     appVersion,
     bundleId,
+    minBundleId,
   }: {
     platform: Platform;
     appVersion: string;
     bundleId: string;
+    minBundleId: string;
   },
 ) => {
   const targetAppVersions = await getS3Json(
@@ -59,5 +61,6 @@ export const getUpdateInfo = async (
     platform,
     bundleId,
     appVersion,
+    minBundleId,
   });
 };

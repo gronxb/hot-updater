@@ -274,5 +274,50 @@ class HotUpdater : ReactPackage {
                 }
             }
         }
+
+        fun buildUUIDV7(): String = buildUUIDV7Lazy
+
+        private val buildUUIDV7Lazy: String by lazy {
+            val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
+
+            val bytes = ByteArray(16)
+            bytes[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
+            bytes[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
+            bytes[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
+            bytes[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
+            bytes[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
+            bytes[5] = (buildTimestampMs and 0xFF).toByte()
+
+            bytes[6] = 0x70.toByte()
+            bytes[7] = 0x00.toByte()
+            bytes[8] = 0x80.toByte()
+            bytes[9] = 0x00.toByte()
+            bytes[10] = 0x00.toByte()
+            bytes[11] = 0x00.toByte()
+            bytes[12] = 0x00.toByte()
+            bytes[13] = 0x00.toByte()
+            bytes[14] = 0x00.toByte()
+            bytes[15] = 0x00.toByte()
+
+            String.format(
+                "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                bytes[0].toInt() and 0xFF,
+                bytes[1].toInt() and 0xFF,
+                bytes[2].toInt() and 0xFF,
+                bytes[3].toInt() and 0xFF,
+                bytes[4].toInt() and 0xFF,
+                bytes[5].toInt() and 0xFF,
+                bytes[6].toInt() and 0xFF,
+                bytes[7].toInt() and 0xFF,
+                bytes[8].toInt() and 0xFF,
+                bytes[9].toInt() and 0xFF,
+                bytes[10].toInt() and 0xFF,
+                bytes[11].toInt() and 0xFF,
+                bytes[12].toInt() and 0xFF,
+                bytes[13].toInt() and 0xFF,
+                bytes[14].toInt() and 0xFF,
+                bytes[15].toInt() and 0xFF,
+            )
+        }
     }
 }

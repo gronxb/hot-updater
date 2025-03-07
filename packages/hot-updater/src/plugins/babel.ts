@@ -3,6 +3,7 @@ import path from "path";
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
+import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 
 export default function replaceHotUpdaterBundleId(): PluginObj {
@@ -36,6 +37,9 @@ export default function replaceHotUpdaterBundleId(): PluginObj {
     bundleId = fs.readFileSync(bundleIdPath, "utf-8");
   } else {
     fs.writeFileSync(bundleIdPath, bundleId);
+    console.log(
+      picocolors.green(`[HotUpdater] Generated bundle ID: ${bundleId}`),
+    );
   }
 
   return {

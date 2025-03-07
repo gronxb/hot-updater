@@ -13,6 +13,12 @@ import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 import { HOT_UPDATER_SUPABASE_URL } from "@env";
 
+export const extractTimestampFromUUIDv7 = (uuid: string) => {
+  const timestampHex = uuid.split("-").join("").slice(0, 12);
+  const timestamp = Number.parseInt(timestampHex, 16);
+  return timestamp;
+};
+
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
 
@@ -27,9 +33,11 @@ function App(): React.JSX.Element {
   const isHermes = () => !!global.HermesInternal;
 
   const { progress } = useHotUpdaterStore();
+
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>{extractTimestampFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
         style={{
           marginVertical: 20,

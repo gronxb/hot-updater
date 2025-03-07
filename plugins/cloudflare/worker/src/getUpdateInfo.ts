@@ -8,10 +8,12 @@ export const getUpdateInfo = async (
     platform,
     appVersion,
     bundleId,
+    minBundleId,
   }: {
     platform: Platform;
     appVersion: string;
     bundleId: string;
+    minBundleId: string;
   },
 ) => {
   const appVersionList = await DB.prepare(
@@ -34,9 +36,10 @@ export const getUpdateInfo = async (
   const sql = /* sql */ `
   WITH input AS (
     SELECT 
-      ? AS app_platform,       -- 예: 'ios' 또는 'android'
-      ? AS app_version,        -- 예: '1.2.3'
-      ? AS bundle_id,          -- 현재 번들 ID (문자열)
+      ? AS app_platform,
+      ? AS app_version,
+      ? AS bundle_id,
+      ? AS min_bundle_id,
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
@@ -50,7 +53,10 @@ export const getUpdateInfo = async (
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
       AND b.id >= input.bundle_id
-      AND b.target_app_version IN (${targetAppVersionList.map((version) => `'${version}'`).join(",")})
+      AND b.id >= input.min_bundle_id
+      AND b.target_app_version IN (${targetAppVersionList
+        .map((version) => `'${version}'`)
+        .join(",")})
     ORDER BY b.id DESC 
     LIMIT 1
   ),
@@ -65,6 +71,7 @@ export const getUpdateInfo = async (
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
       AND b.id < input.bundle_id
+      AND b.id >= input.min_bundle_id
     ORDER BY b.id DESC
     LIMIT 1
   ),
@@ -88,11 +95,11 @@ export const getUpdateInfo = async (
     'ROLLBACK' AS status
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
-    AND bundle_id <> nil_uuid;
-  `;
+    AND bundle_id > min_bundle_id;
+`;
 
   const result = await DB.prepare(sql)
-    .bind(platform, appVersion, bundleId)
+    .bind(platform, appVersion, bundleId, minBundleId)
     .first<{
       id: string;
       should_force_update: number;

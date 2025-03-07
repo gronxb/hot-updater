@@ -54,6 +54,12 @@ class HotUpdaterModule internal constructor(
         }
     }
 
+    override fun getTypedExportedConstants(): Map<String, Any?> {
+        val constants: MutableMap<String, Any?> = HashMap()
+        constants["BUNDLE_ID_BUILD_TIME"] = HotUpdater.buildUUIDV7()
+        return constants
+    }
+
     override fun addListener(eventName: String?) {
         // No-op
     }

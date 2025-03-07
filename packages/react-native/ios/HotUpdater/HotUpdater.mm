@@ -3,6 +3,70 @@
 #import <SSZipArchive/SSZipArchive.h>
 #import <Foundation/NSURLSession.h>
 
+static NSString * BuildUUIDV7(void) {
+    static NSString *uuid = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSString *dateStr = [NSString stringWithFormat:@"%s", __DATE__]; // 예: "Mar  6 2025"
+        NSString *timeStr = [NSString stringWithFormat:@"%s", __TIME__]; // 예: "12:34:56"
+        
+        NSDateFormatter *inputFormatter = [[NSDateFormatter alloc] init];
+        inputFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        inputFormatter.dateFormat = @"MMM d yyyy"; // 예: "Mar 6 2025"
+        NSDate *datePart = [inputFormatter dateFromString:dateStr];
+        
+        NSDateFormatter *timeFormatter = [[NSDateFormatter alloc] init];
+        timeFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        timeFormatter.dateFormat = @"HH:mm:ss"; // 예: "12:34:56"
+        NSDate *timePart = [timeFormatter dateFromString:timeStr];
+        
+        NSCalendar *calendar = [NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian];
+        NSDateComponents *dateComponents = [calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay) fromDate:datePart];
+        NSDateComponents *timeComponents = [calendar components:(NSCalendarUnitHour | NSCalendarUnitMinute | NSCalendarUnitSecond) fromDate:timePart];
+        dateComponents.hour = timeComponents.hour;
+        dateComponents.minute = timeComponents.minute;
+        dateComponents.second = timeComponents.second;
+        NSDate *buildDate = [calendar dateFromComponents:dateComponents];
+        
+        NSISO8601DateFormatter *isoFormatter = [[NSISO8601DateFormatter alloc] init];
+        isoFormatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+        NSString *isoString = [isoFormatter stringFromDate:buildDate];
+        
+        uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
+        
+        unsigned char bytes[16];
+        
+        bytes[0] = (buildTimestampMs >> 40) & 0xFF;
+        bytes[1] = (buildTimestampMs >> 32) & 0xFF;
+        bytes[2] = (buildTimestampMs >> 24) & 0xFF;
+        bytes[3] = (buildTimestampMs >> 16) & 0xFF;
+        bytes[4] = (buildTimestampMs >> 8) & 0xFF;
+        bytes[5] = buildTimestampMs & 0xFF;
+        
+        bytes[6] = 0x70; 
+        bytes[7] = 0x00;
+        
+        bytes[8] = 0x80;
+        bytes[9] = 0x00;
+        
+        bytes[10] = 0x00;
+        bytes[11] = 0x00;
+        bytes[12] = 0x00;
+        bytes[13] = 0x00;
+        bytes[14] = 0x00;
+        bytes[15] = 0x00;
+        
+        uuid = [NSString stringWithFormat:
+                @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                bytes[0], bytes[1], bytes[2], bytes[3],
+                bytes[4], bytes[5],
+                bytes[6], bytes[7],
+                bytes[8], bytes[9],
+                bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+    });
+    return uuid;
+}
+
 @implementation HotUpdater {
     bool hasListeners;
 }
@@ -20,6 +84,18 @@
 }
 
 RCT_EXPORT_MODULE();
+
+#pragma mark - React Native Constants
+
+- (NSDictionary *)constantsToExport {
+    return @{ @"BUNDLE_ID_BUILD_TIME": BuildUUIDV7() };
+}
+
+
+- (NSDictionary*) getConstants {
+  return [self constantsToExport];
+}
+
 
 #pragma mark - Bundle URL Management
 
