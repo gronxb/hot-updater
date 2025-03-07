@@ -66,7 +66,7 @@ export interface UpdateInfo {
   id: string;
   shouldForceUpdate: boolean;
   fileUrl: string | null;
-  fileHash: string | null;
+  message: string | null;
   status: UpdateStatus;
 }
 

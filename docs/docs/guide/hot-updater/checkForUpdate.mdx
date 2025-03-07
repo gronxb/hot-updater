@@ -54,7 +54,7 @@ export interface UpdateInfo {
   id: string;
   shouldForceUpdate: boolean;
   fileUrl: string | null;
-  fileHash: string | null;
+  message: string | null;
   status: UpdateStatus;
 }
 ```
@@ -67,7 +67,7 @@ export interface UpdateInfo {
   "shouldForceUpdate": true,
   "status": "UPDATE",
   "fileUrl": "https://example.com/bundles/update.bundle",
-  "fileHash": "abc123",
+  "message": "This is a test message",
 }
 ```
 
