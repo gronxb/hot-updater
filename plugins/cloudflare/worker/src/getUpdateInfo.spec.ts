@@ -1,4 +1,9 @@
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { beforeAll, beforeEach, describe, inject } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromWorker } from "./getUpdateInfo";
@@ -40,7 +45,7 @@ const createGetUpdateInfo =
   (db: D1Database) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform }: GetBundlesArgs,
+    { appVersion, bundleId, platform, minBundleId }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     if (bundles.length > 0) {
       await db.prepare(createInsertBundleQuerys(bundles)).run();
@@ -49,6 +54,7 @@ const createGetUpdateInfo =
       appVersion,
       bundleId,
       platform,
+      minBundleId: minBundleId || NIL_UUID,
     })) as UpdateInfo | null;
   };
 
