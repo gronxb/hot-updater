@@ -24,80 +24,71 @@ export const getUpdateInfo = async (
       b.platform === platform &&
       semverSatisfies(b.targetAppVersion, appVersion),
   );
+
   const enabledBundles = filteredBundles.filter((b) => b.enabled);
 
-  let candidateBundles = enabledBundles;
-  if (minBundleId) {
-    candidateBundles = enabledBundles.filter(
-      (b) => b.id.localeCompare(minBundleId) >= 0,
-    );
+  const candidateBundles = minBundleId
+    ? enabledBundles.filter((b) => b.id.localeCompare(minBundleId) >= 0)
+    : enabledBundles;
+
+  if (candidateBundles.length === 0) {
+    if (enabledBundles.length === 0) {
+      return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
+    }
+    if (minBundleId && bundleId === minBundleId) {
+      return null;
+    }
+    return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
   }
 
-  const getLatest = (arr: Bundle[]): Bundle | null => {
-    if (arr.length === 0) return null;
-    return [...arr].sort((a, b) => b.id.localeCompare(a.id))[0];
-  };
+  // 5. 후보 번들을 한 번만 내림차순 정렬 (최신 순)
+  const sortedCandidates = candidateBundles
+    .slice()
+    .sort((a, b) => b.id.localeCompare(a.id));
+  const latestCandidate = sortedCandidates[0];
+
+  const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
+    id: bundle.id,
+    fileUrl: bundle.fileUrl,
+    fileHash: bundle.fileHash,
+    shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
+    status,
+  });
 
   if (bundleId === NIL_UUID) {
-    const latestCandidate = getLatest(candidateBundles);
     if (latestCandidate && latestCandidate.id.localeCompare(bundleId) > 0) {
-      return {
-        id: latestCandidate.id,
-        fileUrl: latestCandidate.fileUrl,
-        fileHash: latestCandidate.fileHash,
-        shouldForceUpdate: latestCandidate.shouldForceUpdate,
-        status: "UPDATE" as UpdateStatus,
-      };
+      return makeResponse(latestCandidate, "UPDATE");
     }
     return null;
   }
 
   const currentBundle = candidateBundles.find((b) => b.id === bundleId);
-
   if (currentBundle) {
-    const latestCandidate = getLatest(candidateBundles);
-    if (
-      latestCandidate &&
-      latestCandidate.id.localeCompare(currentBundle.id) > 0
-    ) {
-      return {
-        id: latestCandidate.id,
-        fileUrl: latestCandidate.fileUrl,
-        fileHash: latestCandidate.fileHash,
-        shouldForceUpdate: latestCandidate.shouldForceUpdate,
-        status: "UPDATE" as UpdateStatus,
-      };
+    if (latestCandidate.id.localeCompare(currentBundle.id) > 0) {
+      return makeResponse(latestCandidate, "UPDATE");
     }
     return null;
   }
-  const updateCandidate = candidateBundles
-    .filter((b) => b.id.localeCompare(bundleId) > 0)
-    .sort((a, b) => b.id.localeCompare(a.id))[0];
+
+  let updateCandidate: Bundle | null = null;
+  let rollbackCandidate: Bundle | null = null;
+  for (const b of sortedCandidates) {
+    if (!updateCandidate && b.id.localeCompare(bundleId) > 0) {
+      updateCandidate = b;
+    }
+    if (!rollbackCandidate && b.id.localeCompare(bundleId) < 0) {
+      rollbackCandidate = b;
+    }
+    if (updateCandidate && rollbackCandidate) break;
+  }
+
   if (updateCandidate) {
-    return {
-      id: updateCandidate.id,
-      fileUrl: updateCandidate.fileUrl,
-      fileHash: updateCandidate.fileHash,
-      shouldForceUpdate: updateCandidate.shouldForceUpdate,
-      status: "UPDATE" as UpdateStatus,
-    };
+    return makeResponse(updateCandidate, "UPDATE");
   }
-  const rollbackCandidate = candidateBundles
-    .filter((b) => b.id.localeCompare(bundleId) < 0)
-    .sort((a, b) => b.id.localeCompare(a.id))[0];
   if (rollbackCandidate) {
-    return {
-      id: rollbackCandidate.id,
-      fileUrl: rollbackCandidate.fileUrl,
-      fileHash: rollbackCandidate.fileHash,
-      // 롤백의 경우 강제로 업데이트하도록 처리
-      shouldForceUpdate: true,
-      status: "ROLLBACK" as UpdateStatus,
-    };
+    return makeResponse(rollbackCandidate, "ROLLBACK");
   }
-  if (enabledBundles.length === 0) {
-    return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-  }
+
   if (minBundleId && bundleId === minBundleId) {
     return null;
   }
