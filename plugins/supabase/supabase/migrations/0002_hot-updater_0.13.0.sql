@@ -83,3 +83,7 @@ BEGIN
       );
 END;
 $$;
+
+-- HotUpdater.bundles
+ALTER TABLE bundles
+ADD COLUMN stage text NOT NULL DEFAULT 'production';
