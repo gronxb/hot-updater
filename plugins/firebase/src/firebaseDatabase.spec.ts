@@ -138,7 +138,6 @@ describe("Firebase Database Plugin", () => {
     expect(getApp).not.toHaveBeenCalled();
     expect(app).toBe(mockExistingApp);
   });
-
   describe("commitBundle", () => {
     it("should do nothing if no IDs are changed", async () => {
       await databasePlugin.commitBundle();
@@ -163,15 +162,24 @@ describe("Firebase Database Plugin", () => {
 
       vi.clearAllMocks();
 
+      const mockDocRef = "document-ref";
+
       await databasePlugin.commitBundle();
 
       expect(doc).toHaveBeenCalledWith(undefined, "test-bundle-id");
       expect(setDoc).toHaveBeenCalledWith(
-        undefined,
-        expect.objectContaining({
-          id: "test-bundle-id",
+        mockDocRef,
+        {
           enabled: false,
-        }),
+          file_hash: "test-file-hash",
+          file_url: "test-file-url",
+          git_commit_hash: "test-git-hash",
+          id: "test-bundle-id",
+          message: "test-message",
+          platform: "android",
+          should_force_update: false,
+          target_app_version: "1.0.0",
+        },
         { merge: true },
       );
       expect(mockHooks.onDatabaseUpdated).toHaveBeenCalled();
