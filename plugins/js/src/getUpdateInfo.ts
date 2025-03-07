@@ -5,107 +5,101 @@ import {
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
-import { checkForRollback } from "./checkForRollback";
 import { semverSatisfies } from "./semverSatisfies";
 
-const findLatestBundles = (bundles: Bundle[]) => {
-  return (
-    bundles
-      ?.filter((item) => item.enabled)
-      ?.sort((a, b) => b.id.localeCompare(a.id))?.[0] ?? null
-  );
+const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
+  fileHash: null,
+  fileUrl: null,
+  id: NIL_UUID,
+  shouldForceUpdate: true,
+  status: "ROLLBACK",
 };
 
 export const getUpdateInfo = async (
   bundles: Bundle[],
-  { platform, bundleId, appVersion }: GetBundlesArgs,
+  { platform, bundleId, appVersion, minBundleId }: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const filteredBundles = bundles.filter(
     (b) =>
       b.platform === platform &&
       semverSatisfies(b.targetAppVersion, appVersion),
   );
+  const enabledBundles = filteredBundles.filter((b) => b.enabled);
 
-  const latestBundle = await findLatestBundles(filteredBundles);
-
-  // Special handling for build-time generated bundle IDs:
-  const isBuildTime =
-    bundleId !== NIL_UUID && bundleId.endsWith("7000-8000-000000000000");
-  if (isBuildTime) {
-    // Get the prefix (everything except the last segment)
-    const buildTimePrefix = bundleId.slice(0, bundleId.lastIndexOf("-"));
-    if (!latestBundle) {
-      return null;
-    }
-    const latestPrefix = latestBundle.id.slice(
-      0,
-      latestBundle.id.lastIndexOf("-"),
+  let candidateBundles = enabledBundles;
+  if (minBundleId) {
+    candidateBundles = enabledBundles.filter(
+      (b) => b.id.localeCompare(minBundleId) >= 0,
     );
-    // If the available bundle is from the same build time, it's not a valid update.
-    if (latestPrefix === buildTimePrefix) {
-      return null;
-    }
-    // Only if the available bundle has a prefix greater than the build-time prefix,
-    // consider it a valid update.
-    if (latestPrefix.localeCompare(buildTimePrefix) > 0) {
+  }
+
+  const getLatest = (arr: Bundle[]): Bundle | null => {
+    if (arr.length === 0) return null;
+    return [...arr].sort((a, b) => b.id.localeCompare(a.id))[0];
+  };
+
+  if (bundleId === NIL_UUID) {
+    const latestCandidate = getLatest(candidateBundles);
+    if (latestCandidate && latestCandidate.id.localeCompare(bundleId) > 0) {
       return {
-        id: latestBundle.id,
-        shouldForceUpdate: Boolean(latestBundle.shouldForceUpdate),
-        fileUrl: latestBundle.fileUrl,
-        fileHash: latestBundle.fileHash,
+        id: latestCandidate.id,
+        fileUrl: latestCandidate.fileUrl,
+        fileHash: latestCandidate.fileHash,
+        shouldForceUpdate: latestCandidate.shouldForceUpdate,
         status: "UPDATE" as UpdateStatus,
       };
     }
     return null;
   }
 
-  // Standard rollback/update logic for non-build-time bundle IDs.
-  const isRollback = checkForRollback(filteredBundles, bundleId);
+  const currentBundle = candidateBundles.find((b) => b.id === bundleId);
 
-  if (!latestBundle) {
-    if (isRollback) {
+  if (currentBundle) {
+    const latestCandidate = getLatest(candidateBundles);
+    if (
+      latestCandidate &&
+      latestCandidate.id.localeCompare(currentBundle.id) > 0
+    ) {
       return {
-        id: NIL_UUID,
-        shouldForceUpdate: true,
-        fileUrl: null,
-        fileHash: null,
-        status: "ROLLBACK" as UpdateStatus,
+        id: latestCandidate.id,
+        fileUrl: latestCandidate.fileUrl,
+        fileHash: latestCandidate.fileHash,
+        shouldForceUpdate: latestCandidate.shouldForceUpdate,
+        status: "UPDATE" as UpdateStatus,
       };
     }
     return null;
   }
-
-  if (latestBundle.fileUrl)
-    if (isRollback) {
-      if (latestBundle.id === bundleId) {
-        return null;
-      }
-      if (latestBundle.id.localeCompare(bundleId) > 0) {
-        return {
-          id: latestBundle.id,
-          shouldForceUpdate: Boolean(latestBundle.shouldForceUpdate),
-          fileUrl: latestBundle.fileUrl,
-          fileHash: latestBundle.fileHash,
-          status: "UPDATE" as UpdateStatus,
-        };
-      }
-      return {
-        id: latestBundle.id,
-        shouldForceUpdate: true,
-        fileUrl: latestBundle.fileUrl,
-        fileHash: latestBundle.fileHash,
-        status: "ROLLBACK" as UpdateStatus,
-      };
-    }
-
-  if (latestBundle.id.localeCompare(bundleId) > 0) {
+  const updateCandidate = candidateBundles
+    .filter((b) => b.id.localeCompare(bundleId) > 0)
+    .sort((a, b) => b.id.localeCompare(a.id))[0];
+  if (updateCandidate) {
     return {
-      id: latestBundle.id,
-      shouldForceUpdate: Boolean(latestBundle.shouldForceUpdate),
-      fileUrl: latestBundle.fileUrl,
-      fileHash: latestBundle.fileHash,
+      id: updateCandidate.id,
+      fileUrl: updateCandidate.fileUrl,
+      fileHash: updateCandidate.fileHash,
+      shouldForceUpdate: updateCandidate.shouldForceUpdate,
       status: "UPDATE" as UpdateStatus,
     };
   }
-  return null;
+  const rollbackCandidate = candidateBundles
+    .filter((b) => b.id.localeCompare(bundleId) < 0)
+    .sort((a, b) => b.id.localeCompare(a.id))[0];
+  if (rollbackCandidate) {
+    return {
+      id: rollbackCandidate.id,
+      fileUrl: rollbackCandidate.fileUrl,
+      fileHash: rollbackCandidate.fileHash,
+      // 롤백의 경우 강제로 업데이트하도록 처리
+      shouldForceUpdate: true,
+      status: "ROLLBACK" as UpdateStatus,
+    };
+  }
+  if (enabledBundles.length === 0) {
+    return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
+  }
+  if (minBundleId && bundleId === minBundleId) {
+    return null;
+  }
+  return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
 };
