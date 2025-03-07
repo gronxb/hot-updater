@@ -6,6 +6,7 @@ import {
   type UpdateInfo,
 } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { filterCompatibleAppVersions } from "@hot-updater/js";
 import camelcaseKeys from "camelcase-keys";
 import { afterAll, beforeEach, describe } from "vitest";
 import { prepareSql } from "./prepareSql";
@@ -37,6 +38,19 @@ const createGetUpdateInfo =
   ): Promise<UpdateInfo | null> => {
     await db.exec(createInsertBundleQuerys(bundles));
 
+    const { rows: appVersionList } = await db.query<{
+      target_app_version: string;
+    }>(
+      `
+      SELECT target_app_version FROM bundles WHERE platform = '${platform}' GROUP BY target_app_version
+      `,
+    );
+
+    const targetAppVersionList = filterCompatibleAppVersions(
+      appVersionList?.map((group) => group.target_app_version) ?? [],
+      appVersion,
+    );
+
     const result = await db.query<{
       id: string;
       should_force_update: boolean;
@@ -50,9 +64,9 @@ const createGetUpdateInfo =
         '${appVersion}',
         '${bundleId}',
         '${minBundleId ?? NIL_UUID}',
-        ARRAY[${bundles.length > 0 ? [...new Set(bundles.map((b) => `'${b.targetAppVersion}'`))].join(",") : "''"}]::text[]
+        ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[]
       );
-    `,
+      `,
     );
 
     return result.rows[0]

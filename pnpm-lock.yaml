@@ -932,6 +932,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.15
         version: 0.2.15
+      '@hot-updater/js':
+        specifier: workspace:*
+        version: link:../js
       '@types/pg':
         specifier: ^8.11.10
         version: 8.11.10
