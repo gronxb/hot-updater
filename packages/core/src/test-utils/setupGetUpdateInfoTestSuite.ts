@@ -550,7 +550,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
 
-  it("minBundleId보다 낮은 번들이 업데이트 가능하다면 null을 반환한다.", async () => {
+  it("returns null when there is an available bundle lower than minBundleId", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -570,7 +570,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toBeNull();
   });
 
-  it("minBundleId보다 높은 번들이 업데이트 가능하다면 해당 번들을 반환한다.", async () => {
+  it("returns the bundle when there is an available bundle higher than minBundleId", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -603,7 +603,7 @@ export const setupGetUpdateInfoTestSuite = ({
     });
   });
 
-  it("현재 번들이 사용이 불가하고, minBundleId보다 낮은 번들이 존재하면 업데이트할게 없으므로 최초 번들로 돌아간다.", async () => {
+  it("rolls back to initial bundle when current bundle is disabled and only bundles lower than minBundleId exist", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -630,7 +630,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
 
-  it("현재 번들이 존재하지 않고, minBundleId보다 낮은 번들이 존재하면 업데이트할게 없으므로 최초 번들로 돌아간다.", async () => {
+  it("rolls back to initial bundle when current bundle does not exist and only bundles lower than minBundleId exist", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -650,7 +650,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
 
-  it("현재 번들이 사용이 가능하고, 업데이트할게 없으므로 null을 반환한다.", async () => {
+  it("returns null when current bundle is enabled and no updates are available", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -677,7 +677,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toBeNull();
   });
 
-  it("현재 번들이 DB에 존재하지 않고, minBundleId보다 높은 번들이 존재하지 않으면 롤백한다.", async () => {
+  it("rolls back when current bundle does not exist in DB and no bundles higher than minBundleId exist", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
@@ -711,7 +711,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
 
-  it("현재 번들이 DB에 존재하지 않고, minBundleId보다 높고, 내 bundleId보다 낮은 번들이 존재하면 해당 번들로 롤백한다.", async () => {
+  it("rolls back to the bundle when current bundle does not exist in DB and a bundle exists that is higher than minBundleId but lower than current bundleId", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
