@@ -4,7 +4,7 @@ export default defineConfig([
   {
     entry: ["firebase/functions/index.ts"],
     format: ["cjs"],
-    outDir: "firebase/functions/",
+    outDir: "dist/firebase",
     external: [
       "fs",
       "path",

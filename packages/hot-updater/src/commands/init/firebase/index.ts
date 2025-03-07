@@ -1,3 +1,4 @@
+import {} from "fs";
 import path from "path";
 import { initFirebaseUser } from "@/commands/init/firebase/select";
 import { link } from "@/components/banner";
@@ -62,15 +63,17 @@ export const initFirebase = async () => {
   const initializeVariable = await initFirebaseUser();
 
   const firebaseDir = path.join(
-    path.dirname(
-      path.dirname(path.resolve(require.resolve("@hot-updater/firebase"))),
-    ),
+    path.dirname(path.dirname(require.resolve("@hot-updater/firebase"))),
     "firebase",
   );
   const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
   const functionsDir = path.join(tmpDir, "functions");
   const oldPackagePath = path.join(functionsDir, "_package.json");
   const newPackagePath = path.join(functionsDir, "package.json");
+  const indexFile = require.resolve("@hot-updater/firebase/functions");
+  const destPath = path.join(functionsDir, path.basename(indexFile));
+
+  await fs.copyFile(indexFile, destPath);
   const spin = p.spinner();
 
   try {
@@ -131,7 +134,7 @@ export const initFirebase = async () => {
     "pnpm",
     ["firebase", "deploy", "--config", "./.hot-updater/firebase.json"],
     {
-      cwd: tmpDir,
+      cwd: getCwd(),
       stdio: "inherit",
     },
   );

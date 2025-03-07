@@ -11,7 +11,7 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./firebase": {
+    "./functions": {
       "require": "./dist/firebase/index.cjs"
     }
   },
