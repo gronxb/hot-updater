@@ -4,7 +4,8 @@ CREATE OR REPLACE FUNCTION get_update_info (
     app_platform   platforms,
     app_version text,
     bundle_id  uuid,
-    min_bundle_id uuid
+    min_bundle_id uuid,
+    target_app_version_list text[]
 )
 RETURNS TABLE (
     id            uuid,
@@ -32,7 +33,7 @@ BEGIN
           AND b.platform = app_platform
           AND b.id >= bundle_id
           AND b.id > min_bundle_id
-          AND semver_satisfies(b.target_app_version, app_version)
+          AND b.target_app_version IN (SELECT unnest(target_app_version_list))
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -87,3 +88,6 @@ $$;
 -- HotUpdater.bundles
 ALTER TABLE bundles
 ADD COLUMN stage text NOT NULL DEFAULT 'production';
+
+-- HotUpdater.semver_satisfies
+DROP FUNCTION IF EXISTS semver_satisfies;

@@ -24,7 +24,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
-      ${bundle.message ? `'${bundle.message}'` : "null"}
+      ${bundle.message ? `'${bundle.message}'` : "null"},
     );
   `;
 };
@@ -41,11 +41,17 @@ const createGetUpdateInfo =
       id: string;
       should_force_update: boolean;
       file_url: string;
-      file_hash: string;
+      message: string;
       status: string;
     }>(
       `
-      SELECT * FROM get_update_info('${platform}', '${appVersion}', '${bundleId}', '${minBundleId ?? NIL_UUID}')
+      SELECT * FROM get_update_info(
+        '${platform}',
+        '${appVersion}',
+        '${bundleId}',
+        '${minBundleId ?? NIL_UUID}',
+        '${bundles.map((b) => b.targetAppVersion).join(",")}'
+      )
     `,
     );
 
