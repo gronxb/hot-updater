@@ -47,7 +47,7 @@ export const getUpdateInfo = async (
       b.id,
       b.should_force_update,
       b.file_url,
-      b.file_hash,
+      b.message,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -65,7 +65,7 @@ export const getUpdateInfo = async (
       b.id,
       1 AS should_force_update,
       b.file_url,
-      b.file_hash,
+      b.message,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -81,7 +81,7 @@ export const getUpdateInfo = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, file_url, file_hash, status
+  SELECT id, should_force_update, file_url, message, status
   FROM final_result, input
   WHERE id <> bundle_id
   
@@ -91,7 +91,7 @@ export const getUpdateInfo = async (
     nil_uuid AS id,
     1 AS should_force_update,
     NULL AS file_url,
-    NULL AS file_hash,
+    NULL AS message,
     'ROLLBACK' AS status
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
@@ -104,8 +104,8 @@ export const getUpdateInfo = async (
       id: string;
       should_force_update: number;
       file_url: string | null;
-      file_hash: string | null;
       status: UpdateStatus;
+      message: string | null;
     }>();
 
   if (!result) {
@@ -116,7 +116,7 @@ export const getUpdateInfo = async (
     id: result.id,
     shouldForceUpdate: Boolean(result.should_force_update),
     fileUrl: result.file_url,
-    fileHash: result.file_hash,
     status: result.status,
+    message: result.message,
   } as UpdateInfo;
 };

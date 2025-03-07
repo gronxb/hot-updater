@@ -11,7 +11,7 @@ RETURNS TABLE (
     id            uuid,
     should_force_update  boolean,
     file_url      text,
-    file_hash     text,
+    message       text,
     status        text
 )
 LANGUAGE plpgsql
@@ -26,7 +26,7 @@ BEGIN
             b.id,
             b.should_force_update,
             b.file_url,
-            b.file_hash,
+            b.message,
             'UPDATE' AS status
         FROM bundles b
         WHERE b.enabled = TRUE
@@ -42,7 +42,7 @@ BEGIN
             b.id,
             TRUE AS should_force_update,
             b.file_url,
-            b.file_hash,
+            b.message,
             'ROLLBACK' AS status
         FROM bundles b
         WHERE b.enabled = TRUE
@@ -70,7 +70,7 @@ BEGIN
         NIL_UUID      AS id,
         TRUE          AS should_force_update,
         NULL          AS file_url,
-        NULL          AS file_hash,
+        NULL          AS message,
         'ROLLBACK'    AS status
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID

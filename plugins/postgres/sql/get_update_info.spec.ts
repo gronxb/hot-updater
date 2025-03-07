@@ -24,7 +24,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
-      ${bundle.message ? `'${bundle.message}'` : "null"},
+      ${bundle.message ? `'${bundle.message}'` : "null"}
     );
   `;
 };
@@ -50,8 +50,8 @@ const createGetUpdateInfo =
         '${appVersion}',
         '${bundleId}',
         '${minBundleId ?? NIL_UUID}',
-        '${bundles.map((b) => b.targetAppVersion).join(",")}'
-      )
+        ARRAY[${bundles.length > 0 ? [...new Set(bundles.map((b) => `'${b.targetAppVersion}'`))].join(",") : "''"}]::text[]
+      );
     `,
     );
 
