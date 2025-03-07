@@ -10,6 +10,14 @@ const DEFAULT_BUNDLE = {
   message: null,
 } as const;
 
+const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
+  fileHash: null,
+  fileUrl: null,
+  id: NIL_UUID,
+  shouldForceUpdate: true,
+  status: "ROLLBACK",
+} as const;
+
 export const setupGetUpdateInfoTestSuite = ({
   getUpdateInfo,
 }: {
@@ -303,13 +311,7 @@ export const setupGetUpdateInfoTestSuite = ({
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
     });
-    expect(update).toStrictEqual({
-      fileUrl: null,
-      fileHash: null,
-      id: NIL_UUID,
-      shouldForceUpdate: true, // Cause the app to reload
-      status: "ROLLBACK",
-    });
+    expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
 
   it("returns null if the user is already up-to-date with an available bundle", async () => {
@@ -545,259 +547,239 @@ export const setupGetUpdateInfoTestSuite = ({
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
     });
+    expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+  });
+
+  it("minBundleId보다 낮은 번들이 업데이트 가능하다면 null을 반환한다.", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "0195715a-ce29-7c55-97d3-53af4fe369b7", // 2025-03-07T16:05:31.305Z
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
+      bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
+      platform: "ios",
+    });
+    expect(update).toBeNull();
+  });
+
+  it("minBundleId보다 높은 번들이 업데이트 가능하다면 해당 번들을 반환한다.", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "0195715a-ce29-7c55-97d3-53af4fe369b7", // 2025-03-07T16:05:31.305Z
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
+      bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
+      platform: "ios",
+    });
     expect(update).toStrictEqual({
-      id: NIL_UUID,
-      fileUrl: null,
-      fileHash: null,
-      shouldForceUpdate: true, // Cause the app to reload
+      id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
+      fileUrl: "http://example.com/bundle.zip",
+      fileHash: "hash",
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
+  });
+
+  it("현재 번들이 사용이 불가하고, minBundleId보다 낮은 번들이 존재하면 업데이트할게 없으므로 최초 번들로 돌아간다.", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: false, // disabled
+        id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "0195715a-ce29-7c55-97d3-53af4fe369b7", // 2025-03-07T16:05:31.305Z
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
+      bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
+      platform: "ios",
+    });
+    expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+  });
+
+  it("현재 번들이 존재하지 않고, minBundleId보다 낮은 번들이 존재하면 업데이트할게 없으므로 최초 번들로 돌아간다.", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "0195715a-ce29-7c55-97d3-53af4fe369b7", // 2025-03-07T16:05:31.305Z
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
+      bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
+      platform: "ios",
+    });
+    expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+  });
+
+  it("현재 번들이 사용이 가능하고, 업데이트할게 없으므로 null을 반환한다.", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true, // disabled
+        id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "0195715a-ce29-7c55-97d3-53af4fe369b7", // 2025-03-07T16:05:31.305Z
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
+      bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
+      platform: "ios",
+    });
+    expect(update).toBeNull();
+  });
+
+  it("현재 번들이 DB에 존재하지 않고, minBundleId보다 높은 번들이 존재하지 않으면 롤백한다.", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "01957165-bee7-7df3-a25d-6686f01b02ba", //2025-03-07T16:17:28.295Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "01957165-19fb-75af-a361-131c17a65ef2", // 2025-03-07T16:16:46.075Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "01957164-fbc6-785f-98ce-a6ae459f6e4f", // 2025-03-07T16:16:38.342Z
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
+      bundleId: "01957167-0389-7064-8d86-f8af7950daed", // 2025-03-07T16:18:51.401Z
+      platform: "ios",
+    });
+    expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+  });
+
+  it("현재 번들이 DB에 존재하지 않고, minBundleId보다 높고, 내 bundleId보다 낮은 번들이 존재하면 해당 번들로 롤백한다.", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "01957167-0389-7064-8d86-f8af7950daed", // 2025-03-07T16:18:51.401Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "01957165-bee7-7df3-a25d-6686f01b02ba", //2025-03-07T16:17:28.295Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "01957165-19fb-75af-a361-131c17a65ef2", // 2025-03-07T16:16:46.075Z
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        id: "01957164-fbc6-785f-98ce-a6ae459f6e4f", // 2025-03-07T16:16:38.342Z
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
+      bundleId: "0195716c-d426-7308-9924-c3f8cb2eaaad", // 2025-03-07T16:25:12.486Z
+      platform: "ios",
+    });
+    expect(update).toStrictEqual({
+      id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
+      fileUrl: "http://example.com/bundle.zip",
+      fileHash: "hash",
+      shouldForceUpdate: true,
       status: "ROLLBACK",
     });
   });
-  it("returns null when bundleId is from build time and no updates exist in the database (TestFlight)", async () => {
-    const bundles: Bundle[] = [];
 
-    const update = await getUpdateInfo(bundles, {
-      appVersion: "1.0",
-      minBundleId: "0195695b-8b50-7000-8000-000000000000",
-      bundleId: "0195695b-8b50-7000-8000-000000000000", // Build-time generated BUNDLE_ID
-      platform: "ios",
-    });
-    expect(update).toBeNull();
-  });
-
-  it("returns null when bundleId is from build time and only an older update exists (TestFlight)", async () => {
+  it("returns null when installed bundle id exactly equals minBundleId and no newer bundle is available", async () => {
     const bundles: Bundle[] = [
       {
         ...DEFAULT_BUNDLE,
-        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // Old bundle (previous update)
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
+        id: "01957179-d99d-7fbb-bc1e-feff6b3236f0", // only available bundle, equal to minBundleId
       },
     ];
 
     const update = await getUpdateInfo(bundles, {
       appVersion: "1.0",
-      minBundleId: "0195695b-8b50-7000-8000-000000000000",
-      bundleId: "0195695b-8b50-7000-8000-000000000000", // Build-time generated BUNDLE_ID
-      platform: "ios",
-    });
-    expect(update).toBeNull();
-  });
-
-  it("returns the latest available update when bundleId is from build time and a newer update exists (TestFlight)", async () => {
-    const bundles: Bundle[] = [
-      {
-        ...DEFAULT_BUNDLE,
-        id: "0195695f-06ea-77b1-8afe-df3c00a22536", // New update available
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-    ];
-
-    const update = await getUpdateInfo(bundles, {
-      appVersion: "1.0",
-      minBundleId: "0195695b-8b50-7000-8000-000000000000",
-      bundleId: "0195695b-8b50-7000-8000-000000000000", // Build-time generated BUNDLE_ID
-      platform: "ios",
-    });
-    expect(update).toStrictEqual({
-      fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
-      id: "0195695f-06ea-77b1-8afe-df3c00a22536", // New update
-      shouldForceUpdate: false,
-      status: "UPDATE",
-    });
-  });
-
-  it("returns the latest available update when bundleId is from build time and both an old and a new update exist (TestFlight)", async () => {
-    const bundles: Bundle[] = [
-      {
-        ...DEFAULT_BUNDLE,
-        id: "0195695f-06ea-77b1-8afe-df3c00a22536", // New update available
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956886-e1e8-7a7a-9666-4573712f3d58", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-    ];
-
-    const update = await getUpdateInfo(bundles, {
-      appVersion: "1.0",
-      minBundleId: "0195695b-8b50-7000-8000-000000000000",
-      bundleId: "0195695b-8b50-7000-8000-000000000000", // Build-time generated BUNDLE_ID
-      platform: "ios",
-    });
-    expect(update).toStrictEqual({
-      fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
-      id: "0195695f-06ea-77b1-8afe-df3c00a22536", // New update
-      shouldForceUpdate: false,
-      status: "UPDATE",
-    });
-  });
-
-  it("returns the latest available update when bundleId is from build time and both an old and a new update exist (TestFlight)", async () => {
-    const bundles: Bundle[] = [
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-643f-7175-9700-57d54d78890d", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-3c68-78f5-a5ce-b5446701d1a3", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-    ];
-
-    const update = await getUpdateInfo(bundles, {
-      appVersion: "1.0",
-      minBundleId: "01956f07-8fc3-7000-8000-000000000000",
-      bundleId: "01956f07-8fc3-7000-8000-000000000000", // Build-time generated BUNDLE_ID
-      platform: "ios",
-    });
-    expect(update).toBeNull();
-  });
-
-  it("returns the latest available update when bundleId is from build time and both an old and a new update exist (TestFlight)", async () => {
-    const bundles: Bundle[] = [
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f08-1efd-7238-ae82-bb1a2b67e5e0", // New update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f08-0586-70a7-9340-3684b004cebb", // New update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-643f-7175-9700-57d54d78890d", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-3c68-78f5-a5ce-b5446701d1a3", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-    ];
-
-    const update = await getUpdateInfo(bundles, {
-      appVersion: "1.0",
-      minBundleId: "01956f07-8fc3-7000-8000-000000000000",
-      bundleId: "01956f07-8fc3-7000-8000-000000000000", // Build-time generated BUNDLE_ID
-      platform: "ios",
-    });
-    expect(update).toStrictEqual({
-      fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
-      id: "01956f08-1efd-7238-ae82-bb1a2b67e5e0", // New update
-      shouldForceUpdate: false,
-      status: "UPDATE",
-    });
-  });
-
-  it("returns the latest available update when bundleId is from build time and both an old and a new update exist (TestFlight)", async () => {
-    const bundles: Bundle[] = [
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f08-1efd-7238-ae82-bb1a2b67e5e0", // New update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f08-0586-70a7-9340-3684b004cebb", // New update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-643f-7175-9700-57d54d78890d", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: false,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-3c68-78f5-a5ce-b5446701d1a3", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: false,
-      },
-    ];
-
-    const update = await getUpdateInfo(bundles, {
-      appVersion: "1.0",
-      minBundleId: "01956f07-8fc3-7000-8000-000000000000",
-      bundleId: "01956f07-8fc3-7000-8000-000000000000", // Build-time generated BUNDLE_ID
-      platform: "ios",
-    });
-    expect(update).toBeNull();
-  });
-
-  it("returns the latest available update when bundleId is from build time and both an old and a new update exist (TestFlight)", async () => {
-    const bundles: Bundle[] = [
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f08-1efd-7238-ae82-bb1a2b67e5e0", // New update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f08-0586-70a7-9340-3684b004cebb", // New update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-643f-7175-9700-57d54d78890d", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: false,
-      },
-      {
-        ...DEFAULT_BUNDLE,
-        id: "01956f07-3c68-78f5-a5ce-b5446701d1a3", // Old update
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: false,
-      },
-    ];
-
-    const update = await getUpdateInfo(bundles, {
-      appVersion: "1.0",
-      minBundleId: "01956f07-8fc3-7000-8000-000000000000",
-      bundleId: "01956f07-3c68-78f5-a5ce-b5446701d1a3", // Build-time generated BUNDLE_ID
+      minBundleId: "0195715b-9591-7000-8000-000000000000",
+      bundleId: "01957179-d99d-7fbb-bc1e-feff6b3236f0",
       platform: "ios",
     });
     expect(update).toBeNull();
