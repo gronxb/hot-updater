@@ -30,7 +30,7 @@ export const getUpdateInfo = async (
 
   // Special handling for build-time generated bundle IDs:
   const isBuildTime =
-    bundleId !== NIL_UUID && bundleId.endsWith("000000000000");
+    bundleId !== NIL_UUID && bundleId.endsWith("7000-8000-000000000000");
   if (isBuildTime) {
     // Get the prefix (everything except the last segment)
     const buildTimePrefix = bundleId.slice(0, bundleId.lastIndexOf("-"));

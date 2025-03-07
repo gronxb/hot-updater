@@ -31,7 +31,7 @@ BEGIN
           AND b.platform = app_platform
           AND b.id < bundle_id
           -- Do not apply rollback candidates when bundle_id is NIL_UUID or when it's a build-time bundle (non-NIL_UUID with last part being 000000000000)
-          AND (bundle_id != NIL_UUID AND bundle_id::text NOT LIKE '%000000000000')
+          AND (bundle_id != NIL_UUID AND bundle_id::text NOT LIKE '%7000-8000-000000000000')
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -49,11 +49,11 @@ BEGIN
           AND semver_satisfies(b.target_app_version, app_version)
           AND (
               -- For build-time bundles (when bundle_id is not NIL_UUID)
-              (bundle_id != NIL_UUID AND bundle_id::text LIKE '%000000000000'
+              (bundle_id != NIL_UUID AND bundle_id::text LIKE '%7000-8000-000000000000'
                 AND substring(b.id::text from '^(.*)-') > substring(bundle_id::text from '^(.*)-'))
               OR
               -- For other cases (regular bundles or when bundle_id is NIL_UUID)
-              (bundle_id = NIL_UUID OR bundle_id::text NOT LIKE '%000000000000')
+              (bundle_id = NIL_UUID OR bundle_id::text NOT LIKE '%7000-8000-000000000000')
           )
         ORDER BY b.id DESC
         LIMIT 1
@@ -81,7 +81,7 @@ BEGIN
         'ROLLBACK'    AS status
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
-      AND bundle_id::text NOT LIKE '%000000000000';
+      AND bundle_id::text NOT LIKE '%7000-8000-000000000000';
 
 END;
 $$;
