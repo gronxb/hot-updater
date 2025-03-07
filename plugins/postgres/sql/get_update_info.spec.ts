@@ -1,5 +1,10 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import camelcaseKeys from "camelcase-keys";
 import { afterAll, beforeEach, describe } from "vitest";
@@ -28,7 +33,7 @@ const createGetUpdateInfo =
   (db: PGlite) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform }: GetBundlesArgs,
+    { appVersion, bundleId, platform, minBundleId }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     await db.exec(createInsertBundleQuerys(bundles));
 
@@ -40,7 +45,7 @@ const createGetUpdateInfo =
       status: string;
     }>(
       `
-      SELECT * FROM get_update_info('${platform}', '${appVersion}', '${bundleId}')
+      SELECT * FROM get_update_info('${platform}', '${appVersion}', '${bundleId}', '${minBundleId ?? NIL_UUID}')
     `,
     );
 
