@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import camelcaseKeys from "npm:camelcase-keys@9.1.3";
 import { createClient } from "jsr:@supabase/supabase-js@2.47.10";
-import { filterCompatibleAppVersions } from "@hot-updater/js";
+import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
