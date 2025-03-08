@@ -177,6 +177,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
+            const channel = config.channel || "production";
             await databasePlugin.appendBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
@@ -187,6 +188,7 @@ export const deploy = async (options: DeployOptions) => {
               targetAppVersion,
               id: bundleId,
               enabled: true,
+              channel,
             });
             await databasePlugin.commitBundle();
           } catch (e) {

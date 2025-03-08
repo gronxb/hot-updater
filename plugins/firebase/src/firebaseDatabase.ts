@@ -73,6 +73,7 @@ export const firebaseDatabase =
               message: bundle.message,
               platform: bundle.platform,
               target_app_version: bundle.targetAppVersion,
+              channel: bundle.channel,
             },
             { merge: true },
           );
@@ -119,6 +120,7 @@ export const firebaseDatabase =
           message: data.message,
           platform: data.platform,
           targetAppVersion: data.target_app_version,
+          channel: data.channel,
         };
       },
       async getBundles(refresh = false) {
@@ -145,6 +147,7 @@ export const firebaseDatabase =
             message: data.message,
             platform: data.platform,
             targetAppVersion: data.target_app_version,
+            channel: data.channel,
           };
         });
 

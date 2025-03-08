@@ -78,6 +78,7 @@ describe("Firebase Database Plugin", () => {
     fileHash: "test-file-hash",
     gitCommitHash: "test-git-hash",
     message: "test-message",
+    channel: "production",
     platform: "android",
     targetAppVersion: "1.0.0",
   };
@@ -90,6 +91,7 @@ describe("Firebase Database Plugin", () => {
     file_hash: "test-file-hash",
     git_commit_hash: "test-git-hash",
     message: "test-message",
+    channel: "production",
     platform: "android",
     target_app_version: "1.0.0",
   };
