@@ -3,6 +3,7 @@ import {
   addListener,
   getAppVersion,
   getBundleId,
+  getMinBundleId,
   reload,
   updateBundle,
 } from "./native";
@@ -25,6 +26,7 @@ export const HotUpdater = {
   reload,
   getAppVersion,
   getBundleId,
+  getMinBundleId,
   addListener,
 
   checkForUpdate,

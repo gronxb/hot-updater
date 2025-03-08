@@ -80,17 +80,26 @@ export const reload = () => {
 };
 
 /**
+ * Fetches the minimum bundle id, which represents the initial bundle of the app
+ * since it is created at build time.
+ *
+ * @returns {string} Resolves with the minimum bundle id or null if not available.
+ */
+export const getMinBundleId = (): string => {
+  const constants = HotUpdaterNative.getConstants();
+  return constants.BUNDLE_ID_BUILD_TIME;
+};
+
+/**
  * Fetches the current bundle version id.
  *
  * @async
  * @returns {Promise<string>} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  const constants = HotUpdaterNative.getConstants();
+  const minBundleId = getMinBundleId();
 
-  return constants.BUNDLE_ID_BUILD_TIME.localeCompare(
-    HotUpdater.HOT_UPDATER_BUNDLE_ID,
-  ) >= 0
-    ? constants.BUNDLE_ID_BUILD_TIME
+  return minBundleId.localeCompare(HotUpdater.HOT_UPDATER_BUNDLE_ID) >= 0
+    ? minBundleId
     : HotUpdater.HOT_UPDATER_BUNDLE_ID;
 };
