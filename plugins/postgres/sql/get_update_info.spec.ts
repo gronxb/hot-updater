@@ -15,7 +15,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
       id, file_url, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message
+      should_force_update, enabled, git_commit_hash, message, channel
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileUrl}',
@@ -25,7 +25,8 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
-      ${bundle.message ? `'${bundle.message}'` : "null"}
+      ${bundle.message ? `'${bundle.message}'` : "null"},
+      '${bundle.channel}'
     );
   `;
 };
@@ -34,7 +35,13 @@ const createGetUpdateInfo =
   (db: PGlite) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform, minBundleId }: GetBundlesArgs,
+    {
+      appVersion,
+      bundleId,
+      platform,
+      minBundleId = NIL_UUID,
+      channel = "production",
+    }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     await db.exec(createInsertBundleQuerys(bundles));
 
@@ -64,6 +71,7 @@ const createGetUpdateInfo =
         '${appVersion}',
         '${bundleId}',
         '${minBundleId ?? NIL_UUID}',
+        '${channel}',
         ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[]
       );
       `,

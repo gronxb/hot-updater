@@ -172,6 +172,7 @@ describe("Firebase Database Plugin", () => {
       expect(setDoc).toHaveBeenCalledWith(
         mockDocRef,
         {
+          channel: "production",
           enabled: false,
           file_hash: "test-file-hash",
           file_url: "test-file-url",
