@@ -26,6 +26,8 @@ export interface DeployOptions {
   platform?: Platform;
   forceUpdate: boolean;
   interactive: boolean;
+  channel: string;
+  message?: string;
 }
 
 export const deploy = async (options: DeployOptions) => {
@@ -55,7 +57,9 @@ export const deploy = async (options: DeployOptions) => {
     return;
   }
 
-  const config = await loadConfig({ platform });
+  const channel = options.channel;
+
+  const config = await loadConfig({ platform, channel });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
@@ -177,14 +181,13 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            const channel = config.channel || "production";
             await databasePlugin.appendBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
               fileUrl,
               fileHash,
               gitCommitHash,
-              message: gitMessage,
+              message: options?.message ?? gitMessage,
               targetAppVersion,
               id: bundleId,
               enabled: true,

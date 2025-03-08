@@ -54,18 +54,6 @@ export interface StoragePluginHooks {
 }
 
 export type Config = {
-  /**
-   * The name of the channel where the bundle is deployed.
-   *
-   * @default "production"
-   *
-   * Examples:
-   * - production: Production channel for end users
-   * - development: Development channel for testing
-   * - staging: Staging channel for quality assurance before production
-   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
-   */
-  channel?: string;
   console?: {
     /**
      * Git repository URL

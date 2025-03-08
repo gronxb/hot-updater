@@ -5,6 +5,7 @@ import type { Config, Platform } from "./types.js";
 
 export interface HotUpdaterConfigOptions {
   platform: Platform | "console";
+  channel: string;
 }
 
 export const loadConfig = async (
