@@ -11,6 +11,7 @@ export const getConsolePort = async (config?: Config) => {
   if (!$config) {
     $config = await loadConfig({
       platform: "console",
+      channel: "console",
     });
   }
   return $config?.console?.port ?? CONSOLE_DEFAULT_PORT;

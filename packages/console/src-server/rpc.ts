@@ -29,6 +29,7 @@ const prepareConfig = async () => {
   if (!config) {
     config = await loadConfig({
       platform: "console",
+      channel: "console",
     });
     databasePlugin =
       (await config?.database({
