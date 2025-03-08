@@ -8,6 +8,7 @@ const DEFAULT_BUNDLE = {
   platform: "ios",
   gitCommitHash: null,
   fileHash: "hash",
+  channel: "production",
 } as const;
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
@@ -782,5 +783,55 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
     });
     expect(update).toBeNull();
+  });
+
+  it("does not update bundles from different channels", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        channel: "beta",
+        id: "00000000-0000-0000-0000-000000000001",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      channel: "production",
+    });
+
+    expect(update).toBeNull();
+  });
+
+  it("updates bundles from the same channel", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        channel: "beta",
+        id: "00000000-0000-0000-0000-000000000001",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      channel: "beta",
+    });
+
+    expect(update).toStrictEqual({
+      id: "00000000-0000-0000-0000-000000000001",
+      fileUrl: "http://example.com/bundle.zip",
+      message: "hello",
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
   });
 };
