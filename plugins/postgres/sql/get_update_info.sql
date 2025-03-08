@@ -5,7 +5,7 @@ CREATE OR REPLACE FUNCTION get_update_info (
     app_version text,
     bundle_id  uuid,
     min_bundle_id uuid,
-    channel text,
+    target_channel text,
     target_app_version_list text[]
 )
 RETURNS TABLE (
@@ -35,7 +35,7 @@ BEGIN
           AND b.id >= bundle_id
           AND b.id > min_bundle_id
           AND b.target_app_version IN (SELECT unnest(target_app_version_list))
-          AND b.channel = channel
+          AND b.channel = target_channel
         ORDER BY b.id DESC
         LIMIT 1
     ),

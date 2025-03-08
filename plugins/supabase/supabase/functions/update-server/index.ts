@@ -27,7 +27,10 @@ Deno.serve(async (req) => {
     const bundleId = req.headers.get("x-bundle-id") as string;
     const appPlatform = req.headers.get("x-app-platform") as "ios" | "android";
     const appVersion = req.headers.get("x-app-version") as string;
-    const minBundleId = req.headers.get("x-min-bundle-id") as string;
+    const minBundleId = req.headers.get("x-min-bundle-id") as
+      | string
+      | undefined;
+    const channel = req.headers.get("x-channel") as string | undefined;
 
     if (!bundleId || !appPlatform || !appVersion) {
       return createErrorResponse(
@@ -52,6 +55,7 @@ Deno.serve(async (req) => {
       app_version: appVersion,
       bundle_id: bundleId,
       min_bundle_id: minBundleId || NIL_UUID,
+      target_channel: channel || "production",
       target_app_version_list: targetAppVersionList,
     });
 
