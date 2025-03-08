@@ -1,3 +1,4 @@
+import { link } from "@/components/banner";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 
@@ -62,6 +63,17 @@ export const selectOrCreateProject = async (): Promise<string> => {
       await execa("firebase", ["projects:create", projectName as string], {
         stdio: "inherit",
       });
+
+      p.log.info(`
+        ==================================================================================
+                                  Storage Setup Instructions
+        ==================================================================================
+        1. Please complete the Storage and FireStore setup on the Firebase Console.
+        2. Note: Upgrading your plan to 'Blaze' is required to proceed.
+        storage: ${link(`https://console.firebase.google.com/project/${projectName as string}/storage`)}
+        firestore: ${link(`https://console.firebase.google.com/project/${projectName as string}/firestore`)} 
+        ==================================================================================
+        `);
 
       return projectName as string;
     }
@@ -177,17 +189,6 @@ export const initFirebaseUser = async () => {
     p.log.error("Failed to select or create a web app.");
     process.exit(1);
   }
-
-  p.log.info(`
-    ==================================================================================
-                              Storage Setup Instructions
-    ==================================================================================
-    1. Please complete the Storage and FireStore setup on the Firebase Console.
-    2. Note: Upgrading your plan to 'Blaze' is required to proceed.
-    storage: https://console.firebase.google.com/project/${selectedProject}/storage
-    firestore: https://console.firebase.google.com/project/${selectedProject}/firestore 
-    ==================================================================================
-    `);
 
   return {
     projectId: selectedProject,

@@ -1,5 +1,5 @@
+import { transformEnv } from "@/utils/transformEnv";
 import { describe, expect, it } from "vitest";
-import { transformEnv } from "./transformEnv";
 
 describe("transformEnv", () => {
   it("should replace HotUpdater.S3_REGION with 'hello'", async () => {
@@ -7,6 +7,7 @@ describe("transformEnv", () => {
 
     const result = await transformEnv(code, { S3_REGION: "us-east-1" });
     expect(result).toContain('region: "us-east-1"');
+    console.log(result);
   });
 
   it("should not modify other code", async () => {
