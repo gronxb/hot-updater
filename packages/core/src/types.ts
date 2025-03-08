@@ -98,7 +98,7 @@ export interface GetBundlesArgs {
    *
    * @default "00000000-0000-0000-0000-000000000000"
    */
-  minBundleId?: string;
+  minBundleId: string;
   /**
    * The name of the channel where the bundle is deployed.
    *
@@ -110,5 +110,5 @@ export interface GetBundlesArgs {
    * - staging: Staging channel for quality assurance before production
    * - app-name: Channel for specific app instances (e.g., my-app, app-test)
    */
-  channel?: string;
+  channel: string;
 }

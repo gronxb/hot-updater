@@ -18,7 +18,13 @@ const createGetUpdateInfo =
   (s3: S3Client, bucketName: string) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform, minBundleId }: GetBundlesArgs,
+    {
+      appVersion,
+      bundleId,
+      platform,
+      minBundleId = NIL_UUID,
+      channel = "production",
+    }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     if (bundles.length > 0) {
       // Mock target-app-versions.json
@@ -66,7 +72,8 @@ const createGetUpdateInfo =
     }
 
     return getUpdateInfoFromS3(s3, bucketName, {
-      minBundleId: minBundleId || NIL_UUID,
+      minBundleId,
+      channel,
       appVersion,
       bundleId,
       platform,
