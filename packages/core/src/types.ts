@@ -37,6 +37,19 @@ export interface Bundle {
    * The message of the bundle.
    */
   message: string | null;
+  /**
+   *
+   * The name of the environment where the bundle is deployed.
+   *
+   * Examples:
+   * - production: Production environment for end users
+   * - development: Development environment for testing
+   * - staging: Staging environment for quality assurance before production
+   * - app-name: Environment for specific app instances (e.g., my-app, app-test)
+   *
+   * Different stage values can be used based on each app's requirements.
+   */
+  stage: string;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -73,6 +86,7 @@ export interface UpdateInfo {
 export interface GetBundlesArgs {
   platform: Platform;
   bundleId: string;
-  minBundleId?: string;
   appVersion: string;
+  minBundleId?: string;
+  stage?: string;
 }
