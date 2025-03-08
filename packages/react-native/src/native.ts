@@ -4,6 +4,7 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 const HotUpdater = {
   HOT_UPDATER_BUNDLE_ID: NIL_UUID,
+  CHANNEL: "production",
 };
 
 const LINKING_ERROR =
@@ -102,4 +103,8 @@ export const getBundleId = (): string => {
   return minBundleId.localeCompare(HotUpdater.HOT_UPDATER_BUNDLE_ID) >= 0
     ? minBundleId
     : HotUpdater.HOT_UPDATER_BUNDLE_ID;
+};
+
+export const getChannel = (): string => {
+  return HotUpdater.CHANNEL;
 };

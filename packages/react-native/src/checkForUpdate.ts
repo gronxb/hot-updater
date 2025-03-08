@@ -3,7 +3,12 @@ import { getUpdateInfo } from "@hot-updater/js";
 import { Platform } from "react-native";
 import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { HotUpdaterError } from "./error";
-import { getAppVersion, getBundleId, getMinBundleId } from "./native";
+import {
+  getAppVersion,
+  getBundleId,
+  getChannel,
+  getMinBundleId,
+} from "./native";
 
 export interface CheckForUpdateConfig {
   source: BundleArg;
@@ -23,8 +28,9 @@ export async function checkForUpdate(config: CheckForUpdateConfig) {
 
   const currentAppVersion = await getAppVersion();
   const platform = Platform.OS as "ios" | "android";
-  const currentBundleId = await getBundleId();
-  const minBundleId = await getMinBundleId();
+  const currentBundleId = getBundleId();
+  const minBundleId = getMinBundleId();
+  const channel = getChannel();
 
   if (!currentAppVersion) {
     throw new HotUpdaterError("Failed to get app version");
@@ -37,6 +43,7 @@ export async function checkForUpdate(config: CheckForUpdateConfig) {
       bundleId: currentBundleId,
       platform,
       minBundleId,
+      channel,
     },
     config.requestHeaders,
   );
