@@ -9,6 +9,12 @@ import {
 import admin from "firebase-admin";
 import functions from "firebase-functions";
 
+declare global {
+  var HotUpdater: {
+    REGION: string;
+  };
+}
+
 admin.initializeApp();
 const db = admin.firestore();
 
@@ -119,7 +125,7 @@ export const getUpdateInfo = async ({
 
 export const updateInfoFunction = functions.https.onRequest(
   {
-    region: "asia-northeast3",
+    region: HotUpdater.REGION,
     cors: true,
   },
   async (req, res) => {

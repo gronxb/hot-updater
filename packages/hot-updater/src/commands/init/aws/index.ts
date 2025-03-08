@@ -14,10 +14,10 @@ import fs from "fs/promises";
 import { createZip } from "@/utils/createZip";
 import { delay } from "@/utils/delay";
 import { makeEnv } from "@/utils/makeEnv";
+import { transformEnv } from "@/utils/transformEnv";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
 import { regionLocationMap } from "./regionLocationMap";
-import { transformEnv } from "./transformEnv";
 
 // Template file: hot-updater.config.ts
 const CONFIG_TEMPLATE_WITH_SESSION = `
