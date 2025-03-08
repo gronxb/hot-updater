@@ -130,6 +130,7 @@ export const deploy = async (options: DeployOptions) => {
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
+            channel,
           });
           bundlePath = path.join(getCwd(), "bundle.zip");
 

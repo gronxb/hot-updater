@@ -28,9 +28,13 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  build: (args: { platform: Platform }) => Promise<{
+  build: (args: {
+    platform: Platform;
+    channel: string;
+  }) => Promise<{
     buildPath: string;
     bundleId: string;
+    channel: string;
     stdout: string | null;
   }>;
   name: string;
@@ -55,19 +59,12 @@ export interface StoragePluginHooks {
 
 export type Config = {
   /**
-   * The name of the channel where the bundle is deployed.
-   *
-   * Examples:
-   * - production: Production channel for end users
-   * - development: Development channel for testing
-   * - staging: Staging channel for quality assurance before production
-   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
+   * The channel used when building the native app.
+   * Used to replace HotUpdater.CHANNEL at build time.
    *
    * @default "production"
-   *
-   * Different channel values can be used based on each app's requirements.
    */
-  channel?: string;
+  releaseChannel?: string;
   console?: {
     /**
      * Git repository URL
