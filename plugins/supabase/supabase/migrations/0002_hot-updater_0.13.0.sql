@@ -87,7 +87,7 @@ $$;
 
 -- HotUpdater.bundles
 ALTER TABLE bundles
-ADD COLUMN stage text NOT NULL DEFAULT 'production';
+ADD COLUMN channel text NOT NULL DEFAULT 'production';
 
 -- HotUpdater.semver_satisfies
 DROP FUNCTION IF EXISTS semver_satisfies;

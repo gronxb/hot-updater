@@ -38,18 +38,17 @@ export interface Bundle {
    */
   message: string | null;
   /**
-   *
-   * The name of the environment where the bundle is deployed.
+   * The name of the channel where the bundle is deployed.
    *
    * Examples:
-   * - production: Production environment for end users
-   * - development: Development environment for testing
-   * - staging: Staging environment for quality assurance before production
-   * - app-name: Environment for specific app instances (e.g., my-app, app-test)
+   * - production: Production channel for end users
+   * - development: Development channel for testing
+   * - staging: Staging channel for quality assurance before production
+   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
    *
-   * Different stage values can be used based on each app's requirements.
+   * Different channel values can be used based on each app's requirements.
    */
-  stage: string;
+  channel: string;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -88,5 +87,5 @@ export interface GetBundlesArgs {
   bundleId: string;
   appVersion: string;
   minBundleId?: string;
-  stage?: string;
+  channel?: string;
 }

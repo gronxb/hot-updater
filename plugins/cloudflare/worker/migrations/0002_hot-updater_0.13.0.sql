@@ -2,4 +2,4 @@
 -- HotUpdater.bundles
 
 ALTER TABLE bundles
-ADD COLUMN stage TEXT NOT NULL DEFAULT 'production';
+ADD COLUMN channel TEXT NOT NULL DEFAULT 'production';
