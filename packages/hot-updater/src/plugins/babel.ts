@@ -3,10 +3,12 @@ import path from "path";
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
+import { loadConfigSync } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 
 export default function replaceHotUpdaterBundleId(): PluginObj {
+  const config = loadConfigSync(null);
   const buildOutDir = process.env["BUILD_OUT_DIR"];
 
   if (!buildOutDir) {
@@ -42,6 +44,7 @@ export default function replaceHotUpdaterBundleId(): PluginObj {
     );
   }
 
+  const channel = config?.channel || "production";
   return {
     name: "replace-hot-updater-bundle-id",
     visitor: {
@@ -53,6 +56,15 @@ export default function replaceHotUpdaterBundleId(): PluginObj {
           })
         ) {
           path.replaceWith(t.stringLiteral(bundleId));
+        }
+
+        if (
+          t.isIdentifier(path.node.object, { name: "HotUpdater" }) &&
+          t.isIdentifier(path.node.property, {
+            name: "CHANNEL",
+          })
+        ) {
+          path.replaceWith(t.stringLiteral(channel));
         }
       },
     },

@@ -27,10 +27,7 @@ let databasePlugin: DatabasePlugin | null = null;
 
 const prepareConfig = async () => {
   if (!config) {
-    config = await loadConfig({
-      platform: "console",
-      channel: "console",
-    });
+    config = await loadConfig(null);
     databasePlugin =
       (await config?.database({
         cwd: getCwd(),

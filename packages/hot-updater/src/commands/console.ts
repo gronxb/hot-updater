@@ -9,10 +9,7 @@ export const CONSOLE_DEFAULT_PORT = 1422;
 export const getConsolePort = async (config?: Config) => {
   let $config: Config | undefined | null = config;
   if (!$config) {
-    $config = await loadConfig({
-      platform: "console",
-      channel: "console",
-    });
+    $config = await loadConfig(null);
   }
   return $config?.console?.port ?? CONSOLE_DEFAULT_PORT;
 };
