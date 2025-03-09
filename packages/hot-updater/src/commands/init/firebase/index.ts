@@ -4,6 +4,7 @@ import { initFirebaseUser } from "@/commands/init/firebase/select";
 import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
 import { transformEnv } from "@/utils/transformEnv";
+import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
 import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
@@ -30,6 +31,70 @@ export default defineConfig({
   }),
 });
 `;
+
+// Template file: Example code to add to App.tsx
+const SOURCE_TEMPLATE = `// add this to your App.tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function App() {
+  return ...
+}
+
+export default HotUpdater.wrap({
+  source: "%%source%%",
+})(App);`;
+
+const REGIONS = [
+  { value: "us-central1", label: "US Central (Iowa)" },
+  { value: "us-east1", label: "US East (South Carolina)" },
+  { value: "us-east4", label: "US East (Northern Virginia)" },
+  { value: "us-west1", label: "US West (Oregon)" },
+  { value: "us-west2", label: "US West (Los Angeles)" },
+  { value: "us-west3", label: "US West (Salt Lake City)" },
+  { value: "us-west4", label: "US West (Las Vegas)" },
+  { value: "europe-west1", label: "Europe West (Belgium)" },
+  { value: "europe-west2", label: "Europe West (London)" },
+  { value: "europe-west3", label: "Europe West (Frankfurt)" },
+  { value: "europe-west6", label: "Europe West (Zurich)" },
+  { value: "asia-east1", label: "Asia East (Taiwan)" },
+  { value: "asia-east2", label: "Asia East (Hong Kong)" },
+  { value: "asia-northeast1", label: "Asia Northeast (Tokyo)" },
+  { value: "asia-northeast2", label: "Asia Northeast (Osaka)" },
+  { value: "asia-northeast3", label: "Asia Northeast (Seoul)" },
+  { value: "asia-south1", label: "Asia South (Mumbai)" },
+  { value: "asia-southeast1", label: "Asia Southeast (Singapore)" },
+  { value: "asia-southeast2", label: "Asia Southeast (Jakarta)" },
+  {
+    value: "australia-southeast1",
+    label: "Australia Southeast (Sydney)",
+  },
+];
+
+export interface FirebaseFunction {
+  platform: string;
+  id: string;
+  project: string;
+  region: string;
+  httpsTrigger: Record<string, any>;
+  entryPoint: string;
+  runtime: string;
+  source: Record<string, any>;
+  ingressSettings: string;
+  environmentVariables: Record<string, any>;
+  timeoutSeconds: number;
+  uri: string;
+  serviceAccount: string;
+  availableMemoryMb: number;
+  cpu: number;
+  maxInstances: number;
+  concurrency: number;
+  labels: Record<string, any>;
+  runServiceId: string;
+  codebase: string;
+  hash: string;
+}
+
+let globalUpdateInfoFunctionUrl: string | null = null;
 
 async function setupFirebaseEnv(webAppId: string, tmpDir: string) {
   try {
@@ -73,6 +138,7 @@ export const initFirebase = async () => {
   const newPackagePath = path.join(functionsDir, "package.json");
   const indexFile = require.resolve("@hot-updater/firebase/functions");
   const destPath = path.join(functionsDir, path.basename(indexFile));
+  let updateInfoFunctionExists = false;
 
   await fs.copyFile(indexFile, destPath);
 
@@ -151,43 +217,56 @@ export const initFirebase = async () => {
       },
     },
     {
-      title: "Select Firebase Region",
+      title: "Setting region",
       task: async () => {
-        const regions = [
-          { value: "us-central1", label: "US Central (Iowa)" },
-          { value: "us-east1", label: "US East (South Carolina)" },
-          { value: "us-east4", label: "US East (Northern Virginia)" },
-          { value: "us-west1", label: "US West (Oregon)" },
-          { value: "us-west2", label: "US West (Los Angeles)" },
-          { value: "us-west3", label: "US West (Salt Lake City)" },
-          { value: "us-west4", label: "US West (Las Vegas)" },
-          { value: "europe-west1", label: "Europe West (Belgium)" },
-          { value: "europe-west2", label: "Europe West (London)" },
-          { value: "europe-west3", label: "Europe West (Frankfurt)" },
-          { value: "europe-west6", label: "Europe West (Zurich)" },
-          { value: "asia-east1", label: "Asia East (Taiwan)" },
-          { value: "asia-east2", label: "Asia East (Hong Kong)" },
-          { value: "asia-northeast1", label: "Asia Northeast (Tokyo)" },
-          { value: "asia-northeast2", label: "Asia Northeast (Osaka)" },
-          { value: "asia-northeast3", label: "Asia Northeast (Seoul)" },
-          { value: "asia-south1", label: "Asia South (Mumbai)" },
-          { value: "asia-southeast1", label: "Asia Southeast (Singapore)" },
-          { value: "asia-southeast2", label: "Asia Southeast (Jakarta)" },
-          {
-            value: "australia-southeast1",
-            label: "Australia Southeast (Sydney)",
-          },
-        ];
+        let currentRegion = "us-central1";
 
-        const selectedRegion = await p.select({
-          message: "Select a region for your Firebase Functions:",
-          options: regions,
-          initialValue: "us-central1",
-        });
+        try {
+          const { stdout } = await execa(
+            "pnpm",
+            [
+              "firebase",
+              "functions:list",
+              "--json",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
 
-        if (p.isCancel(selectedRegion)) {
-          p.cancel("Operation cancelled.");
-          throw new Error("Region selection cancelled");
+          const parsedData = JSON.parse(stdout);
+          const functionsData = parsedData.result || [];
+
+          const updateInfoFunc = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "updateInfoFunction",
+          );
+
+          if (updateInfoFunc) {
+            updateInfoFunctionExists = true;
+
+            if (updateInfoFunc.region) {
+              currentRegion = updateInfoFunc.region;
+            }
+            globalUpdateInfoFunctionUrl = updateInfoFunc.uri || null;
+          }
+        } catch (error) {}
+
+        let selectedRegion = currentRegion;
+
+        if (!updateInfoFunctionExists) {
+          const selectRegion = await p.select({
+            message: "Select Region",
+            options: REGIONS,
+            initialValue: currentRegion,
+          });
+
+          if (p.isCancel(selectedRegion)) {
+            p.cancel("Operation cancelled.");
+            throw new Error("Region selection cancelled");
+          }
+          selectedRegion = selectRegion as string;
         }
 
         const code = await transformEnv(
@@ -197,25 +276,102 @@ export const initFirebase = async () => {
           },
         );
         await fs.writeFile(path.join(functionsDir, "index.cjs"), code);
-
-        console.log(
-          `Selected region '${selectedRegion}' has been added to firebase.json`,
-        );
       },
     },
     {
-      title: "Deploy to Firebase",
+      title: "1. Deploy Firebase Storage Rules",
       task: async () => {
+        if (updateInfoFunctionExists) return;
         try {
           await execa(
             "pnpm",
-            ["firebase", "deploy", "--config", "./.hot-updater/firebase.json"],
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "storage",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
             {
               cwd: tmpDir,
             },
           );
         } catch (error) {
-          console.error("Error in Firebase deployment:", error);
+          console.error("Error deploying a Firebase Storage rule:", error);
+          throw error;
+        }
+      },
+    },
+    {
+      title: "2. Deploy Firestore Indexes",
+      task: async () => {
+        if (updateInfoFunctionExists) return;
+        try {
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "firestore:indexes",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
+        } catch (error) {
+          console.log("Index deployment failed, proceed to the next step.");
+        }
+      },
+    },
+    {
+      title: "3. Deploy Firestore Rules",
+      task: async () => {
+        if (updateInfoFunctionExists) return;
+        try {
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "firestore:rules",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
+        } catch (error) {
+          console.error("Error deploying a Firestore rule:", error);
+          throw error;
+        }
+      },
+    },
+    {
+      title: "4. Deploy Firebase Functions",
+      task: async () => {
+        try {
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "functions",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
+        } catch (error) {
+          console.error("Error deploying Firebase Functions:", error);
           throw error;
         }
       },
@@ -234,11 +390,10 @@ export const initFirebase = async () => {
     },
   ]);
 
-  p.log.message(
-    // biome-ignore lint/style/useTemplate: <explanation>
-    `1. Click this link ${link(`https://console.firebase.google.com/project/${initializeVariable.projectId}/functions\n`)}` +
-      "2. Click Detailed usage stats of updateInfoFunction\n" +
-      "3. Click SECURITY and Allow unauthenticated invocations or you want",
+  p.note(
+    transformTemplate(SOURCE_TEMPLATE, {
+      source: globalUpdateInfoFunctionUrl as string,
+    }),
   );
 
   p.log.message(
