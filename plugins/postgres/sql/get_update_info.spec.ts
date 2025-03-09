@@ -6,6 +6,7 @@ import {
   type UpdateInfo,
 } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { filterCompatibleAppVersions } from "@hot-updater/js";
 import camelcaseKeys from "camelcase-keys";
 import { afterAll, beforeEach, describe } from "vitest";
 import { prepareSql } from "./prepareSql";
@@ -14,7 +15,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
       id, file_url, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message
+      should_force_update, enabled, git_commit_hash, message, channel
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileUrl}',
@@ -24,7 +25,8 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
-      ${bundle.message ? `'${bundle.message}'` : "null"}
+      ${bundle.message ? `'${bundle.message}'` : "null"},
+      '${bundle.channel}'
     );
   `;
 };
@@ -33,20 +35,46 @@ const createGetUpdateInfo =
   (db: PGlite) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform, minBundleId }: GetBundlesArgs,
+    {
+      appVersion,
+      bundleId,
+      platform,
+      minBundleId = NIL_UUID,
+      channel = "production",
+    }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     await db.exec(createInsertBundleQuerys(bundles));
+
+    const { rows: appVersionList } = await db.query<{
+      target_app_version: string;
+    }>(
+      `
+      SELECT target_app_version FROM bundles WHERE platform = '${platform}' GROUP BY target_app_version
+      `,
+    );
+
+    const targetAppVersionList = filterCompatibleAppVersions(
+      appVersionList?.map((group) => group.target_app_version) ?? [],
+      appVersion,
+    );
 
     const result = await db.query<{
       id: string;
       should_force_update: boolean;
       file_url: string;
-      file_hash: string;
+      message: string;
       status: string;
     }>(
       `
-      SELECT * FROM get_update_info('${platform}', '${appVersion}', '${bundleId}', '${minBundleId ?? NIL_UUID}')
-    `,
+      SELECT * FROM get_update_info(
+        '${platform}',
+        '${appVersion}',
+        '${bundleId}',
+        '${minBundleId ?? NIL_UUID}',
+        '${channel}',
+        ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[]
+      );
+      `,
     );
 
     return result.rows[0]

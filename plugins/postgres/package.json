@@ -40,6 +40,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.15",
+    "@hot-updater/js": "0.12.4",
     "@types/pg": "^8.11.10",
     "camelcase-keys": "^9.1.3"
   }

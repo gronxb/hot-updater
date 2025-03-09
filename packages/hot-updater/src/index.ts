@@ -12,6 +12,8 @@ import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 
+const DEFAULT_CHANNEL = "production";
+
 const program = new Command();
 
 program
@@ -51,6 +53,17 @@ program
     new Option("-f, --force-update", "force update the app").default(false),
   )
   .addOption(new Option("-i, --interactive", "interactive mode").default(false))
+  .addOption(
+    new Option("-c, --channel", "specify the channel to deploy").default(
+      DEFAULT_CHANNEL,
+    ),
+  )
+  .addOption(
+    new Option(
+      "-m, --message",
+      "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+    ),
+  )
   .action(async (options: DeployOptions) => {
     deploy(options);
   });

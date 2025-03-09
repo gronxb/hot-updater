@@ -444,7 +444,13 @@ export const createCloudFrontDistribution = async (
             Cookies: { Forward: "none" },
             Headers: {
               Quantity: 3,
-              Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
+              Items: [
+                "x-bundle-id",
+                "x-app-version",
+                "x-app-platform",
+                "x-min-bundle-id",
+                "x-channel",
+              ],
             },
           },
         },
@@ -554,7 +560,13 @@ export const createCloudFrontDistribution = async (
             Cookies: { Forward: "none" },
             Headers: {
               Quantity: 3,
-              Items: ["x-bundle-id", "x-app-version", "x-app-platform"],
+              Items: [
+                "x-bundle-id",
+                "x-app-version",
+                "x-app-platform",
+                "x-min-bundle-id",
+                "x-channel",
+              ],
             },
           },
         },

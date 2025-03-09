@@ -10,6 +10,7 @@ const DEFAULT_BUNDLE = {
   gitCommitHash: null,
   message: null,
   targetAppVersion: "1.0",
+  channel: "production",
 } as const;
 
 describe("checkForRollback", () => {

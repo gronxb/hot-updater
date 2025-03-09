@@ -8,7 +8,7 @@ import {
 import { semverSatisfies } from "./semverSatisfies";
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
-  fileHash: null,
+  message: null,
   fileUrl: null,
   id: NIL_UUID,
   shouldForceUpdate: true,
@@ -17,11 +17,18 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
 
 export const getUpdateInfo = async (
   bundles: Bundle[],
-  { platform, bundleId, appVersion, minBundleId }: GetBundlesArgs,
+  {
+    platform,
+    bundleId,
+    appVersion,
+    minBundleId = NIL_UUID,
+    channel = "production",
+  }: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const filteredBundles = bundles.filter(
     (b) =>
       b.platform === platform &&
+      b.channel === channel &&
       semverSatisfies(b.targetAppVersion, appVersion),
   );
 
@@ -41,7 +48,6 @@ export const getUpdateInfo = async (
     return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
   }
 
-  // 5. 후보 번들을 한 번만 내림차순 정렬 (최신 순)
   const sortedCandidates = candidateBundles
     .slice()
     .sort((a, b) => b.id.localeCompare(a.id));
@@ -50,7 +56,7 @@ export const getUpdateInfo = async (
   const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
     id: bundle.id,
     fileUrl: bundle.fileUrl,
-    fileHash: bundle.fileHash,
+    message: bundle.message,
     shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
     status,
   });

@@ -1,5 +1,5 @@
 import { GetObjectCommand, type S3Client } from "@aws-sdk/client-s3";
-import type { Bundle, Platform } from "@hot-updater/core";
+import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import {
   filterCompatibleAppVersions,
   getUpdateInfo as getUpdateInfoJS,
@@ -26,13 +26,9 @@ export const getUpdateInfo = async (
     platform,
     appVersion,
     bundleId,
-    minBundleId,
-  }: {
-    platform: Platform;
-    appVersion: string;
-    bundleId: string;
-    minBundleId: string;
-  },
+    minBundleId = NIL_UUID,
+    channel = "production",
+  }: GetBundlesArgs,
 ) => {
   const targetAppVersions = await getS3Json(
     s3,
@@ -62,5 +58,6 @@ export const getUpdateInfo = async (
     bundleId,
     appVersion,
     minBundleId,
+    channel,
   });
 };

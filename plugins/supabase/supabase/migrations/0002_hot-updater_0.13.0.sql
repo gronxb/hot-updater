@@ -4,13 +4,15 @@ CREATE OR REPLACE FUNCTION get_update_info (
     app_platform   platforms,
     app_version text,
     bundle_id  uuid,
-    min_bundle_id uuid
+    min_bundle_id uuid,
+    target_channel text,
+    target_app_version_list text[]
 )
 RETURNS TABLE (
     id            uuid,
     should_force_update  boolean,
     file_url      text,
-    file_hash     text,
+    message       text,
     status        text
 )
 LANGUAGE plpgsql
@@ -25,14 +27,15 @@ BEGIN
             b.id,
             b.should_force_update,
             b.file_url,
-            b.file_hash,
+            b.message,
             'UPDATE' AS status
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= bundle_id
           AND b.id > min_bundle_id
-          AND semver_satisfies(b.target_app_version, app_version)
+          AND b.target_app_version IN (SELECT unnest(target_app_version_list))
+          AND b.channel = target_channel
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -41,7 +44,7 @@ BEGIN
             b.id,
             TRUE AS should_force_update,
             b.file_url,
-            b.file_hash,
+            b.message,
             'ROLLBACK' AS status
         FROM bundles b
         WHERE b.enabled = TRUE
@@ -63,13 +66,11 @@ BEGIN
 
     UNION ALL
 
-    -- fallback: 번들 DB에 현재(bundle_id)가 없고,
-    --          (단, bundle_id가 min_bundle_id와 같으면 아무것도 하지 않고, bundle_id가 min_bundle_id보다 큰 경우에만 fallback)
     SELECT
         NIL_UUID      AS id,
         TRUE          AS should_force_update,
         NULL          AS file_url,
-        NULL          AS file_hash,
+        NULL          AS message,
         'ROLLBACK'    AS status
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
@@ -83,3 +84,10 @@ BEGIN
       );
 END;
 $$;
+
+-- HotUpdater.bundles
+ALTER TABLE bundles
+ADD COLUMN channel text NOT NULL DEFAULT 'production';
+
+-- HotUpdater.semver_satisfies
+DROP FUNCTION IF EXISTS semver_satisfies;

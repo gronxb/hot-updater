@@ -28,7 +28,11 @@ export default {
       | "ios"
       | "android";
     const appVersion = request.headers.get("x-app-version") as string;
-    const minBundleId = request.headers.get("x-min-bundle-id") as string;
+
+    const minBundleId = request.headers.get("x-min-bundle-id") as
+      | string
+      | undefined;
+    const channel = request.headers.get("x-channel") as string | undefined;
 
     if (!bundleId || !appPlatform || !appVersion) {
       return new Response(
@@ -44,6 +48,7 @@ export default {
       bundleId,
       platform: appPlatform,
       minBundleId: minBundleId || NIL_UUID,
+      channel: channel || "production",
     });
 
     return new Response(JSON.stringify(updateInfo), {

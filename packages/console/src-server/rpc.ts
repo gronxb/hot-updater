@@ -19,6 +19,7 @@ export const bundleSchema = v.object({
   fileHash: v.string(),
   gitCommitHash: v.nullable(v.string()),
   message: v.nullable(v.string()),
+  channel: v.string(),
 });
 
 let config: Config | null = null;
@@ -26,9 +27,7 @@ let databasePlugin: DatabasePlugin | null = null;
 
 const prepareConfig = async () => {
   if (!config) {
-    config = await loadConfig({
-      platform: "console",
-    });
+    config = await loadConfig(null);
     databasePlugin =
       (await config?.database({
         cwd: getCwd(),

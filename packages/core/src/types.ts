@@ -37,6 +37,18 @@ export interface Bundle {
    * The message of the bundle.
    */
   message: string | null;
+  /**
+   * The name of the channel where the bundle is deployed.
+   *
+   * Examples:
+   * - production: Production channel for end users
+   * - development: Development channel for testing
+   * - staging: Staging channel for quality assurance before production
+   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
+   *
+   * Different channel values can be used based on each app's requirements.
+   */
+  channel: string;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -66,13 +78,37 @@ export interface UpdateInfo {
   id: string;
   shouldForceUpdate: boolean;
   fileUrl: string | null;
-  fileHash: string | null;
+  message: string | null;
   status: UpdateStatus;
 }
 
 export interface GetBundlesArgs {
   platform: Platform;
+  /**
+   * The current bundle id of the app.
+   */
   bundleId: string;
-  minBundleId?: string;
+  /**
+   * The current app version.
+   */
   appVersion: string;
+  /**
+   * Minimum bundle id that should be used.
+   * This value is generated at build time via getMinBundleId().
+   *
+   * @default "00000000-0000-0000-0000-000000000000"
+   */
+  minBundleId?: string;
+  /**
+   * The name of the channel where the bundle is deployed.
+   *
+   * @default "production"
+   *
+   * Examples:
+   * - production: Production channel for end users
+   * - development: Development channel for testing
+   * - staging: Staging channel for quality assurance before production
+   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
+   */
+  channel?: string;
 }

@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import camelcaseKeys from "npm:camelcase-keys@9.1.3";
 import { createClient } from "jsr:@supabase/supabase-js@2.47.10";
+import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -26,7 +27,10 @@ Deno.serve(async (req) => {
     const bundleId = req.headers.get("x-bundle-id") as string;
     const appPlatform = req.headers.get("x-app-platform") as "ios" | "android";
     const appVersion = req.headers.get("x-app-version") as string;
-    const minBundleId = req.headers.get("x-min-bundle-id") as string;
+    const minBundleId = req.headers.get("x-min-bundle-id") as
+      | string
+      | undefined;
+    const channel = req.headers.get("x-channel") as string | undefined;
 
     if (!bundleId || !appPlatform || !appVersion) {
       return createErrorResponse(
@@ -35,11 +39,24 @@ Deno.serve(async (req) => {
       );
     }
 
+    const { data: appVersionList } = await supabase
+      .from("bundles")
+      .select("target_app_version")
+      .eq("platform", appPlatform)
+      .groupBy("target_app_version");
+
+    const targetAppVersionList = filterCompatibleAppVersions(
+      appVersionList?.map((group) => group.target_app_version) ?? [],
+      appVersion,
+    );
+
     const { data, error } = await supabase.rpc("get_update_info", {
       app_platform: appPlatform,
       app_version: appVersion,
       bundle_id: bundleId,
       min_bundle_id: minBundleId || NIL_UUID,
+      target_channel: channel || "production",
+      target_app_version_list: targetAppVersionList,
     });
 
     if (error) {

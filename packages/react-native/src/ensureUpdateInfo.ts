@@ -7,7 +7,7 @@ import type {
 
 export const ensureUpdateInfo = async (
   source: BundleArg,
-  { appVersion, bundleId, platform }: GetBundlesArgs,
+  { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
 ): Promise<Bundle[] | UpdateInfo> => {
   try {
@@ -19,6 +19,8 @@ export const ensureUpdateInfo = async (
             "x-app-platform": platform,
             "x-app-version": appVersion,
             "x-bundle-id": bundleId,
+            ...(minBundleId ? { "x-min-bundle-id": minBundleId } : {}),
+            ...(channel ? { "x-channel": channel } : {}),
             ...requestHeaders,
           },
         }).then((res) => res.json());

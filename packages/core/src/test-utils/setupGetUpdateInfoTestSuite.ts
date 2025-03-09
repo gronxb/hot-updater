@@ -4,16 +4,17 @@ import { NIL_UUID } from "../uuid";
 
 const DEFAULT_BUNDLE = {
   fileUrl: "http://example.com/bundle.zip",
-  fileHash: "hash",
+  message: "hello",
   platform: "ios",
   gitCommitHash: null,
-  message: null,
+  fileHash: "hash",
+  channel: "production",
 } as const;
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
-  fileHash: null,
   fileUrl: null,
   id: NIL_UUID,
+  message: null,
   shouldForceUpdate: true,
   status: "ROLLBACK",
 } as const;
@@ -46,7 +47,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       shouldForceUpdate: false,
       status: "UPDATE",
     });
@@ -110,7 +111,7 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
     });
   });
 
@@ -135,7 +136,7 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: true,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
     });
   });
 
@@ -160,7 +161,7 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
     });
   });
 
@@ -184,7 +185,7 @@ export const setupGetUpdateInfoTestSuite = ({
       id: "00000000-0000-0000-0000-000000000005",
       shouldForceUpdate: false,
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       status: "UPDATE",
     });
   });
@@ -214,7 +215,7 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -281,7 +282,7 @@ export const setupGetUpdateInfoTestSuite = ({
         fileUrl: "20240722210327/build.zip",
         fileHash:
           "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
-        message: "",
+        message: "hi",
         targetAppVersion: "1.0",
         id: "00000000-0000-0000-0000-000000000001",
         enabled: true,
@@ -298,8 +299,7 @@ export const setupGetUpdateInfoTestSuite = ({
       shouldForceUpdate: false,
       status: "UPDATE",
       fileUrl: "20240722210327/build.zip",
-      fileHash:
-        "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
+      message: "hi",
     });
   });
 
@@ -357,7 +357,7 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      fileHash: "hash",
+      message: "hello",
       fileUrl: "http://example.com/bundle.zip",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: true,
@@ -397,7 +397,7 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       id: "00000000-0000-0000-0000-000000000003",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -451,7 +451,7 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       id: "00000000-0000-0000-0000-000000000005",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -517,7 +517,7 @@ export const setupGetUpdateInfoTestSuite = ({
 
     expect(update).toStrictEqual({
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: true, // Cause the app to reload
       status: "ROLLBACK",
@@ -597,7 +597,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual({
       id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       shouldForceUpdate: false,
       status: "UPDATE",
     });
@@ -759,7 +759,7 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual({
       id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
       fileUrl: "http://example.com/bundle.zip",
-      fileHash: "hash",
+      message: "hello",
       shouldForceUpdate: true,
       status: "ROLLBACK",
     });
@@ -783,5 +783,55 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
     });
     expect(update).toBeNull();
+  });
+
+  it("does not update bundles from different channels", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        channel: "beta",
+        id: "00000000-0000-0000-0000-000000000001",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      channel: "production",
+    });
+
+    expect(update).toBeNull();
+  });
+
+  it("updates bundles from the same channel", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        channel: "beta",
+        id: "00000000-0000-0000-0000-000000000001",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      channel: "beta",
+    });
+
+    expect(update).toStrictEqual({
+      id: "00000000-0000-0000-0000-000000000001",
+      fileUrl: "http://example.com/bundle.zip",
+      message: "hello",
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
   });
 };
