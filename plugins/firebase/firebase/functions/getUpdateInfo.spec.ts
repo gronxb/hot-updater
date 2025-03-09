@@ -90,8 +90,8 @@ describe("getUpdateInfo", () => {
 
       try {
         emulatorProcess = execa(
-          "firebase",
-          ["emulators:start", "--only", "firestore"],
+          "pnpm",
+          ["firebase", "emulators:start", "--only", "firestore"],
           {
             stdio: "inherit",
           },
