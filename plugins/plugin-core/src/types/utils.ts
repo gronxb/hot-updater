@@ -45,7 +45,8 @@ export type RequiredDeep<
               : E extends Promise<infer ValueType>
                 ? Promise<RequiredDeep<ValueType>>
                 : E extends (...arguments_: any[]) => unknown
-                  ? {} extends RequiredObjectDeep<E>
+                  ? // biome-ignore lint/complexity/noBannedTypes: <explanation>
+                    {} extends RequiredObjectDeep<E>
                     ? E
                     : HasMultipleCallSignatures<E> extends true
                       ? E
