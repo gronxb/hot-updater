@@ -1,7 +1,10 @@
-import type { Config, HotUpdaterConfigOptions } from "@hot-updater/plugin-core";
+import type {
+  ConfigInput,
+  HotUpdaterConfigOptions,
+} from "@hot-updater/plugin-core";
 
 export const defineConfig = (
-  config: Config | ((options: HotUpdaterConfigOptions) => Config),
+  config: ConfigInput | ((options: HotUpdaterConfigOptions) => ConfigInput),
 ) => {
   return config;
 };

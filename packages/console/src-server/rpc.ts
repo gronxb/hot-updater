@@ -1,7 +1,7 @@
 import { vValidator } from "@hono/valibot-validator";
 import {
   type Bundle,
-  type Config,
+  type ConfigResponse,
   type DatabasePlugin,
   getCwd,
   loadConfig,
@@ -22,7 +22,7 @@ export const bundleSchema = v.object({
   channel: v.string(),
 });
 
-let config: Config | null = null;
+let config: ConfigResponse | null = null;
 let databasePlugin: DatabasePlugin | null = null;
 
 const prepareConfig = async () => {

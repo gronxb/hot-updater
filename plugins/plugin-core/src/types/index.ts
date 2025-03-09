@@ -57,7 +57,7 @@ export interface StoragePluginHooks {
   onStorageUploaded?: () => Promise<void>;
 }
 
-export type Config = {
+export type ConfigInput = {
   /**
    * The channel used when building the native app.
    * Used to replace HotUpdater.CHANNEL at build time.

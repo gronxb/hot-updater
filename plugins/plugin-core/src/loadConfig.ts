@@ -2,7 +2,7 @@ import { cosmiconfig, cosmiconfigSync } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { merge } from "es-toolkit";
 import { getCwd } from "./cwd.js";
-import type { Config, Platform } from "./types/index.js";
+import type { ConfigInput, Platform } from "./types/index.js";
 import type { RequiredDeep } from "./types/utils.js";
 
 export type HotUpdaterConfigOptions = {
@@ -10,7 +10,7 @@ export type HotUpdaterConfigOptions = {
   channel: string;
 } | null;
 
-const defaultConfig: Config = {
+const defaultConfig: ConfigInput = {
   releaseChannel: "production",
   console: {
     port: 1422,
@@ -26,7 +26,7 @@ const defaultConfig: Config = {
   },
 };
 
-export type ConfigResponse = RequiredDeep<Config>;
+export type ConfigResponse = RequiredDeep<ConfigInput>;
 
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
@@ -51,7 +51,7 @@ export const loadConfig = async (
   const config =
     typeof result?.config === "function"
       ? result.config(options)
-      : (result?.config as Config);
+      : (result?.config as ConfigInput);
 
   return merge(defaultConfig, config ?? {});
 };
@@ -79,7 +79,7 @@ export const loadConfigSync = (
   const config =
     typeof result?.config === "function"
       ? result.config(options)
-      : (result?.config as Config);
+      : (result?.config as ConfigInput);
 
   return merge(defaultConfig, config ?? {});
 };
