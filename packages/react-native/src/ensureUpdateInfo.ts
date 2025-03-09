@@ -23,7 +23,7 @@ export const ensureUpdateInfo = async (
             ...(channel ? { "x-channel": channel } : {}),
             ...requestHeaders,
           },
-        }).then((res) => res.json());
+        }).then((res) => (res.status === 200 ? res.json() : null));
       }
     } else if (typeof source === "function") {
       bundles = await source();
