@@ -2,7 +2,8 @@ import { cosmiconfig, cosmiconfigSync } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { merge } from "es-toolkit";
 import { getCwd } from "./cwd.js";
-import type { Config, Platform } from "./types.js";
+import type { Config, Platform } from "./types/index.js";
+import type { RequiredDeep } from "./types/utils.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -25,9 +26,11 @@ const defaultConfig: Config = {
   },
 };
 
+export type ConfigResponse = RequiredDeep<Config>;
+
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
-): Promise<Config | null> => {
+): Promise<ConfigResponse> => {
   const result = await cosmiconfig("hot-updater", {
     stopDir: getCwd(),
     searchPlaces: [
@@ -45,21 +48,17 @@ export const loadConfig = async (
     },
   }).search();
 
-  if (!result?.config) {
-    return null;
-  }
-
   const config =
-    typeof result.config === "function"
+    typeof result?.config === "function"
       ? result.config(options)
-      : (result.config as Config);
+      : (result?.config as Config);
 
-  return merge(defaultConfig, config);
+  return merge(defaultConfig, config ?? {});
 };
 
 export const loadConfigSync = (
   options: HotUpdaterConfigOptions,
-): Config | null => {
+): ConfigResponse => {
   const result = cosmiconfigSync("hot-updater", {
     stopDir: getCwd(),
     searchPlaces: [
@@ -77,14 +76,10 @@ export const loadConfigSync = (
     },
   }).search();
 
-  if (!result?.config) {
-    return null;
-  }
-
   const config =
-    typeof result.config === "function"
+    typeof result?.config === "function"
       ? result.config(options)
-      : (result.config as Config);
+      : (result?.config as Config);
 
-  return merge(defaultConfig, config);
+  return merge(defaultConfig, config ?? {});
 };

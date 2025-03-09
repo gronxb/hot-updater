@@ -8,7 +8,6 @@ import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-const DEFAULT_CHANNEL = "production";
 
 const getBundleId = () => {
   const buildOutDir = process.env["BUILD_OUT_DIR"];
@@ -35,11 +34,7 @@ const getBundleId = () => {
 export const getChannel = () => {
   const config = loadConfigSync(null);
 
-  const channel =
-    process.env["HOT_UPDATER_CHANNEL"] ||
-    config?.releaseChannel ||
-    DEFAULT_CHANNEL;
-
+  const channel = process.env["HOT_UPDATER_CHANNEL"] || config.releaseChannel;
   return channel;
 };
 
