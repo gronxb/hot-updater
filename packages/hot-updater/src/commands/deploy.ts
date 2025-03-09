@@ -124,6 +124,8 @@ export const deploy = async (options: DeployOptions) => {
       buildResult: null,
     };
 
+    p.log.info(`Channel: ${channel}`);
+
     await p.tasks([
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
