@@ -66,8 +66,6 @@ BEGIN
 
     UNION ALL
 
-    -- fallback: 번들 DB에 현재(bundle_id)가 없고,
-    --          (단, bundle_id가 min_bundle_id와 같으면 아무것도 하지 않고, bundle_id가 min_bundle_id보다 큰 경우에만 fallback)
     SELECT
         NIL_UUID      AS id,
         TRUE          AS should_force_update,

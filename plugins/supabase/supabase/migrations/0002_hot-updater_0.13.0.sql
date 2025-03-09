@@ -5,6 +5,7 @@ CREATE OR REPLACE FUNCTION get_update_info (
     app_version text,
     bundle_id  uuid,
     min_bundle_id uuid,
+    target_channel text,
     target_app_version_list text[]
 )
 RETURNS TABLE (
@@ -34,6 +35,7 @@ BEGIN
           AND b.id >= bundle_id
           AND b.id > min_bundle_id
           AND b.target_app_version IN (SELECT unnest(target_app_version_list))
+          AND b.channel = target_channel
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -64,8 +66,6 @@ BEGIN
 
     UNION ALL
 
-    -- fallback: 번들 DB에 현재(bundle_id)가 없고,
-    --          (단, bundle_id가 min_bundle_id와 같으면 아무것도 하지 않고, bundle_id가 min_bundle_id보다 큰 경우에만 fallback)
     SELECT
         NIL_UUID      AS id,
         TRUE          AS should_force_update,
