@@ -26,7 +26,7 @@ const PACKAGE_MAP = {
   },
   firebase: {
     dependencies: [],
-    devDependencies: ["firebase-tools", "@google-cloud/functions-framework"],
+    devDependencies: ["firebase-tools"],
   },
 } as const;
 
