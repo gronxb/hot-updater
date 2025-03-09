@@ -39,7 +39,7 @@ export const supabaseDatabase =
           return;
         }
 
-        await supabase.from("bundles").upsert(
+        const { error } = await supabase.from("bundles").upsert(
           changedBundles.map((bundle) => ({
             id: bundle.id,
             channel: bundle.channel,
@@ -54,6 +54,10 @@ export const supabaseDatabase =
           })),
           { onConflict: "id" },
         );
+
+        if (error) {
+          throw error;
+        }
 
         changedIds.clear();
         hooks?.onDatabaseUpdated?.();
@@ -75,7 +79,7 @@ export const supabaseDatabase =
         markChanged(inputBundle.id);
       },
       async getBundleById(bundleId) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("bundles")
           .select("*")
           .eq("id", bundleId)
