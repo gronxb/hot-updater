@@ -6,7 +6,6 @@ import {
 } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import type { Firestore } from "firebase-admin/firestore";
-
 export const getUpdateInfo = async (
   db: Firestore,
   {
@@ -20,63 +19,46 @@ export const getUpdateInfo = async (
   },
 ): Promise<UpdateInfo | null> => {
   try {
-    const appVersionsSnapshot = await db
+    const snapshot = await db
       .collection("bundles")
       .where("platform", "==", platform)
-      .get();
-
-    if (appVersionsSnapshot.empty) {
-      if (bundleId !== NIL_UUID) {
-        return {
-          id: NIL_UUID,
-          shouldForceUpdate: true,
-          fileUrl: null,
-          fileHash: null,
-          status: "ROLLBACK" as UpdateStatus,
-        };
-      }
-      return null;
-    }
-
-    const appVersionList = appVersionsSnapshot.docs.map(
-      (doc) => doc.data().target_app_version,
-    );
-    const uniqueAppVersions = [...new Set(appVersionList)];
-
-    const targetAppVersionList = filterCompatibleAppVersions(
-      uniqueAppVersions,
-      appVersion,
-    );
-
-    if (targetAppVersionList.length === 0) {
-      return null;
-    }
-
-    const enabledBundlesSnapshot = await db
-      .collection("bundles")
       .where("enabled", "==", true)
-      .where("platform", "==", platform)
-      .where("target_app_version", "in", targetAppVersionList)
       .get();
 
-    if (enabledBundlesSnapshot.empty) {
-      if (bundleId !== NIL_UUID) {
-        return {
-          id: NIL_UUID,
-          shouldForceUpdate: true,
-          fileUrl: null,
-          fileHash: null,
-          status: "ROLLBACK" as UpdateStatus,
-        };
-      }
-      return null;
+    if (snapshot.empty) {
+      return bundleId !== NIL_UUID
+        ? {
+            id: NIL_UUID,
+            shouldForceUpdate: true,
+            fileUrl: null,
+            fileHash: null,
+            status: "ROLLBACK" as UpdateStatus,
+          }
+        : null;
     }
 
-    const bundles = enabledBundlesSnapshot.docs
+    const candidates = snapshot.docs
       .map((doc) => doc.data())
-      .sort((a, b) => b.id.localeCompare(a.id));
+      .filter((bundle) => {
+        return (
+          filterCompatibleAppVersions([bundle.target_app_version], appVersion)
+            .length > 0
+        );
+      });
+    if (candidates.length === 0) {
+      return bundleId !== NIL_UUID
+        ? {
+            id: NIL_UUID,
+            shouldForceUpdate: true,
+            fileUrl: null,
+            fileHash: null,
+            status: "ROLLBACK" as UpdateStatus,
+          }
+        : null;
+    }
 
-    const updateCandidate = bundles[0];
+    candidates.sort((a, b) => b.id.localeCompare(a.id));
+    const updateCandidate = candidates[0];
 
     if (
       bundleId === NIL_UUID ||
@@ -91,34 +73,16 @@ export const getUpdateInfo = async (
       };
     }
 
-    if (bundleId !== NIL_UUID) {
-      const currentBundleDoc = await db
-        .collection("bundles")
-        .doc(bundleId)
-        .get();
-
-      if (!currentBundleDoc.exists || !currentBundleDoc.data()?.enabled) {
-        if (bundles.length > 0) {
-          const rollbackCandidate = bundles[0];
-          return {
-            id: rollbackCandidate.id,
-            shouldForceUpdate: true,
-            fileUrl: rollbackCandidate.file_url,
-            fileHash: rollbackCandidate.file_hash,
-            status: "ROLLBACK" as UpdateStatus,
-          };
-        }
-
-        return {
-          id: NIL_UUID,
-          shouldForceUpdate: true,
-          fileUrl: null,
-          fileHash: null,
-          status: "ROLLBACK" as UpdateStatus,
-        };
-      }
+    const currentBundleDoc = await db.collection("bundles").doc(bundleId).get();
+    if (!currentBundleDoc.exists || !currentBundleDoc.data()?.enabled) {
+      return {
+        id: updateCandidate.id,
+        shouldForceUpdate: true,
+        fileUrl: updateCandidate.file_url,
+        fileHash: updateCandidate.file_hash,
+        status: "ROLLBACK" as UpdateStatus,
+      };
     }
-
     return null;
   } catch (error) {
     console.error("Error in getUpdateInfo:", error);
