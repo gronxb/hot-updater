@@ -32,6 +32,9 @@ importers:
       '@rslib/core':
         specifier: ^0.4.0
         version: 0.4.0(typescript@5.7.3)
+      firebase-tools:
+        specifier: ^13.32.0
+        version: 13.32.0(encoding@0.1.13)
       nx:
         specifier: 20.3.0
         version: 20.3.0(@swc-node/register@1.10.9(@swc/core@1.7.42(@swc/helpers@0.5.15))(@swc/types@0.1.13)(typescript@5.7.3))(@swc/core@1.7.42(@swc/helpers@0.5.15))
@@ -852,6 +855,9 @@ importers:
       '@types/node':
         specifier: ^22.13.5
         version: 22.13.5
+      execa:
+        specifier: ^9.5.2
+        version: 9.5.2
       firebase-admin:
         specifier: ^13.2.0
         version: 13.2.0(encoding@0.1.13)
