@@ -1,5 +1,6 @@
 import { cosmiconfig, cosmiconfigSync } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
+import { merge } from "es-toolkit";
 import { getCwd } from "./cwd.js";
 import type { Config, Platform } from "./types.js";
 
@@ -7,6 +8,22 @@ export type HotUpdaterConfigOptions = {
   platform: Platform;
   channel: string;
 } | null;
+
+const defaultConfig: Config = {
+  releaseChannel: "production",
+  console: {
+    port: 1422,
+  },
+  build: () => {
+    throw new Error("build plugin is required");
+  },
+  storage: () => {
+    throw new Error("storage plugin is required");
+  },
+  database: () => {
+    throw new Error("database plugin is required");
+  },
+};
 
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
@@ -18,7 +35,6 @@ export const loadConfig = async (
       "hot-updater.config.cjs",
       "hot-updater.config.ts",
       "hot-updater.config.cts",
-      "hot-updater.config.mjs",
       "hot-updater.config.cjs",
     ],
     ignoreEmptySearchPlaces: false,
@@ -33,11 +49,12 @@ export const loadConfig = async (
     return null;
   }
 
-  if (typeof result.config === "function") {
-    return await result.config(options);
-  }
+  const config =
+    typeof result.config === "function"
+      ? result.config(options)
+      : (result.config as Config);
 
-  return result.config as Config;
+  return merge(defaultConfig, config);
 };
 
 export const loadConfigSync = (
@@ -50,7 +67,6 @@ export const loadConfigSync = (
       "hot-updater.config.cjs",
       "hot-updater.config.ts",
       "hot-updater.config.cts",
-      "hot-updater.config.mjs",
       "hot-updater.config.cjs",
     ],
     ignoreEmptySearchPlaces: false,
@@ -65,9 +81,10 @@ export const loadConfigSync = (
     return null;
   }
 
-  if (typeof result.config === "function") {
-    return result.config(options);
-  }
+  const config =
+    typeof result.config === "function"
+      ? result.config(options)
+      : (result.config as Config);
 
-  return result.config as Config;
+  return merge(defaultConfig, config);
 };

@@ -913,6 +913,9 @@ importers:
       '@types/node':
         specifier: ^22.7.5
         version: 22.7.5
+      es-toolkit:
+        specifier: ^1.32.0
+        version: 1.32.0
       picocolors:
         specifier: ^1.0.0
         version: 1.0.0
