@@ -3,6 +3,7 @@ import {
   addListener,
   getAppVersion,
   getBundleId,
+  getChannel,
   getMinBundleId,
   reload,
   updateBundle,
@@ -27,6 +28,7 @@ export const HotUpdater = {
   getAppVersion,
   getBundleId,
   getMinBundleId,
+  getChannel,
   addListener,
 
   checkForUpdate,
