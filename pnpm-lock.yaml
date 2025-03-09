@@ -846,6 +846,9 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@hot-updater/js':
+        specifier: workspace:*
+        version: link:../js
       '@types/node':
         specifier: ^22.13.5
         version: 22.13.5
