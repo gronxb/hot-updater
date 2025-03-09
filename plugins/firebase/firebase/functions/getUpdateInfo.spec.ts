@@ -1,9 +1,13 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { execa } from "execa";
 import admin from "firebase-admin";
 import type { Firestore } from "firebase-admin/firestore";
-import { beforeAll, beforeEach, describe } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromIndex } from "./getUpdateInfo";
+
+// biome-ignore lint/suspicious/noImplicitAnyLet: <explanation>
+let emulatorProcess;
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -78,9 +82,42 @@ const createGetUpdateInfo =
 const getUpdateInfo = createGetUpdateInfo(firestore);
 
 describe("getUpdateInfo", () => {
-  beforeAll(() => {
-    console.log("Make sure the Firebase emulators are running:");
-    console.log("firebase emulators:start --only firestore");
+  const shouldManageEmulator = !process.env.EXTERNAL_EMULATOR;
+
+  beforeAll(async () => {
+    if (shouldManageEmulator) {
+      console.log("Starting Firebase emulator...");
+
+      try {
+        emulatorProcess = execa(
+          "firebase",
+          ["emulators:start", "--only", "firestore"],
+          {
+            stdio: "inherit",
+          },
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        console.log("Firebase emulator started successfully");
+      } catch (error) {
+        console.error("Failed to start Firebase emulator:", error);
+        console.log(
+          "Please make sure Firebase CLI is installed and run manually:",
+        );
+        console.log("firebase emulators:start --only firestore");
+        throw error;
+      }
+    } else {
+      console.log("Using externally managed Firebase emulator");
+    }
+  });
+
+  afterAll(async () => {
+    if (shouldManageEmulator && emulatorProcess) {
+      console.log("Stopping Firebase emulator...");
+      emulatorProcess.kill();
+    }
   });
 
   beforeEach(async () => {
