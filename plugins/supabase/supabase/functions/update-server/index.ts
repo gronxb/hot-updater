@@ -67,13 +67,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: appVersionList } = await supabase
-      .from("bundles")
-      .select("target_app_version")
-      .eq("platform", appPlatform)
-      .groupBy("target_app_version");
-
-    const targetAppVersionList = filterCompatibleAppVersions(
+    const { data: appVersionList } = await supabase.rpc(
+      "get_target_app_version_list",
+      {
+        app_platform: appPlatform,
+        min_bundle_id: minBundleId || NIL_UUID,
+      },
+    );
+    const compatibleAppVersionList = filterCompatibleAppVersions(
       appVersionList?.map((group) => group.target_app_version) ?? [],
       appVersion,
     );
@@ -84,7 +85,7 @@ Deno.serve(async (req) => {
       bundle_id: bundleId,
       min_bundle_id: minBundleId || NIL_UUID,
       target_channel: channel || "production",
-      target_app_version_list: targetAppVersionList,
+      target_app_version_list: compatibleAppVersionList,
     });
 
     if (error) {
@@ -97,6 +98,9 @@ Deno.serve(async (req) => {
       status: 200,
     });
   } catch (err: unknown) {
-    return createErrorResponse(JSON.stringify(err), 500);
+    return createErrorResponse(
+      err instanceof Error ? err.message : "Unknown error",
+      500,
+    );
   }
 });

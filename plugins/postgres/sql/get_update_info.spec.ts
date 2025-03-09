@@ -49,7 +49,7 @@ const createGetUpdateInfo =
       target_app_version: string;
     }>(
       `
-      SELECT target_app_version FROM bundles WHERE platform = '${platform}' GROUP BY target_app_version
+      SELECT target_app_version FROM get_target_app_version_list('${platform}', '${minBundleId}');
       `,
     );
 
