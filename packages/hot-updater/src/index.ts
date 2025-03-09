@@ -54,13 +54,14 @@ program
   )
   .addOption(new Option("-i, --interactive", "interactive mode").default(false))
   .addOption(
-    new Option("-c, --channel", "specify the channel to deploy").default(
-      DEFAULT_CHANNEL,
-    ),
+    new Option(
+      "-c, --channel <channel>",
+      "specify the channel to deploy",
+    ).default(DEFAULT_CHANNEL),
   )
   .addOption(
     new Option(
-      "-m, --message",
+      "-m, --message <message>",
       "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
     ),
   )
