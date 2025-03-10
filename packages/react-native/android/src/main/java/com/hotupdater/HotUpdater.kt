@@ -275,9 +275,9 @@ class HotUpdater : ReactPackage {
             }
         }
 
-        fun buildUUIDV7(): String = buildUUIDV7Lazy
+        fun getMinBundleId(): String = minBundleIdLazy
 
-        private val buildUUIDV7Lazy: String by lazy {
+        private val minBundleIdLazy: String by lazy {
             val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
 
             val bytes = ByteArray(16)

@@ -88,7 +88,7 @@ export const reload = () => {
  */
 export const getMinBundleId = (): string => {
   const constants = HotUpdaterNative.getConstants();
-  return constants.BUNDLE_ID_BUILD_TIME;
+  return constants.MIN_BUNDLE_ID;
 };
 
 /**

@@ -3,39 +3,50 @@
 #import <SSZipArchive/SSZipArchive.h>
 #import <Foundation/NSURLSession.h>
 
-static NSString * BuildUUIDV7(void) {
+@implementation HotUpdater {
+    bool hasListeners;
+}
+
++ (BOOL)requiresMainQueueSetup {
+  return YES;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _lastUpdateTime = 0;
+    }
+    return self;
+}
+
+RCT_EXPORT_MODULE();
+
+#pragma mark - React Native Constants
+
+- (NSString *)getMinBundleId {
     static NSString *uuid = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSString *dateStr = [NSString stringWithFormat:@"%s", __DATE__]; // 예: "Mar  6 2025"
-        NSString *timeStr = [NSString stringWithFormat:@"%s", __TIME__]; // 예: "12:34:56"
-        
-        NSDateFormatter *inputFormatter = [[NSDateFormatter alloc] init];
-        inputFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-        inputFormatter.dateFormat = @"MMM d yyyy"; // 예: "Mar 6 2025"
-        NSDate *datePart = [inputFormatter dateFromString:dateStr];
-        
-        NSDateFormatter *timeFormatter = [[NSDateFormatter alloc] init];
-        timeFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-        timeFormatter.dateFormat = @"HH:mm:ss"; // 예: "12:34:56"
-        NSDate *timePart = [timeFormatter dateFromString:timeStr];
-        
-        NSCalendar *calendar = [NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian];
-        NSDateComponents *dateComponents = [calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay) fromDate:datePart];
-        NSDateComponents *timeComponents = [calendar components:(NSCalendarUnitHour | NSCalendarUnitMinute | NSCalendarUnitSecond) fromDate:timePart];
-        dateComponents.hour = timeComponents.hour;
-        dateComponents.minute = timeComponents.minute;
-        dateComponents.second = timeComponents.second;
-        NSDate *buildDate = [calendar dateFromComponents:dateComponents];
-        
-        NSISO8601DateFormatter *isoFormatter = [[NSISO8601DateFormatter alloc] init];
-        isoFormatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
-        NSString *isoString = [isoFormatter stringFromDate:buildDate];
+        NSDate *buildDate = nil;
+        NSURL *fallbackURL = nil;
+    #if DEBUG
+        uuid = @"00000000-0000-0000-0000-000000000000";
+        return;
+    #else
+        fallbackURL = [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+    #endif
+        if (fallbackURL) {
+            NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:[fallbackURL path] error:nil];
+            buildDate = attributes[NSFileModificationDate];
+        }
+        if (!buildDate) {
+            uuid = @"00000000-0000-0000-0000-000000000000";
+            return;
+        }
         
         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
         
         unsigned char bytes[16];
-        
         bytes[0] = (buildTimestampMs >> 40) & 0xFF;
         bytes[1] = (buildTimestampMs >> 32) & 0xFF;
         bytes[2] = (buildTimestampMs >> 24) & 0xFF;
@@ -43,7 +54,7 @@ static NSString * BuildUUIDV7(void) {
         bytes[4] = (buildTimestampMs >> 8) & 0xFF;
         bytes[5] = buildTimestampMs & 0xFF;
         
-        bytes[6] = 0x70; 
+        bytes[6] = 0x70;
         bytes[7] = 0x00;
         
         bytes[8] = 0x80;
@@ -67,28 +78,8 @@ static NSString * BuildUUIDV7(void) {
     return uuid;
 }
 
-@implementation HotUpdater {
-    bool hasListeners;
-}
-
-+ (BOOL)requiresMainQueueSetup {
-  return YES;
-}
-
-- (instancetype)init {
-    self = [super init];
-    if (self) {
-        _lastUpdateTime = 0;
-    }
-    return self;
-}
-
-RCT_EXPORT_MODULE();
-
-#pragma mark - React Native Constants
-
 - (NSDictionary *)constantsToExport {
-    return @{ @"BUNDLE_ID_BUILD_TIME": BuildUUIDV7() };
+    return @{ @"MIN_BUNDLE_ID": [self getMinBundleId] };
 }
 
 

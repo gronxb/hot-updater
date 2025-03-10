@@ -66,7 +66,7 @@ class HotUpdaterModule internal constructor(
 
     override fun getConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["BUNDLE_ID_BUILD_TIME"] = HotUpdater.buildUUIDV7()
+        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
         return constants
     }
 
