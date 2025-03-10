@@ -834,4 +834,26 @@ export const setupGetUpdateInfoTestSuite = ({
       status: "UPDATE",
     });
   });
+
+  it("returns null when minBundleId is greater than current bundle", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        enabled: true,
+        shouldForceUpdate: false,
+        targetAppVersion: "1.0",
+        id: "01957b63-7d11-7281-b8e7-1120ccfdb8ab",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: "01957b63-7d11-7281-b8e7-1120ccfdb8ab",
+      platform: "ios",
+      minBundleId: "01957bb4-b13c-7000-8000-000000000000",
+      channel: "production",
+    });
+
+    expect(update).toBeNull();
+  });
 };

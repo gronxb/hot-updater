@@ -42,7 +42,7 @@ export const getUpdateInfo = async (
     if (enabledBundles.length === 0) {
       return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
-    if (minBundleId && bundleId === minBundleId) {
+    if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
       return null;
     }
     return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
@@ -95,7 +95,7 @@ export const getUpdateInfo = async (
     return makeResponse(rollbackCandidate, "ROLLBACK");
   }
 
-  if (minBundleId && bundleId === minBundleId) {
+  if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
     return null;
   }
   return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
