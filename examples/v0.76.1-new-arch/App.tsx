@@ -31,6 +31,8 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>Channel "{HotUpdater.getChannel()}"</Text>
+
       <Text
         style={{
           marginVertical: 20,

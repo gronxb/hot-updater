@@ -47,6 +47,7 @@ export const d1Database =
           .map((b) => {
             params.push(
               b.id,
+              b.channel,
               b.enabled ? 1 : 0,
               b.fileUrl,
               b.shouldForceUpdate ? 1 : 0,
@@ -56,13 +57,14 @@ export const d1Database =
               b.platform,
               b.targetAppVersion,
             );
-            return "(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
           })
           .join(",\n");
 
         const sql = minify(/* sql */ `
           INSERT OR REPLACE INTO bundles (
             id,
+            channel,
             enabled,
             file_url,
             should_force_update,
@@ -130,6 +132,7 @@ export const d1Database =
 
         const row = rows[0];
         return {
+          channel: row.channel,
           enabled: Boolean(row.enabled),
           fileUrl: row.file_url,
           shouldForceUpdate: Boolean(row.should_force_update),
@@ -148,20 +151,8 @@ export const d1Database =
         }
 
         const sql = minify(
-          /* sql */ `
-          SELECT
-            id,
-            enabled,
-            file_url,
-            should_force_update,
-            file_hash,
-            git_commit_hash,
-            message,
-            platform,
-            target_app_version
-          FROM bundles
-          ORDER BY id DESC
-        `,
+          /* sql */
+          "SELECT * FROM bundles ORDER BY id DESC",
         );
 
         const singlePage = await cf.d1.database.query(config.databaseId, {
@@ -180,6 +171,7 @@ export const d1Database =
         } else {
           bundles = rows.map((row) => ({
             id: row.id,
+            channel: row.channel,
             enabled: Boolean(row.enabled),
             fileUrl: row.file_url,
             shouldForceUpdate: Boolean(row.should_force_update),

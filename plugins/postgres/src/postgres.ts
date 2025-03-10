@@ -64,6 +64,7 @@ export const postgres =
                 message: bundle.message,
                 platform: bundle.platform,
                 target_app_version: bundle.targetAppVersion,
+                channel: bundle.channel,
               })
               .onConflict((oc) =>
                 oc.column("id").doUpdateSet({
@@ -75,6 +76,7 @@ export const postgres =
                   message: bundle.message,
                   platform: bundle.platform,
                   target_app_version: bundle.targetAppVersion,
+                  channel: bundle.channel,
                 }),
               )
               .execute();
@@ -120,6 +122,7 @@ export const postgres =
           message: data.message,
           platform: data.platform,
           targetAppVersion: data.target_app_version,
+          channel: data.channel,
         } as Bundle;
       },
       async getBundles(refresh = false) {
@@ -142,6 +145,7 @@ export const postgres =
           message: bundle.message,
           platform: bundle.platform,
           targetAppVersion: bundle.target_app_version,
+          channel: bundle.channel,
         })) as Bundle[];
       },
     };

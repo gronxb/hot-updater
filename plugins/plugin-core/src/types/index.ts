@@ -28,9 +28,13 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  build: (args: { platform: Platform }) => Promise<{
+  build: (args: {
+    platform: Platform;
+    channel: string;
+  }) => Promise<{
     buildPath: string;
     bundleId: string;
+    channel: string;
     stdout: string | null;
   }>;
   name: string;
@@ -53,7 +57,14 @@ export interface StoragePluginHooks {
   onStorageUploaded?: () => Promise<void>;
 }
 
-export type Config = {
+export type ConfigInput = {
+  /**
+   * The channel used when building the native app.
+   * Used to replace HotUpdater.CHANNEL at build time.
+   *
+   * @default "production"
+   */
+  releaseChannel?: string;
   console?: {
     /**
      * Git repository URL

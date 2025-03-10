@@ -13,6 +13,8 @@ declare global {
   };
 }
 
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
 const s3 = new S3Client({ region: HotUpdater.S3_REGION });
 
 function parseS3Url(url: string) {
@@ -63,6 +65,9 @@ app.get("/api/check-update", async (c) => {
       | "android";
 
     const appVersion = headers["x-app-version"]?.[0]?.value;
+    const minBundleId = headers["x-min-bundle-id"]?.[0]?.value ?? NIL_UUID;
+    const channel = headers["x-channel"]?.[0]?.value ?? "production";
+
     if (!bundleId || !appPlatform || !appVersion) {
       return c.json({ error: "Missing required headers." }, 400);
     }
@@ -71,6 +76,8 @@ app.get("/api/check-update", async (c) => {
       platform: appPlatform,
       bundleId,
       appVersion,
+      minBundleId,
+      channel,
     });
     if (!updateInfo) {
       return c.json(null);

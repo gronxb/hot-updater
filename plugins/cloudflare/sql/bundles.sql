@@ -9,7 +9,8 @@ CREATE TABLE bundles (
     file_url TEXT NOT NULL,
     file_hash TEXT NOT NULL,
     git_commit_hash TEXT,
-    message TEXT
+    message TEXT,
+    channel TEXT NOT NULL
 );
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);

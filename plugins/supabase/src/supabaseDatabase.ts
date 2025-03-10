@@ -39,9 +39,10 @@ export const supabaseDatabase =
           return;
         }
 
-        await supabase.from("bundles").upsert(
+        const { error } = await supabase.from("bundles").upsert(
           changedBundles.map((bundle) => ({
             id: bundle.id,
+            channel: bundle.channel,
             enabled: bundle.enabled,
             file_url: bundle.fileUrl,
             should_force_update: bundle.shouldForceUpdate,
@@ -53,6 +54,10 @@ export const supabaseDatabase =
           })),
           { onConflict: "id" },
         );
+
+        if (error) {
+          throw error;
+        }
 
         changedIds.clear();
         hooks?.onDatabaseUpdated?.();
@@ -74,7 +79,7 @@ export const supabaseDatabase =
         markChanged(inputBundle.id);
       },
       async getBundleById(bundleId) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("bundles")
           .select("*")
           .eq("id", bundleId)
@@ -84,6 +89,7 @@ export const supabaseDatabase =
           return null;
         }
         return {
+          channel: data.channel,
           enabled: data.enabled,
           fileUrl: data.file_url,
           shouldForceUpdate: data.should_force_update,
@@ -110,6 +116,7 @@ export const supabaseDatabase =
         }
 
         return data.map((bundle) => ({
+          channel: bundle.channel,
           enabled: bundle.enabled,
           fileUrl: bundle.file_url,
           shouldForceUpdate: bundle.should_force_update,

@@ -32,6 +32,7 @@ const testBundles: Bundle[] = [
     shouldForceUpdate: false,
     enabled: true,
     id: "00000000-0000-0000-0000-000000000001",
+    channel: "production",
   },
 ];
 
@@ -214,6 +215,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       shouldForceUpdate: false,
       enabled: true,
       id: "00000000-0000-0000-0000-000000000002",
+      channel: "production",
     };
 
     await repo.appendBundle(newBundle);

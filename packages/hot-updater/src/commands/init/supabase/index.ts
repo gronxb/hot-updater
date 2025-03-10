@@ -88,10 +88,14 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
 
 const pushDB = async (supabasePath: string) => {
   try {
-    const dbPush = await execa("npx", ["supabase", "db", "push"], {
-      cwd: supabasePath,
-      stdio: "inherit",
-    });
+    const dbPush = await execa(
+      "npx",
+      ["supabase", "db", "push", "--include-all"],
+      {
+        cwd: supabasePath,
+        stdio: "inherit",
+      },
+    );
     p.log.success("DB pushed ✔");
     return dbPush.stdout;
   } catch (err) {

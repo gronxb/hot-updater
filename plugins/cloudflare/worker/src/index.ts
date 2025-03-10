@@ -13,6 +13,8 @@
 
 import { getUpdateInfo } from "./getUpdateInfo";
 
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
@@ -27,6 +29,11 @@ export default {
       | "android";
     const appVersion = request.headers.get("x-app-version") as string;
 
+    const minBundleId = request.headers.get("x-min-bundle-id") as
+      | string
+      | undefined;
+    const channel = request.headers.get("x-channel") as string | undefined;
+
     if (!bundleId || !appPlatform || !appVersion) {
       return new Response(
         JSON.stringify({
@@ -40,6 +47,8 @@ export default {
       appVersion,
       bundleId,
       platform: appPlatform,
+      minBundleId: minBundleId || NIL_UUID,
+      channel: channel || "production",
     });
 
     return new Response(JSON.stringify(updateInfo), {

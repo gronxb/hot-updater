@@ -6,6 +6,7 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
   {
     id: "0194ed78-ee7f-7d55-88f2-0511cbacc8f1",
     enabled: true,
+    channel: "production",
     fileUrl: "https://example.com/bundle.js",
     shouldForceUpdate: false,
     fileHash: "1234",
@@ -17,6 +18,7 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
   {
     id: "0194ed78-d791-753c-ba37-abb7259edcc8",
     enabled: true,
+    channel: "production",
     fileUrl: "https://example.com/bundle.js",
     shouldForceUpdate: false,
     fileHash: "1234",

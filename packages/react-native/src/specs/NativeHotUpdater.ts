@@ -10,6 +10,9 @@ interface Spec extends TurboModule {
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;
+  readonly getConstants: () => {
+    MIN_BUNDLE_ID: string;
+  };
 }
 
 export default TurboModuleRegistry.get<Spec>("HotUpdater");
