@@ -7,6 +7,7 @@ describe("transformEnv", () => {
 
     const result = await transformEnv(code, { S3_REGION: "us-east-1" });
     expect(result).toContain('region: "us-east-1"');
+    console.log(result);
   });
 
   it("should not modify other code", async () => {
