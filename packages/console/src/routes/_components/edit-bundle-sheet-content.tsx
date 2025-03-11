@@ -91,9 +91,9 @@ const EditBundleSheetForm = ({
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
       try {
-        await api.updateBundle.$post({
+        await api.bundles[":bundleId"].$patch({
+          param: { bundleId: bundle.id },
           json: {
-            targetBundleId: bundle.id,
             bundle: value,
           },
         });
@@ -103,8 +103,8 @@ const EditBundleSheetForm = ({
         }
       } finally {
         setIsSubmitting(false);
-        queryClient.invalidateQueries({ queryKey: ["getBundle", bundle.id] });
-        queryClient.invalidateQueries({ queryKey: ["getBundles"] });
+        queryClient.invalidateQueries({ queryKey: ["bundle", bundle.id] });
+        queryClient.invalidateQueries({ queryKey: ["bundles"] });
         onEditSuccess();
       }
     },

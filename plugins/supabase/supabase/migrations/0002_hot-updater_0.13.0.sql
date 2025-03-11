@@ -113,3 +113,19 @@ BEGIN
     GROUP BY b.target_app_version;
 END;
 $$;
+
+-- HotUpdater.get_channels
+CREATE OR REPLACE FUNCTION get_channels ()
+RETURNS TABLE (
+    channel text
+)
+LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    RETURN QUERY
+    SELECT b.channel
+    FROM bundles b 
+    GROUP BY b.channel;
+END;
+$$;

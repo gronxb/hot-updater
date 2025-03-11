@@ -1,10 +1,9 @@
 import type {
-  BasePluginArgs,
   Bundle,
-  DatabasePlugin,
   DatabasePluginHooks,
+  Platform,
 } from "@hot-updater/plugin-core";
-
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 
@@ -13,71 +12,18 @@ export interface SupabaseDatabaseConfig {
   supabaseAnonKey: string;
 }
 
-export const supabaseDatabase =
-  (config: SupabaseDatabaseConfig, hooks?: DatabasePluginHooks) =>
-  (_: BasePluginArgs): DatabasePlugin => {
-    const supabase = createClient<Database>(
-      config.supabaseUrl,
-      config.supabaseAnonKey,
-    );
+export const supabaseDatabase = (
+  config: SupabaseDatabaseConfig,
+  hooks?: DatabasePluginHooks,
+) => {
+  const supabase = createClient<Database>(
+    config.supabaseUrl,
+    config.supabaseAnonKey,
+  );
 
-    let bundles: Bundle[] = [];
-
-    const changedIds = new Set<string>();
-    function markChanged(id: string) {
-      changedIds.add(id);
-    }
-
-    return {
-      name: "supabaseDatabase",
-      async commitBundle() {
-        if (changedIds.size === 0) {
-          return;
-        }
-        const changedBundles = bundles.filter((b) => changedIds.has(b.id));
-        if (changedBundles.length === 0) {
-          return;
-        }
-
-        const { error } = await supabase.from("bundles").upsert(
-          changedBundles.map((bundle) => ({
-            id: bundle.id,
-            channel: bundle.channel,
-            enabled: bundle.enabled,
-            file_url: bundle.fileUrl,
-            should_force_update: bundle.shouldForceUpdate,
-            file_hash: bundle.fileHash,
-            git_commit_hash: bundle.gitCommitHash,
-            message: bundle.message,
-            platform: bundle.platform,
-            target_app_version: bundle.targetAppVersion,
-          })),
-          { onConflict: "id" },
-        );
-
-        if (error) {
-          throw error;
-        }
-
-        changedIds.clear();
-        hooks?.onDatabaseUpdated?.();
-      },
-      async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
-        bundles = await this.getBundles();
-
-        const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
-        if (targetIndex === -1) {
-          throw new Error("target bundle version not found");
-        }
-
-        Object.assign(bundles[targetIndex], newBundle);
-        markChanged(targetBundleId);
-      },
-      async appendBundle(inputBundle) {
-        bundles = await this.getBundles();
-        bundles.unshift(inputBundle);
-        markChanged(inputBundle.id);
-      },
+  return createDatabasePlugin(
+    "supabaseDatabase",
+    {
       async getBundleById(bundleId) {
         const { data, error } = await supabase
           .from("bundles")
@@ -85,7 +31,7 @@ export const supabaseDatabase =
           .eq("id", bundleId)
           .single();
 
-        if (!data) {
+        if (!data || error) {
           return null;
         }
         return {
@@ -101,15 +47,41 @@ export const supabaseDatabase =
           targetAppVersion: data.target_app_version,
         } as Bundle;
       },
-      async getBundles(refresh = false) {
-        if (bundles.length > 0 && !refresh) {
-          return bundles;
-        }
 
-        const { data } = await supabase
+      async getBundles(options: {
+        where: {
+          channel?: string;
+          platform?: Platform;
+        };
+        limit?: number;
+        offset?: number;
+        refresh?: boolean;
+      }) {
+        let query = supabase
           .from("bundles")
           .select("*")
           .order("id", { ascending: false });
+
+        if (options?.where?.channel) {
+          query = query.eq("channel", options.where.channel);
+        }
+
+        if (options?.where?.platform) {
+          query = query.eq("platform", options.where.platform);
+        }
+
+        if (options?.limit) {
+          query = query.limit(options.limit);
+        }
+
+        if (options?.offset) {
+          query = query.range(
+            options.offset,
+            options.offset + (options.limit || 20) - 1,
+          );
+        }
+
+        const { data } = await query;
 
         if (!data) {
           return [];
@@ -128,5 +100,44 @@ export const supabaseDatabase =
           targetAppVersion: bundle.target_app_version,
         })) as Bundle[];
       },
-    };
-  };
+
+      async getChannels() {
+        const { data, error } = await supabase.rpc("get_channels");
+        if (error) {
+          throw error;
+        }
+        return data.map((bundle: { channel: string }) => bundle.channel);
+      },
+
+      async commitBundle({ changedSets }) {
+        if (changedSets.size === 0) {
+          return;
+        }
+
+        const operations = Array.from(changedSets);
+        const bundles = operations.map((op) => op.data);
+
+        const { error } = await supabase.from("bundles").upsert(
+          bundles.map((bundle) => ({
+            id: bundle.id,
+            channel: bundle.channel,
+            enabled: bundle.enabled,
+            file_url: bundle.fileUrl,
+            should_force_update: bundle.shouldForceUpdate,
+            file_hash: bundle.fileHash,
+            git_commit_hash: bundle.gitCommitHash,
+            message: bundle.message,
+            platform: bundle.platform,
+            target_app_version: bundle.targetAppVersion,
+          })),
+          { onConflict: "id" },
+        );
+
+        if (error) {
+          throw error;
+        }
+      },
+    },
+    hooks,
+  );
+};

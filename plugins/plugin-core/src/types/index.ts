@@ -11,8 +11,17 @@ export interface BuildPluginConfig {
 }
 
 export interface DatabasePlugin {
+  getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (refresh?: boolean) => Promise<Bundle[]>;
+  getBundles: (options: {
+    where: {
+      channel?: string;
+      platform?: Platform;
+    };
+    limit?: number;
+    offset?: number;
+    refresh?: boolean;
+  }) => Promise<Bundle[]>;
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,

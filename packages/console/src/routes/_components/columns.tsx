@@ -11,6 +11,11 @@ export const columns: ColumnDef<Bundle>[] = [
     cell: (info) => info.getValue(),
   },
   {
+    accessorKey: "channel",
+    header: "Channel",
+    cell: (info) => info.getValue(),
+  },
+  {
     accessorKey: "platform",
     header: "Platform",
     cell: (info) => {
@@ -33,11 +38,11 @@ export const columns: ColumnDef<Bundle>[] = [
     cell: (info) =>
       info.getValue() ? (
         <div class="flex flex-row items-center">
-          <Check />
+          <Check class="text-green-500" />
         </div>
       ) : (
         <div class="flex flex-row items-center">
-          <X />
+          <X class="text-red-500" />
         </div>
       ),
   },
@@ -47,11 +52,11 @@ export const columns: ColumnDef<Bundle>[] = [
     cell: (info) =>
       info.getValue() ? (
         <div class="flex flex-row items-center">
-          <Check />
+          <Check class="text-green-500" />
         </div>
       ) : (
         <div class="flex flex-row items-center">
-          <X />
+          <X class="text-red-500" />
         </div>
       ),
   },
