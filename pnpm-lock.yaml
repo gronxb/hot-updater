@@ -947,9 +947,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
-      mime:
-        specifier: 2.6.0
-        version: 2.6.0
     devDependencies:
       '@types/mime':
         specifier: ^2.0.3
@@ -960,6 +957,9 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.5.8
+      mime:
+        specifier: 2.6.0
+        version: 2.6.0
       msw:
         specifier: ^2.7.0
         version: 2.7.0(@types/node@20.16.10)(typescript@5.7.2)

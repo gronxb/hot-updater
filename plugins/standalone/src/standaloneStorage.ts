@@ -6,7 +6,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
-import { RouteConfig } from "./standaloneRepository";
+import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {
   uploadBundle: (bundleId: string, bundlePath: string) => RouteConfig;
@@ -15,16 +15,16 @@ export interface StorageRoutes {
 
 const defaultRoutes: StorageRoutes = {
   uploadBundle: (bundleId: string, bundlePath: string) => ({
-    path: `/uploadBundle`,
+    path: "/uploadBundle",
   }),
   deleteBundle: (bundleId: string) => ({
-    path: `/deleteBundle`,
+    path: "/deleteBundle",
   }),
 };
 
 const createRoute = (
   defaultRoute: RouteConfig,
-  customRoute?: Partial<RouteConfig>
+  customRoute?: Partial<RouteConfig>,
 ): RouteConfig => ({
   path: customRoute?.path ?? defaultRoute.path,
   headers: {
@@ -46,12 +46,12 @@ export const standaloneStorage =
       uploadBundle: (bundleId: string, bundlePath: string) =>
         createRoute(
           defaultRoutes.uploadBundle(bundleId, bundlePath),
-          config.routes?.uploadBundle?.(bundleId, bundlePath)
+          config.routes?.uploadBundle?.(bundleId, bundlePath),
         ),
       deleteBundle: (bundleId: string) =>
         createRoute(
           defaultRoutes.deleteBundle(bundleId),
-          config.routes?.deleteBundle?.(bundleId)
+          config.routes?.deleteBundle?.(bundleId),
         ),
     };
 
@@ -73,7 +73,7 @@ export const standaloneStorage =
 
         if (!response.ok) {
           const error = new Error(
-            `Failed to delete bundle: ${response.statusText}`
+            `Failed to delete bundle: ${response.statusText}`,
           );
           console.error(error);
           throw error;
@@ -89,14 +89,14 @@ export const standaloneStorage =
 
         const { path: routePath, headers: routeHeaders } = routes.uploadBundle(
           bundleId,
-          bundlePath
+          bundlePath,
         );
 
         const formData = new FormData();
         formData.append(
           "file",
           new Blob([fileContent], { type: contentType }),
-          filename
+          filename,
         );
         formData.append("bundleId", bundleId);
 
