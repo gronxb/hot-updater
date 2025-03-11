@@ -8,7 +8,6 @@ import fs from "fs/promises";
 import mime from "mime";
 import { RouteConfig } from "./standaloneRepository";
 
-
 export interface StorageRoutes {
   uploadBundle: (bundleId: string, bundlePath: string) => RouteConfig;
   deleteBundle: (bundleId: string) => RouteConfig;
@@ -108,14 +107,24 @@ export const standaloneStorage =
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to upload bundle: ${response.statusText}`);
+          const error = `Failed to upload bundle: ${response.statusText}`;
+          console.error(`[uploadBundle] ${error}`);
+          throw new Error(error);
         }
 
-        const result = await response.json();
+        const result = (await response.json()) as { fileUrl: string };
+
+        if (!result.fileUrl) {
+          const error = "Failed to upload bundle - no fileUrl in response";
+          console.error(`[uploadBundle] ${error}`);
+          throw new Error(error);
+        }
+
         hooks?.onStorageUploaded?.();
+        console.log(`[uploadBundle] Upload complete, fileUrl: ${result.fileUrl}`);
 
         return {
-          fileUrl: hooks?.transformFileUrl?.(result.fileUrl) ?? result.fileUrl,
+          fileUrl: result.fileUrl,
         };
       },
     };

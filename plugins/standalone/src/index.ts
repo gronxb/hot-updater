@@ -1,2 +1,2 @@
-export * from "./standaloneRepository";
 export * from "./standaloneStorage";
+export * from "./standaloneRepository";

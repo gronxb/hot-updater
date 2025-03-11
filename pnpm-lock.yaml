@@ -938,7 +938,13 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      mime:
+        specifier: 2.6.0
+        version: 2.6.0
     devDependencies:
+      '@types/mime':
+        specifier: ^2.0.3
+        version: 2.0.3
       '@types/node':
         specifier: ^20.9.4
         version: 20.16.10
@@ -5588,6 +5594,9 @@ packages:
 
   '@types/mime@1.3.5':
     resolution: {integrity: sha512-/pyBZWSLD2n0dcHE3hq8s8ZvcETHtEuF+3E7XVt0Ig2nvsVQXdghHVcEkIWjy9A0wKfTn97a/PSDYohKIlnP/w==}
+
+  '@types/mime@2.0.3':
+    resolution: {integrity: sha512-Jus9s4CDbqwocc5pOAnh8ShfrnMcPHuJYzVcSUU7lrh8Ni5HuIqX3oilL86p3dlTrk0LzHRCgA/GQ7uNCw6l2Q==}
 
   '@types/ms@0.7.34':
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
@@ -19825,6 +19834,8 @@ snapshots:
 
   '@types/mime@1.3.5':
     optional: true
+
+  '@types/mime@2.0.3': {}
 
   '@types/ms@0.7.34': {}
 

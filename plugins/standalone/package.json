@@ -43,9 +43,11 @@
   },
   "dependencies": {
     "@hot-updater/core": "0.12.3",
-    "@hot-updater/plugin-core": "0.12.3"
+    "@hot-updater/plugin-core": "0.12.3",
+    "mime": "2.6.0"
   },
   "devDependencies": {
+    "@types/mime": "^2.0.3",
     "@types/node": "^20.9.4",
     "@types/semver": "^7.5.8",
     "msw": "^2.7.0",
