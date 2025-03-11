@@ -121,7 +121,6 @@ export const standaloneStorage =
         }
 
         hooks?.onStorageUploaded?.();
-        console.log(`[uploadBundle] Upload complete, fileUrl: ${result.fileUrl}`);
 
         return {
           fileUrl: result.fileUrl,
