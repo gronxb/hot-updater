@@ -66,7 +66,7 @@ class HotUpdaterModule internal constructor(
 
     override fun getConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
+        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId(mReactApplicationContext)
         return constants
     }
 
