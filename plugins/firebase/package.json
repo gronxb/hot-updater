@@ -1,7 +1,8 @@
 {
   "name": "@hot-updater/firebase",
   "type": "module",
-  "version": "0.12.3",
+  "private": true,
+  "version": "0.12.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -30,8 +31,8 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/core": "0.12.3",
-    "@hot-updater/plugin-core": "0.12.3",
+    "@hot-updater/core": "0.12.4",
+    "@hot-updater/plugin-core": "0.12.4",
     "firebase": "^11.3.1"
   },
   "devDependencies": {
