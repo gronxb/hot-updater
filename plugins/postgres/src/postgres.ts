@@ -1,57 +1,120 @@
 import type {
-  BasePluginArgs,
   Bundle,
-  DatabasePlugin,
   DatabasePluginHooks,
+  Platform,
 } from "@hot-updater/plugin-core";
-
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
 import type { Database } from "./types";
 
 export interface PostgresConfig extends PoolConfig {}
 
-export const postgres =
-  (config: PostgresConfig, hooks?: DatabasePluginHooks) =>
-  (_: BasePluginArgs): DatabasePlugin => {
-    const pool = new Pool(config);
+export const postgres = (
+  config: PostgresConfig,
+  hooks?: DatabasePluginHooks,
+) => {
+  const pool = new Pool(config);
 
-    const dialect = new PostgresDialect({
-      pool,
-    });
+  const dialect = new PostgresDialect({
+    pool,
+  });
 
-    const db = new Kysely<Database>({
-      dialect,
-    });
-    let bundles: Bundle[] = [];
+  const db = new Kysely<Database>({
+    dialect,
+  });
 
-    const changedIds = new Set<string>();
-    function markChanged(id: string) {
-      changedIds.add(id);
-    }
+  const isUnmount = false;
 
-    let isUnmount = false;
+  return createDatabasePlugin(
+    "postgres",
+    {
+      async getBundleById(bundleId) {
+        const data = await db
+          .selectFrom("bundles")
+          .selectAll()
+          .where("id", "=", bundleId)
+          .executeTakeFirst();
 
-    return {
-      name: "postgres",
-      async onUnmount() {
-        if (isUnmount) {
-          return;
+        if (!data) {
+          return null;
         }
-        isUnmount = true;
-        await pool.end();
-        changedIds.clear();
+        return {
+          enabled: data.enabled,
+          fileUrl: data.file_url,
+          shouldForceUpdate: data.should_force_update,
+          fileHash: data.file_hash,
+          gitCommitHash: data.git_commit_hash,
+          id: data.id,
+          message: data.message,
+          platform: data.platform,
+          targetAppVersion: data.target_app_version,
+          channel: data.channel,
+        } as Bundle;
       },
-      async commitBundle() {
-        if (changedIds.size === 0) {
+
+      async getBundles(options: {
+        where: {
+          channel?: string;
+          platform?: Platform;
+        };
+        limit?: number;
+        offset?: number;
+        refresh?: boolean;
+      }) {
+        let query = db.selectFrom("bundles").orderBy("id", "desc");
+
+        if (options?.where?.channel) {
+          query = query.where("channel", "=", options.where.channel);
+        }
+
+        if (options?.where?.platform) {
+          query = query.where("platform", "=", options.where.platform);
+        }
+
+        if (options?.limit) {
+          query = query.limit(options.limit);
+        }
+
+        if (options?.offset) {
+          query = query.offset(options.offset);
+        }
+
+        const data = await query.selectAll().execute();
+
+        return data.map((bundle) => ({
+          enabled: bundle.enabled,
+          fileUrl: bundle.file_url,
+          shouldForceUpdate: bundle.should_force_update,
+          fileHash: bundle.file_hash,
+          gitCommitHash: bundle.git_commit_hash,
+          id: bundle.id,
+          message: bundle.message,
+          platform: bundle.platform,
+          targetAppVersion: bundle.target_app_version,
+          channel: bundle.channel,
+        })) as Bundle[];
+      },
+
+      async getChannels() {
+        const data = await db
+          .selectFrom("bundles")
+          .select("channel")
+          .groupBy("channel")
+          .execute();
+        return data.map((bundle) => bundle.channel);
+      },
+
+      async commitBundle({ changedSets }) {
+        if (changedSets.size === 0) {
           return;
         }
-        const changedBundles = bundles.filter((b) => changedIds.has(b.id));
-        if (changedBundles.length === 0) {
-          return;
-        }
+
+        const operations = Array.from(changedSets);
+        const bundles = operations.map((op) => op.data);
+
         await db.transaction().execute(async (tx) => {
-          for (const bundle of changedBundles) {
+          for (const bundle of bundles) {
             await tx
               .insertInto("bundles")
               .values({
@@ -82,71 +145,8 @@ export const postgres =
               .execute();
           }
         });
-
-        changedIds.clear();
-        hooks?.onDatabaseUpdated?.();
       },
-      async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
-        bundles = await this.getBundles();
-
-        const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
-        if (targetIndex === -1) {
-          throw new Error("target bundle version not found");
-        }
-
-        Object.assign(bundles[targetIndex], newBundle);
-        markChanged(targetBundleId);
-      },
-      async appendBundle(inputBundle) {
-        bundles = await this.getBundles();
-        bundles.unshift(inputBundle);
-        markChanged(inputBundle.id);
-      },
-      async getBundleById(bundleId) {
-        const data = await db
-          .selectFrom("bundles")
-          .selectAll()
-          .where("id", "=", bundleId)
-          .executeTakeFirst();
-
-        if (!data) {
-          return null;
-        }
-        return {
-          enabled: data.enabled,
-          fileUrl: data.file_url,
-          shouldForceUpdate: data.should_force_update,
-          fileHash: data.file_hash,
-          gitCommitHash: data.git_commit_hash,
-          id: data.id,
-          message: data.message,
-          platform: data.platform,
-          targetAppVersion: data.target_app_version,
-          channel: data.channel,
-        } as Bundle;
-      },
-      async getBundles(refresh = false) {
-        if (bundles.length > 0 && !refresh) {
-          return bundles;
-        }
-
-        const data = await db
-          .selectFrom("bundles")
-          .orderBy("id", "desc")
-          .selectAll()
-          .execute();
-        return data.map((bundle) => ({
-          enabled: bundle.enabled,
-          fileUrl: bundle.file_url,
-          shouldForceUpdate: bundle.should_force_update,
-          fileHash: bundle.file_hash,
-          gitCommitHash: bundle.git_commit_hash,
-          id: bundle.id,
-          message: bundle.message,
-          platform: bundle.platform,
-          targetAppVersion: bundle.target_app_version,
-          channel: bundle.channel,
-        })) as Bundle[];
-      },
-    };
-  };
+    },
+    hooks,
+  );
+};
