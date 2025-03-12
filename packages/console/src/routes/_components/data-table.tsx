@@ -52,18 +52,16 @@ interface DataTableProps {
 const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_CHANNEL = "production";
 
+const [platformFilter, setPlatformFilter] = createSignal<Platform | null>(null);
+const [channelFilter, setChannelFilter] = createSignal<string | null>(null);
+
+const [pagination, setPagination] = createSignal<PaginationState>({
+  pageIndex: 0,
+  pageSize: DEFAULT_PAGE_SIZE,
+});
+
 export function DataTable(props: DataTableProps) {
   const [local] = splitProps(props, ["columns", "onRowClick"]);
-
-  const [platformFilter, setPlatformFilter] = createSignal<Platform | null>(
-    null,
-  );
-  const [channelFilter, setChannelFilter] = createSignal<string | null>(null);
-
-  const [pagination, setPagination] = createSignal<PaginationState>({
-    pageIndex: 0,
-    pageSize: DEFAULT_PAGE_SIZE,
-  });
 
   const query = createMemo(() => ({
     channel: channelFilter() ?? undefined,
@@ -71,10 +69,6 @@ export function DataTable(props: DataTableProps) {
     limit: pagination().pageSize.toString(),
     offset: (pagination().pageIndex * pagination().pageSize).toString(),
   }));
-
-  createEffect(() => {
-    console.log(query());
-  });
 
   const bundles = createBundlesQuery(query);
 
@@ -122,7 +116,12 @@ export function DataTable(props: DataTableProps) {
   });
 
   return (
-    <div>
+    <div
+      class="transition-opacity duration-300"
+      classList={{
+        "opacity-50": bundles.isFetching,
+      }}
+    >
       <div class="flex flex-row justify-end p-3">
         <div class="flex items-center gap-4">
           <div class="text-sm text-muted-foreground">Platform:</div>
@@ -179,7 +178,12 @@ export function DataTable(props: DataTableProps) {
         </div>
       </div>
 
-      <div class="border rounded-md">
+      <div
+        class="border rounded-md"
+        classList={{
+          "min-h-[400px]": bundles.isFetching,
+        }}
+      >
         <Table>
           <TableHeader>
             <For each={table.getHeaderGroups()}>
@@ -202,7 +206,16 @@ export function DataTable(props: DataTableProps) {
             </For>
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
+            {bundles.isFetched && table.getRowModel().rows?.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={local.columns.length}
+                  class="h-full text-center"
+                >
+                  No results.
+                </TableCell>
+              </TableRow>
+            ) : (
               <For each={table.getRowModel().rows}>
                 {(row) => (
                   <TableRow
@@ -223,15 +236,6 @@ export function DataTable(props: DataTableProps) {
                   </TableRow>
                 )}
               </For>
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={local.columns.length}
-                  class="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
             )}
           </TableBody>
         </Table>

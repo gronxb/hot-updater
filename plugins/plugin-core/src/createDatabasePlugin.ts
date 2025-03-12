@@ -77,6 +77,7 @@ export function createDatabasePlugin(
         throw new Error("commitBundle is not implemented");
       }
       await abstractPlugin.commitBundle({ changedSets });
+      changedSets.clear();
       hooks?.onDatabaseUpdated?.();
     },
     async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {

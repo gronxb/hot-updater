@@ -29,7 +29,7 @@ export default function Home() {
     if (isOpen()) {
       return;
     }
-    sleep(500).then(() => setSelectedBundleId(null));
+    sleep(250).then(() => setSelectedBundleId(null));
   });
 
   const [isOpen, setIsOpen] = createSignal(true);

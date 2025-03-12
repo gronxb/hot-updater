@@ -15,6 +15,7 @@ export const createBundlesQuery = (
       const res = await api.bundles.$get({ query: query() });
       return res.json();
     },
+    placeholderData: (prev) => prev,
   }));
 
 export const createConfigQuery = () =>
@@ -31,6 +32,9 @@ export const createBundleQuery = (bundleId: string) =>
       return api.bundles[":bundleId"]
         .$get({ param: { bundleId } })
         .then((res) => res.json());
+    },
+    placeholderData: (prev) => {
+      return prev;
     },
     staleTime: Number.POSITIVE_INFINITY,
   }));
