@@ -3,6 +3,7 @@ import type {
   Bundle,
   DatabasePlugin,
   DatabasePluginHooks,
+  Platform,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
 
@@ -16,6 +17,7 @@ export const mockDatabase =
   (_: BasePluginArgs): DatabasePlugin => {
     const bundles: Bundle[] = config.initialBundles ?? [];
     const latency = config.latency;
+
     return {
       name: "mockDatabase",
       async commitBundle() {
@@ -38,9 +40,35 @@ export const mockDatabase =
         await sleep(minMax(latency.min, latency.max));
         return bundles.find((b) => b.id === bundleId) ?? null;
       },
-      async getBundles() {
+      async getBundles({
+        where,
+        limit,
+        offset = 0,
+      }: {
+        where: { channel?: string; platform?: Platform };
+        limit?: number;
+        offset?: number;
+      }) {
         await sleep(minMax(latency.min, latency.max));
-        return bundles.sort((a, b) => a.id.localeCompare(b.id));
+        const filteredBundles = bundles.filter((b) => {
+          if (where.channel && b.channel !== where.channel) {
+            return false;
+          }
+          if (where.platform && b.platform !== where.platform) {
+            return false;
+          }
+          return true;
+        });
+        if (limit) {
+          return filteredBundles.slice(offset, offset + limit);
+        }
+        return filteredBundles;
+      },
+      async getChannels() {
+        await sleep(minMax(latency.min, latency.max));
+        return bundles
+          .map((b) => b.channel)
+          .filter((c, i, self) => self.indexOf(c) === i);
       },
     };
   };
