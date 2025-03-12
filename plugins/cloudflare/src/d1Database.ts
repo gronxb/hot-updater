@@ -1,9 +1,5 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabasePluginHooks,
-  Platform,
-} from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 import minify from "pg-minify";
@@ -73,31 +69,21 @@ export const d1Database = (
         } as Bundle;
       },
 
-      async getBundles(options: {
-        where: {
-          channel?: string;
-          platform?: Platform;
-        };
-        limit?: number;
-        offset?: number;
-        refresh?: boolean;
-      }) {
-        if (bundles.length > 0 && !options?.refresh) {
-          return bundles;
-        }
+      async getBundles(options) {
+        const { where, limit, offset = 0 } = options ?? {};
 
         let sql = "SELECT * FROM bundles";
         const params: any[] = [];
 
         const conditions: string[] = [];
-        if (options?.where?.channel) {
+        if (where?.channel) {
           conditions.push("channel = ?");
-          params.push(options.where.channel);
+          params.push(where.channel);
         }
 
-        if (options?.where?.platform) {
+        if (where?.platform) {
           conditions.push("platform = ?");
-          params.push(options.where.platform);
+          params.push(where.platform);
         }
 
         if (conditions.length > 0) {
@@ -106,14 +92,14 @@ export const d1Database = (
 
         sql += " ORDER BY id DESC";
 
-        if (options?.limit) {
+        if (limit) {
           sql += " LIMIT ?";
-          params.push(options.limit);
+          params.push(limit);
         }
 
-        if (options?.offset) {
+        if (offset) {
           sql += " OFFSET ?";
-          params.push(options.offset);
+          params.push(offset);
         }
 
         const singlePage = await cf.d1.database.query(config.databaseId, {
