@@ -11,7 +11,10 @@ export interface BaseDatabaseUtils {
 }
 
 export interface AbstractDatabasePlugin
-  extends Pick<DatabasePlugin, "getBundleById" | "getBundles" | "getChannels"> {
+  extends Pick<
+    DatabasePlugin,
+    "getBundleById" | "getBundles" | "getChannels" | "onUnmount"
+  > {
   commitBundle: ({
     changedSets,
   }: {

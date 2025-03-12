@@ -24,11 +24,13 @@ export const postgres = (
     dialect,
   });
 
-  const isUnmount = false;
-
   return createDatabasePlugin(
     "postgres",
     {
+      async onUnmount() {
+        await db.destroy();
+        await pool.end();
+      },
       async getBundleById(bundleId) {
         const data = await db
           .selectFrom("bundles")
@@ -60,7 +62,6 @@ export const postgres = (
         };
         limit?: number;
         offset?: number;
-        refresh?: boolean;
       }) {
         let query = db.selectFrom("bundles").orderBy("id", "desc");
 

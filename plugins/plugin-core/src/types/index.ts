@@ -20,7 +20,6 @@ export interface DatabasePlugin {
     };
     limit?: number;
     offset?: number;
-    refresh?: boolean;
   }) => Promise<Bundle[]>;
   updateBundle: (
     targetBundleId: string,

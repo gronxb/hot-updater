@@ -55,7 +55,6 @@ export const supabaseDatabase = (
         };
         limit?: number;
         offset?: number;
-        refresh?: boolean;
       }) {
         let query = supabase
           .from("bundles")
