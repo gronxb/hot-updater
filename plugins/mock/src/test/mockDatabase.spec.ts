@@ -35,7 +35,7 @@ describe("mockDatabase", () => {
   it("should return a database plugin", async () => {
     const plugin = mockDatabase({ latency: DEFAULT_LATENCY })({ cwd: "" });
 
-    const bundles = await plugin.getBundles({ where: {} });
+    const bundles = await plugin.getBundles();
 
     expect(bundles).toEqual([]);
   });
@@ -46,7 +46,7 @@ describe("mockDatabase", () => {
       initialBundles: DEFAULT_BUNDLES_MOCK,
     })({ cwd: "" });
 
-    const bundles = await plugin.getBundles({ where: {} });
+    const bundles = await plugin.getBundles();
 
     expect(bundles).toEqual(DEFAULT_BUNDLES_MOCK);
   });
@@ -56,7 +56,7 @@ describe("mockDatabase", () => {
 
     await plugin.appendBundle(DEFAULT_BUNDLES_MOCK[0]);
 
-    const bundles = await plugin.getBundles({ where: {} });
+    const bundles = await plugin.getBundles();
 
     expect(bundles).toEqual([DEFAULT_BUNDLES_MOCK[0]]);
   });
@@ -71,7 +71,7 @@ describe("mockDatabase", () => {
       enabled: false,
     });
 
-    const bundles = await plugin.getBundles({ where: {} });
+    const bundles = await plugin.getBundles();
 
     expect(bundles).toEqual([
       {
@@ -111,7 +111,7 @@ describe("mockDatabase", () => {
       initialBundles: [DEFAULT_BUNDLES_MOCK[1], DEFAULT_BUNDLES_MOCK[0]],
     })({ cwd: "" });
 
-    const bundles = await plugin.getBundles({ where: {} });
+    const bundles = await plugin.getBundles();
 
     expect(bundles).toEqual(DEFAULT_BUNDLES_MOCK);
   });

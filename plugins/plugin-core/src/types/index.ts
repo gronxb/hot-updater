@@ -13,8 +13,8 @@ export interface BuildPluginConfig {
 export interface DatabasePlugin {
   getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options: {
-    where: {
+  getBundles: (options?: {
+    where?: {
       channel?: string;
       platform?: Platform;
     };

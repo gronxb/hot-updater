@@ -3,7 +3,6 @@ import type {
   Bundle,
   DatabasePlugin,
   DatabasePluginHooks,
-  Platform,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
 
@@ -40,21 +39,15 @@ export const mockDatabase =
         await sleep(minMax(latency.min, latency.max));
         return bundles.find((b) => b.id === bundleId) ?? null;
       },
-      async getBundles({
-        where,
-        limit,
-        offset = 0,
-      }: {
-        where: { channel?: string; platform?: Platform };
-        limit?: number;
-        offset?: number;
-      }) {
+      async getBundles(options) {
+        const { where, limit, offset = 0 } = options ?? {};
+
         await sleep(minMax(latency.min, latency.max));
         const filteredBundles = bundles.filter((b) => {
-          if (where.channel && b.channel !== where.channel) {
+          if (where?.channel && b.channel !== where.channel) {
             return false;
           }
-          if (where.platform && b.platform !== where.platform) {
+          if (where?.platform && b.platform !== where.platform) {
             return false;
           }
           return true;

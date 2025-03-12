@@ -1,8 +1,4 @@
-import type {
-  Bundle,
-  DatabasePluginHooks,
-  Platform,
-} from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
@@ -55,30 +51,25 @@ export const postgres = (
         } as Bundle;
       },
 
-      async getBundles(options: {
-        where: {
-          channel?: string;
-          platform?: Platform;
-        };
-        limit?: number;
-        offset?: number;
-      }) {
+      async getBundles(options) {
+        const { where, limit, offset = 0 } = options ?? {};
+
         let query = db.selectFrom("bundles").orderBy("id", "desc");
 
-        if (options?.where?.channel) {
-          query = query.where("channel", "=", options.where.channel);
+        if (where?.channel) {
+          query = query.where("channel", "=", where.channel);
         }
 
-        if (options?.where?.platform) {
-          query = query.where("platform", "=", options.where.platform);
+        if (where?.platform) {
+          query = query.where("platform", "=", where.platform);
         }
 
-        if (options?.limit) {
-          query = query.limit(options.limit);
+        if (limit) {
+          query = query.limit(limit);
         }
 
-        if (options?.offset) {
-          query = query.offset(options.offset);
+        if (offset) {
+          query = query.offset(offset);
         }
 
         const data = await query.selectAll().execute();

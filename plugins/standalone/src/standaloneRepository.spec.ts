@@ -100,7 +100,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
 
     await repo.getBundles();
-    const refreshed = await repo.getBundles(true);
+    const refreshed = await repo.getBundles();
     expect(refreshed).toEqual(testBundles);
     expect(callCount).toBe(2);
   });
@@ -157,7 +157,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await expect(repo.getBundles(true)).rejects.toThrow(
+    await expect(repo.getBundles()).rejects.toThrow(
       "API Error: Internal Server Error",
     );
   });
