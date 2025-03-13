@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import camelcaseKeys from "npm:camelcase-keys@9.1.3";
 import semver from "npm:semver@7.7.1";
-import { createClient } from "jsr:@supabase/supabase-js@2.47.10";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.1";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -44,11 +44,9 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
+        auth: { autoRefreshToken: false, persistSession: false },
       },
     );
 
@@ -93,6 +91,33 @@ Deno.serve(async (req) => {
     }
 
     const response = data[0] ? camelcaseKeys(data[0]) : null;
+    if (response?.fileUrl) {
+      const fileUrl = new URL(response.fileUrl).pathname.replace(
+        "/storage/v1/object/public/",
+        "",
+      );
+
+      const [bucketName, ...filePath] = fileUrl.split("/");
+
+      const { data: signedUrlData, error: signedUrlError } =
+        await supabase.storage
+          .from(bucketName)
+          .createSignedUrl(filePath.join("/"), 60);
+      if (signedUrlError) {
+        throw new Error(signedUrlError.message);
+      }
+      return new Response(
+        JSON.stringify({
+          ...response,
+          fileUrl: signedUrlData?.signedUrl,
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }
+
     return new Response(JSON.stringify(response), {
       headers: { "Content-Type": "application/json" },
       status: 200,

@@ -1,9 +1,5 @@
 import path from "path";
-import {
-  selectBucket,
-  selectOrCreateOrganization,
-  selectProject,
-} from "@/commands/supabase/select";
+import { selectBucket, selectProject } from "@/commands/supabase/select";
 
 import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
@@ -144,8 +140,6 @@ const deployEdgeFunction = async (supabasePath: string, projectId: string) => {
 };
 
 export const initSupabase = async () => {
-  await selectOrCreateOrganization();
-
   const project = await selectProject();
 
   const spinner = p.spinner();
