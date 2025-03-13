@@ -98,12 +98,11 @@ export const postgres = (
       },
 
       async commitBundle({ changedSets }) {
-        if (changedSets.size === 0) {
+        if (changedSets.length === 0) {
           return;
         }
 
-        const operations = Array.from(changedSets);
-        const bundles = operations.map((op) => op.data);
+        const bundles = changedSets.map((op) => op.data);
 
         await db.transaction().execute(async (tx) => {
           for (const bundle of bundles) {

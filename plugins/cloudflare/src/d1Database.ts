@@ -146,12 +146,11 @@ export const d1Database = (
       },
 
       async commitBundle({ changedSets }) {
-        if (changedSets.size === 0) {
+        if (changedSets.length === 0) {
           return;
         }
 
-        const operations = Array.from(changedSets);
-        const bundles = operations.map((op) => op.data);
+        const bundles = changedSets.map((op) => op.data);
 
         const params: (string | number | boolean | null)[] = [];
         const valuesSql = bundles

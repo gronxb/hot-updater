@@ -99,7 +99,11 @@ describe("s3Database plugin", () => {
   const bucketName = "test-bucket";
   const s3Config = {};
   // Create plugin: Pass BasePluginArgs like { cwd: "" }
-  const plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+  let plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+
+  beforeEach(async () => {
+    plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+  });
 
   it("should append a new bundle and commit to S3", async () => {
     // Create new bundle
@@ -144,7 +148,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles(true);
+    await plugin.getBundles();
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -160,31 +164,10 @@ describe("s3Database plugin", () => {
     ]);
   });
 
-  it("should return cached bundles when refresh is false", async () => {
-    const bundleKey = "ios/3.0.0/update.json";
-    const bundle = createBundleJson(
-      "ios",
-      "3.0.0",
-      "00000000-0000-0000-0000-000000000003",
-    );
-
-    // Pre-populate bundle data in fakeStore
-    fakeStore[bundleKey] = JSON.stringify([bundle]);
-
-    // Read bundles from S3 with refresh=true
-    const bundlesFirst = await plugin.getBundles(true);
-    expect(bundlesFirst).toStrictEqual([bundle]);
-
-    // Verify cached data is returned even after deleting from fakeStore
-    delete fakeStore[bundleKey];
-    const bundlesSecond = await plugin.getBundles(false);
-    expect(bundlesSecond).toStrictEqual([bundle]);
-  });
-
   it("should throw an error when trying to update a non-existent bundle", async () => {
     await expect(
       plugin.updateBundle("nonexistent", { enabled: true }),
-    ).rejects.toThrow("target bundle version not found");
+    ).rejects.toThrow("targetBundleId not found");
   });
 
   it("should move a bundle from ios/1.x.x/update.json to ios/1.0.2/update.json when targetAppVersion is updated", async () => {
@@ -212,7 +195,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles(true);
+    await plugin.getBundles();
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -265,7 +248,7 @@ describe("s3Database plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles(true);
+    await plugin.getBundles();
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -317,7 +300,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Force reload bundle info from S3
-    const bundles = await plugin.getBundles(true);
+    const bundles = await plugin.getBundles();
 
     // Assert: Returned bundle list should only include valid bundles
     expect(bundles).toHaveLength(3);
@@ -370,7 +353,7 @@ describe("s3Database plugin", () => {
     fakeStore["ios/1.0.0/update.json"] = JSON.stringify([bundleB, bundleA]);
     fakeStore["ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
 
-    const bundles = await plugin.getBundles(true);
+    const bundles = await plugin.getBundles();
 
     // Descending order: "C" > "B" > "A"
     expect(bundles).toEqual([bundleC, bundleB, bundleA]);
@@ -380,7 +363,7 @@ describe("s3Database plugin", () => {
     // Verify internal management keys (_updateJsonKey, _oldUpdateJsonKey) are removed when fetching by getBundleById
     const bundle = createBundleJson("android", "2.0.0", "internal-test");
     fakeStore["android/2.0.0/update.json"] = JSON.stringify([bundle]);
-    await plugin.getBundles(true);
+    await plugin.getBundles();
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -408,7 +391,7 @@ describe("s3Database plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const bundles = await plugin.getBundles(true);
+    const bundles = await plugin.getBundles();
     expect(bundles).toEqual([]);
   });
 
@@ -424,6 +407,7 @@ describe("s3Database plugin", () => {
     const iosUpdateKey = "ios/1.0.0/update.json";
     const androidUpdateKey = "android/2.0.0/update.json";
 
+    console.log("AA", fakeStore);
     const iosBundles = JSON.parse(fakeStore[iosUpdateKey]);
     const androidBundles = JSON.parse(fakeStore[androidUpdateKey]);
 

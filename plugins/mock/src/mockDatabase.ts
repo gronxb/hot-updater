@@ -27,7 +27,7 @@ export const mockDatabase =
         await sleep(minMax(latency.min, latency.max));
         const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
         if (targetIndex === -1) {
-          throw new Error("target bundle version not found");
+          throw new Error("targetBundleId not found");
         }
         Object.assign(bundles[targetIndex], newBundle);
       },

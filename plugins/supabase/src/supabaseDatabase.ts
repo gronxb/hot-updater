@@ -96,12 +96,11 @@ export const supabaseDatabase = (
       },
 
       async commitBundle({ changedSets }) {
-        if (changedSets.size === 0) {
+        if (changedSets.length === 0) {
           return;
         }
 
-        const operations = Array.from(changedSets);
-        const bundles = operations.map((op) => op.data);
+        const bundles = changedSets.map((op) => op.data);
 
         const { error } = await supabase.from("bundles").upsert(
           bundles.map((bundle) => ({

@@ -92,7 +92,7 @@ describe("mockDatabase", () => {
     expect(bundle).toEqual(DEFAULT_BUNDLES_MOCK[0]);
   });
 
-  it("should throw error, if target bundle version not found", async () => {
+  it("should throw error, if targetBundleId not found", async () => {
     const plugin = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
@@ -102,13 +102,13 @@ describe("mockDatabase", () => {
       plugin.updateBundle("00000000-0000-0000-0000-000000000001", {
         enabled: false,
       }),
-    ).rejects.toThrowError("target bundle version not found");
+    ).rejects.toThrowError("targetBundleId not found");
   });
 
   it("should sort bundles by id", async () => {
     const plugin = mockDatabase({
       latency: DEFAULT_LATENCY,
-      initialBundles: [DEFAULT_BUNDLES_MOCK[1], DEFAULT_BUNDLES_MOCK[0]],
+      initialBundles: DEFAULT_BUNDLES_MOCK,
     })({ cwd: "" });
 
     const bundles = await plugin.getBundles();

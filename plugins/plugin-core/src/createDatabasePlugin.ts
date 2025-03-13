@@ -18,10 +18,10 @@ export interface AbstractDatabasePlugin
   commitBundle: ({
     changedSets,
   }: {
-    changedSets: Set<{
+    changedSets: {
       operation: "insert" | "update" | "delete";
       data: Bundle;
-    }>;
+    }[];
   }) => Promise<void>;
 }
 
@@ -44,7 +44,7 @@ export interface AbstractDatabasePlugin
  *       // Implementation to get available channels
  *       return channels;
  *     },
- *     async commitBundle({ changedSets }) {
+ *     async commitBundle({ changedMap }) {
  *       // Implementation to commit changed bundles
  *     }
  *   };
@@ -60,16 +60,19 @@ export function createDatabasePlugin(
   abstractPlugin: AbstractDatabasePlugin,
   hooks?: DatabasePluginHooks,
 ): (options: BasePluginArgs) => DatabasePlugin {
-  const changedSets = new Set<{
-    operation: "insert" | "update" | "delete";
-    data: Bundle;
-  }>();
+  const changedMap = new Map<
+    string,
+    {
+      operation: "insert" | "update" | "delete";
+      data: Bundle;
+    }
+  >();
 
   const markChanged = (
     operation: "insert" | "update" | "delete",
     data: Bundle,
   ) => {
-    changedSets.add({ operation, data });
+    changedMap.set(data.id, { operation, data });
   };
 
   return (_: BasePluginArgs) => ({
@@ -79,15 +82,28 @@ export function createDatabasePlugin(
       if (!abstractPlugin.commitBundle) {
         throw new Error("commitBundle is not implemented");
       }
-      await abstractPlugin.commitBundle({ changedSets });
-      changedSets.clear();
+      await abstractPlugin.commitBundle({
+        changedSets: Array.from(changedMap.values()),
+      });
+      changedMap.clear();
       hooks?.onDatabaseUpdated?.();
     },
     async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
-      const currentBundle = await this.getBundleById(targetBundleId);
-      if (!currentBundle) {
-        throw new Error("target bundle version not found");
+      const pendingChange = changedMap.get(targetBundleId);
+      if (pendingChange && pendingChange.operation === "insert") {
+        const updatedData = merge(pendingChange.data, newBundle);
+        changedMap.set(targetBundleId, {
+          operation: "insert",
+          data: updatedData,
+        });
+        return;
       }
+
+      const currentBundle = await abstractPlugin.getBundleById(targetBundleId);
+      if (!currentBundle) {
+        throw new Error("targetBundleId not found");
+      }
+
       const updatedBundle = merge(currentBundle, newBundle);
       markChanged("update", updatedBundle);
     },

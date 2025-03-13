@@ -64,8 +64,6 @@ export const standaloneRepository = (
     ...routeHeaders,
   });
 
-  let bundles: Bundle[] = [];
-
   return createDatabasePlugin(
     "standalone-repository",
     {
@@ -98,7 +96,7 @@ export const standaloneRepository = (
           throw new Error(`API Error: ${response.statusText}`);
         }
 
-        bundles = (await response.json()) as Bundle[];
+        const bundles = (await response.json()) as Bundle[];
 
         let filteredBundles = bundles;
         if (where?.channel) {
@@ -122,8 +120,10 @@ export const standaloneRepository = (
         return [...new Set(allBundles.map((b) => b.channel))];
       },
       async commitBundle({ changedSets }) {
-        const changedBundles = Array.from(changedSets).map((set) => set.data);
-        if (changedBundles.length === 0) return;
+        const changedBundles = changedSets.map((set) => set.data);
+        if (changedBundles.length === 0) {
+          return;
+        }
 
         const { path, headers: routeHeaders } = routes.upsert();
         const response = await fetch(`${config.baseUrl}${path}`, {
