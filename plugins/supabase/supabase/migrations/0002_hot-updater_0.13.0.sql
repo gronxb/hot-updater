@@ -129,3 +129,5 @@ BEGIN
     GROUP BY b.channel;
 END;
 $$;
+
+CREATE INDEX bundles_channel_idx ON bundles(channel);

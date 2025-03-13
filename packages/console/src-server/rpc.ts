@@ -97,7 +97,6 @@ export const rpc = new Hono()
           },
           limit: query.limit ? Number(query.limit) : undefined,
           offset: query.offset ? Number(query.offset) : undefined,
-          refresh: true,
         });
         return c.json(bundles ?? []);
       } catch (error) {

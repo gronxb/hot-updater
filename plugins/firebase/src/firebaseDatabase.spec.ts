@@ -159,7 +159,7 @@ describe("Firebase Database Plugin", () => {
         ] as any,
       } as unknown as QuerySnapshot);
 
-      await databasePlugin.getBundles(true);
+      await databasePlugin.getBundles();
       await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
 
       vi.clearAllMocks();
@@ -211,7 +211,7 @@ describe("Firebase Database Plugin", () => {
         ] as any,
       } as unknown as QuerySnapshot);
 
-      await databasePlugin.getBundles(true);
+      await databasePlugin.getBundles();
       await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
 
       vi.clearAllMocks();
@@ -233,7 +233,7 @@ describe("Firebase Database Plugin", () => {
         ] as any,
       } as unknown as QuerySnapshot);
 
-      await databasePlugin.getBundles(true);
+      await databasePlugin.getBundles();
 
       const newBundle: Bundle = {
         ...mockBundle,
@@ -275,7 +275,7 @@ describe("Firebase Database Plugin", () => {
         empty: true,
       } as any);
 
-      const result = await databasePlugin.getBundles(true);
+      const result = await databasePlugin.getBundles();
       expect(result).toEqual([]);
     });
 
@@ -288,7 +288,7 @@ describe("Firebase Database Plugin", () => {
         ],
       } as any);
 
-      const result = await databasePlugin.getBundles(true);
+      const result = await databasePlugin.getBundles();
 
       expect(query).toHaveBeenCalled();
       expect(orderBy).toHaveBeenCalledWith("id", "desc");
@@ -301,11 +301,11 @@ describe("Firebase Database Plugin", () => {
         docs: [{ data: () => mockFirestoreData }],
       } as any);
 
-      await databasePlugin.getBundles(true);
+      await databasePlugin.getBundles();
 
       vi.clearAllMocks();
 
-      const result = await databasePlugin.getBundles(false);
+      const result = await databasePlugin.getBundles();
 
       expect(getDocs).not.toHaveBeenCalled();
       expect(result.length).toBe(1);
