@@ -407,7 +407,6 @@ describe("s3Database plugin", () => {
     const iosUpdateKey = "ios/1.0.0/update.json";
     const androidUpdateKey = "android/2.0.0/update.json";
 
-    console.log("AA", fakeStore);
     const iosBundles = JSON.parse(fakeStore[iosUpdateKey]);
     const androidBundles = JSON.parse(fakeStore[androidUpdateKey]);
 
