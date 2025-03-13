@@ -1,5 +1,5 @@
 import type { JSX, ValidComponent } from "solid-js";
-import { Match, splitProps, Switch } from "solid-js";
+import { Match, Switch, splitProps } from "solid-js";
 import { Portal } from "solid-js/web";
 
 import type { PolymorphicProps } from "@kobalte/core/polymorphic";
@@ -89,6 +89,7 @@ const ToastClose = <T extends ValidComponent = "button">(
       )}
       {...others}
     >
+      {/* biome-ignore lint/a11y/noSvgWithoutTitle: <explanation> */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"
