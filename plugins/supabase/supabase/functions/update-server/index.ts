@@ -97,6 +97,14 @@ Deno.serve(async (req) => {
     }
 
     const response = data[0] ? camelcaseKeys(data[0]) : null;
+
+    console.log("[update-server] response", response);
+    console.log("[update-server] bucketName", HotUpdater.BUCKET_NAME);
+    console.log(
+      "[update-server] bundleKey",
+      [response.id, "bundle.zip"].join("/"),
+    );
+
     if (!response) {
       return new Response(JSON.stringify(null), {
         headers: { "Content-Type": "application/json" },
@@ -107,7 +115,8 @@ Deno.serve(async (req) => {
     const { data: signedUrlData, error: signedUrlError } =
       await supabase.storage
         .from(HotUpdater.BUCKET_NAME)
-        .createSignedUrl([response.id, "build.zip"].join("/"), 60);
+        .createSignedUrl([response.id, "bundle.zip"].join("/"), 60);
+
     if (signedUrlError) {
       throw new Error(signedUrlError.message);
     }

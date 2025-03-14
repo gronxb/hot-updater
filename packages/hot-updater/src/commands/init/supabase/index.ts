@@ -48,14 +48,14 @@ project_id = "%%projectId%%"
 enabled = false
 `;
 
-const linkSupabase = async (supabasePath: string, projectId: string) => {
+const linkSupabase = async (workdir: string, projectId: string) => {
   const spinner = p.spinner();
   spinner.start("Linking Supabase...");
 
   try {
     // Write the config.toml with correct projectId
     await fs.writeFile(
-      path.join(supabasePath, "config.toml"),
+      path.join(workdir, "supabase", "config.toml"),
       transformTemplate(SUPABASE_CONFIG_TEMPLATE, {
         projectId,
       }),
@@ -64,16 +64,9 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
     // Link
     await execa(
       "npx",
-      [
-        "supabase",
-        "link",
-        "--project-ref",
-        projectId,
-        "--workdir",
-        supabasePath,
-      ],
+      ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
       {
-        cwd: supabasePath,
+        cwd: workdir,
         input: "",
         stdio: ["pipe", "pipe", "pipe"],
       },
@@ -90,13 +83,13 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
   }
 };
 
-const pushDB = async (supabasePath: string) => {
+const pushDB = async (workdir: string) => {
   try {
     const dbPush = await execa(
       "npx",
       ["supabase", "db", "push", "--include-all"],
       {
-        cwd: supabasePath,
+        cwd: workdir,
         stdio: "inherit",
       },
     );
@@ -112,7 +105,7 @@ const pushDB = async (supabasePath: string) => {
   }
 };
 
-const deployEdgeFunction = async (supabasePath: string, projectId: string) => {
+const deployEdgeFunction = async (workdir: string, projectId: string) => {
   await p.tasks([
     {
       title: "Supabase edge function deploy. This may take a few minutes.",
@@ -130,7 +123,7 @@ const deployEdgeFunction = async (supabasePath: string, projectId: string) => {
               "--no-verify-jwt",
             ],
             {
-              cwd: supabasePath,
+              cwd: workdir,
             },
           );
           return dbPush.stdout;
@@ -188,16 +181,19 @@ export const initSupabase = async () => {
     path.resolve(require.resolve("@hot-updater/supabase/edge-functions")),
   );
 
-  const { tmpDir: supabasePath, removeTmpDir } = await copyDirToTmp(
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(
     supabaseLibPath,
-    {
-      saveDirname: path.join(".hot-updater", "supabase"),
-    },
+    "supabase",
   );
 
-  await linkSupabase(supabasePath, project.id);
+  await linkSupabase(tmpDir, project.id);
 
-  const functionsPath = path.join(supabasePath, "functions", "update-server");
+  const functionsPath = path.join(
+    tmpDir,
+    "supabase",
+    "functions",
+    "update-server",
+  );
   const code = await fs.readFile(path.join(functionsPath, "index.ts"), "utf-8");
 
   const updatedCode = await transformTsEnv(code, {
@@ -205,8 +201,8 @@ export const initSupabase = async () => {
   });
   await fs.writeFile(path.join(functionsPath, "index.ts"), updatedCode);
 
-  await pushDB(supabasePath);
-  await deployEdgeFunction(supabasePath, project.id);
+  await pushDB(tmpDir);
+  await deployEdgeFunction(tmpDir, project.id);
 
   await removeTmpDir();
 

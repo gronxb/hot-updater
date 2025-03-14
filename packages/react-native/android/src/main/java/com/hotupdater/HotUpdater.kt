@@ -153,7 +153,7 @@ class HotUpdater : ReactPackage {
             }
             tempDir.mkdirs()
 
-            val tempZipFile = File(tempDir, "build.zip")
+            val tempZipFile = File(tempDir, "bundle.zip")
             val extractedDir = File(tempDir, "extracted")
             extractedDir.mkdirs()
 

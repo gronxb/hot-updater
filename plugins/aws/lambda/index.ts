@@ -25,7 +25,7 @@ async function createPresignedUrl(id: string) {
     s3,
     new GetObjectCommand({
       Bucket: bucketName,
-      Key: [id, "build.zip"].join("/"),
+      Key: [id, "bundle.zip"].join("/"),
     }),
     {
       expiresIn: 60,

@@ -1,5 +1,10 @@
--- HotUpdater.get_update_info
+-- HotUpdater.semver_satisfies
+DROP FUNCTION IF EXISTS semver_satisfies;
 
+-- HotUpdater.get_update_info
+DROP FUNCTION IF EXISTS get_update_info;
+
+-- HotUpdater.get_update_info
 CREATE OR REPLACE FUNCTION get_update_info (
     app_platform   platforms,
     app_version text,
@@ -87,9 +92,6 @@ ADD COLUMN channel text NOT NULL DEFAULT 'production';
 
 ALTER TABLE bundles
 DROP COLUMN file_url;
-
--- HotUpdater.semver_satisfies
-DROP FUNCTION IF EXISTS semver_satisfies;
 
 -- HotUpdater.get_target_app_version_list
 

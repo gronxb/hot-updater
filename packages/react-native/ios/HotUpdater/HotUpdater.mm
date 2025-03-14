@@ -237,7 +237,7 @@ RCT_EXPORT_MODULE();
     }
     [fileManager createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
     
-    NSString *tempZipFile = [tempDir stringByAppendingPathComponent:@"build.zip"];
+    NSString *tempZipFile = [tempDir stringByAppendingPathComponent:@"bundle.zip"];
     NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
     [fileManager createDirectoryAtPath:extractedDir withIntermediateDirectories:YES attributes:nil error:nil];
     

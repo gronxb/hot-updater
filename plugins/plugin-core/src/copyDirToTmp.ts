@@ -2,16 +2,12 @@ import path from "path";
 import fs from "fs/promises";
 import { getCwd } from "./cwd";
 
-export const copyDirToTmp = async (
-  dir: string,
-  {
-    saveDirname = ".hot-updater",
-  }: {
-    saveDirname?: string;
-  } = {},
-) => {
+export const copyDirToTmp = async (dir: string, childDirname?: string) => {
   const cwd = getCwd();
-  const tmpDir = path.join(cwd, saveDirname);
+  const hotUpdaterDir = path.join(cwd, ".hot-updater");
+  const tmpDir = childDirname
+    ? path.join(hotUpdaterDir, childDirname)
+    : hotUpdaterDir;
 
   // Remove existing tmpDir if it exists to avoid ENOTDIR error
   try {
@@ -23,5 +19,8 @@ export const copyDirToTmp = async (
   await fs.mkdir(tmpDir, { recursive: true });
   await fs.cp(dir, tmpDir, { recursive: true });
 
-  return { tmpDir, removeTmpDir: () => fs.rm(tmpDir, { recursive: true }) };
+  return {
+    tmpDir: hotUpdaterDir,
+    removeTmpDir: () => fs.rm(hotUpdaterDir, { recursive: true }),
+  };
 };
