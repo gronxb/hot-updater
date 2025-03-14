@@ -1,10 +1,10 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { UpdateInfo } from "@hot-updater/core";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
-import type { UpdateInfoLayer } from "../../../packages/core/src/types";
 import { getUpdateInfo } from "./getUpdateInfo";
 
 declare global {
@@ -33,9 +33,9 @@ async function createPresignedUrl(id: string) {
   );
 }
 
-async function signUpdateInfoFileUrl(updateInfoLayer: UpdateInfoLayer) {
-  const fileUrl = await createPresignedUrl(updateInfoLayer.id);
-  return { ...updateInfoLayer, fileUrl };
+async function signUpdateInfoFileUrl(updateInfo: UpdateInfo) {
+  const fileUrl = await createPresignedUrl(updateInfo.id);
+  return { ...updateInfo, fileUrl };
 }
 
 type Bindings = {
