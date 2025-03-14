@@ -2,9 +2,16 @@ import path from "path";
 import fs from "fs/promises";
 import { getCwd } from "./cwd";
 
-export const copyDirToTmp = async (dir: string) => {
+export const copyDirToTmp = async (
+  dir: string,
+  {
+    saveDirname = ".hot-updater",
+  }: {
+    saveDirname?: string;
+  } = {},
+) => {
   const cwd = getCwd();
-  const tmpDir = path.join(cwd, ".hot-updater");
+  const tmpDir = path.join(cwd, saveDirname);
 
   // Remove existing tmpDir if it exists to avoid ENOTDIR error
   try {

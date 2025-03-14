@@ -3,8 +3,8 @@ import { selectBucket, selectProject } from "@/commands/supabase/select";
 
 import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
-import { transformEnv } from "@/utils/transformEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
+import { transformTsEnv } from "@/utils/transformTsEnv";
 import * as p from "@clack/prompts";
 import { copyDirToTmp } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
@@ -41,21 +41,22 @@ export default HotUpdater.wrap({
   source: "%%source%%",
 })(App);`;
 
+const SUPABASE_CONFIG_TEMPLATE = `
+project_id = "%%projectId%%"
+
+[db.seed]
+enabled = false
+`;
+
 const linkSupabase = async (supabasePath: string, projectId: string) => {
   const spinner = p.spinner();
   spinner.start("Linking Supabase...");
 
   try {
-    const { supabaseConfigTomlTemplate } = await import(
-      "@hot-updater/supabase"
-    );
-
-    const { tmpDir, removeTmpDir } = await copyDirToTmp(supabasePath);
-
     // Write the config.toml with correct projectId
     await fs.writeFile(
-      path.join(tmpDir, "supabase", "config.toml"),
-      transformTemplate(supabaseConfigTomlTemplate, {
+      path.join(supabasePath, "config.toml"),
+      transformTemplate(SUPABASE_CONFIG_TEMPLATE, {
         projectId,
       }),
     );
@@ -63,15 +64,21 @@ const linkSupabase = async (supabasePath: string, projectId: string) => {
     // Link
     await execa(
       "npx",
-      ["supabase", "link", "--project-ref", projectId, "--workdir", tmpDir],
+      [
+        "supabase",
+        "link",
+        "--project-ref",
+        projectId,
+        "--workdir",
+        supabasePath,
+      ],
       {
-        cwd: tmpDir,
+        cwd: supabasePath,
         input: "",
         stdio: ["pipe", "pipe", "pipe"],
       },
     );
     spinner.stop("Supabase linked ✔");
-    return { tmpDir, removeTmpDir };
   } catch (err) {
     spinner.stop();
     if (err instanceof ExecaError && err.stderr) {
@@ -177,21 +184,30 @@ export const initSupabase = async () => {
   );
   const bucket = await selectBucket(api);
 
-  const supabasePath = path.dirname(
+  const supabaseLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/edge-functions")),
   );
 
-  const { tmpDir, removeTmpDir } = await linkSupabase(supabasePath, project.id);
+  const { tmpDir: supabasePath, removeTmpDir } = await copyDirToTmp(
+    supabaseLibPath,
+    {
+      saveDirname: path.join(".hot-updater", "supabase"),
+    },
+  );
 
-  const functionsPath = path.join(tmpDir, "functions");
+  await linkSupabase(supabasePath, project.id);
+
+  const functionsPath = path.join(supabasePath, "functions", "update-server");
   const code = await fs.readFile(path.join(functionsPath, "index.ts"), "utf-8");
-  await transformEnv(code, {
+
+  const updatedCode = await transformTsEnv(code, {
     BUCKET_NAME: bucket.name,
   });
-  await fs.writeFile(path.join(functionsPath, "index.ts"), code);
+  await fs.writeFile(path.join(functionsPath, "index.ts"), updatedCode);
 
-  await pushDB(tmpDir);
-  await deployEdgeFunction(tmpDir, project.id);
+  await pushDB(supabasePath);
+  await deployEdgeFunction(supabasePath, project.id);
+
   await removeTmpDir();
 
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
