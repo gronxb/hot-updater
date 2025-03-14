@@ -34,7 +34,7 @@ export const getUpdateInfo = async (
     minBundleId = NIL_UUID,
     channel = "production",
   }: GetBundlesArgs,
-): Promise<UpdateInfo> => {
+): Promise<UpdateInfo | null> => {
   const targetAppVersions = await getS3Json(
     s3,
     bucketName,
