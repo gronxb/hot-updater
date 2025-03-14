@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
-import { getPluginEnv } from "@/commands/getPluginEnv";
 import { init } from "@/commands/init";
 import { banner, printBanner } from "@/components/banner";
 import { version } from "@/packageJson";
@@ -22,11 +21,6 @@ program
   .version(version as string);
 
 program.command("init").description("Initialize Hot Updater").action(init);
-
-program
-  .command("get-plugin-env")
-  .description("Get the environment variables for the plugin")
-  .action(getPluginEnv);
 
 program
   .command("deploy")
