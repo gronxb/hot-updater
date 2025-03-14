@@ -51,6 +51,8 @@ export default {
       channel: channel || "production",
     });
 
+    // HotUpdater.BUCKET_NAME ?
+
     return new Response(JSON.stringify(updateInfo), {
       headers: { "Content-Type": "application/json" },
       status: 200,

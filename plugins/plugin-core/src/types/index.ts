@@ -53,7 +53,8 @@ export interface StoragePlugin {
     bundleId: string,
     bundlePath: string,
   ) => Promise<{
-    fileUrl: string;
+    bucketName: string;
+    key: string;
   }>;
 
   deleteBundle: (bundleId: string) => Promise<string>;
@@ -61,7 +62,6 @@ export interface StoragePlugin {
 }
 
 export interface StoragePluginHooks {
-  transformFileUrl?: (key: string) => string;
   onStorageUploaded?: () => Promise<void>;
 }
 

@@ -8,7 +8,6 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   type StorageReference,
   deleteObject,
-  getDownloadURL,
   getStorage,
   listAll,
   ref,
@@ -73,10 +72,9 @@ export const firebaseStorage =
 
         hooks?.onStorageUploaded?.();
 
-        const fileUrl = await getDownloadURL(fileRef);
-
         return {
-          fileUrl: hooks?.transformFileUrl?.(Key) ?? fileUrl,
+          bucketName: storage.app.name,
+          key: Key,
         };
       },
     };

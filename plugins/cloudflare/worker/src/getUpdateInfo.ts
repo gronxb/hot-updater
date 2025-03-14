@@ -48,7 +48,6 @@ export const getUpdateInfo = async (
     SELECT 
       b.id,
       b.should_force_update,
-      b.file_url,
       b.message,
       'UPDATE' AS status
     FROM bundles b, input
@@ -67,7 +66,6 @@ export const getUpdateInfo = async (
     SELECT 
       b.id,
       1 AS should_force_update,
-      b.file_url,
       b.message,
       'ROLLBACK' AS status
     FROM bundles b, input
@@ -84,7 +82,7 @@ export const getUpdateInfo = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, file_url, message, status
+  SELECT id, should_force_update, message, status
   FROM final_result, input
   WHERE id <> bundle_id
   
@@ -93,7 +91,6 @@ export const getUpdateInfo = async (
   SELECT 
     nil_uuid AS id,
     1 AS should_force_update,
-    NULL AS file_url,
     NULL AS message,
     'ROLLBACK' AS status
   FROM input
@@ -106,7 +103,6 @@ export const getUpdateInfo = async (
     .first<{
       id: string;
       should_force_update: number;
-      file_url: string | null;
       status: UpdateStatus;
       message: string | null;
     }>();
@@ -118,7 +114,6 @@ export const getUpdateInfo = async (
   return {
     id: result.id,
     shouldForceUpdate: Boolean(result.should_force_update),
-    fileUrl: result.file_url,
     status: result.status,
     message: result.message,
   } as UpdateInfo;

@@ -17,7 +17,7 @@ import {
 } from "./standaloneRepository";
 
 const DEFAULT_BUNDLE = {
-  fileUrl: "http://example.com/bundle.zip",
+  key: "bundle.zip",
   fileHash: "hash",
   platform: "ios",
   gitCommitHash: null,

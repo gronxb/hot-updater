@@ -9,7 +9,6 @@ import { semverSatisfies } from "./semverSatisfies";
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   message: null,
-  fileUrl: null,
   id: NIL_UUID,
   shouldForceUpdate: true,
   status: "ROLLBACK",
@@ -55,7 +54,6 @@ export const getUpdateInfo = async (
 
   const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
     id: bundle.id,
-    fileUrl: bundle.fileUrl,
     message: bundle.message,
     shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
     status,

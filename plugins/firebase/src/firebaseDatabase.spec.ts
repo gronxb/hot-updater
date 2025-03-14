@@ -81,7 +81,6 @@ describe("Firebase Database Plugin", () => {
   const mockBundle: Bundle = {
     id: "test-bundle-id",
     enabled: true,
-    fileUrl: "test-file-url",
     shouldForceUpdate: false,
     fileHash: "test-file-hash",
     gitCommitHash: "test-git-hash",
@@ -94,7 +93,6 @@ describe("Firebase Database Plugin", () => {
   const mockFirestoreData: SnakeCaseBundle = {
     id: "test-bundle-id",
     enabled: true,
-    file_url: "test-file-url",
     should_force_update: false,
     file_hash: "test-file-hash",
     git_commit_hash: "test-git-hash",
@@ -183,7 +181,6 @@ describe("Firebase Database Plugin", () => {
           channel: "production",
           enabled: false,
           file_hash: "test-file-hash",
-          file_url: "test-file-url",
           git_commit_hash: "test-git-hash",
           id: "test-bundle-id",
           message: "test-message",

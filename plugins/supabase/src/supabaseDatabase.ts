@@ -33,7 +33,6 @@ export const supabaseDatabase = (
         return {
           channel: data.channel,
           enabled: data.enabled,
-          fileUrl: data.file_url,
           shouldForceUpdate: data.should_force_update,
           fileHash: data.file_hash,
           gitCommitHash: data.git_commit_hash,
@@ -76,7 +75,6 @@ export const supabaseDatabase = (
         return data.map((bundle) => ({
           channel: bundle.channel,
           enabled: bundle.enabled,
-          fileUrl: bundle.file_url,
           shouldForceUpdate: bundle.should_force_update,
           fileHash: bundle.file_hash,
           gitCommitHash: bundle.git_commit_hash,
@@ -107,7 +105,6 @@ export const supabaseDatabase = (
             id: bundle.id,
             channel: bundle.channel,
             enabled: bundle.enabled,
-            file_url: bundle.fileUrl,
             should_force_update: bundle.shouldForceUpdate,
             file_hash: bundle.fileHash,
             git_commit_hash: bundle.gitCommitHash,

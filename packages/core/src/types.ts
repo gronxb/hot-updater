@@ -22,10 +22,6 @@ export interface Bundle {
    */
   enabled: boolean;
   /**
-   * The file URL of the bundle.
-   */
-  fileUrl: string;
-  /**
    * The hash of the bundle.
    */
   fileHash: string;
@@ -66,20 +62,25 @@ type SnakeKeyObject<T> = T extends Record<string, any>
 
 export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
 
-export type BundleArg =
-  | string
-  | Bundle[]
-  | (() => Promise<Bundle[]>)
-  | (() => Bundle[]);
-
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
+/**
+ * The update info for the database layer.
+ * This is the update info that is used by the database.
+ */
 export interface UpdateInfo {
   id: string;
   shouldForceUpdate: boolean;
-  fileUrl: string | null;
   message: string | null;
   status: UpdateStatus;
+}
+
+/**
+ * The update info for the app layer.
+ * This is the update info that is used by the app.
+ */
+export interface AppUpdateInfo extends UpdateInfo {
+  fileUrl: string;
 }
 
 export interface GetBundlesArgs {

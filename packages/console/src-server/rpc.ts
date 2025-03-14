@@ -14,7 +14,6 @@ export const bundleSchema = v.object({
   id: v.string(),
   shouldForceUpdate: v.boolean(),
   enabled: v.boolean(),
-  fileUrl: v.string(),
   fileHash: v.string(),
   gitCommitHash: v.nullable(v.string()),
   message: v.nullable(v.string()),

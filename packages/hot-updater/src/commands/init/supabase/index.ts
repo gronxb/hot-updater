@@ -3,6 +3,7 @@ import { selectBucket, selectProject } from "@/commands/supabase/select";
 
 import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
+import { transformEnv } from "@/utils/transformEnv";
 import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
 import { copyDirToTmp } from "@hot-updater/plugin-core";
@@ -174,15 +175,21 @@ export const initSupabase = async () => {
     `https://${project.id}.supabase.co`,
     serviceRoleKey.api_key,
   );
-  const bucketId = await selectBucket(api);
+  const bucket = await selectBucket(api);
 
-  const supabasePath = path.resolve(
-    require.resolve("@hot-updater/supabase"),
-    "..",
-    "..",
+  const supabasePath = path.dirname(
+    path.resolve(require.resolve("@hot-updater/supabase/edge-functions")),
   );
 
   const { tmpDir, removeTmpDir } = await linkSupabase(supabasePath, project.id);
+
+  const functionsPath = path.join(tmpDir, "functions");
+  const code = await fs.readFile(path.join(functionsPath, "index.ts"), "utf-8");
+  await transformEnv(code, {
+    BUCKET_NAME: bucket.name,
+  });
+  await fs.writeFile(path.join(functionsPath, "index.ts"), code);
+
   await pushDB(tmpDir);
   await deployEdgeFunction(tmpDir, project.id);
   await removeTmpDir();
@@ -191,7 +198,7 @@ export const initSupabase = async () => {
 
   await makeEnv({
     HOT_UPDATER_SUPABASE_ANON_KEY: serviceRoleKey.api_key,
-    HOT_UPDATER_SUPABASE_BUCKET_NAME: bucketId,
+    HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
   p.log.success("Generated '.env' file with Supabase settings.");

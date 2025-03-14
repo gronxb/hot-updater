@@ -11,7 +11,6 @@ CREATE OR REPLACE FUNCTION get_update_info (
 RETURNS TABLE (
     id            uuid,
     should_force_update  boolean,
-    file_url      text,
     message       text,
     status        text
 )
@@ -26,7 +25,6 @@ BEGIN
         SELECT
             b.id,
             b.should_force_update,
-            b.file_url,
             b.message,
             'UPDATE' AS status
         FROM bundles b
@@ -43,7 +41,6 @@ BEGIN
         SELECT
             b.id,
             TRUE AS should_force_update,
-            b.file_url,
             b.message,
             'ROLLBACK' AS status
         FROM bundles b
@@ -69,7 +66,6 @@ BEGIN
     SELECT
         NIL_UUID      AS id,
         TRUE          AS should_force_update,
-        NULL          AS file_url,
         NULL          AS message,
         'ROLLBACK'    AS status
     WHERE (SELECT COUNT(*) FROM final_result) = 0

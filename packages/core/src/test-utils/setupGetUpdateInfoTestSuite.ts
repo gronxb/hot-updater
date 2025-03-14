@@ -3,7 +3,6 @@ import type { Bundle, GetBundlesArgs, UpdateInfo } from "../types";
 import { NIL_UUID } from "../uuid";
 
 const DEFAULT_BUNDLE = {
-  fileUrl: "http://example.com/bundle.zip",
   message: "hello",
   platform: "ios",
   gitCommitHash: null,
@@ -12,7 +11,6 @@ const DEFAULT_BUNDLE = {
 } as const;
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
-  fileUrl: null,
   id: NIL_UUID,
   message: null,
   shouldForceUpdate: true,
@@ -46,7 +44,6 @@ export const setupGetUpdateInfoTestSuite = ({
 
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -110,7 +107,6 @@ export const setupGetUpdateInfoTestSuite = ({
       id: "00000000-0000-0000-0000-000000000002",
       shouldForceUpdate: false,
       status: "UPDATE",
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
     });
   });
@@ -135,7 +131,6 @@ export const setupGetUpdateInfoTestSuite = ({
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: true,
       status: "UPDATE",
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
     });
   });
@@ -160,7 +155,6 @@ export const setupGetUpdateInfoTestSuite = ({
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: false,
       status: "UPDATE",
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
     });
   });
@@ -184,7 +178,6 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000005",
       shouldForceUpdate: false,
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       status: "UPDATE",
     });
@@ -214,7 +207,6 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: false,
@@ -279,7 +271,6 @@ export const setupGetUpdateInfoTestSuite = ({
       {
         ...DEFAULT_BUNDLE,
         shouldForceUpdate: false,
-        fileUrl: "20240722210327/build.zip",
         fileHash:
           "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
         message: "hi",
@@ -298,7 +289,6 @@ export const setupGetUpdateInfoTestSuite = ({
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: false,
       status: "UPDATE",
-      fileUrl: "20240722210327/build.zip",
       message: "hi",
     });
   });
@@ -358,7 +348,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       message: "hello",
-      fileUrl: "http://example.com/bundle.zip",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: true,
       status: "ROLLBACK",
@@ -396,7 +385,6 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       id: "00000000-0000-0000-0000-000000000003",
       shouldForceUpdate: false,
@@ -450,7 +438,6 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
     });
     expect(update).toStrictEqual({
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       id: "00000000-0000-0000-0000-000000000005",
       shouldForceUpdate: false,
@@ -516,7 +503,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
 
     expect(update).toStrictEqual({
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       id: "00000000-0000-0000-0000-000000000001",
       shouldForceUpdate: true, // Cause the app to reload
@@ -596,7 +582,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       shouldForceUpdate: false,
       status: "UPDATE",
@@ -758,7 +743,6 @@ export const setupGetUpdateInfoTestSuite = ({
     });
     expect(update).toStrictEqual({
       id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       shouldForceUpdate: true,
       status: "ROLLBACK",
@@ -828,7 +812,6 @@ export const setupGetUpdateInfoTestSuite = ({
 
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
-      fileUrl: "http://example.com/bundle.zip",
       message: "hello",
       shouldForceUpdate: false,
       status: "UPDATE",

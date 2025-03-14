@@ -39,7 +39,6 @@ export const postgres = (
         }
         return {
           enabled: data.enabled,
-          fileUrl: data.file_url,
           shouldForceUpdate: data.should_force_update,
           fileHash: data.file_hash,
           gitCommitHash: data.git_commit_hash,
@@ -76,7 +75,6 @@ export const postgres = (
 
         return data.map((bundle) => ({
           enabled: bundle.enabled,
-          fileUrl: bundle.file_url,
           shouldForceUpdate: bundle.should_force_update,
           fileHash: bundle.file_hash,
           gitCommitHash: bundle.git_commit_hash,
@@ -111,7 +109,6 @@ export const postgres = (
               .values({
                 id: bundle.id,
                 enabled: bundle.enabled,
-                file_url: bundle.fileUrl,
                 should_force_update: bundle.shouldForceUpdate,
                 file_hash: bundle.fileHash,
                 git_commit_hash: bundle.gitCommitHash,
@@ -123,7 +120,6 @@ export const postgres = (
               .onConflict((oc) =>
                 oc.column("id").doUpdateSet({
                   enabled: bundle.enabled,
-                  file_url: bundle.fileUrl,
                   should_force_update: bundle.shouldForceUpdate,
                   file_hash: bundle.fileHash,
                   git_commit_hash: bundle.gitCommitHash,

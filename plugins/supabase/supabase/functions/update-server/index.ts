@@ -40,6 +40,12 @@ const createErrorResponse = (message: string, statusCode: number) => {
   });
 };
 
+declare global {
+  var HotUpdater: {
+    BUCKET_NAME: string;
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(
@@ -91,37 +97,30 @@ Deno.serve(async (req) => {
     }
 
     const response = data[0] ? camelcaseKeys(data[0]) : null;
-    if (response?.fileUrl) {
-      const fileUrl = new URL(response.fileUrl).pathname.replace(
-        "/storage/v1/object/public/",
-        "",
-      );
-
-      const [bucketName, ...filePath] = fileUrl.split("/");
-
-      const { data: signedUrlData, error: signedUrlError } =
-        await supabase.storage
-          .from(bucketName)
-          .createSignedUrl(filePath.join("/"), 60);
-      if (signedUrlError) {
-        throw new Error(signedUrlError.message);
-      }
-      return new Response(
-        JSON.stringify({
-          ...response,
-          fileUrl: signedUrlData?.signedUrl,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        },
-      );
+    if (!response) {
+      return new Response(JSON.stringify(null), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
-    return new Response(JSON.stringify(response), {
-      headers: { "Content-Type": "application/json" },
-      status: 200,
-    });
+    const { data: signedUrlData, error: signedUrlError } =
+      await supabase.storage
+        .from(HotUpdater.BUCKET_NAME)
+        .createSignedUrl([response.id, "build.zip"].join("/"), 60);
+    if (signedUrlError) {
+      throw new Error(signedUrlError.message);
+    }
+    return new Response(
+      JSON.stringify({
+        ...response,
+        fileUrl: signedUrlData.signedUrl,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      },
+    );
   } catch (err: unknown) {
     return createErrorResponse(
       err instanceof Error ? err.message : "Unknown error",

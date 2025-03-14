@@ -46,7 +46,6 @@ export const firebaseDatabase = (
         const data = bundleSnap.data();
         return {
           enabled: data.enabled,
-          fileUrl: data.file_url,
           shouldForceUpdate: data.should_force_update,
           fileHash: data.file_hash,
           gitCommitHash: data.git_commit_hash,
@@ -88,7 +87,6 @@ export const firebaseDatabase = (
           const data = doc.data();
           return {
             enabled: data.enabled,
-            fileUrl: data.file_url,
             shouldForceUpdate: data.should_force_update,
             fileHash: data.file_hash,
             gitCommitHash: data.git_commit_hash,
@@ -126,7 +124,6 @@ export const firebaseDatabase = (
               {
                 id: data.id,
                 enabled: data.enabled,
-                file_url: data.fileUrl,
                 should_force_update: data.shouldForceUpdate,
                 file_hash: data.fileHash,
                 git_commit_hash: data.gitCommitHash,

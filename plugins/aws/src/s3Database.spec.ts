@@ -14,7 +14,6 @@ import { s3Database } from "./s3Database";
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DEFAULT_BUNDLE: Omit<Bundle, "id" | "platform" | "targetAppVersion"> = {
-  fileUrl: "http://example.com/bundle.zip",
   fileHash: "hash",
   gitCommitHash: null,
   message: null,

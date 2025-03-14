@@ -3,3 +3,6 @@
 
 ALTER TABLE bundles
 ADD COLUMN channel TEXT NOT NULL DEFAULT 'production';
+
+ALTER TABLE bundles
+DROP COLUMN file_url;

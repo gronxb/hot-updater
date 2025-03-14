@@ -25,11 +25,10 @@ declare module "cloudflare:test" {
 const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
-      id, file_url, file_hash, platform, target_app_version,
+      id, file_hash, platform, target_app_version,
       should_force_update, enabled, git_commit_hash, message, channel
     ) VALUES (
       '${bundle.id}',
-      '${bundle.fileUrl}',
       '${bundle.fileHash}',
       '${bundle.platform}',
       '${bundle.targetAppVersion}',

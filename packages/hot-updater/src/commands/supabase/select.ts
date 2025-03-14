@@ -81,7 +81,12 @@ export const selectProject = async (): Promise<{
   return selectedProject;
 };
 
-export const selectBucket = async (api: SupabaseApi): Promise<string> => {
+export const selectBucket = async (
+  api: SupabaseApi,
+): Promise<{
+  id: string;
+  name: string;
+}> => {
   let buckets: { id: string; name: string; isPublic: boolean }[] = [];
   let retryCount = 0;
 
@@ -119,7 +124,7 @@ export const selectBucket = async (api: SupabaseApi): Promise<string> => {
     options: [
       ...buckets.map((bucket) => ({
         label: bucket.name,
-        value: bucket.id,
+        value: JSON.stringify({ id: bucket.id, name: bucket.name }),
       })),
       {
         label: "Create a new private bucket",
@@ -150,12 +155,12 @@ export const selectBucket = async (api: SupabaseApi): Promise<string> => {
       if (!newBucket) {
         throw new Error("Failed to create and select new bucket");
       }
-      return newBucket.id;
+      return { id: newBucket.id, name: newBucket.name };
     } catch (err) {
       p.log.error(`Failed to create new bucket: ${err}`);
       process.exit(1);
     }
   }
 
-  return selectedBucketId;
+  return JSON.parse(selectedBucketId);
 };

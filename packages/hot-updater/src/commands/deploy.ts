@@ -98,7 +98,6 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let bundlePath: string;
-  let fileUrl: string;
   let fileHash: string;
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
@@ -163,10 +162,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            ({ fileUrl } = await storagePlugin.uploadBundle(
-              bundleId,
-              bundlePath,
-            ));
+            await storagePlugin.uploadBundle(bundleId, bundlePath);
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -187,7 +183,6 @@ export const deploy = async (options: DeployOptions) => {
             await databasePlugin.appendBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
-              fileUrl,
               fileHash,
               gitCommitHash,
               message: options?.message ?? gitMessage,
