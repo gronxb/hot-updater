@@ -604,6 +604,9 @@ importers:
       cosmiconfig-typescript-loader:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.9.0)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
     devDependencies:
       '@babel/core':
         specifier: ^7.26.0
@@ -19075,9 +19078,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.23.2(@babel/core@7.26.0))':
     dependencies:
@@ -19088,7 +19089,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':

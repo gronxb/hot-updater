@@ -56,6 +56,7 @@
     "@hot-updater/console": "0.12.4",
     "@hot-updater/core": "0.12.4",
     "@hot-updater/plugin-core": "0.12.4",
+    "typescript": "5.8.2",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0"
