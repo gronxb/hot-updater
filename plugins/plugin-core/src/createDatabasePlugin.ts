@@ -63,15 +63,12 @@ export function createDatabasePlugin(
   const changedMap = new Map<
     string,
     {
-      operation: "insert" | "update" | "delete";
+      operation: "insert" | "update";
       data: Bundle;
     }
   >();
 
-  const markChanged = (
-    operation: "insert" | "update" | "delete",
-    data: Bundle,
-  ) => {
+  const markChanged = (operation: "insert" | "update", data: Bundle) => {
     changedMap.set(data.id, { operation, data });
   };
 
@@ -90,10 +87,10 @@ export function createDatabasePlugin(
     },
     async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
       const pendingChange = changedMap.get(targetBundleId);
-      if (pendingChange && pendingChange.operation === "insert") {
+      if (pendingChange) {
         const updatedData = merge(pendingChange.data, newBundle);
         changedMap.set(targetBundleId, {
-          operation: "insert",
+          operation: pendingChange.operation,
           data: updatedData,
         });
         return;
