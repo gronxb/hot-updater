@@ -32,7 +32,7 @@ function App(): React.JSX.Element {
   // @ts-ignore
   const isHermes = () => !!global.HermesInternal;
 
-  const { progress } = useHotUpdaterStore();
+  const progress = useHotUpdaterStore((state) => state.progress);
 
   return (
     <SafeAreaView>
