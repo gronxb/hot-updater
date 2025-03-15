@@ -50,7 +50,6 @@ interface DataTableProps {
 }
 
 const DEFAULT_PAGE_SIZE = 20;
-const DEFAULT_CHANNEL = "production";
 
 const [platformFilter, setPlatformFilter] = createSignal<Platform | null>(null);
 const [channelFilter, setChannelFilter] = createSignal<string | null>(null);
@@ -105,13 +104,8 @@ export function DataTable(props: DataTableProps) {
   const channels = createChannelsQuery();
 
   createEffect(() => {
-    if (channels.isSuccess) {
-      const productionIndex =
-        channels.data?.findIndex((channel) => channel === DEFAULT_CHANNEL) ??
-        -1;
-      setChannelFilter(
-        channels.data?.[productionIndex === -1 ? 0 : productionIndex] ?? null,
-      );
+    if (channels.isFetched && channels.data && channelFilter() === null) {
+      setChannelFilter(channels.data[0]);
     }
   });
 
