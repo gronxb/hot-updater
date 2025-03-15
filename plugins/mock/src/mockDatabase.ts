@@ -16,6 +16,7 @@ export const mockDatabase =
   (_: BasePluginArgs): DatabasePlugin => {
     const bundles: Bundle[] = config.initialBundles ?? [];
     const latency = config.latency;
+
     return {
       name: "mockDatabase",
       async commitBundle() {
@@ -26,7 +27,7 @@ export const mockDatabase =
         await sleep(minMax(latency.min, latency.max));
         const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
         if (targetIndex === -1) {
-          throw new Error("target bundle version not found");
+          throw new Error("targetBundleId not found");
         }
         Object.assign(bundles[targetIndex], newBundle);
       },
@@ -38,9 +39,29 @@ export const mockDatabase =
         await sleep(minMax(latency.min, latency.max));
         return bundles.find((b) => b.id === bundleId) ?? null;
       },
-      async getBundles() {
+      async getBundles(options) {
+        const { where, limit, offset = 0 } = options ?? {};
+
         await sleep(minMax(latency.min, latency.max));
-        return bundles.sort((a, b) => a.id.localeCompare(b.id));
+        const filteredBundles = bundles.filter((b) => {
+          if (where?.channel && b.channel !== where.channel) {
+            return false;
+          }
+          if (where?.platform && b.platform !== where.platform) {
+            return false;
+          }
+          return true;
+        });
+        if (limit) {
+          return filteredBundles.slice(offset, offset + limit);
+        }
+        return filteredBundles;
+      },
+      async getChannels() {
+        await sleep(minMax(latency.min, latency.max));
+        return bundles
+          .map((b) => b.channel)
+          .filter((c, i, self) => self.indexOf(c) === i);
       },
     };
   };

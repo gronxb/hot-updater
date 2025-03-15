@@ -27,10 +27,11 @@ function App(): React.JSX.Element {
   // @ts-ignore
   const isHermes = () => !!global.HermesInternal;
 
-  const { progress } = useHotUpdaterStore();
+  const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text
         style={{
           marginVertical: 20,

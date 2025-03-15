@@ -11,8 +11,16 @@ export interface BuildPluginConfig {
 }
 
 export interface DatabasePlugin {
+  getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (refresh?: boolean) => Promise<Bundle[]>;
+  getBundles: (options?: {
+    where?: {
+      channel?: string;
+      platform?: Platform;
+    };
+    limit?: number;
+    offset?: number;
+  }) => Promise<Bundle[]>;
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,
@@ -28,9 +36,13 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  build: (args: { platform: Platform }) => Promise<{
+  build: (args: {
+    platform: Platform;
+    channel: string;
+  }) => Promise<{
     buildPath: string;
     bundleId: string;
+    channel: string;
     stdout: string | null;
   }>;
   name: string;
@@ -41,7 +53,8 @@ export interface StoragePlugin {
     bundleId: string,
     bundlePath: string,
   ) => Promise<{
-    fileUrl: string;
+    bucketName: string;
+    key: string;
   }>;
 
   deleteBundle: (bundleId: string) => Promise<string>;
@@ -49,11 +62,17 @@ export interface StoragePlugin {
 }
 
 export interface StoragePluginHooks {
-  transformFileUrl?: (key: string) => string;
   onStorageUploaded?: () => Promise<void>;
 }
 
-export type Config = {
+export type ConfigInput = {
+  /**
+   * The channel used when building the native app.
+   * Used to replace HotUpdater.CHANNEL at build time.
+   *
+   * @default "production"
+   */
+  releaseChannel?: string;
   console?: {
     /**
      * Git repository URL

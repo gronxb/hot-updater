@@ -1,5 +1,6 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { UpdateInfo } from "@hot-updater/core";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
@@ -13,37 +14,28 @@ declare global {
   };
 }
 
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
 const s3 = new S3Client({ region: HotUpdater.S3_REGION });
+const bucketName = HotUpdater.S3_BUCKET_NAME;
 
-function parseS3Url(url: string) {
-  try {
-    const parsedUrl = new URL(url);
-    const { hostname, pathname } = parsedUrl;
-    if (!hostname.includes(".s3.")) return { isS3Url: false };
-    const [bucket] = hostname.split(".s3");
-    const key = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-    return { isS3Url: true, bucket, key };
-  } catch {
-    return { isS3Url: false };
-  }
+async function createPresignedUrl(id: string) {
+  return getSignedUrl(
+    // @ts-ignore
+    s3,
+    new GetObjectCommand({
+      Bucket: bucketName,
+      Key: [id, "bundle.zip"].join("/"),
+    }),
+    {
+      expiresIn: 60,
+    },
+  );
 }
 
-async function createPresignedUrl(url: string) {
-  const { isS3Url, bucket, key } = parseS3Url(url);
-  if (!isS3Url || !bucket || !key) {
-    return url;
-  }
-  // @ts-ignore
-  return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
-    expiresIn: 60,
-  });
-}
-
-async function signUpdateInfoFileUrl(updateInfo: any) {
-  if (updateInfo?.fileUrl) {
-    updateInfo.fileUrl = await createPresignedUrl(updateInfo.fileUrl);
-  }
-  return updateInfo;
+async function signUpdateInfoFileUrl(updateInfo: UpdateInfo) {
+  const fileUrl = await createPresignedUrl(updateInfo.id);
+  return { ...updateInfo, fileUrl };
 }
 
 type Bindings = {
@@ -63,20 +55,25 @@ app.get("/api/check-update", async (c) => {
       | "android";
 
     const appVersion = headers["x-app-version"]?.[0]?.value;
+    const minBundleId = headers["x-min-bundle-id"]?.[0]?.value ?? NIL_UUID;
+    const channel = headers["x-channel"]?.[0]?.value ?? "production";
+
     if (!bundleId || !appPlatform || !appVersion) {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const updateInfo = await getUpdateInfo(s3, HotUpdater.S3_BUCKET_NAME, {
+    const updateInfoLayer = await getUpdateInfo(s3, HotUpdater.S3_BUCKET_NAME, {
       platform: appPlatform,
       bundleId,
       appVersion,
+      minBundleId,
+      channel,
     });
-    if (!updateInfo) {
+    if (!updateInfoLayer) {
       return c.json(null);
     }
 
-    const finalInfo = await signUpdateInfoFileUrl(updateInfo);
+    const finalInfo = await signUpdateInfoFileUrl(updateInfoLayer);
     return c.json(finalInfo);
   } catch {
     return c.json(

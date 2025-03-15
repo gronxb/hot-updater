@@ -1,7 +1,6 @@
 import { vValidator } from "@hono/valibot-validator";
 import {
-  type Bundle,
-  type Config,
+  type ConfigResponse,
   type DatabasePlugin,
   getCwd,
   loadConfig,
@@ -15,72 +14,139 @@ export const bundleSchema = v.object({
   id: v.string(),
   shouldForceUpdate: v.boolean(),
   enabled: v.boolean(),
-  fileUrl: v.string(),
   fileHash: v.string(),
   gitCommitHash: v.nullable(v.string()),
   message: v.nullable(v.string()),
+  channel: v.string(),
 });
 
-let config: Config | null = null;
-let databasePlugin: DatabasePlugin | null = null;
+let configPromise: Promise<{
+  config: ConfigResponse;
+  databasePlugin: DatabasePlugin;
+}> | null = null;
 
 const prepareConfig = async () => {
-  if (!config) {
-    config = await loadConfig({
-      platform: "console",
-    });
-    databasePlugin =
-      (await config?.database({
-        cwd: getCwd(),
-      })) ?? null;
+  if (!configPromise) {
+    configPromise = (async () => {
+      try {
+        const config = await loadConfig(null);
+        const databasePlugin =
+          (await config?.database({ cwd: getCwd() })) ?? null;
+        if (!databasePlugin) {
+          throw new Error("Database plugin initialization failed");
+        }
+        return { config, databasePlugin };
+      } catch (error) {
+        console.error("Error during configuration initialization:", error);
+        throw error;
+      }
+    })();
   }
-  return { config, databasePlugin };
+  return configPromise;
 };
 
 export const rpc = new Hono()
-  .get("/getConfig", async (c) => {
-    const { config } = await prepareConfig();
-
-    return c.json({
-      console: config?.console,
-    });
+  .get("/config", async (c) => {
+    try {
+      const { config } = await prepareConfig();
+      return c.json({ console: config.console });
+    } catch (error) {
+      console.error("Error during config retrieval:", error);
+      throw error;
+    }
   })
-  .get("/isConfigLoaded", (c) => {
-    return c.json(config !== null);
+  .get("/channels", async (c) => {
+    try {
+      const { databasePlugin } = await prepareConfig();
+      const channels = await databasePlugin.getChannels();
+      return c.json(channels ?? []);
+    } catch (error) {
+      console.error("Error during channel retrieval:", error);
+      throw error;
+    }
   })
-  .get("/getBundles", async (c) => {
-    const { databasePlugin } = await prepareConfig();
-
-    const bundles = await databasePlugin?.getBundles(true);
-    return c.json((bundles ?? []) satisfies Bundle[]);
+  .get("/config-loaded", (c) => {
+    try {
+      const isLoaded = !!configPromise;
+      return c.json({ configLoaded: isLoaded });
+    } catch (error) {
+      console.error("Error during config loaded retrieval:", error);
+      throw error;
+    }
   })
   .get(
-    "/getBundleById",
-    vValidator("query", v.object({ bundleId: v.string() })),
+    "/bundles",
+    vValidator(
+      "query",
+      v.object({
+        channel: v.optional(v.string()),
+        platform: v.optional(v.union([v.literal("ios"), v.literal("android")])),
+        limit: v.optional(v.string()),
+        offset: v.optional(v.string()),
+      }),
+    ),
     async (c) => {
-      const { bundleId } = c.req.valid("query");
-      const { databasePlugin } = await prepareConfig();
-
-      const bundle = await databasePlugin?.getBundleById(bundleId);
-      return c.json((bundle ?? null) satisfies Bundle | null);
+      try {
+        const query = c.req.valid("query");
+        const { databasePlugin } = await prepareConfig();
+        const bundles = await databasePlugin.getBundles({
+          where: {
+            channel: query.channel ?? undefined,
+            platform: query.platform ?? undefined,
+          },
+          limit: query.limit ? Number(query.limit) : undefined,
+          offset: query.offset ? Number(query.offset) : undefined,
+        });
+        return c.json(bundles ?? []);
+      } catch (error) {
+        console.error("Error during bundle retrieval:", error);
+        throw error;
+      }
     },
   )
-  .post(
-    "/updateBundle",
+  .get(
+    "/bundles/:bundleId",
+    vValidator("param", v.object({ bundleId: v.string() })),
+    async (c) => {
+      try {
+        const { bundleId } = c.req.valid("param");
+        const { databasePlugin } = await prepareConfig();
+        const bundle = await databasePlugin.getBundleById(bundleId);
+        return c.json(bundle ?? null);
+      } catch (error) {
+        console.error("Error during bundle retrieval:", error);
+        throw error;
+      }
+    },
+  )
+  .patch(
+    "/bundles/:bundleId",
     vValidator(
       "json",
       v.object({
-        targetBundleId: v.string(),
         bundle: v.partial(v.omit(bundleSchema, ["id"])),
       }),
     ),
     async (c) => {
-      const { targetBundleId, bundle } = c.req.valid("json");
-      const { databasePlugin } = await prepareConfig();
+      try {
+        const bundleId = c.req.param("bundleId");
 
-      await databasePlugin?.updateBundle(targetBundleId, bundle);
-      await databasePlugin?.commitBundle();
-      return c.json(true);
+        const { bundle } = c.req.valid("json");
+        if (!bundleId) {
+          return c.json({ error: "Target bundle ID is required" }, 400);
+        }
+
+        const { databasePlugin } = await prepareConfig();
+        await databasePlugin.updateBundle(bundleId, bundle);
+        await databasePlugin.commitBundle();
+        return c.json({ success: true });
+      } catch (error) {
+        console.error("Error during bundle update:", error);
+        if (error && typeof error === "object" && "message" in error) {
+          return c.json({ error: error.message }, 500);
+        }
+        return c.json({ error: "Unknown error" }, 500);
+      }
     },
   );
 

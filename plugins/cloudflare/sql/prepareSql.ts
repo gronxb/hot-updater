@@ -7,5 +7,6 @@ export const prepareSql = async () => {
   const contents = await Promise.all(
     sqlFiles.map((file) => fs.readFile(path.join(__dirname, file), "utf-8")),
   );
-  return contents.join("\n");
+  const sql = contents.join("\n");
+  return sql;
 };

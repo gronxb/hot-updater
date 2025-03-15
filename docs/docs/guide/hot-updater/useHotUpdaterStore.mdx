@@ -36,3 +36,32 @@ export default HotUpdater.wrap({
   },
 })(App);
 ```
+
+## Optimizing Renders with Selectors
+
+You can optimize your component renders by using selectors to subscribe only to specific parts of the state. This prevents unnecessary re-renders when other parts of the state change.
+
+```tsx
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { Text } from "react-native";
+
+function ProgressDisplay() {
+  // Only re-renders when progress changes
+  const progress = useHotUpdaterStore(state => state.progress);
+  
+  return <Text>{Math.round(progress * 100)}%</Text>;
+}
+
+function UpdateButton() {
+  // Only re-renders when isBundleUpdated changes
+  const isBundleUpdated = useHotUpdaterStore(state => state.isBundleUpdated);
+  
+  return (
+    <Button
+      title="Reload"
+      onPress={() => HotUpdater.reload()}
+      disabled={!isBundleUpdated}
+    />
+  );
+}
+```

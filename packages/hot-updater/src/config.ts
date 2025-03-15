@@ -1,10 +1,10 @@
-import type { Config, HotUpdaterConfigOptions } from "@hot-updater/plugin-core";
+import type {
+  ConfigInput,
+  HotUpdaterConfigOptions,
+} from "@hot-updater/plugin-core";
 
-export const defineConfig = async (
-  config:
-    | Config
-    | ((options: HotUpdaterConfigOptions) => Config)
-    | ((options: HotUpdaterConfigOptions) => Promise<Config>),
+export const defineConfig = (
+  config: ConfigInput | ((options: HotUpdaterConfigOptions) => ConfigInput),
 ) => {
   return config;
 };

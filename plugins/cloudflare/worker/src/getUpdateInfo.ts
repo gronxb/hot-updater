@@ -1,6 +1,11 @@
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 
-import type { Platform, UpdateInfo, UpdateStatus } from "@hot-updater/core";
+import {
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+  type UpdateStatus,
+} from "@hot-updater/core";
 
 export const getUpdateInfo = async (
   DB: D1Database,
@@ -8,11 +13,9 @@ export const getUpdateInfo = async (
     platform,
     appVersion,
     bundleId,
-  }: {
-    platform: Platform;
-    appVersion: string;
-    bundleId: string;
-  },
+    minBundleId = NIL_UUID,
+    channel = "production",
+  }: GetBundlesArgs,
 ) => {
   const appVersionList = await DB.prepare(
     /* sql */ `
@@ -34,23 +37,28 @@ export const getUpdateInfo = async (
   const sql = /* sql */ `
   WITH input AS (
     SELECT 
-      ? AS app_platform,       -- 예: 'ios' 또는 'android'
-      ? AS app_version,        -- 예: '1.2.3'
-      ? AS bundle_id,          -- 현재 번들 ID (문자열)
+      ? AS app_platform,
+      ? AS app_version,
+      ? AS bundle_id,
+      ? AS min_bundle_id,
+      ? AS channel,
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
     SELECT 
       b.id,
       b.should_force_update,
-      b.file_url,
-      b.file_hash,
+      b.message,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
       AND b.id >= input.bundle_id
-      AND b.target_app_version IN (${targetAppVersionList.map((version) => `'${version}'`).join(",")})
+      AND b.id >= input.min_bundle_id
+      AND b.channel = input.channel
+      AND b.target_app_version IN (${targetAppVersionList
+        .map((version) => `'${version}'`)
+        .join(",")})
     ORDER BY b.id DESC 
     LIMIT 1
   ),
@@ -58,13 +66,13 @@ export const getUpdateInfo = async (
     SELECT 
       b.id,
       1 AS should_force_update,
-      b.file_url,
-      b.file_hash,
+      b.message,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
       AND b.id < input.bundle_id
+      AND b.id >= input.min_bundle_id
     ORDER BY b.id DESC
     LIMIT 1
   ),
@@ -74,7 +82,7 @@ export const getUpdateInfo = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, file_url, file_hash, status
+  SELECT id, should_force_update, message, status
   FROM final_result, input
   WHERE id <> bundle_id
   
@@ -83,22 +91,20 @@ export const getUpdateInfo = async (
   SELECT 
     nil_uuid AS id,
     1 AS should_force_update,
-    NULL AS file_url,
-    NULL AS file_hash,
+    NULL AS message,
     'ROLLBACK' AS status
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
-    AND bundle_id <> nil_uuid;
-  `;
+    AND bundle_id > min_bundle_id;
+`;
 
   const result = await DB.prepare(sql)
-    .bind(platform, appVersion, bundleId)
+    .bind(platform, appVersion, bundleId, minBundleId, channel)
     .first<{
       id: string;
       should_force_update: number;
-      file_url: string | null;
-      file_hash: string | null;
       status: UpdateStatus;
+      message: string | null;
     }>();
 
   if (!result) {
@@ -108,8 +114,7 @@ export const getUpdateInfo = async (
   return {
     id: result.id,
     shouldForceUpdate: Boolean(result.should_force_update),
-    fileUrl: result.file_url,
-    fileHash: result.file_hash,
     status: result.status,
+    message: result.message,
   } as UpdateInfo;
 };

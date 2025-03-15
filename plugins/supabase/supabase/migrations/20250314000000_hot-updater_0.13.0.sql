@@ -1,5 +1,10 @@
--- HotUpdater.get_update_info
+-- HotUpdater.semver_satisfies
+DROP FUNCTION IF EXISTS semver_satisfies;
 
+-- HotUpdater.get_update_info
+DROP FUNCTION IF EXISTS get_update_info;
+
+-- HotUpdater.get_update_info
 CREATE OR REPLACE FUNCTION get_update_info (
     app_platform   platforms,
     app_version text,
@@ -80,3 +85,50 @@ BEGIN
       );
 END;
 $$;
+
+-- HotUpdater.bundles
+ALTER TABLE bundles
+ADD COLUMN channel text NOT NULL DEFAULT 'production';
+
+ALTER TABLE bundles
+DROP COLUMN file_url;
+
+-- HotUpdater.get_target_app_version_list
+
+CREATE OR REPLACE FUNCTION get_target_app_version_list (
+    app_platform platforms,
+    min_bundle_id uuid
+)
+RETURNS TABLE (
+    target_app_version text
+)
+LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    RETURN QUERY
+    SELECT b.target_app_version
+    FROM bundles b 
+    WHERE b.platform = app_platform
+    AND b.id >= min_bundle_id
+    GROUP BY b.target_app_version;
+END;
+$$;
+
+-- HotUpdater.get_channels
+CREATE OR REPLACE FUNCTION get_channels ()
+RETURNS TABLE (
+    channel text
+)
+LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    RETURN QUERY
+    SELECT b.channel
+    FROM bundles b 
+    GROUP BY b.channel;
+END;
+$$;
+
+CREATE INDEX bundles_channel_idx ON bundles(channel);

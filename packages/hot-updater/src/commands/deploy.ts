@@ -26,6 +26,8 @@ export interface DeployOptions {
   platform?: Platform;
   forceUpdate: boolean;
   interactive: boolean;
+  channel: string;
+  message?: string;
 }
 
 export const deploy = async (options: DeployOptions) => {
@@ -55,7 +57,9 @@ export const deploy = async (options: DeployOptions) => {
     return;
   }
 
-  const config = await loadConfig({ platform });
+  const channel = options.channel;
+
+  const config = await loadConfig({ platform, channel });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
@@ -94,7 +98,6 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let bundlePath: string;
-  let fileUrl: string;
   let fileHash: string;
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
@@ -120,12 +123,15 @@ export const deploy = async (options: DeployOptions) => {
       buildResult: null,
     };
 
+    p.log.info(`Channel: ${channel}`);
+
     await p.tasks([
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
+            channel,
           });
           bundlePath = path.join(getCwd(), "bundle.zip");
 
@@ -156,10 +162,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            ({ fileUrl } = await storagePlugin.uploadBundle(
-              bundleId,
-              bundlePath,
-            ));
+            await storagePlugin.uploadBundle(bundleId, bundlePath);
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -180,13 +183,13 @@ export const deploy = async (options: DeployOptions) => {
             await databasePlugin.appendBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
-              fileUrl,
               fileHash,
               gitCommitHash,
-              message: gitMessage,
+              message: options?.message ?? gitMessage,
               targetAppVersion,
               id: bundleId,
               enabled: true,
+              channel,
             });
             await databasePlugin.commitBundle();
           } catch (e) {
