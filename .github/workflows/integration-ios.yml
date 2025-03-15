@@ -12,7 +12,7 @@ name: iOS Integration
 
 jobs:
   build-new-arch:
-    runs-on: macos-14.7.2
+    runs-on: macos-14
     name: Build iOS (New Architecture)
     strategy:
       matrix:
@@ -42,7 +42,7 @@ jobs:
           cd ../..
 
   build-old-arch:
-    runs-on: macos-14.7.2
+    runs-on: macos-14
     name: Build iOS (Old Architecture)
     strategy:
       matrix:
