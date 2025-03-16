@@ -104,18 +104,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: signedUrlData, error: signedUrlError } =
-      await supabase.storage
-        .from(HotUpdater.BUCKET_NAME)
-        .createSignedUrl([response.id, "bundle.zip"].join("/"), 60);
-
-    if (signedUrlError) {
-      throw new Error(signedUrlError.message);
+    if (
+      response.id.endsWith("7000-8000-000000000000") ||
+      response.id.endsWith("0000-0000-000000000000")
+    ) {
+      return new Response(
+        JSON.stringify({
+          ...response,
+          fileUrl: null,
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
     }
+
+    const { data: signedUrlData } = await supabase.storage
+      .from(HotUpdater.BUCKET_NAME)
+      .createSignedUrl([response.id, "bundle.zip"].join("/"), 60);
+
     return new Response(
       JSON.stringify({
         ...response,
-        fileUrl: signedUrlData.signedUrl,
+        fileUrl: signedUrlData?.signedUrl ?? null,
       }),
       {
         headers: { "Content-Type": "application/json" },

@@ -34,13 +34,35 @@ class ReactIntegrationManager(
      * Reload the React Native application.
      */
     public fun reload(application: ReactApplication) {
-        val reactHost = application.reactHost
-        check(reactHost != null)
+        try {
+            val reactHost = application.reactHost
+            if (reactHost != null) {
+                val activity = reactHost.currentReactContext?.currentActivity
+                if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
+                    reactHost.onHostResume(activity)
+                }
+                reactHost.reload("Requested by HotUpdater")
+            } else {
+                val reactNativeHost = application.reactNativeHost
+                try {
+                    reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
+                } catch (e: Exception) {
+                     val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+                    if (currentActivity == null) {
+                        return
+                    }
 
-        val activity = reactHost.currentReactContext?.currentActivity
-        if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
-            reactHost.onHostResume(activity)
+                    currentActivity.runOnUiThread {
+                        currentActivity.recreate()
+                    }
+                } catch (e: Exception) {
+                    Log.d("HotUpdater", "Failed to reload: ${e.message}")
+                    throw e
+                }
+            }
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to reload: ${e.message}")
+            throw e
         }
-        reactHost.reload("Requested by HotUpdater")
     }
 }
