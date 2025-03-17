@@ -63,7 +63,7 @@
     "semver": "^7.6.3",
     "toml": "^3.0.0",
     "typescript": "^5.5.2",
-    "vitest": "2.1.8",    
+    "vitest": "2.1.8",
     "wrangler": "^4.0.0",
     "xdg-app-paths": "^8.3.0"
   }
