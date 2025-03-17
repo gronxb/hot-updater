@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
 import com.facebook.react.bridge.JSBundleLoader
-import com.facebook.react.bridge.ReactContext
 import java.lang.reflect.Field
 
 class ReactIntegrationManager(

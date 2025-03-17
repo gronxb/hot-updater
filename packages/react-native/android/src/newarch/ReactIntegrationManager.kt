@@ -47,7 +47,7 @@ class ReactIntegrationManager(
                 try {
                     reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
                 } catch (e: Exception) {
-                     val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+                    val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
                     if (currentActivity == null) {
                         return
                     }
