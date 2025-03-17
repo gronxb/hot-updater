@@ -178,11 +178,11 @@ describe("Firebase Database Plugin", () => {
       expect(setDoc).toHaveBeenCalledWith(
         "document-ref",
         {
+          id: "test-bundle-id",
           channel: "production",
           enabled: false,
           file_hash: "test-file-hash",
           git_commit_hash: "test-git-hash",
-          id: "test-bundle-id",
           message: "test-message",
           platform: "android",
           should_force_update: false,

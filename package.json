@@ -19,14 +19,14 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@cloudflare/vitest-pool-workers": "^0.7.7",
-    "@nx/js": "^20.5.0",
-    "@rslib/core": "^0.5.3",
+    "@cloudflare/vitest-pool-workers": "^0.8.0",
+    "@nx/js": "^20.6.0",
+    "@rslib/core": "^0.5.4",
     "nx": "20.5.0",
     "rimraf": "^5.0.7",
     "tsup": "^8.4.0",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "vitest": "^3.0.9"
   },
   "pnpm": {
     "overrides": {
