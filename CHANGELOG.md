@@ -1,3 +1,15 @@
+## 0.12.6 (2025-03-17)
+
+### 🩹 Fixes
+
+- **react-native:** compat react 17 ([#186](https://github.com/gronxb/hot-updater/pull/186))
+- **react-native:** wrap selector ([1a511d4](https://github.com/gronxb/hot-updater/commit/1a511d4))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.12.5 (2025-03-17)
 
 ### 🚀 Features
