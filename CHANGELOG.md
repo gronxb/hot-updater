@@ -1,3 +1,18 @@
+## 0.12.5 (2025-03-17)
+
+### 🚀 Features
+
+- **standalone:** add `standaloneStorage` plugin ([#173](https://github.com/gronxb/hot-updater/pull/173))
+
+### 🩹 Fixes
+
+- **cloudflare:** supports wrangler 4.0.0 ([#185](https://github.com/gronxb/hot-updater/pull/185))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+- Tanuj Sharma @tanujs95
+
 ## 0.12.4 (2025-03-03)
 
 ### 🚀 Features

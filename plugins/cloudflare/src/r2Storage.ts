@@ -39,6 +39,7 @@ export const r2Storage =
           "object",
           "delete",
           [bucketName, bundleId].join("/"),
+          "--remote",
         );
 
         throw new Error("Bundle Not Found");
@@ -51,7 +52,7 @@ export const r2Storage =
         const Key = [bundleId, filename].join("/");
 
         try {
-          await wrangler(
+          const { stderr } = await wrangler(
             "r2",
             "object",
             "put",
@@ -59,7 +60,11 @@ export const r2Storage =
             "--file",
             bundlePath,
             ...(contentType ? ["--content-type", contentType] : []),
+            "--remote",
           );
+          if (stderr) {
+            throw new Error(stderr);
+          }
         } catch (error) {
           if (error instanceof ExecaError) {
             throw new Error(error.stderr || error.stdout);
