@@ -1,9 +1,10 @@
-import { useSyncExternalStore } from "react";
-
+import useSyncExternalStoreExports from "use-sync-external-store/shim/with-selector";
 export type HotUpdaterState = {
   progress: number;
   isBundleUpdated: boolean;
 };
+
+const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
 
 const createHotUpdaterStore = () => {
   let state: HotUpdaterState = {
@@ -41,10 +42,13 @@ const createHotUpdaterStore = () => {
 
 export const hotUpdaterStore = createHotUpdaterStore();
 
-export const useHotUpdaterStore = () => {
-  return useSyncExternalStore(
+export const useHotUpdaterStore = <T = HotUpdaterState>(
+  selector: (snapshot: HotUpdaterState) => T = (snapshot) => snapshot as T,
+) => {
+  return useSyncExternalStoreWithSelector(
     hotUpdaterStore.subscribe,
     hotUpdaterStore.getSnapshot,
     hotUpdaterStore.getSnapshot,
+    selector,
   );
 };
