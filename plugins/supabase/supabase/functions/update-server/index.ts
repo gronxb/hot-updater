@@ -104,10 +104,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (
-      response.id.endsWith("7000-8000-000000000000") ||
-      response.id.endsWith("0000-0000-000000000000")
-    ) {
+    if (response.id === NIL_UUID) {
       return new Response(
         JSON.stringify({
           ...response,
