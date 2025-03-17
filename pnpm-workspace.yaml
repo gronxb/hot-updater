@@ -4,4 +4,6 @@ packages:
   - docs
   - examples/*
 onlyBuiltDependencies:
+  - esbuild
   - nx
+  - workerd
