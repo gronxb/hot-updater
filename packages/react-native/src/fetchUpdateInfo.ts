@@ -6,7 +6,7 @@ export const fetchUpdateInfo = async (
   requestHeaders?: Record<string, string>,
 ): Promise<AppUpdateInfo | null> => {
   try {
-    return await fetch(source, {
+    return fetch(source, {
       headers: {
         "x-app-platform": platform,
         "x-app-version": appVersion,
