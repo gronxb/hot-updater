@@ -52,8 +52,8 @@ const deployWorker = async (
   const workerPath = require.resolve("@hot-updater/cloudflare/worker", {
     paths: [cwd],
   });
-  const workerDir = path.dirname(workerPath);
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(workerDir);
+  const wranglerTemplateDir = path.dirname(workerPath);
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(wranglerTemplateDir);
 
   try {
     const { createWrangler } = await import("@hot-updater/cloudflare/utils");

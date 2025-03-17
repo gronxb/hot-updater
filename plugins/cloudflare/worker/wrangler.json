@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hot-updater",
-  "main": "dist/index.js",
+  "main": "./dist/index.js",
   "compatibility_date": "2025-01-24",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
