@@ -60,6 +60,7 @@ export const r2Storage =
             "--file",
             bundlePath,
             ...(contentType ? ["--content-type", contentType] : []),
+            "--remote",
           );
           if (stderr) {
             throw new Error(stderr);
