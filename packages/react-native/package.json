@@ -80,12 +80,14 @@
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",
     "@types/react": "^18.2.44",
+    "@types/use-sync-external-store": "^0.0.6",
     "del-cli": "^6.0.0",
     "react": "18.3.1",
     "react-native": "0.76.2",
     "react-native-builder-bob": "^0.33.1"
   },
   "dependencies": {
+    "use-sync-external-store": "1.4.0",
     "@hot-updater/js": "0.12.5",
     "@hot-updater/core": "0.12.5"
   }
