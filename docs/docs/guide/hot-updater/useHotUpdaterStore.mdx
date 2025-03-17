@@ -48,14 +48,14 @@ import { Text } from "react-native";
 function ProgressDisplay() {
   // Only re-renders when progress changes
   const progress = useHotUpdaterStore(state => state.progress);
-  
-  return <Text>{Math.round(progress * 100)}%</Text>;
+
+return <Text>{Math.round(progress * 100)}%</Text>;
 }
 
 function UpdateButton() {
   // Only re-renders when isBundleUpdated changes
   const isBundleUpdated = useHotUpdaterStore(state => state.isBundleUpdated);
-  
+
   return (
     <Button
       title="Reload"

@@ -696,7 +696,7 @@ importers:
         specifier: workspace:*
         version: link:../../plugins/js
       use-sync-external-store:
-        specifier: ^1.4.0
+        specifier: 1.4.0
         version: 1.4.0(react@18.3.1)
     devDependencies:
       '@react-native-community/cli':
