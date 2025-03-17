@@ -7,3 +7,4 @@ onlyBuiltDependencies:
   - esbuild
   - nx
   - workerd
+  - sharp
