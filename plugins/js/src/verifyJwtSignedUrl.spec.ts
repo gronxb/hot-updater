@@ -90,8 +90,8 @@ describe("verifyJwtSignedUrl", () => {
     });
 
     const mockObject = {
-      httpMetadata: { contentType: "application/zip" },
-      data: "file-content",
+      contentType: "application/zip",
+      body: "file-content",
     };
 
     const mockHandler = vi.fn().mockResolvedValue(mockObject);
@@ -110,7 +110,7 @@ describe("verifyJwtSignedUrl", () => {
         "Content-Type": "application/zip",
         "Content-Disposition": "attachment; filename=test-file.zip",
       },
-      responseBody: mockObject,
+      responseBody: "file-content",
     });
   });
 
