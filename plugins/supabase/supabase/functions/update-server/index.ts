@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
 
     const { data: signedUrlData } = await supabase.storage
       .from(HotUpdater.BUCKET_NAME)
-      .createSignedUrl([response.id, "bundle.zip"].join("/"), 60);
+      .createSignedUrl([response.id, "bundle.zip"].join("/"), 60 * 5);
 
     return new Response(
       JSON.stringify({

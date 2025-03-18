@@ -87,6 +87,9 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
+      '@hot-updater/cloudflare':
+        specifier: workspace:*
+        version: link:../../plugins/cloudflare
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
@@ -156,6 +159,9 @@ importers:
       typescript:
         specifier: 4.8.4
         version: 4.8.4
+      wrangler:
+        specifier: ^4.0.0
+        version: 4.0.0(@cloudflare/workers-types@4.20250317.0)
 
   examples/v0.74.1:
     dependencies:
@@ -806,6 +812,12 @@ importers:
       execa:
         specifier: ^9.5.2
         version: 9.5.2
+      hono:
+        specifier: ^4.6.3
+        version: 4.6.3
+      jose:
+        specifier: ^6.0.10
+        version: 6.0.10
       mime:
         specifier: ^4.0.4
         version: 4.0.4
@@ -9236,6 +9248,9 @@ packages:
 
   joi@17.11.0:
     resolution: {integrity: sha512-NgB+lZLNoqISVy1rZocE9PZI36bL/77ie924Ri43yEvi9GUUMPeyVIr8KdFTMUlby1p0PBYMk9spIxEUQYqrJQ==}
+
+  jose@6.0.10:
+    resolution: {integrity: sha512-skIAxZqcMkOrSwjJvplIPYrlXGpxTPnro2/QWTDCxAdWQrSTV5/KqspMWmi5WAx5+ULswASJiZ0a+1B/Lxt9cw==}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -25164,6 +25179,8 @@ snapshots:
       '@sideway/address': 4.1.4
       '@sideway/formula': 3.0.1
       '@sideway/pinpoint': 2.0.0
+
+  jose@6.0.10: {}
 
   joycon@3.1.1: {}
 

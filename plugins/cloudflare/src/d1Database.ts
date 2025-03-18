@@ -164,7 +164,7 @@ export const d1Database = (
               b.platform,
               b.targetAppVersion,
             );
-            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            return "(?, ?, ?, ?, ?, ?, ?, ?, ?)";
           })
           .join(",\n");
 

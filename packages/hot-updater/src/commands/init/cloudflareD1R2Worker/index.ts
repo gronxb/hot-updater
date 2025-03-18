@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import path from "path";
 import { link } from "@/components/banner";
 import { makeEnv } from "@/utils/makeEnv";
@@ -46,7 +47,8 @@ const deployWorker = async (
   {
     d1DatabaseId,
     d1DatabaseName,
-  }: { d1DatabaseId: string; d1DatabaseName: string },
+    r2BucketName,
+  }: { d1DatabaseId: string; d1DatabaseName: string; r2BucketName: string },
 ) => {
   const cwd = getCwd();
   const workerPath = require.resolve("@hot-updater/cloudflare/worker", {
@@ -69,6 +71,19 @@ const deployWorker = async (
         database_name: d1DatabaseName,
       },
     ];
+
+    wranglerConfig.r2_buckets = [
+      {
+        binding: "BUCKET",
+        bucket_name: r2BucketName,
+      },
+    ];
+
+    const jwtSecret = crypto.randomBytes(32).toString("hex");
+
+    wranglerConfig.vars = {
+      JWT_SECRET: jwtSecret,
+    };
 
     await fs.writeFile(
       path.join(tmpDir, "wrangler.json"),
@@ -368,6 +383,7 @@ export const initCloudflareD1R2Worker = async () => {
   const workerName = await deployWorker(auth.oauth_token, accountId, {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
+    r2BucketName: selectedBucketName,
   });
 
   await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);

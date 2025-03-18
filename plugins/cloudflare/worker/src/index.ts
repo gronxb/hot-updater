@@ -1,61 +1,94 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.json`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
-
+import { NIL_UUID } from "@hot-updater/core";
+import { Hono } from "hono";
+import { type JWTPayload, SignJWT, jwtVerify } from "jose";
 import { getUpdateInfo } from "./getUpdateInfo";
 
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+type Env = {
+  DB: D1Database;
+  BUCKET: R2Bucket;
+  JWT_SECRET: string;
+};
 
-export default {
-  async fetch(request, env, ctx): Promise<Response> {
-    const url = new URL(request.url);
+const app = new Hono<{ Bindings: Env }>();
 
-    if (url.pathname !== "/api/check-update") {
-      return new Response("Not found", { status: 404 });
-    }
+app.get("/api/check-update", async (c) => {
+  const bundleId = c.req.header("x-bundle-id") as string;
+  const appPlatform = c.req.header("x-app-platform") as "ios" | "android";
+  const appVersion = c.req.header("x-app-version") as string;
+  const minBundleId = c.req.header("x-min-bundle-id") as string | undefined;
+  const channel = c.req.header("x-channel") as string | undefined;
 
-    const bundleId = request.headers.get("x-bundle-id") as string;
-    const appPlatform = request.headers.get("x-app-platform") as
-      | "ios"
-      | "android";
-    const appVersion = request.headers.get("x-app-version") as string;
+  if (!bundleId || !appPlatform || !appVersion) {
+    return c.json(
+      { error: "Missing bundleId, appPlatform, or appVersion" },
+      400,
+    );
+  }
 
-    const minBundleId = request.headers.get("x-min-bundle-id") as
-      | string
-      | undefined;
-    const channel = request.headers.get("x-channel") as string | undefined;
+  const updateInfo = await getUpdateInfo(c.env.DB, {
+    appVersion,
+    bundleId,
+    platform: appPlatform,
+    minBundleId: minBundleId || NIL_UUID,
+    channel: channel || "production",
+  });
 
-    if (!bundleId || !appPlatform || !appVersion) {
-      return new Response(
-        JSON.stringify({
-          error: "Missing bundleId, appPlatform, or appVersion",
-        }),
-        { status: 400 },
-      );
-    }
+  if (!updateInfo) {
+    return c.json(null, 200);
+  }
 
-    const updateInfo = await getUpdateInfo(env.DB, {
-      appVersion,
-      bundleId,
-      platform: appPlatform,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-    });
+  if (updateInfo.id === NIL_UUID) {
+    return c.json({ ...updateInfo, fileUrl: null }, 200);
+  }
 
-    // HotUpdater.BUCKET_NAME ?
+  const key = `${updateInfo.id}/bundle.zip`;
 
-    return new Response(JSON.stringify(updateInfo), {
-      headers: { "Content-Type": "application/json" },
-      status: 200,
-    });
-  },
-} satisfies ExportedHandler<Env>;
+  const secretKey = new TextEncoder().encode(c.env.JWT_SECRET);
+  const token = await new SignJWT({ key })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("60s")
+    .sign(secretKey);
+
+  const requestUrl = new URL(c.req.url);
+  requestUrl.pathname = `/${key}`;
+  requestUrl.searchParams.set("token", token);
+
+  return c.json({ ...updateInfo, fileUrl: requestUrl.toString() }, 200);
+});
+
+app.get("*", async (c) => {
+  const key = c.req.path.replace(/^\/+/, "");
+  const token = c.req.query("token");
+  if (!token) {
+    return c.text("Missing token", 400);
+  }
+  let payload: JWTPayload;
+  try {
+    const secretKey = new TextEncoder().encode(c.env.JWT_SECRET);
+    const { payload: verifiedPayload } = await jwtVerify(token, secretKey);
+    payload = verifiedPayload;
+  } catch (err) {
+    return c.text("Invalid or expired token", 403);
+  }
+
+  if (!payload || payload.key !== key) {
+    return c.text("Token does not match requested file", 403);
+  }
+  const object = await c.env.BUCKET.get(key);
+  if (!object) {
+    return c.text("File not found", 404);
+  }
+
+  const pathParts = key.split("/");
+  const fileName = pathParts[pathParts.length - 1];
+
+  return new Response(object.body, {
+    headers: {
+      "Content-Type":
+        object.httpMetadata?.contentType || "application/octet-stream",
+      "Content-Disposition": `attachment; filename=${fileName}`,
+    },
+  });
+});
+
+export default app;
