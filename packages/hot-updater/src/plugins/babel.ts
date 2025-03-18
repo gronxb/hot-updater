@@ -32,10 +32,13 @@ const getBundleId = () => {
 };
 
 export const getChannel = () => {
-  const config = loadConfigSync(null);
+  const envChannel = process.env["HOT_UPDATER_CHANNEL"];
+  if (envChannel) {
+    return envChannel;
+  }
 
-  const channel = process.env["HOT_UPDATER_CHANNEL"] || config.releaseChannel;
-  return channel;
+  const { releaseChannel } = loadConfigSync(null);
+  return releaseChannel;
 };
 
 export default function replaceHotUpdaterBundleId(): PluginObj {

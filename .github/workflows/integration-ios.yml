@@ -40,6 +40,8 @@ jobs:
           pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev
 
   build-old-arch:
     runs-on: macos-14
@@ -70,3 +72,5 @@ jobs:
           pod install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev
