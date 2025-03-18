@@ -1,2 +1,2 @@
 export * from "./gcsDatabase";
-export * from "./s3Storage";
+export * from "./gcsStorage";

@@ -39,12 +39,7 @@
         "test:type": "tsc --noEmit"
     },
     "devDependencies": {
-        "@aws-sdk/s3-request-presigner": "^3.750.0",
-        "@hot-updater/core": "0.9.0",
-        "@hot-updater/js": "0.9.0",
-        "@types/aws-lambda": "^8.10.147",
         "@types/node": "^22.13.1",
-        "aws-sdk-client-mock": "^4.1.0",
         "es-toolkit": "^1.32.0",
         "hono": "^4.6.3",
         "mime": "^4.0.4"
@@ -52,6 +47,8 @@
     "dependencies": {
         "@google-cloud/functions-framework": "*",
         "@google-cloud/storage": "*",
-        "@hot-updater/plugin-core": "0.12.6"
+        "@hot-updater/plugin-core": "0.12.6",
+        "@hot-updater/core": "0.9.0",
+        "@hot-updater/js": "0.9.0"
     }
 }

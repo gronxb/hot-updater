@@ -4,9 +4,12 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
-import { Storage } from "@google-cloud/storage";
-
-const storage = new Storage();
+import {
+  getJsonFromGCS,
+  uploadJsonToGCS,
+  deleteObjectGCS,
+  listUpdateJsonKeys,
+} from "./utils/gcs";
 
 export interface GCSDatabaseConfig {
   bucketName: string;
@@ -17,73 +20,11 @@ interface BundleWithUpdateJsonKey extends Bundle {
   _oldUpdateJsonKey?: string;
 }
 
-/**
- * Loads JSON data from GCS.
- * Returns null if an error occurs.
- */
-async function loadJsonFromGCS<T>(
-  bucketName: string,
-  key: string
-): Promise<T | null> {
-  const bucket = storage.bucket(bucketName);
-  const file = bucket.file(key);
-
-  try {
-    const data = await file.download();
-    const json = JSON.parse(data.toString());
-    return json;
-  } catch (error) {
-    console.error("Failed to download or parse JSON:", error);
-    throw null;
-  }
-}
-
-/**
- * Converts data to JSON string and uploads to GCS.
- */
-async function uploadJsonToGCS<T>(
-  bucketName: string,
-  fileName: string,
-  jsonObject: T
-) {
-  const bucket = storage.bucket(bucketName);
-  const file = bucket.file(fileName);
-  const jsonString = JSON.stringify(jsonObject);
-
-  try {
-    await file.save(jsonString, {
-      contentType: "application/json",
-    });
-    console.log("JSON uploaded successfully!");
-  } catch (error) {
-    console.error("Failed to upload JSON:", error);
-    throw error;
-  }
-}
-
-// List update.json paths for each platform in parallel
-async function listUpdateJsonKeys(
-  bucketName: string,
-  platform: string
-): Promise<string[]> {
-  const bucket = storage.bucket(bucketName);
-  const [files, a, b] = await bucket.getFiles({ prefix: `${platform}/` });
-  const pattern = new RegExp(`^${platform}/[^/]+/update\\.json$`);
-  // TODO - Handle pagination
-  return files.map((file) => file.name).filter((key) => pattern.test(key));
-}
-
-async function deleteObjectGCS(bucketName: string, fileName: string) {
-  const bucket = storage.bucket(bucketName);
-  const file = bucket.file(fileName);
-  await file.delete();
-}
-
 export const gcsDatabase =
   (config: GCSDatabaseConfig, hooks?: DatabasePluginHooks) =>
   (_: BasePluginArgs): DatabasePlugin => {
     const { bucketName } = config;
-
+    oldPlatform;
     let bundles: BundleWithUpdateJsonKey[] = [];
     const changedIds = new Set<string>();
 
@@ -94,7 +35,7 @@ export const gcsDatabase =
     async function updateTargetVersionsForPlatform(platform: string) {
       const targetKey = `${platform}/target-app-versions.json`;
       const oldTargetVersions =
-        (await loadJsonFromGCS<string[]>(bucketName, targetKey)) ?? [];
+        (await getJsonFromGCS<string[]>(bucketName, targetKey)) ?? [];
       const updateKeys = await listUpdateJsonKeys(bucketName, platform);
       const currentVersions = updateKeys.map((key) => key.split("/")[1]);
       const newTargetVersions = oldTargetVersions.filter((v) =>
@@ -109,7 +50,7 @@ export const gcsDatabase =
     // Remove bundles to be moved from existing update.json file
     async function processRemovals(oldKey: string, removalIds: string[]) {
       const currentBundles =
-        (await loadJsonFromGCS<Bundle[]>(bucketName, oldKey)) ?? [];
+        (await getJsonFromGCS<Bundle[]>(bucketName, oldKey)) ?? [];
       const updatedBundles = currentBundles.filter(
         (b) => !removalIds.includes(b.id)
       );
@@ -127,7 +68,7 @@ export const gcsDatabase =
       changedList: Bundle[]
     ) {
       const currentBundles =
-        (await loadJsonFromGCS<Bundle[]>(bucketName, updateJsonKey)) ?? [];
+        (await getJsonFromGCS<Bundle[]>(bucketName, updateJsonKey)) ?? [];
       for (const changedBundle of changedList) {
         const index = currentBundles.findIndex(
           (b) => b.id === changedBundle.id
@@ -231,7 +172,7 @@ export const gcsDatabase =
           const keys = await listUpdateJsonKeys(bucketName, platform);
           const filePromises = keys.map(async (key) => {
             const bundlesData =
-              (await loadJsonFromGCS<Bundle[]>(bucketName, key)) ?? [];
+              (await getJsonFromGCS<Bundle[]>(bucketName, key)) ?? [];
             return bundlesData.map((bundle) => ({
               ...bundle,
               _updateJsonKey: key,
