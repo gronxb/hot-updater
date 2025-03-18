@@ -1,24 +1,29 @@
-import { vValidator } from "@hono/valibot-validator";
+import { typiaValidator } from "@hono/typia-validator";
 import {
+  type Bundle,
   type ConfigResponse,
   type DatabasePlugin,
   getCwd,
   loadConfig,
 } from "@hot-updater/plugin-core";
 import { Hono } from "hono";
-import * as v from "valibot";
+import typia from "typia";
 
-export const bundleSchema = v.object({
-  platform: v.union([v.literal("ios"), v.literal("android")]),
-  targetAppVersion: v.string(),
-  id: v.string(),
-  shouldForceUpdate: v.boolean(),
-  enabled: v.boolean(),
-  fileHash: v.string(),
-  gitCommitHash: v.nullable(v.string()),
-  message: v.nullable(v.string()),
-  channel: v.string(),
-});
+const bundlesValidator = typia.createValidate<{
+  channel?: string;
+  platform?: "ios" | "android";
+  limit?: string;
+  offset?: string;
+}>();
+
+const bundleIdValidator = typia.createValidate<{
+  bundleId: string;
+}>();
+
+const updateBundleValidator = typia.createValidate<{
+  targetBundleId: string;
+  bundle: Partial<Bundle>;
+}>();
 
 let configPromise: Promise<{
   config: ConfigResponse;
@@ -74,39 +79,27 @@ export const rpc = new Hono()
       throw error;
     }
   })
-  .get(
-    "/bundles",
-    vValidator(
-      "query",
-      v.object({
-        channel: v.optional(v.string()),
-        platform: v.optional(v.union([v.literal("ios"), v.literal("android")])),
-        limit: v.optional(v.string()),
-        offset: v.optional(v.string()),
-      }),
-    ),
-    async (c) => {
-      try {
-        const query = c.req.valid("query");
-        const { databasePlugin } = await prepareConfig();
-        const bundles = await databasePlugin.getBundles({
-          where: {
-            channel: query.channel ?? undefined,
-            platform: query.platform ?? undefined,
-          },
-          limit: query.limit ? Number(query.limit) : undefined,
-          offset: query.offset ? Number(query.offset) : undefined,
-        });
-        return c.json(bundles ?? []);
-      } catch (error) {
-        console.error("Error during bundle retrieval:", error);
-        throw error;
-      }
-    },
-  )
+  .get("/bundles", typiaValidator("query", bundlesValidator), async (c) => {
+    try {
+      const query = c.req.valid("query");
+      const { databasePlugin } = await prepareConfig();
+      const bundles = await databasePlugin.getBundles({
+        where: {
+          channel: query.channel ?? undefined,
+          platform: query.platform ?? undefined,
+        },
+        limit: query.limit ? Number(query.limit) : undefined,
+        offset: query.offset ? Number(query.offset) : undefined,
+      });
+      return c.json(bundles ?? []);
+    } catch (error) {
+      console.error("Error during bundle retrieval:", error);
+      throw error;
+    }
+  })
   .get(
     "/bundles/:bundleId",
-    vValidator("param", v.object({ bundleId: v.string() })),
+    typiaValidator("param", bundleIdValidator),
     async (c) => {
       try {
         const { bundleId } = c.req.valid("param");
@@ -121,12 +114,7 @@ export const rpc = new Hono()
   )
   .patch(
     "/bundles/:bundleId",
-    vValidator(
-      "json",
-      v.object({
-        bundle: v.partial(v.omit(bundleSchema, ["id"])),
-      }),
-    ),
+    typiaValidator("json", updateBundleValidator),
     async (c) => {
       try {
         const bundleId = c.req.param("bundleId");
