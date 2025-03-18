@@ -278,24 +278,31 @@ export const initCloudflareD1R2Worker = async () => {
   const domains = await cf.r2.buckets.domains.managed.list(selectedBucketName, {
     account_id: accountId,
   });
-  if (!domains.enabled) {
-    try {
-      await p.tasks([
-        {
-          title: "Making R2 bucket publicly accessible...",
-          task: async () => {
-            await cf.r2.buckets.domains.managed.update(selectedBucketName, {
-              account_id: accountId,
-              enabled: true,
-            });
+
+  if (domains.enabled) {
+    const isPrivate = await p.confirm({
+      message: "Make R2 bucket private?",
+    });
+
+    if (isPrivate) {
+      try {
+        await p.tasks([
+          {
+            title: "Making R2 bucket private...",
+            task: async () => {
+              await cf.r2.buckets.domains.managed.update(selectedBucketName, {
+                account_id: accountId,
+                enabled: false,
+              });
+            },
           },
-        },
-      ]);
-    } catch (e) {
-      if (e instanceof Error) {
-        p.log.error(e.message);
+        ]);
+      } catch (e) {
+        if (e instanceof Error) {
+          p.log.error(e.message);
+        }
+        throw e;
       }
-      throw e;
     }
   }
 
