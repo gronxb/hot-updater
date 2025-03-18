@@ -13,10 +13,19 @@ import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 import { HOT_UPDATER_SUPABASE_URL } from "@env";
 
-export const extractTimestampFromUUIDv7 = (uuid: string) => {
+export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
   const timestamp = Number.parseInt(timestampHex, 16);
-  return timestamp;
+
+  const date = new Date(timestamp);
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
 function App(): React.JSX.Element {
@@ -27,6 +36,7 @@ function App(): React.JSX.Element {
     setBundleId(bundleId);
   }, []);
 
+  // @ts-ignore
   const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
   // @ts-ignore
@@ -38,7 +48,7 @@ function App(): React.JSX.Element {
       <Text>Babel {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
 
-      <Text>{extractTimestampFromUUIDv7(HotUpdater.getBundleId())}</Text>
+      <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
         style={{
           marginVertical: 20,
