@@ -31,9 +31,6 @@ jobs:
       - name: Library Build
         run: pnpm build
 
-      - name: Install Cocoapods
-        run: gem install cocoapods
-
       - name: Build iOS
         run: |
           cd examples/v0.76.1-new-arch
@@ -62,9 +59,6 @@ jobs:
 
       - name: Library Build
         run: pnpm build
-
-      - name: Install Cocoapods
-        run: gem install cocoapods
 
       - name: Build iOS
         run: |
