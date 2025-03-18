@@ -93,9 +93,7 @@ const EditBundleSheetForm = ({
       try {
         const res = await api.bundles[":bundleId"].$patch({
           param: { bundleId: bundle.id },
-          json: {
-            bundle: value,
-          },
+          json: value,
         });
         if (res.status !== 200) {
           const json = (await res.json()) as { error: string };

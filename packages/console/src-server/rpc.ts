@@ -9,21 +9,18 @@ import {
 import { Hono } from "hono";
 import typia from "typia";
 
-const bundlesValidator = typia.createValidate<{
+const queryBundlesSchema = typia.createValidate<{
   channel?: string;
   platform?: "ios" | "android";
   limit?: string;
   offset?: string;
 }>();
 
-const bundleIdValidator = typia.createValidate<{
+const paramBundleIdSchema = typia.createValidate<{
   bundleId: string;
 }>();
 
-const updateBundleValidator = typia.createValidate<{
-  targetBundleId: string;
-  bundle: Partial<Bundle>;
-}>();
+const updateBundleSchema = typia.createValidate<Partial<Bundle>>();
 
 let configPromise: Promise<{
   config: ConfigResponse;
@@ -79,7 +76,7 @@ export const rpc = new Hono()
       throw error;
     }
   })
-  .get("/bundles", typiaValidator("query", bundlesValidator), async (c) => {
+  .get("/bundles", typiaValidator("query", queryBundlesSchema), async (c) => {
     try {
       const query = c.req.valid("query");
       const { databasePlugin } = await prepareConfig();
@@ -99,7 +96,7 @@ export const rpc = new Hono()
   })
   .get(
     "/bundles/:bundleId",
-    typiaValidator("param", bundleIdValidator),
+    typiaValidator("param", paramBundleIdSchema),
     async (c) => {
       try {
         const { bundleId } = c.req.valid("param");
@@ -114,18 +111,18 @@ export const rpc = new Hono()
   )
   .patch(
     "/bundles/:bundleId",
-    typiaValidator("json", updateBundleValidator),
+    typiaValidator("json", updateBundleSchema),
     async (c) => {
       try {
         const bundleId = c.req.param("bundleId");
 
-        const { bundle } = c.req.valid("json");
+        const partialBundle = c.req.valid("json");
         if (!bundleId) {
           return c.json({ error: "Target bundle ID is required" }, 400);
         }
 
         const { databasePlugin } = await prepareConfig();
-        await databasePlugin.updateBundle(bundleId, bundle);
+        await databasePlugin.updateBundle(bundleId, partialBundle);
         await databasePlugin.commitBundle();
         return c.json({ success: true });
       } catch (error) {
