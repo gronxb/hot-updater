@@ -36,8 +36,8 @@ jobs:
 
       - name: Build iOS
         run: |
-          cd examples/v0.76.1-new-arch/ios
-          pod install
+          cd examples/v0.76.1-new-arch
+          pnpx pod-install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
         env:
@@ -68,8 +68,8 @@ jobs:
 
       - name: Build iOS
         run: |
-          cd examples/v0.71.19/ios
-          pod install
+          cd examples/v0.71.19
+          pnpx pod-install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
         env:
