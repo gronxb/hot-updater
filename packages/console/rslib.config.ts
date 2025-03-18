@@ -1,6 +1,12 @@
 import { defineConfig } from "@rslib/core";
+import UnpluginTypiaRspackPlugin from "@ryoppippi/unplugin-typia/rspack";
 
 export default defineConfig({
+  tools: {
+    rspack: {
+      plugins: [UnpluginTypiaRspackPlugin()],
+    },
+  },
   lib: [
     {
       source: {
