@@ -80,7 +80,7 @@ export interface UpdateInfo {
  * This is the update info that is used by the app.
  */
 export interface AppUpdateInfo extends UpdateInfo {
-  fileUrl: string;
+  fileUrl: string | null;
 }
 
 export interface GetBundlesArgs {
