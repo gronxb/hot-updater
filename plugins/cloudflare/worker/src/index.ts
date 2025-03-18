@@ -47,14 +47,23 @@ app.get("*", async (c) => {
     path: c.req.path,
     token: c.req.query("token"),
     jwtSecret: c.env.JWT_SECRET,
-    handler: async (key) => await c.env.BUCKET.get(key),
+    handler: async (key) => {
+      const object = await c.env.BUCKET.get(key);
+      if (!object) {
+        return null;
+      }
+      return {
+        body: object.body,
+        contentType: object.httpMetadata?.contentType,
+      };
+    },
   });
 
   if (result.status !== 200) {
     return c.json({ error: result.error }, result.status);
   }
 
-  return c.json(result.responseBody, 200, result.responseHeaders);
+  return c.body(result.responseBody, 200, result.responseHeaders);
 });
 
 export default app;

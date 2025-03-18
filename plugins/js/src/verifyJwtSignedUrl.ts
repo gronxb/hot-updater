@@ -33,7 +33,10 @@ export async function verifyJwtSignedUrl({
   path: string;
   token: string | undefined;
   jwtSecret: string;
-  handler: (key: string) => Promise<any>;
+  handler: (key: string) => Promise<{
+    body: any;
+    contentType?: string;
+  } | null>;
 }): Promise<VerifyJwtSignedUrlResponse> {
   const key = path.replace(/^\/+/, "");
 
@@ -63,10 +66,9 @@ export async function verifyJwtSignedUrl({
   const fileName = pathParts[pathParts.length - 1];
 
   const headers = {
-    "Content-Type":
-      object.httpMetadata?.contentType || "application/octet-stream",
+    "Content-Type": object.contentType || "application/octet-stream",
     "Content-Disposition": `attachment; filename=${fileName}`,
   };
 
-  return { status: 200, responseHeaders: headers, responseBody: object };
+  return { status: 200, responseHeaders: headers, responseBody: object.body };
 }
