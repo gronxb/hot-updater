@@ -54,7 +54,7 @@ app.get("*", async (c) => {
     return c.json({ error: result.error }, result.status);
   }
 
-  return c.json(result.responseBody, 200);
+  return c.json(result.responseBody, 200, result.responseHeaders);
 });
 
 export default app;
