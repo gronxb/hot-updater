@@ -8,7 +8,7 @@ type SuccessResponse = {
 
 type ErrorResponse = {
   status: 400 | 403 | 404;
-  message: string;
+  error: string;
 };
 
 type VerifyJwtSignedUrlResponse = SuccessResponse | ErrorResponse;
@@ -38,7 +38,7 @@ export async function verifyJwtSignedUrl({
   const key = path.replace(/^\/+/, "");
 
   if (!token) {
-    return { status: 400, message: "Missing token" };
+    return { status: 400, error: "Missing token" };
   }
 
   let payload: JWTPayload;
@@ -47,16 +47,16 @@ export async function verifyJwtSignedUrl({
     const { payload: verifiedPayload } = await jwtVerify(token, secretKey);
     payload = verifiedPayload;
   } catch (error) {
-    return { status: 403, message: "Invalid or expired token" };
+    return { status: 403, error: "Invalid or expired token" };
   }
 
   if (!payload || payload.key !== key) {
-    return { status: 403, message: "Token does not match requested file" };
+    return { status: 403, error: "Token does not match requested file" };
   }
 
   const object = await handler(key);
   if (!object) {
-    return { status: 404, message: "File not found" };
+    return { status: 404, error: "File not found" };
   }
 
   const pathParts = key.split("/");

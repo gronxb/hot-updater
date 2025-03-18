@@ -33,7 +33,13 @@ app.get("/api/check-update", async (c) => {
     channel: channel || "production",
   });
 
-  return c.json(withJwtSignedUrl(updateInfo, c.req.url, c.env.JWT_SECRET), 200);
+  const appUpdateInfo = await withJwtSignedUrl({
+    data: updateInfo,
+    reqUrl: c.req.url,
+    jwtSecret: c.env.JWT_SECRET,
+  });
+
+  return c.json(appUpdateInfo, 200);
 });
 
 app.get("*", async (c) => {
@@ -45,7 +51,7 @@ app.get("*", async (c) => {
   });
 
   if (result.status !== 200) {
-    return c.json({ message: result.message }, result.status);
+    return c.json({ error: result.error }, result.status);
   }
 
   return c.json(result.responseBody, 200);

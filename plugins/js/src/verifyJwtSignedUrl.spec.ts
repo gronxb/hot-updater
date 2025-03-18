@@ -26,7 +26,7 @@ describe("verifyJwtSignedUrl", () => {
 
     expect(result).toEqual({
       status: 400,
-      message: "Missing token",
+      error: "Missing token",
     });
   });
 
@@ -42,7 +42,7 @@ describe("verifyJwtSignedUrl", () => {
 
     expect(result).toEqual({
       status: 403,
-      message: "Invalid or expired token",
+      error: "Invalid or expired token",
     });
   });
 
@@ -60,7 +60,7 @@ describe("verifyJwtSignedUrl", () => {
 
     expect(result).toEqual({
       status: 403,
-      message: "Token does not match requested file",
+      error: "Token does not match requested file",
     });
   });
 
@@ -80,7 +80,7 @@ describe("verifyJwtSignedUrl", () => {
     expect(mockHandler).toHaveBeenCalledWith(mockKey);
     expect(result).toEqual({
       status: 404,
-      message: "File not found",
+      error: "File not found",
     });
   });
 
