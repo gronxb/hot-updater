@@ -4,6 +4,7 @@ packages:
   - docs
   - examples/*
 onlyBuiltDependencies:
+  - core-js-pure
   - esbuild
   - nx
   - sharp

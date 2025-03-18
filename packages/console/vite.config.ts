@@ -1,4 +1,5 @@
 import devServer, { defaultOptions } from "@hono/vite-dev-server";
+import UnpluginTypia from "@ryoppippi/unplugin-typia/vite";
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -11,6 +12,7 @@ export default defineConfig({
     }),
     solid(),
     tsconfigPaths(),
+    UnpluginTypia(),
   ],
   server: {
     port: 3000,
