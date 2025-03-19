@@ -33,6 +33,7 @@ jobs:
 
       - name: Build iOS
         run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
           cd examples/v0.76.1-new-arch/ios
           pnpx pod-install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
@@ -62,6 +63,7 @@ jobs:
 
       - name: Build iOS
         run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
           cd examples/v0.71.19/ios
           pnpx pod-install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
