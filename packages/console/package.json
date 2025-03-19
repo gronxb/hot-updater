@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.12.4",
+  "version": "0.12.7",
   "files": [
     "dist",
     "package.json"
@@ -27,19 +27,18 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@hono/node-server": "^1.13.4",
-    "@hono/valibot-validator": "^0.4.1",
+    "@hono/typia-validator": "^0.1.0",
     "@hono/vite-dev-server": "^0.18.1",
-    "@hot-updater/mock": "0.12.4",
+    "@hot-updater/mock": "0.12.7",
     "@kobalte/core": "^0.13.7",
+    "@ryoppippi/unplugin-typia": "^2.0.3",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.14.10",
     "@tanstack/solid-form": "^0.34.0",
     "@tanstack/solid-query": "^5.66.4",
     "@tanstack/solid-table": "^8.20.5",
-    "@tanstack/valibot-form-adapter": "^0.34.0",
     "@types/node": "^22.8.6",
     "@types/semver": "^7.5.8",
-    "@typeschema/valibot": "^0.14.0",
     "autoprefixer": "^10.4.19",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -54,13 +53,13 @@
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.6.3",
-    "valibot": "^0.42.1",
+    "typia": "^8.0.3",
     "vite": "^6.1.0",
     "vite-plugin-solid": "^2.11.1",
     "vite-tsconfig-paths": "^5.1.4"
   },
   "dependencies": {
-    "@hot-updater/core": "0.12.4",
-    "@hot-updater/plugin-core": "0.12.4"
+    "@hot-updater/core": "0.12.7",
+    "@hot-updater/plugin-core": "0.12.7"
   }
 }

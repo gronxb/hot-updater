@@ -1,4 +1,4 @@
-import { vValidator } from "@hono/valibot-validator";
+import { typiaValidator } from "@hono/typia-validator";
 import {
   type Bundle,
   type Config,
@@ -7,19 +7,16 @@ import {
   loadConfig,
 } from "@hot-updater/plugin-core";
 import { Hono } from "hono";
-import * as v from "valibot";
+import typia from "typia";
 
-export const bundleSchema = v.object({
-  platform: v.union([v.literal("ios"), v.literal("android")]),
-  targetAppVersion: v.string(),
-  id: v.string(),
-  shouldForceUpdate: v.boolean(),
-  enabled: v.boolean(),
-  fileUrl: v.string(),
-  fileHash: v.string(),
-  gitCommitHash: v.nullable(v.string()),
-  message: v.nullable(v.string()),
-});
+const bundleIdValidator = typia.createValidate<{
+  bundleId: string;
+}>();
+
+const updateBundleValidator = typia.createValidate<{
+  targetBundleId: string;
+  bundle: Partial<Bundle>;
+}>();
 
 let config: Config | null = null;
 let databasePlugin: DatabasePlugin | null = null;
@@ -56,7 +53,7 @@ export const rpc = new Hono()
   })
   .get(
     "/getBundleById",
-    vValidator("query", v.object({ bundleId: v.string() })),
+    typiaValidator("query", bundleIdValidator),
     async (c) => {
       const { bundleId } = c.req.valid("query");
       const { databasePlugin } = await prepareConfig();
@@ -67,13 +64,7 @@ export const rpc = new Hono()
   )
   .post(
     "/updateBundle",
-    vValidator(
-      "json",
-      v.object({
-        targetBundleId: v.string(),
-        bundle: v.partial(v.omit(bundleSchema, ["id"])),
-      }),
-    ),
+    typiaValidator("json", updateBundleValidator),
     async (c) => {
       const { targetBundleId, bundle } = c.req.valid("json");
       const { databasePlugin } = await prepareConfig();

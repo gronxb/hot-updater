@@ -23,6 +23,7 @@ export const selectOrCreateOrganization = async () => {
   try {
     await execa("npx", ["-y", "supabase", "orgs", "create", orgName], {
       stdio: "inherit",
+      shell: true,
     });
   } catch (err) {
     if (err instanceof ExecaError && err.stderr) {
@@ -88,6 +89,7 @@ export const selectProject = async (): Promise<{
     try {
       await execa("npx", ["-y", "supabase", "projects", "create"], {
         stdio: "inherit",
+        shell: true,
       });
     } catch (err) {
       if (err instanceof ExecaError) {

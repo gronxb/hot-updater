@@ -683,6 +683,7 @@ export const initAwsS3LambdaEdge = async () => {
 
       await execa("aws", ["sso", "login", "--profile", profile], {
         stdio: "inherit",
+        shell: true,
       });
 
       credentials = await SDK.CredentialsProvider.fromSSO({

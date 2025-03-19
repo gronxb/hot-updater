@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.12.4",
+  "version": "0.12.7",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -74,18 +74,21 @@
     "includesGeneratedCode": true
   },
   "peerDependencies": {
-    "react-native": "*"
+    "react-native": "*",
+    "react": "*"
   },
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",
     "@types/react": "^18.2.44",
+    "@types/use-sync-external-store": "^0.0.6",
     "del-cli": "^6.0.0",
     "react": "18.3.1",
     "react-native": "0.76.2",
     "react-native-builder-bob": "^0.33.1"
   },
   "dependencies": {
-    "@hot-updater/js": "0.12.4",
-    "@hot-updater/core": "0.12.4"
+    "use-sync-external-store": "1.4.0",
+    "@hot-updater/js": "0.12.7",
+    "@hot-updater/core": "0.12.7"
   }
 }

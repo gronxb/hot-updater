@@ -350,12 +350,12 @@ public class MainApplication extends Application implements ReactApplication {
 
 - (NSURL *)bundleURL
 {
-#if DEBUG // [!code --]
-  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"]; // [!code --]
-#else // [!code --]
+#if DEBUG
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
+#else
   return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
-#endif // [!code --]
   return [HotUpdater bundleURL]; // [!code ++]
+#endif
 }
 
 @end
@@ -387,12 +387,12 @@ class AppDelegate: RCTAppDelegate {
   }
 
   override func bundleURL() -> URL? {
-#if DEBUG // [!code --]
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index") // [!code --]
-#else // [!code --]
+#if DEBUG
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
     Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-#endif // [!code --]
     HotUpdater.bundleURL() // [!code ++]
+#endif
   }
 }
 
