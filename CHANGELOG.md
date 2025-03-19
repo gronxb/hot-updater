@@ -1,3 +1,21 @@
+## 0.12.7 (2025-03-19)
+
+### 🚀 Features
+
+- **console:** icon colorful ([#189](https://github.com/gronxb/hot-updater/pull/189))
+
+### 🩹 Fixes
+
+- **cli:** windows migration command blocking ([#195](https://github.com/gronxb/hot-updater/pull/195))
+
+### 🔥 Performance
+
+- **console:** migrate typia schema ([#188](https://github.com/gronxb/hot-updater/pull/188))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.12.6 (2025-03-17)
 
 ### 🩹 Fixes
