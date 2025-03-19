@@ -69,7 +69,6 @@ export const s3Storage =
             Bucket: bucketName,
             Key,
             Body,
-            CacheControl: "max-age=31536000",
           },
         });
         const response = await upload.done();
