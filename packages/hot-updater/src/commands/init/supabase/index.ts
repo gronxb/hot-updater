@@ -91,6 +91,7 @@ const pushDB = async (workdir: string) => {
       {
         cwd: workdir,
         stdio: "inherit",
+        shell: true,
       },
     );
     p.log.success("DB pushed ✔");

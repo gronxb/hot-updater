@@ -3,6 +3,7 @@ import { execa } from "execa";
 export const createWrangler = ({
   stdio,
   accountId,
+
   cloudflareApiToken,
   cwd,
 }: {
@@ -14,6 +15,7 @@ export const createWrangler = ({
   const $ = execa({
     stdio,
     extendsEnv: true,
+    shell: stdio === "inherit",
     cwd,
     env: {
       CLOUDFLARE_ACCOUNT_ID: accountId,
