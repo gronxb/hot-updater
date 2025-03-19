@@ -1,62 +1,59 @@
-import { type JWTPayload, jwtVerify } from "jose";
+import { jwtVerify } from "jose";
 
-type SuccessResponse = {
+// Common type definitions
+export type SuccessResponse = {
   status: 200;
   responseHeaders?: Record<string, string>;
   responseBody: any;
 };
 
-type ErrorResponse = {
+export type ErrorResponse = {
   status: 400 | 403 | 404;
   error: string;
 };
 
-type VerifyJwtSignedUrlResponse = SuccessResponse | ErrorResponse;
+export type VerifyJwtSignedUrlResponse = SuccessResponse | ErrorResponse;
 
 /**
- * Verifies JWT token and handles the logic to retrieve the file from the bucket.
- * This function can be shared and used in various environments such as Cloudflare Workers (Hono) and AWS Lambda.
- *
- * @param {Object} params
- * @param {string} params.path - Request path (e.g., "/1234/bundle.zip")
- * @param {string | undefined} params.token - JWT token passed as a query parameter
- * @param {string} params.jwtSecret - Secret key used for JWT verification
- * @param {object} params.bucket - Storage object to retrieve files from (requires get(key) method)
- * @returns {Promise<VerifyJwtSignedUrlResponse>} - Object containing verification result and file data
+ * Verifies JWT token only and returns the file key (path with leading slashes removed) if valid.
  */
-export async function verifyJwtSignedUrl({
+export const verifyJwtToken = async ({
   path,
   token,
   jwtSecret,
-  handler,
 }: {
   path: string;
   token: string | undefined;
   jwtSecret: string;
-  handler: (key: string) => Promise<{
-    body: any;
-    contentType?: string;
-  } | null>;
-}): Promise<VerifyJwtSignedUrlResponse> {
+}): Promise<{ valid: boolean; key?: string; error?: string }> => {
   const key = path.replace(/^\/+/, "");
 
   if (!token) {
-    return { status: 400, error: "Missing token" };
+    return { valid: false, error: "Missing token" };
   }
 
-  let payload: JWTPayload;
   try {
     const secretKey = new TextEncoder().encode(jwtSecret);
-    const { payload: verifiedPayload } = await jwtVerify(token, secretKey);
-    payload = verifiedPayload;
+    const { payload } = await jwtVerify(token, secretKey);
+    if (!payload || payload.key !== key) {
+      return { valid: false, error: "Token does not match requested file" };
+    }
+    return { valid: true, key };
   } catch (error) {
-    return { status: 403, error: "Invalid or expired token" };
+    return { valid: false, error: "Invalid or expired token" };
   }
+};
 
-  if (!payload || payload.key !== key) {
-    return { status: 403, error: "Token does not match requested file" };
-  }
-
+/**
+ * Retrieves file data through the handler and constructs a response object with appropriate headers for download.
+ */
+const getFileResponse = async ({
+  key,
+  handler,
+}: {
+  key: string;
+  handler: (key: string) => Promise<{ body: any; contentType?: string } | null>;
+}): Promise<VerifyJwtSignedUrlResponse> => {
   const object = await handler(key);
   if (!object) {
     return { status: 404, error: "File not found" };
@@ -71,4 +68,32 @@ export async function verifyJwtSignedUrl({
   };
 
   return { status: 200, responseHeaders: headers, responseBody: object.body };
-}
+};
+
+/**
+ * Integrated function for JWT verification and file handling.
+ * - Returns error response if token is missing or validation fails.
+ * - On success, retrieves file data through the handler and constructs a response object.
+ */
+export const verifyJwtSignedUrl = async ({
+  path,
+  token,
+  jwtSecret,
+  handler,
+}: {
+  path: string;
+  token: string | undefined;
+  jwtSecret: string;
+  handler: (key: string) => Promise<{ body: any; contentType?: string } | null>;
+}): Promise<VerifyJwtSignedUrlResponse> => {
+  const result = await verifyJwtToken({ path, token, jwtSecret });
+  if (!result.valid) {
+    // Return 400 for missing token, 403 for other errors
+    if (result.error === "Missing token") {
+      return { status: 400, error: result.error };
+    }
+    return { status: 403, error: result.error || "Unauthorized" };
+  }
+
+  return getFileResponse({ key: result.key!, handler });
+};

@@ -1,5 +1,5 @@
 import { jwtVerify } from "jose";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { verifyJwtSignedUrl } from "./verifyJwtSignedUrl";
 
 vi.mock("jose", () => ({
@@ -119,7 +119,9 @@ describe("verifyJwtSignedUrl", () => {
       payload: { key: mockKey },
     });
 
-    const mockObject = { data: "file-content" };
+    const mockObject = {
+      body: "file-content",
+    };
     const mockHandler = vi.fn().mockResolvedValue(mockObject);
 
     const result = await verifyJwtSignedUrl({
@@ -130,5 +132,11 @@ describe("verifyJwtSignedUrl", () => {
     });
 
     expect(result.status).toBe(200);
+    assert(result.status === 200);
+
+    expect(result.responseHeaders).toEqual({
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": "attachment; filename=test-file.zip",
+    });
   });
 });

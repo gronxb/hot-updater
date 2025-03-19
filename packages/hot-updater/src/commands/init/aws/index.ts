@@ -409,7 +409,7 @@ export const createCloudFrontDistribution = async (
         Quantity: 1,
         Items: [
           {
-            EventType: "viewer-request",
+            EventType: "origin-request",
             LambdaFunctionARN: functionArn,
           },
         ],
@@ -431,7 +431,8 @@ export const createCloudFrontDistribution = async (
             Quantity: 1,
             Items: [
               {
-                EventType: "viewer-request",
+                // 기존: "viewer-request" -> 변경:
+                EventType: "origin-request",
                 LambdaFunctionARN: functionArn,
               },
             ],
@@ -443,7 +444,7 @@ export const createCloudFrontDistribution = async (
             QueryString: false,
             Cookies: { Forward: "none" },
             Headers: {
-              Quantity: 3,
+              Quantity: 5,
               Items: [
                 "x-bundle-id",
                 "x-app-version",
@@ -525,7 +526,7 @@ export const createCloudFrontDistribution = async (
         Quantity: 1,
         Items: [
           {
-            EventType: "viewer-request",
+            EventType: "origin-request",
             LambdaFunctionARN: functionArn,
           },
         ],
@@ -547,7 +548,7 @@ export const createCloudFrontDistribution = async (
             Quantity: 1,
             Items: [
               {
-                EventType: "viewer-request",
+                EventType: "origin-request",
                 LambdaFunctionARN: functionArn,
               },
             ],
@@ -559,7 +560,7 @@ export const createCloudFrontDistribution = async (
             QueryString: false,
             Cookies: { Forward: "none" },
             Headers: {
-              Quantity: 3,
+              Quantity: 5,
               Items: [
                 "x-bundle-id",
                 "x-app-version",

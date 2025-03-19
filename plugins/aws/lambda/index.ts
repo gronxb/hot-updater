@@ -1,6 +1,6 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { UpdateInfo } from "@hot-updater/core";
+import { S3Client } from "@aws-sdk/client-s3";
+import { NIL_UUID } from "@hot-updater/core";
+import { verifyJwtToken, withJwtSignedUrl } from "@hot-updater/js";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
@@ -11,32 +11,12 @@ declare global {
   var HotUpdater: {
     S3_BUCKET_NAME: string;
     S3_REGION: string;
+    JWT_SECRET: string;
   };
 }
 
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-
 const s3 = new S3Client({ region: HotUpdater.S3_REGION });
 const bucketName = HotUpdater.S3_BUCKET_NAME;
-
-async function createPresignedUrl(id: string) {
-  return getSignedUrl(
-    // @ts-ignore
-    s3,
-    new GetObjectCommand({
-      Bucket: bucketName,
-      Key: [id, "bundle.zip"].join("/"),
-    }),
-    {
-      expiresIn: 60,
-    },
-  );
-}
-
-async function signUpdateInfoFileUrl(updateInfo: UpdateInfo) {
-  const fileUrl = await createPresignedUrl(updateInfo.id);
-  return { ...updateInfo, fileUrl };
-}
 
 type Bindings = {
   callback: Callback;
@@ -53,7 +33,6 @@ app.get("/api/check-update", async (c) => {
     const appPlatform = headers["x-app-platform"]?.[0]?.value as
       | "ios"
       | "android";
-
     const appVersion = headers["x-app-version"]?.[0]?.value;
     const minBundleId = headers["x-min-bundle-id"]?.[0]?.value ?? NIL_UUID;
     const channel = headers["x-channel"]?.[0]?.value ?? "production";
@@ -62,31 +41,55 @@ app.get("/api/check-update", async (c) => {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const updateInfoLayer = await getUpdateInfo(s3, HotUpdater.S3_BUCKET_NAME, {
+    const updateInfo = await getUpdateInfo(s3, bucketName, {
       platform: appPlatform,
       bundleId,
       appVersion,
       minBundleId,
       channel,
     });
-    if (!updateInfoLayer) {
+    if (!updateInfo) {
       return c.json(null);
     }
 
-    const finalInfo = await signUpdateInfoFileUrl(updateInfoLayer);
-    return c.json(finalInfo);
+    const appUpdateInfo = await withJwtSignedUrl({
+      data: updateInfo,
+      reqUrl: c.req.url,
+      jwtSecret: HotUpdater.JWT_SECRET,
+    });
+
+    return c.json(appUpdateInfo);
   } catch {
-    return c.json(
-      {
-        error: "Internal Server Error",
-      },
-      500,
-    );
+    return c.json({ error: "Internal Server Error" }, 500);
   }
 });
 
 app.get("*", async (c) => {
-  c.env.callback(null, c.env.request);
+  const params = new URLSearchParams(c.env.request.querystring || "");
+  const token = params.get("token");
+  const path = c.env.request.uri;
+
+  if (!token) {
+    return c.json({ error: "Missing token" }, 400);
+  }
+
+  const verifyResult = await verifyJwtToken({
+    path,
+    token,
+    jwtSecret: process.env.JWT_SECRET || HotUpdater.JWT_SECRET,
+  });
+  if (!verifyResult.valid) {
+    return c.json(
+      { error: verifyResult.error },
+      verifyResult.error === "Missing token" ? 400 : 403,
+    );
+  }
+
+  params.delete("token");
+  c.env.request.querystring = params.toString();
+  c.env.request.uri = ["/", verifyResult.key].join("");
+
+  return c.env.callback(null, c.env.request);
 });
 
 export const handler = handle(app) as CloudFrontRequestHandler;
