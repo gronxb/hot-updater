@@ -76,7 +76,7 @@ app.get("*", async (c) => {
   const verifyResult = await verifyJwtToken({
     path,
     token,
-    jwtSecret: process.env.JWT_SECRET || HotUpdater.JWT_SECRET,
+    jwtSecret: HotUpdater.JWT_SECRET,
   });
   if (!verifyResult.valid) {
     return c.json(
@@ -89,6 +89,12 @@ app.get("*", async (c) => {
   c.env.request.querystring = params.toString();
   c.env.request.uri = ["/", verifyResult.key].join("");
 
+  const s3Host = c.env.request.origin?.s3?.domainName;
+  if (!s3Host) {
+    return c.json({ error: "Missing s3 host" }, 500);
+  }
+
+  c.env.request.headers["host"] = [{ key: "Host", value: s3Host }];
   return c.env.callback(null, c.env.request);
 });
 

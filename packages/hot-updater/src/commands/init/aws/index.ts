@@ -360,6 +360,36 @@ export const createCloudFrontDistribution = async (
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
 
+  let oacId: string;
+  const accountId = functionArn.split(":")[4];
+  if (!accountId) {
+    throw new Error("Failed to get AWS account ID");
+  }
+
+  try {
+    const listOacResp = await cloudfrontClient.listOriginAccessControls({});
+    const existingOac = listOacResp.OriginAccessControlList?.Items?.find(
+      (oac) => oac.Name === "HotUpdaterOAC",
+    );
+    if (existingOac?.Id) {
+      oacId = existingOac.Id;
+    } else {
+      const createOacResp = await cloudfrontClient.createOriginAccessControl({
+        OriginAccessControlConfig: {
+          Name: "HotUpdaterOAC",
+          OriginAccessControlOriginType: "s3",
+          SigningBehavior: "always",
+          SigningProtocol: "sigv4",
+        },
+      });
+      oacId = createOacResp.OriginAccessControl?.Id!;
+    }
+  } catch (error) {
+    throw new Error("Failed to get or create Origin Access Control");
+  }
+  if (!oacId) {
+    throw new Error("Failed to get Origin Access Control ID");
+  }
   const bucketDomain = `${bucketName}.s3.${region}.amazonaws.com`;
 
   const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
@@ -401,6 +431,7 @@ export const createCloudFrontDistribution = async (
         {
           Id: bucketName,
           DomainName: bucketDomain,
+          OriginAccessControlId: oacId,
           S3OriginConfig: {
             OriginAccessIdentity: "",
           },
@@ -420,7 +451,7 @@ export const createCloudFrontDistribution = async (
         ],
       },
       ForwardedValues: {
-        QueryString: false,
+        QueryString: true,
         Cookies: { Forward: "none" },
       },
       MinTTL: 0,
@@ -436,7 +467,6 @@ export const createCloudFrontDistribution = async (
             Quantity: 1,
             Items: [
               {
-                // 기존: "viewer-request" -> 변경:
                 EventType: "origin-request",
                 LambdaFunctionARN: functionArn,
               },
@@ -446,7 +476,7 @@ export const createCloudFrontDistribution = async (
           DefaultTTL: 0,
           MaxTTL: 0,
           ForwardedValues: {
-            QueryString: false,
+            QueryString: true,
             Cookies: { Forward: "none" },
             Headers: {
               Quantity: 5,
@@ -494,6 +524,16 @@ export const createCloudFrontDistribution = async (
         },
       });
       p.log.success("Cache invalidation request completed.");
+
+      // S3 버킷 정책 업데이트
+      await updateS3BucketPolicy({
+        credentials,
+        region,
+        bucketName,
+        distributionId: selectedDistribution.Id,
+        accountId,
+      });
+
       return {
         distributionId: selectedDistribution.Id,
         distributionDomain: selectedDistribution.DomainName,
@@ -518,6 +558,7 @@ export const createCloudFrontDistribution = async (
         {
           Id: bucketName,
           DomainName: bucketDomain,
+          OriginAccessControlId: oacId,
           S3OriginConfig: {
             OriginAccessIdentity: "",
           },
@@ -537,7 +578,7 @@ export const createCloudFrontDistribution = async (
         ],
       },
       ForwardedValues: {
-        QueryString: false,
+        QueryString: true,
         Cookies: { Forward: "none" },
       },
       MinTTL: 0,
@@ -562,7 +603,7 @@ export const createCloudFrontDistribution = async (
           DefaultTTL: 0,
           MaxTTL: 0,
           ForwardedValues: {
-            QueryString: false,
+            QueryString: true,
             Cookies: { Forward: "none" },
             Headers: {
               Quantity: 5,
@@ -632,10 +673,88 @@ export const createCloudFrontDistribution = async (
         },
       },
     ]);
+
+    // S3 버킷 정책 업데이트
+    await updateS3BucketPolicy({
+      credentials,
+      region,
+      bucketName,
+      distributionId,
+      accountId,
+    });
+
     return { distributionId, distributionDomain };
   } catch (error) {
     p.log.error(
       `CloudFront distribution creation failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    throw error;
+  }
+};
+
+/**
+ * S3 버킷 정책을 업데이트하여 CloudFront 배포에서만 접근 가능하도록 설정
+ */
+export const updateS3BucketPolicy = async ({
+  credentials,
+  region,
+  bucketName,
+  distributionId,
+  accountId,
+}: {
+  credentials:
+    | {
+        accessKeyId: string;
+        secretAccessKey: string;
+      }
+    | undefined;
+  region: string;
+  bucketName: string;
+  distributionId: string;
+  accountId: string;
+}) => {
+  if (!credentials) {
+    throw new Error("AWS credentials are required to update S3 bucket policy");
+  }
+
+  const { SDK } = await import("@hot-updater/aws/sdk");
+  const s3Client = new SDK.S3.S3({ region, credentials });
+
+  try {
+    const bucketPolicy = {
+      Version: "2008-10-17",
+      Id: "PolicyForCloudFrontPrivateContent",
+      Statement: [
+        {
+          Sid: "AllowCloudFrontServicePrincipal",
+          Effect: "Allow",
+          Principal: {
+            Service: "cloudfront.amazonaws.com",
+          },
+          Action: "s3:GetObject",
+          Resource: `arn:aws:s3:::${bucketName}/*`,
+          Condition: {
+            StringEquals: {
+              "AWS:SourceArn": `arn:aws:cloudfront::${accountId}:distribution/${distributionId}`,
+            },
+          },
+        },
+      ],
+    };
+
+    await s3Client.putBucketPolicy({
+      Bucket: bucketName,
+      Policy: JSON.stringify(bucketPolicy),
+    });
+
+    p.log.success(
+      "S3 bucket policy updated to allow access from CloudFront distribution",
+    );
+  } catch (error) {
+    p.log.error(
+      `Failed to update S3 bucket policy: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
