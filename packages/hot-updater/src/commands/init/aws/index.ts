@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import path from "path";
 import { link } from "@/components/banner";
 import { transformTemplate } from "@/utils/transformTemplate";
@@ -200,11 +201,15 @@ export const deployLambdaEdge = async ({
   const lambdaDir = path.dirname(lambdaPath);
 
   const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
+
+  const jwtSecret = crypto.randomBytes(32).toString("hex");
+
   const code = await transformEnv(
     await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
     {
       S3_REGION: region,
       S3_BUCKET_NAME: bucketName,
+      JWT_SECRET: jwtSecret,
     },
   );
   await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
