@@ -91,6 +91,7 @@ const pushDB = async (supabasePath: string) => {
     const dbPush = await execa("npx", ["supabase", "db", "push"], {
       cwd: supabasePath,
       stdio: "inherit",
+      shell: true,
     });
     p.log.success("DB pushed ✔");
     return dbPush.stdout;
