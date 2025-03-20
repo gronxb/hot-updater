@@ -61,10 +61,102 @@ async function uploadJsonToS3<T>(
   await upload.done();
 }
 
-// 내부 관리 키를 제거하는 헬퍼 함수
+// Helper function to remove internal management keys
 function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   const { _updateJsonKey, _oldUpdateJsonKey, ...pureBundle } = bundle;
   return pureBundle;
+}
+
+/**
+ * Lists update.json keys for a given platform.
+ *
+ * - If a channel is provided, only that channel’s update.json files are listed.
+ * - Otherwise, all channels for the given platform are returned.
+ */
+async function listUpdateJsonKeys(
+  client: S3Client,
+  bucketName: string,
+  platform: string,
+  channel?: string,
+): Promise<string[]> {
+  let continuationToken: string | undefined;
+  const keys: string[] = [];
+  const prefix = channel ? `${channel}/${platform}/` : "";
+  // Use appropriate key format based on whether a channel is given.
+  const pattern = channel
+    ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
+    : new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    const found = (response.Contents ?? [])
+      .map((item) => item.Key)
+      .filter((key): key is string => !!key && pattern.test(key));
+    keys.push(...found);
+    continuationToken = response.NextContinuationToken;
+  } while (continuationToken);
+  return keys;
+}
+
+/**
+ * Updates target-app-versions.json for each channel on the given platform.
+ */
+async function updateTargetVersionsForPlatform(
+  client: S3Client,
+  bucketName: string,
+  platform: string,
+) {
+  // Retrieve all update.json files for the platform across channels.
+  let continuationToken: string | undefined;
+  const keys: string[] = [];
+  const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: "",
+        ContinuationToken: continuationToken,
+      }),
+    );
+    const found = (response.Contents ?? [])
+      .map((item) => item.Key)
+      .filter((key): key is string => !!key && pattern.test(key));
+    keys.push(...found);
+    continuationToken = response.NextContinuationToken;
+  } while (continuationToken);
+
+  // Group keys by channel (channel is the first part of the key)
+  const keysByChannel = keys.reduce(
+    (acc, key) => {
+      const parts = key.split("/");
+      const channel = parts[0];
+      acc[channel] = acc[channel] || [];
+      acc[channel].push(key);
+      return acc;
+    },
+    {} as Record<string, string[]>,
+  );
+
+  for (const channel of Object.keys(keysByChannel)) {
+    const updateKeys = keysByChannel[channel];
+    const targetKey = `${channel}/${platform}/target-app-versions.json`;
+    // Extract targetAppVersion from each update.json file key.
+    const currentVersions = updateKeys.map((key) => key.split("/")[2]);
+    const oldTargetVersions =
+      (await loadJsonFromS3<string[]>(client, bucketName, targetKey)) ?? [];
+    const newTargetVersions = oldTargetVersions.filter((v) =>
+      currentVersions.includes(v),
+    );
+    for (const v of currentVersions) {
+      if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
+    }
+    await uploadJsonToS3(client, bucketName, targetKey, newTargetVersions);
+  }
 }
 
 export const s3Database = (
@@ -74,106 +166,20 @@ export const s3Database = (
   const { bucketName, ...s3Config } = config;
   const client = new S3Client(s3Config);
 
-  // Map으로 변경하여 O(1) 조회 가능하게 함
+  // Map for O(1) lookup of bundles.
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
-  // 새로 추가된 번들을 임시 저장하는 Map
+  // Temporary store for newly added or modified bundles.
   const pendingBundlesMap = new Map<string, BundleWithUpdateJsonKey>();
 
   const PLATFORMS = ["ios", "android"] as const;
 
-  // List update.json paths for each platform in parallel
-  async function listUpdateJsonKeys(platform: string): Promise<string[]> {
-    let continuationToken: string | undefined;
-    const keys: string[] = [];
-    const pattern = new RegExp(`^${platform}/[^/]+/update\\.json$`);
-    do {
-      const response = await client.send(
-        new ListObjectsV2Command({
-          Bucket: bucketName,
-          Prefix: `${platform}/`,
-          ContinuationToken: continuationToken,
-        }),
-      );
-      const found = (response.Contents ?? [])
-        .map((item) => item.Key)
-        .filter((key): key is string => !!key && pattern.test(key));
-      keys.push(...found);
-      continuationToken = response.NextContinuationToken;
-    } while (continuationToken);
-    return keys;
-  }
-
-  // Update target-app-versions.json for each platform
-  async function updateTargetVersionsForPlatform(platform: string) {
-    const targetKey = `${platform}/target-app-versions.json`;
-    const oldTargetVersions =
-      (await loadJsonFromS3<string[]>(client, bucketName, targetKey)) ?? [];
-    const updateKeys = await listUpdateJsonKeys(platform);
-    const currentVersions = updateKeys.map((key) => key.split("/")[1]);
-    const newTargetVersions = oldTargetVersions.filter((v) =>
-      currentVersions.includes(v),
-    );
-    for (const v of currentVersions) {
-      if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
-    }
-    await uploadJsonToS3(client, bucketName, targetKey, newTargetVersions);
-  }
-
-  // Remove bundles to be moved from existing update.json file
-  async function processRemovals(oldKey: string, removalIds: string[]) {
-    const currentBundles =
-      (await loadJsonFromS3<Bundle[]>(client, bucketName, oldKey)) ?? [];
-    const updatedBundles = currentBundles.filter(
-      (b) => !removalIds.includes(b.id),
-    );
-    updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
-    if (updatedBundles.length === 0) {
-      await client.send(
-        new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey }),
-      );
-    } else {
-      await uploadJsonToS3(client, bucketName, oldKey, updatedBundles);
-    }
-  }
-
-  // Merge changed bundles into new update.json file
-  async function mergeChangedBundles(
-    updateJsonKey: string,
-    changedList: Bundle[],
-  ) {
-    const currentBundles =
-      (await loadJsonFromS3<Bundle[]>(client, bucketName, updateJsonKey)) ?? [];
-
-    // 먼저 내부 관리 키 제거
-    const pureBundles = changedList.map((bundle) => {
-      if ("_updateJsonKey" in bundle || "_oldUpdateJsonKey" in bundle) {
-        return removeBundleInternalKeys(bundle as BundleWithUpdateJsonKey);
-      }
-      return bundle;
-    });
-
-    for (const changedBundle of pureBundles) {
-      const index = currentBundles.findIndex((b) => b.id === changedBundle.id);
-      if (index >= 0) {
-        currentBundles[index] = changedBundle;
-      } else {
-        currentBundles.push(changedBundle);
-      }
-    }
-
-    // Sort bundles in descending order by id
-    currentBundles.sort((a, b) => b.id.localeCompare(a.id));
-
-    await uploadJsonToS3(client, bucketName, updateJsonKey, currentBundles);
-  }
-
-  // 모든 번들 데이터를 다시 로드
+  // Reload all bundle data from S3.
   async function reloadBundles() {
-    // 먼저 Map을 비워 이전 상태를 초기화
     bundlesMap.clear();
 
     const platformPromises = PLATFORMS.map(async (platform) => {
-      const keys = await listUpdateJsonKeys(platform);
+      // Retrieve update.json files for the platform across all channels.
+      const keys = await listUpdateJsonKeys(client, bucketName, platform);
       const filePromises = keys.map(async (key) => {
         const bundlesData =
           (await loadJsonFromS3<Bundle[]>(client, bucketName, key)) ?? [];
@@ -192,7 +198,7 @@ export const s3Database = (
       bundlesMap.set(bundle.id, bundle as BundleWithUpdateJsonKey);
     }
 
-    // 보류 중이던 번들들도 Map에 추가
+    // Add pending bundles.
     for (const [id, bundle] of pendingBundlesMap.entries()) {
       bundlesMap.set(id, bundle);
     }
@@ -204,31 +210,26 @@ export const s3Database = (
     "s3Database",
     {
       async getBundleById(bundleId: string) {
-        // 먼저 보류 중인 번들에서 확인
         const pendingBundle = pendingBundlesMap.get(bundleId);
         if (pendingBundle) {
           return removeBundleInternalKeys(pendingBundle);
         }
-
-        // 그 다음 메인 Map에서 확인
         const bundle = bundlesMap.get(bundleId);
         if (!bundle) return null;
         return removeBundleInternalKeys(bundle);
       },
 
       async getBundles(options) {
-        // 항상 S3에서 새로운 데이터를 로드하도록 수정
+        // Always load the latest data from S3.
         await reloadBundles();
 
         const { where, limit, offset = 0 } = options ?? {};
-
-        // Map의 모든 값을 배열로 변환 (보류 중인 번들 포함)
         let bundlesArray = Array.from(bundlesMap.values());
 
-        // 정렬: id 기준 내림차순
+        // Sort bundles in descending order by id.
         bundlesArray.sort((a, b) => b.id.localeCompare(a.id));
 
-        // where 조건 필터링
+        // Apply filtering conditions.
         if (where) {
           bundlesArray = bundlesArray.filter((bundle) => {
             return Object.entries(where).every(
@@ -237,17 +238,13 @@ export const s3Database = (
           });
         }
 
-        // offset 적용
         if (offset > 0) {
           bundlesArray = bundlesArray.slice(offset);
         }
-
-        // limit 적용
         if (limit) {
           bundlesArray = bundlesArray.slice(0, limit);
         }
 
-        // 내부 관리 키 제거
         return bundlesArray.map(removeBundleInternalKeys);
       },
 
@@ -257,23 +254,20 @@ export const s3Database = (
       },
 
       async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
+        if (changedSets.length === 0) return;
 
         const changedBundlesByKey: Record<string, Bundle[]> = {};
         const removalsByKey: Record<string, string[]> = {};
 
         for (const { operation, data } of changedSets) {
-          // insert 작업인 경우 번들을 맵에 추가
+          // Insert operation.
           if (operation === "insert") {
-            const key = `${data.platform}/${data.targetAppVersion}/update.json`;
+            const key = `${data.channel}/${data.platform}/${data.targetAppVersion}/update.json`;
             const bundleWithKey: BundleWithUpdateJsonKey = {
               ...data,
               _updateJsonKey: key,
             };
 
-            // 메인 맵과 보류 맵 모두에 추가
             bundlesMap.set(data.id, bundleWithKey);
             pendingBundlesMap.set(data.id, bundleWithKey);
 
@@ -284,80 +278,110 @@ export const s3Database = (
             continue;
           }
 
-          // update/delete 작업일 경우 번들 확인 (보류 맵부터 확인)
+          // For update operations, retrieve the current bundle.
           let bundle = pendingBundlesMap.get(data.id);
           if (!bundle) {
             bundle = bundlesMap.get(data.id);
           }
-
-          if (!bundle) continue;
-
-          // 번들의 targetAppVersion이 변경된 경우
-          if (
-            operation === "update" &&
-            data.targetAppVersion !== bundle.targetAppVersion
-          ) {
-            const oldKey = bundle._updateJsonKey;
-            const newKey = `${data.platform}/${data.targetAppVersion}/update.json`;
-
-            // 이전 위치에서 제거할 목록에 추가
-            removalsByKey[oldKey] = removalsByKey[oldKey] || [];
-            removalsByKey[oldKey].push(bundle.id);
-
-            // 새 위치에 추가할 목록에 추가
-            changedBundlesByKey[newKey] = changedBundlesByKey[newKey] || [];
-
-            // 번들 업데이트 (메모리)
-            const updatedBundle = { ...bundle, ...data };
-            updatedBundle._oldUpdateJsonKey = oldKey;
-            updatedBundle._updateJsonKey = newKey;
-
-            bundlesMap.set(data.id, updatedBundle);
-            pendingBundlesMap.set(data.id, updatedBundle);
-
-            // S3에 저장할 땐 순수 번들만 포함
-            changedBundlesByKey[newKey].push(
-              removeBundleInternalKeys(updatedBundle),
-            );
-            continue;
+          if (!bundle) {
+            throw new Error("targetBundleId not found");
           }
 
-          // 일반적인 업데이트
           if (operation === "update") {
-            const currentKey = bundle._updateJsonKey;
+            // Compute the new key using updated channel, platform, and targetAppVersion if provided.
+            const newChannel =
+              data.channel !== undefined ? data.channel : bundle.channel;
+            const newPlatform =
+              data.platform !== undefined ? data.platform : bundle.platform;
+            const newTargetAppVersion =
+              data.targetAppVersion !== undefined
+                ? data.targetAppVersion
+                : bundle.targetAppVersion;
+            const newKey = `${newChannel}/${newPlatform}/${newTargetAppVersion}/update.json`;
 
-            // 번들 업데이트 (메모리)
-            const updatedBundle = { ...bundle, ...data };
-            bundlesMap.set(data.id, updatedBundle);
-            pendingBundlesMap.set(data.id, updatedBundle);
+            if (newKey !== bundle._updateJsonKey) {
+              // If the key has changed (e.g., channel or targetAppVersion update), remove from old location.
+              const oldKey = bundle._updateJsonKey;
+              removalsByKey[oldKey] = removalsByKey[oldKey] || [];
+              removalsByKey[oldKey].push(bundle.id);
 
-            // 변경된 번들 목록에 추가
-            changedBundlesByKey[currentKey] =
-              changedBundlesByKey[currentKey] || [];
-            changedBundlesByKey[currentKey].push(
-              removeBundleInternalKeys(updatedBundle),
-            );
+              changedBundlesByKey[newKey] = changedBundlesByKey[newKey] || [];
+
+              const updatedBundle = { ...bundle, ...data };
+              updatedBundle._oldUpdateJsonKey = oldKey;
+              updatedBundle._updateJsonKey = newKey;
+
+              bundlesMap.set(data.id, updatedBundle);
+              pendingBundlesMap.set(data.id, updatedBundle);
+
+              changedBundlesByKey[newKey].push(
+                removeBundleInternalKeys(updatedBundle),
+              );
+              continue;
+            } else {
+              // No key change: update the bundle normally.
+              const currentKey = bundle._updateJsonKey;
+              const updatedBundle = { ...bundle, ...data };
+              bundlesMap.set(data.id, updatedBundle);
+              pendingBundlesMap.set(data.id, updatedBundle);
+              changedBundlesByKey[currentKey] =
+                changedBundlesByKey[currentKey] || [];
+              changedBundlesByKey[currentKey].push(
+                removeBundleInternalKeys(updatedBundle),
+              );
+            }
           }
         }
 
-        // 먼저 이전 위치에서 번들 제거
+        // Remove bundles from their old keys.
         for (const oldKey of Object.keys(removalsByKey)) {
-          await processRemovals(oldKey, removalsByKey[oldKey]);
+          await (async () => {
+            const currentBundles =
+              (await loadJsonFromS3<Bundle[]>(client, bucketName, oldKey)) ??
+              [];
+            const updatedBundles = currentBundles.filter(
+              (b) => !removalsByKey[oldKey].includes(b.id),
+            );
+            updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
+            if (updatedBundles.length === 0) {
+              await client.send(
+                new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey }),
+              );
+            } else {
+              await uploadJsonToS3(client, bucketName, oldKey, updatedBundles);
+            }
+          })();
         }
 
-        // 새로운 위치에 번들 추가/업데이트
+        // Add or update bundles in their new keys.
         for (const key of Object.keys(changedBundlesByKey)) {
-          await mergeChangedBundles(key, changedBundlesByKey[key]);
+          await (async () => {
+            const currentBundles =
+              (await loadJsonFromS3<Bundle[]>(client, bucketName, key)) ?? [];
+            const pureBundles = changedBundlesByKey[key].map(
+              (bundle) => bundle,
+            );
+            for (const changedBundle of pureBundles) {
+              const index = currentBundles.findIndex(
+                (b) => b.id === changedBundle.id,
+              );
+              if (index >= 0) {
+                currentBundles[index] = changedBundle;
+              } else {
+                currentBundles.push(changedBundle);
+              }
+            }
+            currentBundles.sort((a, b) => b.id.localeCompare(a.id));
+            await uploadJsonToS3(client, bucketName, key, currentBundles);
+          })();
         }
 
-        // 각 플랫폼의 target-app-versions.json 업데이트
+        // Update target-app-versions.json for each platform.
         for (const platform of PLATFORMS) {
-          await updateTargetVersionsForPlatform(platform);
+          await updateTargetVersionsForPlatform(client, bucketName, platform);
         }
 
-        // 성공적으로 commit 후 보류 맵 초기화
         pendingBundlesMap.clear();
-
         hooks?.onDatabaseUpdated?.();
       },
     },
