@@ -22,9 +22,7 @@ const TableHeader: Component<ComponentProps<"thead">> = (props) => {
 
 const TableBody: Component<ComponentProps<"tbody">> = (props) => {
   const [local, others] = splitProps(props, ["class"]);
-  return (
-    <tbody class={cn("[&_tr:last-child]:border-0", local.class)} {...others} />
-  );
+  return <tbody class={cn(local.class)} {...others} />;
 };
 
 const TableFooter: Component<ComponentProps<"tfoot">> = (props) => {

@@ -1,5 +1,10 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { mockClient } from "aws-sdk-client-mock";
 import { groupBy } from "es-toolkit";
@@ -13,7 +18,13 @@ const createGetUpdateInfo =
   (s3: S3Client, bucketName: string) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform }: GetBundlesArgs,
+    {
+      appVersion,
+      bundleId,
+      platform,
+      minBundleId = NIL_UUID,
+      channel = "production",
+    }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     if (bundles.length > 0) {
       // Mock target-app-versions.json
@@ -61,6 +72,8 @@ const createGetUpdateInfo =
     }
 
     return getUpdateInfoFromS3(s3, bucketName, {
+      minBundleId,
+      channel,
       appVersion,
       bundleId,
       platform,

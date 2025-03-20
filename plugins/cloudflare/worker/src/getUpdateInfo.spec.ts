@@ -1,4 +1,9 @@
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { beforeAll, beforeEach, describe, inject } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromWorker } from "./getUpdateInfo";
@@ -20,18 +25,18 @@ declare module "cloudflare:test" {
 const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
-      id, file_url, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message
+      id, file_hash, platform, target_app_version,
+      should_force_update, enabled, git_commit_hash, message, channel
     ) VALUES (
       '${bundle.id}',
-      '${bundle.fileUrl}',
       '${bundle.fileHash}',
       '${bundle.platform}',
       '${bundle.targetAppVersion}',
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
-      ${bundle.message ? `'${bundle.message}'` : "null"}
+      ${bundle.message ? `'${bundle.message}'` : "null"},
+      '${bundle.channel}'
     );
   `;
 };
@@ -40,7 +45,7 @@ const createGetUpdateInfo =
   (db: D1Database) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform }: GetBundlesArgs,
+    { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     if (bundles.length > 0) {
       await db.prepare(createInsertBundleQuerys(bundles)).run();
@@ -49,6 +54,8 @@ const createGetUpdateInfo =
       appVersion,
       bundleId,
       platform,
+      minBundleId: minBundleId || NIL_UUID,
+      channel,
     })) as UpdateInfo | null;
   };
 

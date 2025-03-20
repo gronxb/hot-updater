@@ -22,11 +22,10 @@ class AppDelegate: RCTAppDelegate {
   }
 
   override func bundleURL() -> URL? {
-    // #if DEBUG
-    //     RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-    // #else
-    //     Bundle.main.url(forResource: "main", withExtension: "jsbundle")
-    // #endif
-    HotUpdater.bundleURL()
+    #if DEBUG
+        RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+    #else
+        HotUpdater.bundleURL()
+    #endif
   }
 }

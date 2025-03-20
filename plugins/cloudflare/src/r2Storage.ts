@@ -75,17 +75,9 @@ export const r2Storage =
 
         hooks?.onStorageUploaded?.();
 
-        if (hooks?.transformFileUrl) {
-          return {
-            fileUrl: hooks.transformFileUrl(Key),
-          };
-        }
-
-        const publicUrl = await cf.r2.buckets.domains.managed.list(bucketName, {
-          account_id: accountId,
-        });
         return {
-          fileUrl: `https://${publicUrl.domain}/${Key}`,
+          bucketName,
+          key: Key,
         };
       },
     };

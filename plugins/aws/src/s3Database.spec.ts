@@ -13,21 +13,25 @@ import { s3Database } from "./s3Database";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const DEFAULT_BUNDLE = {
-  fileUrl: "http://example.com/bundle.zip",
+const DEFAULT_BUNDLE: Omit<
+  Bundle,
+  "id" | "platform" | "targetAppVersion" | "channel"
+> = {
   fileHash: "hash",
   gitCommitHash: null,
   message: null,
   enabled: true,
   shouldForceUpdate: false,
-} as const;
+};
 
 const createBundleJson = (
+  channel: string,
   platform: "ios" | "android",
   targetAppVersion: string,
   id: string,
 ): Bundle => ({
   ...DEFAULT_BUNDLE,
+  channel,
   id,
   platform,
   targetAppVersion,
@@ -97,13 +101,18 @@ describe("s3Database plugin", () => {
   const bucketName = "test-bucket";
   const s3Config = {};
   // Create plugin: Pass BasePluginArgs like { cwd: "" }
-  const plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+  let plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+
+  beforeEach(async () => {
+    plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+  });
 
   it("should append a new bundle and commit to S3", async () => {
     // Create new bundle
-    const bundleKey = "ios/1.0.0/update.json";
-    const targetVersionsKey = "ios/target-app-versions.json";
+    const bundleKey = "production/ios/1.0.0/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
     const newBundle = createBundleJson(
+      "production",
       "ios",
       "1.0.0",
       "00000000-0000-0000-0000-000000000001",
@@ -129,9 +138,10 @@ describe("s3Database plugin", () => {
   });
 
   it("should update an existing bundle and reflect changes in S3", async () => {
-    const bundleKey = "android/2.0.0/update.json";
-    const targetVersionsKey = "android/target-app-versions.json";
+    const bundleKey = "production/android/2.0.0/update.json";
+    const targetVersionsKey = "production/android/target-app-versions.json";
     const initialBundle = createBundleJson(
+      "production",
       "android",
       "2.0.0",
       "00000000-0000-0000-0000-000000000002",
@@ -142,7 +152,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles(true);
+    await plugin.getBundles();
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -158,48 +168,52 @@ describe("s3Database plugin", () => {
     ]);
   });
 
-  it("should return cached bundles when refresh is false", async () => {
-    const bundleKey = "ios/3.0.0/update.json";
-    const bundle = createBundleJson(
-      "ios",
-      "3.0.0",
-      "00000000-0000-0000-0000-000000000003",
-    );
-
-    // Pre-populate bundle data in fakeStore
-    fakeStore[bundleKey] = JSON.stringify([bundle]);
-
-    // Read bundles from S3 with refresh=true
-    const bundlesFirst = await plugin.getBundles(true);
-    expect(bundlesFirst).toStrictEqual([bundle]);
-
-    // Verify cached data is returned even after deleting from fakeStore
-    delete fakeStore[bundleKey];
-    const bundlesSecond = await plugin.getBundles(false);
-    expect(bundlesSecond).toStrictEqual([bundle]);
-  });
-
   it("should throw an error when trying to update a non-existent bundle", async () => {
     await expect(
       plugin.updateBundle("nonexistent", { enabled: true }),
-    ).rejects.toThrow("target bundle version not found");
+    ).rejects.toThrow("targetBundleId not found");
   });
 
   it("should move a bundle from ios/1.x.x/update.json to ios/1.0.2/update.json when targetAppVersion is updated", async () => {
-    const keyOld = "ios/1.x.x/update.json";
-    const keyNew = "ios/1.0.2/update.json";
-    const targetVersionsKey = "ios/target-app-versions.json";
+    const keyOld = "production/ios/1.x.x/update.json";
+    const keyNew = "production/ios/1.0.2/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
 
     // Pre-populate bundle data in fakeStore
     const oldVersionBundles = [
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000003"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000002"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000001"),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000003",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000002",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000001",
+      ),
     ];
 
     const newVersionBundles = [
-      createBundleJson("ios", "1.0.2", "00000000-0000-0000-0000-000000000005"),
-      createBundleJson("ios", "1.0.2", "00000000-0000-0000-0000-000000000004"),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.0.2",
+        "00000000-0000-0000-0000-000000000005",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.0.2",
+        "00000000-0000-0000-0000-000000000004",
+      ),
     ];
 
     // Configure update.json files (_updateJsonKey is added internally during getBundles())
@@ -210,7 +224,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles(true);
+    await plugin.getBundles();
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -222,16 +236,41 @@ describe("s3Database plugin", () => {
     // ios/1.0.2/update.json should have 3 bundles: 2 existing + 1 moved
     const newFileBundles = JSON.parse(fakeStore[keyNew]);
     expect(newFileBundles).toStrictEqual([
-      createBundleJson("ios", "1.0.2", "00000000-0000-0000-0000-000000000005"),
-      createBundleJson("ios", "1.0.2", "00000000-0000-0000-0000-000000000004"),
-      createBundleJson("ios", "1.0.2", "00000000-0000-0000-0000-000000000003"),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.0.2",
+        "00000000-0000-0000-0000-000000000005",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.0.2",
+        "00000000-0000-0000-0000-000000000004",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.0.2",
+        "00000000-0000-0000-0000-000000000003",
+      ),
     ]);
 
     // And ios/1.x.x/update.json should have 2 remaining bundles
     const oldFileBundles = JSON.parse(fakeStore[keyOld]);
     expect(oldFileBundles).toStrictEqual([
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000002"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000001"),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000002",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000001",
+      ),
     ]);
 
     // target-app-versions.json should have the new version
@@ -240,20 +279,45 @@ describe("s3Database plugin", () => {
   });
 
   it("should move all bundles from ios/1.0.2/update.json to ios/1.x.x/update.json when targetAppVersion is updated", async () => {
-    const keyOld = "ios/1.x.x/update.json";
-    const keyNew = "ios/1.0.2/update.json";
-    const targetVersionsKey = "ios/target-app-versions.json";
+    const keyOld = "production/ios/1.x.x/update.json";
+    const keyNew = "production/ios/1.0.2/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
 
     // Pre-populate bundle data in fakeStore
     const oldVersionBundles = [
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000003"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000002"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000001"),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000003",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000002",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000001",
+      ),
     ];
 
     const newVersionBundles = [
-      createBundleJson("ios", "1.0.2", "00000000-0000-0000-0000-000000000005"),
-      createBundleJson("ios", "1.0.2", "00000000-0000-0000-0000-000000000004"),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.0.2",
+        "00000000-0000-0000-0000-000000000005",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.0.2",
+        "00000000-0000-0000-0000-000000000004",
+      ),
     ];
 
     // Configure update.json files (_updateJsonKey is added internally during getBundles())
@@ -263,7 +327,7 @@ describe("s3Database plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles(true);
+    await plugin.getBundles();
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -281,11 +345,36 @@ describe("s3Database plugin", () => {
     // And ios/1.x.x/update.json should have all bundles
     const oldFileBundles = JSON.parse(fakeStore[keyOld]);
     expect(oldFileBundles).toStrictEqual([
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000005"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000004"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000003"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000002"),
-      createBundleJson("ios", "1.x.x", "00000000-0000-0000-0000-000000000001"),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000005",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000004",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000003",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000002",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "1.x.x",
+        "00000000-0000-0000-0000-000000000001",
+      ),
     ]);
 
     // target-app-versions.json should be updated
@@ -295,33 +384,187 @@ describe("s3Database plugin", () => {
 
   it("should gather bundles from multiple update.json paths across different platforms", async () => {
     // Arrange: Configure different bundle data in multiple update.json files
-    const iosBundle1 = createBundleJson("ios", "1.0.0", "bundle-ios-1");
-    const iosBundle2 = createBundleJson("ios", "2.0.0", "bundle-ios-2");
+    const iosBundle1 = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "bundle-ios-1",
+    );
+    const iosBundle2 = createBundleJson(
+      "production",
+      "ios",
+      "2.0.0",
+      "bundle-ios-2",
+    );
     const androidBundle1 = createBundleJson(
+      "production",
       "android",
       "1.0.0",
       "bundle-android-1",
     );
 
     // Valid update.json files
-    fakeStore["ios/1.0.0/update.json"] = JSON.stringify([iosBundle1]);
-    fakeStore["ios/2.0.0/update.json"] = JSON.stringify([iosBundle2]);
-    fakeStore["android/1.0.0/update.json"] = JSON.stringify([androidBundle1]);
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      iosBundle1,
+    ]);
+    fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([
+      iosBundle2,
+    ]);
+    fakeStore["production/android/1.0.0/update.json"] = JSON.stringify([
+      androidBundle1,
+    ]);
 
     // Invalid files: don't match pattern (should be ignored)
-    fakeStore["ios/other.json"] = JSON.stringify([]);
-    fakeStore["android/1.0.0/extra/update.json"] = JSON.stringify([
-      createBundleJson("android", "1.0.0", "should-not-be-included"),
+    fakeStore["production/ios/other.json"] = JSON.stringify([]);
+    fakeStore["production/android/1.0.0/extra/update.json"] = JSON.stringify([
+      createBundleJson(
+        "production",
+        "android",
+        "1.0.0",
+        "should-not-be-included",
+      ),
     ]);
 
     // Act: Force reload bundle info from S3
-    const bundles = await plugin.getBundles(true);
+    const bundles = await plugin.getBundles();
 
     // Assert: Returned bundle list should only include valid bundles
     expect(bundles).toHaveLength(3);
     expect(bundles).toEqual(
       expect.arrayContaining([iosBundle1, iosBundle2, androidBundle1]),
     );
+  });
+
+  it("should handle bundles from multiple channels correctly", async () => {
+    // Arrange: Configure bundle data across different channels
+    const productionIosBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "prod-ios-1",
+    );
+    const betaIosBundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "beta-ios-1",
+    );
+    const alphaIosBundle = createBundleJson(
+      "alpha",
+      "ios",
+      "1.0.0",
+      "alpha-ios-1",
+    );
+    const productionAndroidBundle = createBundleJson(
+      "production",
+      "android",
+      "1.0.0",
+      "prod-android-1",
+    );
+    const betaAndroidBundle = createBundleJson(
+      "beta",
+      "android",
+      "1.0.0",
+      "beta-android-1",
+    );
+
+    // Set up update.json files for different channels
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      productionIosBundle,
+    ]);
+    fakeStore["beta/ios/1.0.0/update.json"] = JSON.stringify([betaIosBundle]);
+    fakeStore["alpha/ios/1.0.0/update.json"] = JSON.stringify([alphaIosBundle]);
+    fakeStore["production/android/1.0.0/update.json"] = JSON.stringify([
+      productionAndroidBundle,
+    ]);
+    fakeStore["beta/android/1.0.0/update.json"] = JSON.stringify([
+      betaAndroidBundle,
+    ]);
+
+    // Set up target-app-versions.json files for different channels
+    fakeStore["production/ios/target-app-versions.json"] = JSON.stringify([
+      "1.0.0",
+    ]);
+    fakeStore["beta/ios/target-app-versions.json"] = JSON.stringify(["1.0.0"]);
+    fakeStore["alpha/ios/target-app-versions.json"] = JSON.stringify(["1.0.0"]);
+    fakeStore["production/android/target-app-versions.json"] = JSON.stringify([
+      "1.0.0",
+    ]);
+    fakeStore["beta/android/target-app-versions.json"] = JSON.stringify([
+      "1.0.0",
+    ]);
+
+    // Act: Load all bundles from S3
+    const bundles = await plugin.getBundles();
+
+    // Assert: All bundles from all channels should be loaded
+    expect(bundles).toHaveLength(5);
+    expect(bundles).toEqual(
+      expect.arrayContaining([
+        productionIosBundle,
+        betaIosBundle,
+        alphaIosBundle,
+        productionAndroidBundle,
+        betaAndroidBundle,
+      ]),
+    );
+
+    // Test updating a bundle in a specific channel
+    await plugin.updateBundle("beta-ios-1", {
+      enabled: false,
+      message: "Disabled in beta channel",
+    });
+    await plugin.commitBundle();
+
+    // Verify only the beta channel bundle was updated
+    const updatedBetaIosBundles = JSON.parse(
+      fakeStore["beta/ios/1.0.0/update.json"],
+    );
+    expect(updatedBetaIosBundles[0].enabled).toBe(false);
+    expect(updatedBetaIosBundles[0].message).toBe("Disabled in beta channel");
+
+    // Verify other channel bundles remain unchanged
+    const productionIosBundles = JSON.parse(
+      fakeStore["production/ios/1.0.0/update.json"],
+    );
+    expect(productionIosBundles[0].enabled).toBe(true);
+  });
+
+  it("should move a bundle between channels correctly", async () => {
+    // Arrange: Set up bundles in different channels
+    const betaIosBundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "channel-move-test",
+    );
+
+    fakeStore["beta/ios/1.0.0/update.json"] = JSON.stringify([betaIosBundle]);
+    fakeStore["beta/ios/target-app-versions.json"] = JSON.stringify(["1.0.0"]);
+    fakeStore["production/ios/target-app-versions.json"] = JSON.stringify([
+      "1.0.0",
+    ]);
+
+    // Act: Load bundles, update channel, and commit
+    await plugin.getBundles();
+    await plugin.updateBundle("channel-move-test", {
+      channel: "production",
+    });
+    await plugin.commitBundle();
+
+    // Assert: Bundle should be moved to production channel
+    const productionBundles = JSON.parse(
+      fakeStore["production/ios/1.0.0/update.json"],
+    );
+    expect(productionBundles).toHaveLength(1);
+    expect(productionBundles[0].id).toBe("channel-move-test");
+    expect(productionBundles[0].channel).toBe("production");
+
+    // Beta channel should no longer have the bundle
+    const betaBundles = JSON.parse(
+      fakeStore["beta/ios/1.0.0/update.json"] || "[]",
+    );
+    expect(betaBundles).toHaveLength(0);
   });
 
   it("should return null for non-existent bundle id", async () => {
@@ -332,11 +575,16 @@ describe("s3Database plugin", () => {
 
   it("should not modify update.json when no bundles are marked as changed", async () => {
     // Verify existing update.json file is preserved
-    const updateKey = "ios/1.0.0/update.json";
-    const iosBundle = createBundleJson("ios", "1.0.0", "bundle-1");
+    const updateKey = "production/ios/1.0.0/update.json";
+    const iosBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "bundle-1",
+    );
     fakeStore[updateKey] = JSON.stringify([iosBundle]);
     // Pre-configure target-app-versions file
-    const targetKey = "ios/target-app-versions.json";
+    const targetKey = "production/ios/target-app-versions.json";
     fakeStore[targetKey] = JSON.stringify(["1.0.0"]);
 
     // Call commitBundle but update.json should remain unchanged as no bundles were modified
@@ -353,7 +601,7 @@ describe("s3Database plugin", () => {
       { bucketName, ...s3Config },
       { onDatabaseUpdated },
     )({ cwd: "" });
-    const bundle = createBundleJson("ios", "1.0.0", "hook-test");
+    const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
     await pluginWithHook.commitBundle();
     expect(onDatabaseUpdated).toHaveBeenCalled();
@@ -361,14 +609,17 @@ describe("s3Database plugin", () => {
 
   it("should sort bundles in descending order based on id", async () => {
     // Verify bundles from multiple update.json files are sorted in descending order
-    const bundleA = createBundleJson("ios", "1.0.0", "A");
-    const bundleB = createBundleJson("ios", "1.0.0", "B");
-    const bundleC = createBundleJson("ios", "1.0.0", "C");
+    const bundleA = createBundleJson("production", "ios", "1.0.0", "A");
+    const bundleB = createBundleJson("production", "ios", "1.0.0", "B");
+    const bundleC = createBundleJson("production", "ios", "1.0.0", "C");
     // Intentionally store in mixed order in fakeStore
-    fakeStore["ios/1.0.0/update.json"] = JSON.stringify([bundleB, bundleA]);
-    fakeStore["ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      bundleB,
+      bundleA,
+    ]);
+    fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
 
-    const bundles = await plugin.getBundles(true);
+    const bundles = await plugin.getBundles();
 
     // Descending order: "C" > "B" > "A"
     expect(bundles).toEqual([bundleC, bundleB, bundleA]);
@@ -376,9 +627,16 @@ describe("s3Database plugin", () => {
 
   it("should return a bundle without internal keys from getBundleById", async () => {
     // Verify internal management keys (_updateJsonKey, _oldUpdateJsonKey) are removed when fetching by getBundleById
-    const bundle = createBundleJson("android", "2.0.0", "internal-test");
-    fakeStore["android/2.0.0/update.json"] = JSON.stringify([bundle]);
-    await plugin.getBundles(true);
+    const bundle = createBundleJson(
+      "production",
+      "android",
+      "2.0.0",
+      "internal-test",
+    );
+    fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
+      bundle,
+    ]);
+    await plugin.getBundles();
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -387,13 +645,18 @@ describe("s3Database plugin", () => {
 
   it("should update a bundle without changing its updateJsonKey if platform and targetAppVersion remain unchanged", async () => {
     // Verify updateJsonKey remains unchanged if platform and targetAppVersion stay the same
-    const bundle = createBundleJson("android", "2.0.0", "same-key-test");
+    const bundle = createBundleJson(
+      "production",
+      "android",
+      "2.0.0",
+      "same-key-test",
+    );
     await plugin.appendBundle(bundle);
     // Change only enabled property → path should remain the same
     await plugin.updateBundle("same-key-test", { enabled: false });
     await plugin.commitBundle();
 
-    const updateKey = "android/2.0.0/update.json";
+    const updateKey = "production/android/2.0.0/update.json";
     const storedBundles = JSON.parse(fakeStore[updateKey]);
     expect(storedBundles).toEqual([
       {
@@ -406,21 +669,26 @@ describe("s3Database plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const bundles = await plugin.getBundles(true);
+    const bundles = await plugin.getBundles();
     expect(bundles).toEqual([]);
   });
 
   it("should append multiple bundles and commit them to the correct update.json files", async () => {
     // Verify multiple bundles are added to their respective platform/version paths
-    const bundle1 = createBundleJson("ios", "1.0.0", "multi-1");
-    const bundle2 = createBundleJson("android", "2.0.0", "multi-2");
+    const bundle1 = createBundleJson("production", "ios", "1.0.0", "multi-1");
+    const bundle2 = createBundleJson(
+      "production",
+      "android",
+      "2.0.0",
+      "multi-2",
+    );
 
     await plugin.appendBundle(bundle1);
     await plugin.appendBundle(bundle2);
     await plugin.commitBundle();
 
-    const iosUpdateKey = "ios/1.0.0/update.json";
-    const androidUpdateKey = "android/2.0.0/update.json";
+    const iosUpdateKey = "production/ios/1.0.0/update.json";
+    const androidUpdateKey = "production/android/2.0.0/update.json";
 
     const iosBundles = JSON.parse(fakeStore[iosUpdateKey]);
     const androidBundles = JSON.parse(fakeStore[androidUpdateKey]);
@@ -430,8 +698,9 @@ describe("s3Database plugin", () => {
   });
 
   it("should not update S3 until commitBundle is called", async () => {
-    const bundleKey = "ios/1.0.0/update.json";
+    const bundleKey = "production/ios/1.0.0/update.json";
     const newBundle = createBundleJson(
+      "production",
       "ios",
       "1.0.0",
       "00000000-0000-0000-0000-000000000010",
