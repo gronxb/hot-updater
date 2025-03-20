@@ -318,18 +318,18 @@ export const s3Database = (
                 removeBundleInternalKeys(updatedBundle),
               );
               continue;
-            } else {
-              // No key change: update the bundle normally.
-              const currentKey = bundle._updateJsonKey;
-              const updatedBundle = { ...bundle, ...data };
-              bundlesMap.set(data.id, updatedBundle);
-              pendingBundlesMap.set(data.id, updatedBundle);
-              changedBundlesByKey[currentKey] =
-                changedBundlesByKey[currentKey] || [];
-              changedBundlesByKey[currentKey].push(
-                removeBundleInternalKeys(updatedBundle),
-              );
             }
+
+            // No key change: update the bundle normally.
+            const currentKey = bundle._updateJsonKey;
+            const updatedBundle = { ...bundle, ...data };
+            bundlesMap.set(data.id, updatedBundle);
+            pendingBundlesMap.set(data.id, updatedBundle);
+            changedBundlesByKey[currentKey] =
+              changedBundlesByKey[currentKey] || [];
+            changedBundlesByKey[currentKey].push(
+              removeBundleInternalKeys(updatedBundle),
+            );
           }
         }
 
