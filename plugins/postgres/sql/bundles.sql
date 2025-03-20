@@ -8,10 +8,10 @@ CREATE TABLE bundles (
     target_app_version text NOT NULL,
     should_force_update boolean NOT NULL,
     enabled boolean NOT NULL,
-    file_url text NOT NULL,
     file_hash text NOT NULL,
     git_commit_hash text,
-    message text
+    message text,
+    channel text NOT NULL DEFAULT 'production'
 );
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);

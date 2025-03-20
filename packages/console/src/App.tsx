@@ -3,8 +3,6 @@ import { Route, Router } from "@solidjs/router";
 import "./App.css";
 import Layout from "@/components/ui/layout";
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
-import { Suspense } from "solid-js";
-import { SplashScreen } from "./components/spash-screen";
 import { Toaster } from "./components/ui/toast";
 import Home from "./routes";
 
@@ -17,9 +15,7 @@ export default function App() {
         root={(props) => (
           <MetaProvider>
             <Title>HotUpdater Console</Title>
-            <Suspense fallback={<SplashScreen />}>
-              <Layout>{props.children}</Layout>
-            </Suspense>
+            <Layout>{props.children}</Layout>
           </MetaProvider>
         )}
       >

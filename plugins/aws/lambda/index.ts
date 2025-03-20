@@ -1,5 +1,6 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { S3Client } from "@aws-sdk/client-s3";
+import { NIL_UUID } from "@hot-updater/core";
+import { verifyJwtToken, withJwtSignedUrl } from "@hot-updater/js";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
@@ -10,41 +11,12 @@ declare global {
   var HotUpdater: {
     S3_BUCKET_NAME: string;
     S3_REGION: string;
+    JWT_SECRET: string;
   };
 }
 
 const s3 = new S3Client({ region: HotUpdater.S3_REGION });
-
-function parseS3Url(url: string) {
-  try {
-    const parsedUrl = new URL(url);
-    const { hostname, pathname } = parsedUrl;
-    if (!hostname.includes(".s3.")) return { isS3Url: false };
-    const [bucket] = hostname.split(".s3");
-    const key = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-    return { isS3Url: true, bucket, key };
-  } catch {
-    return { isS3Url: false };
-  }
-}
-
-async function createPresignedUrl(url: string) {
-  const { isS3Url, bucket, key } = parseS3Url(url);
-  if (!isS3Url || !bucket || !key) {
-    return url;
-  }
-  // @ts-ignore
-  return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
-    expiresIn: 60,
-  });
-}
-
-async function signUpdateInfoFileUrl(updateInfo: any) {
-  if (updateInfo?.fileUrl) {
-    updateInfo.fileUrl = await createPresignedUrl(updateInfo.fileUrl);
-  }
-  return updateInfo;
-}
+const bucketName = HotUpdater.S3_BUCKET_NAME;
 
 type Bindings = {
   callback: Callback;
@@ -61,35 +33,69 @@ app.get("/api/check-update", async (c) => {
     const appPlatform = headers["x-app-platform"]?.[0]?.value as
       | "ios"
       | "android";
-
     const appVersion = headers["x-app-version"]?.[0]?.value;
+    const minBundleId = headers["x-min-bundle-id"]?.[0]?.value ?? NIL_UUID;
+    const channel = headers["x-channel"]?.[0]?.value ?? "production";
+
     if (!bundleId || !appPlatform || !appVersion) {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const updateInfo = await getUpdateInfo(s3, HotUpdater.S3_BUCKET_NAME, {
+    const updateInfo = await getUpdateInfo(s3, bucketName, {
       platform: appPlatform,
       bundleId,
       appVersion,
+      minBundleId,
+      channel,
     });
     if (!updateInfo) {
       return c.json(null);
     }
 
-    const finalInfo = await signUpdateInfoFileUrl(updateInfo);
-    return c.json(finalInfo);
+    const appUpdateInfo = await withJwtSignedUrl({
+      data: updateInfo,
+      reqUrl: c.req.url,
+      jwtSecret: HotUpdater.JWT_SECRET,
+    });
+
+    return c.json(appUpdateInfo);
   } catch {
-    return c.json(
-      {
-        error: "Internal Server Error",
-      },
-      500,
-    );
+    return c.json({ error: "Internal Server Error" }, 500);
   }
 });
 
 app.get("*", async (c) => {
-  c.env.callback(null, c.env.request);
+  const params = new URLSearchParams(c.env.request.querystring || "");
+  const token = params.get("token");
+  const path = c.env.request.uri;
+
+  if (!token) {
+    return c.json({ error: "Missing token" }, 400);
+  }
+
+  const verifyResult = await verifyJwtToken({
+    path,
+    token,
+    jwtSecret: HotUpdater.JWT_SECRET,
+  });
+  if (!verifyResult.valid) {
+    return c.json(
+      { error: verifyResult.error },
+      verifyResult.error === "Missing token" ? 400 : 403,
+    );
+  }
+
+  params.delete("token");
+  c.env.request.querystring = params.toString();
+  c.env.request.uri = ["/", verifyResult.key].join("");
+
+  const s3Host = c.env.request.origin?.s3?.domainName;
+  if (!s3Host) {
+    return c.json({ error: "Missing s3 host" }, 500);
+  }
+
+  c.env.request.headers["host"] = [{ key: "Host", value: s3Host }];
+  return c.env.callback(null, c.env.request);
 });
 
 export const handler = handle(app) as CloudFrontRequestHandler;
