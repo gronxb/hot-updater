@@ -4,7 +4,7 @@ import type {
   StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
-import { getApp, getApps, initializeApp } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import {
   type StorageReference,
   deleteObject,
@@ -25,18 +25,7 @@ export interface FirebaseStorageConfig {
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
-    /**
-     * `appName` for Firebase `initializeApp(config, appName)`.
-     *
-     * Allows creating multiple Firebase app instances within the same project,
-     * useful for different environments (dev/prod) or purposes, while sharing the same database.
-     * Firebase uses `appName` for caching app instances for performance.
-     * Not user-facing, for internal Firebase management.
-     */
-    const appName = "hot-updater";
-    const app = getApps().find((app) => app.name === appName)
-      ? getApp(appName)
-      : initializeApp(config, appName);
+    const app = initializeApp(config);
     const storage = getStorage(app);
 
     return {
@@ -73,7 +62,7 @@ export const firebaseStorage =
         hooks?.onStorageUploaded?.();
 
         return {
-          bucketName: storage.app.name,
+          bucketName: app.options.storageBucket || config.storageBucket,
           key: Key,
         };
       },

@@ -42,7 +42,6 @@ const addBundlesToFirestore = async (bundles: Bundle[]) => {
     const docRef = bundlesCollection.doc(bundle.id);
     batch.set(docRef, {
       id: bundle.id,
-      file_url: bundle.fileUrl,
       file_hash: bundle.fileHash,
       platform: bundle.platform,
       target_app_version: bundle.targetAppVersion,
