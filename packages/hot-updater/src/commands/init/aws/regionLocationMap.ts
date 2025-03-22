@@ -1,9 +1,6 @@
 import type { BucketLocationConstraint } from "@hot-updater/aws/sdk";
 
-export const regionLocationMap: Record<
-  BucketLocationConstraint | "eu-central-2",
-  string
-> = {
+export const regionLocationMap: Record<BucketLocationConstraint, string> = {
   EU: "Europe",
   "af-south-1": "Cape Town, South Africa",
   "ap-east-1": "Hong Kong",
