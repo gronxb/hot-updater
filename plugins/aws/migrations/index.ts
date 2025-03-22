@@ -8,6 +8,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { merge, omit } from "es-toolkit";
+import picocolors from "picocolors";
 
 interface MigrationRecord {
   name: string;
@@ -18,17 +19,19 @@ interface S3MigratorOptions {
   credentials: S3ClientConfig["credentials"];
   region: string;
   bucketName: string;
+  dryRun?: boolean; // Option to enable dry-run mode
 }
 
 /**
  * S3Migration
- * Base class that each migration script inherits from.
+ * Base class that each migration script extends.
  * Provides common S3-related methods (getKeys, readJson, updateFile, moveFile, etc.)
  */
 export abstract class S3Migration {
   name!: string;
   s3!: S3Client;
   bucketName!: string;
+  dryRun = false; // Flag for dry-run mode
 
   // Retrieves all object keys that start with the specified prefix
   protected async getKeys(prefix: string): Promise<string[]> {
@@ -53,7 +56,7 @@ export abstract class S3Migration {
     return keys;
   }
 
-  // Reads the file at the specified key and returns its contents as a string
+  // Reads the file at the specified key and returns its content as a string
   protected async readFile(key: string): Promise<string | null> {
     try {
       const command = new GetObjectCommand({
@@ -66,7 +69,7 @@ export abstract class S3Migration {
       }
       return null;
     } catch (error) {
-      console.error(`Error reading file ${key}:`, error);
+      console.error(picocolors.red(`Error reading file ${key}:`), error);
       return null;
     }
   }
@@ -78,15 +81,24 @@ export abstract class S3Migration {
       try {
         return JSON.parse(content);
       } catch (e) {
-        console.error(`Error parsing JSON from ${key}:`, e);
+        console.error(picocolors.red(`Error parsing JSON from ${key}:`), e);
       }
     }
     return null;
   }
 
   // Updates (uploads) a file at the specified key
+  // In dry-run mode, it logs what would be updated instead of applying changes
   protected async updateFile(key: string, content: string): Promise<void> {
     const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
+    if (this.dryRun) {
+      console.log(
+        picocolors.yellow(
+          `[DRY RUN] Would update file ${normalizedKey} with content:\n${content}`,
+        ),
+      );
+      return;
+    }
     const upload = new Upload({
       client: this.s3,
       params: {
@@ -99,7 +111,14 @@ export abstract class S3Migration {
   }
 
   // Moves a single file from one location to another
+  // In dry-run mode, it logs what would be moved instead of applying changes
   protected async moveFile(from: string, to: string): Promise<void> {
+    if (this.dryRun) {
+      console.log(
+        picocolors.yellow(`[DRY RUN] Would move file from ${from} to ${to}`),
+      );
+      return;
+    }
     try {
       // Copy the file
       const copyCommand = new CopyObjectCommand({
@@ -114,9 +133,12 @@ export abstract class S3Migration {
         Key: from,
       });
       await this.s3.send(deleteCommand);
-      console.log(`Moved file from ${from} to ${to}`);
+      console.log(picocolors.green(`Moved file from ${from} to ${to}`));
     } catch (error) {
-      console.error(`Error moving file from ${from} to ${to}:`, error);
+      console.error(
+        picocolors.red(`Error moving file from ${from} to ${to}:`),
+        error,
+      );
     }
   }
 
@@ -133,10 +155,12 @@ export class S3Migrator {
   options: S3MigratorOptions;
   migrationRecordKey = "migrate.json";
   migrationRecords: MigrationRecord[] = [];
+  dryRun: boolean;
 
   constructor(options: S3MigratorOptions) {
     this.options = options;
     this.bucketName = options.bucketName;
+    this.dryRun = options.dryRun || false;
     this.s3 = new S3Client({
       credentials: options.credentials,
       region: options.region,
@@ -155,7 +179,10 @@ export class S3Migrator {
         try {
           this.migrationRecords = JSON.parse(bodyContents);
         } catch (jsonError) {
-          console.error("Failed to parse migration records JSON:", jsonError);
+          console.error(
+            picocolors.red("Failed to parse migration records JSON:"),
+            jsonError,
+          );
           this.migrationRecords = [];
         }
       }
@@ -169,6 +196,13 @@ export class S3Migrator {
   }
 
   private async saveMigrationRecords(): Promise<void> {
+    if (this.dryRun) {
+      console.log(
+        picocolors.yellow("[DRY RUN] Would save migration records:"),
+        this.migrationRecords,
+      );
+      return;
+    }
     const body = JSON.stringify(this.migrationRecords, null, 2);
     const upload = new Upload({
       client: this.s3,
@@ -189,49 +223,70 @@ export class S3Migrator {
         (record) => record.name === migration.name,
       );
       if (alreadyApplied) {
-        console.log(`Migration ${migration.name} already applied, skipping.`);
+        console.log(
+          picocolors.yellow(
+            `Migration ${migration.name} already applied, skipping.`,
+          ),
+        );
         continue;
       }
 
-      console.log(`Applying migration ${migration.name}...`);
+      console.log(
+        picocolors.magenta(`Applying migration ${migration.name}...`),
+      );
       migration.s3 = this.s3;
       migration.bucketName = this.bucketName;
+      migration.dryRun = this.dryRun;
 
       await migration.migrate();
 
-      this.migrationRecords.push({
-        name: migration.name,
-        appliedAt: new Date().toISOString(),
-      });
-      console.log(`Migration ${migration.name} applied successfully.`);
+      if (!this.dryRun) {
+        this.migrationRecords.push({
+          name: migration.name,
+          appliedAt: new Date().toISOString(),
+        });
+        console.log(
+          picocolors.green(`Migration ${migration.name} applied successfully.`),
+        );
+      } else {
+        console.log(
+          picocolors.yellow(`[DRY RUN] Migration ${migration.name} simulated.`),
+        );
+      }
     }
 
     await this.saveMigrationRecords();
-    console.log("All migrations applied.");
+    if (!this.dryRun) {
+      console.log(picocolors.blue("All migrations applied."));
+    } else {
+      console.log(
+        picocolors.blue(
+          "[DRY RUN] Completed dry-run. No changes were applied.",
+        ),
+      );
+    }
   }
 }
 
 /**
  * Migration0001HotUpdater0130
- * 1. Retrieves all object keys in the bucket,
- * 2. If update.json exists, uses the readJson helper to read the JSON array,
- *    then removes the fileUrl field from each item and merges channel: "production" before updating.
+ * 1. Retrieves all keys in the bucket.
+ * 2. If update.json exists, reads the JSON array, removes the fileUrl property from each item,
+ *    and merges in { channel: "production" } before updating the file.
  * 3. Moves files that start with ios/ or android/ under the production/ prefix.
  */
 export class Migration0001HotUpdater0130 extends S3Migration {
   name = "hot-updater_0.13.0";
 
   async migrate(): Promise<void> {
-    // Query all keys
+    // Retrieve all keys in the bucket
     const keys = await this.getKeys("");
-    console.log("All keys in bucket:", keys);
+    console.log(picocolors.blue("All keys in bucket:"), keys);
 
-    // Process update.json file (update.json is always an array)
+    // Process update.json (which is expected to be an array)
     if (keys.includes("update.json")) {
-      const data = await this.readJson<{
-        fileUrl: string;
-      }>("update.json");
-      if (data && Array.isArray(data)) {
+      const data = await this.readJson<{ fileUrl: string }[]>("update.json");
+      if (data) {
         const updatedData = data.map((item) =>
           merge(omit(item, ["fileUrl"]), { channel: "production" }),
         );
@@ -239,13 +294,15 @@ export class Migration0001HotUpdater0130 extends S3Migration {
           "update.json",
           JSON.stringify(updatedData, null, 2),
         );
-        console.log("update.json updated successfully.");
+        console.log(picocolors.green("update.json updated successfully."));
       } else {
-        console.log("update.json does not contain an array.");
+        console.log(
+          picocolors.yellow("update.json does not contain an array."),
+        );
       }
     }
 
-    // Move files to production prefix: move files that start with ios/ or android/ and don't already have the production/ prefix
+    // Move files that start with ios/ or android/ to the production/ prefix
     for (const key of keys) {
       if (key === "update.json") continue;
       if (key.startsWith("production/")) continue;
@@ -259,7 +316,7 @@ export class Migration0001HotUpdater0130 extends S3Migration {
 
 /**
  * runMigrate
- * Function that creates an S3Migrator and executes migration scripts
+ * Creates an S3Migrator and executes migration scripts.
  */
 export async function runMigrate() {
   const migrator = new S3Migrator({
@@ -269,6 +326,7 @@ export async function runMigrate() {
     },
     region: "YOUR_REGION",
     bucketName: "YOUR_BUCKET_NAME",
+    dryRun: true, // Set dry-run mode to true for planning and preview
   });
   await migrator.migrate([new Migration0001HotUpdater0130()]);
 }
