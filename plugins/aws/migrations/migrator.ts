@@ -55,7 +55,7 @@ export abstract class S3Migration {
     const keys: string[] = [];
     let continuationToken: string | undefined = undefined;
     do {
-      const command = new ListObjectsV2Command({
+      const command: ListObjectsV2Command = new ListObjectsV2Command({
         Bucket: this.bucketName,
         Prefix: prefix.startsWith("/") ? prefix.substring(1) : prefix,
         ContinuationToken: continuationToken,
