@@ -1,50 +1,69 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.json`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
-
+import { NIL_UUID } from "@hot-updater/core";
+import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
+import { Hono } from "hono";
 import { getUpdateInfo } from "./getUpdateInfo";
 
-export default {
-  async fetch(request, env, ctx): Promise<Response> {
-    const url = new URL(request.url);
+type Env = {
+  DB: D1Database;
+  BUCKET: R2Bucket;
+  JWT_SECRET: string;
+};
 
-    if (url.pathname !== "/api/check-update") {
-      return new Response("Not found", { status: 404 });
-    }
+const app = new Hono<{ Bindings: Env }>();
 
-    const bundleId = request.headers.get("x-bundle-id") as string;
-    const appPlatform = request.headers.get("x-app-platform") as
-      | "ios"
-      | "android";
-    const appVersion = request.headers.get("x-app-version") as string;
+app.get("/api/check-update", async (c) => {
+  const bundleId = c.req.header("x-bundle-id") as string;
+  const appPlatform = c.req.header("x-app-platform") as "ios" | "android";
+  const appVersion = c.req.header("x-app-version") as string;
+  const minBundleId = c.req.header("x-min-bundle-id") as string | undefined;
+  const channel = c.req.header("x-channel") as string | undefined;
 
-    if (!bundleId || !appPlatform || !appVersion) {
-      return new Response(
-        JSON.stringify({
-          error: "Missing bundleId, appPlatform, or appVersion",
-        }),
-        { status: 400 },
-      );
-    }
+  if (!bundleId || !appPlatform || !appVersion) {
+    return c.json(
+      { error: "Missing bundleId, appPlatform, or appVersion" },
+      400,
+    );
+  }
 
-    const updateInfo = await getUpdateInfo(env.DB, {
-      appVersion,
-      bundleId,
-      platform: appPlatform,
-    });
+  const updateInfo = await getUpdateInfo(c.env.DB, {
+    appVersion,
+    bundleId,
+    platform: appPlatform,
+    minBundleId: minBundleId || NIL_UUID,
+    channel: channel || "production",
+  });
 
-    return new Response(JSON.stringify(updateInfo), {
-      headers: { "Content-Type": "application/json" },
-      status: 200,
-    });
-  },
-} satisfies ExportedHandler<Env>;
+  const appUpdateInfo = await withJwtSignedUrl({
+    data: updateInfo,
+    reqUrl: c.req.url,
+    jwtSecret: c.env.JWT_SECRET,
+  });
+
+  return c.json(appUpdateInfo, 200);
+});
+
+app.get("*", async (c) => {
+  const result = await verifyJwtSignedUrl({
+    path: c.req.path,
+    token: c.req.query("token"),
+    jwtSecret: c.env.JWT_SECRET,
+    handler: async (key) => {
+      const object = await c.env.BUCKET.get(key);
+      if (!object) {
+        return null;
+      }
+      return {
+        body: object.body,
+        contentType: object.httpMetadata?.contentType,
+      };
+    },
+  });
+
+  if (result.status !== 200) {
+    return c.json({ error: result.error }, result.status);
+  }
+
+  return c.body(result.responseBody, 200, result.responseHeaders);
+});
+
+export default app;

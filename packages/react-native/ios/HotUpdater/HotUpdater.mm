@@ -21,6 +21,73 @@
 
 RCT_EXPORT_MODULE();
 
+#pragma mark - React Native Constants
+
+- (NSString *)getMinBundleId {
+    static NSString *uuid = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSDate *buildDate = nil;
+        NSURL *fallbackURL = nil;
+    #if DEBUG
+        uuid = @"00000000-0000-0000-0000-000000000000";
+        return;
+    #else
+        fallbackURL = [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+    #endif
+        if (fallbackURL) {
+            NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:[fallbackURL path] error:nil];
+            buildDate = attributes[NSFileModificationDate];
+        }
+        if (!buildDate) {
+            uuid = @"00000000-0000-0000-0000-000000000000";
+            return;
+        }
+        
+        uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
+        
+        unsigned char bytes[16];
+        bytes[0] = (buildTimestampMs >> 40) & 0xFF;
+        bytes[1] = (buildTimestampMs >> 32) & 0xFF;
+        bytes[2] = (buildTimestampMs >> 24) & 0xFF;
+        bytes[3] = (buildTimestampMs >> 16) & 0xFF;
+        bytes[4] = (buildTimestampMs >> 8) & 0xFF;
+        bytes[5] = buildTimestampMs & 0xFF;
+        
+        bytes[6] = 0x70;
+        bytes[7] = 0x00;
+        
+        bytes[8] = 0x80;
+        bytes[9] = 0x00;
+        
+        bytes[10] = 0x00;
+        bytes[11] = 0x00;
+        bytes[12] = 0x00;
+        bytes[13] = 0x00;
+        bytes[14] = 0x00;
+        bytes[15] = 0x00;
+        
+        uuid = [NSString stringWithFormat:
+                @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                bytes[0], bytes[1], bytes[2], bytes[3],
+                bytes[4], bytes[5],
+                bytes[6], bytes[7],
+                bytes[8], bytes[9],
+                bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+    });
+    return uuid;
+}
+
+- (NSDictionary *)constantsToExport {
+    return @{ @"MIN_BUNDLE_ID": [self getMinBundleId] };
+}
+
+
+- (NSDictionary*) getConstants {
+  return [self constantsToExport];
+}
+
+
 #pragma mark - Bundle URL Management
 
 - (NSString *)getAppVersion {
@@ -49,11 +116,7 @@ RCT_EXPORT_MODULE();
 }
 
 + (NSURL *)fallbackURL {
-#if DEBUG
-    return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
-#else
     return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
-#endif
 }
 
 + (NSURL *)bundleURL {
@@ -170,7 +233,7 @@ RCT_EXPORT_MODULE();
     }
     [fileManager createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
     
-    NSString *tempZipFile = [tempDir stringByAppendingPathComponent:@"build.zip"];
+    NSString *tempZipFile = [tempDir stringByAppendingPathComponent:@"bundle.zip"];
     NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
     [fileManager createDirectoryAtPath:extractedDir withIntermediateDirectories:YES attributes:nil error:nil];
     

@@ -24,10 +24,10 @@ const createHotUpdaterStore = () => {
     }
   };
 
-  const setProgress = (progress: number) => {
+  const setState = (newState: Partial<HotUpdaterState>) => {
     state = {
-      isBundleUpdated: progress === 1,
-      progress,
+      ...state,
+      ...newState,
     };
     emitChange();
   };
@@ -37,7 +37,7 @@ const createHotUpdaterStore = () => {
     return () => listeners.delete(listener);
   };
 
-  return { getSnapshot, setProgress, subscribe };
+  return { getSnapshot, setState, subscribe };
 };
 
 export const hotUpdaterStore = createHotUpdaterStore();

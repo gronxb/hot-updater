@@ -10,6 +10,10 @@
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./edge-functions": {
+      "import": "./supabase/index.ts",
+      "require": "./supabase/index.ts"
     }
   },
   "license": "MIT",

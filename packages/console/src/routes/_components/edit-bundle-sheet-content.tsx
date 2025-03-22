@@ -17,6 +17,7 @@ import {
   TextFieldInput,
   TextFieldLabel,
 } from "@/components/ui/text-field";
+import { showToast } from "@/components/ui/toast";
 import { api, createBundleQuery, createConfigQuery } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,6 @@ import { useQueryClient } from "@tanstack/solid-query";
 import { LoaderCircle } from "lucide-solid";
 import semverValid from "semver/ranges/valid";
 import { Show, createMemo, createSignal } from "solid-js";
-import { toast } from "solid-sonner";
 
 export interface EditBundleSheetContentProps {
   bundleId: string;
@@ -91,20 +91,30 @@ const EditBundleSheetForm = ({
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
       try {
-        await api.updateBundle.$post({
-          json: {
-            targetBundleId: bundle.id,
-            bundle: value,
-          },
+        const res = await api.bundles[":bundleId"].$patch({
+          param: { bundleId: bundle.id },
+          json: value,
         });
+        if (res.status !== 200) {
+          const json = (await res.json()) as { error: string };
+          showToast({
+            title: "Error",
+            description: json.error,
+            variant: "error",
+          });
+        }
       } catch (e) {
         if (e instanceof Error) {
-          toast(e.message);
+          showToast({
+            title: "Error",
+            description: e.message,
+            variant: "error",
+          });
         }
       } finally {
         setIsSubmitting(false);
-        queryClient.invalidateQueries({ queryKey: ["getBundle", bundle.id] });
-        queryClient.invalidateQueries({ queryKey: ["getBundles"] });
+        queryClient.invalidateQueries({ queryKey: ["bundle", bundle.id] });
+        queryClient.invalidateQueries({ queryKey: ["bundles"] });
         onEditSuccess();
       }
     },

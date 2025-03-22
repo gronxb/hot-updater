@@ -16,9 +16,8 @@ import {
   standaloneRepository,
 } from "./standaloneRepository";
 
-// ─── Default test bundle data ────────────────────────────────
 const DEFAULT_BUNDLE = {
-  fileUrl: "http://example.com/bundle.zip",
+  key: "bundle.zip",
   fileHash: "hash",
   platform: "ios",
   gitCommitHash: null,
@@ -32,17 +31,16 @@ const testBundles: Bundle[] = [
     shouldForceUpdate: false,
     enabled: true,
     id: "00000000-0000-0000-0000-000000000001",
+    channel: "production",
   },
 ];
 
-// ─── MSW Server Setup ────────────────────────────────
 const server = setupServer();
 
 beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-// ─── Default Routes Tests ────────────────────────────────
 describe("Standalone Repository Plugin (Default Routes)", () => {
   let repo: ReturnType<ReturnType<typeof standaloneRepository>>;
   let onDatabaseUpdated: () => Promise<void>;
@@ -73,22 +71,6 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(callCount).toBe(1);
   });
 
-  it("getBundles: returns cached result when refresh is false", async () => {
-    let callCount = 0;
-    server.use(
-      http.get("http://localhost/bundles", () => {
-        callCount++;
-        return HttpResponse.json(testBundles);
-      }),
-    );
-
-    const firstCall = await repo.getBundles();
-    const secondCall = await repo.getBundles();
-    expect(firstCall).toEqual(testBundles);
-    expect(secondCall).toEqual(testBundles);
-    expect(callCount).toBe(1); // caching in effect
-  });
-
   it("getBundles: makes new request when refresh is true", async () => {
     let callCount = 0;
     server.use(
@@ -99,7 +81,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
 
     await repo.getBundles();
-    const refreshed = await repo.getBundles(true);
+    const refreshed = await repo.getBundles();
     expect(refreshed).toEqual(testBundles);
     expect(callCount).toBe(2);
   });
@@ -156,24 +138,26 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await expect(repo.getBundles(true)).rejects.toThrow(
+    await expect(repo.getBundles()).rejects.toThrow(
       "API Error: Internal Server Error",
     );
   });
 
   it("updateBundle & commitBundle: updates an existing bundle and commits", async () => {
+    let postCalled = false;
+
     server.use(
       http.get("http://localhost/bundles", () => {
         return HttpResponse.json(testBundles);
       }),
-    );
-
-    await repo.updateBundle("00000000-0000-0000-0000-000000000001", {
-      enabled: false,
-    });
-
-    let postCalled = false;
-    server.use(
+      http.get("http://localhost/bundles/:bundleId", ({ params, request }) => {
+        const { bundleId } = params;
+        if (bundleId === testBundles[0].id) {
+          expect(request.headers.get("Accept")).toEqual("application/json");
+          return HttpResponse.json(testBundles[0]);
+        }
+        return HttpResponse.error();
+      }),
       http.post("http://localhost/bundles", async ({ request }) => {
         postCalled = true;
         const body = (await request.json()) as Bundle[];
@@ -184,6 +168,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
+    await repo.updateBundle("00000000-0000-0000-0000-000000000001", {
+      enabled: false,
+    });
     await repo.commitBundle();
     expect(postCalled).toBe(true);
     expect(onDatabaseUpdated).toHaveBeenCalled();
@@ -198,7 +185,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     await expect(
       repo.updateBundle("non-existent-id", { enabled: false }),
-    ).rejects.toThrow("target bundle version not found");
+    ).rejects.toThrow("targetBundleId not found");
   });
 
   it("appendBundle & commitBundle: appends a new bundle and commits", async () => {
@@ -214,6 +201,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       shouldForceUpdate: false,
       enabled: true,
       id: "00000000-0000-0000-0000-000000000002",
+      channel: "production",
     };
 
     await repo.appendBundle(newBundle);
@@ -238,18 +226,15 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
   it("commitBundle: throws exception on API error", async () => {
     server.use(
       http.get("http://localhost/bundles", () => {
         return HttpResponse.json(testBundles);
       }),
-    );
-
-    await repo.updateBundle("00000000-0000-0000-0000-000000000001", {
-      enabled: false,
-    });
-
-    server.use(
+      http.get("http://localhost/bundles/:bundleId", () => {
+        return HttpResponse.json(testBundles[0]);
+      }),
       http.post("http://localhost/bundles", () => {
         return new HttpResponse(null, {
           status: 500,
@@ -257,6 +242,10 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         });
       }),
     );
+
+    await repo.updateBundle("00000000-0000-0000-0000-000000000001", {
+      enabled: false,
+    });
 
     await expect(repo.commitBundle()).rejects.toStrictEqual(
       new Error("API Error: Internal Server Error"),

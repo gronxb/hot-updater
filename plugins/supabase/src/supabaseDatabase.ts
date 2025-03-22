@@ -1,10 +1,5 @@
-import type {
-  BasePluginArgs,
-  Bundle,
-  DatabasePlugin,
-  DatabasePluginHooks,
-} from "@hot-updater/plugin-core";
-
+import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 
@@ -13,37 +8,103 @@ export interface SupabaseDatabaseConfig {
   supabaseAnonKey: string;
 }
 
-export const supabaseDatabase =
-  (config: SupabaseDatabaseConfig, hooks?: DatabasePluginHooks) =>
-  (_: BasePluginArgs): DatabasePlugin => {
-    const supabase = createClient<Database>(
-      config.supabaseUrl,
-      config.supabaseAnonKey,
-    );
+export const supabaseDatabase = (
+  config: SupabaseDatabaseConfig,
+  hooks?: DatabasePluginHooks,
+) => {
+  const supabase = createClient<Database>(
+    config.supabaseUrl,
+    config.supabaseAnonKey,
+  );
 
-    let bundles: Bundle[] = [];
+  return createDatabasePlugin(
+    "supabaseDatabase",
+    {
+      async getBundleById(bundleId) {
+        const { data, error } = await supabase
+          .from("bundles")
+          .select("*")
+          .eq("id", bundleId)
+          .single();
 
-    const changedIds = new Set<string>();
-    function markChanged(id: string) {
-      changedIds.add(id);
-    }
+        if (!data || error) {
+          return null;
+        }
+        return {
+          channel: data.channel,
+          enabled: data.enabled,
+          shouldForceUpdate: data.should_force_update,
+          fileHash: data.file_hash,
+          gitCommitHash: data.git_commit_hash,
+          id: data.id,
+          message: data.message,
+          platform: data.platform,
+          targetAppVersion: data.target_app_version,
+        } as Bundle;
+      },
 
-    return {
-      name: "supabaseDatabase",
-      async commitBundle() {
-        if (changedIds.size === 0) {
+      async getBundles(options) {
+        const { where, limit, offset = 0 } = options ?? {};
+        let query = supabase
+          .from("bundles")
+          .select("*")
+          .order("id", { ascending: false });
+
+        if (where?.channel) {
+          query = query.eq("channel", where.channel);
+        }
+
+        if (where?.platform) {
+          query = query.eq("platform", where.platform);
+        }
+
+        if (limit) {
+          query = query.limit(limit);
+        }
+
+        if (offset) {
+          query = query.range(offset, offset + (limit || 20) - 1);
+        }
+
+        const { data } = await query;
+
+        if (!data) {
+          return [];
+        }
+
+        return data.map((bundle) => ({
+          channel: bundle.channel,
+          enabled: bundle.enabled,
+          shouldForceUpdate: bundle.should_force_update,
+          fileHash: bundle.file_hash,
+          gitCommitHash: bundle.git_commit_hash,
+          id: bundle.id,
+          message: bundle.message,
+          platform: bundle.platform,
+          targetAppVersion: bundle.target_app_version,
+        })) as Bundle[];
+      },
+
+      async getChannels() {
+        const { data, error } = await supabase.rpc("get_channels");
+        if (error) {
+          throw error;
+        }
+        return data.map((bundle: { channel: string }) => bundle.channel);
+      },
+
+      async commitBundle({ changedSets }) {
+        if (changedSets.length === 0) {
           return;
         }
-        const changedBundles = bundles.filter((b) => changedIds.has(b.id));
-        if (changedBundles.length === 0) {
-          return;
-        }
 
-        await supabase.from("bundles").upsert(
-          changedBundles.map((bundle) => ({
+        const bundles = changedSets.map((op) => op.data);
+
+        const { error } = await supabase.from("bundles").upsert(
+          bundles.map((bundle) => ({
             id: bundle.id,
+            channel: bundle.channel,
             enabled: bundle.enabled,
-            file_url: bundle.fileUrl,
             should_force_update: bundle.shouldForceUpdate,
             file_hash: bundle.fileHash,
             git_commit_hash: bundle.gitCommitHash,
@@ -54,72 +115,11 @@ export const supabaseDatabase =
           { onConflict: "id" },
         );
 
-        changedIds.clear();
-        hooks?.onDatabaseUpdated?.();
-      },
-      async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
-        bundles = await this.getBundles();
-
-        const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
-        if (targetIndex === -1) {
-          throw new Error("target bundle version not found");
+        if (error) {
+          throw error;
         }
-
-        Object.assign(bundles[targetIndex], newBundle);
-        markChanged(targetBundleId);
       },
-      async appendBundle(inputBundle) {
-        bundles = await this.getBundles();
-        bundles.unshift(inputBundle);
-        markChanged(inputBundle.id);
-      },
-      async getBundleById(bundleId) {
-        const { data } = await supabase
-          .from("bundles")
-          .select("*")
-          .eq("id", bundleId)
-          .single();
-
-        if (!data) {
-          return null;
-        }
-        return {
-          enabled: data.enabled,
-          fileUrl: data.file_url,
-          shouldForceUpdate: data.should_force_update,
-          fileHash: data.file_hash,
-          gitCommitHash: data.git_commit_hash,
-          id: data.id,
-          message: data.message,
-          platform: data.platform,
-          targetAppVersion: data.target_app_version,
-        } as Bundle;
-      },
-      async getBundles(refresh = false) {
-        if (bundles.length > 0 && !refresh) {
-          return bundles;
-        }
-
-        const { data } = await supabase
-          .from("bundles")
-          .select("*")
-          .order("id", { ascending: false });
-
-        if (!data) {
-          return [];
-        }
-
-        return data.map((bundle) => ({
-          enabled: bundle.enabled,
-          fileUrl: bundle.file_url,
-          shouldForceUpdate: bundle.should_force_update,
-          fileHash: bundle.file_hash,
-          gitCommitHash: bundle.git_commit_hash,
-          id: bundle.id,
-          message: bundle.message,
-          platform: bundle.platform,
-          targetAppVersion: bundle.target_app_version,
-        })) as Bundle[];
-      },
-    };
-  };
+    },
+    hooks,
+  );
+};

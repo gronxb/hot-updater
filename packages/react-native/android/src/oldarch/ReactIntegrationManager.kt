@@ -36,6 +36,20 @@ class ReactIntegrationManager(
      */
     public fun reload(application: ReactApplication) {
         val reactNativeHost = application.reactNativeHost
-        reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
+        try {
+            reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
+        } catch (e: Exception) {
+            val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+            if (currentActivity == null) {
+                return
+            }
+
+            currentActivity.runOnUiThread {
+                currentActivity.recreate()
+            }
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to reload: ${e.message}")
+            throw e
+        }
     }
 }

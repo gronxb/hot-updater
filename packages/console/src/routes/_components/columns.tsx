@@ -11,6 +11,11 @@ export const columns: ColumnDef<Bundle>[] = [
     cell: (info) => info.getValue(),
   },
   {
+    accessorKey: "channel",
+    header: "Channel",
+    cell: (info) => info.getValue(),
+  },
+  {
     accessorKey: "platform",
     header: "Platform",
     cell: (info) => {

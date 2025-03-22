@@ -1,12 +1,15 @@
-import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
-import { getUpdateInfo } from "@hot-updater/js";
 import { Platform } from "react-native";
-import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { HotUpdaterError } from "./error";
-import { getAppVersion, getBundleId } from "./native";
+import { fetchUpdateInfo } from "./fetchUpdateInfo";
+import {
+  getAppVersion,
+  getBundleId,
+  getChannel,
+  getMinBundleId,
+} from "./native";
 
 export interface CheckForUpdateConfig {
-  source: BundleArg;
+  source: string;
   requestHeaders?: Record<string, string>;
 }
 
@@ -23,34 +26,23 @@ export async function checkForUpdate(config: CheckForUpdateConfig) {
 
   const currentAppVersion = await getAppVersion();
   const platform = Platform.OS as "ios" | "android";
-  const currentBundleId = await getBundleId();
+  const currentBundleId = getBundleId();
+  const minBundleId = getMinBundleId();
+  const channel = getChannel();
 
   if (!currentAppVersion) {
     throw new HotUpdaterError("Failed to get app version");
   }
 
-  const ensuredUpdateInfo = await ensureUpdateInfo(
+  return fetchUpdateInfo(
     config.source,
     {
       appVersion: currentAppVersion,
       bundleId: currentBundleId,
       platform,
+      minBundleId,
+      channel,
     },
     config.requestHeaders,
   );
-
-  let updateInfo: UpdateInfo | null = null;
-  if (Array.isArray(ensuredUpdateInfo)) {
-    const bundles: Bundle[] = ensuredUpdateInfo;
-
-    updateInfo = await getUpdateInfo(bundles, {
-      appVersion: currentAppVersion,
-      bundleId: currentBundleId,
-      platform,
-    });
-  } else {
-    updateInfo = ensuredUpdateInfo;
-  }
-
-  return updateInfo;
 }

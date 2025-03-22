@@ -3,6 +3,8 @@ import {
   addListener,
   getAppVersion,
   getBundleId,
+  getChannel,
+  getMinBundleId,
   reload,
   updateBundle,
 } from "./native";
@@ -16,7 +18,9 @@ export type { HotUpdaterEvent } from "./native";
 export * from "./store";
 
 addListener("onProgress", ({ progress }) => {
-  hotUpdaterStore.setProgress(progress);
+  hotUpdaterStore.setState({
+    progress,
+  });
 });
 
 export const HotUpdater = {
@@ -25,6 +29,8 @@ export const HotUpdater = {
   reload,
   getAppVersion,
   getBundleId,
+  getMinBundleId,
+  getChannel,
   addListener,
 
   checkForUpdate,

@@ -3,38 +3,6 @@ import * as p from "@clack/prompts";
 import type { SupabaseApi } from "@hot-updater/supabase";
 import { ExecaError, execa } from "execa";
 
-export const selectOrCreateOrganization = async () => {
-  const confirmed = await p.confirm({
-    message: "Do you already have a Supabase organization?",
-    initialValue: true,
-  });
-  if (p.isCancel(confirmed)) process.exit(0);
-
-  if (confirmed) {
-    // If user already has an organization, just return
-    return;
-  }
-
-  const orgName = await p.text({
-    message: "Enter your new Supabase organization name",
-  });
-  if (p.isCancel(orgName)) process.exit(0);
-
-  try {
-    await execa("npx", ["-y", "supabase", "orgs", "create", orgName], {
-      stdio: "inherit",
-      shell: true,
-    });
-  } catch (err) {
-    if (err instanceof ExecaError && err.stderr) {
-      p.log.error(err.stderr);
-    } else {
-      console.error(err);
-    }
-    process.exit(1);
-  }
-};
-
 export const selectProject = async (): Promise<{
   id: string;
   name: string;
@@ -57,7 +25,7 @@ export const selectProject = async (): Promise<{
         : JSON.parse(listProjects?.stdout ?? "[]");
   } catch (err) {
     spinner.stop();
-    console.error("Failed to list Supabase projects:", err);
+    console.error("Failed to fetch Supabase projects:", err);
     process.exit(1);
   }
 
@@ -68,14 +36,14 @@ export const selectProject = async (): Promise<{
     .substring(2, 15)}`;
 
   const selectedProjectId = await p.select({
-    message: "Select your Supabase project",
+    message: "Select a Supabase project",
     options: [
       ...projectsProcess.map((project) => ({
         label: `${project.name} (${project.region})`,
         value: project.id,
       })),
       {
-        label: "Create new project",
+        label: "Create a new project",
         value: createProjectOption,
       },
     ],
@@ -100,7 +68,7 @@ export const selectProject = async (): Promise<{
       process.exit(1);
     }
 
-    // Re-run after creating a project to select it
+    // Re-run the selection after creating a new project
     return selectProject();
   }
 
@@ -114,49 +82,53 @@ export const selectProject = async (): Promise<{
   return selectedProject;
 };
 
-export const selectBucket = async (api: SupabaseApi): Promise<string> => {
+export const selectBucket = async (
+  api: SupabaseApi,
+): Promise<{
+  id: string;
+  name: string;
+}> => {
   let buckets: { id: string; name: string; isPublic: boolean }[] = [];
   let retryCount = 0;
 
   await p.tasks([
     {
-      title: "Fetching buckets...",
+      title: "Fetching bucket list...",
       task: async (message) => {
         while (retryCount < 60 * 5) {
           try {
             if (retryCount === 5) {
               message(
-                "Supabase project is not ready yet. This may take a few minutes.",
+                "Supabase project is not ready yet. This might take a few minutes.",
               );
             }
 
             buckets = await api.listBuckets();
-            return `Fetched ${buckets.length} buckets`;
+            return `Retrieved ${buckets.length} buckets`;
           } catch (err) {
             retryCount++;
             await delay(1000);
           }
         }
-        p.log.error("Failed to list buckets");
+        p.log.error("Failed to fetch bucket list");
         process.exit(1);
       },
     },
   ]);
 
-  const publicBuckets = buckets.filter((bucket) => bucket.isPublic);
   const createBucketOption = `create/${Math.random()
     .toString(36)
     .substring(2, 15)}`;
 
   const selectedBucketId = await p.select({
-    message: "Select your storage bucket",
+    message: "Select a storage bucket",
     options: [
-      ...publicBuckets.map((bucket) => ({
+      ...buckets.map((bucket) => ({
         label: bucket.name,
-        value: bucket.id,
+        value: JSON.stringify({ id: bucket.id, name: bucket.name }),
       })),
       {
-        label: "Create new public bucket",
+        label: "Create a new private bucket",
         value: createBucketOption,
       },
     ],
@@ -168,7 +140,7 @@ export const selectBucket = async (api: SupabaseApi): Promise<string> => {
 
   if (selectedBucketId === createBucketOption) {
     const bucketName = await p.text({
-      message: "Enter your new bucket name",
+      message: "Enter a name for the new bucket",
     });
 
     if (p.isCancel(bucketName)) {
@@ -176,16 +148,20 @@ export const selectBucket = async (api: SupabaseApi): Promise<string> => {
     }
 
     try {
-      await api.createBucket(bucketName, { public: true });
+      await api.createBucket(bucketName, { public: false });
       p.log.success(`Bucket "${bucketName}" created successfully.`);
+      const buckets = await api.listBuckets();
+
+      const newBucket = buckets.find((bucket) => bucket.name === bucketName);
+      if (!newBucket) {
+        throw new Error("Failed to create and select new bucket");
+      }
+      return { id: newBucket.id, name: newBucket.name };
     } catch (err) {
-      p.log.error(`Failed to create a new bucket: ${err}`);
+      p.log.error(`Failed to create new bucket: ${err}`);
       process.exit(1);
     }
-
-    // Re-run selection to pick the newly created bucket
-    return selectBucket(api);
   }
 
-  return selectedBucketId;
+  return JSON.parse(selectedBucketId);
 };

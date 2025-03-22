@@ -7,7 +7,6 @@ export default {
       {
         id: "1",
         enabled: true,
-        fileUrl: "https://example.com/bundle.js",
         shouldForceUpdate: false,
         fileHash: "1234",
         gitCommitHash: "5678",
@@ -18,7 +17,6 @@ export default {
       {
         id: "2",
         enabled: true,
-        fileUrl: "https://example.com/bundle.js",
         shouldForceUpdate: false,
         fileHash: "1234",
         gitCommitHash: "5678",

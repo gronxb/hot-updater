@@ -74,8 +74,8 @@
     "includesGeneratedCode": true
   },
   "peerDependencies": {
-    "react-native": "*",
-    "react": "*"
+    "react": "*",
+    "react-native": "*"
   },
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",

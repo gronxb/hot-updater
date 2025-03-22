@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { checkForRollback } from "./checkForRollback";
 
 const DEFAULT_BUNDLE = {
-  fileUrl: "",
   fileHash: "",
   shouldForceUpdate: false,
   platform: "ios",
   gitCommitHash: null,
   message: null,
   targetAppVersion: "1.0",
+  channel: "production",
 } as const;
 
 describe("checkForRollback", () => {

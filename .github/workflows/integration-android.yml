@@ -43,6 +43,8 @@ jobs:
 
       - name: Build Android
         run: cd examples/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev
 
   build-old-arch:
     runs-on: ubuntu-latest
@@ -66,3 +68,5 @@ jobs:
 
       - name: Build Android
         run: cd examples/v0.71.19/android && ./gradlew assembleDebug --build-cache && cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev

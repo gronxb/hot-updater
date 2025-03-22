@@ -1,8 +1,7 @@
 import { Sheet } from "@/components/ui/sheet";
-import { createBundlesQuery } from "@/lib/api";
 import { sleep } from "@/lib/utils";
 import { useNavigate, useParams } from "@solidjs/router";
-import { createEffect, createMemo } from "solid-js";
+import { createEffect } from "solid-js";
 import { Show, Suspense, createSignal } from "solid-js";
 import { columns } from "./_components/columns";
 import { DataTable } from "./_components/data-table";
@@ -13,8 +12,6 @@ export default function Home() {
   const navigate = useNavigate();
 
   const bundleId = params.bundleId;
-
-  const data = createBundlesQuery();
 
   const [selectedBundleId, setSelectedBundleId] = createSignal<string | null>(
     bundleId,
@@ -32,10 +29,9 @@ export default function Home() {
     if (isOpen()) {
       return;
     }
-    sleep(500).then(() => setSelectedBundleId(null));
+    sleep(250).then(() => setSelectedBundleId(null));
   });
 
-  const dataForTable = createMemo(() => data.data || []);
   const [isOpen, setIsOpen] = createSignal(true);
 
   const handleClose = () => {
@@ -43,24 +39,21 @@ export default function Home() {
   };
 
   return (
-    <>
-      <Sheet open={isOpen()} onOpenChange={setIsOpen}>
-        <DataTable
-          columns={columns}
-          data={dataForTable}
-          onRowClick={(row) => {
-            setSelectedBundleId(row.id);
-          }}
-        />
-        <Show when={selectedBundleId()}>
-          <Suspense>
-            <EditBundleSheetContent
-              bundleId={selectedBundleId()!}
-              onClose={handleClose}
-            />
-          </Suspense>
-        </Show>
-      </Sheet>
-    </>
+    <Sheet open={isOpen()} onOpenChange={setIsOpen}>
+      <DataTable
+        columns={columns}
+        onRowClick={(row) => {
+          setSelectedBundleId(row.id);
+        }}
+      />
+      <Show when={selectedBundleId()}>
+        <Suspense>
+          <EditBundleSheetContent
+            bundleId={selectedBundleId()!}
+            onClose={handleClose}
+          />
+        </Suspense>
+      </Show>
+    </Sheet>
   );
 }

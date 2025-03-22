@@ -46,7 +46,10 @@ vi.mock("firebase/firestore", () => {
   }));
   const mockQuery = vi.fn((...args) => args);
   const mockOrderBy = vi.fn(() => "order-by");
-  const mockGetDocs = vi.fn();
+  const mockGetDocs = vi.fn(() => ({
+    empty: true,
+    docs: [],
+  }));
 
   return {
     getFirestore: vi.fn(() => mockFirestore),
@@ -78,11 +81,11 @@ describe("Firebase Database Plugin", () => {
   const mockBundle: Bundle = {
     id: "test-bundle-id",
     enabled: true,
-    fileUrl: "test-file-url",
     shouldForceUpdate: false,
     fileHash: "test-file-hash",
     gitCommitHash: "test-git-hash",
     message: "test-message",
+    channel: "production",
     platform: "android",
     targetAppVersion: "1.0.0",
   };
@@ -90,11 +93,11 @@ describe("Firebase Database Plugin", () => {
   const mockFirestoreData: SnakeCaseBundle = {
     id: "test-bundle-id",
     enabled: true,
-    file_url: "test-file-url",
     should_force_update: false,
     file_hash: "test-file-hash",
     git_commit_hash: "test-git-hash",
     message: "test-message",
+    channel: "production",
     platform: "android",
     target_app_version: "1.0.0",
   };
@@ -143,14 +146,13 @@ describe("Firebase Database Plugin", () => {
     expect(getApp).not.toHaveBeenCalled();
     expect(app).toBe(mockExistingApp);
   });
-
   describe("commitBundle", () => {
     it("should do nothing if no IDs are changed", async () => {
       await databasePlugin.commitBundle();
 
       expect(doc).not.toHaveBeenCalled();
       expect(setDoc).not.toHaveBeenCalled();
-      expect(mockHooks.onDatabaseUpdated).not.toHaveBeenCalled();
+      expect(mockHooks.onDatabaseUpdated).toHaveBeenCalled();
     });
 
     it("should update changed bundles to Firestore", async () => {
@@ -167,6 +169,7 @@ describe("Firebase Database Plugin", () => {
         exists: () => true,
         data: () => mockFirestoreData,
       } as any);
+
       await databasePlugin.getBundles();
       await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
 
@@ -174,10 +177,17 @@ describe("Firebase Database Plugin", () => {
 
       expect(setDoc).toHaveBeenCalledWith(
         "document-ref",
-        expect.objectContaining({
+        {
           id: "test-bundle-id",
+          channel: "production",
           enabled: false,
-        }),
+          file_hash: "test-file-hash",
+          git_commit_hash: "test-git-hash",
+          message: "test-message",
+          platform: "android",
+          should_force_update: false,
+          target_app_version: "1.0.0",
+        },
         { merge: true },
       );
       expect(mockHooks.onDatabaseUpdated).toHaveBeenCalled();
@@ -186,33 +196,33 @@ describe("Firebase Database Plugin", () => {
 
   describe("updateBundle", () => {
     it("should throw error if target bundle not found", async () => {
-      vi.mocked(getDocs).mockResolvedValue({
-        empty: true,
-        docs: [],
+      vi.mocked(getDoc).mockResolvedValueOnce({
+        exists: () => false,
       } as any);
 
       await expect(
         databasePlugin.updateBundle("non-existent-id", {}),
-      ).rejects.toThrow("target bundle version not found");
+      ).rejects.toThrow("targetBundleId not found");
     });
 
     it("should update bundle in memory", async () => {
+      vi.mocked(getDoc).mockResolvedValueOnce({
+        exists: () => true,
+        data: () => mockFirestoreData,
+      } as any);
+
+      await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
+
       vi.mocked(getDocs).mockResolvedValueOnce({
         empty: false,
         docs: [
           {
-            data: () => mockFirestoreData,
+            data: () => ({ ...mockFirestoreData, enabled: false }),
           },
         ] as any,
       } as unknown as QuerySnapshot);
 
-      await databasePlugin.getBundles(true);
-      await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
-
-      vi.clearAllMocks();
-
       const bundles = await databasePlugin.getBundles();
-      expect(getDocs).not.toHaveBeenCalled();
       expect(bundles[0].enabled).toBe(false);
     });
   });
@@ -228,7 +238,7 @@ describe("Firebase Database Plugin", () => {
         ] as any,
       } as unknown as QuerySnapshot);
 
-      await databasePlugin.getBundles(true);
+      await databasePlugin.getBundles();
 
       const newBundle: Bundle = {
         ...mockBundle,
@@ -236,6 +246,18 @@ describe("Firebase Database Plugin", () => {
       };
 
       await databasePlugin.appendBundle(newBundle);
+
+      vi.mocked(getDocs).mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            data: () => ({ ...mockFirestoreData, id: "new-bundle-id" }),
+          },
+          {
+            data: () => mockFirestoreData,
+          },
+        ] as any,
+      } as unknown as QuerySnapshot);
 
       const bundles = await databasePlugin.getBundles();
       expect(bundles.length).toBe(2);
@@ -268,9 +290,10 @@ describe("Firebase Database Plugin", () => {
     it("should return empty array when no bundles exist", async () => {
       vi.mocked(getDocs).mockResolvedValueOnce({
         empty: true,
+        docs: [],
       } as any);
 
-      const result = await databasePlugin.getBundles(true);
+      const result = await databasePlugin.getBundles();
       expect(result).toEqual([]);
     });
 
@@ -283,7 +306,7 @@ describe("Firebase Database Plugin", () => {
         ],
       } as any);
 
-      const result = await databasePlugin.getBundles(true);
+      const result = await databasePlugin.getBundles();
 
       expect(query).toHaveBeenCalled();
       expect(orderBy).toHaveBeenCalledWith("id", "desc");
@@ -296,13 +319,18 @@ describe("Firebase Database Plugin", () => {
         docs: [{ data: () => mockFirestoreData }],
       } as any);
 
-      await databasePlugin.getBundles(true);
+      await databasePlugin.getBundles();
 
       vi.clearAllMocks();
 
-      const result = await databasePlugin.getBundles(false);
+      vi.mocked(getDocs).mockResolvedValueOnce({
+        empty: false,
+        docs: [{ data: () => mockFirestoreData }],
+      } as any);
 
-      expect(getDocs).not.toHaveBeenCalled();
+      const result = await databasePlugin.getBundles();
+
+      expect(getDocs).toHaveBeenCalled();
       expect(result.length).toBe(1);
       expect(result[0].id).toBe("test-bundle-id");
     });

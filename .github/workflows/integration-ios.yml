@@ -12,7 +12,7 @@ name: iOS Integration
 
 jobs:
   build-new-arch:
-    runs-on: macos-latest
+    runs-on: macos-14
     name: Build iOS (New Architecture)
     strategy:
       matrix:
@@ -31,18 +31,18 @@ jobs:
       - name: Library Build
         run: pnpm build
 
-      - name: Install Cocoapods
-        run: gem install cocoapods
-
       - name: Build iOS
         run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
           cd examples/v0.76.1-new-arch/ios
-          pod install
+          pnpx pod-install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev
 
   build-old-arch:
-    runs-on: macos-latest
+    runs-on: macos-14
     name: Build iOS (Old Architecture)
     strategy:
       matrix:
@@ -61,12 +61,12 @@ jobs:
       - name: Library Build
         run: pnpm build
 
-      - name: Install Cocoapods
-        run: gem install cocoapods
-
       - name: Build iOS
         run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
           cd examples/v0.71.19/ios
-          pod install
+          pnpx pod-install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev

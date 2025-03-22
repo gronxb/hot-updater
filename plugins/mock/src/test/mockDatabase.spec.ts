@@ -6,7 +6,7 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
   {
     id: "0194ed78-ee7f-7d55-88f2-0511cbacc8f1",
     enabled: true,
-    fileUrl: "https://example.com/bundle.js",
+    channel: "production",
     shouldForceUpdate: false,
     fileHash: "1234",
     gitCommitHash: "5678",
@@ -17,7 +17,7 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
   {
     id: "0194ed78-d791-753c-ba37-abb7259edcc8",
     enabled: true,
-    fileUrl: "https://example.com/bundle.js",
+    channel: "production",
     shouldForceUpdate: false,
     fileHash: "1234",
     gitCommitHash: "5678",
@@ -90,7 +90,7 @@ describe("mockDatabase", () => {
     expect(bundle).toEqual(DEFAULT_BUNDLES_MOCK[0]);
   });
 
-  it("should throw error, if target bundle version not found", async () => {
+  it("should throw error, if targetBundleId not found", async () => {
     const plugin = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
@@ -100,13 +100,13 @@ describe("mockDatabase", () => {
       plugin.updateBundle("00000000-0000-0000-0000-000000000001", {
         enabled: false,
       }),
-    ).rejects.toThrowError("target bundle version not found");
+    ).rejects.toThrowError("targetBundleId not found");
   });
 
   it("should sort bundles by id", async () => {
     const plugin = mockDatabase({
       latency: DEFAULT_LATENCY,
-      initialBundles: [DEFAULT_BUNDLES_MOCK[1], DEFAULT_BUNDLES_MOCK[0]],
+      initialBundles: DEFAULT_BUNDLES_MOCK,
     })({ cwd: "" });
 
     const bundles = await plugin.getBundles();
