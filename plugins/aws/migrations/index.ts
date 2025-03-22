@@ -25,7 +25,7 @@ interface S3MigratorOptions {
 /**
  * S3Migration
  * Base class that each migration script extends.
- * Provides common S3-related methods (getKeys, readJson, updateFile, moveFile, etc.)
+ * Provides common S3-related methods (getKeys, readJson, updateFile, moveFile, backup, rollback, etc.)
  */
 export abstract class S3Migration {
   name!: string;
@@ -33,12 +33,29 @@ export abstract class S3Migration {
   bucketName!: string;
   dryRun = false; // Flag for dry-run mode
 
+  // Map to store backup info: original key -> backup key
+  protected backupMapping: Map<string, string> = new Map();
+
+  // Performs the actual file upload without backup logic
+  protected async doUpdateFile(key: string, content: string): Promise<void> {
+    const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
+    const upload = new Upload({
+      client: this.s3,
+      params: {
+        Bucket: this.bucketName,
+        Key: normalizedKey,
+        Body: content,
+      },
+    });
+    await upload.done();
+  }
+
   // Retrieves all object keys that start with the specified prefix
   protected async getKeys(prefix: string): Promise<string[]> {
     const keys: string[] = [];
     let continuationToken: string | undefined = undefined;
     do {
-      const command: ListObjectsV2Command = new ListObjectsV2Command({
+      const command = new ListObjectsV2Command({
         Bucket: this.bucketName,
         Prefix: prefix.startsWith("/") ? prefix.substring(1) : prefix,
         ContinuationToken: continuationToken,
@@ -87,8 +104,27 @@ export abstract class S3Migration {
     return null;
   }
 
-  // Updates (uploads) a file at the specified key
-  // In dry-run mode, it logs what would be updated instead of applying changes
+  // Backs up a file before updating/moving.
+  // The backup file is stored at: backup/<migrationName>/<originalKey>
+  protected async backupFile(key: string): Promise<void> {
+    if (this.dryRun) {
+      console.log(picocolors.yellow(`[DRY RUN] Would backup file ${key}`));
+      return;
+    }
+    const content = await this.readFile(key);
+    if (content !== null) {
+      const backupKey = `backup/${this.name}/${key}`;
+      await this.doUpdateFile(backupKey, content);
+      this.backupMapping.set(key, backupKey);
+      console.log(picocolors.green(`Backed up ${key} to ${backupKey}`));
+    } else {
+      console.log(picocolors.yellow(`No existing file at ${key} to backup.`));
+    }
+  }
+
+  // Updates (uploads) a file at the specified key.
+  // In dry-run mode, it logs what would be updated.
+  // Backs up the original file if it exists.
   protected async updateFile(key: string, content: string): Promise<void> {
     const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
     if (this.dryRun) {
@@ -99,19 +135,18 @@ export abstract class S3Migration {
       );
       return;
     }
-    const upload = new Upload({
-      client: this.s3,
-      params: {
-        Bucket: this.bucketName,
-        Key: normalizedKey,
-        Body: content,
-      },
-    });
-    await upload.done();
+    // Backup the original file if it exists
+    const originalContent = await this.readFile(key);
+    if (originalContent !== null) {
+      await this.backupFile(key);
+    }
+    await this.doUpdateFile(normalizedKey, content);
+    console.log(picocolors.green(`Updated file ${normalizedKey}`));
   }
 
-  // Moves a single file from one location to another
-  // In dry-run mode, it logs what would be moved instead of applying changes
+  // Moves a single file from one location to another.
+  // In dry-run mode, it logs what would be moved.
+  // Backs up the source file before moving.
   protected async moveFile(from: string, to: string): Promise<void> {
     if (this.dryRun) {
       console.log(
@@ -119,15 +154,16 @@ export abstract class S3Migration {
       );
       return;
     }
+    // Backup the source file before moving
+    await this.backupFile(from);
     try {
-      // Copy the file
+      // Use URL encoding for the CopySource to handle special characters
       const copyCommand = new CopyObjectCommand({
         Bucket: this.bucketName,
-        CopySource: `${this.bucketName}/${from}`,
+        CopySource: `${this.bucketName}/${encodeURIComponent(from)}`,
         Key: to,
       });
       await this.s3.send(copyCommand);
-      // Delete the original file after copying
       const deleteCommand = new DeleteObjectCommand({
         Bucket: this.bucketName,
         Key: from,
@@ -139,7 +175,36 @@ export abstract class S3Migration {
         picocolors.red(`Error moving file from ${from} to ${to}:`),
         error,
       );
+      // Rethrow the error to propagate it and halt the migration process
+      throw error;
     }
+  }
+
+  // Rollback method: restores files from backups stored in backupMapping
+  public async rollback(): Promise<void> {
+    console.log(
+      picocolors.magenta(`Starting rollback for migration ${this.name}...`),
+    );
+    for (const [originalKey, backupKey] of this.backupMapping.entries()) {
+      const backupContent = await this.readFile(backupKey);
+      if (backupContent !== null) {
+        console.log(
+          picocolors.blue(
+            `Restoring backup for ${originalKey} from ${backupKey}`,
+          ),
+        );
+        await this.doUpdateFile(originalKey, backupContent);
+      } else {
+        console.error(
+          picocolors.red(
+            `Failed to read backup for ${originalKey} at ${backupKey}`,
+          ),
+        );
+      }
+    }
+    console.log(
+      picocolors.green(`Rollback completed for migration ${this.name}.`),
+    );
   }
 
   abstract migrate(): Promise<void>;
@@ -187,7 +252,12 @@ export class S3Migrator {
         }
       }
     } catch (error: any) {
-      if (error.Code === "NoSuchKey" || error.name === "NoSuchKey") {
+      // Enhanced error handling for NoSuchKey error
+      if (
+        error.Code === "NoSuchKey" ||
+        error.name === "NoSuchKey" ||
+        error.$metadata?.httpStatusCode === 404
+      ) {
         this.migrationRecords = [];
       } else {
         throw error;
@@ -238,20 +308,34 @@ export class S3Migrator {
       migration.bucketName = this.bucketName;
       migration.dryRun = this.dryRun;
 
-      await migration.migrate();
-
-      if (!this.dryRun) {
-        this.migrationRecords.push({
-          name: migration.name,
-          appliedAt: new Date().toISOString(),
-        });
-        console.log(
-          picocolors.green(`Migration ${migration.name} applied successfully.`),
+      try {
+        await migration.migrate();
+        if (!this.dryRun) {
+          this.migrationRecords.push({
+            name: migration.name,
+            appliedAt: new Date().toISOString(),
+          });
+          console.log(
+            picocolors.green(
+              `Migration ${migration.name} applied successfully.`,
+            ),
+          );
+        } else {
+          console.log(
+            picocolors.yellow(
+              `[DRY RUN] Migration ${migration.name} simulated.`,
+            ),
+          );
+        }
+      } catch (error) {
+        console.error(
+          picocolors.red(
+            `Migration ${migration.name} failed. Initiating rollback...`,
+          ),
+          error,
         );
-      } else {
-        console.log(
-          picocolors.yellow(`[DRY RUN] Migration ${migration.name} simulated.`),
-        );
+        await migration.rollback();
+        throw error;
       }
     }
 
