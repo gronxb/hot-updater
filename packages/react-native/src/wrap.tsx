@@ -1,4 +1,5 @@
-import React, { useEffect, useLayoutEffect, useState } from "react";
+import React from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateConfig, checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
