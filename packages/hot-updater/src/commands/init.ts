@@ -1,9 +1,10 @@
+import { initFirebase } from "@/commands/init/firebase";
+import { initSupabase } from "@/commands/init/supabase";
 import { printBanner } from "@/components/banner";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
 import { initAwsS3LambdaEdge } from "./init/aws";
 import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
-import { initSupabase } from "./init/supabase";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -22,6 +23,10 @@ const PACKAGE_MAP = {
   "cloudflare-d1-r2-worker": {
     dependencies: [],
     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
+  },
+  firebase: {
+    dependencies: [],
+    devDependencies: ["firebase-tools"],
   },
 } as const;
 
@@ -54,6 +59,7 @@ export const init = async () => {
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
+      { value: "firebase", label: "Firebase" },
     ],
   });
 
@@ -85,6 +91,10 @@ export const init = async () => {
     }
     case "aws": {
       await initAwsS3LambdaEdge();
+      break;
+    }
+    case "firebase": {
+      await initFirebase();
       break;
     }
     default:
