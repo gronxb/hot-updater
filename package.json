@@ -42,7 +42,8 @@
       "@hot-updater/cloudflare": "workspace:*",
       "@hot-updater/js": "workspace:*",
       "@hot-updater/mock": "workspace:*",
-      "@hot-updater/firebase": "workspace:*"
+      "@hot-updater/firebase": "workspace:*",
+      "@hot-updater/pocketbase": "workspace:*"
     }
   },
   "packageManager": "pnpm@10.6.3"
