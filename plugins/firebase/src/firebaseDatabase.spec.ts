@@ -6,7 +6,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
-  DocumentReference,
+  type DocumentReference,
   type QuerySnapshot,
   doc,
   getDoc,
@@ -159,7 +159,7 @@ describe("Firebase Database Plugin", () => {
     it("should update changed bundles to Firestore", async () => {
       const mockDocRef = {} as DocumentReference;
       vi.mocked(doc).mockReturnValue(mockDocRef);
-    
+
       vi.mocked(getDocs).mockResolvedValueOnce({
         empty: false,
         docs: [
@@ -168,17 +168,17 @@ describe("Firebase Database Plugin", () => {
           },
         ] as any,
       } as unknown as QuerySnapshot);
-    
+
       vi.mocked(getDoc).mockResolvedValueOnce({
         exists: () => true,
         data: () => mockFirestoreData,
       } as any);
-    
+
       await databasePlugin.getBundles();
       await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
-    
+
       await databasePlugin.commitBundle();
-    
+
       expect(setDoc).toHaveBeenCalledWith(
         mockDocRef,
         {

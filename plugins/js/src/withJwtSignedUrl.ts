@@ -28,15 +28,21 @@ export const withJwtSignedUrl = async <T extends { id: string }>({
   }
 
   const key = `${data.id}/bundle.zip`;
-  const secretKey = new TextEncoder().encode(jwtSecret);
-  const token = await new SignJWT({ key })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("60s")
-    .sign(secretKey);
+  const token = await signToken(key, jwtSecret);
 
   const url = new URL(reqUrl);
   url.pathname = `/${key}`;
   url.searchParams.set("token", token);
 
   return { ...data, fileUrl: url.toString() };
+};
+
+export const signToken = async (key: string, jwtSecret: string) => {
+  const secretKey = new TextEncoder().encode(jwtSecret);
+  const token = await new SignJWT({ key })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("60s")
+    .sign(secretKey);
+
+  return token;
 };

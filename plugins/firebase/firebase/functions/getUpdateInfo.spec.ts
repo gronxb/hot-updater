@@ -45,7 +45,7 @@ const addBundlesToFirestore = async (bundles: Bundle[]) => {
       enabled: bundle.enabled,
       git_commit_hash: bundle.gitCommitHash || null,
       message: bundle.message || null,
-      channel: bundle.channel || "production", 
+      channel: bundle.channel || "production",
     });
   }
 
