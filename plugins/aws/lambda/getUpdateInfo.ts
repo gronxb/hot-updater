@@ -20,7 +20,8 @@ const getCdnJson = async <T>({
   jwtSecret: string;
 }): Promise<T | null> => {
   try {
-    const url = new URL(key, baseUrl);
+    const url = new URL(baseUrl);
+    url.pathname = `/${key}`;
     url.searchParams.set("token", await signToken(key, jwtSecret));
     const res = await fetch(url.toString(), {
       headers: {

@@ -28,7 +28,8 @@ const createGetUpdateInfo =
         ...new Set(bundles.map((b) => b.targetAppVersion)),
       ];
       const targetVersionsPath = `${channel}/${platform}/target-app-versions.json`;
-      const targetVersionsUrl = new URL(targetVersionsPath, baseUrl);
+      const targetVersionsUrl = new URL(baseUrl);
+      targetVersionsUrl.pathname = `/${targetVersionsPath}`;
       targetVersionsUrl.searchParams.set(
         "token",
         await signToken(targetVersionsPath, "test-jwt-secret"),
@@ -44,7 +45,8 @@ const createGetUpdateInfo =
       }
       for (const targetVersion of targetVersions) {
         const updatePath = `${channel}/${platform}/${targetVersion}/update.json`;
-        const updateUrl = new URL(updatePath, baseUrl);
+        const updateUrl = new URL(baseUrl);
+        updateUrl.pathname = `/${updatePath}`;
         updateUrl.searchParams.set(
           "token",
           await signToken(updatePath, "test-jwt-secret"),
