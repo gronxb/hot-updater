@@ -42,6 +42,7 @@
     "@hot-updater/plugin-core": "0.12.7",
     "@types/node": "^22.13.5",
     "execa": "^9.5.2",
+    "firebase-admin": "^13.2.0",
     "firebase-functions": "^6.3.2",
     "firebase-functions-test": "^3.4.0",
     "mime": "^4.0.4",
