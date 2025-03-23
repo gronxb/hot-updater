@@ -3,11 +3,9 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
-  S3Client,
-  type S3ClientConfig,
+  type S3Client,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { merge, omit } from "es-toolkit";
 import picocolors from "picocolors";
 
 interface MigrationRecord {
@@ -16,8 +14,7 @@ interface MigrationRecord {
 }
 
 interface S3MigratorOptions {
-  credentials: S3ClientConfig["credentials"];
-  region: string;
+  s3: S3Client;
   bucketName: string;
   dryRun?: boolean; // Option to enable dry-run mode
 }
@@ -37,7 +34,15 @@ export abstract class S3Migration {
   protected backupMapping: Map<string, string> = new Map();
 
   // Performs the actual file upload without backup logic
-  protected async doUpdateFile(key: string, content: string): Promise<void> {
+  protected async doUpdateFile(
+    key: string,
+    content: string,
+    {
+      cacheControl,
+    }: {
+      cacheControl?: string;
+    } = {},
+  ): Promise<void> {
     const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
     const upload = new Upload({
       client: this.s3,
@@ -45,6 +50,7 @@ export abstract class S3Migration {
         Bucket: this.bucketName,
         Key: normalizedKey,
         Body: content,
+        CacheControl: cacheControl,
       },
     });
     await upload.done();
@@ -108,7 +114,6 @@ export abstract class S3Migration {
   // The backup file is stored at: backup/<migrationName>/<originalKey>
   protected async backupFile(key: string): Promise<void> {
     if (this.dryRun) {
-      console.log(picocolors.yellow(`[DRY RUN] Would backup file ${key}`));
       return;
     }
     const content = await this.readFile(key);
@@ -116,21 +121,26 @@ export abstract class S3Migration {
       const backupKey = `backup/${this.name}/${key}`;
       await this.doUpdateFile(backupKey, content);
       this.backupMapping.set(key, backupKey);
-      console.log(picocolors.green(`Backed up ${key} to ${backupKey}`));
-    } else {
-      console.log(picocolors.yellow(`No existing file at ${key} to backup.`));
     }
   }
 
   // Updates (uploads) a file at the specified key.
   // In dry-run mode, it logs what would be updated.
   // Backs up the original file if it exists.
-  protected async updateFile(key: string, content: string): Promise<void> {
+  protected async updateFile(
+    key: string,
+    content: string,
+    {
+      cacheControl,
+    }: {
+      cacheControl?: string;
+    } = {},
+  ): Promise<void> {
     const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
     if (this.dryRun) {
       console.log(
         picocolors.yellow(
-          `[DRY RUN] Would update file ${normalizedKey} with content:\n${content}`,
+          `[DRY RUN] Updated ${picocolors.bold(normalizedKey)}`,
         ),
       );
       return;
@@ -140,44 +150,93 @@ export abstract class S3Migration {
     if (originalContent !== null) {
       await this.backupFile(key);
     }
-    await this.doUpdateFile(normalizedKey, content);
-    console.log(picocolors.green(`Updated file ${normalizedKey}`));
+    await this.doUpdateFile(normalizedKey, content, {
+      cacheControl,
+    });
+    console.log(picocolors.green(`Updated ${picocolors.bold(normalizedKey)}`));
   }
 
   // Moves a single file from one location to another.
   // In dry-run mode, it logs what would be moved.
   // Backs up the source file before moving.
+  // S3Migration 클래스 내부의 moveFile 메서드 수정 예시
   protected async moveFile(from: string, to: string): Promise<void> {
     if (this.dryRun) {
       console.log(
-        picocolors.yellow(`[DRY RUN] Would move file from ${from} to ${to}`),
+        picocolors.yellow(
+          `[DRY RUN] ${picocolors.bold(from)} -> ${picocolors.bold(to)}`,
+        ),
       );
       return;
     }
     // Backup the source file before moving
     await this.backupFile(from);
     try {
-      // Use URL encoding for the CopySource to handle special characters
+      // URL 인코딩을 사용하여 특수문자 처리를 안전하게 함
       const copyCommand = new CopyObjectCommand({
         Bucket: this.bucketName,
-        CopySource: `${this.bucketName}/${encodeURIComponent(from)}`,
+        CopySource: `${this.bucketName}/${from}`,
         Key: to,
       });
       await this.s3.send(copyCommand);
+    } catch (error) {
+      console.error(
+        picocolors.red(`Error copying file from ${from} to ${to}:`),
+        error,
+      );
+      throw error;
+    }
+    try {
       const deleteCommand = new DeleteObjectCommand({
         Bucket: this.bucketName,
         Key: from,
       });
       await this.s3.send(deleteCommand);
-      console.log(picocolors.green(`Moved file from ${from} to ${to}`));
+    } catch (error: any) {
+      if (error?.message?.includes("NoSuchKey")) {
+        console.warn(
+          picocolors.yellow(`Key ${from} not found during deletion, ignoring.`),
+        );
+      } else {
+        console.error(picocolors.red(`Error deleting file ${from}:`), error);
+        throw error;
+      }
+    }
+    console.log(
+      picocolors.green(`${picocolors.bold(from)} -> ${picocolors.bold(to)}`),
+    );
+  }
+
+  // Deletes a backup file
+  protected async deleteBackupFile(backupKey: string): Promise<void> {
+    if (this.dryRun) {
+      return;
+    }
+    try {
+      const deleteCommand = new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: backupKey,
+      });
+      await this.s3.send(deleteCommand);
     } catch (error) {
       console.error(
-        picocolors.red(`Error moving file from ${from} to ${to}:`),
+        picocolors.red(`Error deleting backup file ${backupKey}:`),
         error,
       );
-      // Rethrow the error to propagate it and halt the migration process
-      throw error;
     }
+  }
+
+  // Cleans up all backup files created during this migration
+  public async cleanupBackups(): Promise<void> {
+    if (this.backupMapping.size === 0) {
+      return;
+    }
+
+    for (const backupKey of this.backupMapping.values()) {
+      await this.deleteBackupFile(backupKey);
+    }
+
+    this.backupMapping.clear();
   }
 
   // Rollback method: restores files from backups stored in backupMapping
@@ -217,19 +276,14 @@ export abstract class S3Migration {
 export class S3Migrator {
   s3: S3Client;
   bucketName: string;
-  options: S3MigratorOptions;
   migrationRecordKey = "migrate.json";
   migrationRecords: MigrationRecord[] = [];
-  dryRun: boolean;
+  migrations: S3Migration[];
 
-  constructor(options: S3MigratorOptions) {
-    this.options = options;
+  constructor(options: S3MigratorOptions & { migrations: S3Migration[] }) {
     this.bucketName = options.bucketName;
-    this.dryRun = options.dryRun || false;
-    this.s3 = new S3Client({
-      credentials: options.credentials,
-      region: options.region,
-    });
+    this.s3 = options.s3;
+    this.migrations = options.migrations;
   }
 
   private async loadMigrationRecords(): Promise<void> {
@@ -256,6 +310,7 @@ export class S3Migrator {
       if (
         error.Code === "NoSuchKey" ||
         error.name === "NoSuchKey" ||
+        error.message === "NoSuchKey" ||
         error.$metadata?.httpStatusCode === 404
       ) {
         this.migrationRecords = [];
@@ -265,12 +320,8 @@ export class S3Migrator {
     }
   }
 
-  private async saveMigrationRecords(): Promise<void> {
-    if (this.dryRun) {
-      console.log(
-        picocolors.yellow("[DRY RUN] Would save migration records:"),
-        this.migrationRecords,
-      );
+  private async saveMigrationRecords(dryRun: boolean): Promise<void> {
+    if (dryRun) {
       return;
     }
     const body = JSON.stringify(this.migrationRecords, null, 2);
@@ -285,19 +336,44 @@ export class S3Migrator {
     await upload.done();
   }
 
-  async migrate(migrations: S3Migration[]): Promise<void> {
+  /**
+   * Returns a JSON object containing applied and pending migrations.
+   */
+  async list(): Promise<{
+    applied: Array<{ name: string; appliedAt: string }>;
+    pending: Array<{ name: string }>;
+  }> {
     await this.loadMigrationRecords();
 
-    for (const migration of migrations) {
+    const applied = this.migrationRecords.map((record) => ({
+      name: record.name,
+      appliedAt: record.appliedAt,
+    }));
+
+    const pendingMigrations = this.migrations.filter(
+      (migration) =>
+        !this.migrationRecords.some((record) => record.name === migration.name),
+    );
+
+    const pending = pendingMigrations.map((migration) => ({
+      name: migration.name,
+    }));
+
+    return { applied, pending };
+  }
+
+  async migrate({
+    dryRun,
+  }: {
+    dryRun: boolean;
+  }): Promise<void> {
+    await this.loadMigrationRecords();
+
+    for (const migration of this.migrations) {
       const alreadyApplied = this.migrationRecords.some(
         (record) => record.name === migration.name,
       );
       if (alreadyApplied) {
-        console.log(
-          picocolors.yellow(
-            `Migration ${migration.name} already applied, skipping.`,
-          ),
-        );
         continue;
       }
 
@@ -306,24 +382,26 @@ export class S3Migrator {
       );
       migration.s3 = this.s3;
       migration.bucketName = this.bucketName;
-      migration.dryRun = this.dryRun;
+      migration.dryRun = dryRun;
 
       try {
         await migration.migrate();
-        if (!this.dryRun) {
+        if (!dryRun) {
           this.migrationRecords.push({
             name: migration.name,
             appliedAt: new Date().toISOString(),
           });
           console.log(
             picocolors.green(
-              `Migration ${migration.name} applied successfully.`,
+              `${picocolors.bold(migration.name)} applied successfully.`,
             ),
           );
+
+          await migration.cleanupBackups();
         } else {
           console.log(
             picocolors.yellow(
-              `[DRY RUN] Migration ${migration.name} simulated.`,
+              `[DRY RUN] ${picocolors.bold(migration.name)} applied successfully`,
             ),
           );
         }
@@ -339,78 +417,9 @@ export class S3Migrator {
       }
     }
 
-    await this.saveMigrationRecords();
-    if (!this.dryRun) {
+    await this.saveMigrationRecords(dryRun);
+    if (!dryRun) {
       console.log(picocolors.blue("All migrations applied."));
-    } else {
-      console.log(
-        picocolors.blue(
-          "[DRY RUN] Completed dry-run. No changes were applied.",
-        ),
-      );
     }
   }
-}
-
-/**
- * Migration0001HotUpdater0130
- * 1. Retrieves all keys in the bucket.
- * 2. If update.json exists, reads the JSON array, removes the fileUrl property from each item,
- *    and merges in { channel: "production" } before updating the file.
- * 3. Moves files that start with ios/ or android/ under the production/ prefix.
- */
-export class Migration0001HotUpdater0130 extends S3Migration {
-  name = "hot-updater_0.13.0";
-
-  async migrate(): Promise<void> {
-    // Retrieve all keys in the bucket
-    const keys = await this.getKeys("");
-    console.log(picocolors.blue("All keys in bucket:"), keys);
-
-    // Process update.json (which is expected to be an array)
-    if (keys.includes("update.json")) {
-      const data = await this.readJson<{ fileUrl: string }[]>("update.json");
-      if (data) {
-        const updatedData = data.map((item) =>
-          merge(omit(item, ["fileUrl"]), { channel: "production" }),
-        );
-        await this.updateFile(
-          "update.json",
-          JSON.stringify(updatedData, null, 2),
-        );
-        console.log(picocolors.green("update.json updated successfully."));
-      } else {
-        console.log(
-          picocolors.yellow("update.json does not contain an array."),
-        );
-      }
-    }
-
-    // Move files that start with ios/ or android/ to the production/ prefix
-    for (const key of keys) {
-      if (key === "update.json") continue;
-      if (key.startsWith("production/")) continue;
-      if (/^(ios|android)\//.test(key)) {
-        const newKey = `production/${key}`;
-        await this.moveFile(key, newKey);
-      }
-    }
-  }
-}
-
-/**
- * runMigrate
- * Creates an S3Migrator and executes migration scripts.
- */
-export async function runMigrate() {
-  const migrator = new S3Migrator({
-    credentials: {
-      accessKeyId: "YOUR_ACCESS_KEY",
-      secretAccessKey: "YOUR_SECRET_KEY",
-    },
-    region: "YOUR_REGION",
-    bucketName: "YOUR_BUCKET_NAME",
-    dryRun: true, // Set dry-run mode to true for planning and preview
-  });
-  await migrator.migrate([new Migration0001HotUpdater0130()]);
 }

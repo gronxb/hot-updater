@@ -26,6 +26,11 @@
       "import": "./dist/sdk/index.js",
       "require": "./dist/sdk/index.cjs"
     },
+    "./migrations": {
+      "types": "./dist/migrations/index.d.ts",
+      "import": "./dist/migrations/index.js",
+      "require": "./dist/migrations/index.cjs"
+    },
     "./lambda": {
       "require": "./dist/lambda/index.cjs"
     }
@@ -47,7 +52,8 @@
     "aws-sdk-client-mock": "^4.1.0",
     "es-toolkit": "^1.32.0",
     "hono": "^4.6.3",
-    "mime": "^4.0.4"
+    "mime": "^4.0.4",
+    "picocolors": "^1.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "3.772.0",
