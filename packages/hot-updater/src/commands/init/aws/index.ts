@@ -172,13 +172,9 @@ export async function createOrSelectIamRole({
  * - Publish a new version of the function
  */
 export const deployLambdaEdge = async ({
-  region,
-  bucketName,
   credentials,
   lambdaRoleArn,
 }: {
-  region: BucketLocationConstraint;
-  bucketName: string;
   credentials: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -202,13 +198,11 @@ export const deployLambdaEdge = async ({
 
   const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
 
-  const jwtSecret = crypto.randomBytes(32).toString("hex");
+  const jwtSecret = crypto.randomBytes(48).toString("hex");
 
   const code = await transformEnv(
     await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
     {
-      S3_REGION: region,
-      S3_BUCKET_NAME: bucketName,
       JWT_SECRET: jwtSecret,
     },
   );
@@ -1036,8 +1030,6 @@ export const initAwsS3LambdaEdge = async () => {
 
   // Deploy Lambda@Edge function (us-east-1)
   const { functionArn } = await deployLambdaEdge({
-    region,
-    bucketName,
     credentials,
     lambdaRoleArn,
   });

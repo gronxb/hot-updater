@@ -9,7 +9,6 @@ import { signToken } from "@hot-updater/js";
 import { beforeEach, describe, vi } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromCdn } from "./getUpdateInfo";
 
-// cdnBaseUrl을 받아서, bundles에 따른 fetch 응답을 mock한 후 getUpdateInfo를 호출하는 함수 생성
 const createGetUpdateInfo =
   (cdnBaseUrl: string) =>
   async (
@@ -22,11 +21,9 @@ const createGetUpdateInfo =
       channel = "production",
     }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
-    // fetch 호출 시, URL 별로 반환할 데이터를 매핑
     const responses: Record<string, any> = {};
 
     if (bundles.length > 0) {
-      // target-app-versions.json 응답 (중복 제거한 target 버전 배열)
       const targetVersions = [
         ...new Set(bundles.map((b) => b.targetAppVersion)),
       ];
@@ -38,7 +35,6 @@ const createGetUpdateInfo =
       );
       responses[targetVersionsUrl.toString()] = targetVersions;
 
-      // 각 target 버전별 update.json 응답 설정
       const bundlesByVersion: Record<string, Bundle[]> = {};
       for (const bundle of bundles) {
         if (!bundlesByVersion[bundle.targetAppVersion]) {
@@ -56,8 +52,6 @@ const createGetUpdateInfo =
         responses[updateUrl.toString()] = bundlesByVersion[targetVersion];
       }
     } else {
-      // bundles가 없는 경우, 요청 시 Not Found로 처리하도록 함.
-      // 테스트 환경에 따라 필요시 추가 검증 가능
       responses["*"] = null;
     }
 
