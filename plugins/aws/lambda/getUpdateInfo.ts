@@ -1,4 +1,3 @@
-import { GetObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import {
   type Bundle,
   type GetBundlesArgs,
@@ -8,25 +7,37 @@ import {
 import {
   filterCompatibleAppVersions,
   getUpdateInfo as getUpdateInfoJS,
+  signToken,
 } from "@hot-updater/js";
 
-const getS3Json = async (s3: S3Client, bucket: string, key: string) => {
+const getCdnJson = async <T>({
+  cdnBaseUrl,
+  key,
+  jwtSecret,
+}: {
+  cdnBaseUrl: string;
+  key: string;
+  jwtSecret: string;
+}): Promise<T | null> => {
   try {
-    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    const { Body } = await s3.send(command);
-    if (!Body) {
+    const url = new URL(`${cdnBaseUrl}/${key}`);
+    url.searchParams.set("token", await signToken(key, jwtSecret));
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    if (!res.ok) {
       return null;
     }
-    const jsonString = await Body.transformToString();
-    return JSON.parse(jsonString);
+    return res.json() as T;
   } catch {
     return null;
   }
 };
 
 export const getUpdateInfo = async (
-  s3: S3Client,
-  bucketName: string,
+  { cdnBaseUrl, jwtSecret }: { cdnBaseUrl: string; jwtSecret: string },
   {
     platform,
     appVersion,
@@ -35,11 +46,11 @@ export const getUpdateInfo = async (
     channel = "production",
   }: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
-  const targetAppVersions = await getS3Json(
-    s3,
-    bucketName,
-    `${platform}/target-app-versions.json`,
-  );
+  const targetAppVersions = await getCdnJson<string[]>({
+    cdnBaseUrl,
+    key: `${channel}/${platform}/target-app-versions.json`,
+    jwtSecret,
+  });
 
   const matchingVersions = filterCompatibleAppVersions(
     targetAppVersions ?? [],
@@ -48,7 +59,11 @@ export const getUpdateInfo = async (
 
   const results = await Promise.allSettled(
     matchingVersions.map((targetAppVersion) =>
-      getS3Json(s3, bucketName, `${platform}/${targetAppVersion}/update.json`),
+      getCdnJson({
+        cdnBaseUrl,
+        key: `${channel}/${platform}/${targetAppVersion}/update.json`,
+        jwtSecret,
+      }),
     ),
   );
 

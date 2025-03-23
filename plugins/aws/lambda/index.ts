@@ -1,4 +1,3 @@
-import { S3Client } from "@aws-sdk/client-s3";
 import { NIL_UUID } from "@hot-updater/core";
 import { verifyJwtToken, withJwtSignedUrl } from "@hot-updater/js";
 import type { CloudFrontRequestHandler } from "aws-lambda";
@@ -9,14 +8,9 @@ import { getUpdateInfo } from "./getUpdateInfo";
 
 declare global {
   var HotUpdater: {
-    S3_BUCKET_NAME: string;
-    S3_REGION: string;
     JWT_SECRET: string;
   };
 }
-
-const s3 = new S3Client({ region: HotUpdater.S3_REGION });
-const bucketName = HotUpdater.S3_BUCKET_NAME;
 
 type Bindings = {
   callback: Callback;
@@ -41,13 +35,21 @@ app.get("/api/check-update", async (c) => {
       return c.json({ error: "Missing required headers." }, 400);
     }
 
-    const updateInfo = await getUpdateInfo(s3, bucketName, {
-      platform: appPlatform,
-      bundleId,
-      appVersion,
-      minBundleId,
-      channel,
-    });
+    const cdnHost = headers["host"]?.[0]?.value;
+    if (!cdnHost) {
+      return c.json({ error: "Missing host header." }, 500);
+    }
+    const cdnBaseUrl = `https://${cdnHost}`;
+    const updateInfo = await getUpdateInfo(
+      { cdnBaseUrl, jwtSecret: HotUpdater.JWT_SECRET },
+      {
+        platform: appPlatform,
+        bundleId,
+        appVersion,
+        minBundleId,
+        channel,
+      },
+    );
     if (!updateInfo) {
       return c.json(null);
     }

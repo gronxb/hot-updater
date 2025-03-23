@@ -56,7 +56,13 @@ async function uploadJsonToS3<T>(
   const ContentType = mime.getType(key) ?? "application/json";
   const upload = new Upload({
     client,
-    params: { Bucket: bucket, Key: key, Body, ContentType },
+    params: {
+      Bucket: bucket,
+      Key: key,
+      Body,
+      ContentType,
+      CacheControl: "no-cache",
+    },
   });
   await upload.done();
 }
@@ -70,7 +76,7 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
 /**
  * Lists update.json keys for a given platform.
  *
- * - If a channel is provided, only that channel’s update.json files are listed.
+ * - If a channel is provided, only that channel's update.json files are listed.
  * - Otherwise, all channels for the given platform are returned.
  */
 async function listUpdateJsonKeys(

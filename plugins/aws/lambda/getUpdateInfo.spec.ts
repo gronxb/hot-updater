@@ -1,4 +1,3 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   type Bundle,
   type GetBundlesArgs,
@@ -6,15 +5,12 @@ import {
   type UpdateInfo,
 } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
-import { mockClient } from "aws-sdk-client-mock";
-import { groupBy } from "es-toolkit";
-import { beforeEach, describe } from "vitest";
-import { getUpdateInfo as getUpdateInfoFromS3 } from "./getUpdateInfo";
+import { beforeEach, describe, vi } from "vitest";
+import { getUpdateInfo as getUpdateInfoFromCdn } from "./getUpdateInfo";
 
-const s3Mock = mockClient(S3Client);
-
+// cdnBaseUrl을 받아서, bundles에 따른 fetch 응답을 mock한 후 getUpdateInfo를 호출하는 함수 생성
 const createGetUpdateInfo =
-  (s3: S3Client, bucketName: string) =>
+  (cdnBaseUrl: string) =>
   async (
     bundles: Bundle[],
     {
@@ -25,62 +21,79 @@ const createGetUpdateInfo =
       channel = "production",
     }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
+    // fetch 호출 시, URL 별로 반환할 데이터를 매핑
+    const responses: Record<string, any> = {};
+
     if (bundles.length > 0) {
-      // Mock target-app-versions.json
+      // target-app-versions.json 응답 (중복 제거한 target 버전 배열)
       const targetVersions = [
         ...new Set(bundles.map((b) => b.targetAppVersion)),
       ];
-      s3Mock
-        .on(GetObjectCommand, {
-          Bucket: bucketName,
-          Key: `${platform}/target-app-versions.json`,
-        })
-        .resolves({
-          Body: {
-            transformToString: () =>
-              Promise.resolve(JSON.stringify(targetVersions)),
-          },
-        } as any);
+      const targetVersionsUrl = `${cdnBaseUrl}/${channel}/${platform}/target-app-versions.json`;
+      responses[targetVersionsUrl] = targetVersions;
 
-      // Mock update.json for each version
-      const bundlesByVersion = groupBy(bundles, (b) => b.targetAppVersion);
-
-      // Set update.json response for each version
-      for (const [version, versionBundles] of Object.entries(
-        bundlesByVersion,
-      )) {
-        s3Mock
-          .on(GetObjectCommand, {
-            Bucket: bucketName,
-            Key: `${platform}/${version}/update.json`,
-          })
-          .resolves({
-            Body: {
-              transformToString: () =>
-                Promise.resolve(JSON.stringify(versionBundles)),
-            },
-          } as any);
+      // 각 target 버전별 update.json 응답 설정
+      const bundlesByVersion: Record<string, Bundle[]> = {};
+      for (const bundle of bundles) {
+        if (!bundlesByVersion[bundle.targetAppVersion]) {
+          bundlesByVersion[bundle.targetAppVersion] = [];
+        }
+        bundlesByVersion[bundle.targetAppVersion].push(bundle);
+      }
+      for (const targetVersion of targetVersions) {
+        const updateUrl = `${cdnBaseUrl}/${channel}/${platform}/${targetVersion}/update.json`;
+        responses[updateUrl] = bundlesByVersion[targetVersion];
       }
     } else {
-      // Return NoSuchKey error when there are no bundles
-      s3Mock.on(GetObjectCommand).rejects(new Error("NoSuchKey"));
+      // bundles가 없는 경우, 요청 시 Not Found로 처리하도록 함.
+      // 테스트 환경에 따라 필요시 추가 검증 가능
+      responses["*"] = null;
     }
 
-    return getUpdateInfoFromS3(s3, bucketName, {
-      minBundleId,
-      channel,
-      appVersion,
-      bundleId,
-      platform,
+    // global.fetch를 mock 처리 (요청 URL에 따라 적절한 응답 반환)
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url in responses) {
+        return {
+          ok: true,
+          json: async () => responses[url],
+        };
+      }
+      return {
+        ok: false,
+        statusText: "Not Found",
+      };
     });
+
+    // 기존 fetch를 백업 후, mock fetch로 교체
+    const originalFetch = global.fetch;
+    global.fetch = fetchMock as any;
+
+    try {
+      return await getUpdateInfoFromCdn(
+        {
+          cdnBaseUrl,
+          jwtSecret: "test-jwt-secret",
+        },
+        {
+          minBundleId,
+          channel,
+          appVersion,
+          bundleId,
+          platform,
+        },
+      );
+    } finally {
+      // 테스트 후 원래의 fetch로 복원
+      global.fetch = originalFetch;
+    }
   };
 
-describe("getUpdateInfo", () => {
+describe("getUpdateInfo (CDN based)", () => {
   beforeEach(() => {
-    s3Mock.reset();
+    vi.restoreAllMocks();
   });
 
   setupGetUpdateInfoTestSuite({
-    getUpdateInfo: createGetUpdateInfo(new S3Client({}), "test-bucket"),
+    getUpdateInfo: createGetUpdateInfo("https://test-cdn.com"),
   });
 });
