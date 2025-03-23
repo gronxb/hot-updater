@@ -11,7 +11,6 @@ import { groupBy } from "es-toolkit";
 import { beforeEach, describe } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromS3 } from "./getUpdateInfo";
 
-// @ts-expect-error: Type mismatch in aws-sdk-client-mock
 const s3Mock = mockClient(S3Client);
 
 const createGetUpdateInfo =
@@ -32,7 +31,6 @@ const createGetUpdateInfo =
         ...new Set(bundles.map((b) => b.targetAppVersion)),
       ];
       s3Mock
-        // @ts-expect-error: Type mismatch in aws-sdk-client-mock
         .on(GetObjectCommand, {
           Bucket: bucketName,
           Key: `${platform}/target-app-versions.json`,
@@ -52,8 +50,6 @@ const createGetUpdateInfo =
         bundlesByVersion,
       )) {
         s3Mock
-
-          // @ts-expect-error: Type mismatch in aws-sdk-client-mock
           .on(GetObjectCommand, {
             Bucket: bucketName,
             Key: `${platform}/${version}/update.json`,
@@ -67,7 +63,6 @@ const createGetUpdateInfo =
       }
     } else {
       // Return NoSuchKey error when there are no bundles
-      // @ts-expect-error: Type mismatch in aws-sdk-client-mock
       s3Mock.on(GetObjectCommand).rejects(new Error("NoSuchKey"));
     }
 
