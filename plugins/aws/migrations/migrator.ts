@@ -322,10 +322,6 @@ export class S3Migrator {
 
   private async saveMigrationRecords(dryRun: boolean): Promise<void> {
     if (dryRun) {
-      console.log(
-        picocolors.yellow("[DRY RUN] Would save migration records:"),
-        this.migrationRecords,
-      );
       return;
     }
     const body = JSON.stringify(this.migrationRecords, null, 2);

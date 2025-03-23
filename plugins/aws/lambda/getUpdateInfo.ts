@@ -15,7 +15,7 @@ const getCdnJson = async <T>({
   jwtSecret: string;
 }): Promise<T | null> => {
   try {
-    const url = new URL(`${baseUrl}/${key}`);
+    const url = new URL(baseUrl);
     url.searchParams.set("token", await signToken(key, jwtSecret));
     const res = await fetch(url.toString(), {
       headers: {
@@ -41,11 +41,6 @@ export const getUpdateInfo = async (
     channel = "production",
   }: GetBundlesArgs,
 ): Promise<any | null> => {
-  const url = new URL(
-    `${baseUrl}/${channel}/${platform}/target-app-versions.json`,
-  );
-  url.searchParams.set("token", await signToken(url.toString(), jwtSecret));
-
   const targetAppVersions = await getCdnJson<string[]>({
     baseUrl,
     key: `${channel}/${platform}/target-app-versions.json`,
