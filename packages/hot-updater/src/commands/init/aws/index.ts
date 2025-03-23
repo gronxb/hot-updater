@@ -254,6 +254,8 @@ export const deployLambdaEdge = async ({
             Code: { ZipFile: await fs.readFile(zipFilePath) },
             Description: "Hot Updater Lambda@Edge function",
             Publish: true,
+            Timeout: 10,
+            MemorySize: 256,
           });
 
           functionArn.arn = createResp.FunctionArn || null;
@@ -276,6 +278,12 @@ export const deployLambdaEdge = async ({
             });
             functionArn.arn = updateResp.FunctionArn || null;
             functionArn.version = updateResp.Version || "1";
+
+            await lambdaClient.updateFunctionConfiguration({
+              FunctionName: lambdaName,
+              Timeout: 10,
+              MemorySize: 256,
+            });
           } else {
             // Pass through other errors
             if (error instanceof Error) {
