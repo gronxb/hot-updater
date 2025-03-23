@@ -41,8 +41,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useFilter } from "@/hooks/useFilter";
 import { createBundlesQuery, createChannelsQuery } from "@/lib/api";
-import type { Bundle, Platform } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 
 interface DataTableProps {
   columns: ColumnDef<Bundle>[];
@@ -51,9 +52,6 @@ interface DataTableProps {
 
 const DEFAULT_PAGE_SIZE = 20;
 
-const [platformFilter, setPlatformFilter] = createSignal<Platform | null>(null);
-const [channelFilter, setChannelFilter] = createSignal<string | null>(null);
-
 const [pagination, setPagination] = createSignal<PaginationState>({
   pageIndex: 0,
   pageSize: DEFAULT_PAGE_SIZE,
@@ -61,6 +59,8 @@ const [pagination, setPagination] = createSignal<PaginationState>({
 
 export function DataTable(props: DataTableProps) {
   const [local] = splitProps(props, ["columns", "onRowClick"]);
+  const { channelFilter, platformFilter, setPlatformFilter, setChannelFilter } =
+    useFilter();
 
   const query = createMemo(() => ({
     channel: channelFilter() ?? undefined,
