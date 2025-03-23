@@ -14,17 +14,14 @@ jobs:
   build-new-arch:
     runs-on: macos-latest
     name: Build iOS (New Architecture)
-    strategy:
-      matrix:
-        node-version: [22.x]
     steps:
       - uses: actions/checkout@v3
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version-file: .node-version
           cache: "pnpm"
       - run: pnpm install
 
@@ -44,17 +41,14 @@ jobs:
   build-old-arch:
     runs-on: macos-latest
     name: Build iOS (Old Architecture)
-    strategy:
-      matrix:
-        node-version: [22.x]
     steps:
       - uses: actions/checkout@v3
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version-file: .node-version
           cache: "pnpm"
       - run: pnpm install
 
