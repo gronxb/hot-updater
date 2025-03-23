@@ -1,8 +1,9 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { execa } from "execa";
 import admin from "firebase-admin";
 import type { Firestore } from "firebase-admin/firestore";
-import { beforeAll, beforeEach, describe } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromIndex } from "./getUpdateInfo";
 
 if (!admin.apps.length) {
@@ -13,46 +14,14 @@ if (!admin.apps.length) {
 
 const firestore = admin.firestore();
 
-if (process.env.NODE_ENV !== "production") {
-  firestore.settings({
-    host: "localhost:8080",
-    ssl: false,
-  });
-  console.log("Using Firestore emulator at localhost:8080");
-}
+firestore.settings({
+  host: "localhost:8080",
+  ssl: false,
+});
 
 const bundlesCollection = firestore.collection("bundles");
 
-const addBundlesToFirestore = async (bundles: Bundle[]) => {
-  const snapshot = await bundlesCollection.get();
-  const deleteBatch = firestore.batch();
-  // biome-ignore lint/complexity/noForEach: <explanation>
-  snapshot.docs.forEach((doc) => {
-    deleteBatch.delete(doc.ref);
-  });
-  await deleteBatch.commit();
-
-  const batch = firestore.batch();
-
-  for (const bundle of bundles) {
-    const docRef = bundlesCollection.doc(bundle.id);
-    batch.set(docRef, {
-      id: bundle.id,
-      file_hash: bundle.fileHash,
-      platform: bundle.platform,
-      target_app_version: bundle.targetAppVersion,
-      should_force_update: bundle.shouldForceUpdate,
-      enabled: bundle.enabled,
-      git_commit_hash: bundle.gitCommitHash || null,
-      message: bundle.message || null,
-      channel: bundle.channel || "production",
-    });
-  }
-
-  await batch.commit();
-
-  await new Promise((resolve) => setTimeout(resolve, 500));
-};
+let emulatorProcess: ReturnType<typeof execa>;
 
 const createGetUpdateInfo =
   (db: Firestore) =>
@@ -60,41 +29,129 @@ const createGetUpdateInfo =
     bundles: Bundle[],
     { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
-    await addBundlesToFirestore(bundles);
+    const snapshot = await bundlesCollection.get();
+    const batch = db.batch();
 
-    try {
-      const result = await getUpdateInfoFromIndex(db, {
-        appVersion,
-        bundleId,
-        platform,
-        minBundleId,
-        channel,
-      });
-      return result;
-    } catch (error) {
-      console.error("getUpdateInfo error:", error);
-      throw error;
+    for (const doc of snapshot.docs) {
+      batch.delete(doc.ref);
     }
+
+    await batch.commit();
+
+    if (bundles.length > 0) {
+      const writeBatch = db.batch();
+
+      for (const bundle of bundles) {
+        const docRef = bundlesCollection.doc(bundle.id);
+        writeBatch.set(docRef, {
+          id: bundle.id,
+          file_hash: bundle.fileHash,
+          platform: bundle.platform,
+          target_app_version: bundle.targetAppVersion,
+          should_force_update: bundle.shouldForceUpdate,
+          enabled: bundle.enabled,
+          git_commit_hash: bundle.gitCommitHash || null,
+          message: bundle.message || null,
+          channel: bundle.channel || "production",
+        });
+      }
+
+      await writeBatch.commit();
+    }
+
+    return await getUpdateInfoFromIndex(db, {
+      appVersion,
+      bundleId,
+      platform,
+      minBundleId,
+      channel,
+    });
   };
 
 const getUpdateInfo = createGetUpdateInfo(firestore);
 
+async function waitForEmulator(
+  maxRetries = 10,
+  retryDelay = 1000,
+): Promise<boolean> {
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    try {
+      await firestore.listCollections();
+      console.log(`Firebase emulator ready after ${retries + 1} attempt(s)`);
+      return true;
+    } catch (error) {
+      if (retries === maxRetries - 1) {
+        console.error(
+          "Failed to connect to Firebase emulator after maximum retries",
+        );
+        return false;
+      }
+
+      console.log(
+        `Waiting for emulator to start (attempt ${retries + 1}/${maxRetries})...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      retries++;
+    }
+  }
+
+  return false;
+}
+
 describe("getUpdateInfo", () => {
-  beforeAll(() => {
-    console.log("Make sure the Firebase emulators are running:");
-    console.log("firebase emulators:start --only firestore");
+  beforeAll(async () => {
+    console.log("Starting Firebase emulator...");
+    emulatorProcess = execa(
+      "pnpm",
+      ["firebase", "emulators:start", "--only", "firestore"],
+      {
+        stdio: "inherit",
+        detached: true,
+      },
+    );
+
+    const emulatorReady = await waitForEmulator();
+    if (!emulatorReady) {
+      throw new Error("Firebase emulator failed to start");
+    }
+
+    console.log("Firebase emulator started successfully");
+  }, 30000);
+
+  afterAll(async () => {
+    if (emulatorProcess?.pid) {
+      console.log("Shutting down Firebase emulator...");
+
+      try {
+        if (process.platform === "win32") {
+          await execa("taskkill", [
+            "/pid",
+            String(emulatorProcess.pid),
+            "/T",
+            "/F",
+          ]);
+        } else {
+          process.kill(-emulatorProcess.pid, "SIGTERM");
+        }
+        console.log("Firebase emulator shut down successfully");
+      } catch (error) {
+        console.error("Error shutting down Firebase emulator:", error);
+      }
+    }
   });
 
   beforeEach(async () => {
     const snapshot = await bundlesCollection.get();
-    const batch = firestore.batch();
 
-    // biome-ignore lint/complexity/noForEach: <explanation>
-    snapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-    });
-
-    await batch.commit();
+    if (!snapshot.empty) {
+      const batch = firestore.batch();
+      for (const doc of snapshot.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    }
   });
 
   setupGetUpdateInfoTestSuite({
