@@ -112,7 +112,9 @@ describe("S3Migration", () => {
     // Expect backup to have been performed.
     expect(backupSpy).toHaveBeenCalled();
     // Expect doUpdateFile to be called with the normalized key and new content.
-    expect(doUpdateSpy).toHaveBeenCalledWith("file.txt", "updated content");
+    expect(doUpdateSpy).toHaveBeenCalledWith("file.txt", "updated content", {
+      cacheControl: undefined,
+    });
   });
 
   it("should move a file (backup, copy, then delete source)", async () => {
