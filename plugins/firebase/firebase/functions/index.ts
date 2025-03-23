@@ -1,22 +1,12 @@
-import {
-  NIL_UUID,
-  type Platform,
-  type UpdateInfo,
-  type UpdateStatus,
-} from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
 import admin from "firebase-admin";
 import functions from "firebase-functions";
-import { getUpdateInfo } from "./getUpdateInfo";
-
-interface UpdateInfoWithUrl extends UpdateInfo {
-  fileUrl: string | null;
-  fileHash: string | null;
-}
 
 declare global {
   var HotUpdater: {
     REGION: string;
     BUCKET_NAME?: string;
+    JWT_SECRET: string;
   };
 }
 
@@ -24,6 +14,7 @@ if (typeof global.HotUpdater === "undefined") {
   global.HotUpdater = {
     REGION: process.env.FUNCTION_REGION || "us-central1",
     BUCKET_NAME: process.env.STORAGE_BUCKET || undefined,
+    JWT_SECRET: process.env.JWT_SECRET || "your-secret-key",
   };
 }
 
@@ -31,24 +22,24 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-export function validatePlatform(platform: string): Platform | null {
-  const validPlatforms: Platform[] = ["ios", "android"];
-  return validPlatforms.includes(platform as Platform)
-    ? (platform as Platform)
+export function validatePlatform(platform: string): "ios" | "android" | null {
+  const validPlatforms = ["ios", "android"];
+  return validPlatforms.includes(platform)
+    ? (platform as "ios" | "android")
     : null;
 }
 
-export const updateInfoFunction = functions.https.onRequest(
+export const checkUpdateDirect = functions.https.onRequest(
   {
     region: HotUpdater.REGION,
     cors: true,
   },
   async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
-    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.set(
       "Access-Control-Allow-Headers",
-      "Content-Type, x-app-platform, x-app-version, x-bundle-id, x-channel",
+      "Content-Type, x-app-platform, x-app-version, x-bundle-id, x-min-bundle-id, x-channel",
     );
 
     if (req.method === "OPTIONS") {
@@ -60,89 +51,131 @@ export const updateInfoFunction = functions.https.onRequest(
       const platformHeader = req.headers["x-app-platform"] as string;
       const appVersion = req.headers["x-app-version"] as string;
       const bundleId = req.headers["x-bundle-id"] as string;
+      const minBundleId = req.headers["x-min-bundle-id"] as string | undefined;
       const channel = req.headers["x-channel"] as string | undefined;
 
       if (!platformHeader || !appVersion || !bundleId) {
-        res
-          .status(400)
-          .send(
+        res.status(400).json({
+          error:
             "Missing required headers (x-app-platform, x-app-version, x-bundle-id)",
-          );
+        });
         return;
       }
 
       const platform = validatePlatform(platformHeader);
       if (!platform) {
-        res.status(400).send("Invalid platform. Must be 'ios', 'android'");
+        res.status(400).json({
+          error: "Invalid platform. Must be 'ios' or 'android'",
+        });
         return;
       }
 
       const db = admin.firestore();
+      const { getUpdateInfo } = require("./getUpdateInfo");
       const updateInfo = await getUpdateInfo(db, {
         platform,
         appVersion,
         bundleId,
-        channel,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
       });
 
       if (!updateInfo) {
-        const noUpdateResponse: UpdateInfoWithUrl = {
-          id: NIL_UUID,
-          shouldForceUpdate: false,
-          message: null,
-          status: "NO_UPDATE" as UpdateStatus,
-          fileUrl: null,
-          fileHash: null,
-        };
-        res.status(200).json(noUpdateResponse);
+        res.status(200).json(null);
         return;
       }
 
-      if (updateInfo.id === NIL_UUID || updateInfo.status === "ROLLBACK") {
-        const rollbackResponse: UpdateInfoWithUrl = {
-          ...updateInfo,
-          fileUrl: null,
-          fileHash: null,
-        };
-        res.status(200).json(rollbackResponse);
+      let fileHash = null;
+      let fileUrl = null;
+
+      if (updateInfo.id !== NIL_UUID && updateInfo.status !== "ROLLBACK") {
+        try {
+          const bundleDoc = await db
+            .collection("bundles")
+            .doc(updateInfo.id)
+            .get();
+          const bundleData = bundleDoc.data();
+
+          if (bundleData) {
+            fileHash = bundleData.file_hash || null;
+            const region = HotUpdater.REGION;
+            const projectId = process.env.GCLOUD_PROJECT || "";
+            fileUrl = `https://${region}-${projectId}.cloudfunctions.net/directBundleDownload/${updateInfo.id}`;
+          }
+        } catch (error) {
+          console.error("Error fetching bundle data:", error);
+        }
+      }
+
+      const responseData = {
+        ...updateInfo,
+        fileHash,
+        fileUrl,
+      };
+
+      res.status(200).json(responseData);
+    } catch (error) {
+      console.error("Update check error:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  },
+);
+
+export const directBundleDownload = functions.https.onRequest(
+  {
+    region: HotUpdater.REGION,
+    cors: true,
+  },
+  async (req, res) => {
+    const pathParts = req.path.split("/").filter((p) => p);
+    const bundleId =
+      pathParts.length > 0 ? pathParts[pathParts.length - 1] : null;
+
+    if (!bundleId) {
+      res.status(400).json({ error: "Bundle ID is required" });
+      return;
+    }
+
+    try {
+      const bucket = admin.storage().bucket(HotUpdater.BUCKET_NAME);
+      const filePath = `${bundleId}/bundle.zip`;
+      const file = bucket.file(filePath);
+
+      const [exists] = await file.exists();
+
+      if (!exists) {
+        res.status(404).json({
+          error: "Bundle not found",
+          path: filePath,
+        });
         return;
       }
 
       try {
-        const bundleDoc = await db
-          .collection("bundles")
-          .doc(updateInfo.id)
-          .get();
-        const bundleData = bundleDoc.data();
-        const fileHash = bundleData?.file_hash || null;
+        const [fileContents] = await file.download();
 
-        const bucket = admin.storage().bucket(HotUpdater.BUCKET_NAME);
-        const file = bucket.file(`bundles/${updateInfo.id}/bundle.zip`);
+        res.set("Content-Type", "application/zip");
+        res.set("Content-Disposition", 'attachment; filename="bundle.zip"');
+        res.set(
+          "Cache-Control",
+          "private, no-cache, no-store, must-revalidate",
+        );
+        res.set("Pragma", "no-cache");
+        res.set("Expires", "0");
 
-        const [signedUrl] = await file.getSignedUrl({
-          action: "read",
-          expires: Date.now() + 60,
+        res.send(fileContents);
+      } catch (downloadError) {
+        console.error("Error downloading file:", downloadError);
+        res.status(500).json({
+          error: "Download Error",
+          message: "An error occurred while downloading the file",
         });
-
-        const responseWithUrl: UpdateInfoWithUrl = {
-          ...updateInfo,
-          fileUrl: signedUrl,
-          fileHash: fileHash,
-        };
-
-        res.status(200).json(responseWithUrl);
-      } catch (urlError) {
-        console.error("Error generating signed URL:", urlError);
-        const fallbackResponse: UpdateInfoWithUrl = {
-          ...updateInfo,
-          fileUrl: null,
-          fileHash: null,
-        };
-        res.status(200).json(fallbackResponse);
       }
     } catch (error) {
-      console.error("Update info error:", error);
-      res.status(500).send("Internal Server Error");
+      console.error("Error in bundle download process:", error);
+      res.status(500).json({
+        error: "Internal Server Error",
+      });
     }
   },
 );
