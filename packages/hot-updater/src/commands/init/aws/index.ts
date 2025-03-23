@@ -762,6 +762,60 @@ export const updateS3BucketPolicy = async ({
   }
 };
 
+export const migrateS3 = async ({
+  region,
+  bucketName,
+  credentials,
+}: {
+  region: BucketLocationConstraint;
+  bucketName: string;
+  credentials: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}) => {
+  const { SDK } = await import("@hot-updater/aws/sdk");
+  const { S3Migrator, Migration0001HotUpdater0_13_0 } = await import(
+    "@hot-updater/aws/migrations"
+  );
+
+  const migrator = new S3Migrator({
+    s3: new SDK.S3.S3({ region, credentials }),
+    bucketName,
+    migrations: [new Migration0001HotUpdater0_13_0()],
+  });
+
+  const { pending } = await migrator.list();
+
+  await migrator.migrate({
+    dryRun: true,
+  });
+
+  if (pending.length > 0) {
+    p.log.step("Pending migrations:");
+    for (const m of pending) {
+      p.log.step(`- ${m.name}`);
+    }
+  }
+
+  const confirm = await p.confirm({
+    message: "Do you want to continue?",
+  });
+  if (p.isCancel(confirm)) {
+    p.log.info("Migration cancelled.");
+    process.exit(1);
+  }
+
+  if (!confirm) {
+    p.log.info("Migration cancelled.");
+    process.exit(1);
+  }
+
+  await migrator.migrate({
+    dryRun: false,
+  });
+};
+
 export const initAwsS3LambdaEdge = async () => {
   const { SDK } = await import("@hot-updater/aws/sdk");
 
@@ -975,6 +1029,8 @@ export const initAwsS3LambdaEdge = async () => {
   }
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${region})`);
+
+  await migrateS3({ region, bucketName, credentials });
 
   const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 

@@ -26,6 +26,11 @@
       "import": "./dist/sdk/index.js",
       "require": "./dist/sdk/index.cjs"
     },
+    "./migrations": {
+      "types": "./dist/migrations/index.d.ts",
+      "import": "./dist/migrations/index.js",
+      "require": "./dist/migrations/index.cjs"
+    },
     "./lambda": {
       "require": "./dist/lambda/index.cjs"
     }

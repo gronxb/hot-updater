@@ -9,7 +9,8 @@ import { mockClient } from "aws-sdk-client-mock";
 // migrations/migrator.spec.ts
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Migration0001HotUpdater0130, S3Migrator } from "./migrator"; // Modify to actual code path
+import { Migration0001HotUpdater0_13_0 } from "./Migration0001HotUpdater0_13_0";
+import { S3Migrator } from "./migrator"; // Modify to actual code path
 
 // Use aws-sdk-client-mock to mock S3Client
 const s3Mock = mockClient(S3Client);
@@ -28,7 +29,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
       NextContinuationToken: undefined,
     });
 
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     // @ts-ignore - accessing protected method for testing purposes
@@ -44,7 +45,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
       Body: { transformToString: async () => dummyContent },
     });
 
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     // @ts-ignore - accessing protected method for testing purposes
@@ -59,7 +60,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
       Body: { transformToString: async () => JSON.stringify(jsonArray) },
     });
 
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     // @ts-ignore - accessing protected method for testing purposes
@@ -73,7 +74,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
       Body: { transformToString: async () => "invalid json" },
     });
 
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     // @ts-ignore - accessing protected method for testing purposes
@@ -82,7 +83,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
   });
 
   it("should not update file in dry-run mode (updateFile)", async () => {
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     migration.dryRun = true;
@@ -100,7 +101,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
   });
 
   it("should move file successfully in non-dry-run mode (moveFile)", async () => {
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     migration.dryRun = false;
@@ -122,7 +123,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
   });
 
   it("should propagate error from moveFile and throw error", async () => {
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     migration.dryRun = false;
@@ -145,7 +146,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
   });
 
   it("should perform rollback correctly using doUpdateFile spy", async () => {
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     migration.dryRun = false;
@@ -182,7 +183,7 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
     });
 
     // Create failing migration
-    const failingMigration = new Migration0001HotUpdater0130();
+    const failingMigration = new Migration0001HotUpdater0_13_0();
     failingMigration.s3 = newS3Client();
     failingMigration.bucketName = "dummy-bucket";
     failingMigration.dryRun = false;
@@ -194,22 +195,19 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
       .mockResolvedValue();
 
     const migrator = new S3Migrator({
-      credentials: { accessKeyId: "dummy", secretAccessKey: "dummy" },
-      region: "us-east-1",
+      s3: newS3Client(),
       bucketName: "dummy-bucket",
       dryRun: false,
+      migrations: [failingMigration],
     });
-    migrator.s3 = newS3Client();
 
-    await expect(migrator.migrate([failingMigration])).rejects.toThrow(
-      "migration failed",
-    );
+    await expect(migrator.migrate()).rejects.toThrow("migration failed");
     expect(rollbackSpy).toHaveBeenCalled();
     rollbackSpy.mockRestore();
   });
 
   it("should process Migration0001HotUpdater0130 correctly", async () => {
-    const migration = new Migration0001HotUpdater0130();
+    const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
     migration.bucketName = "dummy-bucket";
     migration.dryRun = false;
