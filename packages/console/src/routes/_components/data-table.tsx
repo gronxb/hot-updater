@@ -126,12 +126,10 @@ export function DataTable(props: DataTableProps) {
                 <NavigationMenuIcon />
               </NavigationMenuTrigger>
               <NavigationMenuContent>
-                <NavigationMenuLink onClick={() => setPlatformFilter(null)}>
-                  All
-                </NavigationMenuLink>
                 <For
                   each={
                     [
+                      { label: "All", value: null },
                       { label: "iOS", value: "ios" },
                       { label: "Android", value: "android" },
                     ] as const
@@ -139,6 +137,10 @@ export function DataTable(props: DataTableProps) {
                 >
                   {(platform) => (
                     <NavigationMenuLink
+                      classList={{
+                        "bg-primary text-primary-foreground":
+                          platform.value === platformFilter(),
+                      }}
                       onClick={() => setPlatformFilter(platform.value)}
                     >
                       {platform.label}
@@ -160,6 +162,10 @@ export function DataTable(props: DataTableProps) {
                 <For each={channels.data}>
                   {(channel) => (
                     <NavigationMenuLink
+                      classList={{
+                        "bg-primary text-primary-foreground":
+                          channel === channelFilter(),
+                      }}
                       onClick={() => setChannelFilter(channel)}
                     >
                       {channel}

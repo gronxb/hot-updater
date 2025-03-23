@@ -20,7 +20,6 @@ export default function App() {
         )}
       >
         <Route path="/" component={Home} />
-        <Route path="/:bundleId" component={Home} />
       </Router>
 
       <Toaster />
