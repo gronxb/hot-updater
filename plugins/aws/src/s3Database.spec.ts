@@ -719,4 +719,68 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
     expect(Object.keys(fakeStore)).toContain(bundleKey);
   });
+
+  it("should load bundles from both ios and android update.json files", async () => {
+    // Arrange: Add bundles to both iOS and Android update.json files
+    const [iosBundle, iosBundle2, androidBundle] = [
+      createBundleJson(
+        "production",
+        "ios",
+        "3.0.0",
+        "00000000-0000-0000-0000-000000000010",
+      ),
+      createBundleJson(
+        "production",
+        "ios",
+        "3.0.0",
+        "00000000-0000-0000-0000-000000000012",
+      ),
+      createBundleJson(
+        "production",
+        "android",
+        "3.0.0",
+        "00000000-0000-0000-0000-000000000011",
+      ),
+    ];
+    // Simulate existing files in S3
+    fakeStore["production/ios/3.0.0/update.json"] = JSON.stringify([
+      iosBundle,
+      iosBundle2,
+    ]);
+    fakeStore["production/android/3.0.0/update.json"] = JSON.stringify([
+      androidBundle,
+    ]);
+
+    // Set corresponding target-app-versions files
+    fakeStore["production/ios/target-app-versions.json"] = JSON.stringify([
+      "3.0.0",
+    ]);
+    fakeStore["production/android/target-app-versions.json"] = JSON.stringify([
+      "3.0.0",
+    ]);
+
+    // Act: Load all bundles
+    const bundles = await plugin.getBundles({
+      limit: 10,
+      offset: 0,
+      where: {
+        platform: undefined,
+        channel: "production",
+      },
+    });
+
+    // Assert: Both bundles should be loaded
+    expect(bundles).toHaveLength(3);
+    expect(bundles).toEqual([iosBundle2, androidBundle, iosBundle]);
+
+    // Sanity check: getBundleById works for both
+    const foundIos = await plugin.getBundleById(
+      "00000000-0000-0000-0000-000000000010",
+    );
+    const foundAndroid = await plugin.getBundleById(
+      "00000000-0000-0000-0000-000000000011",
+    );
+    expect(foundIos).toEqual(iosBundle);
+    expect(foundAndroid).toEqual(androidBundle);
+  });
 });

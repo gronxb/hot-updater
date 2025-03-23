@@ -9,9 +9,9 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { orderBy } from "es-toolkit";
 import mime from "mime";
 import { streamToString } from "./utils/streamToString";
-
 export interface S3DatabaseConfig extends S3ClientConfig {
   bucketName: string;
 }
@@ -82,16 +82,24 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
 async function listUpdateJsonKeys(
   client: S3Client,
   bucketName: string,
-  platform: string,
+  platform?: string,
   channel?: string,
 ): Promise<string[]> {
   let continuationToken: string | undefined;
   const keys: string[] = [];
-  const prefix = channel ? `${channel}/${platform}/` : "";
+  const prefix = channel
+    ? platform
+      ? `${channel}/${platform}/`
+      : `${channel}/`
+    : "";
   // Use appropriate key format based on whether a channel is given.
   const pattern = channel
-    ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
-    : new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
+    ? platform
+      ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
+      : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
+    : platform
+      ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
+      : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
   do {
     const response = await client.send(
       new ListObjectsV2Command({
@@ -209,7 +217,7 @@ export const s3Database = (
       bundlesMap.set(id, bundle);
     }
 
-    return allBundles;
+    return orderBy(allBundles, [(v) => v.id], ["desc"]);
   }
 
   return createDatabasePlugin(
@@ -221,37 +229,39 @@ export const s3Database = (
           return removeBundleInternalKeys(pendingBundle);
         }
         const bundle = bundlesMap.get(bundleId);
-        if (!bundle) return null;
-        return removeBundleInternalKeys(bundle);
+        if (bundle) {
+          return removeBundleInternalKeys(bundle);
+        }
+        const bundles = await reloadBundles();
+        return bundles.find((bundle) => bundle.id === bundleId) ?? null;
       },
 
       async getBundles(options) {
         // Always load the latest data from S3.
-        await reloadBundles();
-
+        let bundles = await reloadBundles();
         const { where, limit, offset = 0 } = options ?? {};
-        let bundlesArray = Array.from(bundlesMap.values());
-
         // Sort bundles in descending order by id.
-        bundlesArray.sort((a, b) => b.id.localeCompare(a.id));
 
         // Apply filtering conditions.
         if (where) {
-          bundlesArray = bundlesArray.filter((bundle) => {
+          bundles = bundles.filter((bundle) => {
             return Object.entries(where).every(
-              ([key, value]) => bundle[key as keyof Bundle] === value,
+              ([key, value]) =>
+                value === undefined ||
+                value === null ||
+                bundle[key as keyof Bundle] === value,
             );
           });
         }
 
         if (offset > 0) {
-          bundlesArray = bundlesArray.slice(offset);
+          bundles = bundles.slice(offset);
         }
         if (limit) {
-          bundlesArray = bundlesArray.slice(0, limit);
+          bundles = bundles.slice(0, limit);
         }
 
-        return bundlesArray.map(removeBundleInternalKeys);
+        return bundles.map(removeBundleInternalKeys);
       },
 
       async getChannels() {
