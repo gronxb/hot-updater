@@ -39,9 +39,8 @@ app.get("/api/check-update", async (c) => {
     if (!cdnHost) {
       return c.json({ error: "Missing host header." }, 500);
     }
-    const cdnBaseUrl = `https://${cdnHost}`;
     const updateInfo = await getUpdateInfo(
-      { cdnBaseUrl, jwtSecret: HotUpdater.JWT_SECRET },
+      { baseUrl: c.req.url, jwtSecret: HotUpdater.JWT_SECRET },
       {
         platform: appPlatform,
         bundleId,
