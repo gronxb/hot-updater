@@ -374,11 +374,6 @@ export class S3Migrator {
         (record) => record.name === migration.name,
       );
       if (alreadyApplied) {
-        console.log(
-          picocolors.yellow(
-            `Migration ${migration.name} already applied, skipping.`,
-          ),
-        );
         continue;
       }
 
@@ -425,12 +420,6 @@ export class S3Migrator {
     await this.saveMigrationRecords(dryRun);
     if (!dryRun) {
       console.log(picocolors.blue("All migrations applied."));
-    } else {
-      console.log(
-        picocolors.blue(
-          "[DRY RUN] Completed dry-run. No changes were applied.",
-        ),
-      );
     }
   }
 }
