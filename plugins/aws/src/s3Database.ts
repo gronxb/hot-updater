@@ -1,4 +1,8 @@
 import {
+  CloudFrontClient,
+  CreateInvalidationCommand,
+} from "@aws-sdk/client-cloudfront";
+import {
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
@@ -12,8 +16,10 @@ import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { orderBy } from "es-toolkit";
 import mime from "mime";
 import { streamToString } from "./utils/streamToString";
+
 export interface S3DatabaseConfig extends S3ClientConfig {
   bucketName: string;
+  cloudfrontDistributionId: string;
 }
 
 interface BundleWithUpdateJsonKey extends Bundle {
@@ -61,10 +67,36 @@ async function uploadJsonToS3<T>(
       Key: key,
       Body,
       ContentType,
-      CacheControl: "no-cache",
     },
   });
   await upload.done();
+}
+
+/**
+ * Invalidates CloudFront cache for the given paths.
+ */
+async function invalidateCloudFront(
+  client: CloudFrontClient,
+  distributionId: string,
+  paths: string[],
+) {
+  if (paths.length === 0) {
+    return;
+  }
+
+  const timestamp = new Date().getTime();
+  await client.send(
+    new CreateInvalidationCommand({
+      DistributionId: distributionId,
+      InvalidationBatch: {
+        CallerReference: `invalidation-${timestamp}`,
+        Paths: {
+          Quantity: paths.length,
+          Items: paths,
+        },
+      },
+    }),
+  );
 }
 
 // Helper function to remove internal management keys
@@ -177,8 +209,12 @@ export const s3Database = (
   config: S3DatabaseConfig,
   hooks?: DatabasePluginHooks,
 ) => {
-  const { bucketName, ...s3Config } = config;
+  const { bucketName, cloudfrontDistributionId, ...s3Config } = config;
   const client = new S3Client(s3Config);
+  const cloudfrontClient = new CloudFrontClient({
+    credentials: s3Config.credentials,
+    region: s3Config.region,
+  });
 
   // Map for O(1) lookup of bundles.
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
@@ -274,6 +310,7 @@ export const s3Database = (
 
         const changedBundlesByKey: Record<string, Bundle[]> = {};
         const removalsByKey: Record<string, string[]> = {};
+        const pathsToInvalidate: Set<string> = new Set();
 
         for (const { operation, data } of changedSets) {
           // Insert operation.
@@ -290,6 +327,12 @@ export const s3Database = (
             changedBundlesByKey[key] = changedBundlesByKey[key] || [];
             changedBundlesByKey[key].push(
               removeBundleInternalKeys(bundleWithKey),
+            );
+
+            // CloudFront 무효화를 위한 경로 추가
+            pathsToInvalidate.add(`/${key}`);
+            pathsToInvalidate.add(
+              `/${data.channel}/${data.platform}/target-app-versions.json`,
             );
             continue;
           }
@@ -333,6 +376,16 @@ export const s3Database = (
               changedBundlesByKey[newKey].push(
                 removeBundleInternalKeys(updatedBundle),
               );
+
+              // Add paths for CloudFront invalidation
+              pathsToInvalidate.add(`/${oldKey}`);
+              pathsToInvalidate.add(`/${newKey}`);
+              pathsToInvalidate.add(
+                `/${bundle.channel}/${bundle.platform}/target-app-versions.json`,
+              );
+              pathsToInvalidate.add(
+                `/${newChannel}/${newPlatform}/target-app-versions.json`,
+              );
               continue;
             }
 
@@ -345,6 +398,12 @@ export const s3Database = (
               changedBundlesByKey[currentKey] || [];
             changedBundlesByKey[currentKey].push(
               removeBundleInternalKeys(updatedBundle),
+            );
+
+            // CloudFront 무효화를 위한 경로 추가
+            pathsToInvalidate.add(`/${currentKey}`);
+            pathsToInvalidate.add(
+              `/${updatedBundle.channel}/${updatedBundle.platform}/target-app-versions.json`,
             );
           }
         }
@@ -395,6 +454,19 @@ export const s3Database = (
         // Update target-app-versions.json for each platform.
         for (const platform of PLATFORMS) {
           await updateTargetVersionsForPlatform(client, bucketName, platform);
+        }
+
+        // Execute CloudFront invalidation
+        if (
+          cloudfrontClient &&
+          cloudfrontDistributionId &&
+          pathsToInvalidate.size > 0
+        ) {
+          await invalidateCloudFront(
+            cloudfrontClient,
+            cloudfrontDistributionId,
+            Array.from(pathsToInvalidate),
+          );
         }
 
         pendingBundlesMap.clear();

@@ -27,7 +27,7 @@ import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
-const options = {
+const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
@@ -40,8 +40,11 @@ const options = {
 
 export default defineConfig({
   build: metro({ enableHermes: true }),
-  storage: s3Storage(options),
-  database: s3Database(options),
+  storage: s3Storage(commonOptions),
+  database: s3Database({
+    ...commonOptions,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  }),
 });
 `;
 
@@ -1043,12 +1046,13 @@ export const initAwsS3LambdaEdge = async () => {
   });
 
   // Create CloudFront distribution
-  const { distributionDomain } = await createCloudFrontDistribution(
-    credentials,
-    region,
-    bucketName,
-    functionArn,
-  );
+  const { distributionDomain, distributionId } =
+    await createCloudFrontDistribution(
+      credentials,
+      region,
+      bucketName,
+      functionArn,
+    );
 
   // Create config file and environment variable file
   if (mode === "sso") {
@@ -1075,6 +1079,7 @@ export const initAwsS3LambdaEdge = async () => {
     ...(mode === "sso" && {
       HOT_UPDATER_S3_SESSION_TOKEN: credentials.sessionToken,
     }),
+    HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
   });
   p.log.success("Generated '.env' file with AWS settings.");
   p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
