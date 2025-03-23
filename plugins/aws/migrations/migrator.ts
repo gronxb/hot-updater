@@ -34,7 +34,15 @@ export abstract class S3Migration {
   protected backupMapping: Map<string, string> = new Map();
 
   // Performs the actual file upload without backup logic
-  protected async doUpdateFile(key: string, content: string): Promise<void> {
+  protected async doUpdateFile(
+    key: string,
+    content: string,
+    {
+      cacheControl,
+    }: {
+      cacheControl?: string;
+    } = {},
+  ): Promise<void> {
     const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
     const upload = new Upload({
       client: this.s3,
@@ -42,6 +50,7 @@ export abstract class S3Migration {
         Bucket: this.bucketName,
         Key: normalizedKey,
         Body: content,
+        CacheControl: cacheControl,
       },
     });
     await upload.done();
@@ -118,7 +127,15 @@ export abstract class S3Migration {
   // Updates (uploads) a file at the specified key.
   // In dry-run mode, it logs what would be updated.
   // Backs up the original file if it exists.
-  protected async updateFile(key: string, content: string): Promise<void> {
+  protected async updateFile(
+    key: string,
+    content: string,
+    {
+      cacheControl,
+    }: {
+      cacheControl?: string;
+    } = {},
+  ): Promise<void> {
     const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
     if (this.dryRun) {
       console.log(
@@ -133,7 +150,9 @@ export abstract class S3Migration {
     if (originalContent !== null) {
       await this.backupFile(key);
     }
-    await this.doUpdateFile(normalizedKey, content);
+    await this.doUpdateFile(normalizedKey, content, {
+      cacheControl,
+    });
     console.log(picocolors.green(`Updated ${picocolors.bold(normalizedKey)}`));
   }
 
