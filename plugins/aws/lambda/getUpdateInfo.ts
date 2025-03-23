@@ -1,4 +1,9 @@
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import {
   filterCompatibleAppVersions,
   getUpdateInfo as getUpdateInfoJS,
@@ -15,7 +20,7 @@ const getCdnJson = async <T>({
   jwtSecret: string;
 }): Promise<T | null> => {
   try {
-    const url = new URL(baseUrl);
+    const url = new URL(key, baseUrl);
     url.searchParams.set("token", await signToken(key, jwtSecret));
     const res = await fetch(url.toString(), {
       headers: {
@@ -40,7 +45,7 @@ export const getUpdateInfo = async (
     minBundleId = NIL_UUID,
     channel = "production",
   }: GetBundlesArgs,
-): Promise<any | null> => {
+): Promise<UpdateInfo | null> => {
   const targetAppVersions = await getCdnJson<string[]>({
     baseUrl,
     key: `${channel}/${platform}/target-app-versions.json`,
