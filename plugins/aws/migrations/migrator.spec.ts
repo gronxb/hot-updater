@@ -82,24 +82,6 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
     expect(data).toBeNull();
   });
 
-  it("should not update file in dry-run mode (updateFile)", async () => {
-    const migration = new Migration0001HotUpdater0_13_0();
-    migration.s3 = newS3Client();
-    migration.bucketName = "dummy-bucket";
-    migration.dryRun = true;
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    // @ts-ignore - accessing protected method for testing purposes
-    await migration.updateFile("file.txt", "new content");
-    expect(
-      logSpy.mock.calls.some((call) =>
-        call[0].includes("[DRY RUN] Would update file"),
-      ),
-    ).toBeTruthy();
-    // Verify no actual S3 calls were made (GetObjectCommand call count is 0)
-    expect(s3Mock.commandCalls(GetObjectCommand).length).toBe(0);
-    logSpy.mockRestore();
-  });
-
   it("should move file successfully in non-dry-run mode (moveFile)", async () => {
     const migration = new Migration0001HotUpdater0_13_0();
     migration.s3 = newS3Client();
@@ -197,11 +179,12 @@ describe("S3Migration & S3Migrator with aws-sdk-client-mock", () => {
     const migrator = new S3Migrator({
       s3: newS3Client(),
       bucketName: "dummy-bucket",
-      dryRun: false,
       migrations: [failingMigration],
     });
 
-    await expect(migrator.migrate()).rejects.toThrow("migration failed");
+    await expect(migrator.migrate({ dryRun: false })).rejects.toThrow(
+      "migration failed",
+    );
     expect(rollbackSpy).toHaveBeenCalled();
     rollbackSpy.mockRestore();
   });

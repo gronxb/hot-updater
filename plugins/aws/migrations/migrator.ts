@@ -185,6 +185,50 @@ export abstract class S3Migration {
     }
   }
 
+  // Deletes a backup file
+  protected async deleteBackupFile(backupKey: string): Promise<void> {
+    if (this.dryRun) {
+      console.log(
+        picocolors.yellow(`[DRY RUN] Would delete backup file ${backupKey}`),
+      );
+      return;
+    }
+    try {
+      const deleteCommand = new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: backupKey,
+      });
+      await this.s3.send(deleteCommand);
+      console.log(picocolors.green(`Deleted backup file ${backupKey}`));
+    } catch (error) {
+      console.error(
+        picocolors.red(`Error deleting backup file ${backupKey}:`),
+        error,
+      );
+    }
+  }
+
+  // Cleans up all backup files created during this migration
+  public async cleanupBackups(): Promise<void> {
+    if (this.backupMapping.size === 0) {
+      console.log(
+        picocolors.yellow(`No backup files to clean up for ${this.name}`),
+      );
+      return;
+    }
+
+    console.log(
+      picocolors.magenta(`Cleaning up backup files for ${this.name}...`),
+    );
+
+    for (const backupKey of this.backupMapping.values()) {
+      await this.deleteBackupFile(backupKey);
+    }
+
+    this.backupMapping.clear();
+    console.log(picocolors.green(`Backup cleanup completed for ${this.name}.`));
+  }
+
   // Rollback method: restores files from backups stored in backupMapping
   public async rollback(): Promise<void> {
     console.log(
@@ -350,6 +394,8 @@ export class S3Migrator {
               `${picocolors.bold(migration.name)} applied successfully.`,
             ),
           );
+
+          await migration.cleanupBackups();
         } else {
           console.log(
             picocolors.yellow(
