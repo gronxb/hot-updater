@@ -5,6 +5,7 @@ import {
   type UpdateInfo,
 } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { signToken } from "@hot-updater/js";
 import { beforeEach, describe, vi } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromCdn } from "./getUpdateInfo";
 
@@ -29,8 +30,13 @@ const createGetUpdateInfo =
       const targetVersions = [
         ...new Set(bundles.map((b) => b.targetAppVersion)),
       ];
-      const targetVersionsUrl = `${cdnBaseUrl}/${channel}/${platform}/target-app-versions.json`;
-      responses[targetVersionsUrl] = targetVersions;
+      const targetVersionsPath = `${channel}/${platform}/target-app-versions.json`;
+      const targetVersionsUrl = new URL(targetVersionsPath, cdnBaseUrl);
+      targetVersionsUrl.searchParams.set(
+        "token",
+        await signToken(targetVersionsPath, "test-jwt-secret"),
+      );
+      responses[targetVersionsUrl.toString()] = targetVersions;
 
       // 각 target 버전별 update.json 응답 설정
       const bundlesByVersion: Record<string, Bundle[]> = {};
@@ -41,8 +47,13 @@ const createGetUpdateInfo =
         bundlesByVersion[bundle.targetAppVersion].push(bundle);
       }
       for (const targetVersion of targetVersions) {
-        const updateUrl = `${cdnBaseUrl}/${channel}/${platform}/${targetVersion}/update.json`;
-        responses[updateUrl] = bundlesByVersion[targetVersion];
+        const updatePath = `${channel}/${platform}/${targetVersion}/update.json`;
+        const updateUrl = new URL(updatePath, cdnBaseUrl);
+        updateUrl.searchParams.set(
+          "token",
+          await signToken(updatePath, "test-jwt-secret"),
+        );
+        responses[updateUrl.toString()] = bundlesByVersion[targetVersion];
       }
     } else {
       // bundles가 없는 경우, 요청 시 Not Found로 처리하도록 함.
