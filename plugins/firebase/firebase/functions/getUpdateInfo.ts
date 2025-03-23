@@ -1,21 +1,31 @@
 import {
+  type Bundle,
+  type GetBundlesArgs,
   NIL_UUID,
-  type Platform,
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import type { Firestore } from "firebase-admin/firestore";
 
-interface BundleData {
-  id: string;
-  enabled: boolean;
-  should_force_update: boolean;
-  message?: string | null;
-  target_app_version: string;
-  platform: string;
-  channel?: string;
-}
+const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
+  id: NIL_UUID,
+  shouldForceUpdate: true,
+  message: null,
+  status: "ROLLBACK",
+};
+
+const convertToBundle = (data: any): Bundle => ({
+  id: data.id,
+  enabled: Boolean(data.enabled),
+  shouldForceUpdate: Boolean(data.should_force_update),
+  message: data.message || null,
+  targetAppVersion: data.target_app_version,
+  platform: data.platform,
+  channel: data.channel || "production",
+  fileHash: data.file_hash || "",
+  gitCommitHash: data.git_commit_hash || "",
+});
 
 export const getUpdateInfo = async (
   db: Firestore,
@@ -23,89 +33,127 @@ export const getUpdateInfo = async (
     platform,
     appVersion,
     bundleId,
+    minBundleId = NIL_UUID,
     channel = "production",
-  }: {
-    platform: Platform;
-    appVersion: string;
-    bundleId: string;
-    channel?: string;
-  },
+  }: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
-    const bundlesCollection = db.collection("bundles");
-    const bundlesSnapshot = await bundlesCollection
+    let currentBundle: Bundle | null = null;
+    let currentBundleExists = false;
+    let currentBundleEnabled = false;
+    let currentBundleChannel = "production";
+    
+    if (bundleId !== NIL_UUID) {
+      const currentBundleDoc = await db.collection("bundles").doc(bundleId).get();
+      currentBundleExists = currentBundleDoc.exists;
+      
+      if (currentBundleExists) {
+        const data = currentBundleDoc.data()!;
+        currentBundleEnabled = Boolean(data.enabled);
+        currentBundleChannel = data.channel || "production";
+        currentBundle = convertToBundle(data);
+      }
+      
+      if (currentBundleExists && currentBundleChannel !== channel) {
+        return null;
+      }
+    }
+
+    const bundlesQuery = db.collection("bundles")
       .where("platform", "==", platform)
-      .where("enabled", "==", true)
-      .get();
-
+      .where("channel", "==", channel);
+    
+    const bundlesSnapshot = await bundlesQuery.get();
+    
     if (bundlesSnapshot.empty) {
-      return createRollbackInfo(bundleId);
+      return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
 
-    const bundles: BundleData[] = [];
-
+    const allBundles: Bundle[] = [];
+    
     for (const doc of bundlesSnapshot.docs) {
-      const data = doc.data() as BundleData;
-
-      if (channel && data.channel && data.channel !== channel) {
-        continue;
-      }
-
-      if (
-        data.target_app_version &&
-        filterCompatibleAppVersions([data.target_app_version], appVersion)
-          .length > 0
-      ) {
-        bundles.push(data);
+      const data = doc.data();
+      
+      const isCompatible = 
+        data.target_app_version === '*' || 
+        filterCompatibleAppVersions([data.target_app_version], appVersion).length > 0;
+        
+      if (isCompatible) {
+        allBundles.push(convertToBundle(data));
       }
     }
-
-    if (bundles.length === 0) {
-      return createRollbackInfo(bundleId);
+    
+    const enabledBundles = allBundles.filter(b => b.enabled);
+    
+    const candidateBundles = enabledBundles.filter(
+      b => b.id.localeCompare(minBundleId) >= 0
+    );
+    
+    const sortedCandidates = candidateBundles
+      .slice()
+      .sort((a, b) => b.id.localeCompare(a.id));
+    
+    const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
+      id: bundle.id,
+      message: bundle.message,
+      shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
+      status,
+    });
+    
+    if (candidateBundles.length === 0) {
+      if (enabledBundles.length === 0) {
+        return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
+      }
+      
+      if (bundleId.localeCompare(minBundleId) <= 0) {
+        return null;
+      }
+      
+      return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
-
-    bundles.sort((a, b) => b.id.localeCompare(a.id));
-    const updateCandidate = bundles[0];
-
-    if (
-      bundleId === NIL_UUID ||
-      updateCandidate.id.localeCompare(bundleId) > 0
-    ) {
-      return {
-        id: updateCandidate.id,
-        shouldForceUpdate: Boolean(updateCandidate.should_force_update),
-        message: updateCandidate.message || null,
-        status: "UPDATE" as UpdateStatus,
-      };
+    
+    if (bundleId === NIL_UUID) {
+      if (sortedCandidates.length > 0) {
+        return makeResponse(sortedCandidates[0], "UPDATE");
+      }
+      return null;
     }
-
-    const currentBundleDoc = await bundlesCollection.doc(bundleId).get();
-
-    if (!currentBundleDoc.exists || !currentBundleDoc.data()?.enabled) {
-      return {
-        id: updateCandidate.id,
-        shouldForceUpdate: true,
-        message: updateCandidate.message || null,
-        status: "ROLLBACK" as UpdateStatus,
-      };
+    
+    const currentBundleInCandidates = sortedCandidates.find((b) => b.id === bundleId);
+    
+    if (currentBundleInCandidates) {
+      if (sortedCandidates[0].id !== currentBundleInCandidates.id) {
+        return makeResponse(sortedCandidates[0], "UPDATE");
+      }
+      return null;
     }
-
-    return null;
+    
+    if (currentBundleExists && !currentBundleEnabled) {
+      if (sortedCandidates.length > 0) {
+        return makeResponse(sortedCandidates[0], "ROLLBACK");
+      }
+      return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
+    }
+    
+    const higherBundles = sortedCandidates.filter(b => b.id.localeCompare(bundleId) > 0);
+    const lowerBundles = sortedCandidates.filter(b => b.id.localeCompare(bundleId) < 0);
+    
+    if (higherBundles.length > 0) {
+      return makeResponse(higherBundles[0], "UPDATE");
+    }
+    
+    if (lowerBundles.length > 0) {
+      const highestLowerBundle = lowerBundles.sort((a, b) => b.id.localeCompare(a.id))[0];
+      return makeResponse(highestLowerBundle, "ROLLBACK");
+    }
+    
+    if (bundleId.localeCompare(minBundleId) === 0) {
+      return null;
+    }
+    
+    return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
   } catch (error) {
     console.error("Error in getUpdateInfo:", error);
     throw error;
   }
 };
-
-function createRollbackInfo(bundleId: string): UpdateInfo | null {
-  if (bundleId === NIL_UUID) {
-    return null;
-  }
-
-  return {
-    id: NIL_UUID,
-    shouldForceUpdate: true,
-    message: null,
-    status: "ROLLBACK" as UpdateStatus,
-  };
-}
