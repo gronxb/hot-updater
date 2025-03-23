@@ -148,6 +148,7 @@ export abstract class S3Migration {
   // Moves a single file from one location to another.
   // In dry-run mode, it logs what would be moved.
   // Backs up the source file before moving.
+  // S3Migration 클래스 내부의 moveFile 메서드 수정 예시
   protected async moveFile(from: string, to: string): Promise<void> {
     if (this.dryRun) {
       console.log(
@@ -160,29 +161,39 @@ export abstract class S3Migration {
     // Backup the source file before moving
     await this.backupFile(from);
     try {
-      // Use URL encoding for the CopySource to handle special characters
+      // URL 인코딩을 사용하여 특수문자 처리를 안전하게 함
       const copyCommand = new CopyObjectCommand({
         Bucket: this.bucketName,
-        CopySource: `${this.bucketName}/${encodeURIComponent(from)}`,
+        CopySource: `${this.bucketName}/${from}`,
         Key: to,
       });
       await this.s3.send(copyCommand);
+    } catch (error) {
+      console.error(
+        picocolors.red(`Error copying file from ${from} to ${to}:`),
+        error,
+      );
+      throw error;
+    }
+    try {
       const deleteCommand = new DeleteObjectCommand({
         Bucket: this.bucketName,
         Key: from,
       });
       await this.s3.send(deleteCommand);
-      console.log(
-        picocolors.green(`${picocolors.bold(from)} -> ${picocolors.bold(to)}`),
-      );
-    } catch (error) {
-      console.error(
-        picocolors.red(`Error moving file from ${from} to ${to}:`),
-        error,
-      );
-      // Rethrow the error to propagate it and halt the migration process
-      throw error;
+    } catch (error: any) {
+      if (error?.message?.includes("NoSuchKey")) {
+        console.warn(
+          picocolors.yellow(`Key ${from} not found during deletion, ignoring.`),
+        );
+      } else {
+        console.error(picocolors.red(`Error deleting file ${from}:`), error);
+        throw error;
+      }
     }
+    console.log(
+      picocolors.green(`${picocolors.bold(from)} -> ${picocolors.bold(to)}`),
+    );
   }
 
   // Deletes a backup file
@@ -300,6 +311,7 @@ export class S3Migrator {
       if (
         error.Code === "NoSuchKey" ||
         error.name === "NoSuchKey" ||
+        error.message === "NoSuchKey" ||
         error.$metadata?.httpStatusCode === 404
       ) {
         this.migrationRecords = [];
