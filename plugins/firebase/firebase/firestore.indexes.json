@@ -47,9 +47,7 @@
     {
       "collectionGroup": "bundles",
       "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "channel", "order": "ASCENDING" }
-      ]
+      "fields": [{ "fieldPath": "channel", "order": "ASCENDING" }]
     }
   ],
   "fieldOverrides": []

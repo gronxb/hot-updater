@@ -121,7 +121,7 @@ export const updateInfoFunction = functions.https.onRequest(
 
         const [signedUrl] = await file.getSignedUrl({
           action: "read",
-          expires: Date.now() + 60, 
+          expires: Date.now() + 60,
         });
 
         const responseWithUrl: UpdateInfoWithUrl = {
