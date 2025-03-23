@@ -105,7 +105,6 @@ export abstract class S3Migration {
   // The backup file is stored at: backup/<migrationName>/<originalKey>
   protected async backupFile(key: string): Promise<void> {
     if (this.dryRun) {
-      console.log(picocolors.yellow(`[DRY RUN] Would backup file ${key}`));
       return;
     }
     const content = await this.readFile(key);
@@ -113,9 +112,6 @@ export abstract class S3Migration {
       const backupKey = `backup/${this.name}/${key}`;
       await this.doUpdateFile(backupKey, content);
       this.backupMapping.set(key, backupKey);
-      console.log(picocolors.green(`Backed up ${key} to ${backupKey}`));
-    } else {
-      console.log(picocolors.yellow(`No existing file at ${key} to backup.`));
     }
   }
 
@@ -127,7 +123,7 @@ export abstract class S3Migration {
     if (this.dryRun) {
       console.log(
         picocolors.yellow(
-          `[DRY RUN] Updated ${picocolors.bold(normalizedKey)}:\n${content}`,
+          `[DRY RUN] Updated ${picocolors.bold(normalizedKey)}`,
         ),
       );
       return;
@@ -138,11 +134,7 @@ export abstract class S3Migration {
       await this.backupFile(key);
     }
     await this.doUpdateFile(normalizedKey, content);
-    console.log(
-      picocolors.green(
-        `Updated ${picocolors.bold(normalizedKey)}:\n${content}`,
-      ),
-    );
+    console.log(picocolors.green(`Updated ${picocolors.bold(normalizedKey)}`));
   }
 
   // Moves a single file from one location to another.
@@ -199,9 +191,6 @@ export abstract class S3Migration {
   // Deletes a backup file
   protected async deleteBackupFile(backupKey: string): Promise<void> {
     if (this.dryRun) {
-      console.log(
-        picocolors.yellow(`[DRY RUN] Would delete backup file ${backupKey}`),
-      );
       return;
     }
     try {
@@ -210,7 +199,6 @@ export abstract class S3Migration {
         Key: backupKey,
       });
       await this.s3.send(deleteCommand);
-      console.log(picocolors.green(`Deleted backup file ${backupKey}`));
     } catch (error) {
       console.error(
         picocolors.red(`Error deleting backup file ${backupKey}:`),
@@ -222,22 +210,14 @@ export abstract class S3Migration {
   // Cleans up all backup files created during this migration
   public async cleanupBackups(): Promise<void> {
     if (this.backupMapping.size === 0) {
-      console.log(
-        picocolors.yellow(`No backup files to clean up for ${this.name}`),
-      );
       return;
     }
-
-    console.log(
-      picocolors.magenta(`Cleaning up backup files for ${this.name}...`),
-    );
 
     for (const backupKey of this.backupMapping.values()) {
       await this.deleteBackupFile(backupKey);
     }
 
     this.backupMapping.clear();
-    console.log(picocolors.green(`Backup cleanup completed for ${this.name}.`));
   }
 
   // Rollback method: restores files from backups stored in backupMapping
