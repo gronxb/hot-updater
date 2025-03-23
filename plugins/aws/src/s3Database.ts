@@ -151,12 +151,13 @@ async function listUpdateJsonKeys(
 
 /**
  * Updates target-app-versions.json for each channel on the given platform.
+ * Returns true if the file was updated, false if no changes were made.
  */
 async function updateTargetVersionsForPlatform(
   client: S3Client,
   bucketName: string,
   platform: string,
-) {
+): Promise<Set<string>> {
   // Retrieve all update.json files for the platform across channels.
   let continuationToken: string | undefined;
   const keys: string[] = [];
@@ -188,6 +189,8 @@ async function updateTargetVersionsForPlatform(
     {} as Record<string, string[]>,
   );
 
+  const updatedTargetFiles = new Set<string>();
+
   for (const channel of Object.keys(keysByChannel)) {
     const updateKeys = keysByChannel[channel];
     const targetKey = `${channel}/${platform}/target-app-versions.json`;
@@ -201,8 +204,16 @@ async function updateTargetVersionsForPlatform(
     for (const v of currentVersions) {
       if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
     }
-    await uploadJsonToS3(client, bucketName, targetKey, newTargetVersions);
+
+    if (
+      JSON.stringify(oldTargetVersions) !== JSON.stringify(newTargetVersions)
+    ) {
+      await uploadJsonToS3(client, bucketName, targetKey, newTargetVersions);
+      updatedTargetFiles.add(`/${targetKey}`);
+    }
   }
+
+  return updatedTargetFiles;
 }
 
 export const s3Database = (
@@ -331,9 +342,6 @@ export const s3Database = (
 
             // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${key}`);
-            pathsToInvalidate.add(
-              `/${data.channel}/${data.platform}/target-app-versions.json`,
-            );
             continue;
           }
 
@@ -380,12 +388,6 @@ export const s3Database = (
               // Add paths for CloudFront invalidation
               pathsToInvalidate.add(`/${oldKey}`);
               pathsToInvalidate.add(`/${newKey}`);
-              pathsToInvalidate.add(
-                `/${bundle.channel}/${bundle.platform}/target-app-versions.json`,
-              );
-              pathsToInvalidate.add(
-                `/${newChannel}/${newPlatform}/target-app-versions.json`,
-              );
               continue;
             }
 
@@ -402,9 +404,6 @@ export const s3Database = (
 
             // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${currentKey}`);
-            pathsToInvalidate.add(
-              `/${updatedBundle.channel}/${updatedBundle.platform}/target-app-versions.json`,
-            );
           }
         }
 
@@ -451,9 +450,22 @@ export const s3Database = (
           })();
         }
 
-        // Update target-app-versions.json for each platform.
+        // Update target-app-versions.json for each platform and collect paths that were actually updated
+        const updatedTargetFilePaths = new Set<string>();
         for (const platform of PLATFORMS) {
-          await updateTargetVersionsForPlatform(client, bucketName, platform);
+          const updatedPaths = await updateTargetVersionsForPlatform(
+            client,
+            bucketName,
+            platform,
+          );
+          for (const path of updatedPaths) {
+            updatedTargetFilePaths.add(path);
+          }
+        }
+
+        // Add updated target-app-versions.json paths to invalidation list
+        for (const path of updatedTargetFilePaths) {
+          pathsToInvalidate.add(path);
         }
 
         // Execute CloudFront invalidation

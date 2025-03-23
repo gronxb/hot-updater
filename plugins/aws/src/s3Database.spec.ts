@@ -1,6 +1,7 @@
 // s3Database.spec.ts
 import { Buffer } from "buffer";
 import { Readable } from "stream";
+import { CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import {
   GetObjectCommand,
   ListObjectsV2Command,
@@ -39,6 +40,8 @@ const createBundleJson = (
 
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
+// 캐시 무효화 요청을 추적하기 위한 배열
+let cloudfrontInvalidations: { paths: string[]; distributionId: string }[] = [];
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -57,8 +60,34 @@ vi.mock("@aws-sdk/lib-storage", () => {
   };
 });
 
+vi.mock("@aws-sdk/client-cloudfront", async () => {
+  const actual = await vi.importActual("@aws-sdk/client-cloudfront");
+  return {
+    ...actual,
+    CloudFrontClient: class {
+      send(command: any) {
+        if (command instanceof CreateInvalidationCommand) {
+          cloudfrontInvalidations.push({
+            paths: command.input.InvalidationBatch?.Paths?.Items ?? [],
+            distributionId: command.input.DistributionId ?? "",
+          });
+          return Promise.resolve({
+            Invalidation: {
+              Id: `invalidation-${Date.now()}`,
+              Status: "InProgress",
+            },
+          });
+        }
+        return Promise.resolve({});
+      }
+    },
+    CreateInvalidationCommand: actual.CreateInvalidationCommand,
+  };
+});
+
 beforeEach(() => {
   fakeStore = {};
+  cloudfrontInvalidations = [];
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
@@ -101,10 +130,18 @@ describe("s3Database plugin", () => {
   const bucketName = "test-bucket";
   const s3Config = {};
   // Create plugin: Pass BasePluginArgs like { cwd: "" }
-  let plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+  let plugin = s3Database({
+    bucketName,
+    ...s3Config,
+    cloudfrontDistributionId: "test-distribution-id",
+  })({ cwd: "" });
 
   beforeEach(async () => {
-    plugin = s3Database({ bucketName, ...s3Config })({ cwd: "" });
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })({ cwd: "" });
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -598,7 +635,11 @@ describe("s3Database plugin", () => {
     // Verify hooks.onDatabaseUpdated is called after commit
     const onDatabaseUpdated = vi.fn();
     const pluginWithHook = s3Database(
-      { bucketName, ...s3Config },
+      {
+        bucketName,
+        ...s3Config,
+        cloudfrontDistributionId: "test-distribution-id",
+      },
       { onDatabaseUpdated },
     )({ cwd: "" });
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
@@ -782,5 +823,58 @@ describe("s3Database plugin", () => {
     );
     expect(foundIos).toEqual(iosBundle);
     expect(foundAndroid).toEqual(androidBundle);
+  });
+
+  it("should trigger CloudFront invalidation on new bundle commit", async () => {
+    const bundleKey = "production/ios/1.0.0/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "cloudfront-new-test",
+    );
+    await plugin.appendBundle(newBundle);
+
+    await plugin.commitBundle();
+
+    expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(`/${bundleKey}`);
+    expect(invalidatedPaths).toContain(`/${targetVersionsKey}`);
+  });
+
+  it("should trigger CloudFront invalidation when a bundle is updated without key change", async () => {
+    const bundleKey = "production/ios/1.0.0/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "cloudfront-update-test",
+    );
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    cloudfrontInvalidations = [];
+
+    await plugin.updateBundle("cloudfront-update-test", { enabled: false });
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(`/${bundleKey}`);
+    expect(invalidatedPaths).not.toContain(`/${targetVersionsKey}`);
+  });
+
+  it("should not trigger CloudFront invalidation when commitBundle is called with no pending changes", async () => {
+    cloudfrontInvalidations = [];
+
+    await plugin.commitBundle();
+
+    expect(cloudfrontInvalidations.length).toBe(0);
   });
 });
