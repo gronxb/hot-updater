@@ -32,9 +32,7 @@ export class Migration0001HotUpdater0_13_0 extends S3Migration {
         const updatedData = data.map((item) =>
           merge(omit(item, ["fileUrl"]), { channel: "production" }),
         );
-        await this.updateFile(key, JSON.stringify(updatedData), {
-          cacheControl: "no-cache",
-        });
+        await this.updateFile(key, JSON.stringify(updatedData));
       }
     }
   }
