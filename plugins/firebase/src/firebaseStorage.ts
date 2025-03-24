@@ -5,6 +5,7 @@ import type {
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously } from "firebase/auth";
 import {
   type StorageReference,
   deleteObject,
@@ -27,10 +28,20 @@ export const firebaseStorage =
   (_: BasePluginArgs): StoragePlugin => {
     const app = initializeApp(config);
     const storage = getStorage(app);
+    const auth = getAuth(app);
+
+    const ensureAuthenticated = async () => {
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+      return auth.currentUser;
+    };
 
     return {
       name: "firebaseStorage",
       async deleteBundle(bundleId) {
+        await ensureAuthenticated();
+
         const Key = [bundleId].join("/");
         const listRef = ref(storage, bundleId);
         try {
@@ -47,6 +58,8 @@ export const firebaseStorage =
         return Key;
       },
       async uploadBundle(bundleId, bundlePath) {
+        await ensureAuthenticated();
+
         const Body = await fs.readFile(bundlePath);
         const ContentType =
           mime.getType(bundlePath) ?? "application/octet-stream";

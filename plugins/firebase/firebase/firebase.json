@@ -12,7 +12,8 @@
       "firebase-debug.log",
       "firebase-debug.*.log",
       "*.local"
-    ]
+    ],
+    "gen": 1
   },
   "storage": {
     "rules": "storage.rules"

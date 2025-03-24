@@ -1,6 +1,7 @@
 import type { DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { getApp, getApps, initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously } from "firebase/auth";
 import {
   collection,
   doc,
@@ -29,13 +30,29 @@ export const firebaseDatabase = (
     ? getApp(appName)
     : initializeApp(config, appName);
 
+  const auth = getAuth(app);
   const db = getFirestore(app);
   const bundlesCollection = collection(db, "bundles");
+
+  const ensureAuthenticated = async () => {
+    if (!auth.currentUser) {
+      try {
+        await signInAnonymously(auth);
+        console.log("Anonymous auth successful");
+      } catch (error) {
+        console.error("Authentication failed:", error);
+        throw new Error("Firebase authentication failed");
+      }
+    }
+    return auth.currentUser;
+  };
 
   return createDatabasePlugin(
     "firebaseDatabase",
     {
       async getBundleById(bundleId) {
+        await ensureAuthenticated();
+
         const bundleRef = doc(bundlesCollection, bundleId);
         const bundleSnap = await getDoc(bundleRef);
 
@@ -58,6 +75,8 @@ export const firebaseDatabase = (
       },
 
       async getBundles(options) {
+        await ensureAuthenticated();
+
         let q = query(bundlesCollection, orderBy("id", "desc"));
 
         if (options?.where) {
@@ -100,6 +119,8 @@ export const firebaseDatabase = (
       },
 
       async getChannels() {
+        await ensureAuthenticated();
+
         const q = query(bundlesCollection, orderBy("channel"));
         const querySnapshot = await getDocs(q);
 
@@ -116,6 +137,8 @@ export const firebaseDatabase = (
       },
 
       async commitBundle({ changedSets }) {
+        await ensureAuthenticated();
+
         for (const { operation, data } of changedSets) {
           if (operation === "insert" || operation === "update") {
             const bundleRef = doc(bundlesCollection, data.id);

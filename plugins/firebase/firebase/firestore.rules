@@ -3,8 +3,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
-                          && request.auth.token.firebase.sign_in_attributes.email.matches('.*@system.gserviceaccount.com');
+      allow read, write: if request.auth != null;
+      
+      allow read, write: if request.auth.token.email != null && (
+                          request.auth.token.email.matches(".*@appspot.gserviceaccount.com") || 
+                          request.auth.token.email.matches(".*@cloudfunctions.gserviceaccount.com") ||
+                          request.auth.token.email.matches("firebase-adminsdk-.*@.*\\.iam\\.gserviceaccount\\.com")
+                         );
     }
   }
 }
