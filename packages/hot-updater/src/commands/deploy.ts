@@ -16,7 +16,7 @@ import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
-import { getConsolePort, openConsole } from "./console";
+import { getConsolePort } from "./console";
 
 import path from "path";
 import { printBanner } from "@/components/banner";
@@ -213,19 +213,24 @@ export const deploy = async (options: DeployOptions) => {
       const port = await getConsolePort(config);
       const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
 
-      const note = `Console: http://localhost:${port}/${bundleId}`;
+      const openUrl = new URL(`http://localhost:${port}`);
+      openUrl.searchParams.set("channel", channel);
+      openUrl.searchParams.set("platform", platform);
+      openUrl.searchParams.set("bundleId", bundleId);
+
+      const url = openUrl.toString();
+
+      const note = `Console: ${url}`;
       if (!isConsoleOpen) {
         const result = await p.confirm({
           message: "Console server is not running. Would you like to start it?",
           initialValue: false,
         });
-        if (result) {
-          await openConsole(port, () => {
-            open(`http://localhost:${port}/${bundleId}`);
-          });
+        if (p.isCancel(result) || !result) {
+          return;
         }
       } else {
-        open(`http://localhost:${port}/${bundleId}`);
+        open(url);
       }
 
       p.note(note);
