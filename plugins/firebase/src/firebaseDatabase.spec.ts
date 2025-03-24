@@ -5,15 +5,20 @@ import type {
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
 import { getApp, getApps, initializeApp } from "firebase/app";
+import type { Auth, User } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 import {
   type DocumentReference,
   type QuerySnapshot,
   doc,
   getDoc,
   getDocs,
+  limit,
   orderBy,
   query,
   setDoc,
+  startAfter,
+  where,
 } from "firebase/firestore";
 import {
   type Mock,
@@ -35,9 +40,19 @@ vi.mock("firebase/app", () => {
   };
 });
 
+vi.mock("firebase/auth", () => {
+  return {
+    getAuth: vi.fn(() => mockAuth),
+    signInAnonymously: vi.fn(() => Promise.resolve({ user: mockUser })),
+  };
+});
+
+const mockUser = { uid: "anonymous-user" } as unknown as User;
+const mockAuth = { currentUser: mockUser } as unknown as Auth;
+
 vi.mock("firebase/firestore", () => {
   const mockFirestore = {};
-  const mockCollectionRef = { id: "collection-ref" };
+  const mockCollectionRef = { id: "bundles" };
   const mockCollection = vi.fn(() => mockCollectionRef);
   const mockDoc = vi.fn(() => "document-ref");
   const mockSetDoc = vi.fn();
@@ -47,6 +62,9 @@ vi.mock("firebase/firestore", () => {
   }));
   const mockQuery = vi.fn((...args) => args);
   const mockOrderBy = vi.fn(() => "order-by");
+  const mockWhere = vi.fn(() => "where-clause");
+  const mockLimit = vi.fn(() => "limit-clause");
+  const mockStartAfter = vi.fn(() => "start-after");
   const mockGetDocs = vi.fn(() => ({
     empty: true,
     docs: [],
@@ -60,6 +78,9 @@ vi.mock("firebase/firestore", () => {
     getDoc: mockGetDoc,
     query: mockQuery,
     orderBy: mockOrderBy,
+    where: mockWhere,
+    limit: mockLimit,
+    startAfter: mockStartAfter,
     getDocs: mockGetDocs,
   };
 });
@@ -72,7 +93,6 @@ describe("Firebase Database Plugin", () => {
   const mockConfig = {
     apiKey: "test-api-key",
     projectId: "test-project-id",
-    appName: "test-app",
   };
 
   const mockHooks: DatabasePluginHooks = {
@@ -110,6 +130,7 @@ describe("Firebase Database Plugin", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getApps).mockReturnValue([]);
+    vi.mocked(getAuth).mockReturnValue(mockAuth);
     databasePlugin = firebaseDatabase(mockConfig, mockHooks)(baseArgs);
   });
 
@@ -147,6 +168,7 @@ describe("Firebase Database Plugin", () => {
     expect(getApp).not.toHaveBeenCalled();
     expect(app).toBe(mockExistingApp);
   });
+
   describe("commitBundle", () => {
     it("should do nothing if no IDs are changed", async () => {
       await databasePlugin.commitBundle();
@@ -317,6 +339,27 @@ describe("Firebase Database Plugin", () => {
       expect(result.length).toBe(2);
     });
 
+    it("should apply filters when options are provided", async () => {
+      vi.mocked(getDocs).mockResolvedValueOnce({
+        empty: false,
+        docs: [{ data: () => mockFirestoreData }],
+      } as any);
+
+      await databasePlugin.getBundles({
+        where: {
+          channel: "production",
+          platform: "android",
+        },
+        limit: 10,
+        offset: 10, // offset should be a number
+      });
+
+      expect(where).toHaveBeenCalledWith("channel", "==", "production");
+      expect(where).toHaveBeenCalledWith("platform", "==", "android");
+      expect(limit).toHaveBeenCalledWith(10);
+      expect(startAfter).toHaveBeenCalledWith(10);
+    });
+
     it("should use cached bundles when available and refresh is false", async () => {
       vi.mocked(getDocs).mockResolvedValueOnce({
         empty: false,
@@ -337,6 +380,32 @@ describe("Firebase Database Plugin", () => {
       expect(getDocs).toHaveBeenCalled();
       expect(result.length).toBe(1);
       expect(result[0].id).toBe("test-bundle-id");
+    });
+  });
+
+  describe("getChannels", () => {
+    it("should return empty array when no channels exist", async () => {
+      vi.mocked(getDocs).mockResolvedValueOnce({
+        empty: true,
+        docs: [],
+      } as any);
+
+      const result = await databasePlugin.getChannels();
+      expect(result).toEqual([]);
+    });
+
+    it("should return unique channels", async () => {
+      vi.mocked(getDocs).mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          { data: () => ({ ...mockFirestoreData, channel: "production" }) },
+          { data: () => ({ ...mockFirestoreData, channel: "beta" }) },
+          { data: () => ({ ...mockFirestoreData, channel: "production" }) },
+        ],
+      } as any);
+
+      const result = await databasePlugin.getChannels();
+      expect(result).toEqual(["production", "beta"]);
     });
   });
 });
