@@ -136,8 +136,7 @@ export const initFirebase = async () => {
   const newPackagePath = path.join(functionsDir, "package.json");
   const indexFile = require.resolve("@hot-updater/firebase/functions");
   const destPath = path.join(functionsDir, path.basename(indexFile));
-  let updateInfoFunctionExists = false;
-  let checkUpdateJwtExists = false;
+  let isFunctionsExist = false;
 
   await fs.copyFile(indexFile, destPath);
 
@@ -238,23 +237,16 @@ export const initFirebase = async () => {
           const parsedData = JSON.parse(stdout);
           const functionsData = parsedData.result || [];
 
-          const updateInfoFunc = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "updateInfoFunction",
+          const hotUpdaterService = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "hotUpdaterService",
           );
 
-          const checkUpdateJwtFunc = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "checkUpdateJwt",
-          );
-
-          if (checkUpdateJwtFunc?.region) {
-            currentRegion = checkUpdateJwtFunc.region;
-            checkUpdateJwtExists = true;
-          } else if (updateInfoFunc?.region) {
-            currentRegion = updateInfoFunc.region;
-            updateInfoFunctionExists = true;
+          if (hotUpdaterService?.region) {
+            currentRegion = hotUpdaterService.region;
+            isFunctionsExist = true;
           }
 
-          if (checkUpdateJwtExists || updateInfoFunctionExists) {
+          if (hotUpdaterService) {
             console.log(`Found existing functions in region: ${currentRegion}`);
           }
         } catch (error) {
@@ -265,7 +257,7 @@ export const initFirebase = async () => {
 
         let selectedRegion = currentRegion;
 
-        if (!updateInfoFunctionExists && !checkUpdateJwtExists) {
+        if (!isFunctionsExist) {
           const selectRegion = await p.select({
             message: "Select Region",
             options: REGIONS,
@@ -293,7 +285,7 @@ export const initFirebase = async () => {
     {
       title: "1. Deploy Firebase Storage Rules",
       task: async () => {
-        if (updateInfoFunctionExists || checkUpdateJwtExists) return;
+        if (isFunctionsExist) return;
 
         try {
           await execa(
@@ -319,7 +311,7 @@ export const initFirebase = async () => {
     {
       title: "2. Deploy Firestore Indexes",
       task: async () => {
-        if (updateInfoFunctionExists || checkUpdateJwtExists) return;
+        if (isFunctionsExist) return;
 
         try {
           await execa(
@@ -344,7 +336,7 @@ export const initFirebase = async () => {
     {
       title: "3. Deploy Firestore Rules",
       task: async () => {
-        if (updateInfoFunctionExists || checkUpdateJwtExists) return;
+        if (isFunctionsExist) return;
 
         try {
           await execa(
@@ -415,15 +407,11 @@ export const initFirebase = async () => {
           const parsedData = JSON.parse(stdout);
           const functionsData = parsedData.result || [];
 
-          const checkUpdateJwtFunc = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "checkUpdateJwt",
+          const hotUpdaterService = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "hotUpdaterService",
           );
 
-          const updateInfoFunc = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "updateInfoFunction",
-          );
-
-          functionUrl = checkUpdateJwtFunc?.uri || updateInfoFunc?.uri || "";
+          functionUrl = `${hotUpdaterService?.uri}/check-update` || "";
         } catch (error) {
           console.error("Error getting function URL:", error);
         }
