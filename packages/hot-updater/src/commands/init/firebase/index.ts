@@ -94,8 +94,6 @@ export interface FirebaseFunction {
   hash: string;
 }
 
-let globalUpdateInfoFunctionUrl: string | null = null;
-
 async function setupFirebaseEnv(webAppId: string, tmpDir: string) {
   try {
     const { stdout } = await execa(
@@ -139,6 +137,7 @@ export const initFirebase = async () => {
   const indexFile = require.resolve("@hot-updater/firebase/functions");
   const destPath = path.join(functionsDir, path.basename(indexFile));
   let updateInfoFunctionExists = false;
+  let checkUpdateJwtExists = false;
 
   await fs.copyFile(indexFile, destPath);
 
@@ -217,7 +216,7 @@ export const initFirebase = async () => {
       },
     },
     {
-      title: "Setting region",
+      title: "Checking existing functions and setting region",
       task: async () => {
         let currentRegion = "us-central1";
 
@@ -243,30 +242,43 @@ export const initFirebase = async () => {
             (fn: FirebaseFunction) => fn.id === "updateInfoFunction",
           );
 
-          if (updateInfoFunc) {
-            updateInfoFunctionExists = true;
+          const checkUpdateJwtFunc = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "checkUpdateJwt",
+          );
 
-            if (updateInfoFunc.region) {
-              currentRegion = updateInfoFunc.region;
-            }
-            globalUpdateInfoFunctionUrl = updateInfoFunc.uri || null;
+          if (checkUpdateJwtFunc?.region) {
+            currentRegion = checkUpdateJwtFunc.region;
+            checkUpdateJwtExists = true;
+          } else if (updateInfoFunc?.region) {
+            currentRegion = updateInfoFunc.region;
+            updateInfoFunctionExists = true;
           }
-        } catch (error) {}
+
+          if (checkUpdateJwtExists || updateInfoFunctionExists) {
+            console.log(`Found existing functions in region: ${currentRegion}`);
+          }
+        } catch (error) {
+          console.log(
+            "Could not retrieve existing functions, will use default region",
+          );
+        }
 
         let selectedRegion = currentRegion;
 
-        if (!updateInfoFunctionExists) {
+        if (!updateInfoFunctionExists && !checkUpdateJwtExists) {
           const selectRegion = await p.select({
             message: "Select Region",
             options: REGIONS,
             initialValue: currentRegion,
           });
 
-          if (p.isCancel(selectedRegion)) {
+          if (p.isCancel(selectRegion)) {
             p.cancel("Operation cancelled.");
             throw new Error("Region selection cancelled");
           }
           selectedRegion = selectRegion as string;
+        } else {
+          console.log(`Using existing region: ${currentRegion}`);
         }
 
         const code = await transformEnv(
@@ -281,7 +293,8 @@ export const initFirebase = async () => {
     {
       title: "1. Deploy Firebase Storage Rules",
       task: async () => {
-        if (updateInfoFunctionExists) return;
+        if (updateInfoFunctionExists || checkUpdateJwtExists) return;
+
         try {
           await execa(
             "pnpm",
@@ -306,7 +319,8 @@ export const initFirebase = async () => {
     {
       title: "2. Deploy Firestore Indexes",
       task: async () => {
-        if (updateInfoFunctionExists) return;
+        if (updateInfoFunctionExists || checkUpdateJwtExists) return;
+
         try {
           await execa(
             "pnpm",
@@ -330,7 +344,8 @@ export const initFirebase = async () => {
     {
       title: "3. Deploy Firestore Rules",
       task: async () => {
-        if (updateInfoFunctionExists) return;
+        if (updateInfoFunctionExists || checkUpdateJwtExists) return;
+
         try {
           await execa(
             "pnpm",
@@ -356,23 +371,19 @@ export const initFirebase = async () => {
       title: "4. Deploy Firebase Functions",
       task: async () => {
         try {
-          await execa(
-            "pnpm",
-            [
-              "firebase",
-              "deploy",
-              "--only",
-              "functions",
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
-            {
-              cwd: tmpDir,
-            },
-          );
+          const deployArgs = [
+            "firebase",
+            "deploy",
+            "--only",
+            "functions",
+            "--force",
+            "--config",
+            "./.hot-updater/firebase.json",
+          ];
+
+          await execa("pnpm", deployArgs, { cwd: tmpDir });
         } catch (error) {
-          console.error("Error deploying Firebase Functions:", error);
-          throw error;
+          console.error("Error deploying functions:", error);
         }
       },
     },
@@ -383,18 +394,54 @@ export const initFirebase = async () => {
       },
     },
     {
+      title: "Getting function URL",
+      task: async () => {
+        let functionUrl = "";
+        try {
+          const { stdout } = await execa(
+            "pnpm",
+            [
+              "firebase",
+              "functions:list",
+              "--json",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
+
+          const parsedData = JSON.parse(stdout);
+          const functionsData = parsedData.result || [];
+
+          const checkUpdateJwtFunc = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "checkUpdateJwt",
+          );
+
+          const updateInfoFunc = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "updateInfoFunction",
+          );
+
+          functionUrl = checkUpdateJwtFunc?.uri || updateInfoFunc?.uri || "";
+        } catch (error) {
+          console.error("Error getting function URL:", error);
+        }
+
+        p.note(
+          transformTemplate(SOURCE_TEMPLATE, {
+            source: functionUrl,
+          }),
+        );
+      },
+    },
+    {
       title: "Cleaning up temporary directory...",
       task: async () => {
         await removeTmpDir();
       },
     },
   ]);
-
-  p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      source: globalUpdateInfoFunctionUrl as string,
-    }),
-  );
 
   p.log.message(
     `Next step: ${link(

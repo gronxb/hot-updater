@@ -1,7 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
-import admin from "firebase-admin";
-import functions from "firebase-functions";
+import * as admin from "firebase-admin";
+import * as functions from "firebase-functions/v1";
 import { getUpdateInfo } from "./getUpdateInfo";
 
 declare global {
@@ -31,31 +31,50 @@ export function validatePlatform(platform: string): "ios" | "android" | null {
     : null;
 }
 
-function getServiceUrl(
-  req: functions.https.Request,
-  serviceName: string,
-): string {
+function getServiceUrl(req: functions.Request, serviceName: string): string {
   const hostname = req.hostname || "";
 
-  if (hostname.includes(".run.app")) {
-    const parts = hostname.split("-");
-    if (parts.length >= 3) {
-      const projectHash = parts[parts.length - 2];
-      const regionDomain = parts[parts.length - 1];
+  if (hostname.includes(".cloudfunctions.net")) {
+    const hostParts = hostname.split(".");
+    if (hostParts.length > 0) {
+      const regionProject = hostParts[0];
 
-      return `https://${serviceName}-${projectHash}-${regionDomain}`;
+      return `https://${regionProject}.cloudfunctions.net/${serviceName}`;
     }
   }
 
-  return "";
+  const defaultRegion = HotUpdater.REGION;
+  const projectId = process.env.GCLOUD_PROJECT || "your-project-id";
+
+  return `https://${defaultRegion}-${projectId}.cloudfunctions.net/${serviceName}`;
 }
 
-export const checkUpdateJwt = functions.https.onRequest(
-  {
-    region: HotUpdater.REGION,
-    cors: true,
-  },
-  async (req, res) => {
+async function getSignedUrlWithCorrectFormat(params: {
+  data: any;
+  reqUrl: string;
+  jwtSecret: string;
+}) {
+  const result = await withJwtSignedUrl(params);
+
+  // biome-ignore lint/complexity/useOptionalChain: <explanation>
+  if (result && result.fileUrl) {
+    const functionName = "jwtBundleDownload";
+
+    const urlParts = result.fileUrl.split("/");
+    if (urlParts.length >= 4) {
+      const domain = urlParts.slice(0, 3).join("/");
+      const pathWithQuery = urlParts.slice(3).join("/");
+
+      result.fileUrl = `${domain}/${functionName}/${pathWithQuery}`;
+    }
+  }
+
+  return result;
+}
+
+export const checkUpdateJwt = functions
+  .region(HotUpdater.REGION)
+  .https.onRequest(async (req: functions.Request, res: functions.Response) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.set(
@@ -128,16 +147,9 @@ export const checkUpdateJwt = functions.https.onRequest(
         fileHash,
       };
 
-      const baseUrl = getServiceUrl(req, "jwtbundledownload");
+      const baseUrl = getServiceUrl(req, "jwtBundleDownload");
 
-      if (!baseUrl) {
-        res
-          .status(500)
-          .json({ error: "Unable to determine download service URL" });
-        return;
-      }
-
-      const appUpdateInfo = await withJwtSignedUrl({
+      const appUpdateInfo = await getSignedUrlWithCorrectFormat({
         data: responseData,
         reqUrl: baseUrl,
         jwtSecret: HotUpdater.JWT_SECRET,
@@ -148,15 +160,11 @@ export const checkUpdateJwt = functions.https.onRequest(
       console.error("Update check error:", error);
       res.status(500).json({ error: "Internal Server Error" });
     }
-  },
-);
+  });
 
-export const jwtBundleDownload = functions.https.onRequest(
-  {
-    region: HotUpdater.REGION,
-    cors: true,
-  },
-  async (req, res) => {
+export const jwtBundleDownload = functions
+  .region(HotUpdater.REGION)
+  .https.onRequest(async (req: functions.Request, res: functions.Response) => {
     try {
       const result = await verifyJwtSignedUrl({
         path: req.path,
@@ -204,5 +212,4 @@ export const jwtBundleDownload = functions.https.onRequest(
         error: "Internal Server Error",
       });
     }
-  },
-);
+  });

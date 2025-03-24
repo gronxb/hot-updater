@@ -3,8 +3,14 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     match /{allPaths=**} {
-      allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
-                          && request.auth.token.firebase.sign_in_attributes.email.matches('.*@system.gserviceaccount.com');
+      allow read, write: if request.auth != null;
+    }
+    
+    match /service/{allServicePaths=**} {
+      allow read, write: if request.auth.token.firebase.sign_in_provider == "google.com" && (
+                          request.auth.token.email.matches(".*@appspot.gserviceaccount.com") || 
+                          request.auth.token.email.matches(".*@cloudfunctions.gserviceaccount.com")
+                         );
     }
   }
 }
