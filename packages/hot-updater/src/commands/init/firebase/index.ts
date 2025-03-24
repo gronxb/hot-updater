@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {} from "fs";
 import path from "path";
 import { initFirebaseUser } from "@/commands/init/firebase/select";
@@ -272,11 +273,13 @@ export const initFirebase = async () => {
         } else {
           console.log(`Using existing region: ${currentRegion}`);
         }
+        const jwtSecret = crypto.randomBytes(48).toString("hex");
 
         const code = await transformEnv(
           await fs.readFile(path.join(functionsDir, "index.cjs"), "utf-8"),
           {
             REGION: selectedRegion,
+            JWT_SECRET: jwtSecret,
           },
         );
         await fs.writeFile(path.join(functionsDir, "index.cjs"), code);
