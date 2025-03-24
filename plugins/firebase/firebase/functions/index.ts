@@ -2,6 +2,8 @@ import { NIL_UUID } from "@hot-updater/core";
 import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { getUpdateInfo } from "./getUpdateInfo";
 
 declare global {
@@ -31,22 +33,17 @@ export function validatePlatform(platform: string): "ios" | "android" | null {
     : null;
 }
 
-function getServiceUrl(req: functions.Request, serviceName: string): string {
-  const hostname = req.hostname || "";
+function getHostUrl(hostname: string | null): string {
+  hostname = hostname || "";
 
   if (hostname.includes(".cloudfunctions.net")) {
-    const hostParts = hostname.split(".");
-    if (hostParts.length > 0) {
-      const regionProject = hostParts[0];
-
-      return `https://${regionProject}.cloudfunctions.net/${serviceName}`;
-    }
+    return `https://${hostname}`;
   }
 
   const defaultRegion = HotUpdater.REGION;
   const projectId = process.env.GCLOUD_PROJECT || "your-project-id";
 
-  return `https://${defaultRegion}-${projectId}.cloudfunctions.net/${serviceName}`;
+  return `https://${defaultRegion}-${projectId}.cloudfunctions.net`;
 }
 
 async function getSignedUrlWithCorrectFormat(params: {
@@ -58,158 +55,232 @@ async function getSignedUrlWithCorrectFormat(params: {
 
   // biome-ignore lint/complexity/useOptionalChain: <explanation>
   if (result && result.fileUrl) {
-    const functionName = "jwtBundleDownload";
+    const functionName = "hotUpdaterService";
 
     const urlParts = result.fileUrl.split("/");
     if (urlParts.length >= 4) {
       const domain = urlParts.slice(0, 3).join("/");
       const pathWithQuery = urlParts.slice(3).join("/");
 
-      result.fileUrl = `${domain}/${functionName}/${pathWithQuery}`;
+      result.fileUrl = `${domain}/${functionName}/bundle-download/${pathWithQuery}`;
     }
   }
 
   return result;
 }
 
-export const checkUpdateJwt = functions
-  .region(HotUpdater.REGION)
-  .https.onRequest(async (req: functions.Request, res: functions.Response) => {
-    res.set("Access-Control-Allow-Origin", "*");
-    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, x-app-platform, x-app-version, x-bundle-id, x-min-bundle-id, x-channel",
-    );
+const app = new Hono();
 
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
+app.use("*", async (c, next) => {
+  console.log(`Original path: ${c.req.path}`);
 
-    try {
-      const platformHeader = req.headers["x-app-platform"] as string;
-      const appVersion = req.headers["x-app-version"] as string;
-      const bundleId = req.headers["x-bundle-id"] as string;
-      const minBundleId = req.headers["x-min-bundle-id"] as string | undefined;
-      const channel = req.headers["x-channel"] as string | undefined;
+  const path = c.req.path.replace(/^\/hotUpdaterService/, "");
 
-      if (!platformHeader || !appVersion || !bundleId) {
-        res.status(400).json({
+  if (path === "") {
+    c.req.path = "/";
+  } else {
+    c.req.path = path;
+  }
+
+  console.log(`Modified path: ${c.req.path}`);
+
+  await next();
+});
+
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowHeaders: [
+      "Content-Type",
+      "x-app-platform",
+      "x-app-version",
+      "x-bundle-id",
+      "x-min-bundle-id",
+      "x-channel",
+    ],
+    allowMethods: ["GET", "OPTIONS"],
+  }),
+);
+
+app.get("/", (c) => {
+  return c.json({ message: "Hot Updater Service is running" });
+});
+
+app.get("", (c) => {
+  return c.json({ message: "Hot Updater Service is running" });
+});
+
+app.get("/check-update", async (c) => {
+  try {
+    const platformHeader = c.req.header("x-app-platform");
+    const appVersion = c.req.header("x-app-version");
+    const bundleId = c.req.header("x-bundle-id");
+    const minBundleId = c.req.header("x-min-bundle-id");
+    const channel = c.req.header("x-channel");
+
+    if (!platformHeader || !appVersion || !bundleId) {
+      return c.json(
+        {
           error:
             "Missing required headers (x-app-platform, x-app-version, x-bundle-id)",
-        });
-        return;
-      }
-
-      const platform = validatePlatform(platformHeader);
-      if (!platform) {
-        res.status(400).json({
-          error: "Invalid platform. Must be 'ios' or 'android'",
-        });
-        return;
-      }
-
-      const db = admin.firestore();
-      const updateInfo = await getUpdateInfo(db, {
-        platform,
-        appVersion,
-        bundleId,
-        minBundleId: minBundleId || NIL_UUID,
-        channel: channel || "production",
-      });
-
-      if (!updateInfo) {
-        res.status(200).json(null);
-        return;
-      }
-
-      let fileHash = null;
-
-      if (updateInfo.id !== NIL_UUID && updateInfo.status !== "ROLLBACK") {
-        try {
-          const bundleDoc = await db
-            .collection("bundles")
-            .doc(updateInfo.id)
-            .get();
-          const bundleData = bundleDoc.data();
-
-          if (bundleData) {
-            fileHash = bundleData.file_hash || null;
-          }
-        } catch (error) {
-          console.error("Error fetching bundle data:", error);
-        }
-      }
-
-      const responseData = {
-        ...updateInfo,
-        fileHash,
-      };
-
-      const baseUrl = getServiceUrl(req, "jwtBundleDownload");
-
-      const appUpdateInfo = await getSignedUrlWithCorrectFormat({
-        data: responseData,
-        reqUrl: baseUrl,
-        jwtSecret: HotUpdater.JWT_SECRET,
-      });
-
-      res.status(200).json(appUpdateInfo);
-    } catch (error) {
-      console.error("Update check error:", error);
-      res.status(500).json({ error: "Internal Server Error" });
+        },
+        400,
+      );
     }
-  });
 
-export const jwtBundleDownload = functions
-  .region(HotUpdater.REGION)
-  .https.onRequest(async (req: functions.Request, res: functions.Response) => {
-    try {
-      const result = await verifyJwtSignedUrl({
-        path: req.path,
-        token: req.query.token as string | undefined,
-        jwtSecret: HotUpdater.JWT_SECRET,
-        handler: async (key) => {
-          try {
-            const bucket = admin.storage().bucket(HotUpdater.BUCKET_NAME);
-            const file = bucket.file(key);
+    const platform = validatePlatform(platformHeader);
+    if (!platform) {
+      return c.json(
+        {
+          error: "Invalid platform. Must be 'ios' or 'android'",
+        },
+        400,
+      );
+    }
 
-            const [exists] = await file.exists();
-            if (!exists) {
-              return null;
-            }
+    const db = admin.firestore();
+    const updateInfo = await getUpdateInfo(db, {
+      platform,
+      appVersion,
+      bundleId,
+      minBundleId: minBundleId || NIL_UUID,
+      channel: channel || "production",
+    });
 
-            const [metadata] = await file.getMetadata();
-            const [fileContent] = await file.download();
+    if (!updateInfo) {
+      return c.json(null, 200);
+    }
 
-            return {
-              body: fileContent,
-              contentType: metadata.contentType || "application/octet-stream",
-            };
-          } catch (error) {
-            console.error("Error retrieving file from storage:", error);
+    let fileHash = null;
+
+    if (updateInfo.id !== NIL_UUID && updateInfo.status !== "ROLLBACK") {
+      try {
+        const bundleDoc = await db
+          .collection("bundles")
+          .doc(updateInfo.id)
+          .get();
+        const bundleData = bundleDoc.data();
+
+        if (bundleData) {
+          fileHash = bundleData.file_hash || null;
+        }
+      } catch (error) {
+        console.error("Error fetching bundle data:", error);
+      }
+    }
+
+    const responseData = {
+      ...updateInfo,
+      fileHash,
+    };
+
+    const hostname = c.req.raw.headers.get("host");
+    const hostUrl = getHostUrl(hostname);
+    const reqUrl = `${hostUrl}/hotUpdaterService/bundle-download`;
+
+    const appUpdateInfo = await getSignedUrlWithCorrectFormat({
+      data: responseData,
+      reqUrl,
+      jwtSecret: HotUpdater.JWT_SECRET,
+    });
+
+    return c.json(appUpdateInfo, 200);
+  } catch (error: unknown) {
+    console.error("Update check error:", error);
+    return c.json({ error: "Internal Server Error" }, 500);
+  }
+});
+
+app.get("/bundle-download/*", async (c) => {
+  try {
+    const path = c.req.path.replace("/bundle-download", "");
+    const token = c.req.query("token");
+
+    const result = await verifyJwtSignedUrl({
+      path,
+      token,
+      jwtSecret: HotUpdater.JWT_SECRET,
+      handler: async (key) => {
+        try {
+          const bucket = admin.storage().bucket(HotUpdater.BUCKET_NAME);
+          const file = bucket.file(key);
+
+          const [exists] = await file.exists();
+          if (!exists) {
             return null;
           }
-        },
-      });
 
-      if (result.status !== 200) {
-        res.status(result.status).json({ error: result.error });
-        return;
-      }
+          const [metadata] = await file.getMetadata();
+          const [fileContent] = await file.download();
 
-      if (result.responseHeaders) {
-        for (const [key, value] of Object.entries(result.responseHeaders)) {
-          res.set(key, value);
+          return {
+            body: fileContent,
+            contentType: metadata.contentType || "application/octet-stream",
+          };
+        } catch (error) {
+          console.error("Error retrieving file from storage:", error);
+          return null;
         }
-      }
+      },
+    });
 
-      res.status(200).send(result.responseBody);
-    } catch (error) {
-      console.error("Error in bundle download process:", error);
-      res.status(500).json({
+    if (result.status !== 200) {
+      return c.json({ error: result.error }, result.status);
+    }
+
+    if (result.responseHeaders) {
+      for (const [key, value] of Object.entries(result.responseHeaders)) {
+        c.header(key, value);
+      }
+    }
+
+    return new Response(result.responseBody, {
+      status: 200,
+      headers: c.res.headers,
+    });
+  } catch (error: unknown) {
+    console.error("Error in bundle download process:", error);
+    return c.json(
+      {
         error: "Internal Server Error",
+      },
+      500,
+    );
+  }
+});
+
+export const hotUpdaterService = functions
+  .region(HotUpdater.REGION)
+  .https.onRequest(async (req: functions.Request, res: functions.Response) => {
+    const host = req.hostname || "localhost";
+    const protocol = req.protocol || "https";
+    const fullUrl = `${protocol}://${host}${req.originalUrl || req.url}`;
+
+    const request = new Request(fullUrl, {
+      method: req.method,
+      headers: req.headers as HeadersInit,
+      body:
+        req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+    });
+
+    try {
+      const honoResponse = await app.fetch(request);
+
+      res.status(honoResponse.status);
+
+      honoResponse.headers.forEach((value: string, key: string) => {
+        res.set(key, value);
       });
+
+      const body = await honoResponse.text();
+      res.send(body);
+    } catch (error: unknown) {
+      console.error("Hono app error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      res
+        .status(500)
+        .json({ error: "Internal Server Error", details: errorMessage });
     }
   });
