@@ -173,6 +173,7 @@ export async function createOrSelectIamRole({
  * CloudFront 키 페어를 생성하거나 SSM Parameter Store에서 재사용합니다.
  */
 export const createOrGetCloudFrontKeyPair = async (
+  name: string,
   region: BucketLocationConstraint,
   credentials: {
     accessKeyId: string;
@@ -183,7 +184,7 @@ export const createOrGetCloudFrontKeyPair = async (
   const { SDK } = await import("@hot-updater/aws/sdk");
   // SSM은 us-east-1 리전에서 사용 (CloudFront는 글로벌 서비스)
   const ssm = new SDK.SSM.SSM({ region, credentials });
-  const parameterName = "/hot-updater/cloudfront/keypair";
+  const parameterName = `/hot-updater/${name}/keypair`;
 
   try {
     const { Parameter } = await ssm.getParameter({
@@ -977,7 +978,9 @@ export const initAwsS3LambdaEdge = async () => {
   p.log.message(
     `${picocolors.blue("IAMFullAccess")}: Get or create IAM roles for Lambda@Edge`,
   );
-
+  p.log.message(
+    `${picocolors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
+  );
   if (mode === "sso") {
     try {
       const profile = await p.text({
@@ -1151,7 +1154,11 @@ export const initAwsS3LambdaEdge = async () => {
 
   const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 
-  const keyPair = await createOrGetCloudFrontKeyPair(region, credentials);
+  const keyPair = await createOrGetCloudFrontKeyPair(
+    bucketName,
+    region,
+    credentials,
+  );
 
   // Deploy Lambda@Edge function (us-east-1)
   const { functionArn } = await deployLambdaEdge({
