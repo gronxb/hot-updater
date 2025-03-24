@@ -11,8 +11,6 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
-
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
   const timestamp = Number.parseInt(timestampHex, 16);
@@ -116,7 +114,7 @@ function App(): React.JSX.Element {
         title="HotUpdater.runUpdateProcess()"
         onPress={() =>
           HotUpdater.runUpdateProcess({
-            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+            source: "https://checkupdate-hblmol7y2a-du.a.run.app",
           }).then((status) => {
             console.log("Update process completed", JSON.stringify(status));
           })
@@ -127,7 +125,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  source: "https://checkupdate-hblmol7y2a-du.a.run.app",
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

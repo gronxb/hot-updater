@@ -1,6 +1,8 @@
 import { NIL_UUID } from "@hot-updater/core";
+import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
 import admin from "firebase-admin";
 import functions from "firebase-functions";
+import { getUpdateInfo } from "./getUpdateInfo";
 
 declare global {
   var HotUpdater: {
@@ -29,7 +31,26 @@ export function validatePlatform(platform: string): "ios" | "android" | null {
     : null;
 }
 
-export const checkUpdateDirect = functions.https.onRequest(
+function getServiceUrl(
+  req: functions.https.Request,
+  serviceName: string,
+): string {
+  const hostname = req.hostname || "";
+
+  if (hostname.includes(".run.app")) {
+    const parts = hostname.split("-");
+    if (parts.length >= 3) {
+      const projectHash = parts[parts.length - 2];
+      const regionDomain = parts[parts.length - 1];
+
+      return `https://${serviceName}-${projectHash}-${regionDomain}`;
+    }
+  }
+
+  return "";
+}
+
+export const checkUpdateJwt = functions.https.onRequest(
   {
     region: HotUpdater.REGION,
     cors: true,
@@ -71,7 +92,6 @@ export const checkUpdateDirect = functions.https.onRequest(
       }
 
       const db = admin.firestore();
-      const { getUpdateInfo } = require("./getUpdateInfo");
       const updateInfo = await getUpdateInfo(db, {
         platform,
         appVersion,
@@ -86,7 +106,6 @@ export const checkUpdateDirect = functions.https.onRequest(
       }
 
       let fileHash = null;
-      let fileUrl = null;
 
       if (updateInfo.id !== NIL_UUID && updateInfo.status !== "ROLLBACK") {
         try {
@@ -98,9 +117,6 @@ export const checkUpdateDirect = functions.https.onRequest(
 
           if (bundleData) {
             fileHash = bundleData.file_hash || null;
-            const region = HotUpdater.REGION;
-            const projectId = process.env.GCLOUD_PROJECT || "";
-            fileUrl = `https://${region}-${projectId}.cloudfunctions.net/directBundleDownload/${updateInfo.id}`;
           }
         } catch (error) {
           console.error("Error fetching bundle data:", error);
@@ -110,10 +126,24 @@ export const checkUpdateDirect = functions.https.onRequest(
       const responseData = {
         ...updateInfo,
         fileHash,
-        fileUrl,
       };
 
-      res.status(200).json(responseData);
+      const baseUrl = getServiceUrl(req, "jwtbundledownload");
+
+      if (!baseUrl) {
+        res
+          .status(500)
+          .json({ error: "Unable to determine download service URL" });
+        return;
+      }
+
+      const appUpdateInfo = await withJwtSignedUrl({
+        data: responseData,
+        reqUrl: baseUrl,
+        jwtSecret: HotUpdater.JWT_SECRET,
+      });
+
+      res.status(200).json(appUpdateInfo);
     } catch (error) {
       console.error("Update check error:", error);
       res.status(500).json({ error: "Internal Server Error" });
@@ -121,56 +151,53 @@ export const checkUpdateDirect = functions.https.onRequest(
   },
 );
 
-export const directBundleDownload = functions.https.onRequest(
+export const jwtBundleDownload = functions.https.onRequest(
   {
     region: HotUpdater.REGION,
     cors: true,
   },
   async (req, res) => {
-    const pathParts = req.path.split("/").filter((p) => p);
-    const bundleId =
-      pathParts.length > 0 ? pathParts[pathParts.length - 1] : null;
-
-    if (!bundleId) {
-      res.status(400).json({ error: "Bundle ID is required" });
-      return;
-    }
-
     try {
-      const bucket = admin.storage().bucket(HotUpdater.BUCKET_NAME);
-      const filePath = `${bundleId}/bundle.zip`;
-      const file = bucket.file(filePath);
+      const result = await verifyJwtSignedUrl({
+        path: req.path,
+        token: req.query.token as string | undefined,
+        jwtSecret: HotUpdater.JWT_SECRET,
+        handler: async (key) => {
+          try {
+            const bucket = admin.storage().bucket(HotUpdater.BUCKET_NAME);
+            const file = bucket.file(key);
 
-      const [exists] = await file.exists();
+            const [exists] = await file.exists();
+            if (!exists) {
+              return null;
+            }
 
-      if (!exists) {
-        res.status(404).json({
-          error: "Bundle not found",
-          path: filePath,
-        });
+            const [metadata] = await file.getMetadata();
+            const [fileContent] = await file.download();
+
+            return {
+              body: fileContent,
+              contentType: metadata.contentType || "application/octet-stream",
+            };
+          } catch (error) {
+            console.error("Error retrieving file from storage:", error);
+            return null;
+          }
+        },
+      });
+
+      if (result.status !== 200) {
+        res.status(result.status).json({ error: result.error });
         return;
       }
 
-      try {
-        const [fileContents] = await file.download();
-
-        res.set("Content-Type", "application/zip");
-        res.set("Content-Disposition", 'attachment; filename="bundle.zip"');
-        res.set(
-          "Cache-Control",
-          "private, no-cache, no-store, must-revalidate",
-        );
-        res.set("Pragma", "no-cache");
-        res.set("Expires", "0");
-
-        res.send(fileContents);
-      } catch (downloadError) {
-        console.error("Error downloading file:", downloadError);
-        res.status(500).json({
-          error: "Download Error",
-          message: "An error occurred while downloading the file",
-        });
+      if (result.responseHeaders) {
+        for (const [key, value] of Object.entries(result.responseHeaders)) {
+          res.set(key, value);
+        }
       }
+
+      res.status(200).send(result.responseBody);
     } catch (error) {
       console.error("Error in bundle download process:", error);
       res.status(500).json({
