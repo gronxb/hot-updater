@@ -1,3 +1,4 @@
+import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import {
   type Bundle,
   type GetBundlesArgs,
@@ -7,23 +8,32 @@ import {
 import {
   filterCompatibleAppVersions,
   getUpdateInfo as getUpdateInfoJS,
-  signToken,
 } from "@hot-updater/js";
 
 const getCdnJson = async <T>({
   baseUrl,
   key,
-  jwtSecret,
+  keyPairId,
+  privateKey,
 }: {
   baseUrl: string;
   key: string;
-  jwtSecret: string;
+  keyPairId: string;
+  privateKey: string;
 }): Promise<T | null> => {
   try {
     const url = new URL(baseUrl);
     url.pathname = `/${key}`;
-    url.searchParams.set("token", await signToken(key, jwtSecret));
-    const res = await fetch(url.toString(), {
+
+    // CloudFront 서명된 URL 생성
+    const signedUrl = getSignedUrl({
+      url: url.toString(),
+      keyPairId: keyPairId,
+      privateKey: privateKey,
+      dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(), // 60초 동안 유효
+    });
+
+    const res = await fetch(signedUrl, {
       headers: {
         "Content-Type": "application/json",
       },
@@ -38,7 +48,15 @@ const getCdnJson = async <T>({
 };
 
 export const getUpdateInfo = async (
-  { baseUrl, jwtSecret }: { baseUrl: string; jwtSecret: string },
+  {
+    baseUrl,
+    keyPairId,
+    privateKey,
+  }: {
+    baseUrl: string;
+    keyPairId: string;
+    privateKey: string;
+  },
   {
     platform,
     appVersion,
@@ -50,7 +68,8 @@ export const getUpdateInfo = async (
   const targetAppVersions = await getCdnJson<string[]>({
     baseUrl,
     key: `${channel}/${platform}/target-app-versions.json`,
-    jwtSecret,
+    keyPairId,
+    privateKey,
   });
 
   const matchingVersions = filterCompatibleAppVersions(
@@ -63,7 +82,8 @@ export const getUpdateInfo = async (
       getCdnJson({
         baseUrl,
         key: `${channel}/${platform}/${targetAppVersion}/update.json`,
-        jwtSecret,
+        keyPairId,
+        privateKey,
       }),
     ),
   );

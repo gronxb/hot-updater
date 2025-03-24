@@ -77,7 +77,8 @@ const createGetUpdateInfo =
       return await getUpdateInfoFromCdn(
         {
           baseUrl,
-          jwtSecret: "test-jwt-secret",
+          keyPairId: "test-key-pair-id",
+          privateKey: "test-private-key",
         },
         {
           minBundleId,
