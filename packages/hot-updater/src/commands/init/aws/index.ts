@@ -170,14 +170,79 @@ export async function createOrSelectIamRole({
 }
 
 /**
+ * CloudFront 키 페어를 생성하거나 SSM Parameter Store에서 재사용합니다.
+ */
+export const createOrGetCloudFrontKeyPair = async (
+  name: string,
+  region: BucketLocationConstraint,
+  credentials: {
+    accessKeyId: string;
+    secretAccessKey: string;
+    sessionToken?: string;
+  },
+) => {
+  const { SDK } = await import("@hot-updater/aws/sdk");
+  // SSM은 us-east-1 리전에서 사용 (CloudFront는 글로벌 서비스)
+  const ssm = new SDK.SSM.SSM({ region, credentials });
+  const parameterName = `/hot-updater/${name}/keypair`;
+
+  try {
+    const { Parameter } = await ssm.getParameter({
+      Name: parameterName,
+      WithDecryption: true,
+    });
+    if (Parameter?.Value) {
+      const keyPair = JSON.parse(Parameter.Value);
+      p.log.info("Using existing CloudFront key pair from SSM Parameter Store");
+      return keyPair;
+    }
+  } catch (error) {
+    if (error instanceof SDK.SSM.ParameterNotFound) {
+      const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        publicKeyEncoding: {
+          type: "spki",
+          format: "pem",
+        },
+        privateKeyEncoding: {
+          type: "pkcs8",
+          format: "pem",
+        },
+      });
+      const keyPairId = `HOTUPDATER-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+      const keyPair = { keyPairId, publicKey, privateKey };
+
+      await ssm.putParameter({
+        Name: parameterName,
+        Value: JSON.stringify(keyPair),
+        Type: "SecureString",
+        Overwrite: true,
+      });
+      p.log.success(
+        "Created and stored new CloudFront key pair in SSM Parameter Store",
+      );
+      return keyPair;
+    }
+    throw error;
+  }
+  throw new Error("Failed to create or retrieve CloudFront key pair");
+};
+
+/**
  * Deploy Lambda@Edge function
  * - Zip the local ./lambda folder, create a function in us-east-1 region,
  * - Publish a new version of the function
  */
 export const deployLambdaEdge = async ({
+  keyPair,
   credentials,
   lambdaRoleArn,
 }: {
+  keyPair: {
+    keyPairId: string;
+    publicKey: string;
+    privateKey: string;
+  };
   credentials: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -201,12 +266,13 @@ export const deployLambdaEdge = async ({
 
   const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
 
-  const jwtSecret = crypto.randomBytes(48).toString("hex");
-
   const code = await transformEnv(
     await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
     {
-      JWT_SECRET: jwtSecret,
+      CLOUDFRONT_KEY_PAIR_ID: keyPair.keyPairId,
+      CLOUDFRONT_PRIVATE_KEY_BASE64: Buffer.from(keyPair.privateKey).toString(
+        "base64",
+      ),
     },
   );
   await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
@@ -258,7 +324,6 @@ export const deployLambdaEdge = async ({
             Description: "Hot Updater Lambda@Edge function",
             Publish: true,
             Timeout: 10,
-            MemorySize: 256,
           });
 
           functionArn.arn = createResp.FunctionArn || null;
@@ -274,11 +339,56 @@ export const deployLambdaEdge = async ({
               `Function "${lambdaName}" already exists. Updating function code...`,
             );
 
+            // 코드 업데이트
             const updateResp = await lambdaClient.updateFunctionCode({
               FunctionName: lambdaName,
               ZipFile: await fs.readFile(zipFilePath),
               Publish: true,
             });
+            // Wait for Lambda update to complete
+            message("Waiting for Lambda function update to complete...");
+            let isUpdateComplete = false;
+            while (!isUpdateComplete) {
+              try {
+                const status = await lambdaClient.getFunctionConfiguration({
+                  FunctionName: lambdaName,
+                });
+                if (status.LastUpdateStatus === "Successful") {
+                  isUpdateComplete = true;
+                } else if (status.LastUpdateStatus === "Failed") {
+                  throw new Error(
+                    `Lambda update failed: ${status.LastUpdateStatusReason}`,
+                  );
+                } else {
+                  // Continue waiting
+                  await new Promise((resolve) => setTimeout(resolve, 2000));
+                }
+              } catch (err) {
+                if (
+                  err instanceof Error &&
+                  err.name === "ResourceConflictException"
+                ) {
+                  // Continue waiting if update is in progress
+                  await new Promise((resolve) => setTimeout(resolve, 2000));
+                } else {
+                  throw err;
+                }
+              }
+            }
+
+            try {
+              await lambdaClient.updateFunctionConfiguration({
+                FunctionName: lambdaName,
+                MemorySize: 256,
+                Timeout: 10,
+              });
+            } catch (error) {
+              p.log.error(
+                `Failed to update Lambda function configuration: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
             functionArn.arn = updateResp.FunctionArn || null;
             functionArn.version = updateResp.Version || "1";
           } else {
@@ -332,7 +442,6 @@ export const deployLambdaEdge = async ({
   }
 
   // 5. Set Qualified ARN for Lambda@Edge
-  //    (In case version is not automatically appended from createFunction result)
   if (!functionArn.arn.endsWith(`:${functionArn.version}`)) {
     functionArn.arn = `${functionArn.arn}:${functionArn.version}`;
   }
@@ -440,6 +549,11 @@ export const createCloudFrontDistribution = async (
     DefaultCacheBehavior: {
       TargetOriginId: bucketName,
       ViewerProtocolPolicy: "redirect-to-https",
+      TrustedSigners: {
+        Enabled: true,
+        Quantity: 1,
+        Items: [accountId],
+      },
       LambdaFunctionAssociations: {
         Quantity: 1,
         Items: [
@@ -450,7 +564,7 @@ export const createCloudFrontDistribution = async (
         ],
       },
       ForwardedValues: {
-        QueryString: true,
+        QueryString: false,
         Cookies: { Forward: "none" },
       },
       MinTTL: 0,
@@ -567,6 +681,11 @@ export const createCloudFrontDistribution = async (
     DefaultCacheBehavior: {
       TargetOriginId: bucketName,
       ViewerProtocolPolicy: "redirect-to-https",
+      TrustedSigners: {
+        Enabled: true,
+        Quantity: 1,
+        Items: [accountId],
+      },
       LambdaFunctionAssociations: {
         Quantity: 1,
         Items: [
@@ -859,7 +978,9 @@ export const initAwsS3LambdaEdge = async () => {
   p.log.message(
     `${picocolors.blue("IAMFullAccess")}: Get or create IAM roles for Lambda@Edge`,
   );
-
+  p.log.message(
+    `${picocolors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
+  );
   if (mode === "sso") {
     try {
       const profile = await p.text({
@@ -1033,8 +1154,15 @@ export const initAwsS3LambdaEdge = async () => {
 
   const lambdaRoleArn = await createOrSelectIamRole({ region, credentials });
 
+  const keyPair = await createOrGetCloudFrontKeyPair(
+    bucketName,
+    region,
+    credentials,
+  );
+
   // Deploy Lambda@Edge function (us-east-1)
   const { functionArn } = await deployLambdaEdge({
+    keyPair,
     credentials,
     lambdaRoleArn,
   });

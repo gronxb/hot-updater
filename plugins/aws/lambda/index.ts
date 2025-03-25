@@ -1,16 +1,23 @@
 import { NIL_UUID } from "@hot-updater/core";
-import { verifyJwtToken, withJwtSignedUrl } from "@hot-updater/js";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 import { getUpdateInfo } from "./getUpdateInfo";
+import { withSignedUrl } from "./withSignedUrl";
 
 declare global {
   var HotUpdater: {
-    JWT_SECRET: string;
+    CLOUDFRONT_KEY_PAIR_ID: string;
+    CLOUDFRONT_PRIVATE_KEY_BASE64: string;
   };
 }
+
+const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
+const CLOUDFRONT_PRIVATE_KEY = Buffer.from(
+  HotUpdater.CLOUDFRONT_PRIVATE_KEY_BASE64,
+  "base64",
+).toString("utf-8");
 
 type Bindings = {
   callback: Callback;
@@ -40,7 +47,11 @@ app.get("/api/check-update", async (c) => {
       return c.json({ error: "Missing host header." }, 500);
     }
     const updateInfo = await getUpdateInfo(
-      { baseUrl: c.req.url, jwtSecret: HotUpdater.JWT_SECRET },
+      {
+        baseUrl: c.req.url,
+        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+        privateKey: CLOUDFRONT_PRIVATE_KEY,
+      },
       {
         platform: appPlatform,
         bundleId,
@@ -53,10 +64,11 @@ app.get("/api/check-update", async (c) => {
       return c.json(null);
     }
 
-    const appUpdateInfo = await withJwtSignedUrl({
+    const appUpdateInfo = await withSignedUrl({
       data: updateInfo,
       reqUrl: c.req.url,
-      jwtSecret: HotUpdater.JWT_SECRET,
+      keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+      privateKey: CLOUDFRONT_PRIVATE_KEY,
     });
 
     return c.json(appUpdateInfo);
@@ -66,36 +78,6 @@ app.get("/api/check-update", async (c) => {
 });
 
 app.get("*", async (c) => {
-  const params = new URLSearchParams(c.env.request.querystring || "");
-  const token = params.get("token");
-  const path = c.env.request.uri;
-
-  if (!token) {
-    return c.json({ error: "Missing token" }, 400);
-  }
-
-  const verifyResult = await verifyJwtToken({
-    path,
-    token,
-    jwtSecret: HotUpdater.JWT_SECRET,
-  });
-  if (!verifyResult.valid) {
-    return c.json(
-      { error: verifyResult.error },
-      verifyResult.error === "Missing token" ? 400 : 403,
-    );
-  }
-
-  params.delete("token");
-  c.env.request.querystring = params.toString();
-  c.env.request.uri = ["/", verifyResult.key].join("");
-
-  const s3Host = c.env.request.origin?.s3?.domainName;
-  if (!s3Host) {
-    return c.json({ error: "Missing s3 host" }, 500);
-  }
-
-  c.env.request.headers["host"] = [{ key: "Host", value: s3Host }];
   return c.env.callback(null, c.env.request);
 });
 
