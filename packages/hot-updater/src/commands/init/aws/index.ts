@@ -246,7 +246,6 @@ export const createOrGetKeyGroup = async (
 
   if (existingKeyGroup) {
     // If a key group starting with "HotUpdaterKeyGroup" exists, return its ID
-    console.log("existingKeyGroup", existingKeyGroup);
     return {
       publicKeyId: existingKeyGroup.KeyGroup?.KeyGroupConfig?.Items[0],
       keyGroupId: existingKeyGroup.KeyGroup?.Id,
