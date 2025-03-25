@@ -197,7 +197,7 @@ export const createOrGetCloudFrontKeyPair = async (
       return keyPair;
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes("ParameterNotFound")) {
+    if (error instanceof SDK.SSM.ParameterNotFound) {
       const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
         modulusLength: 2048,
         publicKeyEncoding: {
