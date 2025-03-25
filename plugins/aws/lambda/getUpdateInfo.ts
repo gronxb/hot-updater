@@ -25,12 +25,11 @@ const getCdnJson = async <T>({
     const url = new URL(baseUrl);
     url.pathname = `/${key}`;
 
-    // CloudFront 서명된 URL 생성
     const signedUrl = getSignedUrl({
       url: url.toString(),
       keyPairId: keyPairId,
       privateKey: privateKey,
-      dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(), // 60초 동안 유효
+      dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(),
     });
 
     const res = await fetch(signedUrl, {

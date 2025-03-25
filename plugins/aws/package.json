@@ -44,8 +44,7 @@
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
-    "@aws-sdk/cloudfront-signer": "^3.772.0",
-    "@aws-sdk/s3-request-presigner": "^3.750.0",
+    "@aws-sdk/cloudfront-signer": "3.772.0",
     "@hot-updater/core": "0.9.0",
     "@hot-updater/js": "0.9.0",
     "@types/aws-lambda": "^8.10.147",
@@ -61,7 +60,7 @@
     "@aws-sdk/client-iam": "3.772.0",
     "@aws-sdk/client-lambda": "3.772.0",
     "@aws-sdk/client-s3": "3.772.0",
-    "@aws-sdk/client-ssm": "^3.772.0",
+    "@aws-sdk/client-ssm": "3.772.0",
     "@aws-sdk/credential-providers": "3.772.0",
     "@aws-sdk/lib-storage": "3.772.0",
     "@hot-updater/plugin-core": "0.12.7",
