@@ -5,9 +5,16 @@ import {
   type UpdateInfo,
 } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
-import { signToken } from "@hot-updater/js";
 import { beforeEach, describe, vi } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromCdn } from "./getUpdateInfo";
+
+vi.mock("@aws-sdk/cloudfront-signer", () => {
+  return {
+    getSignedUrl: vi.fn().mockImplementation((options) => {
+      return options.url;
+    }),
+  };
+});
 
 const createGetUpdateInfo =
   (baseUrl: string) =>
@@ -30,10 +37,6 @@ const createGetUpdateInfo =
       const targetVersionsPath = `${channel}/${platform}/target-app-versions.json`;
       const targetVersionsUrl = new URL(baseUrl);
       targetVersionsUrl.pathname = `/${targetVersionsPath}`;
-      targetVersionsUrl.searchParams.set(
-        "token",
-        await signToken(targetVersionsPath, "test-jwt-secret"),
-      );
       responses[targetVersionsUrl.toString()] = targetVersions;
 
       const bundlesByVersion: Record<string, Bundle[]> = {};
@@ -47,10 +50,6 @@ const createGetUpdateInfo =
         const updatePath = `${channel}/${platform}/${targetVersion}/update.json`;
         const updateUrl = new URL(baseUrl);
         updateUrl.pathname = `/${updatePath}`;
-        updateUrl.searchParams.set(
-          "token",
-          await signToken(updatePath, "test-jwt-secret"),
-        );
         responses[updateUrl.toString()] = bundlesByVersion[targetVersion];
       }
     } else {
@@ -77,7 +76,8 @@ const createGetUpdateInfo =
       return await getUpdateInfoFromCdn(
         {
           baseUrl,
-          jwtSecret: "test-jwt-secret",
+          keyPairId: "test-key-pair-id",
+          privateKey: "test-private-key",
         },
         {
           minBundleId,

@@ -69,8 +69,7 @@ export const s3Storage =
             Bucket: bucketName,
             Key,
             Body,
-            // CloudFront JWT tokens with 1-minute expiration, so we set cache control to 1 minute
-            CacheControl: "max-age=60",
+            CacheControl: "max-age=31536000",
           },
         });
         const response = await upload.done();

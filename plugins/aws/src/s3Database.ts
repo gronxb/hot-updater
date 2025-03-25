@@ -67,7 +67,7 @@ async function uploadJsonToS3<T>(
       Key: key,
       Body,
       ContentType,
-      CacheControl: "max-age=0, no-cache, must-revalidate",
+      CacheControl: "max-age=31536000",
     },
   });
   await upload.done();
