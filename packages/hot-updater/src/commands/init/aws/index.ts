@@ -104,7 +104,6 @@ export async function createOrSelectIamRole({
   const { SDK } = await import("@hot-updater/aws/sdk");
   const iamClient = new SDK.IAM.IAM({ region, credentials });
 
-  // Set trust policy for Lambda@Edge
   const assumeRolePolicyDocument = JSON.stringify({
     Version: "2012-10-17",
     Statement: [
@@ -170,7 +169,8 @@ export async function createOrSelectIamRole({
 }
 
 /**
- * CloudFront 키 페어를 생성하거나 SSM Parameter Store에서 재사용합니다.
+ * SSM에서 key pair를 가져오거나 생성합니다.
+ * SSM에 저장된 key pair를 기준으로 CloudFront public key 및 key group을 생성하여 일관성을 보장합니다.
  */
 export const createOrGetCloudFrontKeyPair = async (
   name: string,
@@ -229,6 +229,68 @@ export const createOrGetCloudFrontKeyPair = async (
 };
 
 /**
+ * Creates a new CloudFront key group or verifies that an existing key group's public key matches the SSM key pair.
+ * If there's a mismatch, recreates the key group to ensure consistency.
+ */
+export const createOrGetKeyGroup = async (
+  cloudfrontClient: any,
+  keyPair: { publicKey: string },
+): Promise<{
+  publicKeyId: string;
+  keyGroupId: string;
+}> => {
+  const listKgResp = await cloudfrontClient.listKeyGroups({});
+  const existingKeyGroup = listKgResp.KeyGroupList?.Items?.find((kg: any) => {
+    return kg.KeyGroup?.KeyGroupConfig?.Name?.startsWith("HotUpdaterKeyGroup");
+  });
+
+  if (existingKeyGroup) {
+    // If a key group starting with "HotUpdaterKeyGroup" exists, return its ID
+    console.log("existingKeyGroup", existingKeyGroup);
+    return {
+      publicKeyId: existingKeyGroup.KeyGroup?.KeyGroupConfig?.Items[0],
+      keyGroupId: existingKeyGroup.KeyGroup?.Id,
+    };
+  }
+  // Create a new key group if none exists or if there's a mismatch
+  const randomId = crypto.randomBytes(16).toString("hex");
+  const callerReferencePub = `HotUpdaterPublicKey-${randomId}`;
+  const publicKeyConfig = {
+    CallerReference: callerReferencePub,
+    Name: callerReferencePub,
+    EncodedKey: keyPair.publicKey,
+    Comment: "HotUpdater public key for signed URL",
+  };
+  const createPubKeyResp = await cloudfrontClient.createPublicKey({
+    PublicKeyConfig: publicKeyConfig,
+  });
+  const publicKeyId = createPubKeyResp.PublicKey?.Id;
+  if (!publicKeyId) {
+    throw new Error("Failed to create CloudFront public key");
+  }
+
+  const callerReferenceKg = `HotUpdaterKeyGroup-${randomId}`;
+  const keyGroupConfig = {
+    CallerReference: callerReferenceKg,
+    Name: callerReferenceKg,
+    Comment: "HotUpdater key group for signed URL",
+    Items: [publicKeyId],
+  };
+  const createKgResp = await cloudfrontClient.createKeyGroup({
+    KeyGroupConfig: keyGroupConfig,
+  });
+  const keyGroupId = createKgResp.KeyGroup?.Id;
+  if (!keyGroupId) {
+    throw new Error("Failed to create Key Group");
+  }
+  p.log.success(`Created new Key Group: ${keyGroupConfig.Name}`);
+  return {
+    publicKeyId,
+    keyGroupId,
+  };
+};
+
+/**
  * Deploy Lambda@Edge function
  * - Zip the local ./lambda folder, create a function in us-east-1 region,
  * - Publish a new version of the function
@@ -238,21 +300,13 @@ export const deployLambdaEdge = async ({
   credentials,
   lambdaRoleArn,
 }: {
-  keyPair: {
-    keyPairId: string;
-    publicKey: string;
-    privateKey: string;
-  };
-  credentials: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
+  keyPair: { publicKey: string; privateKey: string };
+  credentials: { accessKeyId: string; secretAccessKey: string };
   lambdaRoleArn: string;
 }) => {
   const { SDK } = await import("@hot-updater/aws/sdk");
   const cwd = getCwd();
 
-  // 1. Lambda function name
   const lambdaName = await p.text({
     message: "Enter the name of the Lambda@Edge function",
     defaultValue: "hot-updater-edge",
@@ -260,16 +314,14 @@ export const deployLambdaEdge = async ({
   });
   if (p.isCancel(lambdaName)) process.exit(1);
 
-  // 2. Create zip file
   const lambdaPath = require.resolve("@hot-updater/aws/lambda");
   const lambdaDir = path.dirname(lambdaPath);
-
   const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
 
   const code = await transformEnv(
     await fs.readFile(path.join(tmpDir, "index.cjs"), "utf-8"),
     {
-      CLOUDFRONT_KEY_PAIR_ID: keyPair.keyPairId,
+      CLOUDFRONT_KEY_PAIR_ID: keyPair.publicKey,
       CLOUDFRONT_PRIVATE_KEY_BASE64: Buffer.from(keyPair.privateKey).toString(
         "base64",
       ),
@@ -277,31 +329,24 @@ export const deployLambdaEdge = async ({
   );
   await fs.writeFile(path.join(tmpDir, "index.cjs"), code);
 
-  // 3. Lambda client
   const lambdaClient = new SDK.Lambda.Lambda({
     region: "us-east-1",
     credentials,
   });
 
-  const functionArn: {
-    arn: string | null;
-    version: string | null;
-  } = {
+  const functionArn: { arn: string | null; version: string | null } = {
     arn: null,
     version: null,
   };
 
   const zipFilePath = path.join(cwd, `${lambdaName}.zip`);
-  // 4. Show step-by-step indicators using p.tasks
+
   await p.tasks([
     {
       title: "Compressing Lambda code to zip",
       task: async () => {
         try {
-          await createZip({
-            outfile: zipFilePath,
-            targetDir: tmpDir,
-          });
+          await createZip({ outfile: zipFilePath, targetDir: tmpDir });
           return "Compressed Lambda code to zip";
         } catch (error) {
           throw new Error(
@@ -314,7 +359,6 @@ export const deployLambdaEdge = async ({
       title: "Creating or Updating Lambda function",
       task: async (message) => {
         try {
-          // Create new function
           const createResp = await lambdaClient.createFunction({
             FunctionName: lambdaName,
             Runtime: "nodejs22.x",
@@ -330,7 +374,6 @@ export const deployLambdaEdge = async ({
           functionArn.version = createResp.Version || "1";
           return `Created Lambda "${lambdaName}" function`;
         } catch (error) {
-          // Update if function already exists
           if (
             error instanceof Error &&
             error.name === "ResourceConflictException"
@@ -338,14 +381,11 @@ export const deployLambdaEdge = async ({
             message(
               `Function "${lambdaName}" already exists. Updating function code...`,
             );
-
-            // 코드 업데이트
             const updateResp = await lambdaClient.updateFunctionCode({
               FunctionName: lambdaName,
               ZipFile: await fs.readFile(zipFilePath),
               Publish: true,
             });
-            // Wait for Lambda update to complete
             message("Waiting for Lambda function update to complete...");
             let isUpdateComplete = false;
             while (!isUpdateComplete) {
@@ -360,7 +400,6 @@ export const deployLambdaEdge = async ({
                     `Lambda update failed: ${status.LastUpdateStatusReason}`,
                   );
                 } else {
-                  // Continue waiting
                   await new Promise((resolve) => setTimeout(resolve, 2000));
                 }
               } catch (err) {
@@ -368,14 +407,12 @@ export const deployLambdaEdge = async ({
                   err instanceof Error &&
                   err.name === "ResourceConflictException"
                 ) {
-                  // Continue waiting if update is in progress
                   await new Promise((resolve) => setTimeout(resolve, 2000));
                 } else {
                   throw err;
                 }
               }
             }
-
             try {
               await lambdaClient.updateFunctionConfiguration({
                 FunctionName: lambdaName,
@@ -392,7 +429,6 @@ export const deployLambdaEdge = async ({
             functionArn.arn = updateResp.FunctionArn || null;
             functionArn.version = updateResp.Version || "1";
           } else {
-            // Pass through other errors
             if (error instanceof Error) {
               p.log.error(
                 `Failed to create or update Lambda function: ${error.message}`,
@@ -410,11 +446,7 @@ export const deployLambdaEdge = async ({
     {
       title: "Waiting for Lambda function to become Active",
       task: async () => {
-        // Lambda ARN should be "unqualified ARN" + :version
-        // ex) "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:2"
         const qualifiedName = `${lambdaName}:${functionArn.version}`;
-
-        // Check repeatedly until state becomes Active
         while (true) {
           const resp = await lambdaClient.getFunctionConfiguration({
             FunctionName: qualifiedName,
@@ -422,15 +454,11 @@ export const deployLambdaEdge = async ({
           if (resp.State === "Active") {
             return "Lambda function is now active";
           }
-
           if (resp.State === "Failed") {
-            // Stop deployment if Lambda is in Failed state
             throw new Error(
               `Lambda function is in a Failed state. Reason: ${resp.StateReason}`,
             );
           }
-
-          // Wait before retrying
           await new Promise((r) => setTimeout(r, 2000));
         }
       },
@@ -441,33 +469,37 @@ export const deployLambdaEdge = async ({
     throw new Error("Failed to create or update Lambda function");
   }
 
-  // 5. Set Qualified ARN for Lambda@Edge
   if (!functionArn.arn.endsWith(`:${functionArn.version}`)) {
     functionArn.arn = `${functionArn.arn}:${functionArn.version}`;
   }
   p.log.info(`Using Lambda ARN: ${functionArn.arn}`);
-
   return { lambdaName, functionArn: functionArn.arn };
 };
 
-export const createCloudFrontDistribution = async (
+export const createCloudFrontDistribution = async ({
+  keyGroupId,
+  credentials,
+  region,
+  bucketName,
+  functionArn,
+}: {
+  keyGroupId: string;
   credentials:
     | {
         accessKeyId: string;
         secretAccessKey: string;
       }
-    | undefined,
-  region: string,
-  bucketName: string,
-  functionArn: string,
-): Promise<{
+    | undefined;
+  region: string;
+  bucketName: string;
+  functionArn: string;
+}): Promise<{
   distributionId: string;
   distributionDomain: string;
 }> => {
   const { SDK } = await import("@hot-updater/aws/sdk");
   const Cloudfront = SDK.CloudFront.CloudFront;
   const cloudfrontClient = new Cloudfront({ region, credentials });
-
   let oacId: string;
   const accountId = functionArn.split(":")[4];
   if (!accountId) {
@@ -549,10 +581,10 @@ export const createCloudFrontDistribution = async (
     DefaultCacheBehavior: {
       TargetOriginId: bucketName,
       ViewerProtocolPolicy: "redirect-to-https",
-      TrustedSigners: {
+      TrustedKeyGroups: {
         Enabled: true,
         Quantity: 1,
-        Items: [accountId],
+        Items: [keyGroupId],
       },
       LambdaFunctionAssociations: {
         Quantity: 1,
@@ -681,10 +713,10 @@ export const createCloudFrontDistribution = async (
     DefaultCacheBehavior: {
       TargetOriginId: bucketName,
       ViewerProtocolPolicy: "redirect-to-https",
-      TrustedSigners: {
+      TrustedKeyGroups: {
         Enabled: true,
         Quantity: 1,
-        Items: [accountId],
+        Items: [keyGroupId],
       },
       LambdaFunctionAssociations: {
         Quantity: 1,
@@ -792,7 +824,6 @@ export const createCloudFrontDistribution = async (
       },
     ]);
 
-    // S3 버킷 정책 업데이트
     await updateS3BucketPolicy({
       credentials,
       region,
@@ -812,9 +843,6 @@ export const createCloudFrontDistribution = async (
   }
 };
 
-/**
- * S3 버킷 정책을 업데이트하여 CloudFront 배포에서만 접근 가능하도록 설정
- */
 export const updateS3BucketPolicy = async ({
   credentials,
   region,
@@ -940,7 +968,9 @@ export const initAwsS3LambdaEdge = async () => {
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
   if (!isAwsCliInstalled) {
     p.log.error(
-      `AWS CLI is not installed. Please visit ${link("https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")} for installation instructions`,
+      `AWS CLI is not installed. Please visit ${link(
+        "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html",
+      )} for installation instructions`,
     );
     process.exit(1);
   }
@@ -1025,7 +1055,6 @@ export const initAwsS3LambdaEdge = async () => {
             if (!value) {
               return "Secret Access Key is required";
             }
-
             return;
           },
         }),
@@ -1041,7 +1070,6 @@ export const initAwsS3LambdaEdge = async () => {
 
   // Create S3 client
   const S3 = SDK.S3.S3;
-
   const s3Client = new S3({ region: "us-east-1", credentials });
   const availableBuckets: { name: string; region: string }[] = [];
   try {
@@ -1119,7 +1147,6 @@ export const initAwsS3LambdaEdge = async () => {
     bucketName = name;
 
     try {
-      // Enter region for AWS S3 bucket creation
       const $region = await p.select({
         message: "Enter AWS region for the S3 bucket",
         options: Object.values(SDK.S3.BucketLocationConstraint).map((r) => ({
@@ -1160,21 +1187,32 @@ export const initAwsS3LambdaEdge = async () => {
     credentials,
   );
 
-  // Deploy Lambda@Edge function (us-east-1)
-  const { functionArn } = await deployLambdaEdge({
+  const Cloudfront = SDK.CloudFront.CloudFront;
+  const cloudfrontClient = new Cloudfront({ region, credentials });
+  const { keyGroupId, publicKeyId } = await createOrGetKeyGroup(
+    cloudfrontClient,
     keyPair,
+  );
+
+  // Deploy Lambda@Edge function (us-east-1) with keyGroupId
+  const { functionArn } = await deployLambdaEdge({
+    keyPair: {
+      publicKey: publicKeyId,
+      privateKey: keyPair.privateKey,
+    },
     credentials,
     lambdaRoleArn,
   });
 
   // Create CloudFront distribution
   const { distributionDomain, distributionId } =
-    await createCloudFrontDistribution(
+    await createCloudFrontDistribution({
+      keyGroupId,
       credentials,
       region,
       bucketName,
       functionArn,
-    );
+    });
 
   // Create config file and environment variable file
   if (mode === "sso") {
