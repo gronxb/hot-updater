@@ -238,16 +238,16 @@ export const initFirebase = async () => {
           const parsedData = JSON.parse(stdout);
           const functionsData = parsedData.result || [];
 
-          const hotUpdaterService = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "hotUpdaterService",
+          const hotUpdater = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "hot-updater",
           );
 
-          if (hotUpdaterService?.region) {
-            currentRegion = hotUpdaterService.region;
+          if (hotUpdater?.region) {
+            currentRegion = hotUpdater.region;
             isFunctionsExist = true;
           }
 
-          if (hotUpdaterService) {
+          if (hotUpdater) {
             console.log(`Found existing functions in region: ${currentRegion}`);
           }
         } catch (error) {
@@ -410,11 +410,11 @@ export const initFirebase = async () => {
           const parsedData = JSON.parse(stdout);
           const functionsData = parsedData.result || [];
 
-          const hotUpdaterService = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "hotUpdaterService",
+          const hotUpdater = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "hot-updater",
           );
 
-          functionUrl = `${hotUpdaterService?.uri}/check-update` || "";
+          functionUrl = `${hotUpdater?.uri}/api/check-update` || "";
         } catch (error) {
           console.error("Error getting function URL:", error);
         }

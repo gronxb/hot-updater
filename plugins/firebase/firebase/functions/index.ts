@@ -55,14 +55,14 @@ async function getSignedUrlWithCorrectFormat(params: {
 
   // biome-ignore lint/complexity/useOptionalChain: <explanation>
   if (result && result.fileUrl) {
-    const functionName = "hotUpdaterService";
+    const functionName = "hot-updater";
 
     const urlParts = result.fileUrl.split("/");
     if (urlParts.length >= 4) {
       const domain = urlParts.slice(0, 3).join("/");
       const pathWithQuery = urlParts.slice(3).join("/");
 
-      result.fileUrl = `${domain}/${functionName}/bundle-download/${pathWithQuery}`;
+      result.fileUrl = `${domain}/${functionName}/${pathWithQuery}`;
     }
   }
 
@@ -74,7 +74,7 @@ const app = new Hono();
 app.use("*", async (c, next) => {
   console.log(`Original path: ${c.req.path}`);
 
-  const path = c.req.path.replace(/^\/hotUpdaterService/, "");
+  const path = c.req.path.replace(/^\/hot-updater/, "");
 
   if (path === "") {
     c.req.path = "/";
@@ -111,7 +111,7 @@ app.get("", (c) => {
   return c.json({ message: "Hot Updater Service is running" });
 });
 
-app.get("/check-update", async (c) => {
+app.get("/api/check-update", async (c) => {
   try {
     const platformHeader = c.req.header("x-app-platform");
     const appVersion = c.req.header("x-app-version");
@@ -177,11 +177,10 @@ app.get("/check-update", async (c) => {
 
     const hostname = c.req.raw.headers.get("host");
     const hostUrl = getHostUrl(hostname);
-    const reqUrl = `${hostUrl}/hotUpdaterService/bundle-download`;
 
     const appUpdateInfo = await getSignedUrlWithCorrectFormat({
       data: responseData,
-      reqUrl,
+      reqUrl: hostUrl,
       jwtSecret: HotUpdater.JWT_SECRET,
     });
 
@@ -192,10 +191,12 @@ app.get("/check-update", async (c) => {
   }
 });
 
-app.get("/bundle-download/*", async (c) => {
+app.get("/*", async (c) => {
   try {
-    const path = c.req.path.replace("/bundle-download", "");
+    const path = c.req.path.substring(1);
     const token = c.req.query("token");
+
+    console.log(`File download request: ${path}, token: ${token}`);
 
     const result = await verifyJwtSignedUrl({
       path,
@@ -208,6 +209,7 @@ app.get("/bundle-download/*", async (c) => {
 
           const [exists] = await file.exists();
           if (!exists) {
+            console.error(`File not found: ${key}`);
             return null;
           }
 
@@ -250,7 +252,7 @@ app.get("/bundle-download/*", async (c) => {
   }
 });
 
-export const hotUpdaterService = functions
+const hotUpdaterFunction = functions
   .region(HotUpdater.REGION)
   .https.onRequest(async (req: functions.Request, res: functions.Response) => {
     const host = req.hostname || "localhost";
@@ -284,3 +286,7 @@ export const hotUpdaterService = functions
         .json({ error: "Internal Server Error", details: errorMessage });
     }
   });
+
+export const hot = {
+  updater: hotUpdaterFunction,
+};
