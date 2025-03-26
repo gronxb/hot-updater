@@ -14,6 +14,13 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   status: "ROLLBACK",
 };
 
+const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
+  id: bundle.id,
+  message: bundle.message,
+  shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
+  status,
+});
+
 export const getUpdateInfo = async (
   bundles: Bundle[],
   {

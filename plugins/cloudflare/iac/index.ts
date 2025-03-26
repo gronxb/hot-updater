@@ -1,13 +1,19 @@
 import crypto from "crypto";
 import path from "path";
-import { link } from "@/components/banner";
-import { makeEnv } from "@/utils/makeEnv";
-import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
-import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
+import {
+  copyDirToTmp,
+  getCwd,
+  link,
+  makeEnv,
+  transformTemplate,
+} from "@hot-updater/plugin-core";
+import { Cloudflare } from "cloudflare";
 import dayjs from "dayjs";
 import { execa } from "execa";
 import fs from "fs/promises";
+import { createWrangler } from "../src/utils/createWrangler";
+import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
@@ -58,8 +64,6 @@ const deployWorker = async (
   const { tmpDir, removeTmpDir } = await copyDirToTmp(wranglerTemplateDir);
 
   try {
-    const { createWrangler } = await import("@hot-updater/cloudflare/utils");
-
     const wranglerConfig = JSON.parse(
       await fs.readFile(path.join(tmpDir, "wrangler.json"), "utf-8"),
     );
@@ -116,12 +120,8 @@ const deployWorker = async (
   }
 };
 
-export const initCloudflareD1R2Worker = async () => {
+export const runInit = async () => {
   const cwd = getCwd();
-
-  const { Cloudflare, getWranglerLoginAuthToken } = await import(
-    "@hot-updater/cloudflare/utils"
-  );
 
   let auth = getWranglerLoginAuthToken();
 

@@ -62,7 +62,7 @@ export function wrap<P>(
   const { reloadOnForceUpdate = true, ...restConfig } = config;
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
-      const { progress } = useHotUpdaterStore();
+      const progress = useHotUpdaterStore((state) => state.progress);
 
       const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =

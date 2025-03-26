@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/supabase",
   "type": "module",
-  "version": "0.12.7",
+  "version": "0.13.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -14,6 +14,11 @@
     "./edge-functions": {
       "import": "./supabase/index.ts",
       "require": "./supabase/index.ts"
+    },
+    "./iac": {
+      "types": "./dist/iac/index.d.ts",
+      "import": "./dist/iac/index.js",
+      "require": "./dist/iac/index.cjs"
     }
   },
   "license": "MIT",
@@ -34,19 +39,30 @@
     "package.json"
   ],
   "scripts": {
-    "build": "rslib build",
+    "build": "tsup",
     "test:type": "tsc --noEmit",
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "0.12.7",
-    "@hot-updater/plugin-core": "0.12.7",
+    "@hot-updater/core": "0.13.0",
+    "@hot-updater/plugin-core": "0.13.0",
     "@supabase/supabase-js": "^2.47.10"
   },
   "devDependencies": {
-    "picocolors": "^1.0.0",
-    "@hot-updater/postgres": "0.12.7",
+    "@hot-updater/postgres": "0.13.0",
     "dayjs": "^1.11.13",
-    "mime": "^4.0.4"
+    "es-toolkit": "^1.32.0",
+    "execa": "^9.5.2",
+    "mime": "^4.0.4",
+    "picocolors": "^1.0.0",
+    "@clack/prompts": "^0.10.0"
+  },
+  "peerDependencies": {
+    "@clack/prompts": "*"
+  },
+  "peerDependenciesMeta": {
+    "@clack/prompts": {
+      "optional": true
+    }
   }
 }

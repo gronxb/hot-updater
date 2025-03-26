@@ -2,8 +2,9 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
-    entry: ["src/index.ts", "src/utils/index.ts"],
+    entry: ["src/index.ts"],
     format: ["esm", "cjs"],
+    outDir: "dist",
     dts: true,
     banner: {
       js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
@@ -14,7 +15,7 @@ export default defineConfig([
     format: ["esm", "cjs"],
     dts: true,
     outDir: "dist/iac",
-    external: ["@hot-updater/cloudflare"],
+    external: ["@hot-updater/supabase"],
     banner: {
       js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
     },

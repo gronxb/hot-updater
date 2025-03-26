@@ -168,7 +168,6 @@ describe("Firebase Database Plugin", () => {
     expect(getApp).not.toHaveBeenCalled();
     expect(app).toBe(mockExistingApp);
   });
-
   describe("commitBundle", () => {
     it("should do nothing if no IDs are changed", async () => {
       await databasePlugin.commitBundle();

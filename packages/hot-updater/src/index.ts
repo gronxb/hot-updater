@@ -2,11 +2,10 @@
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
-import { banner, printBanner } from "@/components/banner";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
-import { getCwd, log } from "@hot-updater/plugin-core";
+import { banner, getCwd, log, printBanner } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
@@ -17,7 +16,7 @@ const program = new Command();
 
 program
   .name("hot-updater")
-  .description(banner)
+  .description(banner(version))
   .version(version as string);
 
 program.command("init").description("Initialize Hot Updater").action(init);

@@ -10,6 +10,7 @@
   "deploy",
   "console",
   "simulator-test",
+  "channel",
   {
     "type": "dir",
     "name": "hot-updater",

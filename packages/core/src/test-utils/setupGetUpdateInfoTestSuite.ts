@@ -839,4 +839,18 @@ export const setupGetUpdateInfoTestSuite = ({
 
     expect(update).toBeNull();
   });
+
+  it("returns null when there are no bundles and minBundleId equals bundleId", async () => {
+    const bundles: Bundle[] = [];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: "0195d325-767a-7000-8000-000000000000",
+      platform: "ios",
+      minBundleId: "0195d325-767a-7000-8000-000000000000",
+      channel: "production",
+    });
+
+    expect(update).toBeNull();
+  });
 };

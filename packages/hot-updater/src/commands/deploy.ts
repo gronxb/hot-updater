@@ -7,19 +7,22 @@ import isPortReachable from "is-port-reachable";
 
 import * as p from "@clack/prompts";
 
-import { createZip } from "@/utils/createZip";
-
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+import {
+  type Platform,
+  createZip,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
 import { getConsolePort } from "./console";
 
 import path from "path";
-import { printBanner } from "@/components/banner";
+import { printBanner } from "@/utils/printBanner";
 
 export interface DeployOptions {
   targetAppVersion?: string;
@@ -226,8 +229,10 @@ export const deploy = async (options: DeployOptions) => {
           message: "Console server is not running. Would you like to start it?",
           initialValue: false,
         });
-        if (p.isCancel(result) || !result) {
-          return;
+        if (!p.isCancel(result) && result) {
+          await openConsole(port, () => {
+            open(url);
+          });
         }
       } else {
         open(url);
