@@ -2,7 +2,6 @@ import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
 import { printBanner } from "@hot-updater/plugin-core";
 import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
-import { initSupabase } from "./init/supabase";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -75,7 +74,8 @@ export const init = async () => {
 
   switch (provider) {
     case "supabase": {
-      await initSupabase();
+      const supabase = await import("@hot-updater/supabase/iac");
+      await supabase.runInit();
       break;
     }
     case "cloudflare-d1-r2-worker": {
