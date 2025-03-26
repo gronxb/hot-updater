@@ -170,15 +170,6 @@ export class CloudFrontManager {
           Quantity: 1,
           Items: [options.keyGroupId],
         },
-        LambdaFunctionAssociations: {
-          Quantity: 1,
-          Items: [
-            {
-              EventType: "origin-request",
-              LambdaFunctionARN: options.functionArn,
-            },
-          ],
-        },
         ForwardedValues: { QueryString: false, Cookies: { Forward: "none" } },
         MinTTL: 0,
       },
@@ -284,15 +275,6 @@ export class CloudFrontManager {
           Enabled: true,
           Quantity: 1,
           Items: [options.keyGroupId],
-        },
-        LambdaFunctionAssociations: {
-          Quantity: 1,
-          Items: [
-            {
-              EventType: "origin-request",
-              LambdaFunctionARN: options.functionArn,
-            },
-          ],
         },
         ForwardedValues: { QueryString: true, Cookies: { Forward: "none" } },
         MinTTL: 0,
