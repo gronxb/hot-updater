@@ -23,6 +23,7 @@ Options:
   -f, --force-update                           force update the app (default: false)
   -i, --interactive                            interactive mode (default: false)
   -h, --help                                   display help for command
+  -c, --channel <channel>                      specify the release channel (default: "production")
 ```
 
 ## Usage
@@ -76,6 +77,23 @@ Run the following command:
 
 The `-f` (or `--force-update`) flag enables force update.
 
+### Release Channel
+
+The `-c` (or `--channel`) flag specifies the release channel.
+
+Run the following command:
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+    pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+    yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+  }
+} />
+
+The `-c` (or `--channel`) flag specifies the release channel. The default value is `production`.
+
+For more details about channels, refer to the [Channel Guide](/guide/channel).
 
 ## Target App Version Range Expression Table
 

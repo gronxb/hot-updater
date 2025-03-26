@@ -1,0 +1,81 @@
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
+# Channels
+
+Channels help manage updates across different environments (development, staging, production) and deliver updates to specific user groups.
+
+The concept of channels isn't limited to environments alone but also facilitates app separation. For instance, if you're managing multiple apps (e.g., app2, app3, app4), each can utilize a distinct channel.
+
+## Channel Overview
+
+- **Default Channel**: If no channel is specified, apps default to the `production` channel.
+- **Environment Management**: Channels clearly separate different environments (`dev`, `staging`, `production`) to ensure updates are applied accurately.
+- **Initial Channel Setup**: When building a native app, the initial channel is determined by the `releaseChannel` specified in the configuration file (`hot-updater.config.ts`).
+
+## Setting Up Channels
+
+### 1. Specify Channel in Configuration File
+
+It's important to set the initial channel explicitly using the `releaseChannel` property within your `hot-updater.config.ts` file:
+
+```tsx
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+export default defineConfig({
+  releaseChannel: "dev", // Set your desired release channel
+  build: ...,             // Other configurations
+  storage: ...,
+  database: ...,
+});
+```
+
+### 2. Specify Channel via Command Line
+
+Alternatively, specify the channel directly when running deployment commands:
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+    pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+    yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+  }
+} />
+
+
+Replace `<channel>` with your target channel name (e.g., `dev`, `staging`, `production`).
+
+## Retrieving Current Channel
+
+The `HotUpdater.getChannel()` function retrieves the current release channel within your app. This can help you dynamically verify the release channel and ensure your application logic aligns with the correct updates.
+
+### Example Usage
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function App() {
+  const channel = HotUpdater.getChannel();
+
+  return (
+    <View>
+      <Text>Current Channel: {channel}</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: "<your-update-server-url>",
+})(App);
+```
+
+### Behavior
+
+- If `releaseChannel` is set in `hot-updater.config.ts`, `HotUpdater.getChannel()` returns that value.
+- Defaults to `production` if no channel is explicitly set.
+- Ensures updates are applied from the correct environment.
+- After the app is built, updates can be deployed specifically using commands such as `hot-updater deploy -c production` or `hot-updater deploy -c dev`.
+- **Crucially**, set the correct channel during the initial build; subsequent updates will align with this specified channel.
+
