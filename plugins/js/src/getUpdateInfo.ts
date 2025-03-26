@@ -14,6 +14,13 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   status: "ROLLBACK",
 };
 
+const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
+  id: bundle.id,
+  message: bundle.message,
+  shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
+  status,
+});
+
 export const getUpdateInfo = async (
   bundles: Bundle[],
   {
@@ -24,68 +31,84 @@ export const getUpdateInfo = async (
     channel = "production",
   }: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
-  const filteredBundles = bundles.filter(
-    (b) =>
-      b.platform === platform &&
-      b.channel === channel &&
-      semverSatisfies(b.targetAppVersion, appVersion),
-  );
-
-  const enabledBundles = filteredBundles.filter((b) => b.enabled);
-
-  const candidateBundles = minBundleId
-    ? enabledBundles.filter((b) => b.id.localeCompare(minBundleId) >= 0)
-    : enabledBundles;
+  // Initial filtering: apply platform, channel, semver conditions, enabled status, and minBundleId condition
+  const candidateBundles: Bundle[] = [];
+  for (const b of bundles) {
+    if (
+      b.platform !== platform ||
+      b.channel !== channel ||
+      !semverSatisfies(b.targetAppVersion, appVersion) ||
+      !b.enabled ||
+      (minBundleId && b.id.localeCompare(minBundleId) < 0)
+    ) {
+      continue;
+    }
+    candidateBundles.push(b);
+  }
 
   if (candidateBundles.length === 0) {
-    if (enabledBundles.length === 0) {
-      return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-    }
-    if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
+    if (
+      bundleId === NIL_UUID ||
+      (minBundleId && bundleId.localeCompare(minBundleId) <= 0)
+    ) {
       return null;
     }
     return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
   }
 
-  const sortedCandidates = candidateBundles
-    .slice()
-    .sort((a, b) => b.id.localeCompare(a.id));
-  const latestCandidate = sortedCandidates[0];
+  // Determine the latest bundle, update candidate, rollback candidate, and current bundle in a single iteration
+  let latestCandidate: Bundle | null = null;
+  let updateCandidate: Bundle | null = null;
+  let rollbackCandidate: Bundle | null = null;
+  let currentBundle: Bundle | undefined = undefined;
 
-  const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
-    id: bundle.id,
-    message: bundle.message,
-    shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
-    status,
-  });
+  for (const b of candidateBundles) {
+    // Latest bundle (bundle with the largest ID)
+    if (!latestCandidate || b.id.localeCompare(latestCandidate.id) > 0) {
+      latestCandidate = b;
+    }
+    // Check if current bundle exists
+    if (b.id === bundleId) {
+      currentBundle = b;
+    } else if (bundleId !== NIL_UUID) {
+      // Update candidate: largest ID among those greater than the current bundle
+      if (b.id.localeCompare(bundleId) > 0) {
+        if (!updateCandidate || b.id.localeCompare(updateCandidate.id) > 0) {
+          updateCandidate = b;
+        }
+      }
+      // Rollback candidate: largest ID among those smaller than the current bundle
+      else if (b.id.localeCompare(bundleId) < 0) {
+        if (
+          !rollbackCandidate ||
+          b.id.localeCompare(rollbackCandidate.id) > 0
+        ) {
+          rollbackCandidate = b;
+        }
+      }
+    }
+  }
 
   if (bundleId === NIL_UUID) {
+    // For NIL_UUID, return an update if there's a latest candidate
     if (latestCandidate && latestCandidate.id.localeCompare(bundleId) > 0) {
       return makeResponse(latestCandidate, "UPDATE");
     }
     return null;
   }
 
-  const currentBundle = candidateBundles.find((b) => b.id === bundleId);
   if (currentBundle) {
-    if (latestCandidate.id.localeCompare(currentBundle.id) > 0) {
+    // If current bundle exists, compare with latest candidate to determine update
+    if (
+      latestCandidate &&
+      latestCandidate.id.localeCompare(currentBundle.id) > 0
+    ) {
       return makeResponse(latestCandidate, "UPDATE");
     }
     return null;
   }
 
-  let updateCandidate: Bundle | null = null;
-  let rollbackCandidate: Bundle | null = null;
-  for (const b of sortedCandidates) {
-    if (!updateCandidate && b.id.localeCompare(bundleId) > 0) {
-      updateCandidate = b;
-    }
-    if (!rollbackCandidate && b.id.localeCompare(bundleId) < 0) {
-      rollbackCandidate = b;
-    }
-    if (updateCandidate && rollbackCandidate) break;
-  }
-
+  // If current bundle doesn't exist, prioritize update candidate, then rollback candidate
   if (updateCandidate) {
     return makeResponse(updateCandidate, "UPDATE");
   }
