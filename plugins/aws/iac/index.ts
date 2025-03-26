@@ -97,7 +97,7 @@ export const runInit = async () => {
             value ? undefined : "Access Key ID is required",
         }),
       secretAccessKey: () =>
-        p.text({
+        p.password({
           message: "Enter your AWS Secret Access Key",
           validate: (value) =>
             value ? undefined : "Secret Access Key is required",
