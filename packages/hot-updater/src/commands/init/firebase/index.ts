@@ -2,12 +2,15 @@ import crypto from "crypto";
 import {} from "fs";
 import path from "path";
 import { initFirebaseUser } from "@/commands/init/firebase/select";
-import { link } from "@/components/banner";
-import { makeEnv } from "@/utils/makeEnv";
-import { transformEnv } from "@/utils/transformEnv";
-import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
-import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
+import {
+  copyDirToTmp,
+  getCwd,
+  link,
+  makeEnv,
+  transformEnv,
+  transformTemplate,
+} from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fs from "fs/promises";
 

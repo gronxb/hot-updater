@@ -70,6 +70,9 @@ export const getUpdateInfo = async (
     const bundlesSnapshot = await bundlesQuery.get();
 
     if (bundlesSnapshot.empty) {
+      if (bundleId === minBundleId) {
+        return null;
+      }
       return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
 
