@@ -1,7 +1,6 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
 import { printBanner } from "@hot-updater/plugin-core";
-import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -17,7 +16,7 @@ const PACKAGE_MAP = {
     dependencies: [],
     devDependencies: ["@hot-updater/aws"],
   },
-  "cloudflare-d1-r2-worker": {
+  cloudflare: {
     dependencies: [],
     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
   },
@@ -48,7 +47,7 @@ export const init = async () => {
     options: [
       { value: "supabase", label: "Supabase" },
       {
-        value: "cloudflare-d1-r2-worker",
+        value: "cloudflare",
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
@@ -78,8 +77,9 @@ export const init = async () => {
       await supabase.runInit();
       break;
     }
-    case "cloudflare-d1-r2-worker": {
-      await initCloudflareD1R2Worker();
+    case "cloudflare": {
+      const cloudflare = await import("@hot-updater/cloudflare/iac");
+      await cloudflare.runInit();
       break;
     }
     case "aws": {

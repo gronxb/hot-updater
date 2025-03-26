@@ -11,13 +11,13 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js",
-      "require": "./dist/utils/index.cjs"
-    },
     "./worker": {
       "default": "./worker/wrangler.json"
+    },
+    "./iac": {
+      "types": "./dist/iac/index.d.ts",
+      "import": "./dist/iac/index.js",
+      "require": "./dist/iac/index.cjs"
     }
   },
   "license": "MIT",
@@ -66,6 +66,15 @@
     "typescript": "^5.5.2",
     "vitest": "2.1.8",
     "wrangler": "^4.0.0",
-    "xdg-app-paths": "^8.3.0"
+    "xdg-app-paths": "^8.3.0",
+    "@clack/prompts": "^0.9.0"
+  },
+  "peerDependencies": {
+    "@clack/prompts": "*"
+  },
+  "peerDependenciesMeta": {
+    "@clack/prompts": {
+      "optional": true
+    }
   }
 }

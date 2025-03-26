@@ -54,6 +54,15 @@
     "es-toolkit": "^1.32.0",
     "execa": "^9.5.2",
     "mime": "^4.0.4",
-    "picocolors": "^1.0.0"
+    "picocolors": "^1.0.0",
+    "@clack/prompts": "^0.9.0"
+  },
+   "peerDependencies": {
+    "@clack/prompts": "*"
+  },
+  "peerDependenciesMeta": {
+    "@clack/prompts": {
+      "optional": true
+    }
   }
 }
