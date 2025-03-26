@@ -95,6 +95,20 @@ The `-c` (or `--channel`) flag specifies the release channel. The default value 
 
 For more details about channels, refer to the [Channel Guide](/guide/channel).
 
+### Message
+
+The `-m` (or `--message`) flag specifies the message.
+
+Run the following command:
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -m \"<message>\"",
+    pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -m \"<message>\"",
+    yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -m \"<message>\"",
+  }
+} />
+
 ## Target App Version Range Expression Table
 
 This is a range expression that specifies which app version the deployed bundle will be applied to.

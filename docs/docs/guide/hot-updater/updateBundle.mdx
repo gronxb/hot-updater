@@ -1,0 +1,42 @@
+# `HotUpdater.updateBundle()`
+
+The `updateBundle` function downloads and applies a new update bundle to your React Native application. It uses the provided bundle information obtained from `checkForUpdate`.
+
+This method is particularly useful when you need a custom update strategy without using the built-in `wrap` method.
+
+## Usage
+
+Use `updateBundle` to download and apply an available update by providing the bundle's unique identifier and the URL to the bundle file.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function applyAppUpdate(updateInfo: UpdateInfo) {
+  try {
+    await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+
+    if (updateInfo.shouldForceUpdate) {
+      HotUpdater.reload();
+    }
+
+    console.log("Update applied successfully");
+  } catch (error) {
+    console.error("Failed to apply update:", error);
+  }
+}
+```
+
+## Parameters
+
+The `updateBundle` function accepts the following parameters:
+
+| Parameter | Type      | Required | Description                             |
+|-----------|-----------|----------|-----------------------------------------|
+| `id`      | `string`  | ✅        | Unique identifier of the update bundle. |
+| `fileUrl` | `string`  | ✅        | URL from which the update bundle will be downloaded. |
+
+### Behavior
+
+- Downloads the specified bundle from the provided `fileUrl`.
+- Applies the downloaded bundle as the active bundle for the application.
+- Requires an explicit call to `HotUpdater.reload()` if you want to immediately reload the application after updating, particularly when `shouldForceUpdate` is true.
