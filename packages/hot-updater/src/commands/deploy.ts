@@ -229,12 +229,11 @@ export const deploy = async (options: DeployOptions) => {
           message: "Console server is not running. Would you like to start it?",
           initialValue: false,
         });
-        if (p.isCancel(result) || !result) {
-          return;
+        if (!p.isCancel(result) && result) {
+          await openConsole(port, () => {
+            open(url);
+          });
         }
-        await openConsole(port, () => {
-          open(url);
-        });
       } else {
         open(url);
       }
