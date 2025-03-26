@@ -7,12 +7,15 @@ import isPortReachable from "is-port-reachable";
 
 import * as p from "@clack/prompts";
 
-import { createZip } from "@/utils/createZip";
-
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+import {
+  type Platform,
+  createZip,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
