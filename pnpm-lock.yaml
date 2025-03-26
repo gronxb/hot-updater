@@ -578,8 +578,8 @@ importers:
   packages/hot-updater:
     dependencies:
       '@clack/prompts':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.10.0
+        version: 0.10.0
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -755,8 +755,8 @@ importers:
         specifier: 3.772.0
         version: 3.772.0
       '@clack/prompts':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.10.0
+        version: 0.10.0
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -804,8 +804,8 @@ importers:
         version: 4.1.0(encoding@0.1.13)
     devDependencies:
       '@clack/prompts':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.10.0
+        version: 0.10.0
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.8.0
         version: 0.8.0(@cloudflare/workers-types@4.20250317.0)(@vitest/runner@3.0.9)(@vitest/snapshot@3.0.9)(vitest@2.1.8(@types/node@22.13.0)(jsdom@25.0.1)(msw@2.7.0(@types/node@22.13.0)(typescript@5.7.2))(sass-embedded@1.83.0)(terser@5.31.0))
@@ -1055,8 +1055,8 @@ importers:
         version: 2.47.10
     devDependencies:
       '@clack/prompts':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.10.0
+        version: 0.10.0
       '@hot-updater/postgres':
         specifier: workspace:*
         version: link:../postgres
@@ -2627,11 +2627,11 @@ packages:
       react-native: '>=0.63'
       webpack: 5.x
 
-  '@clack/core@0.4.0':
-    resolution: {integrity: sha512-YJCYBsyJfNDaTbvDUVSJ3SgSuPrcujarRgkJ5NLjexDZKvaOiVVJvAQYx8lIgG0qRT8ff0fPgqyBCVivanIZ+A==}
+  '@clack/core@0.4.1':
+    resolution: {integrity: sha512-Pxhij4UXg8KSr7rPek6Zowm+5M22rbd2g1nfojHJkxp5YkFqiZ2+YLEM/XGVIzvGOcM0nqjIFxrpDwWRZYWYjA==}
 
-  '@clack/prompts@0.9.0':
-    resolution: {integrity: sha512-nGsytiExgUr4FL0pR/LeqxA28nz3E0cW7eLTSh3Iod9TGrbBt8Y7BHbV3mmkNC4G0evdYyQ3ZsbiBkk7ektArA==}
+  '@clack/prompts@0.10.0':
+    resolution: {integrity: sha512-H3rCl6CwW1NdQt9rE3n373t7o5cthPv7yUoxF2ytZvyvlJv89C5RYMJu83Hed8ODgys5vpBU0GKxIRG83jd8NQ==}
 
   '@cloudflare/kv-asset-handler@0.4.0':
     resolution: {integrity: sha512-+tv3z+SPp+gqTIcImN9o0hqE9xyfQjI1XD9pL6NuKjua9B1y7mNYv0S9cP+QEbA4ppVgGZEmKOvHX5G5Ei1CVA==}
@@ -15092,14 +15092,14 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@clack/core@0.4.0':
+  '@clack/core@0.4.1':
     dependencies:
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
-  '@clack/prompts@0.9.0':
+  '@clack/prompts@0.10.0':
     dependencies:
-      '@clack/core': 0.4.0
+      '@clack/core': 0.4.1
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
