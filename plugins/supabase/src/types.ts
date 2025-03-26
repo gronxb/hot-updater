@@ -1,4 +1,5 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
+
 export type Database = {
   public: {
     Tables: {

@@ -69,16 +69,18 @@ export const s3Storage =
             Bucket: bucketName,
             Key,
             Body,
+            CacheControl: "max-age=31536000",
           },
         });
         const response = await upload.done();
-        if (!response.Location || !response.Key) {
+        if (!response.Bucket || !response.Key) {
           throw new Error("Upload Failed");
         }
 
         hooks?.onStorageUploaded?.();
         return {
-          fileUrl: hooks?.transformFileUrl?.(response.Key) ?? response.Location,
+          bucketName: response.Bucket,
+          key: response.Key,
         };
       },
     };

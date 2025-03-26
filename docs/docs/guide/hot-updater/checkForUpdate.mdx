@@ -2,6 +2,8 @@
 
 The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server’s bundle information.
 
+This method is particularly useful when you need a custom update strategy without using the built-in `wrap` method.
+
 ## Usage
 
 Use `checkForUpdate` to verify if an update bundle is available. You need to provide the source of the update server and optionally, request headers.
@@ -24,6 +26,10 @@ async function checkForAppUpdate() {
       };
     }
 
+    await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+    if (updateInfo.shouldForceUpdate) {
+      HotUpdater.reload();
+    }
     return updateInfo;
   } catch (error) {
     console.error("Failed to check for update:", error);
@@ -31,7 +37,6 @@ async function checkForAppUpdate() {
   }
 }
 
-checkForAppUpdate();
 ```
 
 ## Parameters
@@ -54,7 +59,7 @@ export interface UpdateInfo {
   id: string;
   shouldForceUpdate: boolean;
   fileUrl: string | null;
-  fileHash: string | null;
+  message: string | null;
   status: UpdateStatus;
 }
 ```
@@ -67,7 +72,7 @@ export interface UpdateInfo {
   "shouldForceUpdate": true,
   "status": "UPDATE",
   "fileUrl": "https://example.com/bundles/update.bundle",
-  "fileHash": "abc123",
+  "message": "This is a test message",
 }
 ```
 

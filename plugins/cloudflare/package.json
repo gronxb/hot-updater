@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/cloudflare",
   "type": "module",
-  "version": "0.12.7",
+  "version": "0.13.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -11,13 +11,13 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js",
-      "require": "./dist/utils/index.cjs"
-    },
     "./worker": {
       "default": "./worker/wrangler.json"
+    },
+    "./iac": {
+      "types": "./dist/iac/index.d.ts",
+      "import": "./dist/iac/index.js",
+      "require": "./dist/iac/index.cjs"
     }
   },
   "license": "MIT",
@@ -45,9 +45,9 @@
     "dev": "wrangler dev worker/src/index.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "0.12.7",
-    "@hot-updater/js": "0.12.7",
-    "@hot-updater/plugin-core": "0.12.7",
+    "@hot-updater/core": "0.13.0",
+    "@hot-updater/js": "0.13.0",
+    "@hot-updater/plugin-core": "0.13.0",
     "cloudflare": "4.1.0"
   },
   "devDependencies": {
@@ -57,6 +57,7 @@
     "@types/semver": "^7.5.8",
     "dayjs": "^1.11.13",
     "execa": "^9.5.2",
+    "hono": "^4.6.3",
     "mime": "^4.0.4",
     "pg-minify": "^1.6.5",
     "picocolors": "^1.0.0",
@@ -65,6 +66,15 @@
     "typescript": "^5.5.2",
     "vitest": "2.1.8",
     "wrangler": "^4.0.0",
-    "xdg-app-paths": "^8.3.0"
+    "xdg-app-paths": "^8.3.0",
+    "@clack/prompts": "^0.10.0"
+  },
+  "peerDependencies": {
+    "@clack/prompts": "*"
+  },
+  "peerDependenciesMeta": {
+    "@clack/prompts": {
+      "optional": true
+    }
   }
 }

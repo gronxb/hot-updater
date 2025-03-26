@@ -1,42 +1,75 @@
-import { GetObjectCommand, type S3Client } from "@aws-sdk/client-s3";
-import type { Bundle, Platform } from "@hot-updater/core";
+import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import {
   filterCompatibleAppVersions,
   getUpdateInfo as getUpdateInfoJS,
 } from "@hot-updater/js";
 
-const getS3Json = async (s3: S3Client, bucket: string, key: string) => {
+const getCdnJson = async <T>({
+  baseUrl,
+  key,
+  keyPairId,
+  privateKey,
+}: {
+  baseUrl: string;
+  key: string;
+  keyPairId: string;
+  privateKey: string;
+}): Promise<T | null> => {
   try {
-    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    const { Body } = await s3.send(command);
-    if (!Body) {
+    const url = new URL(baseUrl);
+    url.pathname = `/${key}`;
+
+    const signedUrl = getSignedUrl({
+      url: url.toString(),
+      keyPairId: keyPairId,
+      privateKey: privateKey,
+      dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(),
+    });
+
+    const res = await fetch(signedUrl, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    if (!res.ok) {
       return null;
     }
-    const jsonString = await Body.transformToString();
-    return JSON.parse(jsonString);
+    return res.json() as T;
   } catch {
     return null;
   }
 };
 
 export const getUpdateInfo = async (
-  s3: S3Client,
-  bucketName: string,
+  {
+    baseUrl,
+    keyPairId,
+    privateKey,
+  }: {
+    baseUrl: string;
+    keyPairId: string;
+    privateKey: string;
+  },
   {
     platform,
     appVersion,
     bundleId,
-  }: {
-    platform: Platform;
-    appVersion: string;
-    bundleId: string;
-  },
-) => {
-  const targetAppVersions = await getS3Json(
-    s3,
-    bucketName,
-    `${platform}/target-app-versions.json`,
-  );
+    minBundleId = NIL_UUID,
+    channel = "production",
+  }: GetBundlesArgs,
+): Promise<UpdateInfo | null> => {
+  const targetAppVersions = await getCdnJson<string[]>({
+    baseUrl,
+    key: `${channel}/${platform}/target-app-versions.json`,
+    keyPairId,
+    privateKey,
+  });
 
   const matchingVersions = filterCompatibleAppVersions(
     targetAppVersions ?? [],
@@ -45,7 +78,12 @@ export const getUpdateInfo = async (
 
   const results = await Promise.allSettled(
     matchingVersions.map((targetAppVersion) =>
-      getS3Json(s3, bucketName, `${platform}/${targetAppVersion}/update.json`),
+      getCdnJson({
+        baseUrl,
+        key: `${channel}/${platform}/${targetAppVersion}/update.json`,
+        keyPairId,
+        privateKey,
+      }),
     ),
   );
 
@@ -59,5 +97,7 @@ export const getUpdateInfo = async (
     platform,
     bundleId,
     appVersion,
+    minBundleId,
+    channel,
   });
 };
