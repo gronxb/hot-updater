@@ -19,7 +19,7 @@ import {
 
 import { getPlatform } from "@/prompts/getPlatform";
 
-import { getConsolePort } from "./console";
+import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
 import { printBanner } from "@/utils/printBanner";

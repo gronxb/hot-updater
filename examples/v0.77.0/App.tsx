@@ -11,20 +11,7 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
-export const extractFormatDateFromUUIDv7 = (uuid: string) => {
-  const timestampHex = uuid.split("-").join("").slice(0, 12);
-  const timestamp = Number.parseInt(timestampHex, 16);
-
-  const date = new Date(timestamp);
-  const year = date.getFullYear().toString().slice(2);
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  const day = date.getDate().toString().padStart(2, "0");
-  const hours = date.getHours().toString().padStart(2, "0");
-  const minutes = date.getMinutes().toString().padStart(2, "0");
-  const seconds = date.getSeconds().toString().padStart(2, "0");
-
-  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
-};
+import { HOT_UPDATER_SUPABASE_URL } from "@env";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -121,7 +108,7 @@ function App(): React.JSX.Element {
           height: 100,
         }}
         source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
+      // source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
@@ -129,7 +116,7 @@ function App(): React.JSX.Element {
         title="HotUpdater.runUpdateProcess()"
         onPress={() =>
           HotUpdater.runUpdateProcess({
-            source: "https://checkupdate-hblmol7y2a-du.a.run.app",
+            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
           }).then((status) => {
             console.log("Update process completed", JSON.stringify(status));
           })
@@ -140,7 +127,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: "https://checkupdate-hblmol7y2a-du.a.run.app",
+  source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

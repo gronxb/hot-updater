@@ -8,13 +8,9 @@ import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { beforeEach, describe, vi } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromCdn } from "./getUpdateInfo";
 
-vi.mock("@aws-sdk/cloudfront-signer", () => {
-  return {
-    getSignedUrl: vi.fn().mockImplementation((options) => {
-      return options.url;
-    }),
-  };
-});
+vi.mock("@aws-sdk/cloudfront-signer", () => ({
+  getSignedUrl: vi.fn(({ url }) => url),
+}));
 
 const createGetUpdateInfo =
   (baseUrl: string) =>

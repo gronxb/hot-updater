@@ -1,5 +1,3 @@
-
-
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
 import { printBanner } from "@hot-updater/plugin-core";
@@ -21,10 +19,6 @@ const PACKAGE_MAP = {
   cloudflare: {
     dependencies: [],
     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
-  },
-  firebase: {
-    dependencies: [],
-    devDependencies: ["firebase-tools"],
   },
 } as const;
 
@@ -57,7 +51,6 @@ export const init = async () => {
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
-      { value: "firebase", label: "Firebase" },
     ],
   });
 

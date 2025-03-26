@@ -1,7 +1,8 @@
 import type { BucketLocationConstraint } from "@aws-sdk/client-s3";
 
-export const regionLocationMap: Record<BucketLocationConstraint, string> = {
-  EU: "Europe",
+export type AwsRegion = Exclude<BucketLocationConstraint, "EU"> | "us-east-1";
+
+export const regionLocationMap: Record<AwsRegion, string> = {
   "af-south-1": "Cape Town, South Africa",
   "ap-east-1": "Hong Kong",
   "ap-northeast-1": "Tokyo, Japan",
