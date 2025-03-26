@@ -31,13 +31,21 @@ export class CloudFrontManager {
     publicKeyId: string;
     keyGroupId: string;
   }> {
+    const publicKeyHash = crypto
+      .createHash("sha256")
+      .update(publicKey)
+      .digest("hex")
+      .slice(0, 16);
+
     const cloudfrontClient = new CloudFront({
       region: this.region,
       credentials: this.credentials,
     });
     const listKgResp = await cloudfrontClient.listKeyGroups({});
     const existingKeyGroup = listKgResp.KeyGroupList?.Items?.find((kg: any) =>
-      kg.KeyGroup?.KeyGroupConfig?.Name?.startsWith("HotUpdaterKeyGroup"),
+      kg.KeyGroup?.KeyGroupConfig?.Name?.startsWith(
+        `HotUpdaterKeyGroup-${publicKeyHash}`,
+      ),
     );
     const existingPublicKeyId =
       existingKeyGroup?.KeyGroup?.KeyGroupConfig?.Items?.[0];
@@ -48,8 +56,7 @@ export class CloudFrontManager {
         keyGroupId: existingKeyGroupId,
       };
     }
-    const randomId = crypto.randomBytes(16).toString("hex");
-    const callerReferencePub = `HotUpdaterPublicKey-${randomId}`;
+    const callerReferencePub = `HotUpdaterPublicKey-${publicKeyHash}`;
     const publicKeyConfig = {
       CallerReference: callerReferencePub,
       Name: callerReferencePub,
@@ -63,7 +70,7 @@ export class CloudFrontManager {
     if (!publicKeyId) {
       throw new Error("Failed to create CloudFront public key");
     }
-    const callerReferenceKg = `HotUpdaterKeyGroup-${randomId}`;
+    const callerReferenceKg = `HotUpdaterKeyGroup-${publicKeyHash}`;
     const keyGroupConfig = {
       CallerReference: callerReferenceKg,
       Name: callerReferenceKg,
