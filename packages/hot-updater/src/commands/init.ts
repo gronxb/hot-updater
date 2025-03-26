@@ -1,7 +1,6 @@
-import { printBanner } from "@/components/banner";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { isCancel, select } from "@clack/prompts";
-import { initAwsS3LambdaEdge } from "./init/aws";
+import { printBanner } from "@hot-updater/plugin-core";
 import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
 import { initSupabase } from "./init/supabase";
 
@@ -84,7 +83,8 @@ export const init = async () => {
       break;
     }
     case "aws": {
-      await initAwsS3LambdaEdge();
+      const aws = await import("@hot-updater/aws/iac");
+      await aws.runInit();
       break;
     }
     default:

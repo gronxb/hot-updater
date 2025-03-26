@@ -19,7 +19,7 @@ import { getPlatform } from "@/prompts/getPlatform";
 import { getConsolePort } from "./console";
 
 import path from "path";
-import { printBanner } from "@/components/banner";
+import { printBanner } from "@/utils/printBanner";
 
 export interface DeployOptions {
   targetAppVersion?: string;

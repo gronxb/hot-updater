@@ -1,10 +1,13 @@
 import crypto from "crypto";
 import path from "path";
-import { link } from "@/components/banner";
-import { makeEnv } from "@/utils/makeEnv";
-import { transformTemplate } from "@/utils/transformTemplate";
 import * as p from "@clack/prompts";
-import { copyDirToTmp, getCwd } from "@hot-updater/plugin-core";
+import {
+  copyDirToTmp,
+  getCwd,
+  link,
+  makeEnv,
+  transformTemplate,
+} from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { execa } from "execa";
 import fs from "fs/promises";

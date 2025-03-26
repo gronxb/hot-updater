@@ -607,36 +607,33 @@ importers:
       cosmiconfig-typescript-loader:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.9.0)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
-      typescript:
-        specifier: 5.8.2
-        version: 5.8.2
     devDependencies:
       '@babel/core':
-        specifier: ^7.26.0
+        specifier: 7.26.0
         version: 7.26.0
       '@babel/generator':
-        specifier: ^7.26.9
+        specifier: 7.26.9
         version: 7.26.9
       '@babel/parser':
-        specifier: ^7.26.9
+        specifier: 7.26.9
         version: 7.26.9
       '@babel/traverse':
-        specifier: ^7.25.9
+        specifier: 7.25.9
         version: 7.25.9
       '@babel/types':
-        specifier: ^7.26.0
+        specifier: 7.26.0
         version: 7.26.0
       '@hono/node-server':
         specifier: ^1.13.4
         version: 1.13.4(hono@4.6.3)
       '@types/babel__core':
-        specifier: ^7.20.5
+        specifier: 7.20.5
         version: 7.20.5
       '@types/babel__generator':
-        specifier: ^7.6.8
+        specifier: 7.6.8
         version: 7.6.8
       '@types/babel__traverse':
-        specifier: ^7.20.6
+        specifier: 7.20.6
         version: 7.20.6
       '@types/connect':
         specifier: ^3.4.38
@@ -775,6 +772,9 @@ importers:
       es-toolkit:
         specifier: ^1.32.0
         version: 1.32.0
+      execa:
+        specifier: ^9.5.2
+        version: 9.5.2
       hono:
         specifier: ^4.6.3
         version: 4.6.3
@@ -930,19 +930,52 @@ importers:
       cosmiconfig-typescript-loader:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.7.5)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
-      workspace-tools:
-        specifier: ^0.36.4
-        version: 0.36.4
     devDependencies:
+      '@babel/core':
+        specifier: 7.26.0
+        version: 7.26.0
+      '@babel/generator':
+        specifier: 7.26.9
+        version: 7.26.9
+      '@babel/parser':
+        specifier: 7.26.9
+        version: 7.26.9
+      '@babel/traverse':
+        specifier: 7.25.9
+        version: 7.25.9
+      '@babel/types':
+        specifier: 7.26.0
+        version: 7.26.0
+      '@types/babel__core':
+        specifier: 7.20.5
+        version: 7.20.5
+      '@types/babel__generator':
+        specifier: 7.6.8
+        version: 7.6.8
+      '@types/babel__traverse':
+        specifier: 7.20.6
+        version: 7.20.6
       '@types/node':
         specifier: ^22.7.5
         version: 22.7.5
+      boxen:
+        specifier: ^8.0.1
+        version: 8.0.1
       es-toolkit:
         specifier: ^1.32.0
         version: 1.32.0
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       picocolors:
         specifier: ^1.0.0
         version: 1.0.0
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+      workspace-tools:
+        specifier: ^0.36.4
+        version: 0.36.4
 
   plugins/postgres:
     dependencies:
@@ -1310,10 +1343,6 @@ packages:
     peerDependencies:
       '@babel/core': ^7.11.0
       eslint: ^7.5.0 || ^8.0.0 || ^9.0.0
-
-  '@babel/generator@7.26.2':
-    resolution: {integrity: sha512-zevQbhbau95nkoxSq3f/DC/SC+EEOUZd3DYqfSkMhY2/wfSeaHV1Ew4vk8e+x8lja31IbyuUa2uQ3JONqKbysw==}
-    engines: {node: '>=6.9.0'}
 
   '@babel/generator@7.26.9':
     resolution: {integrity: sha512-kEWdzjOAUMW4hAyrzJ0ZaTOu9OmpyDIQicIh0zg0EEcEkYXZb2TjtBhnHi2ViX7PKwZqF4xwqfAm299/QMP3lg==}
@@ -6670,10 +6699,6 @@ packages:
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
     engines: {node: '>=10'}
-
-  chalk@5.3.0:
-    resolution: {integrity: sha512-dLitG79d+GV1Nb/VYcCDFivJeK1hiukt9QjRNVOsUtTy1rR1YJsmpGGTZ3qJos+uw7WmWF4wUwBd9jxjocFC2w==}
-    engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
 
   chalk@5.4.1:
     resolution: {integrity: sha512-zgVZuo2WcZgfUEmsn6eO3kINexW8RAE4maiQ8QNs8CtpPCSyMiYsULR3HQYkm3w8FIA3SberyMJMSldGsW+U3w==}
@@ -13430,16 +13455,16 @@ snapshots:
     dependencies:
       '@ampproject/remapping': 2.2.1
       '@babel/code-frame': 7.26.2
-      '@babel/generator': 7.26.2
+      '@babel/generator': 7.26.9
       '@babel/helper-compilation-targets': 7.25.9
       '@babel/helper-module-transforms': 7.26.0(@babel/core@7.26.0)
       '@babel/helpers': 7.26.0
-      '@babel/parser': 7.26.2
+      '@babel/parser': 7.26.9
       '@babel/template': 7.25.9
       '@babel/traverse': 7.25.9
       '@babel/types': 7.26.0
       convert-source-map: 2.0.0
-      debug: 4.3.7
+      debug: 4.4.0
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -13461,14 +13486,6 @@ snapshots:
       eslint: 8.57.0
       eslint-visitor-keys: 2.1.0
       semver: 6.3.1
-
-  '@babel/generator@7.26.2':
-    dependencies:
-      '@babel/parser': 7.26.9
-      '@babel/types': 7.26.0
-      '@jridgewell/gen-mapping': 0.3.5
-      '@jridgewell/trace-mapping': 0.3.25
-      jsesc: 3.0.2
 
   '@babel/generator@7.26.9':
     dependencies:
@@ -14929,7 +14946,7 @@ snapshots:
       '@babel/parser': 7.26.9
       '@babel/template': 7.25.9
       '@babel/types': 7.26.0
-      debug: 4.3.7
+      debug: 4.4.0
       globals: 11.12.0
     transitivePeerDependencies:
       - supports-color
@@ -15389,7 +15406,7 @@ snapshots:
   '@eslint/eslintrc@2.1.4':
     dependencies:
       ajv: 6.12.6
-      debug: 4.3.7
+      debug: 4.4.0
       espree: 9.6.1
       globals: 13.24.0
       ignore: 5.3.2
@@ -15805,7 +15822,7 @@ snapshots:
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
       '@humanwhocodes/object-schema': 2.0.3
-      debug: 4.3.7
+      debug: 4.4.0
       minimatch: 3.1.2
     transitivePeerDependencies:
       - supports-color
@@ -19568,7 +19585,7 @@ snapshots:
       '@typescript-eslint/scope-manager': 5.62.0
       '@typescript-eslint/type-utils': 5.62.0(eslint@8.57.0)(typescript@4.8.4)
       '@typescript-eslint/utils': 5.62.0(eslint@8.57.0)(typescript@4.8.4)
-      debug: 4.3.7
+      debug: 4.4.0
       eslint: 8.57.0
       graphemer: 1.4.0
       ignore: 5.3.2
@@ -19623,7 +19640,7 @@ snapshots:
       '@typescript-eslint/scope-manager': 5.62.0
       '@typescript-eslint/types': 5.62.0
       '@typescript-eslint/typescript-estree': 5.62.0(typescript@4.8.4)
-      debug: 4.3.7
+      debug: 4.4.0
       eslint: 8.57.0
     optionalDependencies:
       typescript: 4.8.4
@@ -19649,7 +19666,7 @@ snapshots:
       '@typescript-eslint/types': 7.18.0
       '@typescript-eslint/typescript-estree': 7.18.0(typescript@5.0.4)
       '@typescript-eslint/visitor-keys': 7.18.0
-      debug: 4.3.7
+      debug: 4.4.0
       eslint: 8.57.0
     optionalDependencies:
       typescript: 5.0.4
@@ -20661,10 +20678,10 @@ snapshots:
     dependencies:
       ansi-align: 3.0.1
       camelcase: 8.0.0
-      chalk: 5.3.0
+      chalk: 5.4.1
       cli-boxes: 3.0.0
       string-width: 7.2.0
-      type-fest: 4.35.0
+      type-fest: 4.37.0
       widest-line: 5.0.0
       wrap-ansi: 9.0.0
 
@@ -20828,8 +20845,6 @@ snapshots:
     dependencies:
       ansi-styles: 4.3.0
       supports-color: 7.2.0
-
-  chalk@5.3.0: {}
 
   chalk@5.4.1: {}
 
@@ -25956,7 +25971,7 @@ snapshots:
     dependencies:
       '@babel/code-frame': 7.26.2
       index-to-position: 0.1.2
-      type-fest: 4.35.0
+      type-fest: 4.37.0
 
   parse-ms@4.0.0: {}
 
@@ -26805,7 +26820,7 @@ snapshots:
       '@types/normalize-package-data': 2.4.4
       normalize-package-data: 6.0.2
       parse-json: 8.1.0
-      type-fest: 4.35.0
+      type-fest: 4.37.0
       unicorn-magic: 0.1.0
 
   read-yaml-file@2.1.0:
@@ -28510,7 +28525,7 @@ snapshots:
   vite-node@2.1.8(@types/node@22.13.0)(sass-embedded@1.83.0)(terser@5.31.0):
     dependencies:
       cac: 6.7.14
-      debug: 4.3.7
+      debug: 4.4.0
       es-module-lexer: 1.6.0
       pathe: 1.1.2
       vite: 5.4.8(@types/node@22.13.0)(sass-embedded@1.83.0)(terser@5.31.0)
@@ -28528,7 +28543,7 @@ snapshots:
   vite-node@2.1.8(@types/node@22.13.5)(sass-embedded@1.83.0)(terser@5.31.0):
     dependencies:
       cac: 6.7.14
-      debug: 4.3.7
+      debug: 4.4.0
       es-module-lexer: 1.6.0
       pathe: 1.1.2
       vite: 5.4.8(@types/node@22.13.5)(sass-embedded@1.83.0)(terser@5.31.0)

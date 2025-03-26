@@ -1,12 +1,14 @@
 import path from "path";
 import { selectBucket, selectProject } from "@/commands/supabase/select";
 
-import { link } from "@/components/banner";
-import { makeEnv } from "@/utils/makeEnv";
-import { transformTemplate } from "@/utils/transformTemplate";
-import { transformTsEnv } from "@/utils/transformTsEnv";
 import * as p from "@clack/prompts";
-import { copyDirToTmp } from "@hot-updater/plugin-core";
+import {
+  copyDirToTmp,
+  link,
+  makeEnv,
+  transformTemplate,
+  transformTsEnv,
+} from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 

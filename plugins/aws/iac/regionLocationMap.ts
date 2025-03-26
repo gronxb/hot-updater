@@ -1,7 +1,8 @@
-import type { BucketLocationConstraint } from "@hot-updater/aws/sdk";
+import type { BucketLocationConstraint } from "@aws-sdk/client-s3";
 
-export const regionLocationMap: Record<BucketLocationConstraint, string> = {
-  EU: "Europe",
+export type AwsRegion = Exclude<BucketLocationConstraint, "EU"> | "us-east-1";
+
+export const regionLocationMap: Record<AwsRegion, string> = {
   "af-south-1": "Cape Town, South Africa",
   "ap-east-1": "Hong Kong",
   "ap-northeast-1": "Tokyo, Japan",
@@ -28,6 +29,7 @@ export const regionLocationMap: Record<BucketLocationConstraint, string> = {
   "me-central-1": "UAE",
   "me-south-1": "Bahrain",
   "sa-east-1": "São Paulo, Brazil",
+  "us-east-1": "Virginia, USA",
   "us-east-2": "Ohio, USA",
   "us-gov-east-1": "US Gov East (Virginia, USA)",
   "us-gov-west-1": "US Gov West (Oregon, USA)",

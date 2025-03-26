@@ -21,15 +21,10 @@
       "import": "./dist/src/index.js",
       "require": "./dist/src/index.cjs"
     },
-    "./sdk": {
-      "types": "./dist/sdk/index.d.ts",
-      "import": "./dist/sdk/index.js",
-      "require": "./dist/sdk/index.cjs"
-    },
-    "./migrations": {
-      "types": "./dist/migrations/index.d.ts",
-      "import": "./dist/migrations/index.js",
-      "require": "./dist/migrations/index.cjs"
+    "./iac": {
+      "types": "./dist/iac/index.d.ts",
+      "import": "./dist/iac/index.js",
+      "require": "./dist/iac/index.cjs"
     },
     "./lambda": {
       "require": "./dist/lambda/index.cjs"
@@ -51,9 +46,11 @@
     "@types/node": "^22.13.1",
     "aws-sdk-client-mock": "^4.1.0",
     "es-toolkit": "^1.32.0",
+    "execa": "^9.5.2",
     "hono": "^4.6.3",
     "mime": "^4.0.4",
-    "picocolors": "^1.0.0"
+    "picocolors": "^1.0.0",
+    "@clack/prompts": "^0.9.0"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "3.772.0",
@@ -65,5 +62,13 @@
     "@aws-sdk/lib-storage": "3.772.0",
     "@hot-updater/plugin-core": "0.12.7",
     "aws-lambda": "1.0.7"
+  },
+  "peerDependencies": {
+    "@clack/prompts": "*"
+  },
+  "peerDependenciesMeta": {
+    "@clack/prompts": {
+      "optional": true
+    }
   }
 }
