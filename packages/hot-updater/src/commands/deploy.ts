@@ -16,7 +16,7 @@ import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
-import { getConsolePort } from "./console";
+import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
 import { printBanner } from "@/utils/printBanner";
@@ -229,6 +229,9 @@ export const deploy = async (options: DeployOptions) => {
         if (p.isCancel(result) || !result) {
           return;
         }
+        await openConsole(port, () => {
+          open(url);
+        });
       } else {
         open(url);
       }
