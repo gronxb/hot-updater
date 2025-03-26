@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateConfig, checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { reload, updateBundle } from "./native";
+import { getBundleId, reload, updateBundle } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
@@ -37,6 +37,7 @@ export interface HotUpdaterConfig extends CheckForUpdateConfig {
   fallbackComponent?: React.FC<{
     status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
     progress: number;
+    message: string | null;
   }>;
   onError?: (error: HotUpdaterError) => void;
   onProgress?: (progress: number) => void;
@@ -62,9 +63,10 @@ export function wrap<P>(
   return (WrappedComponent) => {
     const HotUpdaterHOC: React.FC<P> = () => {
       const progress = useHotUpdaterStore((state) => state.progress);
+
+      const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
-
       const initHotUpdater = useEventCallback(async () => {
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
@@ -72,9 +74,14 @@ export function wrap<P>(
             source: restConfig.source,
             requestHeaders: restConfig.requestHeaders,
           });
+          setMessage(updateInfo?.message ?? null);
+
           if (!updateInfo) {
             restConfig.onUpdateProcessCompleted?.({
               status: "UP_TO_DATE",
+              shouldForceUpdate: false,
+              message: null,
+              id: getBundleId(),
             });
             setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;
@@ -86,6 +93,7 @@ export function wrap<P>(
               id: updateInfo.id,
               status: updateInfo.status,
               shouldForceUpdate: updateInfo.shouldForceUpdate,
+              message: updateInfo.message,
             });
             setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;
@@ -111,6 +119,7 @@ export function wrap<P>(
             id: updateInfo.id,
             status: updateInfo.status,
             shouldForceUpdate: updateInfo.shouldForceUpdate,
+            message: updateInfo.message,
           });
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         } catch (error) {
@@ -135,7 +144,13 @@ export function wrap<P>(
         updateStatus !== "UPDATE_PROCESS_COMPLETED"
       ) {
         const Fallback = restConfig.fallbackComponent;
-        return <Fallback progress={progress} status={updateStatus} />;
+        return (
+          <Fallback
+            progress={progress}
+            status={updateStatus}
+            message={message}
+          />
+        );
       }
 
       return <WrappedComponent />;

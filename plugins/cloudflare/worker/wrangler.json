@@ -12,5 +12,14 @@
       "binding": "DB",
       "database_id": "00000000-0000-0000-0000-000000000000"
     }
-  ]
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "USER_BUCKET"
+    }
+  ],
+  "vars": {
+    "JWT_SECRET": "USER_JWT_SECRET"
+  }
 }

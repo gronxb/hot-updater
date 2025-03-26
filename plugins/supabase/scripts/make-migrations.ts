@@ -1,4 +1,5 @@
 import path from "path";
+import { fileURLToPath } from "url";
 import dayjs from "dayjs";
 import fs from "fs/promises";
 import pc from "picocolors";
@@ -88,9 +89,9 @@ async function readNewMigrations(dirPath: string) {
  */
 async function main() {
   // @hot-updater/postgres/sql path
-  const postgresPath = import.meta
-    .resolve("@hot-updater/postgres/sql")
-    .replace("file://", "");
+  const postgresPath = fileURLToPath(
+    import.meta.resolve("@hot-updater/postgres/sql"),
+  );
 
   // Create migrations directory (skip if exists)
   const migrationsDir = path.join(process.cwd(), "supabase/migrations");

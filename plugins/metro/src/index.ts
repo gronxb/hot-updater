@@ -16,6 +16,7 @@ interface RunBundleArgs {
   buildPath: string;
   sourcemap: boolean;
   enableHermes: boolean;
+  channel: string;
 }
 
 const runBundle = async ({
@@ -25,6 +26,7 @@ const runBundle = async ({
   buildPath,
   sourcemap,
   enableHermes,
+  channel,
 }: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native/package.json", {
     paths: [cwd],
@@ -58,6 +60,7 @@ const runBundle = async ({
       env: {
         ...process.env,
         BUILD_OUT_DIR: buildPath,
+        HOT_UPDATER_CHANNEL: channel,
       },
     });
   } catch (error) {
@@ -127,7 +130,7 @@ export const metro =
       enableHermes,
     } = config;
     return {
-      build: async ({ platform }) => {
+      build: async ({ platform, channel }) => {
         const buildPath = path.join(cwd, outDir);
 
         await fs.rm(buildPath, { recursive: true, force: true });
@@ -139,10 +142,12 @@ export const metro =
           platform,
           buildPath,
           sourcemap,
+          channel,
           enableHermes,
         });
 
         return {
+          channel,
           buildPath,
           bundleId,
           stdout,

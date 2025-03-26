@@ -7,25 +7,30 @@ import isPortReachable from "is-port-reachable";
 
 import * as p from "@clack/prompts";
 
-import { createZip } from "@/utils/createZip";
-
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+import {
+  type Platform,
+  createZip,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
 import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
-import { printBanner } from "@/components/banner";
+import { printBanner } from "@/utils/printBanner";
 
 export interface DeployOptions {
   targetAppVersion?: string;
   platform?: Platform;
   forceUpdate: boolean;
   interactive: boolean;
+  channel: string;
+  message?: string;
 }
 
 export const deploy = async (options: DeployOptions) => {
@@ -55,7 +60,9 @@ export const deploy = async (options: DeployOptions) => {
     return;
   }
 
-  const config = await loadConfig({ platform });
+  const channel = options.channel;
+
+  const config = await loadConfig({ platform, channel });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
@@ -94,7 +101,6 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let bundlePath: string;
-  let fileUrl: string;
   let fileHash: string;
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
@@ -120,12 +126,15 @@ export const deploy = async (options: DeployOptions) => {
       buildResult: null,
     };
 
+    p.log.info(`Channel: ${channel}`);
+
     await p.tasks([
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
+            channel,
           });
           bundlePath = path.join(getCwd(), "bundle.zip");
 
@@ -156,10 +165,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            ({ fileUrl } = await storagePlugin.uploadBundle(
-              bundleId,
-              bundlePath,
-            ));
+            await storagePlugin.uploadBundle(bundleId, bundlePath);
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -180,13 +186,13 @@ export const deploy = async (options: DeployOptions) => {
             await databasePlugin.appendBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
-              fileUrl,
               fileHash,
               gitCommitHash,
-              message: gitMessage,
+              message: options?.message ?? gitMessage,
               targetAppVersion,
               id: bundleId,
               enabled: true,
+              channel,
             });
             await databasePlugin.commitBundle();
           } catch (e) {
@@ -210,19 +216,26 @@ export const deploy = async (options: DeployOptions) => {
       const port = await getConsolePort(config);
       const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
 
-      const note = `Console: http://localhost:${port}/${bundleId}`;
+      const openUrl = new URL(`http://localhost:${port}`);
+      openUrl.searchParams.set("channel", channel);
+      openUrl.searchParams.set("platform", platform);
+      openUrl.searchParams.set("bundleId", bundleId);
+
+      const url = openUrl.toString();
+
+      const note = `Console: ${url}`;
       if (!isConsoleOpen) {
         const result = await p.confirm({
           message: "Console server is not running. Would you like to start it?",
           initialValue: false,
         });
-        if (result) {
+        if (!p.isCancel(result) && result) {
           await openConsole(port, () => {
-            open(`http://localhost:${port}/${bundleId}`);
+            open(url);
           });
         }
       } else {
-        open(`http://localhost:${port}/${bundleId}`);
+        open(url);
       }
 
       p.note(note);

@@ -112,10 +112,14 @@ export const standaloneStorage =
           throw new Error(error);
         }
 
-        const result = (await response.json()) as { fileUrl: string };
+        const result = (await response.json()) as {
+          bucketName: string;
+          key: string;
+        };
 
-        if (!result.fileUrl) {
-          const error = "Failed to upload bundle - no fileUrl in response";
+        if (!result.bucketName || !result.key) {
+          const error =
+            "Failed to upload bundle - no bucketName or key in response";
           console.error(`[uploadBundle] ${error}`);
           throw new Error(error);
         }
@@ -123,7 +127,8 @@ export const standaloneStorage =
         hooks?.onStorageUploaded?.();
 
         return {
-          fileUrl: result.fileUrl,
+          bucketName: result.bucketName,
+          key: result.key,
         };
       },
     };

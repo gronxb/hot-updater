@@ -1,15 +1,12 @@
 import { type CheckForUpdateConfig, checkForUpdate } from "./checkForUpdate";
-import { reload, updateBundle } from "./native";
+import { getBundleId, reload, updateBundle } from "./native";
 
-export type RunUpdateProcessResponse =
-  | {
-      status: "ROLLBACK" | "UPDATE";
-      shouldForceUpdate: boolean;
-      id: string;
-    }
-  | {
-      status: "UP_TO_DATE";
-    };
+export interface RunUpdateProcessResponse {
+  status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
+  shouldForceUpdate: boolean;
+  message: string | null;
+  id: string;
+}
 
 export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
   /**
@@ -60,6 +57,9 @@ export const runUpdateProcess = async ({
   if (!updateInfo) {
     return {
       status: "UP_TO_DATE",
+      shouldForceUpdate: false,
+      message: null,
+      id: getBundleId(),
     };
   }
 
@@ -75,5 +75,6 @@ export const runUpdateProcess = async ({
     status: updateInfo.status,
     shouldForceUpdate: updateInfo.shouldForceUpdate,
     id: updateInfo.id,
+    message: updateInfo.message,
   };
 };

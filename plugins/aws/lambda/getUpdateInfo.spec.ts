@@ -1,78 +1,99 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
-import { mockClient } from "aws-sdk-client-mock";
-import { groupBy } from "es-toolkit";
-import { beforeEach, describe } from "vitest";
-import { getUpdateInfo as getUpdateInfoFromS3 } from "./getUpdateInfo";
+import { beforeEach, describe, vi } from "vitest";
+import { getUpdateInfo as getUpdateInfoFromCdn } from "./getUpdateInfo";
 
-// @ts-expect-error: Type mismatch in aws-sdk-client-mock
-const s3Mock = mockClient(S3Client);
+vi.mock("@aws-sdk/cloudfront-signer", () => ({
+  getSignedUrl: vi.fn(({ url }) => url),
+}));
 
 const createGetUpdateInfo =
-  (s3: S3Client, bucketName: string) =>
+  (baseUrl: string) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform }: GetBundlesArgs,
-  ): Promise<UpdateInfo | null> => {
-    if (bundles.length > 0) {
-      // Mock target-app-versions.json
-      const targetVersions = [
-        ...new Set(bundles.map((b) => b.targetAppVersion)),
-      ];
-      s3Mock
-        // @ts-expect-error: Type mismatch in aws-sdk-client-mock
-        .on(GetObjectCommand, {
-          Bucket: bucketName,
-          Key: `${platform}/target-app-versions.json`,
-        })
-        .resolves({
-          Body: {
-            transformToString: () =>
-              Promise.resolve(JSON.stringify(targetVersions)),
-          },
-        } as any);
-
-      // Mock update.json for each version
-      const bundlesByVersion = groupBy(bundles, (b) => b.targetAppVersion);
-
-      // Set update.json response for each version
-      for (const [version, versionBundles] of Object.entries(
-        bundlesByVersion,
-      )) {
-        s3Mock
-
-          // @ts-expect-error: Type mismatch in aws-sdk-client-mock
-          .on(GetObjectCommand, {
-            Bucket: bucketName,
-            Key: `${platform}/${version}/update.json`,
-          })
-          .resolves({
-            Body: {
-              transformToString: () =>
-                Promise.resolve(JSON.stringify(versionBundles)),
-            },
-          } as any);
-      }
-    } else {
-      // Return NoSuchKey error when there are no bundles
-      // @ts-expect-error: Type mismatch in aws-sdk-client-mock
-      s3Mock.on(GetObjectCommand).rejects(new Error("NoSuchKey"));
-    }
-
-    return getUpdateInfoFromS3(s3, bucketName, {
+    {
       appVersion,
       bundleId,
       platform,
+      minBundleId = NIL_UUID,
+      channel = "production",
+    }: GetBundlesArgs,
+  ): Promise<UpdateInfo | null> => {
+    const responses: Record<string, any> = {};
+
+    if (bundles.length > 0) {
+      const targetVersions = [
+        ...new Set(bundles.map((b) => b.targetAppVersion)),
+      ];
+      const targetVersionsPath = `${channel}/${platform}/target-app-versions.json`;
+      const targetVersionsUrl = new URL(baseUrl);
+      targetVersionsUrl.pathname = `/${targetVersionsPath}`;
+      responses[targetVersionsUrl.toString()] = targetVersions;
+
+      const bundlesByVersion: Record<string, Bundle[]> = {};
+      for (const bundle of bundles) {
+        if (!bundlesByVersion[bundle.targetAppVersion]) {
+          bundlesByVersion[bundle.targetAppVersion] = [];
+        }
+        bundlesByVersion[bundle.targetAppVersion].push(bundle);
+      }
+      for (const targetVersion of targetVersions) {
+        const updatePath = `${channel}/${platform}/${targetVersion}/update.json`;
+        const updateUrl = new URL(baseUrl);
+        updateUrl.pathname = `/${updatePath}`;
+        responses[updateUrl.toString()] = bundlesByVersion[targetVersion];
+      }
+    } else {
+      responses["*"] = null;
+    }
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url in responses) {
+        return {
+          ok: true,
+          json: async () => responses[url],
+        };
+      }
+      return {
+        ok: false,
+        statusText: "Not Found",
+      };
     });
+
+    const originalFetch = global.fetch;
+    global.fetch = fetchMock as any;
+
+    try {
+      return await getUpdateInfoFromCdn(
+        {
+          baseUrl,
+          keyPairId: "test-key-pair-id",
+          privateKey: "test-private-key",
+        },
+        {
+          minBundleId,
+          channel,
+          appVersion,
+          bundleId,
+          platform,
+        },
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
   };
 
-describe("getUpdateInfo", () => {
+describe("getUpdateInfo (CDN based)", () => {
   beforeEach(() => {
-    s3Mock.reset();
+    vi.restoreAllMocks();
   });
 
   setupGetUpdateInfoTestSuite({
-    getUpdateInfo: createGetUpdateInfo(new S3Client({}), "test-bucket"),
+    getUpdateInfo: createGetUpdateInfo("https://test-cdn.com"),
   });
 });

@@ -45,8 +45,9 @@
     "@hot-updater/core": "0.12.7"
   },
   "devDependencies": {
-    "semver": "^7.6.3",
     "@types/node": "^20.9.4",
-    "@types/semver": "^7.5.8"
+    "@types/semver": "^7.5.8",
+    "jose": "^6.0.10",
+    "semver": "^7.6.3"
   }
 }
