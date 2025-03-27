@@ -24,6 +24,28 @@ addListener("onProgress", ({ progress }) => {
 });
 
 export const HotUpdater = {
+  /**
+   * `HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy.
+   *
+   * @param {object} options - Configuration options
+   * @param {string} options.source - Update server URL
+   * @param {object} [options.requestHeaders] - Request headers
+   * @param {React.ComponentType} [options.fallbackComponent] - Component to display during updates
+   * @param {boolean} [options.reloadOnForceUpdate=true] - Whether to automatically reload the app on force updates
+   * @param {Function} [options.onUpdateProcessCompleted] - Callback after update process completes
+   * @param {Function} [options.onProgress] - Callback to track bundle download progress
+   * @returns {Function} Higher-order component that wraps the app component
+   *
+   * @example
+   * ```tsx
+   * export default HotUpdater.wrap({
+   *   source: "<your-update-server-url>",
+   *   requestHeaders: {
+   *     "Authorization": "Bearer <your-access-token>",
+   *   },
+   * })(App);
+   * ```
+   */
   wrap,
   /**
    * Reloads the app.
@@ -34,23 +56,73 @@ export const HotUpdater = {
    */
   getAppVersion,
   /**
-   * Fetches the bundle ID of the app.
+   * Fetches the current bundle ID of the app.
    */
   getBundleId,
   /**
-   * Fetches the minimum bundle ID of the app.
+   * Retrieves the initial bundle ID based on the build time of the native app.
    */
   getMinBundleId,
   /**
-   * Fetches the channel of the app.
+   * Fetches the current release channel of the app.
+   *
+   * By default, if no channel is specified, the app is assigned to the 'production' channel.
+   *
+   * @returns {string} The current release channel of the app
+   *
+   * @example
+   * ```ts
+   * const channel = HotUpdater.getChannel();
+   * console.log(`Current channel: ${channel}`);
+   * ```
    */
   getChannel,
   /**
-   * Adds a listener to the HotUpdater event.
+   * Adds a listener to HotUpdater events.
+   *
+   * @param {keyof HotUpdaterEvent} eventName - The name of the event to listen for
+   * @param {(event: HotUpdaterEvent[T]) => void} listener - The callback function to handle the event
+   * @returns {() => void} A cleanup function that removes the event listener
+   *
+   * @example
+   * ```ts
+   * const unsubscribe = HotUpdater.addListener("onProgress", ({ progress }) => {
+   *   console.log(`Update progress: ${progress * 100}%`);
+   * });
+   *
+   * // Unsubscribe when no longer needed
+   * unsubscribe();
+   * ```
    */
   addListener,
   /**
    * Manually checks for updates.
+   *
+   * @param {Object} config - Update check configuration
+   * @param {string} config.source - Update server URL
+   * @param {Record<string, string>} [config.requestHeaders] - Request headers
+   *
+   * @returns {Promise<UpdateInfo | null>} Update information or null if up to date
+   *
+   * @example
+   * ```ts
+   * const updateInfo = await HotUpdater.checkForUpdate({
+   *   source: "<your-update-server-url>",
+   *   requestHeaders: {
+   *     Authorization: "Bearer <your-access-token>",
+   *   },
+   * });
+   *
+   * if (!updateInfo) {
+   *   console.log("App is up to date");
+   *   return;
+   * }
+   *
+   * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+   * if (updateInfo.shouldForceUpdate) {
+   *   HotUpdater.reload();
+   * }
+   * ```
    */
   checkForUpdate,
   /**
