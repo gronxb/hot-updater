@@ -12,7 +12,7 @@ import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
 import {
   type Platform,
-  createZip,
+  createZipTargetFiles,
   getCwd,
   loadConfig,
 } from "@hot-updater/plugin-core";
@@ -22,6 +22,7 @@ import { getPlatform } from "@/prompts/getPlatform";
 import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
+import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { printBanner } from "@/utils/printBanner";
 
 export interface DeployOptions {
@@ -139,10 +140,18 @@ export const deploy = async (options: DeployOptions) => {
           });
           bundlePath = path.join(getCwd(), "bundle.zip");
 
-          await createZip({
+          const buildPath = taskRef.buildResult?.buildPath;
+          if (!buildPath) {
+            throw new Error("Build result not found");
+          }
+          const files = await fs.readdir(buildPath);
+          const targetFiles = await getBundleZipTargets(
+            buildPath,
+            files.map((file) => path.join(buildPath, file)),
+          );
+          await createZipTargetFiles({
             outfile: bundlePath,
-            targetDir: taskRef.buildResult.buildPath,
-            excludeExts: [".map"],
+            targetFiles: targetFiles,
           });
 
           bundleId = taskRef.buildResult.bundleId;

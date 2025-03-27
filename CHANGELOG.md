@@ -1,3 +1,14 @@
+## 0.13.1 (2025-03-27)
+
+### 🩹 Fixes
+
+- **cli:** getDefaultTargetAppVersion from info.plist ([#218](https://github.com/gronxb/hot-updater/pull/218))
+- **metro:** ensure `bundle.map` is generated correctly when `enableHermes` is set to true ([#219](https://github.com/gronxb/hot-updater/pull/219))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.13.0 (2025-03-26)
 
 This was a version bump only, there were no code changes.
