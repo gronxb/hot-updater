@@ -25,14 +25,33 @@ addListener("onProgress", ({ progress }) => {
 
 export const HotUpdater = {
   wrap,
-
+  /**
+   * Reloads the app.
+   */
   reload,
+  /**
+   * Fetches the current app version.
+   */
   getAppVersion,
+  /**
+   * Fetches the bundle ID of the app.
+   */
   getBundleId,
+  /**
+   * Fetches the minimum bundle ID of the app.
+   */
   getMinBundleId,
+  /**
+   * Fetches the channel of the app.
+   */
   getChannel,
+  /**
+   * Adds a listener to the HotUpdater event.
+   */
   addListener,
-
+  /**
+   * Manually checks for updates.
+   */
   checkForUpdate,
   /**
    * Manually checks and applies updates for the application.
@@ -67,5 +86,34 @@ export const HotUpdater = {
    * @returns {Promise<RunUpdateProcessResponse>} The result of the update process
    */
   runUpdateProcess,
+  /**
+   * Updates the bundle of the app.
+   *
+   * @param {string} bundleId - The bundle ID of the app
+   * @param {string} zipUrl - The URL of the zip file
+   *
+   * @returns {Promise<boolean>} Whether the update was successful
+   *
+   * @example
+   * ```ts
+   * const updateInfo = await HotUpdater.checkForUpdate({
+   *   source: "<your-update-server-url>",
+   *   requestHeaders: {
+   *     Authorization: "Bearer <your-access-token>",
+   *   },
+   * });
+   *
+   * if (!updateInfo) {
+   *   return {
+   *     status: "UP_TO_DATE",
+   *   };
+   * }
+   *
+   * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+   * if (updateInfo.shouldForceUpdate) {
+   *   HotUpdater.reload();
+   * }
+   * ```
+   */
   updateBundle,
 };
