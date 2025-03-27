@@ -1,9 +1,14 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
+import {
+  verifyJwtSignedUrl,
+  withJwtSignedUrl,
+  getUpdateInfo,
+} from "@hot-updater/js";
+// or
+// import { getUpdateInfo } from "@hot-updater/postgres";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import pg from "pg";
-import { getUpdateInfo } from "./getUpdateInfo";
 
 const pool = new pg.Pool({
   host: process.env.HOT_UPDATER_POSTGRES_HOST!,
