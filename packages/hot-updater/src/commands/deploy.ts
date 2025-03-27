@@ -140,12 +140,15 @@ export const deploy = async (options: DeployOptions) => {
           });
           bundlePath = path.join(getCwd(), "bundle.zip");
 
-          const files = await fs.readdir(taskRef.buildResult.buildPath);
+          const buildPath = taskRef.buildResult?.buildPath;
+          if (!buildPath) {
+            throw new Error("Build result not found");
+          }
+          const files = await fs.readdir(buildPath);
           const targetFiles = await getBundleZipTargets(
-            taskRef.buildResult.buildPath,
-            files,
+            buildPath,
+            files.map((file) => path.join(buildPath, file)),
           );
-
           await createZipTargetFiles({
             outfile: bundlePath,
             targetFiles: targetFiles,

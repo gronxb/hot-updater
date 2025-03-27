@@ -9,7 +9,9 @@ export async function getBundleZipTargets(
     file.startsWith(basePath) ? file.slice(basePath.length) : file;
 
   for (const file of files) {
-    if (file.endsWith(".map")) continue;
+    if (file.endsWith(".map")) {
+      continue;
+    }
     const relative = getRelative(file);
 
     if (relative.endsWith(".bundle") || relative.endsWith(".bundle.hbc")) {
