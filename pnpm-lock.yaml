@@ -479,8 +479,8 @@ importers:
         specifier: ^1.13.4
         version: 1.13.4(hono@4.6.3)
       '@hono/typia-validator':
-        specifier: ^0.1.0
-        version: 0.1.0(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))
+        specifier: ^0.1.2
+        version: 0.1.2(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))
       '@hono/vite-dev-server':
         specifier: ^0.18.1
         version: 0.18.1(hono@4.6.3)(miniflare@4.20250321.0)(wrangler@4.5.0(@cloudflare/workers-types@4.20250317.0))
@@ -3465,11 +3465,11 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hono/typia-validator@0.1.0':
-    resolution: {integrity: sha512-9UTzv1e0Ioenf6lG0sdF81XRjm6+JS5w6X+02M39Aa09RZp/FE2AAu0M7TJHOyN9vaQ9s2dWZdRaftrt8BegPw==}
+  '@hono/typia-validator@0.1.2':
+    resolution: {integrity: sha512-gfCMFyQsxCnncwA8DCdgu1a/1lrKQq46emrvGvQTzwkViyvoF2LswDdCdGSjvte/r8d0I4flU1udt6j6vGP6TQ==}
     peerDependencies:
       hono: '>=3.9.0'
-      typia: ^7.0.0
+      typia: ^7.0.0 || ^8.0.0
 
   '@hono/vite-dev-server@0.18.1':
     resolution: {integrity: sha512-Hud6Vsm+5jZDYGuchOVrc/Cr+CqydLH9yBc7VY8ChI1PH0WKSxG12t/qtQs4otuPDuUhowtemCLrk3TpMONYjQ==}
@@ -15934,7 +15934,7 @@ snapshots:
     dependencies:
       hono: 4.6.3
 
-  '@hono/typia-validator@0.1.0(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))':
+  '@hono/typia-validator@0.1.2(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))':
     dependencies:
       hono: 4.6.3
       typia: 8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3)
