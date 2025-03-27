@@ -9,7 +9,7 @@ import * as p from "@clack/prompts";
 
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
-import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
+import { getLatestGitCommit } from "@/utils/git";
 import {
   type Platform,
   createZip,
@@ -38,10 +38,11 @@ export const deploy = async (options: DeployOptions) => {
 
   const cwd = getCwd();
 
-  const [gitCommitHash, gitMessage] = await Promise.all([
-    getGitCommitHash(),
-    getLatestGitCommitMessage(),
-  ]);
+  const gitCommit = await getLatestGitCommit();
+  const [gitCommitHash, gitMessage] = [
+    gitCommit?.id() ?? null,
+    gitCommit?.summary() ?? null,
+  ];
 
   const platform =
     options.platform ??
