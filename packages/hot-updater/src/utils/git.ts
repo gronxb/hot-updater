@@ -1,14 +1,16 @@
 import { getCwd } from "@hot-updater/plugin-core";
-import { openRepository } from "es-git";
+import { type Commit, openRepository } from "es-git";
 
-export const getLatestGitCommit = async () => {
-  const repo = await openRepository(getCwd());
-  const revwalk = repo.revwalk().pushHead();
+export const getLatestGitCommit = async (): Promise<Commit | null> => {
+  try {
+    const repo = await openRepository(getCwd());
+    const headSha = repo.revparse("HEAD").from;
+    if (headSha) {
+      return repo.getCommit(headSha);
+    }
 
-  for (const sha of revwalk) {
-    const commit = repo.getCommit(sha);
-    return commit;
+    return null;
+  } catch (error) {
+    return null;
   }
-
-  return null;
 };
