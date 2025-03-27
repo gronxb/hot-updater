@@ -5,6 +5,7 @@ import {
   getBundleId,
   getChannel,
   getMinBundleId,
+  notifyAppReady,
   reload,
   updateBundle,
 } from "./native";
@@ -188,4 +189,18 @@ export const HotUpdater = {
    * ```
    */
   updateBundle,
+  /**
+   * Marks the update as successful to prevent rollback.
+   *
+   * When you're manually handling app updates without using `HotUpdater.wrap` or `HotUpdater.runUpdateProcess`,
+   * you **must** call this method after a successful update. If you skip this step,
+   * Hot Updater will assume the update failed and will revert to the previous version
+   * the next time the app restarts.
+   *
+   * @example
+   * ```ts
+   * await HotUpdater.notifyAppReady();
+   * ```
+   */
+  notifyAppReady,
 };
