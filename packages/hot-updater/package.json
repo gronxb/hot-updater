@@ -78,6 +78,7 @@
     "@types/semver": "^7.5.8",
     "es-toolkit": "^1.32.0",
     "execa": "^9.5.2",
+    "find-up-simple": "^1.0.1",
     "is-port-reachable": "^4.0.0",
     "open": "^10.1.0",
     "picocolors": "^1.0.0",
