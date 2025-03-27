@@ -44,7 +44,7 @@
     "react-native-dotenv": "^3.4.11",
     "react-test-renderer": "18.3.1",
     "typescript": "5.0.4",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.5.0"
   },
   "engines": {
     "node": ">=18"
