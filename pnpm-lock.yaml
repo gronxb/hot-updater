@@ -979,6 +979,9 @@ importers:
 
   plugins/postgres:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: 3.772.0
+        version: 3.772.0
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -995,6 +998,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.15
         version: 0.2.15
+      '@hono/vite-dev-server':
+        specifier: ^0.18.1
+        version: 0.18.1(hono@4.6.3)(miniflare@4.20250321.0)(wrangler@4.5.0(@cloudflare/workers-types@4.20250317.0))
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
@@ -1004,6 +1010,12 @@ importers:
       camelcase-keys:
         specifier: ^9.1.3
         version: 9.1.3
+      hono:
+        specifier: ^4.6.3
+        version: 4.6.3
+      vite:
+        specifier: ^6.1.0
+        version: 6.1.1(@types/node@22.13.5)(jiti@2.4.2)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1)
 
   plugins/standalone:
     dependencies:
@@ -18517,7 +18529,7 @@ snapshots:
       '@rsbuild/core': 1.1.13
       deepmerge: 4.3.1
       loader-utils: 2.0.4
-      postcss: 8.4.49
+      postcss: 8.5.3
       reduce-configs: 1.1.0
       sass-embedded: 1.83.0
 
@@ -28824,7 +28836,7 @@ snapshots:
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.3
-      rollup: 4.32.1
+      rollup: 4.34.9
     optionalDependencies:
       '@types/node': 20.16.10
       fsevents: 2.3.3
@@ -28837,7 +28849,7 @@ snapshots:
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.3
-      rollup: 4.32.1
+      rollup: 4.34.9
     optionalDependencies:
       '@types/node': 22.13.5
       fsevents: 2.3.3
@@ -28850,7 +28862,7 @@ snapshots:
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.3
-      rollup: 4.32.1
+      rollup: 4.34.9
     optionalDependencies:
       '@types/node': 22.8.7
       fsevents: 2.3.3
