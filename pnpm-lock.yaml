@@ -979,9 +979,6 @@ importers:
 
   plugins/postgres:
     dependencies:
-      '@aws-sdk/client-s3':
-        specifier: 3.772.0
-        version: 3.772.0
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -998,9 +995,6 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.15
         version: 0.2.15
-      '@hono/vite-dev-server':
-        specifier: ^0.18.1
-        version: 0.18.1(hono@4.6.3)(miniflare@4.20250321.0)(wrangler@4.5.0(@cloudflare/workers-types@4.20250317.0))
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
@@ -1010,12 +1004,6 @@ importers:
       camelcase-keys:
         specifier: ^9.1.3
         version: 9.1.3
-      hono:
-        specifier: ^4.6.3
-        version: 4.6.3
-      vite:
-        specifier: ^6.1.0
-        version: 6.1.1(@types/node@22.13.5)(jiti@2.4.2)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1)
 
   plugins/standalone:
     dependencies:
