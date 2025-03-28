@@ -77,9 +77,9 @@ During the setup, you will be prompted to:
 Once the setup is complete, a `.env` file will be generated containing the following keys:
 
 ```
-# This key was generated via SSO login and may expire. Update it with an S3FullAccess-only key.
+# This key was generated via SSO login and may expire. Update it with an S3FullAccess and CloudFrontFullAccess key.
 HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
-# This key was generated via SSO login and may expire. Update it with an S3FullAccess-only key.
+# This key was generated via SSO login and may expire. Update it with an S3FullAccess and CloudFrontFullAccess key.
 HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
@@ -131,7 +131,7 @@ By this point, the .env file should already be created. The token inside was gen
 
 The token may have excessive permissions due to infrastructure setup or expire if SSO was used.
 
-To avoid issues, update it with a permanent token with `S3FullAccess` only.
+To avoid issues, update it with a permanent token with `S3FullAccess` and `CloudFrontFullAccess`.
 
 ```ts title=.env
 HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id

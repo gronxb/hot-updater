@@ -10,7 +10,7 @@ const commonOptions = {
   credentials: {
     accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
     secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-    // This token may expire. For permanent use, it’s recommended to use a key with S3FullAccess permission and remove this field.
+    // This token may expire. For permanent use, it’s recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
     sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
   },
 };
