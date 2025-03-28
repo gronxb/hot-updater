@@ -152,6 +152,42 @@ app.post("/bundles", async (c) => {
   }
 });
 
+app.post("/bundle/upload", async (c) => {
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get("file");
+    const bundleId = formData.get("bundleId");
+
+    if (!file || !bundleId) {
+      return c.json({ error: "Missing file or bundleId" }, 400);
+    }
+
+    const filename = file instanceof File ? file.name : "bundle-file";
+
+    const bucketName = "my-bucket";
+    const key = `bundles/${bundleId}/${filename}`;
+
+    return c.json({ bucketName, key }, 200);
+  } catch (e) {
+    console.error(e);
+    return c.json({ error: "Internal Server Error" }, 500);
+  }
+});
+
+app.post("/bundle/delete", async (c) => {
+  try {
+    const { bundleId } = await c.req.json();
+    if (!bundleId) {
+      return c.json({ error: "Missing bundleId" }, 400);
+    }
+
+    return c.json({ success: true }, 200);
+  } catch (e) {
+    console.error(e);
+    return c.json({ error: "Internal Server Error" }, 500);
+  }
+});
+
 app.get("*", async (c) => {
   const result = await verifyJwtSignedUrl({
     path: c.req.path,

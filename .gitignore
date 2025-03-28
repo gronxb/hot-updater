@@ -95,5 +95,4 @@ generated/
 
 .hot-updater/
 
-
-memory
+local-database
