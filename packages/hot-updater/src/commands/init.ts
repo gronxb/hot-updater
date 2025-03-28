@@ -6,7 +6,7 @@ import { ExecaError } from "execa";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv", "hot-updater"],
+  devDependencies: ["dotenv"],
 };
 
 const PACKAGE_MAP = {

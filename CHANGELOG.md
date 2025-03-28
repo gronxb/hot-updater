@@ -1,3 +1,19 @@
+## 0.13.3 (2025-03-28)
+
+### 🚀 Features
+
+- **postgresql:** `getUpdateInfo` node util ([#215](https://github.com/gronxb/hot-updater/pull/215))
+
+### 🩹 Fixes
+
+- **aws:** create s3 region us-east-1 ([#231](https://github.com/gronxb/hot-updater/pull/231))
+- **cli:** banner version not showing ([#226](https://github.com/gronxb/hot-updater/pull/226))
+
+### ❤️ Thank You
+
+- miso-kyoungminkim
+- Sungyu Kang
+
 ## 0.13.2 (2025-03-28)
 
 ### 🩹 Fixes
