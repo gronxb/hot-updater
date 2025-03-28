@@ -1,6 +1,8 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
+import { printBanner } from "@/utils/printBanner";
+import * as p from "@clack/prompts";
 import { isCancel, select } from "@clack/prompts";
-import { printBanner } from "@hot-updater/plugin-core";
+import { ExecaError } from "execa";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -58,18 +60,28 @@ export const init = async () => {
     process.exit(0);
   }
 
-  await ensureInstallPackages({
-    dependencies: [
-      ...buildPluginPackage.dependencies,
-      ...REQUIRED_PACKAGES.dependencies,
-      ...PACKAGE_MAP[provider].dependencies,
-    ],
-    devDependencies: [
-      ...buildPluginPackage.devDependencies,
-      ...REQUIRED_PACKAGES.devDependencies,
-      ...PACKAGE_MAP[provider].devDependencies,
-    ],
-  });
+  try {
+    await ensureInstallPackages({
+      dependencies: [
+        ...buildPluginPackage.dependencies,
+        ...REQUIRED_PACKAGES.dependencies,
+        ...PACKAGE_MAP[provider].dependencies,
+      ],
+      devDependencies: [
+        ...buildPluginPackage.devDependencies,
+        ...REQUIRED_PACKAGES.devDependencies,
+        ...PACKAGE_MAP[provider].devDependencies,
+      ],
+    });
+  } catch (e) {
+    if (e instanceof ExecaError) {
+      p.log.error(e.stderr ?? e.message);
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+
+    process.exit(1);
+  }
 
   switch (provider) {
     case "supabase": {
