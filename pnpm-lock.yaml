@@ -741,6 +741,9 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: 3.772.0
         version: 3.772.0(@aws-sdk/client-s3@3.772.0)
+      '@clack/prompts':
+        specifier: 0.10.0
+        version: 0.10.0
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -751,9 +754,6 @@ importers:
       '@aws-sdk/cloudfront-signer':
         specifier: 3.772.0
         version: 3.772.0
-      '@clack/prompts':
-        specifier: ^0.10.0
-        version: 0.10.0
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -787,6 +787,9 @@ importers:
 
   plugins/cloudflare:
     dependencies:
+      '@clack/prompts':
+        specifier: 0.10.0
+        version: 0.10.0
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -800,9 +803,6 @@ importers:
         specifier: 4.2.0
         version: 4.2.0(encoding@0.1.13)
     devDependencies:
-      '@clack/prompts':
-        specifier: ^0.10.0
-        version: 0.10.0
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.8.0
         version: 0.8.0(@cloudflare/workers-types@4.20250317.0)(@vitest/runner@3.0.9)(@vitest/snapshot@3.0.9)(vitest@2.1.8(@types/node@22.13.0)(jsdom@25.0.1)(msw@2.7.0(@types/node@22.13.0)(typescript@5.7.2))(sass-embedded@1.83.0)(terser@5.31.0))
@@ -1044,6 +1044,9 @@ importers:
 
   plugins/supabase:
     dependencies:
+      '@clack/prompts':
+        specifier: 0.10.0
+        version: 0.10.0
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1054,9 +1057,6 @@ importers:
         specifier: ^2.47.10
         version: 2.47.10
     devDependencies:
-      '@clack/prompts':
-        specifier: ^0.10.0
-        version: 0.10.0
       '@hot-updater/postgres':
         specifier: workspace:*
         version: link:../postgres

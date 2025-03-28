@@ -48,7 +48,8 @@
     "@hot-updater/core": "0.13.2",
     "@hot-updater/js": "0.13.2",
     "@hot-updater/plugin-core": "0.13.2",
-    "cloudflare": "4.2.0"
+    "cloudflare": "4.2.0",
+    "@clack/prompts": "0.10.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.0",
@@ -66,15 +67,6 @@
     "typescript": "^5.5.2",
     "vitest": "2.1.8",
     "wrangler": "^4.5.0",
-    "xdg-app-paths": "^8.3.0",
-    "@clack/prompts": "^0.10.0"
-  },
-  "peerDependencies": {
-    "@clack/prompts": "*"
-  },
-  "peerDependenciesMeta": {
-    "@clack/prompts": {
-      "optional": true
-    }
+    "xdg-app-paths": "^8.3.0"
   }
 }
