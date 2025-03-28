@@ -15,10 +15,10 @@ export interface StorageRoutes {
 
 const defaultRoutes: StorageRoutes = {
   uploadBundle: (bundleId: string, bundlePath: string) => ({
-    path: "/uploadBundle",
+    path: "/bundle/upload",
   }),
   deleteBundle: (bundleId: string) => ({
-    path: "/deleteBundle",
+    path: "/bundle/delete",
   }),
 };
 
