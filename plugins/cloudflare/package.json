@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/cloudflare",
   "type": "module",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -45,12 +45,13 @@
     "dev": "wrangler dev worker/src/index.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "0.13.1",
-    "@hot-updater/js": "0.13.1",
-    "@hot-updater/plugin-core": "0.13.1",
+    "@hot-updater/core": "0.13.2",
+    "@hot-updater/js": "0.13.2",
+    "@hot-updater/plugin-core": "0.13.2",
     "cloudflare": "4.2.0"
   },
   "devDependencies": {
+    "@clack/prompts": "0.10.0",
     "@cloudflare/vitest-pool-workers": "^0.8.0",
     "@cloudflare/workers-types": "^4.20250317.0",
     "@types/node": "^22.13.0",
@@ -66,15 +67,6 @@
     "typescript": "^5.5.2",
     "vitest": "2.1.8",
     "wrangler": "^4.5.0",
-    "xdg-app-paths": "^8.3.0",
-    "@clack/prompts": "^0.10.0"
-  },
-  "peerDependencies": {
-    "@clack/prompts": "*"
-  },
-  "peerDependenciesMeta": {
-    "@clack/prompts": {
-      "optional": true
-    }
+    "xdg-app-paths": "^8.3.0"
   }
 }
