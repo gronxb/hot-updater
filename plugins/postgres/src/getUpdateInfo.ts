@@ -1,9 +1,9 @@
-import { filterCompatibleAppVersions } from "@hot-updater/js";
 import {
   type GetBundlesArgs,
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
+import { filterCompatibleAppVersions } from "@hot-updater/js";
 import camelcaseKeys from "camelcase-keys";
 import type pg from "pg";
 import minify from "pg-minify";
