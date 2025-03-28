@@ -34,8 +34,8 @@
   "files": [
     "dist",
     "sql",
-    "supabase/functions",
-    "supabase/migrations",
+    "supabase",
+    "!supabase/.temp",
     "package.json"
   ],
   "scripts": {
