@@ -46,10 +46,10 @@
   "dependencies": {
     "@hot-updater/core": "0.13.2",
     "@hot-updater/plugin-core": "0.13.2",
-    "@supabase/supabase-js": "^2.47.10",
-    "@clack/prompts": "0.10.0"
+    "@supabase/supabase-js": "^2.47.10"
   },
   "devDependencies": {
+    "@clack/prompts": "0.10.0",
     "@hot-updater/postgres": "0.13.2",
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",

@@ -49,10 +49,10 @@
     "execa": "^9.5.2",
     "hono": "^4.6.3",
     "mime": "^4.0.4",
-    "picocolors": "^1.0.0"
+    "picocolors": "^1.0.0",
+    "@clack/prompts": "0.10.0"
   },
   "dependencies": {
-    "@clack/prompts": "0.10.0",
     "@aws-sdk/client-cloudfront": "3.772.0",
     "@aws-sdk/client-iam": "3.772.0",
     "@aws-sdk/client-lambda": "3.772.0",
