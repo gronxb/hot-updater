@@ -50,7 +50,7 @@
     "hono": "^4.6.3",
     "mime": "^4.0.4",
     "picocolors": "^1.0.0",
-    "@clack/prompts": "^0.10.0"
+    "@clack/prompts": "0.10.0"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "3.772.0",
@@ -62,13 +62,5 @@
     "@aws-sdk/lib-storage": "3.772.0",
     "@hot-updater/plugin-core": "0.13.2",
     "aws-lambda": "1.0.7"
-  },
-  "peerDependencies": {
-    "@clack/prompts": "*"
-  },
-  "peerDependenciesMeta": {
-    "@clack/prompts": {
-      "optional": true
-    }
   }
 }
