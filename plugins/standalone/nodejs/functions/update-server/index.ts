@@ -1,8 +1,8 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
+  getUpdateInfo,
   verifyJwtSignedUrl,
   withJwtSignedUrl,
-  getUpdateInfo,
 } from "@hot-updater/js";
 // or
 // import { getUpdateInfo } from "@hot-updater/postgres";

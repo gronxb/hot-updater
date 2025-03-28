@@ -5,7 +5,7 @@ import {
   type UpdateInfo,
 } from "@hot-updater/core";
 import camelcaseKeys from "camelcase-keys";
-import pg from "pg";
+import type pg from "pg";
 import minify from "pg-minify";
 
 export const getUpdateInfo = async (
