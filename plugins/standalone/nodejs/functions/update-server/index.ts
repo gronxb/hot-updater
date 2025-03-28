@@ -52,7 +52,7 @@ app.get("/api/check-update", async (c) => {
     const appUpdateInfo = await withJwtSignedUrl({
       data: updateInfo,
       reqUrl: c.req.url,
-      jwtSecret: process.env.JWT_SECRET,
+      jwtSecret: process.env.JWT_SECRET!,
     });
 
     return c.json(appUpdateInfo, 200);
@@ -66,7 +66,7 @@ app.get("*", async (c) => {
   const result = await verifyJwtSignedUrl({
     path: c.req.path,
     token: c.req.query("token"),
-    jwtSecret: process.env.JWT_SECRET,
+    jwtSecret: process.env.JWT_SECRET!,
     handler: async (key) => {
       try {
         const body = await s3Client.send(
