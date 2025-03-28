@@ -1,3 +1,13 @@
+## 0.13.2 (2025-03-28)
+
+### 🩹 Fixes
+
+- **supabase:** exports edge-functions entryPoint ([#224](https://github.com/gronxb/hot-updater/pull/224))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.13.1 (2025-03-27)
 
 ### 🩹 Fixes
