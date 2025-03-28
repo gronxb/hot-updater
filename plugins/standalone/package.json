@@ -45,11 +45,15 @@
     "@hot-updater/core": "0.13.2",
     "@hot-updater/plugin-core": "0.13.2"
   },
-  "devDependencies": {
-    "mime": "2.6.0",
+ "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@hot-updater/js": "0.13.0",
+    "@hot-updater/postgres": "0.13.0",
     "@types/mime": "^2.0.3",
     "@types/node": "^20.9.4",
     "@types/semver": "^7.5.8",
+    "hono": "^4.6.3",
+    "mime": "2.6.0",
     "msw": "^2.7.0",
     "semver": "^7.6.3",
     "vitest": "^3.0.6"
