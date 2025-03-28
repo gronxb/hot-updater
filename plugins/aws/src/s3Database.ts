@@ -20,55 +20,6 @@ export interface AWSClients {
   cloudFrontClient: CloudFrontClient;
 }
 
-export async function listObjects(config: AWSClients, bucket: string) {
-  let continuationToken: string | undefined;
-  const keys: string[] = [];
-
-  do {
-    const response = await config.s3Client.send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: "",
-        ContinuationToken: continuationToken,
-      })
-    );
-    const found = (response.Contents ?? [])
-      .map((item) => item.Key)
-      .filter((key): key is string => !!key);
-    keys.push(...found);
-    continuationToken = response.NextContinuationToken;
-  } while (continuationToken);
-
-  return keys;
-}
-
-/**
- * Invalidates CloudFront cache for the given paths.
- */
-export async function invalidateCloudFront(
-  client: CloudFrontClient,
-  distributionId: string,
-  paths: string[]
-) {
-  if (paths.length === 0) {
-    return;
-  }
-
-  const timestamp = new Date().getTime();
-  await client.send(
-    new CreateInvalidationCommand({
-      DistributionId: distributionId,
-      InvalidationBatch: {
-        CallerReference: `invalidation-${timestamp}`,
-        Paths: {
-          Quantity: paths.length,
-          Items: paths,
-        },
-      },
-    })
-  );
-}
-
 export interface S3DatabaseConfig extends S3ClientConfig {
   bucketName: string;
   cloudfrontDistributionId: string;
@@ -153,17 +104,52 @@ export const s3Database = (
     );
   }
 
-  async function postDoSomething(pathsToInvalidate: Set<string>) {
+  /**
+   * Invalidates CloudFront cache for the given paths.
+   */
+  async function invalidateCloudFront(
+    client: CloudFrontClient,
+    distributionId: string,
+    paths: string[]
+  ) {
+    const timestamp = new Date().getTime();
+    await client.send(
+      new CreateInvalidationCommand({
+        DistributionId: distributionId,
+        InvalidationBatch: {
+          CallerReference: `invalidation-${timestamp}`,
+          Paths: {
+            Quantity: paths.length,
+            Items: paths,
+          },
+        },
+      })
+    );
+  }
+
+  async function invalidateCloudFrontPostUpdate(
+    pathsToInvalidate: Set<string>
+  ) {
+    const paths = Array.from(pathsToInvalidate);
+
     // Execute CloudFront invalidation
     if (
       awsConfig.cloudFrontClient &&
       cloudfrontDistributionId &&
-      pathsToInvalidate.size > 0
+      paths.length > 0
     ) {
-      await invalidateCloudFront(
-        awsConfig.cloudFrontClient,
-        cloudfrontDistributionId,
-        Array.from(pathsToInvalidate)
+      const timestamp = new Date().getTime();
+      await awsConfig.cloudFrontClient.send(
+        new CreateInvalidationCommand({
+          DistributionId: cloudfrontDistributionId,
+          InvalidationBatch: {
+            CallerReference: `invalidation-${timestamp}`,
+            Paths: {
+              Quantity: paths.length,
+              Items: paths,
+            },
+          },
+        })
       );
     }
   }
@@ -174,7 +160,7 @@ export const s3Database = (
     uploadJsonToS3,
     listObjects,
     deleteObject,
-    postDoSomething,
+    invalidateCloudFrontPostUpdate,
     hooks
   );
 };

@@ -2,6 +2,23 @@ import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { orderBy } from "es-toolkit";
 
+/**
+File Structure:
+- channel
+  - platform
+    - targetAppVersion
+      - update.json
+    - target-app-versions.json
+- bundle-ids
+  - bundle.zip
+
+File Contents: target-app-versions.json
+- Array of targetAppVersion strings
+
+File Contents: update.json
+- Array of Updates
+*/
+
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
   _oldUpdateJsonKey?: string;
@@ -17,7 +34,7 @@ export function blobDatabase(
   name: string,
   loadJson: <T>(key: string) => Promise<T | null>,
   uploadJson: <T>(key: string, data: T) => Promise<void>,
-  listObjects: () => Promise<string[]>,
+  listObjects: (prefix: string) => Promise<string[]>,
   deleteObject: (key: string) => Promise<void>,
   invalidatedPaths: (paths: Set<string>) => Promise<void>,
   hooks?: DatabasePluginHooks
@@ -30,13 +47,19 @@ export function blobDatabase(
   const PLATFORMS = ["ios", "android"] as const;
 
   // Reload all bundle data from S3.
-  async function reloadBundles() {
+  // TODO - Channel is an option but not callers use it.
+  async function reloadBundles(channel?: string) {
     bundlesMap.clear();
 
     const platformPromises = PLATFORMS.map(async (platform) => {
+      const prefix = channel
+        ? platform
+          ? `${channel}/${platform}/`
+          : `${channel}/`
+        : "";
       // Retrieve update.json files for the platform across all channels.
-      const keys = await listObjects();
-      const filePromises = keys.map(async (key) => {
+      const keys = await listObjects(prefix);
+      const filePromises: Promise<Bundle[]>[] = keys.map(async (key) => {
         const bundlesData = (await loadJson<Bundle[]>(key)) ?? [];
         return bundlesData.map((bundle) => ({
           ...bundle,
@@ -176,11 +199,16 @@ export function blobDatabase(
       },
 
       async getChannels() {
-        const allBundles = await this.getBundles();
+        // TODO - remove force cast
+        const allBundles: Bundle[] = await this.getBundles();
         return [...new Set(allBundles.map((bundle) => bundle.channel))];
       },
 
-      async commitBundle({ changedSets }) {
+      async commitBundle({
+        changedSets,
+      }: {
+        changedSets: { operation: "insert"; data: Bundle }[];
+      }) {
         if (changedSets.length === 0) return;
 
         const changedBundlesByKey: Record<string, Bundle[]> = {};
