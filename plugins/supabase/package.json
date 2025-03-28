@@ -36,6 +36,7 @@
     "sql",
     "supabase/functions",
     "supabase/migrations",
+    "supabase/index.ts",
     "package.json"
   ],
   "scripts": {
