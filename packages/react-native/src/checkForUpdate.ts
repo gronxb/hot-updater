@@ -8,12 +8,13 @@ import {
   getMinBundleId,
 } from "./native";
 
-export interface CheckForUpdateConfig {
+export interface CheckForUpdateOptions {
   source: string;
   requestHeaders?: Record<string, string>;
+  onError?: (error: Error) => void;
 }
 
-export async function checkForUpdate(config: CheckForUpdateConfig) {
+export async function checkForUpdate(options: CheckForUpdateOptions) {
   if (__DEV__) {
     return null;
   }
@@ -35,7 +36,7 @@ export async function checkForUpdate(config: CheckForUpdateConfig) {
   }
 
   return fetchUpdateInfo(
-    config.source,
+    options.source,
     {
       appVersion: currentAppVersion,
       bundleId: currentBundleId,
@@ -43,6 +44,7 @@ export async function checkForUpdate(config: CheckForUpdateConfig) {
       minBundleId,
       channel,
     },
-    config.requestHeaders,
+    options.requestHeaders,
+    options.onError,
   );
 }

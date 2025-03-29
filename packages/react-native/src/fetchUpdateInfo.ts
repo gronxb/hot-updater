@@ -4,6 +4,7 @@ export const fetchUpdateInfo = async (
   source: string,
   { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
+  onError?: (error: Error) => void,
 ): Promise<AppUpdateInfo | null> => {
   try {
     return fetch(source, {
@@ -16,7 +17,8 @@ export const fetchUpdateInfo = async (
         ...requestHeaders,
       },
     }).then((res) => (res.status === 200 ? res.json() : null));
-  } catch {
+  } catch (error) {
+    onError?.(error as Error);
     return null;
   }
 };
