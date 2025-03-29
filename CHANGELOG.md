@@ -1,3 +1,13 @@
+## 0.13.5 (2025-03-29)
+
+### 🩹 Fixes
+
+- **cli:** prevent update failure due to incorrect ZIP file generation during `hot-updater deploy` ([#237](https://github.com/gronxb/hot-updater/pull/237))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.13.4 (2025-03-29)
 
 ### 🩹 Fixes
