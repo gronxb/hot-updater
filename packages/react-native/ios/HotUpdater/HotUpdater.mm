@@ -95,15 +95,55 @@ RCT_EXPORT_MODULE();
     return appVersion;
 }
 
+/**
+ * 확정 번들을 설정 (안정 번들)
+ */
 - (void)setBundleURL:(NSString *)localPath {
-    NSLog(@"Setting bundle URL: %@", localPath);
+    NSLog(@"Setting confirmed bundle URL: %@", localPath);
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setObject:localPath forKey:@"HotUpdaterBundleURL"];
     [defaults synchronize];
 }
 
+/**
+ * 임시(provisional) 번들을 설정 (notifyAppReady 호출 전)
+ */
+- (void)setProvisionalBundleURL:(NSString *)localPath {
+    NSLog(@"Setting provisional bundle URL: %@", localPath);
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:localPath forKey:@"HotUpdaterPendingBundleURL"];
+    [defaults synchronize];
+}
+
+/**
+ * 앱 내에서 번들이 정상 실행되면 JS에서 호출하여 provisional 번들을 확정한다.
+ */
+RCT_EXPORT_METHOD(notifyAppReady) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *pending = [defaults objectForKey:@"HotUpdaterPendingBundleURL"];
+    if (pending) {
+        [defaults setObject:pending forKey:@"HotUpdaterBundleURL"];
+        [defaults removeObjectForKey:@"HotUpdaterPendingBundleURL"];
+        [defaults synchronize];
+        NSLog(@"Bundle confirmed as ready: %@", pending);
+    } else {
+        NSLog(@"No pending bundle found to confirm.");
+    }
+}
+
+/**
+ * 번들 로드 시 NSUserDefaults에 provisional 번들이 남아 있다면 롤백 처리
+ */
 + (NSURL *)cachedURLFromBundle {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // 롤백: provisional update가 남아 있다면 이를 제거하고 안정 번들을 사용
+    if ([defaults objectForKey:@"HotUpdaterPendingBundleURL"]) {
+        NSLog(@"Rollback executed: pending update not confirmed.");
+        [defaults removeObjectForKey:@"HotUpdaterPendingBundleURL"];
+        [defaults synchronize];
+    }
+    
     NSString *savedURLString = [defaults objectForKey:@"HotUpdaterBundleURL"];
     
     if (savedURLString) {
@@ -321,9 +361,9 @@ RCT_EXPORT_MODULE();
         [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
         
         NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:finalFoundBundle];
-        NSLog(@"Setting bundle URL: %@", bundlePath);
+        NSLog(@"Setting provisional bundle URL: %@", bundlePath);
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self setBundleURL:bundlePath];
+            [self setProvisionalBundleURL:bundlePath];
             [self cleanupOldBundlesAtDirectory:bundleStoreDir];
             [fileManager removeItemAtPath:tempDir error:nil];
             if (completion) completion(YES);
@@ -382,7 +422,7 @@ RCT_EXPORT_MODULE();
         NSURLSessionDownloadTask *task = (NSURLSessionDownloadTask *)object;
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
-            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // In milliseconds
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
             if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
                 self.lastUpdateTime = currentTime;
                 [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
