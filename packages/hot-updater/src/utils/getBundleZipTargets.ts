@@ -5,8 +5,15 @@ export async function getBundleZipTargets(
   const bundleCandidates: Record<string, string> = {};
   const targets: { path: string; name: string }[] = [];
 
-  const getRelative = (file: string): string =>
-    file.startsWith(basePath) ? file.slice(basePath.length) : file;
+  const getRelative = (file: string): string => {
+    if (file.startsWith(basePath)) {
+      const sliceIndex = basePath.endsWith("/")
+        ? basePath.length
+        : basePath.length + 1;
+      return file.slice(sliceIndex);
+    }
+    return file;
+  };
 
   for (const file of files) {
     if (file.endsWith(".map")) {

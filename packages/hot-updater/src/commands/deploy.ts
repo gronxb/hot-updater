@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import fs from "fs";
 import semverValid from "semver/ranges/valid";
 
 import open from "open";
@@ -144,10 +144,18 @@ export const deploy = async (options: DeployOptions) => {
           if (!buildPath) {
             throw new Error("Build result not found");
           }
-          const files = await fs.readdir(buildPath);
+          const files = await fs.promises.readdir(buildPath, {
+            recursive: true,
+          });
+
           const targetFiles = await getBundleZipTargets(
             buildPath,
-            files.map((file) => path.join(buildPath, file)),
+            files
+              .filter(
+                (file) =>
+                  !fs.statSync(path.join(buildPath, file)).isDirectory(),
+              )
+              .map((file) => path.join(buildPath, file)),
           );
           await createZipTargetFiles({
             outfile: bundlePath,
@@ -212,7 +220,7 @@ export const deploy = async (options: DeployOptions) => {
             throw new Error("Failed to update database");
           }
           await databasePlugin.onUnmount?.();
-          await fs.rm(bundlePath);
+          await fs.promises.rm(bundlePath);
 
           return `✅ Update Complete (${databasePlugin.name})`;
         },
