@@ -928,13 +928,13 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
       cosmiconfig:
-        specifier: ^9.0.0
+        specifier: 9.0.0
         version: 9.0.0(typescript@5.8.2)
       cosmiconfig-typescript-loader:
-        specifier: ^5.0.0
+        specifier: 5.0.0
         version: 5.0.0(@types/node@22.7.5)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
       ts-morph:
-        specifier: ^25.0.1
+        specifier: 25.0.1
         version: 25.0.1
     devDependencies:
       '@babel/core':

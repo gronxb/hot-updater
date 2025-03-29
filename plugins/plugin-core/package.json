@@ -43,9 +43,9 @@
   },
   "dependencies": {
     "@hot-updater/core": "0.13.3",
-    "cosmiconfig": "^9.0.0",
-    "cosmiconfig-typescript-loader": "^5.0.0",
-    "ts-morph": "^25.0.1"
+    "cosmiconfig": "9.0.0",
+    "cosmiconfig-typescript-loader": "5.0.0",
+    "ts-morph": "25.0.1"
   },
   "devDependencies": {
     "@babel/core": "7.26.0",
