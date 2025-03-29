@@ -113,7 +113,10 @@ describe("getBundleZipTargets", () => {
       "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/src_logo.png",
     ];
 
-    const result = await getBundleZipTargets("/path/to", files);
+    const result = await getBundleZipTargets(
+      "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist",
+      files,
+    );
 
     expect(result).toEqual(
       expect.arrayContaining([
