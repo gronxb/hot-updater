@@ -479,8 +479,8 @@ importers:
         specifier: ^1.13.4
         version: 1.13.4(hono@4.6.3)
       '@hono/typia-validator':
-        specifier: ^0.1.0
-        version: 0.1.0(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))
+        specifier: ^0.1.2
+        version: 0.1.2(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))
       '@hono/vite-dev-server':
         specifier: ^0.18.1
         version: 0.18.1(hono@4.6.3)(miniflare@4.20250321.0)(wrangler@4.5.0(@cloudflare/workers-types@4.20250317.0))
@@ -659,6 +659,9 @@ importers:
       execa:
         specifier: ^9.5.2
         version: 9.5.2
+      find-up-simple:
+        specifier: ^1.0.1
+        version: 1.0.1
       is-port-reachable:
         specifier: ^4.0.0
         version: 4.0.0
@@ -749,7 +752,7 @@ importers:
         specifier: 3.772.0
         version: 3.772.0
       '@clack/prompts':
-        specifier: ^0.10.0
+        specifier: 0.10.0
         version: 0.10.0
       '@hot-updater/core':
         specifier: workspace:*
@@ -798,7 +801,7 @@ importers:
         version: 4.2.0(encoding@0.1.13)
     devDependencies:
       '@clack/prompts':
-        specifier: ^0.10.0
+        specifier: 0.10.0
         version: 0.10.0
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.8.0
@@ -925,11 +928,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
       cosmiconfig:
-        specifier: ^9.0.0
+        specifier: 9.0.0
         version: 9.0.0(typescript@5.8.2)
       cosmiconfig-typescript-loader:
-        specifier: ^5.0.0
+        specifier: 5.0.0
         version: 5.0.0(@types/node@22.7.5)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
+      ts-morph:
+        specifier: 25.0.1
+        version: 25.0.1
     devDependencies:
       '@babel/core':
         specifier: 7.26.0
@@ -1004,6 +1010,9 @@ importers:
       camelcase-keys:
         specifier: ^9.1.3
         version: 9.1.3
+      pg-minify:
+        specifier: ^1.6.5
+        version: 1.6.5
 
   plugins/standalone:
     dependencies:
@@ -1049,7 +1058,7 @@ importers:
         version: 2.47.10
     devDependencies:
       '@clack/prompts':
-        specifier: ^0.10.0
+        specifier: 0.10.0
         version: 0.10.0
       '@hot-updater/postgres':
         specifier: workspace:*
@@ -3462,11 +3471,11 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hono/typia-validator@0.1.0':
-    resolution: {integrity: sha512-9UTzv1e0Ioenf6lG0sdF81XRjm6+JS5w6X+02M39Aa09RZp/FE2AAu0M7TJHOyN9vaQ9s2dWZdRaftrt8BegPw==}
+  '@hono/typia-validator@0.1.2':
+    resolution: {integrity: sha512-gfCMFyQsxCnncwA8DCdgu1a/1lrKQq46emrvGvQTzwkViyvoF2LswDdCdGSjvte/r8d0I4flU1udt6j6vGP6TQ==}
     peerDependencies:
       hono: '>=3.9.0'
-      typia: ^7.0.0
+      typia: ^7.0.0 || ^8.0.0
 
   '@hono/vite-dev-server@0.18.1':
     resolution: {integrity: sha512-Hud6Vsm+5jZDYGuchOVrc/Cr+CqydLH9yBc7VY8ChI1PH0WKSxG12t/qtQs4otuPDuUhowtemCLrk3TpMONYjQ==}
@@ -5592,6 +5601,9 @@ packages:
     resolution: {integrity: sha512-P9dF7XbibHph2PFRz8gfBKEXEY/HJPOhym8CHmjF8y3q5mWpKx9xtZapXQUWCgkqvsK0R46Azuz+VaxD4Xl+Tg==}
     engines: {node: '>=12'}
 
+  '@ts-morph/common@0.26.1':
+    resolution: {integrity: sha512-Sn28TGl/4cFpcM+jwsH1wLncYq3FtN/BIpem+HOygfBWPT5pAeS5dB4VFVzV8FbnOKHpDLZmvAl4AjPEev5idA==}
+
   '@tsconfig/node10@1.0.11':
     resolution: {integrity: sha512-DcRjDCujK/kCk/cUe8Xz8ZSpm8mS3mNNpta+jGCA6USEDfktlNvm1+IuZ9eTcDbNk41BHwpHHeW+N1lKCz4zOw==}
 
@@ -6878,6 +6890,9 @@ packages:
     resolution: {integrity: sha512-QVb0dM5HvG+uaxitm8wONl7jltx8dqhfU33DcqtOZcLSVIKSDDLDi7+0LbAKiyI8hD9u42m2YxXSkMGWThaecQ==}
     engines: {iojs: '>= 1.0.0', node: '>= 0.12.0'}
 
+  code-block-writer@13.0.3:
+    resolution: {integrity: sha512-Oofo0pq3IKnsFtuHqSF7TqBfr71aeyZDVJ0HpmqB7FBM2qEigL0iPONSCZSO9pE9dZTAxANe5XHG9Uy0YMv8cg==}
+
   collect-v8-coverage@1.0.2:
     resolution: {integrity: sha512-lHl4d5/ONEbLlJvaJNtsF/Lz+WvB07u2ycqTYbdrq7UypDXailES4valYb2eWiJFxZlVmpGekfqoxQhzyFdT4Q==}
 
@@ -7898,8 +7913,8 @@ packages:
     resolution: {integrity: sha512-HdWXgFYc6b1BJcOBDBwjqWuHJj1WYiqrxSh25qtU4DabpMFdj/gSunNBQb83t+8Zt67D7CXEzJWTkxaShMTMOA==}
     engines: {node: '>=14'}
 
-  find-up-simple@1.0.0:
-    resolution: {integrity: sha512-q7Us7kcjj2VMePAa02hDAF6d+MzsdsAWEwYyOpwUtlerRBkOEPBCRZrAV4XfcSN8fHAgaD0hP7miwoay6DCprw==}
+  find-up-simple@1.0.1:
+    resolution: {integrity: sha512-afd4O7zpqHeRyg4PfDQsXmlDe2PfdHtJt6Akt8jOWaApLOZk5JXs6VMR29lz03pRe9mpykrRCYIYxaJYcfpncQ==}
     engines: {node: '>=18'}
 
   find-up@3.0.0:
@@ -10162,6 +10177,9 @@ packages:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
 
+  path-browserify@1.0.1:
+    resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
+
   path-exists@3.0.0:
     resolution: {integrity: sha512-bpC7GYwiDYQ4wYLe+FA8lhRjhQCMcQGuSgGGqDkg/QerRWw9CmGRT0iSOVRSZJ29NMLZgIzqaljJ63oaL4NIJQ==}
     engines: {node: '>=4'}
@@ -11807,6 +11825,9 @@ packages:
 
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
+
+  ts-morph@25.0.1:
+    resolution: {integrity: sha512-QJEiTdnz1YjrB3JFhd626gX4rKHDLSjSVMvGGG4v7ONc3RBwa0Eei98G9AT9uNFDMtV54JyuXsFeC+OH0n6bXQ==}
 
   ts-node@10.9.1:
     resolution: {integrity: sha512-NtVysVPkxxrwFGUUxGYhfux8k78pQB3JqYBXlLRZgdGUqTO5wU/UyHop5p70iEbGhB7q5KmiZiU0Y3KlJrScEw==}
@@ -15931,7 +15952,7 @@ snapshots:
     dependencies:
       hono: 4.6.3
 
-  '@hono/typia-validator@0.1.0(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))':
+  '@hono/typia-validator@0.1.2(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3))':
     dependencies:
       hono: 4.6.3
       typia: 8.0.3(@samchon/openapi@3.1.0)(typescript@5.6.3)
@@ -18517,7 +18538,7 @@ snapshots:
       '@rsbuild/core': 1.1.13
       deepmerge: 4.3.1
       loader-utils: 2.0.4
-      postcss: 8.4.49
+      postcss: 8.5.3
       reduce-configs: 1.1.0
       sass-embedded: 1.83.0
 
@@ -19406,6 +19427,12 @@ snapshots:
   '@tanstack/store@0.5.5': {}
 
   '@tanstack/table-core@8.20.5': {}
+
+  '@ts-morph/common@0.26.1':
+    dependencies:
+      fast-glob: 3.3.2
+      minimatch: 9.0.4
+      path-browserify: 1.0.1
 
   '@tsconfig/node10@1.0.11': {}
 
@@ -21107,6 +21134,8 @@ snapshots:
 
   co@4.6.0: {}
 
+  code-block-writer@13.0.3: {}
+
   collect-v8-coverage@1.0.2: {}
 
   color-convert@1.9.3:
@@ -22432,7 +22461,7 @@ snapshots:
       fast-querystring: 1.1.2
       safe-regex2: 3.1.0
 
-  find-up-simple@1.0.0: {}
+  find-up-simple@1.0.1: {}
 
   find-up@3.0.0:
     dependencies:
@@ -26160,6 +26189,8 @@ snapshots:
 
   parseurl@1.3.3: {}
 
+  path-browserify@1.0.1: {}
+
   path-exists@3.0.0: {}
 
   path-exists@4.0.0: {}
@@ -26977,7 +27008,7 @@ snapshots:
 
   read-package-up@11.0.0:
     dependencies:
-      find-up-simple: 1.0.0
+      find-up-simple: 1.0.1
       read-pkg: 9.0.1
       type-fest: 4.35.0
 
@@ -28184,6 +28215,11 @@ snapshots:
 
   ts-interface-checker@0.1.13: {}
 
+  ts-morph@25.0.1:
+    dependencies:
+      '@ts-morph/common': 0.26.1
+      code-block-writer: 13.0.3
+
   ts-node@10.9.1(@swc/core@1.7.42(@swc/helpers@0.5.15))(@types/node@22.13.5)(typescript@5.8.2):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
@@ -28824,7 +28860,7 @@ snapshots:
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.3
-      rollup: 4.32.1
+      rollup: 4.34.9
     optionalDependencies:
       '@types/node': 20.16.10
       fsevents: 2.3.3
@@ -28837,7 +28873,7 @@ snapshots:
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.3
-      rollup: 4.32.1
+      rollup: 4.34.9
     optionalDependencies:
       '@types/node': 22.13.5
       fsevents: 2.3.3
@@ -28850,7 +28886,7 @@ snapshots:
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.3
-      rollup: 4.32.1
+      rollup: 4.34.9
     optionalDependencies:
       '@types/node': 22.8.7
       fsevents: 2.3.3

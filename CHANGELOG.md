@@ -1,3 +1,60 @@
+## 0.13.5 (2025-03-29)
+
+### 🩹 Fixes
+
+- **cli:** prevent update failure due to incorrect ZIP file generation during `hot-updater deploy` ([#237](https://github.com/gronxb/hot-updater/pull/237))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.13.4 (2025-03-29)
+
+### 🩹 Fixes
+
+- **plugin-core:** using `ts-morph` and not `typescript` peerDeps ([#236](https://github.com/gronxb/hot-updater/pull/236))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.13.3 (2025-03-28)
+
+### 🚀 Features
+
+- **postgresql:** `getUpdateInfo` node util ([#215](https://github.com/gronxb/hot-updater/pull/215))
+
+### 🩹 Fixes
+
+- **aws:** create s3 region us-east-1 ([#231](https://github.com/gronxb/hot-updater/pull/231))
+- **cli:** banner version not showing ([#226](https://github.com/gronxb/hot-updater/pull/226))
+
+### ❤️ Thank You
+
+- miso-kyoungminkim
+- Sungyu Kang
+
+## 0.13.2 (2025-03-28)
+
+### 🩹 Fixes
+
+- **supabase:** exports edge-functions entryPoint ([#224](https://github.com/gronxb/hot-updater/pull/224))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.13.1 (2025-03-27)
+
+### 🩹 Fixes
+
+- **cli:** getDefaultTargetAppVersion from info.plist ([#218](https://github.com/gronxb/hot-updater/pull/218))
+- **metro:** ensure `bundle.map` is generated correctly when `enableHermes` is set to true ([#219](https://github.com/gronxb/hot-updater/pull/219))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.13.0 (2025-03-26)
 
 This was a version bump only, there were no code changes.

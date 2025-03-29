@@ -13,7 +13,7 @@ import { runUpdateProcess } from "./runUpdateProcess";
 import { hotUpdaterStore } from "./store";
 import { wrap } from "./wrap";
 
-export type { HotUpdaterConfig } from "./wrap";
+export type { HotUpdaterOptions } from "./wrap";
 export type { HotUpdaterEvent } from "./native";
 
 export * from "./store";
