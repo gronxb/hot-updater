@@ -31,33 +31,84 @@ class HotUpdater : ReactPackage {
             return packageInfo.versionName
         }
 
-        private fun setBundleURL(
-            context: Context,
-            bundleURL: String?,
-        ) {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+        /**
+         * Function to finalize and apply the existing stable bundle.
+         */
+        private fun setBundleURL(context: Context, bundleURL: String?) {
+            val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             with(sharedPreferences.edit()) {
                 putString("HotUpdaterBundleURL", bundleURL)
                 apply()
             }
-
             if (bundleURL == null) {
                 return
             }
-
             val reactIntegrationManager = ReactIntegrationManager(context)
             val activity: Activity? = getCurrentActivity(context)
-            val reactApplication: ReactApplication =
-                reactIntegrationManager.getReactApplication(activity?.application)
-            val newBundleURL = getJSBundleFile(context)
-            reactIntegrationManager.setJSBundle(reactApplication, newBundleURL)
+            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
+            reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
         }
 
-        private fun extractZipFileAtPath(
-            filePath: String,
-            destinationPath: String,
-        ): Boolean =
+        /**
+         * Function to apply a provisional bundle.
+         * Applies the new bundle immediately after download, but keeps it provisional until notifyAppReady is called.
+         */
+        private fun setProvisionalBundleURL(context: Context, bundleURL: String) {
+            val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+            with(sharedPreferences.edit()) {
+                putString("HotUpdaterPendingBundleURL", bundleURL)
+                apply()
+            }
+            val reactIntegrationManager = ReactIntegrationManager(context)
+            val activity: Activity? = getCurrentActivity(context)
+            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
+            reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
+            Log.d("HotUpdater", "Provisional bundle set: $bundleURL")
+        }
+
+        /**
+         * Called after the app has successfully launched to confirm the provisional bundle.
+         */
+        fun notifyAppReady(context: Context) {
+            val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+            val pendingBundleURL = sharedPreferences.getString("HotUpdaterPendingBundleURL", null)
+            if (pendingBundleURL != null) {
+                // 임시 번들을 확정하여 안정 번들로 옮김.
+                with(sharedPreferences.edit()) {
+                    putString("HotUpdaterBundleURL", pendingBundleURL)
+                    remove("HotUpdaterPendingBundleURL")
+                    apply()
+                }
+                Log.d("HotUpdater", "Bundle confirmed as ready: $pendingBundleURL")
+            } else {
+                Log.d("HotUpdater", "No pending bundle found to confirm.")
+            }
+        }
+
+        /**
+        * 앱 재시작 시 호출되는 getJSBundleFile.
+        * 여기서 pending 상태가 남아 있다면 롤백 처리하여 안정 번들을 사용하도록 함.
+        */
+        fun getJSBundleFile(context: Context): String {
+            val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+            // 롤백 처리: 이전 업데이트가 확정되지 않은 경우, pending 항목 삭제
+            if (sharedPreferences.contains("HotUpdaterPendingBundleURL")) {
+                sharedPreferences.edit().remove("HotUpdaterPendingBundleURL").apply()
+                Log.d("HotUpdater", "Rollback executed: pending update not confirmed.")
+            }
+            val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
+            if (urlString.isNullOrEmpty()) {
+                return "assets://index.android.bundle"
+            }
+            val file = File(urlString)
+            if (!file.exists()) {
+                sharedPreferences.edit().remove("HotUpdaterBundleURL").apply()
+                return "assets://index.android.bundle"
+            }
+            return urlString
+        }
+
+        private fun extractZipFileAtPath(filePath: String, destinationPath: String): Boolean =
             try {
                 ZipFile(filePath).use { zip ->
                     zip.entries().asSequence().forEach { entry ->
@@ -95,23 +146,6 @@ class HotUpdater : ReactPackage {
             Handler(Looper.getMainLooper()).post {
                 reactIntegrationManager.reload(reactApplication)
             }
-        }
-
-        fun getJSBundleFile(context: Context): String {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
-            if (urlString.isNullOrEmpty()) {
-                return "assets://index.android.bundle"
-            }
-
-            val file = File(urlString)
-            if (!file.exists()) {
-                setBundleURL(context, null)
-                return "assets://index.android.bundle"
-            }
-
-            return urlString
         }
 
         suspend fun updateBundle(
@@ -162,12 +196,12 @@ class HotUpdater : ReactPackage {
                     val downloadUrl = URL(zipUrl)
                     val conn =
                         try {
-                            downloadUrl.openConnection() as HttpURLConnection
-                        } catch (e: Exception) {
-                            Log.d("HotUpdater", "Failed to open connection: ${e.message}")
-                            tempDir.deleteRecursively()
-                            return@withContext false
-                        }
+                        downloadUrl.openConnection() as HttpURLConnection
+                    } catch (e: Exception) {
+                        Log.d("HotUpdater", "Failed to open connection: ${e.message}")
+                        tempDir.deleteRecursively()
+                        return@withContext false
+                    }
 
                     try {
                         conn.connect()
@@ -245,8 +279,8 @@ class HotUpdater : ReactPackage {
             finalBundleDir.setLastModified(System.currentTimeMillis())
 
             val bundlePath = finalIndexFile.absolutePath
-            Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
-            setBundleURL(context, bundlePath)
+            Log.d("HotUpdater", "Setting provisional bundle URL: $bundlePath")
+            setProvisionalBundleURL(context, bundlePath)
 
             // Clean up old bundles in the bundle store to keep only up to 2 bundles
             cleanupOldBundles(bundleStoreDir)
@@ -281,23 +315,23 @@ class HotUpdater : ReactPackage {
                 val buildTimestampMs = apkFile.lastModified()
                 val bytes =
                     ByteArray(16).apply {
-                        this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
-                        this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
-                        this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
-                        this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
-                        this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
-                        this[5] = (buildTimestampMs and 0xFF).toByte()
-                        this[6] = 0x70.toByte()
-                        this[7] = 0x00.toByte()
-                        this[8] = 0x80.toByte()
-                        this[9] = 0x00.toByte()
-                        this[10] = 0x00.toByte()
-                        this[11] = 0x00.toByte()
-                        this[12] = 0x00.toByte()
-                        this[13] = 0x00.toByte()
-                        this[14] = 0x00.toByte()
-                        this[15] = 0x00.toByte()
-                    }
+                    this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
+                    this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
+                    this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
+                    this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
+                    this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
+                    this[5] = (buildTimestampMs and 0xFF).toByte()
+                    this[6] = 0x70.toByte()
+                    this[7] = 0x00.toByte()
+                    this[8] = 0x80.toByte()
+                    this[9] = 0x00.toByte()
+                    this[10] = 0x00.toByte()
+                    this[11] = 0x00.toByte()
+                    this[12] = 0x00.toByte()
+                    this[13] = 0x00.toByte()
+                    this[14] = 0x00.toByte()
+                    this[15] = 0x00.toByte()
+                }
                 String.format(
                     "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
                     bytes[0].toInt() and 0xFF,

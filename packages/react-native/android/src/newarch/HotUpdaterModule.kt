@@ -22,6 +22,11 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
+    override fun notifyAppReady() {
+        HotUpdater.notifyAppReady(mReactApplicationContext)
+    }
+
+    @ReactMethod
     override fun getAppVersion(promise: Promise) {
         promise.resolve(HotUpdater.getAppVersion(mReactApplicationContext))
     }
