@@ -1,3 +1,13 @@
+## 0.13.4 (2025-03-29)
+
+### 🩹 Fixes
+
+- **plugin-core:** using `ts-morph` and not `typescript` peerDeps ([#236](https://github.com/gronxb/hot-updater/pull/236))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.13.3 (2025-03-28)
 
 ### 🚀 Features
