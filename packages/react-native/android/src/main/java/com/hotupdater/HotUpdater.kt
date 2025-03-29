@@ -34,7 +34,10 @@ class HotUpdater : ReactPackage {
         /**
          * Function to finalize and apply the existing stable bundle.
          */
-        private fun setBundleURL(context: Context, bundleURL: String?) {
+        private fun setBundleURL(
+            context: Context,
+            bundleURL: String?,
+        ) {
             val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             with(sharedPreferences.edit()) {
                 putString("HotUpdaterBundleURL", bundleURL)
@@ -53,7 +56,10 @@ class HotUpdater : ReactPackage {
          * Function to apply a provisional bundle.
          * Applies the new bundle immediately after download, but keeps it provisional until notifyAppReady is called.
          */
-        private fun setProvisionalBundleURL(context: Context, bundleURL: String) {
+        private fun setProvisionalBundleURL(
+            context: Context,
+            bundleURL: String,
+        ) {
             val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             with(sharedPreferences.edit()) {
                 putString("HotUpdaterPendingBundleURL", bundleURL)
@@ -86,9 +92,9 @@ class HotUpdater : ReactPackage {
         }
 
         /**
-        * 앱 재시작 시 호출되는 getJSBundleFile.
-        * 여기서 pending 상태가 남아 있다면 롤백 처리하여 안정 번들을 사용하도록 함.
-        */
+         * 앱 재시작 시 호출되는 getJSBundleFile.
+         * 여기서 pending 상태가 남아 있다면 롤백 처리하여 안정 번들을 사용하도록 함.
+         */
         fun getJSBundleFile(context: Context): String {
             val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             // 롤백 처리: 이전 업데이트가 확정되지 않은 경우, pending 항목 삭제
@@ -108,7 +114,10 @@ class HotUpdater : ReactPackage {
             return urlString
         }
 
-        private fun extractZipFileAtPath(filePath: String, destinationPath: String): Boolean =
+        private fun extractZipFileAtPath(
+            filePath: String,
+            destinationPath: String,
+        ): Boolean =
             try {
                 ZipFile(filePath).use { zip ->
                     zip.entries().asSequence().forEach { entry ->
@@ -196,12 +205,12 @@ class HotUpdater : ReactPackage {
                     val downloadUrl = URL(zipUrl)
                     val conn =
                         try {
-                        downloadUrl.openConnection() as HttpURLConnection
-                    } catch (e: Exception) {
-                        Log.d("HotUpdater", "Failed to open connection: ${e.message}")
-                        tempDir.deleteRecursively()
-                        return@withContext false
-                    }
+                            downloadUrl.openConnection() as HttpURLConnection
+                        } catch (e: Exception) {
+                            Log.d("HotUpdater", "Failed to open connection: ${e.message}")
+                            tempDir.deleteRecursively()
+                            return@withContext false
+                        }
 
                     try {
                         conn.connect()
@@ -315,23 +324,23 @@ class HotUpdater : ReactPackage {
                 val buildTimestampMs = apkFile.lastModified()
                 val bytes =
                     ByteArray(16).apply {
-                    this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
-                    this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
-                    this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
-                    this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
-                    this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
-                    this[5] = (buildTimestampMs and 0xFF).toByte()
-                    this[6] = 0x70.toByte()
-                    this[7] = 0x00.toByte()
-                    this[8] = 0x80.toByte()
-                    this[9] = 0x00.toByte()
-                    this[10] = 0x00.toByte()
-                    this[11] = 0x00.toByte()
-                    this[12] = 0x00.toByte()
-                    this[13] = 0x00.toByte()
-                    this[14] = 0x00.toByte()
-                    this[15] = 0x00.toByte()
-                }
+                        this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
+                        this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
+                        this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
+                        this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
+                        this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
+                        this[5] = (buildTimestampMs and 0xFF).toByte()
+                        this[6] = 0x70.toByte()
+                        this[7] = 0x00.toByte()
+                        this[8] = 0x80.toByte()
+                        this[9] = 0x00.toByte()
+                        this[10] = 0x00.toByte()
+                        this[11] = 0x00.toByte()
+                        this[12] = 0x00.toByte()
+                        this[13] = 0x00.toByte()
+                        this[14] = 0x00.toByte()
+                        this[15] = 0x00.toByte()
+                    }
                 String.format(
                     "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
                     bytes[0].toInt() and 0xFF,
