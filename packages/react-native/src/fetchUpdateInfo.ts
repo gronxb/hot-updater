@@ -7,7 +7,7 @@ export const fetchUpdateInfo = async (
   onError?: (error: Error) => void,
 ): Promise<AppUpdateInfo | null> => {
   try {
-    return fetch(source, {
+    const response = await fetch(source, {
       headers: {
         "x-app-platform": platform,
         "x-app-version": appVersion,
@@ -16,7 +16,12 @@ export const fetchUpdateInfo = async (
         ...(channel ? { "x-channel": channel } : {}),
         ...requestHeaders,
       },
-    }).then((res) => (res.status === 200 ? res.json() : null));
+    });
+
+    if (response.status !== 200) {
+      throw new Error(response.statusText);
+    }
+    return response.json();
   } catch (error) {
     onError?.(error as Error);
     return null;

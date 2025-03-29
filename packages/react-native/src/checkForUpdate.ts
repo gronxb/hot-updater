@@ -20,9 +20,10 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
   }
 
   if (!["ios", "android"].includes(Platform.OS)) {
-    throw new HotUpdaterError(
-      "HotUpdater is only supported on iOS and Android",
+    options.onError?.(
+      new HotUpdaterError("HotUpdater is only supported on iOS and Android"),
     );
+    return null;
   }
 
   const currentAppVersion = await getAppVersion();
@@ -32,7 +33,8 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
   const channel = getChannel();
 
   if (!currentAppVersion) {
-    throw new HotUpdaterError("Failed to get app version");
+    options.onError?.(new HotUpdaterError("Failed to get app version"));
+    return null;
   }
 
   return fetchUpdateInfo(
