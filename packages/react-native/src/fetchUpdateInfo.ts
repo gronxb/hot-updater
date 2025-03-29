@@ -9,6 +9,8 @@ export const fetchUpdateInfo = async (
   try {
     const response = await fetch(source, {
       headers: {
+        "Content-Type": "application/json",
+
         "x-app-platform": platform,
         "x-app-version": appVersion,
         "x-bundle-id": bundleId,
