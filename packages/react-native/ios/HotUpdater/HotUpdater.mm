@@ -115,21 +115,6 @@ RCT_EXPORT_MODULE();
     [defaults synchronize];
 }
 
-/**
- * 앱 내에서 번들이 정상 실행되면 JS에서 호출하여 provisional 번들을 확정한다.
- */
-RCT_EXPORT_METHOD(notifyAppReady) {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *pending = [defaults objectForKey:@"HotUpdaterPendingBundleURL"];
-    if (pending) {
-        [defaults setObject:pending forKey:@"HotUpdaterBundleURL"];
-        [defaults removeObjectForKey:@"HotUpdaterPendingBundleURL"];
-        [defaults synchronize];
-        NSLog(@"Bundle confirmed as ready: %@", pending);
-    } else {
-        NSLog(@"No pending bundle found to confirm.");
-    }
-}
 
 /**
  * 번들 로드 시 NSUserDefaults에 provisional 번들이 남아 있다면 롤백 처리
@@ -450,6 +435,19 @@ RCT_EXPORT_METHOD(notifyAppReady) {
 }
 
 #pragma mark - React Native Exports
+
+RCT_EXPORT_METHOD(notifyAppReady) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *pending = [defaults objectForKey:@"HotUpdaterPendingBundleURL"];
+    if (pending) {
+        [defaults setObject:pending forKey:@"HotUpdaterBundleURL"];
+        [defaults removeObjectForKey:@"HotUpdaterPendingBundleURL"];
+        [defaults synchronize];
+        NSLog(@"Bundle confirmed as ready: %@", pending);
+    } else {
+        NSLog(@"No pending bundle found to confirm.");
+    }
+}
 
 RCT_EXPORT_METHOD(reload) {
     NSLog(@"HotUpdater requested a reload");
