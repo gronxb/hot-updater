@@ -234,8 +234,8 @@ export const runInit = async () => {
   }
   const comment =
     mode === "account"
-      ? "The current key may have excessive permissions. Update it with an S3FullAccess-only key."
-      : "This key was generated via SSO login and may expire. Update it with an S3FullAccess-only key.";
+      ? "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key."
+      : "This key was generated via SSO login and may expire. Update it with an S3FullAccess and CloudFrontFullAccess key.";
 
   await makeEnv({
     HOT_UPDATER_S3_BUCKET_NAME: bucketName,

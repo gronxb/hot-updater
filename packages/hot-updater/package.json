@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.13.0",
+  "version": "0.13.5",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -53,22 +53,23 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.10.0",
-    "@hot-updater/console": "0.13.0",
-    "@hot-updater/core": "0.13.0",
-    "@hot-updater/plugin-core": "0.13.0",
+    "@hot-updater/console": "0.13.5",
+    "@hot-updater/core": "0.13.5",
+    "@hot-updater/plugin-core": "0.13.5",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
-    "cosmiconfig-typescript-loader": "^5.0.0"
+    "cosmiconfig-typescript-loader": "^5.0.0",
+    "es-git": "^0.1.0"
   },
   "devDependencies": {
     "@babel/core": "7.26.0",
+    "@babel/generator": "7.26.9",
+    "@babel/parser": "7.26.9",
     "@babel/traverse": "7.25.9",
     "@babel/types": "7.26.0",
-    "@babel/parser": "7.26.9",
-    "@babel/generator": "7.26.9",
-    "@types/babel__generator": "7.6.8",
     "@hono/node-server": "^1.13.4",
     "@types/babel__core": "7.20.5",
+    "@types/babel__generator": "7.6.8",
     "@types/babel__traverse": "7.20.6",
     "@types/connect": "^3.4.38",
     "@types/cosmiconfig": "^6.0.0",
@@ -77,6 +78,7 @@
     "@types/semver": "^7.5.8",
     "es-toolkit": "^1.32.0",
     "execa": "^9.5.2",
+    "find-up-simple": "^1.0.1",
     "is-port-reachable": "^4.0.0",
     "open": "^10.1.0",
     "picocolors": "^1.0.0",

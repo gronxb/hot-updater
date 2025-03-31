@@ -36,9 +36,13 @@ export class S3Manager {
     });
     await s3Client.createBucket({
       Bucket: bucketName,
-      CreateBucketConfiguration: {
-        LocationConstraint: region as BucketLocationConstraint,
-      },
+      ...(region === "us-east-1"
+        ? {}
+        : {
+            CreateBucketConfiguration: {
+              LocationConstraint: region as BucketLocationConstraint,
+            },
+          }),
     });
     p.log.info(`Created S3 bucket: ${bucketName}`);
   }

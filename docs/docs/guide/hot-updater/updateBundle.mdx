@@ -13,8 +13,20 @@ import { HotUpdater } from "@hot-updater/react-native";
 
 async function applyAppUpdate(updateInfo: UpdateInfo) {
   try {
-    await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+    const updateInfo = await HotUpdater.checkForUpdate({
+      source: "<your-update-server-url>",
+      requestHeaders: {
+        Authorization: "Bearer <your-access-token>",
+      },
+    });
 
+    if (!updateInfo) {
+      return {
+        status: "UP_TO_DATE",
+      };
+    }
+
+    await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
     if (updateInfo.shouldForceUpdate) {
       HotUpdater.reload();
     }

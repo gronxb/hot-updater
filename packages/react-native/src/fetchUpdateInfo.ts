@@ -4,10 +4,13 @@ export const fetchUpdateInfo = async (
   source: string,
   { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
+  onError?: (error: Error) => void,
 ): Promise<AppUpdateInfo | null> => {
   try {
-    return fetch(source, {
+    const response = await fetch(source, {
       headers: {
+        "Content-Type": "application/json",
+
         "x-app-platform": platform,
         "x-app-version": appVersion,
         "x-bundle-id": bundleId,
@@ -15,8 +18,14 @@ export const fetchUpdateInfo = async (
         ...(channel ? { "x-channel": channel } : {}),
         ...requestHeaders,
       },
-    }).then((res) => (res.status === 200 ? res.json() : null));
-  } catch {
+    });
+
+    if (response.status !== 200) {
+      throw new Error(response.statusText);
+    }
+    return response.json();
+  } catch (error) {
+    onError?.(error as Error);
     return null;
   }
 };

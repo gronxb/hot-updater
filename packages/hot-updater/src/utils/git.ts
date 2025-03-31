@@ -1,25 +1,16 @@
-import { exec } from "child_process";
+import { getCwd } from "@hot-updater/plugin-core";
+import { type Commit, openRepository } from "es-git";
 
-export const getLatestGitCommitMessage = () => {
-  return new Promise<string | null>((resolve) => {
-    exec("git log --decorate --pretty=format:%s -1", (error, stdout) => {
-      if (error) {
-        resolve(null);
-        return;
-      }
-      resolve(stdout.trim());
-    });
-  });
-};
+export const getLatestGitCommit = async (): Promise<Commit | null> => {
+  try {
+    const repo = await openRepository(getCwd());
+    const headSha = repo.revparse("HEAD").from;
+    if (headSha) {
+      return repo.getCommit(headSha);
+    }
 
-export const getGitCommitHash = () => {
-  return new Promise<string | null>((resolve) => {
-    exec("git rev-parse HEAD", (error, stdout) => {
-      if (error) {
-        resolve(null);
-        return;
-      }
-      resolve(stdout.trim());
-    });
-  });
+    return null;
+  } catch (error) {
+    return null;
+  }
 };

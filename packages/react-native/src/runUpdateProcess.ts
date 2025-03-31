@@ -1,4 +1,4 @@
-import { type CheckForUpdateConfig, checkForUpdate } from "./checkForUpdate";
+import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
 import { getBundleId, reload, updateBundle } from "./native";
 
 export interface RunUpdateProcessResponse {
@@ -8,7 +8,7 @@ export interface RunUpdateProcessResponse {
   id: string;
 }
 
-export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
+export interface RunUpdateProcessOptions extends CheckForUpdateOptions {
   /**
    * If `true`, the app will be reloaded when the downloaded bundle is a force update.
    * If `false`, shouldForceUpdate will be returned as true but the app won't reload.
@@ -51,9 +51,9 @@ export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
  */
 export const runUpdateProcess = async ({
   reloadOnForceUpdate = true,
-  ...checkForUpdateConfig
-}: RunUpdateProcessConfig): Promise<RunUpdateProcessResponse> => {
-  const updateInfo = await checkForUpdate(checkForUpdateConfig);
+  ...checkForUpdateOptions
+}: RunUpdateProcessOptions): Promise<RunUpdateProcessResponse> => {
+  const updateInfo = await checkForUpdate(checkForUpdateOptions);
   if (!updateInfo) {
     return {
       status: "UP_TO_DATE",
