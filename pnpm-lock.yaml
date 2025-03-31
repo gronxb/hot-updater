@@ -632,6 +632,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.4
         version: 1.13.4(hono@4.6.3)
+      '@hot-updater/firebase':
+        specifier: workspace:^
+        version: link:../../plugins/firebase
       '@types/babel__core':
         specifier: 7.20.5
         version: 7.20.5
@@ -867,6 +870,9 @@ importers:
         specifier: ^11.3.1
         version: 11.3.1
     devDependencies:
+      '@clack/prompts':
+        specifier: ^0.10.0
+        version: 0.10.0
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js

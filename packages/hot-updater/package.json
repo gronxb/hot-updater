@@ -68,6 +68,7 @@
     "@babel/traverse": "7.25.9",
     "@babel/types": "7.26.0",
     "@hono/node-server": "^1.13.4",
+    "@hot-updater/firebase": "workspace:^",
     "@types/babel__core": "7.20.5",
     "@types/babel__generator": "7.6.8",
     "@types/babel__traverse": "7.20.6",
@@ -90,6 +91,7 @@
   "peerDependencies": {
     "@hot-updater/aws": "*",
     "@hot-updater/cloudflare": "*",
+    "@hot-updater/firebase": "*",
     "@hot-updater/supabase": "*"
   },
   "peerDependenciesMeta": {
@@ -100,6 +102,9 @@
       "optional": true
     },
     "@hot-updater/aws": {
+      "optional": true
+    },
+    "@hot-updater/firebase": {
       "optional": true
     }
   }

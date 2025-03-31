@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import {} from "fs";
 import path from "path";
-import { initFirebaseUser } from "@/commands/init/firebase/select";
 import * as p from "@clack/prompts";
 import {
   copyDirToTmp,
@@ -13,6 +12,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fs from "fs/promises";
+import { initFirebaseUser } from "./select";
 
 const CONFIG_TEMPLATE = `
 import { metro } from "@hot-updater/metro";
@@ -74,7 +74,7 @@ const REGIONS = [
   },
 ];
 
-export interface FirebaseFunction {
+interface FirebaseFunction {
   platform: string;
   id: string;
   project: string;
@@ -127,7 +127,7 @@ async function setupFirebaseEnv(webAppId: string, tmpDir: string) {
   }
 }
 
-export const initFirebase = async () => {
+export const runInit = async () => {
   const initializeVariable = await initFirebaseUser();
 
   const firebaseDir = path.join(

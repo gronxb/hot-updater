@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
+import { link } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import { link } from "node_modules/@hot-updater/plugin-core/dist/banner";
 
 interface Project {
   projectId: string;
