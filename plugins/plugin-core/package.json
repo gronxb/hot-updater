@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/plugin-core",
-  "version": "0.13.0",
+  "version": "0.13.5",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -42,33 +42,26 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.13.0",
-    "cosmiconfig": "^9.0.0",
-    "cosmiconfig-typescript-loader": "^5.0.0"
+    "@hot-updater/core": "0.13.5",
+    "cosmiconfig": "9.0.0",
+    "cosmiconfig-typescript-loader": "5.0.0",
+    "ts-morph": "25.0.1"
   },
   "devDependencies": {
-    "typescript": "5.8.2",
-    "@babel/parser": "7.26.9",
-    "@babel/generator": "7.26.9",
-    "@types/babel__generator": "7.6.8",
     "@babel/core": "7.26.0",
+    "@babel/generator": "7.26.9",
+    "@babel/parser": "7.26.9",
     "@babel/traverse": "7.25.9",
     "@babel/types": "7.26.0",
     "@types/babel__core": "7.20.5",
+    "@types/babel__generator": "7.6.8",
     "@types/babel__traverse": "7.20.6",
-    "workspace-tools": "^0.36.4",
     "@types/node": "^22.7.5",
     "boxen": "^8.0.1",
     "es-toolkit": "^1.32.0",
     "jszip": "^3.10.1",
-    "picocolors": "^1.0.0"
-  },
-  "peerDependencies": {
-    "typescript": ">=4.5.0"
-  },
-  "peerDependenciesMeta": {
-    "typescript": {
-      "optional": true
-    }
+    "picocolors": "^1.0.0",
+    "typescript": "5.8.2",
+    "workspace-tools": "^0.36.4"
   }
 }

@@ -5,10 +5,11 @@ import { init } from "@/commands/init";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
-import { banner, getCwd, log, printBanner } from "@hot-updater/plugin-core";
+import { banner, getCwd, log } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
+import { printBanner } from "./utils/printBanner";
 
 const DEFAULT_CHANNEL = "production";
 

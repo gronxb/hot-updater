@@ -1,48 +1,19 @@
-import { exec } from "child_process";
 import path from "path";
-import util from "util";
 import type { Platform } from "@hot-updater/plugin-core";
+import { findUp } from "find-up-simple";
 import fs from "fs/promises";
-
-const findXCodeProjectFilename = async (
-  cwd: string,
-): Promise<string | null> => {
-  try {
-    const iosDirPath = path.join(cwd, "ios");
-    const dirContent = await fs.readdir(iosDirPath);
-    for (const item of dirContent) {
-      const itemPath = path.join(iosDirPath, item);
-      const stats = await fs.stat(itemPath);
-      if (stats.isDirectory()) {
-        const pbxprojPath = path.join(itemPath, "project.pbxproj");
-        try {
-          await fs.access(pbxprojPath);
-          return item;
-        } catch {
-          // Not the directory we are looking for
-        }
-      }
-    }
-    return null;
-  } catch (error) {
-    return null;
-  }
-};
+import plist from "plist";
 
 export const getIOSVersion = async (cwd: string): Promise<string | null> => {
-  const filename = await findXCodeProjectFilename(cwd);
-  if (!filename) return null;
-
-  const projectPath = path.join(cwd, "ios", filename);
   try {
-    const execPromise = util.promisify(exec);
+    const plistPath = await findUp("Info.plist", { cwd, type: "file" });
+    if (!plistPath) return null;
 
-    const { stdout } = await execPromise(
-      `xcodebuild -project ${projectPath} -showBuildSettings | grep MARKETING_VERSION`,
-    );
-    const versionMatch = stdout.match(/MARKETING_VERSION = ([\d.]+)/);
-    return versionMatch?.[1] ? versionMatch[1] : null;
-  } catch (error) {
+    const file = await fs.readFile(plistPath, "utf8");
+    const data = plist.parse(file) as Record<string, any>;
+
+    return data["CFBundleShortVersionString"] ?? null;
+  } catch {
     return null;
   }
 };
