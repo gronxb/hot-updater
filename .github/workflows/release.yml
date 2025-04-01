@@ -4,9 +4,6 @@ name: Release & Publish
 
 on:
   push:
-    # test
-    branches:
-      - main
     tags:
       - 'v*' # ex: v1.2.3
 
@@ -36,9 +33,7 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          
-          # TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          TAG_VERSION=0.14.0
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Setup Git config for CI
@@ -50,7 +45,7 @@ jobs:
         run: |
           pnpm clear
           pnpm build
-          pnpm nx release --specifier=${{ steps.version.outputs.version }} --skip-publish --first-release
+          pnpm nx release --specifier=${{ steps.version.outputs.version }} --skip-publish
 
       - name: Publish all packages
         run: pnpm publish:all
