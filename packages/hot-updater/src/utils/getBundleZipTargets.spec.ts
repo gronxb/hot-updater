@@ -12,7 +12,7 @@ describe("getBundleZipTargets", () => {
       "/path/to/index.ios.bundle.hbc.map",
     ];
 
-    const result = await getBundleZipTargets("/path/to/", files);
+    const result = await getBundleZipTargets("/path/to", files);
 
     expect(result).toEqual(
       expect.arrayContaining([
@@ -32,7 +32,7 @@ describe("getBundleZipTargets", () => {
       "/path/to/index.ios.bundle.map",
     ];
 
-    const result = await getBundleZipTargets("/path/to/", files);
+    const result = await getBundleZipTargets("/path/to", files);
 
     expect(result).toEqual(
       expect.arrayContaining([
@@ -55,7 +55,7 @@ describe("getBundleZipTargets", () => {
       "/path/to/index.android.bundle.hbc.map",
     ];
 
-    const result = await getBundleZipTargets("/path/to/", files);
+    const result = await getBundleZipTargets("/path/to", files);
 
     expect(result).toEqual(
       expect.arrayContaining([
@@ -86,7 +86,7 @@ describe("getBundleZipTargets", () => {
       "/path/to/index.android.bundle.map",
     ];
 
-    const result = await getBundleZipTargets("/path/to/", files);
+    const result = await getBundleZipTargets("/path/to", files);
 
     expect(result).toEqual(
       expect.arrayContaining([
@@ -101,6 +101,37 @@ describe("getBundleZipTargets", () => {
         { path: "/path/to/BUNDLE_ID", name: "BUNDLE_ID" },
         { path: "/path/to/BUNDLE_ID2", name: "BUNDLE_ID2" },
         { path: "/path/to/index.android.bundle", name: "index.android.bundle" },
+      ]),
+    );
+  });
+
+  it("realData", async () => {
+    const files = [
+      "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/BUNDLE_ID",
+      "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/index.android.bundle",
+      "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/index.android.bundle.hbc",
+      "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/src_logo.png",
+    ];
+
+    const result = await getBundleZipTargets(
+      "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist",
+      files,
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        {
+          path: "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/src_logo.png",
+          name: "src_logo.png",
+        },
+        {
+          path: "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/index.android.bundle.hbc",
+          name: "index.android.bundle",
+        },
+        {
+          path: "/Users/xx/Desktop/hot-updater/examples/v0.71.19/dist/BUNDLE_ID",
+          name: "BUNDLE_ID",
+        },
       ]),
     );
   });
