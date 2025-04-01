@@ -45,7 +45,12 @@ jobs:
         run: |
           pnpm clear
           pnpm build
-          pnpm nx release --specifier=${{ steps.version.outputs.version }} --skip-publish
+          pnpm nx release --specifier=${{ steps.version.outputs.version }} --skip-publish --first-release
+
+      - name: Publish all packages
+        run: pnpm publish:all
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Push updated files to main branch
         run: |
@@ -53,8 +58,3 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -am "chore: release ${{ steps.version.outputs.version }}"
           git push origin main
-
-      - name: Publish all packages
-        run: pnpm publish:all
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
