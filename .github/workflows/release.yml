@@ -41,6 +41,11 @@ jobs:
           TAG_VERSION=0.14.0
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Git config for CI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Run release with Nx
         run: |
           pnpm clear
@@ -54,7 +59,4 @@ jobs:
 
       - name: Push updated files to main branch
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore: release ${{ steps.version.outputs.version }}"
           git push origin main
