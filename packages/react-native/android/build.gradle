@@ -67,6 +67,7 @@ android {
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
     consumerProguardFiles 'proguard-rules.pro'
+    buildConfigField "long", "BUILD_TIMESTAMP", "${System.currentTimeMillis()}L"
   }
 
   buildFeatures {
