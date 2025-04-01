@@ -1,3 +1,15 @@
+# .github/workflows/release.yml
+
+name: Release & Publish
+
+on:
+  push:
+    tags:
+      - 'v*' # ex: v1.2.3
+
+permissions:
+  contents: write
+
 jobs:
   release-and-publish:
     runs-on: ubuntu-latest
@@ -28,6 +40,13 @@ jobs:
           pnpm clear
           pnpm build
           pnpm nx release --version=${{ steps.version.outputs.version }} --skip-publish
+
+      - name: Push updated files to main branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: release ${{ steps.version.outputs.version }}"
+          git push origin main
 
       - name: Publish all packages
         run: pnpm publish:all
