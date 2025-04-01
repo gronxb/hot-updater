@@ -1,0 +1,35 @@
+jobs:
+  release-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: pnpm install
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Run release with Nx
+        run: |
+          pnpm clear
+          pnpm build
+          pnpm nx release --version=${{ steps.version.outputs.version }} --skip-publish
+
+      - name: Publish all packages
+        run: pnpm publish:all
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
