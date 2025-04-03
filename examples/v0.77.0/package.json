@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/example-react-native-v77",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -10,7 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@hot-updater/react-native": "0.14.0",
+    "@hot-updater/react-native": "0.15.0",
     "react": "18.3.1",
     "react-native": "0.77.0"
   },
@@ -18,10 +18,10 @@
     "@babel/core": "^7.25.2",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
-    "@hot-updater/aws": "0.14.0",
-    "@hot-updater/cloudflare": "0.14.0",
-    "@hot-updater/metro": "0.14.0",
-    "@hot-updater/supabase": "0.14.0",
+    "@hot-updater/aws": "0.15.0",
+    "@hot-updater/cloudflare": "0.15.0",
+    "@hot-updater/metro": "0.15.0",
+    "@hot-updater/supabase": "0.15.0",
     "@react-native-community/cli": "15.0.1",
     "@react-native-community/cli-platform-android": "15.0.1",
     "@react-native-community/cli-platform-ios": "15.0.1",
@@ -38,7 +38,7 @@
     "@types/react-test-renderer": "^18.0.0",
     "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
-    "hot-updater": "0.14.0",
+    "hot-updater": "0.15.0",
     "jest": "^29.6.3",
     "prettier": "2.8.8",
     "react-native-dotenv": "^3.4.11",

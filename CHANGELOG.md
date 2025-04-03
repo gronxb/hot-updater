@@ -1,3 +1,13 @@
+## 0.15.0 (2025-04-03)
+
+### 🩹 Fixes
+
+- **ios:** stable getMinBundleId ([#247](https://github.com/gronxb/hot-updater/pull/247))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.14.0 (2025-04-01)
 
 This was a version bump only, there were no code changes.
