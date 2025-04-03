@@ -82,7 +82,6 @@ export const getUpdateInfo = async (
       const data = doc.data();
 
       const isCompatible =
-        data.target_app_version === "*" ||
         filterCompatibleAppVersions([data.target_app_version], appVersion)
           .length > 0;
 

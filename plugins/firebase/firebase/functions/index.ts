@@ -14,14 +14,6 @@ declare global {
   };
 }
 
-if (typeof global.HotUpdater === "undefined") {
-  global.HotUpdater = {
-    REGION: process.env.FUNCTION_REGION || "us-central1",
-    BUCKET_NAME: process.env.STORAGE_BUCKET || undefined,
-    JWT_SECRET: process.env.JWT_SECRET || "your-secret-key",
-  };
-}
-
 if (!admin.apps.length) {
   admin.initializeApp();
 }
@@ -33,16 +25,22 @@ export function validatePlatform(platform: string): "ios" | "android" | null {
     : null;
 }
 
-function getHostUrl(hostname: string | null): string {
-  hostname = hostname || "";
+function getHostUrl(host: string | null): string {
+  const projectId = admin.app().options.projectId;
 
-  if (hostname.includes(".cloudfunctions.net")) {
-    return `https://${hostname}`;
+  if (!host) {
+    const defaultRegion = HotUpdater.REGION;
+    return `https://${defaultRegion}-${projectId}.cloudfunctions.net`;
+  }
+
+  const hostWithProtocol = host.includes("://") ? host : `https://${host}`;
+  const url = new URL(hostWithProtocol);
+
+  if (url.hostname.includes(".cloudfunctions.net")) {
+    return `https://${url.hostname}`;
   }
 
   const defaultRegion = HotUpdater.REGION;
-  const projectId = process.env.GCLOUD_PROJECT || "your-project-id";
-
   return `https://${defaultRegion}-${projectId}.cloudfunctions.net`;
 }
 
@@ -53,16 +51,21 @@ async function getSignedUrlWithCorrectFormat(params: {
 }) {
   const result = await withJwtSignedUrl(params);
 
-  // biome-ignore lint/complexity/useOptionalChain: <explanation>
-  if (result && result.fileUrl) {
+  if (result?.fileUrl) {
     const functionName = "hot-updater";
 
-    const urlParts = result.fileUrl.split("/");
-    if (urlParts.length >= 4) {
-      const domain = urlParts.slice(0, 3).join("/");
-      const pathWithQuery = urlParts.slice(3).join("/");
+    try {
+      const url = new URL(result.fileUrl);
+      const pathSegments = url.pathname.split("/").filter(Boolean);
 
-      result.fileUrl = `${domain}/${functionName}/${pathWithQuery}`;
+      const newPathname = `/${functionName}/${pathSegments.join("/")}`;
+
+      const newUrl = new URL(newPathname, `${url.protocol}//${url.host}`);
+      newUrl.search = url.search;
+
+      result.fileUrl = newUrl.toString();
+    } catch (error) {
+      console.error("URL Parsing Error:", error);
     }
   }
 
@@ -103,12 +106,8 @@ app.use(
   }),
 );
 
-app.get("/", (c) => {
-  return c.json({ message: "Hot Updater Service is running" });
-});
-
 app.get("", (c) => {
-  return c.json({ message: "Hot Updater Service is running" });
+  return c.text("pong");
 });
 
 app.get("/api/check-update", async (c) => {
@@ -191,7 +190,7 @@ app.get("/api/check-update", async (c) => {
   }
 });
 
-app.get("/*", async (c) => {
+app.get("*", async (c) => {
   try {
     const path = c.req.path.substring(1);
     const token = c.req.query("token");

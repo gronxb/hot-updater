@@ -1,11 +1,8 @@
-// firestoreTypes.ts
-export interface DocumentData {
-  [field: string]: any;
-}
+import type { Bundle } from "@hot-updater/core";
 
 export interface DocumentSnapshot {
   exists: boolean;
-  data(): DocumentData | undefined;
+  data(): Bundle | undefined;
 }
 
 export interface QuerySnapshot {
@@ -14,7 +11,7 @@ export interface QuerySnapshot {
 }
 
 export interface QueryDocumentSnapshot extends DocumentSnapshot {
-  data(): DocumentData;
+  data(): Bundle;
 }
 
 export interface FirestoreCollection {

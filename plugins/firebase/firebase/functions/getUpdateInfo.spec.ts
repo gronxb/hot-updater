@@ -3,6 +3,7 @@ import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { execa } from "execa";
 import admin from "firebase-admin";
 import type { Firestore } from "firebase-admin/firestore";
+import fkill from "fkill";
 import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromIndex } from "./getUpdateInfo";
 
@@ -122,23 +123,7 @@ describe("getUpdateInfo", () => {
 
   afterAll(async () => {
     if (emulatorProcess?.pid) {
-      console.log("Shutting down Firebase emulator...");
-
-      try {
-        if (process.platform === "win32") {
-          await execa("taskkill", [
-            "/pid",
-            String(emulatorProcess.pid),
-            "/T",
-            "/F",
-          ]);
-        } else {
-          process.kill(-emulatorProcess.pid, "SIGTERM");
-        }
-        console.log("Firebase emulator shut down successfully");
-      } catch (error) {
-        console.error("Error shutting down Firebase emulator:", error);
-      }
+      fkill(":8080");
     }
   });
 
