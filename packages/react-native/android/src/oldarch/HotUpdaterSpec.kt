@@ -13,6 +13,8 @@ abstract class HotUpdaterSpec internal constructor(
         promise: Promise,
     )
 
+    abstract fun notifyAppReady()
+
     abstract fun reload()
 
     abstract fun getAppVersion(promise: Promise)

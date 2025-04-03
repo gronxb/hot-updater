@@ -6,6 +6,7 @@ interface Spec extends TurboModule {
   reload(): void;
   updateBundle(bundleId: string, zipUrl: string): Promise<boolean>;
   getAppVersion(): Promise<string | null>;
+  notifyAppReady(): Promise<void>;
 
   // EventEmitter
   addListener(eventName: string): void;
