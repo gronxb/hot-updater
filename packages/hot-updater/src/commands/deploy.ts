@@ -1,4 +1,4 @@
-import fs from "fs";
+import fs from "node:fs";
 import semverValid from "semver/ranges/valid";
 
 import open from "open";
@@ -26,12 +26,13 @@ import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { printBanner } from "@/utils/printBanner";
 
 export interface DeployOptions {
-  targetAppVersion?: string;
-  platform?: Platform;
+  bundleOutputPath?: string;
+  channel: string;
   forceUpdate: boolean;
   interactive: boolean;
-  channel: string;
   message?: string;
+  platform?: Platform;
+  targetAppVersion?: string;
 }
 
 export const deploy = async (options: DeployOptions) => {
@@ -89,6 +90,19 @@ export const deploy = async (options: DeployOptions) => {
         })
       : null);
 
+  const outputPath =
+    options.bundleOutputPath ??
+    (options.interactive
+      ? (
+          await p.text({
+            defaultValue: cwd,
+            initialValue: cwd,
+            message: "Bundle.zip output path (e.g., ./dist/bundle/ios)",
+            placeholder: cwd,
+          })
+        ).toString()
+      : cwd);
+
   if (p.isCancel(targetAppVersion)) {
     return;
   }
@@ -102,8 +116,13 @@ export const deploy = async (options: DeployOptions) => {
   p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
 
   let bundleId: string | null = null;
-  let bundlePath: string;
   let fileHash: string;
+
+  const normalizeOutputPath = path.isAbsolute(outputPath)
+    ? outputPath
+    : path.join(cwd, outputPath);
+
+  const bundlePath = path.join(normalizeOutputPath, "bundle.zip");
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -138,7 +157,8 @@ export const deploy = async (options: DeployOptions) => {
             platform: platform,
             channel,
           });
-          bundlePath = path.join(getCwd(), "bundle.zip");
+
+          await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
 
           const buildPath = taskRef.buildResult?.buildPath;
           if (!buildPath) {
@@ -260,10 +280,10 @@ export const deploy = async (options: DeployOptions) => {
     }
     p.outro("🚀 Deployment Successful");
   } catch (e) {
-    await databasePlugin.onUnmount?.();
     console.error(e);
     process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();
+    await fs.promises.rm(bundlePath, { force: true });
   }
 };
