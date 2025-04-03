@@ -222,6 +222,9 @@ export const s3Database = (
   hooks?: DatabasePluginHooks,
 ) => {
   const { bucketName, cloudfrontDistributionId, ...s3Config } = config;
+  if (!cloudfrontDistributionId) {
+    throw new Error("cloudfrontDistributionId is missing in s3Database");
+  }
   const client = new S3Client(s3Config);
   const cloudfrontClient = new CloudFrontClient({
     credentials: s3Config.credentials,

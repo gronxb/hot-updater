@@ -277,8 +277,7 @@ class HotUpdater : ReactPackage {
 
         fun getMinBundleId(context: Context): String =
             try {
-                val apkFile = File(context.applicationInfo.sourceDir)
-                val buildTimestampMs = apkFile.lastModified()
+                val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
                 val bytes =
                     ByteArray(16).apply {
                         this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
