@@ -27,18 +27,15 @@ RCT_EXPORT_MODULE();
     static NSString *uuid = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSDate *buildDate = nil;
-        NSURL *fallbackURL = nil;
     #if DEBUG
         uuid = @"00000000-0000-0000-0000-000000000000";
         return;
     #else
-        fallbackURL = [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
-    #endif
-        if (fallbackURL) {
-            NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:[fallbackURL path] error:nil];
-            buildDate = attributes[NSFileModificationDate];
-        }
+        // __DATE__, __TIME__ is compile-time
+        NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"];
+        NSDate *buildDate = [formatter dateFromString:compileDateStr];
         if (!buildDate) {
             uuid = @"00000000-0000-0000-0000-000000000000";
             return;
@@ -74,6 +71,7 @@ RCT_EXPORT_MODULE();
                 bytes[6], bytes[7],
                 bytes[8], bytes[9],
                 bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+    #endif
     });
     return uuid;
 }
