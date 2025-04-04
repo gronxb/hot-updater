@@ -47,9 +47,7 @@ const configOptions = {
   loaders: {
     ".ts": TypeScriptLoader(),
     ".mts": TypeScriptLoader(),
-    ".mjs": TypeScriptLoader(),
     ".cts": TypeScriptLoader(),
-    ".cjs": TypeScriptLoader(),
   },
 };
 
@@ -77,6 +75,5 @@ export const loadConfigSync = (
   options: HotUpdaterConfigOptions,
 ): ConfigResponse => {
   const result = cosmiconfigSync("hot-updater", configOptions).search();
-
   return ensureConfig(result, options);
 };
