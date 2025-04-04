@@ -90,18 +90,7 @@ export const deploy = async (options: DeployOptions) => {
         })
       : null);
 
-  const outputPath =
-    options.bundleOutputPath ??
-    (options.interactive
-      ? (
-          await p.text({
-            defaultValue: cwd,
-            initialValue: cwd,
-            message: "Bundle.zip output path (e.g., ./dist/bundle/ios)",
-            placeholder: cwd,
-          })
-        ).toString()
-      : cwd);
+  const outputPath = options.bundleOutputPath ?? cwd;
 
   if (p.isCancel(targetAppVersion)) {
     return;
