@@ -28,12 +28,39 @@ export const withSentry =
           }
         }
 
+        if (include.length === 0) {
+          throw new Error("No source maps found");
+        }
+
         await sentry.releases.uploadSourceMaps(result.bundleId, {
           include,
           sourceMapReference: true,
           dist: `${args.platform}.${args.channel}.${result.bundleId}`,
           stripPrefix: [getCwd()],
         });
+
+        // const sourcemapFile = files.find((file) => file.endsWith(".map"));
+        // const sourcemapPath = sourcemapFile
+        //   ? path.join(result.buildPath, sourcemapFile)
+        //   : null;
+
+        // if (!sourcemapPath) {
+        //   throw new Error("No source maps found");
+        // }
+        // await sentry.execute(
+        //   [
+        //     "sourcemaps",
+        //     "upload",
+        //     "--debug-id-reference",
+        //     "--strip-prefix",
+        //     getCwd(),
+        //     "--bundle",
+        //     sourcemapPath,
+        //     "--dist",
+        //     `${args.platform}.${args.channel}.${result.bundleId}`,
+        //   ],
+        //   true,
+        // );
 
         return result;
       },
