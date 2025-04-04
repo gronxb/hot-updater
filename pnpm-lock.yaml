@@ -99,7 +99,7 @@ importers:
         version: link:../../plugins/metro
       '@hot-updater/sentry-plugin':
         specifier: workspace:*
-        version: link:../../plugins/sentry
+        version: link:../../plugins/sentry-plugin
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -1024,7 +1024,7 @@ importers:
         specifier: ^1.6.5
         version: 1.6.5
 
-  plugins/sentry:
+  plugins/sentry-plugin:
     dependencies:
       '@hot-updater/core':
         specifier: workspace:*
