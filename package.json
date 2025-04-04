@@ -43,7 +43,7 @@
       "@hot-updater/js": "workspace:*",
       "@hot-updater/mock": "workspace:*",
       "@hot-updater/firebase": "workspace:*",
-      "@hot-updater/sentry": "workspace:*"
+      "@hot-updater/sentry-plugin": "workspace:*"
     }
   },
   "packageManager": "pnpm@10.6.3"

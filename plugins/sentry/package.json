@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/sentry",
+  "name": "@hot-updater/sentry-plugin",
   "version": "0.15.0",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",

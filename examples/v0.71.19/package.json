@@ -22,7 +22,7 @@
     "@hot-updater/aws": "0.15.0",
     "@hot-updater/cloudflare": "0.15.0",
     "@hot-updater/metro": "0.15.0",
-    "@hot-updater/sentry": "workspace:^",
+    "@hot-updater/sentry-plugin": "0.15.0",
     "@hot-updater/supabase": "0.15.0",
     "@react-native-community/cli-platform-android": "10.2.0",
     "@react-native-community/cli-platform-ios": "10.2.5",

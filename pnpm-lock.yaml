@@ -18,7 +18,7 @@ overrides:
   '@hot-updater/js': workspace:*
   '@hot-updater/mock': workspace:*
   '@hot-updater/firebase': workspace:*
-  '@hot-updater/sentry': workspace:*
+  '@hot-updater/sentry-plugin': workspace:*
 
 importers:
 
@@ -97,8 +97,8 @@ importers:
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
-      '@hot-updater/sentry':
-        specifier: workspace:^
+      '@hot-updater/sentry-plugin':
+        specifier: workspace:*
         version: link:../../plugins/sentry
       '@hot-updater/supabase':
         specifier: workspace:*
