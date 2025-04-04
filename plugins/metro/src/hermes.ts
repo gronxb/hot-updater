@@ -160,7 +160,7 @@ export async function compileHermes({
     }
 
     try {
-      const sourcemapOutput = `${outputHbcFile}.map`;
+      const sourcemapOutput = `${inputJsFile}.map`;
       await execa("node", [
         composeSourceMapsPath,
         sourcemapOutput,
@@ -168,6 +168,7 @@ export async function compileHermes({
         "-o",
         sourcemapOutput,
       ]);
+      fs.unlinkSync(hermesSourceMapFile);
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(
@@ -177,6 +178,10 @@ export async function compileHermes({
       throw new Error(`Failed to run compose-source-maps script: ${error}`);
     }
   }
+
+  // Overwrite inputJsFile with outputHbcFile
+  fs.unlinkSync(inputJsFile);
+  fs.renameSync(outputHbcFile, inputJsFile);
 
   return { hermesVersion: version.stdout };
 }

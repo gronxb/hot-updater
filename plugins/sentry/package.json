@@ -46,6 +46,10 @@
     "@hot-updater/plugin-core": "0.15.0"
   },
   "devDependencies": {
+    "@sentry/cli": "^2.43.0",
     "@types/node": "^20.9.4"
+  },
+  "peerDependencies": {
+    "@sentry/cli": ">=1.51.1"
   }
 }
