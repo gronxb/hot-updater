@@ -41,7 +41,6 @@ const configOptions = {
     "hot-updater.config.cts",
     "hot-updater.config.cjs",
     "hot-updater.config.mts",
-    "hot-updater.config.mjs",
   ],
   ignoreEmptySearchPlaces: false,
   loaders: {
