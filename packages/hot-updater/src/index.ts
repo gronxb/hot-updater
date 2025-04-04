@@ -48,7 +48,7 @@ program
   )
   .addOption(
     new Option(
-      "-bo, --bundle-output-path <bundleOutputPath>",
+      "-o, --bundle-output-path <bundleOutputPath>",
       "the path where the bundle.zip will be generated",
     ),
   )
