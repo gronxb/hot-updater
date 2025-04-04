@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import {
   type BasePluginArgs,
   type BuildPlugin,
@@ -15,30 +16,25 @@ export const withSentry =
       ...context,
       build: async (args) => {
         const result = await context.build(args);
-        const sentry = new SentryCli(null, {
-          org: config.org,
-          authToken: config.authToken,
-        });
+        const sentry = new SentryCli(null, config);
 
         const include: string[] = [];
         const files = await fs.promises.readdir(result.buildPath, {
           recursive: true,
         });
         for (const file of files) {
-          if (file.endsWith(".map") || file.endsWith(".bundle")) {
-            include.push(file);
+          if (file.endsWith(".map")) {
+            include.push(path.join(result.buildPath, file));
           }
         }
 
-        await sentry.releases.newDeploy(result.bundleId, {
-          env: args.channel,
-        });
         await sentry.releases.uploadSourceMaps(result.bundleId, {
           include,
-
+          sourceMapReference: true,
+          dist: `${args.platform}.${args.channel}.${result.bundleId}`,
           stripPrefix: [getCwd()],
         });
-        await sentry.releases.finalize(result.bundleId);
+
         return result;
       },
     };
