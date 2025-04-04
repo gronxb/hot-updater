@@ -269,6 +269,7 @@ export const deploy = async (options: DeployOptions) => {
     }
     p.outro("🚀 Deployment Successful");
   } catch (e) {
+    await fs.promises.rm(bundlePath, { force: true });
     console.error(e);
     process.exit(1);
   } finally {
