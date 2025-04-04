@@ -99,6 +99,21 @@ export async function getHermesCommand(cwd: string): Promise<string> {
 }
 
 /**
+ * for sentry
+ * insert debug_id to sourcemap
+ * @param filePath
+ * @param debugId
+ */
+const insertDebugIdToSourceMap = (filePath: string, debugId: string) => {
+  const content = fs.readFileSync(filePath, "utf8");
+
+  const insertAfter = /{("version"\s*:\s*\d+,)/; // "version": 3, 다음 위치 찾기
+  const patched = content.replace(insertAfter, `$1 "debug_id":"${debugId}",`);
+
+  fs.writeFileSync(filePath, patched);
+};
+
+/**
  * Compiles a JS bundle into an HBC file using the Hermes compiler,
  * and merges the source maps if enabled.
  *
@@ -146,6 +161,7 @@ export async function compileHermes({
 
   if (sourcemap) {
     const hermesSourceMapFile = `${outputHbcFile}.map`;
+
     if (!fs.existsSync(hermesSourceMapFile)) {
       throw new Error(
         `Hermes-generated sourcemap file (${hermesSourceMapFile}) not found.`,
@@ -161,6 +177,9 @@ export async function compileHermes({
 
     try {
       const sourcemapOutput = `${inputJsFile}.map`;
+      const mapJson = JSON.parse(fs.readFileSync(sourcemapOutput, "utf8"));
+      const debugId = mapJson?.debug_id;
+
       await execa("node", [
         composeSourceMapsPath,
         sourcemapOutput,
@@ -168,6 +187,10 @@ export async function compileHermes({
         "-o",
         sourcemapOutput,
       ]);
+
+      if (debugId) {
+        insertDebugIdToSourceMap(sourcemapOutput, debugId);
+      }
       fs.unlinkSync(hermesSourceMapFile);
     } catch (error) {
       if (error instanceof Error) {
