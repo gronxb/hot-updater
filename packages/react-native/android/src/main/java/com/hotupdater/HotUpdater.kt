@@ -275,7 +275,7 @@ class HotUpdater : ReactPackage {
             }
         }
 
-        fun getMinBundleId(context: Context): String =
+        fun getMinBundleId(): String =
             try {
                 val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
                 val bytes =
