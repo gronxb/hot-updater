@@ -86,7 +86,7 @@ importers:
         specifier: ^7.20.0
         version: 7.23.2(@babel/core@7.26.0)
       '@babel/runtime':
-        specifier: ^7.20.0
+        specifier: ^7.26.0
         version: 7.26.0
       '@hot-updater/aws':
         specifier: workspace:*

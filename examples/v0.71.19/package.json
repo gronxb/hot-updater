@@ -18,7 +18,7 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@babel/preset-env": "^7.20.0",
-    "@babel/runtime": "^7.20.0",
+    "@babel/runtime": "^7.26.0",
     "@hot-updater/aws": "0.15.1",
     "@hot-updater/cloudflare": "0.15.1",
     "@hot-updater/metro": "0.15.1",

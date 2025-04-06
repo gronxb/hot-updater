@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/react-native";
+
 /**
  * Sample React Native App
  * https://github.com/facebook/react-native
@@ -9,9 +11,17 @@ import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
 import React from "react";
 import { useEffect, useState } from "react";
-import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
+import {
+  Button,
+  Image,
+  Modal,
+  Platform,
+  SafeAreaView,
+  Text,
+  View,
+} from "react-native";
 
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
+import { HOT_UPDATER_SENTRY_DSN, HOT_UPDATER_SUPABASE_URL } from "@env";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -27,6 +37,14 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
+
+Sentry.init({
+  dsn: HOT_UPDATER_SENTRY_DSN,
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+  dist: `${Platform.OS}.${HotUpdater.getChannel()}.${HotUpdater.getBundleId()}`,
+});
 
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
@@ -121,6 +139,13 @@ function App(): React.JSX.Element {
             console.log("Update process completed", JSON.stringify(status));
           })
         }
+      />
+
+      <Button
+        title="Throw error"
+        onPress={() => {
+          throw new Error("no hermes");
+        }}
       />
     </SafeAreaView>
   );
