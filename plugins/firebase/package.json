@@ -33,23 +33,21 @@
     "package.json"
   ],
   "scripts": {
-    "build": "rslib build && tsup",
+    "build": "rslib build && tsup ",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/core": "0.15.0",
-    "@hot-updater/plugin-core": "0.15.0",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "firebase": "^11.3.1"
   },
   "devDependencies": {
     "@clack/prompts": "^0.10.0",
-    "@hot-updater/core": "0.12.7",
-    "@hot-updater/js": "0.12.7",
-    "@hot-updater/plugin-core": "0.12.7",
     "@types/node": "^22.13.5",
     "execa": "^9.5.2",
+    "@hot-updater/js": "workspace:*",
     "firebase-admin": "^13.2.0",
     "firebase-functions": "^6.3.2",
     "firebase-functions-test": "^3.4.0",

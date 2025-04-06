@@ -1,10 +1,11 @@
-import { NIL_UUID } from "@hot-updater/core";
 import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getUpdateInfo } from "./getUpdateInfo";
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 declare global {
   var HotUpdater: {

@@ -1,12 +1,13 @@
-import {
-  type Bundle,
-  type GetBundlesArgs,
-  NIL_UUID,
-  type UpdateInfo,
-  type UpdateStatus,
+import type {
+  Bundle,
+  GetBundlesArgs,
+  UpdateInfo,
+  UpdateStatus,
 } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import type { Firestore } from "firebase-admin/firestore";
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   id: NIL_UUID,

@@ -3,7 +3,8 @@
   "include": [
     "src",
     "firebase/functions/getUpdateInfo.ts",
-    "firebase/functions/firestoreType.ts"
+    "firebase/functions/firestoreType.ts",
+    "iac"
   ],
   "exclude": ["lib", "", "**/*.spec.ts"]
 }

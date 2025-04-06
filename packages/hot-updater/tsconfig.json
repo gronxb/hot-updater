@@ -29,5 +29,9 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "../../plugins/firebase/iac/index.ts", "../../plugins/firebase/iac/select.ts"]
+  "include": [
+    "src",
+    "../../plugins/firebase/iac/index.ts",
+    "../../plugins/firebase/iac/select.ts"
+  ]
 }

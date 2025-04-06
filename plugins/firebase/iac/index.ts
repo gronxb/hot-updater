@@ -291,8 +291,6 @@ export const runInit = async () => {
     {
       title: "1. Deploy Firebase Storage Rules",
       task: async () => {
-        if (isFunctionsExist) return;
-
         try {
           await execa(
             "pnpm",
@@ -317,8 +315,6 @@ export const runInit = async () => {
     {
       title: "2. Deploy Firestore Indexes",
       task: async () => {
-        if (isFunctionsExist) return;
-
         try {
           await execa(
             "pnpm",
@@ -327,6 +323,7 @@ export const runInit = async () => {
               "deploy",
               "--only",
               "firestore:indexes",
+              "--non-interactive",
               "--config",
               "./.hot-updater/firebase.json",
             ],
@@ -342,8 +339,6 @@ export const runInit = async () => {
     {
       title: "3. Deploy Firestore Rules",
       task: async () => {
-        if (isFunctionsExist) return;
-
         try {
           await execa(
             "pnpm",

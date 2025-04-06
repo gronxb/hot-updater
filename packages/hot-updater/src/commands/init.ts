@@ -1,29 +1,32 @@
+import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { printBanner } from "@/utils/printBanner";
 import { isCancel, select } from "@clack/prompts";
+import * as p from "@clack/prompts";
+import { ExecaError } from "execa";
 
-// const REQUIRED_PACKAGES = {
-//   dependencies: ["@hot-updater/react-native"],
-//   devDependencies: ["dotenv"],
-// };
+const REQUIRED_PACKAGES = {
+  dependencies: ["@hot-updater/react-native"],
+  devDependencies: ["dotenv"],
+};
 
-// const PACKAGE_MAP = {
-//   supabase: {
-//     dependencies: [],
-//     devDependencies: ["@hot-updater/supabase"],
-//   },
-//   aws: {
-//     dependencies: [],
-//     devDependencies: ["@hot-updater/aws"],
-//   },
-//   cloudflare: {
-//     dependencies: [],
-//     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
-//   },
-//   firebase: {
-//     dependencies: [],
-//     devDependencies: ["@hot-updater/firebase"],
-//   },
-// } as const;
+const PACKAGE_MAP = {
+  supabase: {
+    dependencies: [],
+    devDependencies: ["@hot-updater/supabase"],
+  },
+  aws: {
+    dependencies: [],
+    devDependencies: ["@hot-updater/aws"],
+  },
+  cloudflare: {
+    dependencies: [],
+    devDependencies: ["wrangler", "@hot-updater/cloudflare"],
+  },
+  firebase: {
+    dependencies: [],
+    devDependencies: ["firebase-tools", "@hot-updater/firebase"],
+  },
+} as const;
 
 export const init = async () => {
   printBanner();
@@ -62,28 +65,28 @@ export const init = async () => {
     process.exit(0);
   }
 
-  // try {
-  //   await ensureInstallPackages({
-  //     dependencies: [
-  //       ...buildPluginPackage.dependencies,
-  //       ...REQUIRED_PACKAGES.dependencies,
-  //       ...PACKAGE_MAP[provider].dependencies,
-  //     ],
-  //     devDependencies: [
-  //       ...buildPluginPackage.devDependencies,
-  //       ...REQUIRED_PACKAGES.devDependencies,
-  //       ...PACKAGE_MAP[provider].devDependencies,
-  //     ],
-  //   });
-  // } catch (e) {
-  //   if (e instanceof ExecaError) {
-  //     p.log.error(e.stderr ?? e.message);
-  //   } else if (e instanceof Error) {
-  //     p.log.error(e.message);
-  //   }
+  try {
+    await ensureInstallPackages({
+      dependencies: [
+        ...buildPluginPackage.dependencies,
+        ...REQUIRED_PACKAGES.dependencies,
+        ...PACKAGE_MAP[provider].dependencies,
+      ],
+      devDependencies: [
+        ...buildPluginPackage.devDependencies,
+        ...REQUIRED_PACKAGES.devDependencies,
+        ...PACKAGE_MAP[provider].devDependencies,
+      ],
+    });
+  } catch (e) {
+    if (e instanceof ExecaError) {
+      p.log.error(e.stderr ?? e.message);
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
+    }
 
-  //   process.exit(1);
-  // }
+    process.exit(1);
+  }
 
   switch (provider) {
     case "supabase": {

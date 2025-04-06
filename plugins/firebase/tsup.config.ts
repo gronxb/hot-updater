@@ -16,6 +16,7 @@ export default defineConfig([
       "os",
       "child_process",
     ],
+    noExternal: ["@hot-updater/core"],
   },
   {
     entry: ["iac/index.ts"],
