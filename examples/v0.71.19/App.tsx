@@ -144,7 +144,7 @@ function App(): React.JSX.Element {
       <Button
         title="Throw error"
         onPress={() => {
-          throw new Error("no hermes");
+          throw new Error("test");
         }}
       />
     </SafeAreaView>

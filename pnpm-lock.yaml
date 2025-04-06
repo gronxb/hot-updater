@@ -86,7 +86,7 @@ importers:
         specifier: ^7.20.0
         version: 7.23.2(@babel/core@7.26.0)
       '@babel/runtime':
-        specifier: ^7.26.0
+        specifier: ^7.20.0
         version: 7.26.0
       '@hot-updater/aws':
         specifier: workspace:*
@@ -109,6 +109,9 @@ importers:
       '@react-native-community/cli-platform-ios':
         specifier: 10.2.5
         version: 10.2.5(encoding@0.1.13)
+      '@react-native-community/cli-plugin-metro':
+        specifier: 10.2.0
+        version: 10.2.0(@babel/core@7.26.0)(encoding@0.1.13)
       '@react-native-community/eslint-config':
         specifier: ^3.2.0
         version: 3.2.0(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.15))(@types/node@22.13.5)(typescript@4.8.4)))(prettier@2.8.8)(typescript@4.8.4)
@@ -4242,6 +4245,9 @@ packages:
 
   '@react-native-community/cli-platform-ios@15.0.1':
     resolution: {integrity: sha512-6pKzXEIgGL20eE1uOn8iSsNBlMzO1LG+pQOk+7mvD172EPhKm/lRzUVDX5gO/2jvsGoNw6VUW0JX1FI2firwqA==}
+
+  '@react-native-community/cli-plugin-metro@10.2.0':
+    resolution: {integrity: sha512-9eiJrKYuauEDkQLCrjJUh7tS9T0oaMQqVUSSSuyDG6du7HQcfaR4mSf21wK75jvhKiwcQLpsFmMdctAb+0v+Cg==}
 
   '@react-native-community/cli-plugin-metro@10.2.3':
     resolution: {integrity: sha512-jHi2oDuTePmW4NEyVT8JEGNlIYcnFXCSV2ZMp4rnDrUk4TzzyvS3IMvDlESEmG8Kry8rvP0KSUx/hTpy37Sbkw==}
@@ -9635,6 +9641,9 @@ packages:
   metro-babel-transformer@0.73.10:
     resolution: {integrity: sha512-Yv2myTSnpzt/lTyurLvqYbBkytvUJcLHN8XD3t7W6rGiLTQPzmf1zypHQLphvcAXtCWBOXFtH7KLOSi2/qMg+A==}
 
+  metro-babel-transformer@0.73.8:
+    resolution: {integrity: sha512-GO6H/W2RjZ0/gm1pIvdO9EP34s3XN6kzoeyxqmfqKfYhJmYZf1SzXbyiIHyMbJNwJVrsKuHqu32+GopTlKscWw==}
+
   metro-babel-transformer@0.80.9:
     resolution: {integrity: sha512-d76BSm64KZam1nifRZlNJmtwIgAeZhZG3fi3K+EmPOlrR8rDtBxQHDSN3fSGeNB9CirdTyabTMQCkCup6BXFSQ==}
     engines: {node: '>=18'}
@@ -9645,6 +9654,9 @@ packages:
 
   metro-cache-key@0.73.10:
     resolution: {integrity: sha512-JMVDl/EREDiUW//cIcUzRjKSwE2AFxVWk47cFBer+KA4ohXIG2CQPEquT56hOw1Y1s6gKNxxs1OlAOEsubrFjw==}
+
+  metro-cache-key@0.73.8:
+    resolution: {integrity: sha512-VzFGu4kJGIkLjyDgVoM2ZxIHlMdCZWMqVIux9N+EeyMVMvGXTiXW8eGROgxzDhVjyR58IjfMsYpRCKz5dR+2ew==}
 
   metro-cache-key@0.80.9:
     resolution: {integrity: sha512-hRcYGhEiWIdM87hU0fBlcGr+tHDEAT+7LYNCW89p5JhErFt/QaAkVx4fb5bW3YtXGv5BTV7AspWPERoIb99CXg==}
@@ -9657,6 +9669,9 @@ packages:
   metro-cache@0.73.10:
     resolution: {integrity: sha512-wPGlQZpdVlM404m7MxJqJ+hTReDr5epvfPbt2LerUAHY9RN99w61FeeAe25BMZBwgUgDtAsfGlJ51MBHg8MAqw==}
 
+  metro-cache@0.73.8:
+    resolution: {integrity: sha512-/uFbTIw813Rvb8kSAIHvax9gWl41dtgjY2SpJLNIBLdQ6oFZ3CVo3ahZIiEZOrCeHl9xfGn5tmvNb8CEFa/Q5w==}
+
   metro-cache@0.80.9:
     resolution: {integrity: sha512-ujEdSI43QwI+Dj2xuNax8LMo8UgKuXJEdxJkzGPU6iIx42nYa1byQ+aADv/iPh5sh5a//h5FopraW5voXSgm2w==}
     engines: {node: '>=18'}
@@ -9667,6 +9682,9 @@ packages:
 
   metro-config@0.73.10:
     resolution: {integrity: sha512-wIlybd1Z9I8K2KcStTiJxTB7OK529dxFgogNpKCTU/3DxkgAASqSkgXnZP6kVyqjh5EOWAKFe5U6IPic7kXDdQ==}
+
+  metro-config@0.73.8:
+    resolution: {integrity: sha512-sAYq+llL6ZAfro64U99ske8HcKKswxX4wIZbll9niBKG7TkWm7tfMY1jO687XEmE4683rHncZeBRav9pLngIzg==}
 
   metro-config@0.80.9:
     resolution: {integrity: sha512-28wW7CqS3eJrunRGnsibWldqgwRP9ywBEf7kg+uzUHkSFJNKPM1K3UNSngHmH0EZjomizqQA2Zi6/y6VdZMolg==}
@@ -9679,6 +9697,9 @@ packages:
   metro-core@0.73.10:
     resolution: {integrity: sha512-5uYkajIxKyL6W45iz/ftNnYPe1l92CvF2QJeon1CHsMXkEiOJxEjo41l+iSnO/YodBGrmMCyupSO4wOQGUc0lw==}
 
+  metro-core@0.73.8:
+    resolution: {integrity: sha512-Aew4dthbZf8bRRjlYGL3cnai3+LKYTf6mc7YS2xLQRWtgGZ1b/H8nQtBvXZpfRYFcS84UeEQ10vwIf5eR3qPdQ==}
+
   metro-core@0.80.9:
     resolution: {integrity: sha512-tbltWQn+XTdULkGdzHIxlxk4SdnKxttvQQV3wpqqFbHDteR4gwCyTR2RyYJvxgU7HELfHtrVbqgqAdlPByUSbg==}
     engines: {node: '>=18'}
@@ -9689,6 +9710,9 @@ packages:
 
   metro-file-map@0.73.10:
     resolution: {integrity: sha512-XOMWAybeaXyD6zmVZPnoCCL2oO3rp4ta76oUlqWP0skBzhFxVtkE/UtDwApEMUY361JeBBago647gnKiARs+1g==}
+
+  metro-file-map@0.73.8:
+    resolution: {integrity: sha512-CM552hUO9om02jJdLszOCIDADKNaaeVz8CjYXItndvgr5jmFlQYAR+UMvaDzeT8oYdAV1DXAljma2CS2UBymPg==}
 
   metro-file-map@0.80.9:
     resolution: {integrity: sha512-sBUjVtQMHagItJH/wGU9sn3k2u0nrCl0CdR4SFMO1tksXLKbkigyQx4cbpcyPVOAmGTVuy3jyvBlELaGCAhplQ==}
@@ -9701,12 +9725,22 @@ packages:
   metro-hermes-compiler@0.73.10:
     resolution: {integrity: sha512-rTRWEzkVrwtQLiYkOXhSdsKkIObnL+Jqo+IXHI7VEK2aSLWRAbtGNqECBs44kbOUypDYTFFE+WLtoqvUWqYkWg==}
 
+  metro-hermes-compiler@0.73.8:
+    resolution: {integrity: sha512-2d7t+TEoQLk+jyXgBykmAtPPJK2B46DB3qUYIMKDFDDaKzCljrojyVuGgQq6SM1f95fe6HDAQ3K9ihTjeB90yw==}
+
   metro-inspector-proxy@0.73.10:
     resolution: {integrity: sha512-CEEvocYc5xCCZBtGSIggMCiRiXTrnBbh8pmjKQqm9TtJZALeOGyt5pXUaEkKGnhrXETrexsg6yIbsQHhEvVfvQ==}
     hasBin: true
 
+  metro-inspector-proxy@0.73.8:
+    resolution: {integrity: sha512-F0QxwDTox0TDeXVRN7ZmI7BknBjPDVKQ1ZeKznFBiMa0SXiD1kzoksfpDbZ6hTEKrhVM9Ep0YQmC7avwZouOnA==}
+    hasBin: true
+
   metro-minify-terser@0.73.10:
     resolution: {integrity: sha512-uG7TSKQ/i0p9kM1qXrwbmY3v+6BrMItsOcEXcSP8Z+68bb+t9HeVK0T/hIfUu1v1PEnonhkhfzVsaP8QyTd5lQ==}
+
+  metro-minify-terser@0.73.8:
+    resolution: {integrity: sha512-pnagyXAoMPhihWrHRIWqCxrP6EJ8Hfugv5RXBb6HbOANmwajn2uQuzeu18+dXaN1yPoDCMCgpg/UA4ibFN5jtQ==}
 
   metro-minify-terser@0.80.9:
     resolution: {integrity: sha512-FEeCeFbkvvPuhjixZ1FYrXtO0araTpV6UbcnGgDUpH7s7eR5FG/PiJz3TsuuPP/HwCK19cZtQydcA2QrCw446A==}
@@ -9719,8 +9753,16 @@ packages:
   metro-minify-uglify@0.73.10:
     resolution: {integrity: sha512-eocnSeJKnLz/UoYntVFhCJffED7SLSgbCHgNvI6ju6hFb6EFHGJT9OLbkJWeXaWBWD3Zw5mYLS8GGqGn/CHZPA==}
 
+  metro-minify-uglify@0.73.8:
+    resolution: {integrity: sha512-9wZqKfraVfmtMXdOzRyan+6r1woQXqqa4KeXfVh7+Mxl+5+J0Lmw6EvTrWawsaOEpvpn32q9MfoHC1d8plDJwA==}
+
   metro-react-native-babel-preset@0.73.10:
     resolution: {integrity: sha512-1/dnH4EHwFb2RKEKx34vVDpUS3urt2WEeR8FYim+ogqALg4sTpG7yeQPxWpbgKATezt4rNfqAANpIyH19MS4BQ==}
+    peerDependencies:
+      '@babel/core': '*'
+
+  metro-react-native-babel-preset@0.73.8:
+    resolution: {integrity: sha512-spNrcQJTbQntEIqJnCA6yL4S+dzV9fXCk7U+Rm7yJasZ4o4Frn7jP23isu7FlZIp1Azx1+6SbP7SgQM+IP5JgQ==}
     peerDependencies:
       '@babel/core': '*'
 
@@ -9729,8 +9771,16 @@ packages:
     peerDependencies:
       '@babel/core': '*'
 
+  metro-react-native-babel-transformer@0.73.8:
+    resolution: {integrity: sha512-oH/LCCJPauteAE28c0KJAiSrkV+1VJbU0PwA9UwaWnle+qevs/clpKQ8LrIr33YbBj4CiI1kFoVRuNRt5h4NFg==}
+    peerDependencies:
+      '@babel/core': '*'
+
   metro-resolver@0.73.10:
     resolution: {integrity: sha512-HeXbs+0wjakaaVQ5BI7eT7uqxlZTc9rnyw6cdBWWMgUWB++KpoI0Ge7Hi6eQAOoVAzXC3m26mPFYLejpzTWjng==}
+
+  metro-resolver@0.73.8:
+    resolution: {integrity: sha512-GiBWont7/OgAftkkj2TiEp+Gf1PYZUk8xV4MbtnQjIKyy3MlGY3GbpMQ1BHih9GUQqlF0n9jsUlC2K5P0almXQ==}
 
   metro-resolver@0.80.9:
     resolution: {integrity: sha512-wAPIjkN59BQN6gocVsAvvpZ1+LQkkqUaswlT++cJafE/e54GoVkMNCmrR4BsgQHr9DknZ5Um/nKueeN7kaEz9w==}
@@ -9743,6 +9793,9 @@ packages:
   metro-runtime@0.73.10:
     resolution: {integrity: sha512-EpVKm4eN0Fgx2PEWpJ5NiMArV8zVoOin866jIIvzFLpmkZz1UEqgjf2JAfUJnjgv3fjSV3JqeGG2vZCaGQBTow==}
 
+  metro-runtime@0.73.8:
+    resolution: {integrity: sha512-M+Bg9M4EN5AEpJ8NkiUsawD75ifYvYfHi05w6QzHXaqOrsTeaRbbeLuOGCYxU2f/tPg17wQV97/rqUQzs9qEtA==}
+
   metro-runtime@0.80.9:
     resolution: {integrity: sha512-8PTVIgrVcyU+X/rVCy/9yxNlvXsBCk5JwwkbAm/Dm+Abo6NBGtNjWF0M1Xo/NWCb4phamNWcD7cHdR91HhbJvg==}
     engines: {node: '>=18'}
@@ -9754,6 +9807,9 @@ packages:
   metro-source-map@0.73.10:
     resolution: {integrity: sha512-NAGv14701p/YaFZ76KzyPkacBw/QlEJF1f8elfs23N1tC33YyKLDKvPAzFJiYqjdcFvuuuDCA8JCXd2TgLxNPw==}
 
+  metro-source-map@0.73.8:
+    resolution: {integrity: sha512-wozFXuBYMAy7b8BCYwC+qoXsvayVJBHWtSTlSLva99t+CoUSG9JO9kg1umzbOz28YYPxKmvb/wbnLMkHdas2cA==}
+
   metro-source-map@0.80.9:
     resolution: {integrity: sha512-RMn+XS4VTJIwMPOUSj61xlxgBvPeY4G6s5uIn6kt6HB6A/k9ekhr65UkkDD7WzHYs3a9o869qU8tvOZvqeQzgw==}
     engines: {node: '>=18'}
@@ -9764,6 +9820,11 @@ packages:
 
   metro-symbolicate@0.73.10:
     resolution: {integrity: sha512-PmCe3TOe1c/NVwMlB+B17me951kfkB3Wve5RqJn+ErPAj93od1nxicp6OJe7JT4QBRnpUP8p9tw2sHKqceIzkA==}
+    engines: {node: '>=8.3'}
+    hasBin: true
+
+  metro-symbolicate@0.73.8:
+    resolution: {integrity: sha512-xkBAcceYYp0GGdCCuMzkCF1ejHsd0lYlbKBkjSRgM0Nlj80VapPaSwumYoAvSaDxcbkvS7/sCjURGp5DsSFgRQ==}
     engines: {node: '>=8.3'}
     hasBin: true
 
@@ -9780,6 +9841,9 @@ packages:
   metro-transform-plugins@0.73.10:
     resolution: {integrity: sha512-D4AgD3Vsrac+4YksaPmxs/0ocT67bvwTkFSIgWWeDvWwIG0U1iHzTS9f8Bvb4PITnXryDoFtjI6OWF7uOpGxpA==}
 
+  metro-transform-plugins@0.73.8:
+    resolution: {integrity: sha512-IxjlnB5eA49M0WfvPEzvRikK3Rr6bECUUfcZt/rWpSphq/mttgyLYcHQ+VTZZl0zHolC3cTLwgoDod4IIJBn1A==}
+
   metro-transform-plugins@0.80.9:
     resolution: {integrity: sha512-UlDk/uc8UdfLNJhPbF3tvwajyuuygBcyp+yBuS/q0z3QSuN/EbLllY3rK8OTD9n4h00qZ/qgxGv/lMFJkwP4vg==}
     engines: {node: '>=18'}
@@ -9791,6 +9855,9 @@ packages:
   metro-transform-worker@0.73.10:
     resolution: {integrity: sha512-IySvVubudFxahxOljWtP0QIMMpgUrCP0bW16cz2Enof0PdumwmR7uU3dTbNq6S+XTzuMHR+076aIe4VhPAWsIQ==}
 
+  metro-transform-worker@0.73.8:
+    resolution: {integrity: sha512-B8kR6lmcvyG4UFSF2QDfr/eEnWJvg0ZadooF8Dg6m/3JSm9OAqfSoC0YrWqAuvtWImNDnbeKWN7/+ns44Hv6tg==}
+
   metro-transform-worker@0.80.9:
     resolution: {integrity: sha512-c/IrzMUVnI0hSVVit4TXzt3A1GiUltGVlzCmLJWxNrBGHGrJhvgePj38+GXl1Xf4Fd4vx6qLUkKMQ3ux73bFLQ==}
     engines: {node: '>=18'}
@@ -9801,6 +9868,10 @@ packages:
 
   metro@0.73.10:
     resolution: {integrity: sha512-J2gBhNHFtc/Z48ysF0B/bfTwUwaRDLjNv7egfhQCc+934dpXcjJG2KZFeuybF+CvA9vo4QUi56G2U+RSAJ5tsA==}
+    hasBin: true
+
+  metro@0.73.8:
+    resolution: {integrity: sha512-2EMJME9w5x7Uzn+DnQ4hzWr33u/aASaOBGdpf4lxbrlk6/vl4UBfX1sru6KU535qc/0Z1BMt4Vq9qsP3ZGFmWg==}
     hasBin: true
 
   metro@0.80.9:
@@ -10184,6 +10255,9 @@ packages:
 
   ob1@0.73.10:
     resolution: {integrity: sha512-aO6EYC+QRRCkZxVJhCWhLKgVjhNuD6Gu1riGjxrIm89CqLsmKgxzYDDEsktmKsoDeRdWGQM5EdMzXDl5xcVfsw==}
+
+  ob1@0.73.8:
+    resolution: {integrity: sha512-1F7j+jzD+edS6ohQP7Vg5f3yiIk5i3x1uLrNIHOmLHWzWK1t3zrDpjnoXghccdVlsU+UjbyURnDynm4p0GgXeA==}
 
   ob1@0.80.9:
     resolution: {integrity: sha512-v9yOxowkZbxWhKOaaTyLjIm1aLy4ebMNcSn4NYJKOAI/Qv+SkfEfszpLr2GIxsccmb2Y2HA9qtsqiIJ80ucpVA==}
@@ -17418,6 +17492,26 @@ snapshots:
     dependencies:
       '@react-native-community/cli-platform-apple': 15.0.1
 
+  '@react-native-community/cli-plugin-metro@10.2.0(@babel/core@7.26.0)(encoding@0.1.13)':
+    dependencies:
+      '@react-native-community/cli-server-api': 10.1.1(encoding@0.1.13)
+      '@react-native-community/cli-tools': 10.1.1(encoding@0.1.13)
+      chalk: 4.1.2
+      execa: 1.0.0
+      metro: 0.73.8(encoding@0.1.13)
+      metro-config: 0.73.8(encoding@0.1.13)
+      metro-core: 0.73.8
+      metro-react-native-babel-transformer: 0.73.8(@babel/core@7.26.0)
+      metro-resolver: 0.73.8
+      metro-runtime: 0.73.8
+      readline: 1.3.0
+    transitivePeerDependencies:
+      - '@babel/core'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+
   '@react-native-community/cli-plugin-metro@10.2.3(@babel/core@7.26.0)(encoding@0.1.13)':
     dependencies:
       '@react-native-community/cli-server-api': 10.1.1(encoding@0.1.13)
@@ -17447,7 +17541,7 @@ snapshots:
       errorhandler: 1.5.1
       nocache: 3.0.4
       pretty-format: 26.6.2
-      serve-static: 1.15.0
+      serve-static: 1.16.2
       ws: 7.5.10
     transitivePeerDependencies:
       - bufferutil
@@ -25027,6 +25121,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  metro-babel-transformer@0.73.8:
+    dependencies:
+      '@babel/core': 7.26.0
+      hermes-parser: 0.8.0
+      metro-source-map: 0.73.8
+      nullthrows: 1.1.1
+    transitivePeerDependencies:
+      - supports-color
+
   metro-babel-transformer@0.80.9:
     dependencies:
       '@babel/core': 7.26.0
@@ -25046,6 +25149,8 @@ snapshots:
 
   metro-cache-key@0.73.10: {}
 
+  metro-cache-key@0.73.8: {}
+
   metro-cache-key@0.80.9: {}
 
   metro-cache-key@0.81.0:
@@ -25055,6 +25160,11 @@ snapshots:
   metro-cache@0.73.10:
     dependencies:
       metro-core: 0.73.10
+      rimraf: 3.0.2
+
+  metro-cache@0.73.8:
+    dependencies:
+      metro-core: 0.73.8
       rimraf: 3.0.2
 
   metro-cache@0.80.9:
@@ -25076,6 +25186,20 @@ snapshots:
       metro-cache: 0.73.10
       metro-core: 0.73.10
       metro-runtime: 0.73.10
+    transitivePeerDependencies:
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+
+  metro-config@0.73.8(encoding@0.1.13):
+    dependencies:
+      cosmiconfig: 5.2.1
+      jest-validate: 26.6.2
+      metro: 0.73.8(encoding@0.1.13)
+      metro-cache: 0.73.8
+      metro-core: 0.73.8
+      metro-runtime: 0.73.8
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -25117,6 +25241,11 @@ snapshots:
       lodash.throttle: 4.1.1
       metro-resolver: 0.73.10
 
+  metro-core@0.73.8:
+    dependencies:
+      lodash.throttle: 4.1.1
+      metro-resolver: 0.73.8
+
   metro-core@0.80.9:
     dependencies:
       lodash.throttle: 4.1.1
@@ -25141,6 +25270,26 @@ snapshots:
       jest-util: 27.5.1
       jest-worker: 27.5.1
       micromatch: 4.0.5
+      nullthrows: 1.1.1
+      walker: 1.0.8
+    optionalDependencies:
+      fsevents: 2.3.3
+    transitivePeerDependencies:
+      - supports-color
+
+  metro-file-map@0.73.8:
+    dependencies:
+      abort-controller: 3.0.0
+      anymatch: 3.1.3
+      debug: 2.6.9
+      fb-watchman: 2.0.2
+      graceful-fs: 4.2.11
+      invariant: 2.2.4
+      jest-regex-util: 27.5.1
+      jest-serializer: 27.5.1
+      jest-util: 27.5.1
+      jest-worker: 27.5.1
+      micromatch: 4.0.8
       nullthrows: 1.1.1
       walker: 1.0.8
     optionalDependencies:
@@ -25185,7 +25334,20 @@ snapshots:
 
   metro-hermes-compiler@0.73.10: {}
 
+  metro-hermes-compiler@0.73.8: {}
+
   metro-inspector-proxy@0.73.10:
+    dependencies:
+      connect: 3.7.0
+      debug: 2.6.9
+      ws: 7.5.10
+      yargs: 17.7.2
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  metro-inspector-proxy@0.73.8:
     dependencies:
       connect: 3.7.0
       debug: 2.6.9
@@ -25200,6 +25362,10 @@ snapshots:
     dependencies:
       terser: 5.31.0
 
+  metro-minify-terser@0.73.8:
+    dependencies:
+      terser: 5.31.0
+
   metro-minify-terser@0.80.9:
     dependencies:
       terser: 5.31.0
@@ -25210,6 +25376,10 @@ snapshots:
       terser: 5.31.0
 
   metro-minify-uglify@0.73.10:
+    dependencies:
+      uglify-es: 3.3.9
+
+  metro-minify-uglify@0.73.8:
     dependencies:
       uglify-es: 3.3.9
 
@@ -25256,6 +25426,49 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  metro-react-native-babel-preset@0.73.8(@babel/core@7.26.0):
+    dependencies:
+      '@babel/core': 7.26.0
+      '@babel/plugin-proposal-async-generator-functions': 7.20.7(@babel/core@7.26.0)
+      '@babel/plugin-proposal-class-properties': 7.18.6(@babel/core@7.26.0)
+      '@babel/plugin-proposal-export-default-from': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-proposal-nullish-coalescing-operator': 7.18.6(@babel/core@7.26.0)
+      '@babel/plugin-proposal-object-rest-spread': 7.20.7(@babel/core@7.26.0)
+      '@babel/plugin-proposal-optional-catch-binding': 7.18.6(@babel/core@7.26.0)
+      '@babel/plugin-proposal-optional-chaining': 7.21.0(@babel/core@7.26.0)
+      '@babel/plugin-syntax-dynamic-import': 7.8.3(@babel/core@7.26.0)
+      '@babel/plugin-syntax-export-default-from': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-syntax-flow': 7.26.0(@babel/core@7.26.0)
+      '@babel/plugin-syntax-nullish-coalescing-operator': 7.8.3(@babel/core@7.26.0)
+      '@babel/plugin-syntax-optional-chaining': 7.8.3(@babel/core@7.26.0)
+      '@babel/plugin-transform-arrow-functions': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-async-to-generator': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-block-scoping': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-classes': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-computed-properties': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-destructuring': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-flow-strip-types': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-function-name': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-literals': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-modules-commonjs': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-named-capturing-groups-regex': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-parameters': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-react-display-name': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-react-jsx': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-react-jsx-self': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-react-jsx-source': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-runtime': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-shorthand-properties': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-spread': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-sticky-regex': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-template-literals': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-typescript': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-unicode-regex': 7.25.9(@babel/core@7.26.0)
+      '@babel/template': 7.25.9
+      react-refresh: 0.4.3
+    transitivePeerDependencies:
+      - supports-color
+
   metro-react-native-babel-transformer@0.73.10(@babel/core@7.26.0):
     dependencies:
       '@babel/core': 7.26.0
@@ -25268,7 +25481,23 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  metro-react-native-babel-transformer@0.73.8(@babel/core@7.26.0):
+    dependencies:
+      '@babel/core': 7.26.0
+      babel-preset-fbjs: 3.4.0(@babel/core@7.26.0)
+      hermes-parser: 0.8.0
+      metro-babel-transformer: 0.73.8
+      metro-react-native-babel-preset: 0.73.8(@babel/core@7.26.0)
+      metro-source-map: 0.73.8
+      nullthrows: 1.1.1
+    transitivePeerDependencies:
+      - supports-color
+
   metro-resolver@0.73.10:
+    dependencies:
+      absolute-path: 0.0.0
+
+  metro-resolver@0.73.8:
     dependencies:
       absolute-path: 0.0.0
 
@@ -25279,6 +25508,11 @@ snapshots:
       flow-enums-runtime: 0.0.6
 
   metro-runtime@0.73.10:
+    dependencies:
+      '@babel/runtime': 7.26.0
+      react-refresh: 0.4.3
+
+  metro-runtime@0.73.8:
     dependencies:
       '@babel/runtime': 7.26.0
       react-refresh: 0.4.3
@@ -25300,6 +25534,19 @@ snapshots:
       metro-symbolicate: 0.73.10
       nullthrows: 1.1.1
       ob1: 0.73.10
+      source-map: 0.5.7
+      vlq: 1.0.1
+    transitivePeerDependencies:
+      - supports-color
+
+  metro-source-map@0.73.8:
+    dependencies:
+      '@babel/traverse': 7.25.9
+      '@babel/types': 7.26.0
+      invariant: 2.2.4
+      metro-symbolicate: 0.73.8
+      nullthrows: 1.1.1
+      ob1: 0.73.8
       source-map: 0.5.7
       vlq: 1.0.1
     transitivePeerDependencies:
@@ -25344,6 +25591,17 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  metro-symbolicate@0.73.8:
+    dependencies:
+      invariant: 2.2.4
+      metro-source-map: 0.73.8
+      nullthrows: 1.1.1
+      source-map: 0.5.7
+      through2: 2.0.5
+      vlq: 1.0.1
+    transitivePeerDependencies:
+      - supports-color
+
   metro-symbolicate@0.80.9:
     dependencies:
       invariant: 2.2.4
@@ -25368,6 +25626,16 @@ snapshots:
       - supports-color
 
   metro-transform-plugins@0.73.10:
+    dependencies:
+      '@babel/core': 7.26.0
+      '@babel/generator': 7.26.9
+      '@babel/template': 7.25.9
+      '@babel/traverse': 7.25.9
+      nullthrows: 1.1.1
+    transitivePeerDependencies:
+      - supports-color
+
+  metro-transform-plugins@0.73.8:
     dependencies:
       '@babel/core': 7.26.0
       '@babel/generator': 7.26.9
@@ -25412,6 +25680,27 @@ snapshots:
       metro-hermes-compiler: 0.73.10
       metro-source-map: 0.73.10
       metro-transform-plugins: 0.73.10
+      nullthrows: 1.1.1
+    transitivePeerDependencies:
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+
+  metro-transform-worker@0.73.8(encoding@0.1.13):
+    dependencies:
+      '@babel/core': 7.26.0
+      '@babel/generator': 7.26.9
+      '@babel/parser': 7.26.9
+      '@babel/types': 7.26.0
+      babel-preset-fbjs: 3.4.0(@babel/core@7.26.0)
+      metro: 0.73.8(encoding@0.1.13)
+      metro-babel-transformer: 0.73.8
+      metro-cache: 0.73.8
+      metro-cache-key: 0.73.8
+      metro-hermes-compiler: 0.73.8
+      metro-source-map: 0.73.8
+      metro-transform-plugins: 0.73.8
       nullthrows: 1.1.1
     transitivePeerDependencies:
       - bufferutil
@@ -25501,6 +25790,64 @@ snapshots:
       metro-symbolicate: 0.73.10
       metro-transform-plugins: 0.73.10
       metro-transform-worker: 0.73.10(encoding@0.1.13)
+      mime-types: 2.1.35
+      node-fetch: 2.7.0(encoding@0.1.13)
+      nullthrows: 1.1.1
+      rimraf: 3.0.2
+      serialize-error: 2.1.0
+      source-map: 0.5.7
+      strip-ansi: 6.0.1
+      temp: 0.8.3
+      throat: 5.0.0
+      ws: 7.5.10
+      yargs: 17.7.2
+    transitivePeerDependencies:
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+
+  metro@0.73.8(encoding@0.1.13):
+    dependencies:
+      '@babel/code-frame': 7.26.2
+      '@babel/core': 7.26.0
+      '@babel/generator': 7.26.9
+      '@babel/parser': 7.26.9
+      '@babel/template': 7.25.9
+      '@babel/traverse': 7.25.9
+      '@babel/types': 7.26.0
+      absolute-path: 0.0.0
+      accepts: 1.3.8
+      async: 3.2.4
+      chalk: 4.1.2
+      ci-info: 2.0.0
+      connect: 3.7.0
+      debug: 2.6.9
+      denodeify: 1.2.1
+      error-stack-parser: 2.1.4
+      graceful-fs: 4.2.11
+      hermes-parser: 0.8.0
+      image-size: 0.6.3
+      invariant: 2.2.4
+      jest-worker: 27.5.1
+      lodash.throttle: 4.1.1
+      metro-babel-transformer: 0.73.8
+      metro-cache: 0.73.8
+      metro-cache-key: 0.73.8
+      metro-config: 0.73.8(encoding@0.1.13)
+      metro-core: 0.73.8
+      metro-file-map: 0.73.8
+      metro-hermes-compiler: 0.73.8
+      metro-inspector-proxy: 0.73.8
+      metro-minify-terser: 0.73.8
+      metro-minify-uglify: 0.73.8
+      metro-react-native-babel-preset: 0.73.8(@babel/core@7.26.0)
+      metro-resolver: 0.73.8
+      metro-runtime: 0.73.8
+      metro-source-map: 0.73.8
+      metro-symbolicate: 0.73.8
+      metro-transform-plugins: 0.73.8
+      metro-transform-worker: 0.73.8(encoding@0.1.13)
       mime-types: 2.1.35
       node-fetch: 2.7.0(encoding@0.1.13)
       nullthrows: 1.1.1
@@ -26269,6 +26616,8 @@ snapshots:
       - debug
 
   ob1@0.73.10: {}
+
+  ob1@0.73.8: {}
 
   ob1@0.80.9: {}
 
