@@ -4,7 +4,9 @@ import { normalizeImagePath } from 'rspress/runtime';
 
 # Sentry Source Maps Plugin
 
-The withSentry plugin for hot-updater enables automatic sourcemap upload to Sentry during the update bundle build process. This helps you track production crashes with accurate stack traces tied to your React Native source code.
+The `withSentry()` plugin for hot-updater enables automatic sourcemap upload to Sentry during the update bundle build process.
+
+This helps you track production crashes with accurate stack traces tied to your React Native source code.
 
 ## Prerequisites
 
@@ -38,7 +40,9 @@ module.exports = withSentryConfig(config);
 
 ## Step 2: Wrap Your Build Plugin
 
-Use withSentry() to wrap any compatible build plugin such as metro. Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the build process.
+Use `withSentry()` to wrap any compatible build plugin such as metro. 
+
+Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the `hot-updater deploy` process.
 
 ```ts title="hot-updater.config.ts"
 import { metro } from "@hot-updater/metro";
@@ -63,7 +67,7 @@ export default defineConfig({
 ```
 
 ::: tip Automatic Upload
-When withSentry() wraps your build plugin, all generated sourcemaps are uploaded to Sentry automatically during the hot-updater build process.
+When `withSentry()` wraps your build plugin, all generated sourcemaps are uploaded to Sentry automatically during the `hot-updater deploy` process.
 :::
 
 ## Step 3: Deploy
