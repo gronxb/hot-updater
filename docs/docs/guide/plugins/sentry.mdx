@@ -1,0 +1,79 @@
+import { Tab, Tabs } from 'rspress/theme';
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
+# Sentry Source Maps Plugin
+
+The withSentry plugin for hot-updater enables automatic sourcemap upload to Sentry during the update bundle build process. This helps you track production crashes with accurate stack traces tied to your React Native source code.
+
+## Prerequisites
+
+- Sentry Account: Sign up here if you don’t have one.
+- Auth Token: Generate a token with the project:releases and org:read scopes from your Sentry dashboard.
+- Install the plugin:
+
+<PackageManagerTabs command={
+  {
+    npm: "npm install @hot-updater/sentry-plugin @sentry/cli --save-dev",
+    pnpm: "pnpm add @hot-updater/sentry-plugin @sentry/cli -D",
+    yarn: "yarn add @hot-updater/sentry-plugin @sentry/cli -D",
+  }
+} />
+
+## Step 1: Configure Sentry
+
+https://docs.sentry.io/platforms/react-native/manual-setup/metro/
+
+You need to configure Metro. Please refer to the Sentry documentation above for detailed setup instructions.
+
+```js title="metro.config.js"
+const { getDefaultConfig } = require("@react-native/metro-config");
+const { withSentryConfig } = require("@sentry/react-native/metro");
+
+const config = getDefaultConfig(__dirname);
+module.exports = withSentryConfig(config);
+```
+
+
+
+## Step 2: Wrap Your Build Plugin
+
+Use withSentry() to wrap any compatible build plugin such as metro. Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the build process.
+
+```ts title="hot-updater.config.ts"
+import { metro } from "@hot-updater/metro";
+import { withSentry } from "@hot-updater/sentry-plugin";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+export default defineConfig({
+  build: withSentry(
+    metro({
+      enableHermes: false,
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      org: "your-org-slug",       // [!code ++] Your Sentry organization slug
+      project: "your-project",    // [!code ++] Your Sentry project slug
+      authToken: process.env.SENTRY_AUTH_TOKEN!, // [!code ++]
+    },
+  ),
+  // .. your other config
+});
+```
+
+::: tip Automatic Upload
+When withSentry() wraps your build plugin, all generated sourcemaps are uploaded to Sentry automatically during the hot-updater build process.
+:::
+
+## Step 3: Deploy
+
+Now, every time you deploy, sourcemaps will be automatically uploaded to Sentry.
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater deploy -i",
+    pnpm: "pnpm hot-updater deploy -i",
+    yarn: "yarn hot-updater deploy -i",
+  }
+} />
