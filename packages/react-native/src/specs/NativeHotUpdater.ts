@@ -7,6 +7,9 @@ interface Spec extends TurboModule {
   updateBundle(bundleId: string, zipUrl: string): Promise<boolean>;
   getAppVersion(): Promise<string | null>;
 
+  getChannel(): string;
+  setChannel(channel: string): Promise<void>;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;
