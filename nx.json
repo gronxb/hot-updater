@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "release": {
-    "projects": ["*", "!@hot-updater/docs"]
+    "projects": ["*", "!@hot-updater/docs"],
+    "git": {
+      "tag": false
+    }
   },
   "targetDefaults": {
     "build": {

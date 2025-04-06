@@ -152,7 +152,7 @@ RCT_EXPORT_MODULE();
         }
     }
     
-    // Sort in descending order by modification time (keep latest 2)
+    // Sort in descending order by modification time (keep latest 1)
     [bundleDirs sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
         NSDictionary *attr1 = [fileManager attributesOfItemAtPath:path1 error:nil];
         NSDictionary *attr2 = [fileManager attributesOfItemAtPath:path2 error:nil];
@@ -161,8 +161,8 @@ RCT_EXPORT_MODULE();
         return [date2 compare:date1];
     }];
     
-    if (bundleDirs.count > 2) {
-        NSArray *oldBundles = [bundleDirs subarrayWithRange:NSMakeRange(2, bundleDirs.count - 2)];
+    if (bundleDirs.count > 1) {
+        NSArray *oldBundles = [bundleDirs subarrayWithRange:NSMakeRange(1, bundleDirs.count - 1)];
         for (NSString *oldBundle in oldBundles) {
             NSError *delError = nil;
             if ([fileManager removeItemAtPath:oldBundle error:&delError]) {
@@ -412,7 +412,10 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(reload) {
     NSLog(@"HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
-        [super.bridge setValue:[HotUpdater bundleURL] forKey:@"bundleURL"];
+        NSURL *bundleURL = [HotUpdater bundleURL];
+        if (bundleURL) {
+            [super.bridge setValue:bundleURL forKey:@"bundleURL"];
+        }
         RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
     });
 }
