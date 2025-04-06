@@ -618,8 +618,8 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.9.0)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
       es-git:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: 0.2.0
+        version: 0.2.0
     devDependencies:
       '@babel/core':
         specifier: 7.26.0
@@ -7651,38 +7651,68 @@ packages:
     resolution: {integrity: sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==}
     engines: {node: '>= 0.4'}
 
-  es-git-darwin-arm64@0.1.0:
-    resolution: {integrity: sha512-8Gy6QcpEkJV7M3fDBFVhSbjpDiSfWUYvv6l1R2UlZWqDpemuOCi0TTQA/QFpIyauQSL+J0pYjpgSIkIE2Tpjkg==}
+  es-git-android-arm-eabi@0.2.0:
+    resolution: {integrity: sha512-X0Y97uKx1ZP+lKi5Syu6a2+fP4eJt8qky1qB9AYjlVg/dYRq9JWmsyPZ7QmbKvSYvkAEfOGT1DPTMG01+j6lsA==}
+    engines: {node: '>= 10.20.0'}
+    cpu: [arm]
+    os: [android]
+
+  es-git-android-arm64@0.2.0:
+    resolution: {integrity: sha512-PQSs2WKWD9eIUph/dVjeaXVRwuAYq0C/PCzn4LqbNAiqW6CkjFhlzwe14h0cW/0ytCgrC1tTG3YlKZKWogbN5A==}
+    engines: {node: '>= 10.20.0'}
+    cpu: [arm64]
+    os: [android]
+
+  es-git-darwin-arm64@0.2.0:
+    resolution: {integrity: sha512-AzL5ohZYE3MIhFC72+Wjr7ctd0jTfFhSP37aErGRbTTj1aryleGaeL8JuhrrtbyKl3V+fJT8RMfRjvbs4J3t1Q==}
     engines: {node: '>= 10.20.0'}
     cpu: [arm64]
     os: [darwin]
 
-  es-git-darwin-x64@0.1.0:
-    resolution: {integrity: sha512-usXJHP7LXjKhtFJslIxYWEO1NUIuqREKRU7CIv9ez0qb0iGmuNbYFYrDIKl9l9FU3f4u3AxNuoTAxlDHYlT0jQ==}
+  es-git-darwin-x64@0.2.0:
+    resolution: {integrity: sha512-B/DRbX9iIXDgThEZp6gBHSkyRwPnSDiRrBIRqlD2NBv+UXlVPHj/D1zovC3mVSeQbDYOZVb4lIRQ6SvtwjQ8Uw==}
     engines: {node: '>= 10.20.0'}
     cpu: [x64]
     os: [darwin]
 
-  es-git-linux-x64-gnu@0.1.0:
-    resolution: {integrity: sha512-nE41bdpQPRionjgSW97pjyfFppanCYd3g5/afiKn6zU6RVB9kQOZFDhOfPVbQBEn4ft8sv78I7ZAxE4V9OEKJw==}
+  es-git-linux-arm64-gnu@0.2.0:
+    resolution: {integrity: sha512-Cs2RXNbXTNtriIWCE1LFt/OxB8OxWgVKUIEl416PgRcz0dagK0vKumOzd88WGt0ptusw/nDPYfhgAw8U4UibDg==}
+    engines: {node: '>= 10.20.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  es-git-linux-arm64-musl@0.2.0:
+    resolution: {integrity: sha512-xYjHPRTGvRFLsUl89i7FIEWJIcLE4NodrBBEH48DEpmnPt17Lz5/Vs4fD66SQO1agRXf63HdPZftINfeGHPFpg==}
+    engines: {node: '>= 10.20.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  es-git-linux-x64-gnu@0.2.0:
+    resolution: {integrity: sha512-ZsQf3HvcbHNPhx9FvKMEA9aMfesBL6pp/5Ls3jCyysf8nzs7AENRZ//Lo3FnyssG3QOHH1j8bOVdONY3RBZjkQ==}
     engines: {node: '>= 10.20.0'}
     cpu: [x64]
     os: [linux]
 
-  es-git-linux-x64-musl@0.1.0:
-    resolution: {integrity: sha512-Ny78DMRFIAOWWAC3qCEh0fAJfzQZzXakvmNQp7rnAHmLJ8DMWtiW5JNXV2cKx8B7tNcxZ/1Qh9B5to7zsAYUPg==}
+  es-git-linux-x64-musl@0.2.0:
+    resolution: {integrity: sha512-wvIelPQvnOtw4aGM16uThTB3M7CRLlV4cL8P2LjOUk3/ywRQWnoQWjrUiJahLwBkoOFiqLNQsh8Ef9+iLFhZeA==}
     engines: {node: '>= 10.20.0'}
     cpu: [x64]
     os: [linux]
 
-  es-git-win32-x64-msvc@0.1.0:
-    resolution: {integrity: sha512-8iHJsQ66bhO3wJYwuiHXb7XgHQ17rp48fi4w6dMuR+B/g0PF1KbKx7355AYg6vuJaby9rx3m7PqbFiak7ni3LQ==}
+  es-git-win32-arm64-msvc@0.2.0:
+    resolution: {integrity: sha512-XFxrqhIo0rwHC6hM1b7Yzw1L3uSjdSmJ2RITKr5EmyUifD0Onha4907HF1qPzLXndoYorhB1Kjjg8MlshWtFwg==}
+    engines: {node: '>= 10.20.0'}
+    cpu: [arm64]
+    os: [win32]
+
+  es-git-win32-x64-msvc@0.2.0:
+    resolution: {integrity: sha512-NEL7x9hMWwsdn8uLf7NMw0jCtbWYnBqAqXLhHelDjPClvwqv3T3F8nMm9mizsKZaNuUS4rDEotsZKwV+PpOCig==}
     engines: {node: '>= 10.20.0'}
     cpu: [x64]
     os: [win32]
 
-  es-git@0.1.0:
-    resolution: {integrity: sha512-M7Q0l04QESSAtKNb7eyLh8tmgHyyUV12U67U4Ib3ryWePXjRf3jXrOFFsxV2hy5fx9QDRIek3fUGCiMcmrrNpQ==}
+  es-git@0.2.0:
+    resolution: {integrity: sha512-oZ/Ei0IEMvirEPYgK/Uk6ayOuahwSIuZcLE+G98VhpwguIzo+QPBPw3Ytkq2AG4HqrbGs+YddMz0jHYo3VuHMg==}
     engines: {node: '>= 10.20.0'}
 
   es-iterator-helpers@1.0.19:
@@ -22131,28 +22161,48 @@ snapshots:
 
   es-errors@1.3.0: {}
 
-  es-git-darwin-arm64@0.1.0:
+  es-git-android-arm-eabi@0.2.0:
     optional: true
 
-  es-git-darwin-x64@0.1.0:
+  es-git-android-arm64@0.2.0:
     optional: true
 
-  es-git-linux-x64-gnu@0.1.0:
+  es-git-darwin-arm64@0.2.0:
     optional: true
 
-  es-git-linux-x64-musl@0.1.0:
+  es-git-darwin-x64@0.2.0:
     optional: true
 
-  es-git-win32-x64-msvc@0.1.0:
+  es-git-linux-arm64-gnu@0.2.0:
     optional: true
 
-  es-git@0.1.0:
+  es-git-linux-arm64-musl@0.2.0:
+    optional: true
+
+  es-git-linux-x64-gnu@0.2.0:
+    optional: true
+
+  es-git-linux-x64-musl@0.2.0:
+    optional: true
+
+  es-git-win32-arm64-msvc@0.2.0:
+    optional: true
+
+  es-git-win32-x64-msvc@0.2.0:
+    optional: true
+
+  es-git@0.2.0:
     optionalDependencies:
-      es-git-darwin-arm64: 0.1.0
-      es-git-darwin-x64: 0.1.0
-      es-git-linux-x64-gnu: 0.1.0
-      es-git-linux-x64-musl: 0.1.0
-      es-git-win32-x64-msvc: 0.1.0
+      es-git-android-arm-eabi: 0.2.0
+      es-git-android-arm64: 0.2.0
+      es-git-darwin-arm64: 0.2.0
+      es-git-darwin-x64: 0.2.0
+      es-git-linux-arm64-gnu: 0.2.0
+      es-git-linux-arm64-musl: 0.2.0
+      es-git-linux-x64-gnu: 0.2.0
+      es-git-linux-x64-musl: 0.2.0
+      es-git-win32-arm64-msvc: 0.2.0
+      es-git-win32-x64-msvc: 0.2.0
 
   es-iterator-helpers@1.0.19:
     dependencies:
