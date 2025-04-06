@@ -52,6 +52,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+
       - name: Push updated files to main branch
         run: |
+          git fetch origin main
+          git checkout main
+          git pull origin main
+
+          git merge --no-edit $GITHUB_SHA
           git push origin main
