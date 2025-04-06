@@ -8,6 +8,23 @@ import {
 import type { SentryCliOptions } from "@sentry/cli";
 import SentryCli from "@sentry/cli";
 
+const injectDebugIdToHbcMap = (jsMapPath: string, hbcMapPath: string) => {
+  const jsMap = JSON.parse(fs.readFileSync(jsMapPath, "utf8"));
+  const debugId = jsMap.debug_id;
+
+  const hbcMap = JSON.parse(fs.readFileSync(hbcMapPath, "utf8"));
+  hbcMap.debug_id = debugId;
+  fs.writeFileSync(hbcMapPath, JSON.stringify(hbcMap, null, 2));
+};
+
+const ensureFilePath = (files: string[], bsaePath: string, suffix: string) => {
+  const file = files.find((file) => file.endsWith(suffix));
+  if (!file) {
+    return null;
+  }
+  return path.join(bsaePath, file);
+};
+
 export const withSentry =
   (buildFn: (args: BasePluginArgs) => BuildPlugin, config: SentryCliOptions) =>
   (args: BasePluginArgs): BuildPlugin => {
@@ -18,49 +35,41 @@ export const withSentry =
         const result = await context.build(args);
         const sentry = new SentryCli(null, config);
 
-        const include: string[] = [];
         const files = await fs.promises.readdir(result.buildPath, {
           recursive: true,
         });
-        for (const file of files) {
-          if (file.endsWith(".map")) {
-            include.push(path.join(result.buildPath, file));
-          }
+
+        const bundleMapFile = ensureFilePath(
+          files,
+          result.buildPath,
+          ".bundle.map",
+        );
+        const hbcMapFile = ensureFilePath(files, result.buildPath, ".hbc.map");
+        const bundleFile = ensureFilePath(files, result.buildPath, ".bundle");
+
+        const sourcemapFiles = bundleMapFile ?? hbcMapFile;
+        if (!sourcemapFiles || !bundleFile) {
+          throw new Error(
+            "Source map not found. Please enable sourcemap in your build plugin. e.g build: metro({ sourcemap: true })",
+          );
         }
 
-        if (include.length === 0) {
-          throw new Error("No source maps found");
+        if (bundleMapFile && hbcMapFile) {
+          injectDebugIdToHbcMap(bundleMapFile, hbcMapFile);
         }
 
-        await sentry.releases.uploadSourceMaps(result.bundleId, {
-          include,
-          sourceMapReference: true,
-          dist: `${args.platform}.${args.channel}.${result.bundleId}`,
-          stripPrefix: [getCwd()],
-        });
-
-        // const sourcemapFile = files.find((file) => file.endsWith(".map"));
-        // const sourcemapPath = sourcemapFile
-        //   ? path.join(result.buildPath, sourcemapFile)
-        //   : null;
-
-        // if (!sourcemapPath) {
-        //   throw new Error("No source maps found");
-        // }
-        // await sentry.execute(
-        //   [
-        //     "sourcemaps",
-        //     "upload",
-        //     "--debug-id-reference",
-        //     "--strip-prefix",
-        //     getCwd(),
-        //     "--bundle",
-        //     sourcemapPath,
-        //     "--dist",
-        //     `${args.platform}.${args.channel}.${result.bundleId}`,
-        //   ],
-        //   true,
-        // );
+        await sentry.execute(
+          [
+            "sourcemaps",
+            "upload",
+            "--debug-id-reference",
+            "--strip-prefix",
+            getCwd(),
+            sourcemapFiles,
+            bundleFile,
+          ],
+          true,
+        );
 
         return result;
       },

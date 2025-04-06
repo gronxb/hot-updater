@@ -107,8 +107,9 @@ export async function getHermesCommand(cwd: string): Promise<string> {
 const insertDebugIdToSourceMap = (filePath: string, debugId: string) => {
   const content = fs.readFileSync(filePath, "utf8");
 
-  const insertAfter = /{("version"\s*:\s*\d+,)/; // "version": 3, 다음 위치 찾기
-  const patched = content.replace(insertAfter, `$1 "debug_id":"${debugId}",`);
+  const sourceMap = JSON.parse(content);
+  sourceMap.debug_id = debugId;
+  const patched = JSON.stringify(sourceMap);
 
   fs.writeFileSync(filePath, patched);
 };
@@ -176,21 +177,14 @@ export async function compileHermes({
     }
 
     try {
-      const sourcemapOutput = `${inputJsFile}.map`;
-      const mapJson = JSON.parse(fs.readFileSync(sourcemapOutput, "utf8"));
-      const debugId = mapJson?.debug_id;
-
       await execa("node", [
         composeSourceMapsPath,
-        sourcemapOutput,
+        `${inputJsFile}.map`,
         hermesSourceMapFile,
         "-o",
-        sourcemapOutput,
+        `${inputJsFile}.hbc.map`,
       ]);
 
-      if (debugId) {
-        insertDebugIdToSourceMap(sourcemapOutput, debugId);
-      }
       fs.unlinkSync(hermesSourceMapFile);
     } catch (error) {
       if (error instanceof Error) {
@@ -201,10 +195,6 @@ export async function compileHermes({
       throw new Error(`Failed to run compose-source-maps script: ${error}`);
     }
   }
-
-  // Overwrite inputJsFile with outputHbcFile
-  fs.unlinkSync(inputJsFile);
-  fs.renameSync(outputHbcFile, inputJsFile);
 
   return { hermesVersion: version.stdout };
 }
