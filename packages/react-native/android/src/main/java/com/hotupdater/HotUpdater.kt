@@ -258,7 +258,7 @@ class HotUpdater : ReactPackage {
             return true
         }
 
-        // Helper function to delete old bundles, keeping only up to 2 bundles in the bundle-store folder
+        // Helper function to delete old bundles, keeping only up to 1 bundles in the bundle-store folder
         private fun cleanupOldBundles(bundleStoreDir: File) {
             // Get list of all directories in bundle-store folder
             val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
@@ -266,9 +266,9 @@ class HotUpdater : ReactPackage {
             // Sort by last modified time in descending order to keep most recently updated bundles at the top
             val sortedBundles = bundles.sortedByDescending { it.lastModified() }
 
-            // Delete all bundles except the top 2
-            if (sortedBundles.size > 2) {
-                sortedBundles.drop(2).forEach { oldBundle ->
+            // Delete all bundles except the top 1
+            if (sortedBundles.size > 1) {
+                sortedBundles.drop(1).forEach { oldBundle ->
                     Log.d("HotUpdater", "Removing old bundle: ${oldBundle.name}")
                     oldBundle.deleteRecursively()
                 }
