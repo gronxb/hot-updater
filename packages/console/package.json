@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "files": [
     "dist",
     "package.json"
@@ -29,7 +29,7 @@
     "@hono/node-server": "^1.13.4",
     "@hono/typia-validator": "^0.1.2",
     "@hono/vite-dev-server": "^0.18.1",
-    "@hot-updater/mock": "0.15.0",
+    "@hot-updater/mock": "0.15.1",
     "@kobalte/core": "^0.13.7",
     "@ryoppippi/unplugin-typia": "^2.0.3",
     "@solidjs/meta": "^0.29.4",
@@ -59,7 +59,7 @@
     "vite-tsconfig-paths": "^5.1.4"
   },
   "dependencies": {
-    "@hot-updater/core": "0.15.0",
-    "@hot-updater/plugin-core": "0.15.0"
+    "@hot-updater/core": "0.15.1",
+    "@hot-updater/plugin-core": "0.15.1"
   }
 }

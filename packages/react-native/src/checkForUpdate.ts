@@ -44,7 +44,7 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
       bundleId: currentBundleId,
       platform,
       minBundleId,
-      channel,
+      channel: channel ?? undefined,
     },
     options.requestHeaders,
     options.onError,

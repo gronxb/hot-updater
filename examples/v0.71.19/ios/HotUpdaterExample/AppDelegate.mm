@@ -15,10 +15,22 @@
   return [super application:application didFinishLaunchingWithOptions:launchOptions];
 }
 
+
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
 {
-  return [HotUpdater bundleURL];
+  return [self bundleURL];
 }
+
+- (NSURL *)bundleURL
+{
+#if DEBUG
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
+#else
+  // This field
+  return [HotUpdater bundleURL];
+#endif
+}
+
 
 /// This method controls whether the `concurrentRoot`feature of React18 is turned on or off.
 ///

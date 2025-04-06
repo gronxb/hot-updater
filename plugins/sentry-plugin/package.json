@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/js",
+  "name": "@hot-updater/sentry-plugin",
   "version": "0.15.1",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
@@ -42,12 +42,14 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.15.1"
+    "@hot-updater/core": "0.15.1",
+    "@hot-updater/plugin-core": "0.15.1"
   },
   "devDependencies": {
-    "@types/node": "^20.9.4",
-    "@types/semver": "^7.5.8",
-    "jose": "^6.0.10",
-    "semver": "^7.6.3"
+    "@sentry/cli": "^2.43.0",
+    "@types/node": "^20.9.4"
+  },
+  "peerDependencies": {
+    "@sentry/cli": ">=1.51.1"
   }
 }

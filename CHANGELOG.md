@@ -1,3 +1,21 @@
+## 0.15.1 (2025-04-06)
+
+### 🚀 Features
+
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
 ## 0.15.0 (2025-04-03)
 
 ### 🩹 Fixes

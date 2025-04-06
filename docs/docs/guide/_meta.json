@@ -25,6 +25,13 @@
     "collapsible": true,
     "collapsed": false
   },
+  {
+    "type": "dir",
+    "name": "plugins",
+    "label": "Plugins",
+    "collapsible": true,
+    "collapsed": false
+  },
   "when-to-submit-your-app-for-review",
   "security"
 ]

@@ -103,6 +103,6 @@ export const getBundleId = (): string => {
     : HotUpdater.HOT_UPDATER_BUNDLE_ID;
 };
 
-export const getChannel = (): string => {
+export const getChannel = (): string | null => {
   return HotUpdater.CHANNEL;
 };
