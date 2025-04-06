@@ -313,31 +313,7 @@ export const runInit = async () => {
       },
     },
     {
-      title: "2. Deploy Firestore Indexes",
-      task: async () => {
-        try {
-          await execa(
-            "pnpm",
-            [
-              "firebase",
-              "deploy",
-              "--only",
-              "firestore:indexes",
-              "--non-interactive",
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
-            {
-              cwd: tmpDir,
-            },
-          );
-        } catch (error) {
-          console.log("Index deployment failed, proceed to the next step.");
-        }
-      },
-    },
-    {
-      title: "3. Deploy Firestore Rules",
+      title: "2. Deploy Firestore Rules",
       task: async () => {
         try {
           await execa(
@@ -361,7 +337,7 @@ export const runInit = async () => {
       },
     },
     {
-      title: "4. Deploy Firebase Functions",
+      title: "3. Deploy Firebase Functions",
       task: async () => {
         try {
           const deployArgs = [
@@ -373,10 +349,30 @@ export const runInit = async () => {
             "--config",
             "./.hot-updater/firebase.json",
           ];
-
           await execa("pnpm", deployArgs, { cwd: tmpDir });
         } catch (error) {
-          console.error("Error deploying functions:", error);
+          try {
+            await execa(
+              "pnpm",
+              [
+                "firebase",
+                "functions:delete",
+                "hot-updater",
+                "--project",
+                initializeVariable.projectId,
+                "--config",
+                "./.hot-updater/firebase.json",
+              ],
+              { cwd: tmpDir },
+            );
+            console.log(
+              "Successfully deleted function after failed deployment",
+            );
+          } catch (deleteError) {
+            console.error("Error deleting function:", deleteError);
+          }
+
+          throw error;
         }
       },
     },

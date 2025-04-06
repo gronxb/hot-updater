@@ -33,7 +33,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "rslib build && tsup ",
+    "build": "tsup",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run"

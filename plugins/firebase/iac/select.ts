@@ -71,9 +71,22 @@ export const selectOrCreateProject = async (): Promise<string> => {
         1. Please complete the Storage and FireStore setup on the Firebase Console.
         2. Note: Upgrading your plan to 'Blaze' is required to proceed.
         storage: ${link(`https://console.firebase.google.com/project/${projectName as string}/storage`)}
-        firestore: ${link(`https://console.firebase.google.com/project/${projectName as string}/firestore`)} 
+        firestore: ${link(`https://console.firebase.google.com/project/${projectName as string}/firestore`)}
         ==================================================================================
         `);
+
+      const hasCheckedInstructions = await p.confirm({
+        message:
+          "Have you completed the Storage and Firestore setup on Firebase Console?",
+        initialValue: false,
+      });
+
+      if (p.isCancel(hasCheckedInstructions)) process.exit(0);
+
+      if (!hasCheckedInstructions) {
+        p.log.warn("Please complete the setup before continuing.");
+        process.exit(0);
+      }
 
       return projectName as string;
     }
