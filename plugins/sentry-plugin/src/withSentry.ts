@@ -8,13 +8,23 @@ import {
 import type { SentryCliOptions } from "@sentry/cli";
 import SentryCli from "@sentry/cli";
 
-const injectDebugIdToHbcMap = (jsMapPath: string, hbcMapPath: string) => {
+const injectDebugIdToHbcMap = (
+  jsMapPath: string,
+  hbcMapPath: string | null,
+) => {
+  if (!hbcMapPath) {
+    return jsMapPath;
+  }
   const jsMap = JSON.parse(fs.readFileSync(jsMapPath, "utf8"));
   const debugId = jsMap.debug_id;
 
   const hbcMap = JSON.parse(fs.readFileSync(hbcMapPath, "utf8"));
   hbcMap.debug_id = debugId;
   fs.writeFileSync(hbcMapPath, JSON.stringify(hbcMap, null, 2));
+
+  fs.unlinkSync(jsMapPath);
+  fs.renameSync(hbcMapPath, jsMapPath);
+  return jsMapPath;
 };
 
 const ensureFilePath = (files: string[], bsaePath: string, suffix: string) => {
@@ -47,16 +57,13 @@ export const withSentry =
         const hbcMapFile = ensureFilePath(files, result.buildPath, ".hbc.map");
         const bundleFile = ensureFilePath(files, result.buildPath, ".bundle");
 
-        const sourcemapFiles = bundleMapFile ?? hbcMapFile;
-        if (!sourcemapFiles || !bundleFile) {
+        if (!bundleMapFile || !bundleFile) {
           throw new Error(
             "Source map not found. Please enable sourcemap in your build plugin. e.g build: metro({ sourcemap: true })",
           );
         }
 
-        if (bundleMapFile && hbcMapFile) {
-          injectDebugIdToHbcMap(bundleMapFile, hbcMapFile);
-        }
+        const sourcemapFile = injectDebugIdToHbcMap(bundleMapFile, hbcMapFile);
 
         await sentry.execute(
           [
@@ -65,7 +72,7 @@ export const withSentry =
             "--debug-id-reference",
             "--strip-prefix",
             getCwd(),
-            sourcemapFiles,
+            sourcemapFile,
             bundleFile,
           ],
           true,

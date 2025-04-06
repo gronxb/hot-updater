@@ -161,7 +161,8 @@ export async function compileHermes({
   }
 
   if (sourcemap) {
-    const hermesSourceMapFile = `${outputHbcFile}.map`;
+    const sourceMapFile = `${inputJsFile}.map`;
+    const hermesSourceMapFile = `${inputJsFile}.hbc.map`;
 
     if (!fs.existsSync(hermesSourceMapFile)) {
       throw new Error(
@@ -179,13 +180,11 @@ export async function compileHermes({
     try {
       await execa("node", [
         composeSourceMapsPath,
-        `${inputJsFile}.map`,
+        sourceMapFile,
         hermesSourceMapFile,
         "-o",
-        `${inputJsFile}.hbc.map`,
+        hermesSourceMapFile,
       ]);
-
-      fs.unlinkSync(hermesSourceMapFile);
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(
