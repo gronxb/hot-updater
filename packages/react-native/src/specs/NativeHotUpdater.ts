@@ -5,9 +5,12 @@ interface Spec extends TurboModule {
   // Methods
   reload(): void;
   updateBundle(bundleId: string, zipUrl: string): Promise<boolean>;
+  /**
+   * @deprecated
+   * use getConstants().APP_VERSION instead
+   */
   getAppVersion(): Promise<string | null>;
 
-  getChannel(): string;
   setChannel(channel: string): Promise<void>;
 
   // EventEmitter
@@ -15,6 +18,8 @@ interface Spec extends TurboModule {
   removeListeners(count: number): void;
   readonly getConstants: () => {
     MIN_BUNDLE_ID: string;
+    APP_VERSION: string | null;
+    CHANNEL: string | null;
   };
 }
 

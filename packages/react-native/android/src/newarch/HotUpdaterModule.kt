@@ -57,6 +57,8 @@ class HotUpdaterModule internal constructor(
     override fun getTypedExportedConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
         constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
+        constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
+        constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
         return constants
     }
 

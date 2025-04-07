@@ -76,8 +76,23 @@ RCT_EXPORT_MODULE();
     return uuid;
 }
 
+
+- (NSString *)getChannel {
+    NSString *channel = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"HotUpdaterChannel"];
+    return channel;
+}
+
+- (NSString *)getAppVersion {
+    NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    return appVersion;
+}
+
 - (NSDictionary *)constantsToExport {
-    return @{ @"MIN_BUNDLE_ID": [self getMinBundleId] };
+    return @{ 
+        @"MIN_BUNDLE_ID": [self getMinBundleId],
+        @"APP_VERSION": [self getAppVersion],
+        @"CHANNEL": [self getChannel]
+    };
 }
 
 
@@ -88,9 +103,8 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - Bundle URL Management
 
-- (NSString *)getAppVersion {
-    NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-    return appVersion;
+- (void)setChannel:(NSString *)channel {
+    [[NSBundle mainBundle] setObject:channel forInfoDictionaryKey:@"HotUpdaterChannel"];
 }
 
 - (void)setBundleURL:(NSString *)localPath {
@@ -408,6 +422,10 @@ RCT_EXPORT_MODULE();
 }
 
 #pragma mark - React Native Exports
+
+RCT_EXPORT_METHOD(setChannel:(NSString *)channel) {
+    [self setChannel:channel];
+}
 
 RCT_EXPORT_METHOD(reload) {
     NSLog(@"HotUpdater requested a reload");
