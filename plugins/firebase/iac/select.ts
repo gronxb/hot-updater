@@ -14,12 +14,6 @@ interface Project {
   etag: string;
 }
 
-interface WebApp {
-  appId: string;
-  displayName: string;
-  projectId: string;
-}
-
 const spin = p.spinner();
 
 export const selectOrCreateProject = async (): Promise<string> => {
@@ -98,83 +92,6 @@ export const selectOrCreateProject = async (): Promise<string> => {
   }
 };
 
-export const selectOrCreateWebApp = async (
-  projectId: string,
-): Promise<string> => {
-  try {
-    spin.start("fetching apps list ...");
-    const listApps = await execa(
-      "firebase",
-      ["apps:list", "WEB", "--project", projectId, "--json"],
-      {
-        stdio: "pipe",
-      },
-    );
-    spin.stop();
-
-    const apps: WebApp[] = JSON.parse(listApps.stdout).result || [];
-
-    const appOptions = [
-      ...apps.map((app) => ({
-        value: app.appId,
-        label: `${app.displayName} (${app.appId})`,
-      })),
-      {
-        value: "CREATE_NEW",
-        label: "Create a New Web App",
-      },
-    ];
-
-    const selectedAppId = await p.select({
-      message: "Select a web app",
-      options: appOptions,
-    });
-
-    if (selectedAppId === "CREATE_NEW") {
-      const appName = await p.text({
-        message: "Enter the name for your web app",
-        validate(value) {
-          if (!value || value === undefined) {
-            return "App name is required.";
-          }
-          return;
-        },
-      });
-
-      if (p.isCancel(appName)) process.exit(0);
-
-      await execa(
-        "firebase",
-        ["apps:create", "WEB", appName as string, "--project", projectId],
-        {
-          stdio: "inherit",
-        },
-      );
-
-      const listNewApps = await execa(
-        "firebase",
-        ["apps:list", "WEB", "--project", projectId, "--json"],
-        {
-          stdio: "pipe",
-        },
-      );
-      const newApps: WebApp[] = JSON.parse(listNewApps.stdout).result || [];
-      const newApp = newApps.find((app) => app.displayName === appName);
-
-      if (!newApp) {
-        throw new Error(`Could not find the new web app '${appName}'.`);
-      }
-
-      return newApp.appId;
-    }
-
-    return selectedAppId as string;
-  } catch (err) {
-    handleError(err);
-    process.exit(1);
-  }
-};
-
 const handleError = (err: unknown) => {
   if (err instanceof Error) {
     p.log.error(`Error occurred: ${err.message}`);
@@ -197,14 +114,8 @@ export const initFirebaseUser = async () => {
     p.log.error("Failed to select or create a Firebase project.");
     process.exit(1);
   }
-  const selectedWebApp = await selectOrCreateWebApp(selectedProject);
-  if (!selectedWebApp) {
-    p.log.error("Failed to select or create a web app.");
-    process.exit(1);
-  }
 
   return {
     projectId: selectedProject,
-    webAppId: selectedWebApp,
   };
 };

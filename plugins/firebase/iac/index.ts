@@ -4,9 +4,7 @@ import path from "path";
 import * as p from "@clack/prompts";
 import {
   copyDirToTmp,
-  getCwd,
   link,
-  makeEnv,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/plugin-core";
@@ -15,25 +13,26 @@ import fs from "fs/promises";
 import { initFirebaseUser } from "./select";
 
 const CONFIG_TEMPLATE = `
-import { metro } from "@hot-updater/metro";
-import { firebaseStorage, firebaseDatabase } from "@hot-updater/firebase";
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
+  import {metro} from '@hot-updater/metro';
+  import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
+  import {defineConfig} from 'hot-updater';
+  import 'dotenv/config';
 
-export default defineConfig({
-  build: metro({
-    enableHermes: true,
-  }),
-  storage: firebaseStorage({
-    apiKey: process.env.HOT_UPDATER_FIREBASE_API_KEY,
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET,
-  }),
-  database: firebaseDatabase({
-    apiKey: process.env.HOT_UPDATER_FIREBASE_API_KEY,
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-  }),
-});
+  export default defineConfig({
+    build: metro({
+      enableHermes: true,
+    }),
+    storage: firebaseStorage({
+      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
+      privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
+      clientEmail: process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
+    }),
+    database: firebaseDatabase({
+      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
+      privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
+      clientEmail: process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
+    }),
+  });
 `;
 
 // Template file: Example code to add to App.tsx
@@ -96,35 +95,6 @@ interface FirebaseFunction {
   runServiceId: string;
   codebase: string;
   hash: string;
-}
-
-async function setupFirebaseEnv(webAppId: string, tmpDir: string) {
-  try {
-    const { stdout } = await execa(
-      "pnpm",
-      [
-        "firebase",
-        "apps:sdkconfig",
-        "WEB",
-        webAppId,
-        "--config",
-        "./.hot-updater/firebase.json",
-      ],
-      { cwd: tmpDir },
-    );
-
-    const firebaseConfig = JSON.parse(stdout);
-
-    const newEnvVars = {
-      HOT_UPDATER_FIREBASE_API_KEY: firebaseConfig.apiKey,
-      HOT_UPDATER_FIREBASE_PROJECT_ID: firebaseConfig.projectId,
-      HOT_UPDATER_FIREBASE_STORAGE_BUCKET: firebaseConfig.storageBucket,
-    };
-
-    await makeEnv(newEnvVars, path.join(getCwd(), ".env"));
-  } catch (error) {
-    console.error("error in firebase apps:sdkconfig", error);
-  }
 }
 
 export const runInit = async () => {
@@ -213,12 +183,6 @@ export const runInit = async () => {
       },
     },
     {
-      title: "Configuring environment variables...",
-      task: async () => {
-        await setupFirebaseEnv(initializeVariable.webAppId, tmpDir);
-      },
-    },
-    {
       title: "Checking existing functions and setting region",
       task: async () => {
         let currentRegion = "us-central1";
@@ -289,55 +253,7 @@ export const runInit = async () => {
       },
     },
     {
-      title: "1. Deploy Firebase Storage Rules",
-      task: async () => {
-        try {
-          await execa(
-            "pnpm",
-            [
-              "firebase",
-              "deploy",
-              "--only",
-              "storage",
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
-            {
-              cwd: tmpDir,
-            },
-          );
-        } catch (error) {
-          console.error("Error deploying a Firebase Storage rule:", error);
-          throw error;
-        }
-      },
-    },
-    {
-      title: "2. Deploy Firestore Rules",
-      task: async () => {
-        try {
-          await execa(
-            "pnpm",
-            [
-              "firebase",
-              "deploy",
-              "--only",
-              "firestore:rules",
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
-            {
-              cwd: tmpDir,
-            },
-          );
-        } catch (error) {
-          console.error("Error deploying a Firestore rule:", error);
-          throw error;
-        }
-      },
-    },
-    {
-      title: "3. Deploy Firebase Functions",
+      title: "Deploy Firebase Functions",
       task: async () => {
         try {
           const deployArgs = [
