@@ -135,14 +135,9 @@ RCT_EXPORT_MODULE();
 }
 
 + (NSURL *)bundleURL {
-    static NSURL *cachedBundleURL = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        HotUpdater *instance = [[HotUpdater alloc] init];
-        NSURL *url = [instance cachedURLFromBundle];
-        cachedBundleURL = url ? url : [self fallbackURL];
-    });
-    return cachedBundleURL;
+    HotUpdater *instance = [[HotUpdater alloc] init];
+    NSURL *url = [instance cachedURLFromBundle];
+    return url ? url : [self fallbackURL];
 }
 
 #pragma mark - Utility Methods
