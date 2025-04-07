@@ -31,16 +31,30 @@ class HotUpdater : ReactPackage {
             return packageInfo.versionName
         }
 
+        @Volatile
+        private var prefsInstance: HotUpdaterPrefs? = null
+
+        @Volatile
+        private var cachedAppVersion: String? = null
+
+        private fun getPrefs(context: Context): HotUpdaterPrefs {
+            val appContext = context.applicationContext
+            val currentAppVersion = getAppVersion(appContext) ?: "unknown"
+            synchronized(this) {
+                if (prefsInstance == null || cachedAppVersion != currentAppVersion) {
+                    prefsInstance = HotUpdaterPrefs(appContext, currentAppVersion)
+                    cachedAppVersion = currentAppVersion
+                }
+                return prefsInstance!!
+            }
+        }
+
         private fun setBundleURL(
             context: Context,
             bundleURL: String?,
         ) {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            with(sharedPreferences.edit()) {
-                putString("HotUpdaterBundleURL", bundleURL)
-                apply()
-            }
+            val updaterPrefs = getPrefs(context)
+            updaterPrefs.setItem("HotUpdaterBundleURL", bundleURL)
 
             if (bundleURL == null) {
                 return
@@ -98,19 +112,17 @@ class HotUpdater : ReactPackage {
         }
 
         fun getJSBundleFile(context: Context): String {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
+            val updaterPrefs = getPrefs(context)
+            val urlString = updaterPrefs.getItem("HotUpdaterBundleURL")
             if (urlString.isNullOrEmpty()) {
                 return "assets://index.android.bundle"
             }
 
             val file = File(urlString)
             if (!file.exists()) {
-                setBundleURL(context, null)
+                updaterPrefs.setItem("HotUpdaterBundleURL", null)
                 return "assets://index.android.bundle"
             }
-
             return urlString
         }
 
@@ -118,18 +130,13 @@ class HotUpdater : ReactPackage {
             context: Context,
             channel: String,
         ) {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            with(sharedPreferences.edit()) {
-                putString("HotUpdaterChannel", channel)
-                apply()
-            }
+            val updaterPrefs = getPrefs(context)
+            updaterPrefs.setItem("HotUpdaterChannel", channel)
         }
 
         fun getChannel(context: Context): String? {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            return sharedPreferences.getString("HotUpdaterChannel", null)
+            val updaterPrefs = getPrefs(context)
+            return updaterPrefs.getItem("HotUpdaterChannel")
         }
 
         suspend fun updateBundle(
@@ -155,7 +162,6 @@ class HotUpdater : ReactPackage {
                 Log.d("HotUpdater", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
                 val existingIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
                 if (existingIndexFile != null) {
-                    // Update directory modification time to current time after update
                     finalBundleDir.setLastModified(System.currentTimeMillis())
                     setBundleURL(context, existingIndexFile.absolutePath)
                     cleanupOldBundles(bundleStoreDir)
@@ -243,7 +249,6 @@ class HotUpdater : ReactPackage {
                 return false
             }
 
-            // Move (or copy) contents from temp folder to finalBundleDir
             if (finalBundleDir.exists()) {
                 finalBundleDir.deleteRecursively()
             }
@@ -259,32 +264,20 @@ class HotUpdater : ReactPackage {
                 return false
             }
 
-            // Update final bundle directory modification time to current time after bundle update
             finalBundleDir.setLastModified(System.currentTimeMillis())
-
             val bundlePath = finalIndexFile.absolutePath
             Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
             setBundleURL(context, bundlePath)
-
-            // Clean up old bundles in the bundle store to keep only up to 2 bundles
             cleanupOldBundles(bundleStoreDir)
-
-            // Clean up temp directory
             tempDir.deleteRecursively()
 
             Log.d("HotUpdater", "Downloaded and extracted file successfully.")
             return true
         }
 
-        // Helper function to delete old bundles, keeping only up to 1 bundles in the bundle-store folder
         private fun cleanupOldBundles(bundleStoreDir: File) {
-            // Get list of all directories in bundle-store folder
             val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
-
-            // Sort by last modified time in descending order to keep most recently updated bundles at the top
             val sortedBundles = bundles.sortedByDescending { it.lastModified() }
-
-            // Delete all bundles except the top 1
             if (sortedBundles.size > 1) {
                 sortedBundles.drop(1).forEach { oldBundle ->
                     Log.d("HotUpdater", "Removing old bundle: ${oldBundle.name}")
