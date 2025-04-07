@@ -2,6 +2,11 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
+    entry: ["./src/index.ts"],
+    format: ["esm", "cjs"],
+    outDir: "dist",
+  },
+  {
     entry: ["firebase/functions/index.ts"],
     format: ["cjs"],
     outDir: "dist/firebase",

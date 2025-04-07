@@ -4,80 +4,81 @@ import type {
   StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
-import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
-import {
-  type StorageReference,
-  deleteObject,
-  getStorage,
-  listAll,
-  ref,
-  uploadBytes,
-} from "firebase/storage";
+import * as admin from "firebase-admin";
 import fs from "fs/promises";
 import mime from "mime";
 
 export interface FirebaseStorageConfig {
-  apiKey: string;
   projectId: string;
-  storageBucket: string;
+  privateKey: string;
+  clientEmail: string;
 }
 
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
-    const app = initializeApp(config);
-    const storage = getStorage(app);
-    const auth = getAuth(app);
-
-    const ensureAuthenticated = async () => {
-      if (!auth.currentUser) {
-        await signInAnonymously(auth);
-      }
-      return auth.currentUser;
+    const storageBucket = `${config.projectId}.firebasestorage.app`;
+    const firebaseConfig = {
+      projectId: config.projectId,
+      clientEmail: config.clientEmail,
+      privateKey: config.privateKey,
     };
+
+    let app: admin.app.App;
+    try {
+      app = admin.app();
+    } catch (e) {
+      app = admin.initializeApp({
+        credential: admin.credential.cert(
+          firebaseConfig as admin.ServiceAccount,
+        ),
+      });
+    }
+
+    const bucket = admin.storage().bucket(storageBucket);
 
     return {
       name: "firebaseStorage",
-      async deleteBundle(bundleId) {
-        await ensureAuthenticated();
 
-        const Key = [bundleId].join("/");
-        const listRef = ref(storage, bundleId);
+      async deleteBundle(bundleId) {
+        const prefix = `${bundleId}/`;
         try {
-          const listResult = await listAll(listRef);
-          await Promise.all(
-            listResult.items.map((itemRef: StorageReference) =>
-              deleteObject(itemRef),
-            ),
-          );
+          const [files] = await bucket.getFiles({ prefix });
+          await Promise.all(files.map((file) => file.delete()));
+          return prefix;
         } catch (e) {
           console.error("Error listing or deleting files:", e);
-          throw e;
+          throw new Error("Bundle Not Found");
         }
-        return Key;
       },
+
       async uploadBundle(bundleId, bundlePath) {
-        await ensureAuthenticated();
+        try {
+          const fileContent = await fs.readFile(bundlePath);
+          const contentType =
+            mime.getType(bundlePath) ?? "application/octet-stream";
+          const filename = path.basename(bundlePath);
+          const key = `${bundleId}/${filename}`;
 
-        const Body = await fs.readFile(bundlePath);
-        const ContentType =
-          mime.getType(bundlePath) ?? "application/octet-stream";
-        const filename = path.basename(bundlePath);
+          const file = bucket.file(key);
+          await file.save(fileContent, {
+            metadata: {
+              contentType: contentType,
+            },
+          });
 
-        const Key = [bundleId, filename].join("/");
-        const fileRef = ref(storage, Key);
+          hooks?.onStorageUploaded?.();
 
-        await uploadBytes(fileRef, new Uint8Array(Body), {
-          contentType: ContentType,
-        });
-
-        hooks?.onStorageUploaded?.();
-
-        return {
-          bucketName: app.options.storageBucket || config.storageBucket,
-          key: Key,
-        };
+          return {
+            bucketName: storageBucket,
+            key: key,
+          };
+        } catch (error) {
+          if (error instanceof Error) {
+            throw new Error(error.message);
+          }
+          throw error;
+        }
       },
     };
   };

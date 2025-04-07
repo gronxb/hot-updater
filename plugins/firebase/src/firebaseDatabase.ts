@@ -1,128 +1,116 @@
-import type { DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type { SnakeCaseBundle } from "@hot-updater/core";
+import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  getFirestore,
-  limit,
-  orderBy,
-  query,
-  setDoc,
-  startAfter,
-  where,
-} from "firebase/firestore";
+import * as admin from "firebase-admin";
 
 export interface FirebaseDatabaseConfig {
-  apiKey: string;
   projectId: string;
+  privateKey: string;
+  clientEmail: string;
 }
 
 export const firebaseDatabase = (
   config: FirebaseDatabaseConfig,
   hooks?: DatabasePluginHooks,
 ) => {
-  const appName = "hot-updater";
-  const app = getApps().find((app) => app.name === appName)
-    ? getApp(appName)
-    : initializeApp(config, appName);
-
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-  const bundlesCollection = collection(db, "bundles");
-
-  const ensureAuthenticated = async () => {
-    if (!auth.currentUser) {
-      try {
-        await signInAnonymously(auth);
-        console.log("Anonymous auth successful");
-      } catch (error) {
-        console.error("Authentication failed:", error);
-        throw new Error("Firebase authentication failed");
-      }
-    }
-    return auth.currentUser;
+  const firebaseConfig = {
+    projectId: config.projectId,
+    clientEmail: config.clientEmail,
+    privateKey: config.privateKey,
   };
+
+  let app: admin.app.App;
+  try {
+    app = admin.app();
+  } catch (e) {
+    app = admin.initializeApp({
+      credential: admin.credential.cert(firebaseConfig as admin.ServiceAccount),
+    });
+  }
+
+  const db = admin.firestore(app);
+  const bundlesCollection = db.collection("bundles");
+
+  let bundles: Bundle[] = [];
 
   return createDatabasePlugin(
     "firebaseDatabase",
     {
-      async getBundleById(bundleId) {
-        await ensureAuthenticated();
+      async getBundleById(bundleId: string) {
+        const found = bundles.find((b) => b.id === bundleId);
+        if (found) {
+          return found;
+        }
 
-        const bundleRef = doc(bundlesCollection, bundleId);
-        const bundleSnap = await getDoc(bundleRef);
+        const bundleRef = bundlesCollection.doc(bundleId);
+        const bundleSnap = await bundleRef.get();
 
-        if (!bundleSnap.exists()) {
+        if (!bundleSnap.exists) {
           return null;
         }
 
-        const data = bundleSnap.data();
+        const firestoreData = bundleSnap.data() as SnakeCaseBundle;
         return {
-          enabled: data.enabled,
-          shouldForceUpdate: data.should_force_update,
-          fileHash: data.file_hash,
-          gitCommitHash: data.git_commit_hash,
-          id: data.id,
-          message: data.message,
-          platform: data.platform,
-          targetAppVersion: data.target_app_version,
-          channel: data.channel,
-        };
+          channel: firestoreData.channel,
+          enabled: Boolean(firestoreData.enabled),
+          shouldForceUpdate: Boolean(firestoreData.should_force_update),
+          fileHash: firestoreData.file_hash,
+          gitCommitHash: firestoreData.git_commit_hash,
+          id: firestoreData.id,
+          message: firestoreData.message,
+          platform: firestoreData.platform,
+          targetAppVersion: firestoreData.target_app_version,
+        } as Bundle;
       },
 
       async getBundles(options) {
-        await ensureAuthenticated();
+        const { where, limit, offset = 0 } = options ?? {};
 
-        let q = query(bundlesCollection, orderBy("id", "desc"));
+        let q = bundlesCollection.orderBy("id", "desc");
 
-        if (options?.where) {
-          if (options.where.channel) {
-            q = query(q, where("channel", "==", options.where.channel));
-          }
-          if (options.where.platform) {
-            q = query(q, where("platform", "==", options.where.platform));
-          }
+        if (where?.channel) {
+          q = q.where("channel", "==", where.channel);
         }
 
-        if (options?.limit) {
-          q = query(q, limit(options.limit));
+        if (where?.platform) {
+          q = q.where("platform", "==", where.platform);
         }
 
-        if (options?.offset) {
-          q = query(q, startAfter(options.offset));
+        if (limit) {
+          q = q.limit(limit);
         }
 
-        const querySnapshot = await getDocs(q);
+        if (offset) {
+          q = q.startAfter(offset);
+        }
+
+        const querySnapshot = await q.get();
 
         if (querySnapshot.empty) {
-          return [];
+          bundles = [];
+        } else {
+          bundles = querySnapshot.docs.map((doc) => {
+            const firestoreData = doc.data() as SnakeCaseBundle;
+            return {
+              id: firestoreData.id,
+              channel: firestoreData.channel,
+              enabled: Boolean(firestoreData.enabled),
+              shouldForceUpdate: Boolean(firestoreData.should_force_update),
+              fileHash: firestoreData.file_hash,
+              gitCommitHash: firestoreData.git_commit_hash,
+              message: firestoreData.message,
+              platform: firestoreData.platform,
+              targetAppVersion: firestoreData.target_app_version,
+            };
+          });
         }
 
-        return querySnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            enabled: data.enabled,
-            shouldForceUpdate: data.should_force_update,
-            fileHash: data.file_hash,
-            gitCommitHash: data.git_commit_hash,
-            id: data.id,
-            message: data.message,
-            platform: data.platform,
-            targetAppVersion: data.target_app_version,
-            channel: data.channel,
-          };
-        });
+        return bundles;
       },
 
       async getChannels() {
-        await ensureAuthenticated();
-
-        const q = query(bundlesCollection, orderBy("channel"));
-        const querySnapshot = await getDocs(q);
+        const q = bundlesCollection.orderBy("channel");
+        const querySnapshot = await q.get();
 
         if (querySnapshot.empty) {
           return [];
@@ -130,35 +118,41 @@ export const firebaseDatabase = (
 
         const channels = new Set<string>();
         for (const doc of querySnapshot.docs) {
-          channels.add(doc.data().channel);
+          channels.add((doc.data() as SnakeCaseBundle).channel);
         }
 
         return Array.from(channels);
       },
 
       async commitBundle({ changedSets }) {
-        await ensureAuthenticated();
+        if (changedSets.length === 0) {
+          return;
+        }
+
+        const batch = db.batch();
 
         for (const { operation, data } of changedSets) {
           if (operation === "insert" || operation === "update") {
-            const bundleRef = doc(bundlesCollection, data.id);
-            await setDoc(
+            const bundleRef = bundlesCollection.doc(data.id);
+            batch.set(
               bundleRef,
               {
                 id: data.id,
-                enabled: data.enabled,
-                should_force_update: data.shouldForceUpdate,
+                channel: data.channel,
+                enabled: data.enabled ? 1 : 0,
+                should_force_update: data.shouldForceUpdate ? 1 : 0,
                 file_hash: data.fileHash,
-                git_commit_hash: data.gitCommitHash,
-                message: data.message,
+                git_commit_hash: data.gitCommitHash || null,
+                message: data.message || null,
                 platform: data.platform,
                 target_app_version: data.targetAppVersion,
-                channel: data.channel,
               },
               { merge: true },
             );
           }
         }
+
+        await batch.commit();
       },
     },
     hooks,
