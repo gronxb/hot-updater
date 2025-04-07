@@ -114,12 +114,16 @@ class HotUpdater : ReactPackage {
             return urlString
         }
 
-        fun setChannel(context: Context, channel: String) {
+        fun setChannel(
+            context: Context,
+            channel: String,
+        ) {
             val sharedPreferences =
                 context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
             with(sharedPreferences.edit()) {
                 putString("HotUpdaterChannel", channel)
                 apply()
+            }
         }
 
         fun getChannel(context: Context): String? {
