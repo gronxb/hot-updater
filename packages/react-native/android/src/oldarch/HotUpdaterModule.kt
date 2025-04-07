@@ -53,13 +53,18 @@ class HotUpdaterModule internal constructor(
             promise.resolve(isSuccess)
         }
     }
+
     @ReactMethod
-    fun addListener(@Suppress("UNUSED_PARAMETER") eventName: String?) {
+    fun addListener(
+        @Suppress("UNUSED_PARAMETER") eventName: String?,
+    ) {
         // No-op
     }
 
     @ReactMethod
-    fun removeListeners(@Suppress("UNUSED_PARAMETER") count: Double) {
+    fun removeListeners(
+        @Suppress("UNUSED_PARAMETER") count: Double,
+    ) {
         // No-op
     }
 

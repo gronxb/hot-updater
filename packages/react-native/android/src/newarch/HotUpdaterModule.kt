@@ -62,11 +62,15 @@ class HotUpdaterModule internal constructor(
         return constants
     }
 
-    override fun addListener(@Suppress("UNUSED_PARAMETER") eventName: String?) {
+    override fun addListener(
+        @Suppress("UNUSED_PARAMETER") eventName: String?,
+    ) {
         // No-op
     }
 
-    override fun removeListeners(@Suppress("UNUSED_PARAMETER") count: Double) {
+    override fun removeListeners(
+        @Suppress("UNUSED_PARAMETER") count: Double,
+    ) {
         // No-op
     }
 
