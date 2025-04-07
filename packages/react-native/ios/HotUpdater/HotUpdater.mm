@@ -32,7 +32,7 @@ RCT_EXPORT_MODULE();
         uuid = @"00000000-0000-0000-0000-000000000000";
         return;
     #else
-        // __DATE__, __TIME__ 은 컴파일 타임 값입니다.
+        // __DATE__, __TIME__ is compile-time
         NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"];
