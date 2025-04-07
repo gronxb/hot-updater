@@ -89,9 +89,9 @@ RCT_EXPORT_MODULE();
 
 - (NSDictionary *)constantsToExport {
     return @{ 
-        @"MIN_BUNDLE_ID": [self getMinBundleId],
-        @"APP_VERSION": [self getAppVersion],
-        @"CHANNEL": [self getChannel]
+        @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
+        @"APP_VERSION": [self getAppVersion] ?: [NSNull null],
+        @"CHANNEL": [self getChannel] ?: [NSNull null]
     };
 }
 
@@ -137,7 +137,14 @@ RCT_EXPORT_MODULE();
 }
 
 + (NSURL *)bundleURL {
-    return [self cachedURLFromBundle] ?: [self fallbackURL];
+    static NSURL *cachedBundleURL = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        HotUpdater *instance = [[HotUpdater alloc] init];
+        NSURL *url = [instance cachedURLFromBundle];
+        cachedBundleURL = url ? url : [self fallbackURL];
+    });
+    return cachedBundleURL;
 }
 
 #pragma mark - Utility Methods
