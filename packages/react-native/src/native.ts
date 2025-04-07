@@ -67,8 +67,9 @@ export const updateBundle = (
 /**
  * Fetches the current app version.
  */
-export const getAppVersion = (): Promise<string | null> => {
-  return HotUpdaterNative.getAppVersion();
+export const getAppVersion = (): string | null => {
+  const constants = HotUpdaterNative.getConstants();
+  return constants?.APP_VERSION ?? null;
 };
 
 /**
@@ -103,6 +104,14 @@ export const getBundleId = (): string => {
     : HotUpdater.HOT_UPDATER_BUNDLE_ID;
 };
 
+/**
+ * Sets the channel for the app.
+ */
+export const setChannel = async (channel: string) => {
+  return HotUpdaterNative.setChannel(channel);
+};
+
 export const getChannel = (): string | null => {
-  return HotUpdater.CHANNEL;
+  const constants = HotUpdaterNative.getConstants();
+  return constants?.CHANNEL ?? HotUpdater.CHANNEL ?? null;
 };
