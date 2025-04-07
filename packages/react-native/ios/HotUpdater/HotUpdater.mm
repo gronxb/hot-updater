@@ -1,4 +1,5 @@
 #import "HotUpdater.h"
+#import "HotUpdaterPrefs.h"
 #import <React/RCTReloadCommand.h>
 #import <SSZipArchive/SSZipArchive.h>
 #import <Foundation/NSURLSession.h>
@@ -8,7 +9,7 @@
 }
 
 + (BOOL)requiresMainQueueSetup {
-  return YES;
+    return YES;
 }
 
 - (instancetype)init {
@@ -31,7 +32,7 @@ RCT_EXPORT_MODULE();
         uuid = @"00000000-0000-0000-0000-000000000000";
         return;
     #else
-        // __DATE__, __TIME__ is compile-time
+        // __DATE__, __TIME__ 은 컴파일 타임 값입니다.
         NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"];
@@ -42,7 +43,7 @@ RCT_EXPORT_MODULE();
         }
         
         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
-        
+
         unsigned char bytes[16];
         bytes[0] = (buildTimestampMs >> 40) & 0xFF;
         bytes[1] = (buildTimestampMs >> 32) & 0xFF;
@@ -76,10 +77,9 @@ RCT_EXPORT_MODULE();
     return uuid;
 }
 
-
 - (NSString *)getChannel {
-    NSString *channel = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"HotUpdaterChannel"];
-    return channel;
+    HotUpdaterPrefs *prefs = [self getPrefs];
+    return [prefs getItemForKey:@"HotUpdaterChannel"];
 }
 
 - (NSString *)getAppVersion {
@@ -95,28 +95,33 @@ RCT_EXPORT_MODULE();
     };
 }
 
-
-- (NSDictionary*) getConstants {
+- (NSDictionary *)getConstants {
   return [self constantsToExport];
 }
 
+#pragma mark - Convenience: HotUpdaterPrefs Instance
+
+- (HotUpdaterPrefs *)getPrefs {
+    return [HotUpdaterPrefs sharedInstanceWithAppVersion:[self getAppVersion]];
+}
 
 #pragma mark - Bundle URL Management
 
 + (void)setChannel:(NSString *)channel {
-    [[NSBundle mainBundle] setObject:channel forInfoDictionaryKey:@"HotUpdaterChannel"];
+    NSString *appVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    HotUpdaterPrefs *prefs = [HotUpdaterPrefs sharedInstanceWithAppVersion:appVersion];
+    [prefs setItem:channel forKey:@"HotUpdaterChannel"];
 }
 
 - (void)setBundleURL:(NSString *)localPath {
     NSLog(@"Setting bundle URL: %@", localPath);
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setObject:localPath forKey:@"HotUpdaterBundleURL"];
-    [defaults synchronize];
+    HotUpdaterPrefs *prefs = [self getPrefs];
+    [prefs setItem:localPath forKey:@"HotUpdaterBundleURL"];
 }
 
 - (NSURL *)cachedURLFromBundle {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *savedURLString = [defaults objectForKey:@"HotUpdaterBundleURL"];
+    HotUpdaterPrefs *prefs = [self getPrefs];
+    NSString *savedURLString = [prefs getItemForKey:@"HotUpdaterBundleURL"];
     
     if (savedURLString) {
         NSURL *bundleURL = [NSURL URLWithString:savedURLString];
@@ -165,7 +170,7 @@ RCT_EXPORT_MODULE();
             [bundleDirs addObject:fullPath];
         }
     }
-    
+
     // Sort in descending order by modification time (keep latest 1)
     [bundleDirs sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
         NSDictionary *attr1 = [fileManager attributesOfItemAtPath:path1 error:nil];
@@ -199,7 +204,6 @@ RCT_EXPORT_MODULE();
         return;
     }
     
-    // Set document directory path and bundle store path
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *bundleStoreDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
     
@@ -208,10 +212,8 @@ RCT_EXPORT_MODULE();
         [fileManager createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
     }
     
-    // Final bundle path (bundle-store/<bundleId>)
     NSString *finalBundleDir = [bundleStoreDir stringByAppendingPathComponent:bundleId];
     
-    // Check if cached bundle exists
     if ([fileManager fileExistsAtPath:finalBundleDir]) {
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:finalBundleDir];
         NSString *foundBundle = nil;
@@ -222,7 +224,6 @@ RCT_EXPORT_MODULE();
             }
         }
         if (foundBundle) {
-            // Update modification time of final bundle
             NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
             [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
             NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:foundBundle];
@@ -237,7 +238,7 @@ RCT_EXPORT_MODULE();
             [fileManager removeItemAtPath:finalBundleDir error:nil];
         }
     }
-    
+
     // Set up temporary folder (for download and extraction)
     NSString *tempDir = [documentsPath stringByAppendingPathComponent:@"bundle-temp"];
     if ([fileManager fileExistsAtPath:tempDir]) {
@@ -258,7 +259,7 @@ RCT_EXPORT_MODULE();
             if (completion) completion(NO);
             return;
         }
-        
+                
         // Save temporary zip file
         if ([fileManager fileExistsAtPath:tempZipFile]) {
             [fileManager removeItemAtPath:tempZipFile error:nil];
@@ -277,7 +278,7 @@ RCT_EXPORT_MODULE();
             if (completion) completion(NO);
             return;
         }
-        
+
         // Search for index.ios.bundle in extracted folder
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:extractedDir];
         NSString *foundBundle = nil;
@@ -327,7 +328,7 @@ RCT_EXPORT_MODULE();
             if (completion) completion(NO);
             return;
         }
-        
+
         // Update modification time of final bundle
         NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
         [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
