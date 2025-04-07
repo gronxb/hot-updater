@@ -27,6 +27,12 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
+    override fun setChannel(channel: String, promise: Promise) {
+        HotUpdater.setChannel(mReactApplicationContext, channel)
+        promise.resolve(null)
+    }
+
+    @ReactMethod
     override fun updateBundle(
         bundleId: String,
         zipUrl: String?,

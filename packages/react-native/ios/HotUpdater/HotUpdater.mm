@@ -423,8 +423,11 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - React Native Exports
 
-RCT_EXPORT_METHOD(setChannel:(NSString *)channel) {
+RCT_EXPORT_METHOD(setChannel:(NSString *)channel
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
     [self setChannel:channel];
+    resolve(nil);
 }
 
 RCT_EXPORT_METHOD(reload) {
