@@ -1,6 +1,6 @@
 {
   "firestore": {
-    "rules": "firestore.rules"
+    "indexes": "firestore.indexes.json"
   },
   "functions": {
     "source": "functions",
@@ -13,8 +13,5 @@
       "*.local"
     ],
     "gen": 1
-  },
-  "storage": {
-    "rules": "storage.rules"
   }
 }

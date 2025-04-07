@@ -253,6 +253,24 @@ export const runInit = async () => {
       },
     },
     {
+      title: "Deploy firestore indexes",
+      task: async () => {
+        try {
+          const deployArgs = [
+            "firebase",
+            "deploy",
+            "--only",
+            "firestore",
+            "--config",
+            "./.hot-updater/firebase.json",
+          ];
+          await execa("pnpm", deployArgs, { cwd: tmpDir });
+        } catch (e) {
+          console.error("Firestore indexes deploy error:", e);
+        }
+      },
+    },
+    {
       title: "Deploy Firebase Functions",
       task: async () => {
         try {

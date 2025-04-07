@@ -31,6 +31,20 @@ export const firebaseDatabase = (
   const db = admin.firestore(app);
   const bundlesCollection = db.collection("bundles");
 
+  type FirestoreData = admin.firestore.DocumentData;
+
+  const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
+    channel: firestoreData.channel,
+    enabled: Boolean(firestoreData.enabled),
+    shouldForceUpdate: Boolean(firestoreData.should_force_update),
+    fileHash: firestoreData.file_hash,
+    gitCommitHash: firestoreData.git_commit_hash,
+    id: firestoreData.id,
+    message: firestoreData.message,
+    platform: firestoreData.platform,
+    targetAppVersion: firestoreData.target_app_version,
+  });
+
   let bundles: Bundle[] = [];
 
   return createDatabasePlugin(
@@ -50,67 +64,50 @@ export const firebaseDatabase = (
         }
 
         const firestoreData = bundleSnap.data() as SnakeCaseBundle;
-        return {
-          channel: firestoreData.channel,
-          enabled: Boolean(firestoreData.enabled),
-          shouldForceUpdate: Boolean(firestoreData.should_force_update),
-          fileHash: firestoreData.file_hash,
-          gitCommitHash: firestoreData.git_commit_hash,
-          id: firestoreData.id,
-          message: firestoreData.message,
-          platform: firestoreData.platform,
-          targetAppVersion: firestoreData.target_app_version,
-        } as Bundle;
+        return convertToBundle(firestoreData);
       },
 
       async getBundles(options) {
         const { where, limit, offset = 0 } = options ?? {};
 
-        let q = bundlesCollection.orderBy("id", "desc");
+        let query: admin.firestore.Query<FirestoreData> = bundlesCollection;
 
         if (where?.channel) {
-          q = q.where("channel", "==", where.channel);
+          query = query.where("channel", "==", where.channel);
         }
 
         if (where?.platform) {
-          q = q.where("platform", "==", where.platform);
+          query = query.where("platform", "==", where.platform);
+        }
+
+        query = query.orderBy("id", "desc");
+
+        if (offset) {
+          query = query.offset(offset);
         }
 
         if (limit) {
-          q = q.limit(limit);
+          query = query.limit(limit);
         }
 
-        if (offset) {
-          q = q.startAfter(offset);
-        }
-
-        const querySnapshot = await q.get();
+        const querySnapshot = await query.get();
 
         if (querySnapshot.empty) {
           bundles = [];
-        } else {
-          bundles = querySnapshot.docs.map((doc) => {
-            const firestoreData = doc.data() as SnakeCaseBundle;
-            return {
-              id: firestoreData.id,
-              channel: firestoreData.channel,
-              enabled: Boolean(firestoreData.enabled),
-              shouldForceUpdate: Boolean(firestoreData.should_force_update),
-              fileHash: firestoreData.file_hash,
-              gitCommitHash: firestoreData.git_commit_hash,
-              message: firestoreData.message,
-              platform: firestoreData.platform,
-              targetAppVersion: firestoreData.target_app_version,
-            };
-          });
+          return bundles;
         }
+
+        bundles = querySnapshot.docs.map((doc) =>
+          convertToBundle(doc.data() as SnakeCaseBundle),
+        );
 
         return bundles;
       },
 
       async getChannels() {
-        const q = bundlesCollection.orderBy("channel");
-        const querySnapshot = await q.get();
+        const query: admin.firestore.Query<FirestoreData> =
+          bundlesCollection.orderBy("channel");
+        const querySnapshot = await query.get();
 
         if (querySnapshot.empty) {
           return [];
