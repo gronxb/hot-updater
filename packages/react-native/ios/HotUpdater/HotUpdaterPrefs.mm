@@ -11,7 +11,12 @@
     static HotUpdaterPrefs *instance = nil;
     static NSString *cachedVersion = nil;
     @synchronized(self) {
-        if (instance == nil || ![cachedVersion isEqualToString:appVersion]) {
+        if (instance == nil) {
+            instance = [[HotUpdaterPrefs alloc] initWithAppVersion:appVersion];
+            cachedVersion = appVersion;
+        } else if (![cachedVersion isEqualToString:appVersion]) {
+            NSString *oldSuiteName = [NSString stringWithFormat:@"HotUpdaterPrefs_%@", cachedVersion];
+            [[NSUserDefaults standardUserDefaults] removePersistentDomainForName:oldSuiteName];
             instance = [[HotUpdaterPrefs alloc] initWithAppVersion:appVersion];
             cachedVersion = appVersion;
         }

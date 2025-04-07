@@ -43,7 +43,6 @@ RCT_EXPORT_MODULE();
         }
         
         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
-
         unsigned char bytes[16];
         bytes[0] = (buildTimestampMs >> 40) & 0xFF;
         bytes[1] = (buildTimestampMs >> 32) & 0xFF;
@@ -122,7 +121,6 @@ RCT_EXPORT_MODULE();
 - (NSURL *)cachedURLFromBundle {
     HotUpdaterPrefs *prefs = [self getPrefs];
     NSString *savedURLString = [prefs getItemForKey:@"HotUpdaterBundleURL"];
-    
     if (savedURLString) {
         NSURL *bundleURL = [NSURL URLWithString:savedURLString];
         if (bundleURL && [[NSFileManager defaultManager] fileExistsAtPath:[bundleURL path]]) {
