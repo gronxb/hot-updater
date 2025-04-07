@@ -103,7 +103,7 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - Bundle URL Management
 
-- (void)setChannel:(NSString *)channel {
++ (void)setChannel:(NSString *)channel {
     [[NSBundle mainBundle] setObject:channel forInfoDictionaryKey:@"HotUpdaterChannel"];
 }
 
@@ -114,7 +114,7 @@ RCT_EXPORT_MODULE();
     [defaults synchronize];
 }
 
-+ (NSURL *)cachedURLFromBundle {
+- (NSURL *)cachedURLFromBundle {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *savedURLString = [defaults objectForKey:@"HotUpdaterBundleURL"];
     
@@ -426,7 +426,7 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(setChannel:(NSString *)channel
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    [self setChannel:channel];
+    [HotUpdater setChannel:channel];
     resolve(nil);
 }
 
