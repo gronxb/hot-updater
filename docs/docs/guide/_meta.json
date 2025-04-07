@@ -1,5 +1,6 @@
 [
   "plugin-system",
+  "how-does-it-work",
   {
     "type": "dir",
     "name": "getting-started",
