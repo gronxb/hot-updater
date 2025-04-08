@@ -1,8 +1,7 @@
-import { existsSync } from "fs";
+import fs from "fs";
 import * as p from "@clack/prompts";
 import { makeEnv } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import fs from "fs/promises";
 
 const CONFIG_TEMPLATE = `import {metro} from '@hot-updater/metro';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
@@ -35,8 +34,8 @@ async function addToGitignore(): Promise<void> {
   try {
     let gitignoreContent = "";
 
-    if (existsSync(".gitignore")) {
-      gitignoreContent = await fs.readFile(".gitignore", "utf8");
+    if (fs.existsSync(".gitignore")) {
+      gitignoreContent = await fs.promises.readFile(".gitignore", "utf8");
 
       if (gitignoreContent.includes(addContent)) {
         p.log.info(`${addContent} is already in .gitignore file.`);
@@ -50,7 +49,7 @@ async function addToGitignore(): Promise<void> {
 
     gitignoreContent += `${addContent}\n`;
 
-    await fs.writeFile(".gitignore", gitignoreContent);
+    await fs.promises.writeFile(".gitignore", gitignoreContent);
     p.log.success(`${addContent} has been successfully added to .gitignore.`);
   } catch (error: any) {
     console.error("Error updating .gitignore file:", error.message);
@@ -68,7 +67,7 @@ export const setEnv = async (): Promise<string> => {
     message: "Enter the Firebase SDK credentials JSON file path:",
     validate: (value: string): string | undefined => {
       if (!value) return "File path is required";
-      if (!existsSync(value)) return "File does not exist";
+      if (!fs.existsSync(value)) return "File does not exist";
       return undefined;
     },
   });
@@ -76,7 +75,10 @@ export const setEnv = async (): Promise<string> => {
   await addToGitignore();
 
   try {
-    const fileContent: string = await fs.readFile(jsonPath as string, "utf8");
+    const fileContent: string = await fs.promises.readFile(
+      jsonPath as string,
+      "utf8",
+    );
     const credentials: {
       project_id: string;
       private_key: string;
@@ -115,7 +117,7 @@ export const setEnv = async (): Promise<string> => {
   p.log.success("Firebase credentials have been successfully configured.");
 
   try {
-    await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+    await fs.promises.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
     p.log.success(
       "Configuration file 'hot-updater.config.ts' has been created.",
     );
