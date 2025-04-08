@@ -1,5 +1,6 @@
 [
   "plugin-system",
+  "how-does-it-work",
   {
     "type": "dir",
     "name": "getting-started",
@@ -22,6 +23,13 @@
     "type": "dir",
     "name": "providers",
     "label": "Providers",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "dir",
+    "name": "plugins",
+    "label": "Plugins",
     "collapsible": true,
     "collapsed": false
   },

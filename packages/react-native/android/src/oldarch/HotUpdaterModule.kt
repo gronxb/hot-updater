@@ -27,6 +27,15 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
+    override fun setChannel(
+        channel: String,
+        promise: Promise,
+    ) {
+        HotUpdater.setChannel(mReactApplicationContext, channel)
+        promise.resolve(null)
+    }
+
+    @ReactMethod
     override fun updateBundle(
         bundleId: String,
         zipUrl: String?,
@@ -55,18 +64,24 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
-    fun addListener(eventName: String?) {
+    fun addListener(
+        @Suppress("UNUSED_PARAMETER") eventName: String?,
+    ) {
         // No-op
     }
 
     @ReactMethod
-    fun removeListeners(count: Double) {
+    fun removeListeners(
+        @Suppress("UNUSED_PARAMETER") count: Double,
+    ) {
         // No-op
     }
 
     override fun getConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId(mReactApplicationContext)
+        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
+        constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
+        constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
         return constants
     }
 

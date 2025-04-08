@@ -67,8 +67,9 @@ export const updateBundle = (
 /**
  * Fetches the current app version.
  */
-export const getAppVersion = (): Promise<string | null> => {
-  return HotUpdaterNative.getAppVersion();
+export const getAppVersion = (): string | null => {
+  const constants = HotUpdaterNative.getConstants();
+  return constants?.APP_VERSION ?? null;
 };
 
 /**
@@ -98,13 +99,19 @@ export const getMinBundleId = (): string => {
  * @returns {Promise<string>} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  const minBundleId = getMinBundleId();
-
-  return minBundleId.localeCompare(HotUpdater.HOT_UPDATER_BUNDLE_ID) >= 0
-    ? minBundleId
+  return HotUpdater.HOT_UPDATER_BUNDLE_ID === NIL_UUID
+    ? getMinBundleId()
     : HotUpdater.HOT_UPDATER_BUNDLE_ID;
 };
 
-export const getChannel = (): string => {
-  return HotUpdater.CHANNEL;
+/**
+ * Sets the channel for the app.
+ */
+export const setChannel = async (channel: string) => {
+  return HotUpdaterNative.setChannel(channel);
+};
+
+export const getChannel = (): string | null => {
+  const constants = HotUpdaterNative.getConstants();
+  return constants?.CHANNEL ?? HotUpdater.CHANNEL ?? null;
 };

@@ -6,6 +6,7 @@ import {
   getChannel,
   getMinBundleId,
   reload,
+  setChannel,
   updateBundle,
 } from "./native";
 import { runUpdateProcess } from "./runUpdateProcess";
@@ -67,8 +68,9 @@ export const HotUpdater = {
    * Fetches the current release channel of the app.
    *
    * By default, if no channel is specified, the app is assigned to the 'production' channel.
+   * If the app is running in development mode, the channel will be `null`.
    *
-   * @returns {string} The current release channel of the app
+   * @returns {string | null} The current release channel of the app
    *
    * @example
    * ```ts
@@ -77,6 +79,10 @@ export const HotUpdater = {
    * ```
    */
   getChannel,
+  /**
+   * Sets the channel for the app.
+   */
+  setChannel,
   /**
    * Adds a listener to HotUpdater events.
    *
