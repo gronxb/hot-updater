@@ -57,7 +57,7 @@ export const init = async () => {
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
-      { value: "firebase", label: "firebase" },
+      { value: "firebase", label: "Firebase" },
     ],
   });
 

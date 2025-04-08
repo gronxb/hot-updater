@@ -1,9 +1,9 @@
+import { NIL_UUID, type Platform } from "@hot-updater/core";
 import { signToken, verifyJwtSignedUrl } from "@hot-updater/js";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
 import { getUpdateInfo } from "./getUpdateInfo";
-import { NIL_UUID, type Platform } from "@hot-updater/core";
 
 declare global {
   var HotUpdater: {
@@ -119,7 +119,7 @@ const hotUpdaterFunction = functions
 
     const request = new Request(fullUrl, {
       method: req.method,
-      headers: req.headers as HeadersInit,
+      headers: req.headers as Record<string, string>,
       body:
         req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
     });
