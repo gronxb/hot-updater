@@ -1,95 +1,129 @@
 import * as p from "@clack/prompts";
-import { link } from "@hot-updater/plugin-core";
+import { makeEnv } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import fs from "fs/promises";
+import { existsSync } from "fs";
 
-interface Project {
-  projectId: string;
-  projectNumber: string;
-  displayName: string;
-  name: string;
-  resources?: {
-    hostingSite?: string;
-  };
-  state: string;
-  etag: string;
+const CONFIG_TEMPLATE = `import {metro} from '@hot-updater/metro';
+import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
+import {defineConfig} from 'hot-updater';
+import 'dotenv/config';
+export default defineConfig({
+  build: metro({
+    enableHermes: true,
+  }),
+  storage: firebaseStorage({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
+    privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
+    clientEmail:process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
+  }),
+  database: firebaseDatabase({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
+    privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
+    clientEmail:process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
+  }),
+});`;
+
+interface Icred {
+  projectId: string | symbol;
+  privateKey: string | symbol;
+  clientEmail: string | symbol;
 }
 
-const spin = p.spinner();
-
-export const selectOrCreateProject = async (): Promise<string> => {
-  spin.start("fetching projects list...");
+async function addToGitignore(): Promise<void> {
+  const addContent = "*firebase*adminsdk*.json";
   try {
-    const listProjects = await execa("firebase", ["projects:list", "--json"], {
-      stdio: "pipe",
-    });
-    spin.stop();
-    const projects: Project[] = JSON.parse(listProjects.stdout).result || [];
+    let gitignoreContent = "";
 
-    const projectOptions = [
-      ...projects.map((project) => ({
-        value: project.projectId,
-        label: `${project.displayName} (${project.projectId})`,
-      })),
-      {
-        value: "CREATE_NEW",
-        label: "Create a New Project",
-      },
-    ];
+    if (existsSync(".gitignore")) {
+      gitignoreContent = await fs.readFile(".gitignore", "utf8");
 
-    const selectedProjectId = await p.select({
-      message: "Select a Firebase project",
-      options: projectOptions,
-    });
-
-    if (selectedProjectId === "CREATE_NEW") {
-      const projectName = await p.text({
-        message: "Enter the name for your new Firebase project",
-        validate(value) {
-          if (!value || value === undefined) {
-            return "App name is required.";
-          }
-          return;
-        },
-      });
-
-      if (p.isCancel(projectName)) process.exit(0);
-
-      await execa("firebase", ["projects:create", projectName as string], {
-        stdio: "inherit",
-      });
-
-      p.log.info(`
-        ==================================================================================
-                                  Storage Setup Instructions
-        ==================================================================================
-        1. Please complete the Storage and FireStore setup on the Firebase Console.
-        2. Note: Upgrading your plan to 'Blaze' is required to proceed.
-        storage: ${link(`https://console.firebase.google.com/project/${projectName as string}/storage`)}
-        firestore: ${link(`https://console.firebase.google.com/project/${projectName as string}/firestore`)}
-        ==================================================================================
-        `);
-
-      const hasCheckedInstructions = await p.confirm({
-        message:
-          "Have you completed the Storage and Firestore setup on Firebase Console?",
-        initialValue: false,
-      });
-
-      if (p.isCancel(hasCheckedInstructions)) process.exit(0);
-
-      if (!hasCheckedInstructions) {
-        p.log.warn("Please complete the setup before continuing.");
-        process.exit(0);
+      if (gitignoreContent.includes(addContent)) {
+        p.log.info(`${addContent} is already in .gitignore file.`);
+        return;
       }
 
-      return projectName as string;
+      if (!gitignoreContent.endsWith("\n")) {
+        gitignoreContent += "\n";
+      }
     }
 
-    return selectedProjectId as string;
-  } catch (err) {
-    handleError(err);
+    gitignoreContent += `${addContent}\n`;
+
+    await fs.writeFile(".gitignore", gitignoreContent);
+    p.log.success(`${addContent} has been successfully added to .gitignore.`);
+  } catch (error: any) {
+    console.error("Error updating .gitignore file:", error.message);
+  }
+}
+
+export const setEnv = async (): Promise<string> => {
+  const cred: Icred = {
+    projectId: "",
+    privateKey: "",
+    clientEmail: "",
+  };
+
+  const jsonPath = await p.text({
+    message: "Enter the Firebase SDK credentials JSON file path:",
+    validate: (value: string): string | undefined => {
+      if (!value) return "File path is required";
+      if (!existsSync(value)) return "File does not exist";
+      return undefined;
+    },
+  });
+
+  await addToGitignore();
+
+  try {
+    const fileContent: string = await fs.readFile(jsonPath as string, "utf8");
+    const credentials: {
+      project_id: string;
+      private_key: string;
+      client_email: string;
+    } = JSON.parse(fileContent);
+
+    cred.projectId = credentials.project_id;
+    cred.privateKey = credentials.private_key;
+    cred.clientEmail = credentials.client_email;
+
+    if (!cred.projectId) {
+      console.error("Could not find project_id in the JSON file");
+      process.exit(1);
+    }
+    if (!cred.privateKey) {
+      console.error("Could not find private_key in the JSON file");
+      process.exit(1);
+    }
+    if (!cred.clientEmail) {
+      console.error("Could not find client_email in the JSON file");
+      process.exit(1);
+    }
+
+    p.log.success(`Found project ID: ${cred.projectId}`);
+  } catch (error: any) {
+    console.error("Error reading JSON file:", error.message);
     process.exit(1);
   }
+
+  await makeEnv({
+    HOT_UPDATER_FIREBASE_PROJECT_ID: cred.projectId as string,
+    HOT_UPDATER_FIREBASE_PRIVATE_KEY: `"${cred.privateKey as string}"`,
+    HOT_UPDATER_FIREBASE_CLIENT_EMAIL: cred.clientEmail as string,
+  });
+
+  p.log.success("Firebase credentials have been successfully configured.");
+
+  try {
+    await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+    p.log.success(
+      "Configuration file 'hot-updater.config.ts' has been created.",
+    );
+  } catch (error: any) {
+    console.error("Error writing configuration file:", error.message);
+  }
+
+  return cred.projectId as string;
 };
 
 const handleError = (err: unknown) => {
@@ -109,9 +143,10 @@ export const initFirebaseUser = async () => {
     handleError(err);
   }
 
-  const selectedProject = await selectOrCreateProject();
+  const selectedProject = await setEnv();
+
   if (!selectedProject) {
-    p.log.error("Failed to select or create a Firebase project.");
+    p.log.error("Failed to make Env and hot-updater.config.ts");
     process.exit(1);
   }
 

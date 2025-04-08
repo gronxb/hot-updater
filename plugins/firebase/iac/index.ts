@@ -12,30 +12,6 @@ import { execa } from "execa";
 import fs from "fs/promises";
 import { initFirebaseUser } from "./select";
 
-const CONFIG_TEMPLATE = `
-  import {metro} from '@hot-updater/metro';
-  import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
-  import {defineConfig} from 'hot-updater';
-  import 'dotenv/config';
-
-  export default defineConfig({
-    build: metro({
-      enableHermes: true,
-    }),
-    storage: firebaseStorage({
-      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-      privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
-      clientEmail: process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
-    }),
-    database: firebaseDatabase({
-      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-      privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
-      clientEmail: process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
-    }),
-  });
-`;
-
-// Template file: Example code to add to App.tsx
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
@@ -266,7 +242,7 @@ export const runInit = async () => {
           ];
           await execa("pnpm", deployArgs, { cwd: tmpDir });
         } catch (e) {
-          console.error("Firestore indexes deploy error:", e);
+          console.error("Pass");
         }
       },
     },
@@ -308,12 +284,6 @@ export const runInit = async () => {
 
           throw error;
         }
-      },
-    },
-    {
-      title: "Creating configuration file...",
-      task: async () => {
-        await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
       },
     },
     {
