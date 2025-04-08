@@ -1,10 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": [
-    "src",
-    "firebase/functions/getUpdateInfo.ts",
-    "firebase/functions/firestoreType.ts",
-    "iac"
-  ],
+  "include": ["src", "firebase", "iac"],
   "exclude": ["lib", "", "**/*.spec.ts"]
 }

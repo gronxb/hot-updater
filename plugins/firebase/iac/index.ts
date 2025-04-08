@@ -223,6 +223,7 @@ export const runInit = async () => {
           {
             REGION: selectedRegion,
             JWT_SECRET: jwtSecret,
+            PROJECT_ID: initializeVariable.projectId,
           },
         );
         await fs.writeFile(path.join(functionsDir, "index.cjs"), code);
