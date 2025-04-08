@@ -14,9 +14,9 @@ export const firebaseDatabase = (
   hooks?: DatabasePluginHooks,
 ) => {
   const firebaseConfig = {
-    projectId: config.projectId,
-    clientEmail: config.clientEmail,
-    privateKey: config.privateKey,
+    project_id: config.projectId,
+    private_key: config.privateKey,
+    client_email: config.clientEmail,
   };
 
   let app: admin.app.App;

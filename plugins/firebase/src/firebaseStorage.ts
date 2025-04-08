@@ -19,9 +19,9 @@ export const firebaseStorage =
   (_: BasePluginArgs): StoragePlugin => {
     const storageBucket = `${config.projectId}.firebasestorage.app`;
     const firebaseConfig = {
-      projectId: config.projectId,
-      clientEmail: config.clientEmail,
-      privateKey: config.privateKey,
+      project_id: config.projectId,
+      private_key: config.privateKey,
+      client_email: config.clientEmail,
     };
 
     let app: admin.app.App;
