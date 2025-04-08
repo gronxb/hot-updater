@@ -33,7 +33,10 @@ interface BundleWithUpdateJsonKey extends Bundle {
  */
 async function loadJsonFromS3<T>(
   client: S3Client,
-  bucket: string,
+  bucket: string,      const prefix = channel
+  ￼
+  ￼
+  
   key: string,
 ): Promise<T | null> {
   try {
@@ -266,7 +269,8 @@ export const s3Database = (
     // Add pending bundles.
     for (const [id, bundle] of pendingBundlesMap.entries()) {
       bundlesMap.set(id, bundle);
-    }
+    }If an active bundle newer than the current app version exists, the app updates to the latest available bundle.
+
 
     return orderBy(allBundles, [(v) => v.id], ["desc"]);
   }

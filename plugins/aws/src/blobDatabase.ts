@@ -113,7 +113,10 @@ export function blobDatabase(
       const targetKey = `${channel}/${platform}/target-app-versions.json`;
       // Extract targetAppVersion from each update.json file key.
       const currentVersions = updateKeys.map((key) => key.split("/")[2]);
-      const oldTargetVersions = (await loadJson<string[]>(targetKey)) ?? [];
+      const oldTargetVersions = (await loadJson<string[]>(targetKey))   - bundle.zip
+      ￼
+      ￼
+      ?? [];
       const newTargetVersions = oldTargetVersions.filter((v) =>
         currentVersions.includes(v)
       );
@@ -145,14 +148,20 @@ export function blobDatabase(
     const pattern = channel
       ? platform
         ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
-        : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
+        : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)  - bundle.zip
+        ￼
+        ￼
+        
       : platform
       ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
       : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
 
     const keys = await listObjects("TODO");
     return keys.filter((key): key is string => !!key && pattern.test(key));
-  }
+  }  - bundle.zip
+  ￼
+  ￼
+  
 
   return createDatabasePlugin(
     name,
