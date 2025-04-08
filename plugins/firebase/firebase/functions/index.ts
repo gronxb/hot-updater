@@ -3,6 +3,7 @@ import { signToken, verifyJwtSignedUrl } from "@hot-updater/js";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
+import { createApp } from "./createApp";
 import { getUpdateInfo } from "./getUpdateInfo";
 
 declare global {
@@ -70,7 +71,7 @@ app.get("/api/check-update", async (c) => {
 
   const appUpdateInfo = {
     ...updateInfo,
-    fileUrl: `${hostUrl}/hot-updater/${filePath}?token=${token}`,
+    fileUrl: new URL(`${hostUrl}/hot-updater/${filePath}?token=${token}`),
   };
 
   return c.json(appUpdateInfo, 200);
@@ -110,31 +111,10 @@ app.get("*", async (c) => {
   return c.body(result.responseBody, 200, result.responseHeaders);
 });
 
-const hotUpdaterFunction = functions
-  .region(HotUpdater.REGION)
-  .https.onRequest(async (req: functions.Request, res: functions.Response) => {
-    const host = req.hostname || "localhost";
-    const protocol = req.protocol || "https";
-    const fullUrl = `${protocol}://${host}${req.originalUrl || req.url}`;
-
-    const request = new Request(fullUrl, {
-      method: req.method,
-      headers: req.headers as Record<string, string>,
-      body:
-        req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-    });
-
-    const honoResponse = await app.fetch(request);
-
-    res.status(honoResponse.status);
-
-    honoResponse.headers.forEach((value: string, key: string) => {
-      res.set(key, value);
-    });
-
-    const body = await honoResponse.text();
-    res.send(body);
-  });
+const hotUpdaterFunction = createApp(functions, {
+  region: HotUpdater.REGION,
+  honoApp: app,
+});
 
 export const hot = {
   updater: hotUpdaterFunction,
