@@ -34,11 +34,11 @@ interface BundleWithUpdateJsonKey extends Bundle {
 async function loadJsonFromS3<T>(
   client: S3Client,
   bucket: string,
-  key: string,
+  key: string
 ): Promise<T | null> {
   try {
     const { Body } = await client.send(
-      new GetObjectCommand({ Bucket: bucket, Key: key }),
+      new GetObjectCommand({ Bucket: bucket, Key: key })
     );
     if (!Body) return null;
     const bodyContents = await streamToString(Body);
@@ -56,7 +56,7 @@ async function uploadJsonToS3<T>(
   client: S3Client,
   bucket: string,
   key: string,
-  data: T,
+  data: T
 ) {
   const Body = JSON.stringify(data);
   const ContentType = mime.getType(key) ?? "application/json";
@@ -73,13 +73,51 @@ async function uploadJsonToS3<T>(
   await upload.done();
 }
 
+async function listObjectsInS3(
+  client: S3Client,
+  bucketName: string,
+  prefix: string
+) {
+  let continuationToken: string | undefined;
+  const keys: string[] = [];
+
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      })
+    );
+    const found = (response.Contents ?? [])
+      .map((item) => item.Key)
+      .filter((key): key is string => !!key);
+    keys.push(...found);
+    continuationToken = response.NextContinuationToken;
+  } while (continuationToken);
+  return keys;
+}
+
+async function deleteObjectInS3(
+  client: S3Client,
+  bucketName: string,
+  key: string
+) {
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+    })
+  );
+}
+
 /**
  * Invalidates CloudFront cache for the given paths.
  */
 async function invalidateCloudFront(
   client: CloudFrontClient,
   distributionId: string,
-  paths: string[],
+  paths: string[]
 ) {
   if (paths.length === 0) {
     return;
@@ -96,7 +134,7 @@ async function invalidateCloudFront(
           Items: paths,
         },
       },
-    }),
+    })
   );
 }
 
@@ -106,120 +144,9 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   return pureBundle;
 }
 
-/**
- * Lists update.json keys for a given platform.
- *
- * - If a channel is provided, only that channel's update.json files are listed.
- * - Otherwise, all channels for the given platform are returned.
- */
-async function listUpdateJsonKeys(
-  client: S3Client,
-  bucketName: string,
-  platform?: string,
-  channel?: string,
-): Promise<string[]> {
-  let continuationToken: string | undefined;
-  const keys: string[] = [];
-  const prefix = channel
-    ? platform
-      ? `${channel}/${platform}/`
-      : `${channel}/`
-    : "";
-  // Use appropriate key format based on whether a channel is given.
-  const pattern = channel
-    ? platform
-      ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
-      : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
-    : platform
-      ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
-      : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
-  do {
-    const response = await client.send(
-      new ListObjectsV2Command({
-        Bucket: bucketName,
-        Prefix: prefix,
-        ContinuationToken: continuationToken,
-      }),
-    );
-    const found = (response.Contents ?? [])
-      .map((item) => item.Key)
-      .filter((key): key is string => !!key && pattern.test(key));
-    keys.push(...found);
-    continuationToken = response.NextContinuationToken;
-  } while (continuationToken);
-  return keys;
-}
-
-/**
- * Updates target-app-versions.json for each channel on the given platform.
- * Returns true if the file was updated, false if no changes were made.
- */
-async function updateTargetVersionsForPlatform(
-  client: S3Client,
-  bucketName: string,
-  platform: string,
-): Promise<Set<string>> {
-  // Retrieve all update.json files for the platform across channels.
-  let continuationToken: string | undefined;
-  const keys: string[] = [];
-  const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
-  do {
-    const response = await client.send(
-      new ListObjectsV2Command({
-        Bucket: bucketName,
-        Prefix: "",
-        ContinuationToken: continuationToken,
-      }),
-    );
-    const found = (response.Contents ?? [])
-      .map((item) => item.Key)
-      .filter((key): key is string => !!key && pattern.test(key));
-    keys.push(...found);
-    continuationToken = response.NextContinuationToken;
-  } while (continuationToken);
-
-  // Group keys by channel (channel is the first part of the key)
-  const keysByChannel = keys.reduce(
-    (acc, key) => {
-      const parts = key.split("/");
-      const channel = parts[0];
-      acc[channel] = acc[channel] || [];
-      acc[channel].push(key);
-      return acc;
-    },
-    {} as Record<string, string[]>,
-  );
-
-  const updatedTargetFiles = new Set<string>();
-
-  for (const channel of Object.keys(keysByChannel)) {
-    const updateKeys = keysByChannel[channel];
-    const targetKey = `${channel}/${platform}/target-app-versions.json`;
-    // Extract targetAppVersion from each update.json file key.
-    const currentVersions = updateKeys.map((key) => key.split("/")[2]);
-    const oldTargetVersions =
-      (await loadJsonFromS3<string[]>(client, bucketName, targetKey)) ?? [];
-    const newTargetVersions = oldTargetVersions.filter((v) =>
-      currentVersions.includes(v),
-    );
-    for (const v of currentVersions) {
-      if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
-    }
-
-    if (
-      JSON.stringify(oldTargetVersions) !== JSON.stringify(newTargetVersions)
-    ) {
-      await uploadJsonToS3(client, bucketName, targetKey, newTargetVersions);
-      updatedTargetFiles.add(`/${targetKey}`);
-    }
-  }
-
-  return updatedTargetFiles;
-}
-
 export const s3Database = (
   config: S3DatabaseConfig,
-  hooks?: DatabasePluginHooks,
+  hooks?: DatabasePluginHooks
 ) => {
   const { bucketName, cloudfrontDistributionId, ...s3Config } = config;
   if (!cloudfrontDistributionId) {
@@ -231,6 +158,56 @@ export const s3Database = (
     region: s3Config.region,
   });
 
+  const litemItems = (prefix: string) =>
+    listObjectsInS3(client, bucketName, prefix);
+
+  function loadItem<T>(key: string) {
+    return loadJsonFromS3<T>(client, bucketName, key);
+  }
+
+  function uploadItem<T>(key: string, data: T) {
+    return uploadJsonToS3(client, bucketName, key, data);
+  }
+
+  function deleteItem(key: string) {
+    return deleteObjectInS3(client, bucketName, key);
+  }
+
+  async function invalidatePaths(pathsToInvalidate: string[]) {
+    // Execute CloudFront invalidation
+    if (
+      cloudfrontClient &&
+      cloudfrontDistributionId &&
+      pathsToInvalidate.length > 0
+    ) {
+      await invalidateCloudFront(
+        cloudfrontClient,
+        cloudfrontDistributionId,
+        pathsToInvalidate
+      );
+    }
+  }
+
+  return blobDatabase(
+    bucketName,
+    litemItems,
+    loadItem,
+    uploadItem,
+    deleteItem,
+    invalidatePaths,
+    hooks
+  );
+};
+
+const blobDatabase = (
+  name: string,
+  litemItems: (prefix: string) => Promise<string[]>,
+  loadItem: <T>(key: string) => Promise<T | null>,
+  uploadItem: (key: string, data: unknown) => Promise<unknown>,
+  deleteItem: (key: string) => Promise<unknown>,
+  invalidatePaths: (paths: string[]) => Promise<void>,
+  hooks?: DatabasePluginHooks
+) => {
   // Map for O(1) lookup of bundles.
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
   // Temporary store for newly added or modified bundles.
@@ -244,10 +221,9 @@ export const s3Database = (
 
     const platformPromises = PLATFORMS.map(async (platform) => {
       // Retrieve update.json files for the platform across all channels.
-      const keys = await listUpdateJsonKeys(client, bucketName, platform);
+      const keys = await listUpdateJsonKeys(platform);
       const filePromises = keys.map(async (key) => {
-        const bundlesData =
-          (await loadJsonFromS3<Bundle[]>(client, bucketName, key)) ?? [];
+        const bundlesData = (await loadItem<Bundle[]>(key)) ?? [];
         return bundlesData.map((bundle) => ({
           ...bundle,
           _updateJsonKey: key,
@@ -271,8 +247,84 @@ export const s3Database = (
     return orderBy(allBundles, [(v) => v.id], ["desc"]);
   }
 
+  /**
+   * Updates target-app-versions.json for each channel on the given platform.
+   * Returns true if the file was updated, false if no changes were made.
+   */
+  async function updateTargetVersionsForPlatform(
+    platform: string
+  ): Promise<Set<string>> {
+    // Retrieve all update.json files for the platform across channels.
+    const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
+
+    const keys = (await litemItems("")).filter((key) => pattern.test(key));
+
+    // Group keys by channel (channel is the first part of the key)
+    const keysByChannel = keys.reduce((acc, key) => {
+      const parts = key.split("/");
+      const channel = parts[0];
+      acc[channel] = acc[channel] || [];
+      acc[channel].push(key);
+      return acc;
+    }, {} as Record<string, string[]>);
+
+    const updatedTargetFiles = new Set<string>();
+
+    for (const channel of Object.keys(keysByChannel)) {
+      const updateKeys = keysByChannel[channel];
+      const targetKey = `${channel}/${platform}/target-app-versions.json`;
+      // Extract targetAppVersion from each update.json file key.
+      const currentVersions = updateKeys.map((key) => key.split("/")[2]);
+      const oldTargetVersions = (await loadItem<string[]>(targetKey)) ?? [];
+      const newTargetVersions = oldTargetVersions.filter((v) =>
+        currentVersions.includes(v)
+      );
+      for (const v of currentVersions) {
+        if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
+      }
+
+      if (
+        JSON.stringify(oldTargetVersions) !== JSON.stringify(newTargetVersions)
+      ) {
+        await uploadItem(targetKey, newTargetVersions);
+        updatedTargetFiles.add(`/${targetKey}`);
+      }
+    }
+
+    return updatedTargetFiles;
+  }
+
+  /**
+   * Lists update.json keys for a given platform.
+   *
+   * - If a channel is provided, only that channel's update.json files are listed.
+   * - Otherwise, all channels for the given platform are returned.
+   */
+  async function listUpdateJsonKeys(
+    platform?: string,
+    channel?: string
+  ): Promise<string[]> {
+    const prefix = channel
+      ? platform
+        ? `${channel}/${platform}/`
+        : `${channel}/`
+      : "";
+    // Use appropriate key format based on whether a channel is given.
+    const pattern = channel
+      ? platform
+        ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
+        : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
+      : platform
+      ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
+      : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
+
+    return litemItems(prefix).then((keys) =>
+      keys.filter((key) => pattern.test(key))
+    );
+  }
+
   return createDatabasePlugin(
-    "s3Database",
+    name,
     {
       async getBundleById(bundleId: string) {
         const pendingBundle = pendingBundlesMap.get(bundleId);
@@ -300,7 +352,7 @@ export const s3Database = (
               ([key, value]) =>
                 value === undefined ||
                 value === null ||
-                bundle[key as keyof Bundle] === value,
+                bundle[key as keyof Bundle] === value
             );
           });
         }
@@ -341,7 +393,7 @@ export const s3Database = (
 
             changedBundlesByKey[key] = changedBundlesByKey[key] || [];
             changedBundlesByKey[key].push(
-              removeBundleInternalKeys(bundleWithKey),
+              removeBundleInternalKeys(bundleWithKey)
             );
 
             // CloudFront 무효화를 위한 경로 추가
@@ -386,7 +438,7 @@ export const s3Database = (
               pendingBundlesMap.set(data.id, updatedBundle);
 
               changedBundlesByKey[newKey].push(
-                removeBundleInternalKeys(updatedBundle),
+                removeBundleInternalKeys(updatedBundle)
               );
 
               // Add paths for CloudFront invalidation
@@ -403,7 +455,7 @@ export const s3Database = (
             changedBundlesByKey[currentKey] =
               changedBundlesByKey[currentKey] || [];
             changedBundlesByKey[currentKey].push(
-              removeBundleInternalKeys(updatedBundle),
+              removeBundleInternalKeys(updatedBundle)
             );
 
             // CloudFront 무효화를 위한 경로 추가
@@ -414,19 +466,15 @@ export const s3Database = (
         // Remove bundles from their old keys.
         for (const oldKey of Object.keys(removalsByKey)) {
           await (async () => {
-            const currentBundles =
-              (await loadJsonFromS3<Bundle[]>(client, bucketName, oldKey)) ??
-              [];
+            const currentBundles = (await loadItem<Bundle[]>(oldKey)) ?? [];
             const updatedBundles = currentBundles.filter(
-              (b) => !removalsByKey[oldKey].includes(b.id),
+              (b) => !removalsByKey[oldKey].includes(b.id)
             );
             updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
             if (updatedBundles.length === 0) {
-              await client.send(
-                new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey }),
-              );
+              await deleteItem(oldKey);
             } else {
-              await uploadJsonToS3(client, bucketName, oldKey, updatedBundles);
+              await uploadItem(oldKey, updatedBundles);
             }
           })();
         }
@@ -434,14 +482,13 @@ export const s3Database = (
         // Add or update bundles in their new keys.
         for (const key of Object.keys(changedBundlesByKey)) {
           await (async () => {
-            const currentBundles =
-              (await loadJsonFromS3<Bundle[]>(client, bucketName, key)) ?? [];
+            const currentBundles = (await loadItem<Bundle[]>(key)) ?? [];
             const pureBundles = changedBundlesByKey[key].map(
-              (bundle) => bundle,
+              (bundle) => bundle
             );
             for (const changedBundle of pureBundles) {
               const index = currentBundles.findIndex(
-                (b) => b.id === changedBundle.id,
+                (b) => b.id === changedBundle.id
               );
               if (index >= 0) {
                 currentBundles[index] = changedBundle;
@@ -450,18 +497,14 @@ export const s3Database = (
               }
             }
             currentBundles.sort((a, b) => b.id.localeCompare(a.id));
-            await uploadJsonToS3(client, bucketName, key, currentBundles);
+            await uploadItem(key, currentBundles);
           })();
         }
 
         // Update target-app-versions.json for each platform and collect paths that were actually updated
         const updatedTargetFilePaths = new Set<string>();
         for (const platform of PLATFORMS) {
-          const updatedPaths = await updateTargetVersionsForPlatform(
-            client,
-            bucketName,
-            platform,
-          );
+          const updatedPaths = await updateTargetVersionsForPlatform(platform);
           for (const path of updatedPaths) {
             updatedTargetFilePaths.add(path);
           }
@@ -472,23 +515,12 @@ export const s3Database = (
           pathsToInvalidate.add(path);
         }
 
-        // Execute CloudFront invalidation
-        if (
-          cloudfrontClient &&
-          cloudfrontDistributionId &&
-          pathsToInvalidate.size > 0
-        ) {
-          await invalidateCloudFront(
-            cloudfrontClient,
-            cloudfrontDistributionId,
-            Array.from(pathsToInvalidate),
-          );
-        }
+        await invalidatePaths(Array.from(pathsToInvalidate));
 
         pendingBundlesMap.clear();
         hooks?.onDatabaseUpdated?.();
       },
     },
-    hooks,
+    hooks
   );
 };
