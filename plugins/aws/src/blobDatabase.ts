@@ -150,7 +150,7 @@ export function blobDatabase(
       ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
       : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
 
-    const keys = await listObjects();
+    const keys = await listObjects("TODO");
     return keys.filter((key): key is string => !!key && pattern.test(key));
   }
 
