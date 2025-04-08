@@ -6,6 +6,7 @@ import {
   getChannel,
   getMinBundleId,
   reload,
+  setChannel,
   updateBundle,
 } from "./native";
 import { runUpdateProcess } from "./runUpdateProcess";
@@ -78,6 +79,10 @@ export const HotUpdater = {
    * ```
    */
   getChannel,
+  /**
+   * Sets the channel for the app.
+   */
+  setChannel,
   /**
    * Adds a listener to HotUpdater events.
    *

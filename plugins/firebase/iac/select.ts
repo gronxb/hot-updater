@@ -1,8 +1,8 @@
+import { existsSync } from "fs";
 import * as p from "@clack/prompts";
 import { makeEnv } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fs from "fs/promises";
-import { existsSync } from "fs";
 
 const CONFIG_TEMPLATE = `import {metro} from '@hot-updater/metro';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
