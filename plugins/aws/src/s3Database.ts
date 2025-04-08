@@ -33,15 +33,12 @@ interface BundleWithUpdateJsonKey extends Bundle {
  */
 async function loadJsonFromS3<T>(
   client: S3Client,
-  bucket: string,      const prefix = channel
-  ￼
-  ￼
-  
-  key: string,
+  bucket: string,
+  key: string
 ): Promise<T | null> {
   try {
     const { Body } = await client.send(
-      new GetObjectCommand({ Bucket: bucket, Key: key }),
+      new GetObjectCommand({ Bucket: bucket, Key: key })
     );
     if (!Body) return null;
     const bodyContents = await streamToString(Body);
@@ -59,7 +56,7 @@ async function uploadJsonToS3<T>(
   client: S3Client,
   bucket: string,
   key: string,
-  data: T,
+  data: T
 ) {
   const Body = JSON.stringify(data);
   const ContentType = mime.getType(key) ?? "application/json";
@@ -82,7 +79,7 @@ async function uploadJsonToS3<T>(
 async function invalidateCloudFront(
   client: CloudFrontClient,
   distributionId: string,
-  paths: string[],
+  paths: string[]
 ) {
   if (paths.length === 0) {
     return;
@@ -99,7 +96,7 @@ async function invalidateCloudFront(
           Items: paths,
         },
       },
-    }),
+    })
   );
 }
 
@@ -119,7 +116,7 @@ async function listUpdateJsonKeys(
   client: S3Client,
   bucketName: string,
   platform?: string,
-  channel?: string,
+  channel?: string
 ): Promise<string[]> {
   let continuationToken: string | undefined;
   const keys: string[] = [];
@@ -134,15 +131,15 @@ async function listUpdateJsonKeys(
       ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
       : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
     : platform
-      ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
-      : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
+    ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
+    : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
   do {
     const response = await client.send(
       new ListObjectsV2Command({
         Bucket: bucketName,
         Prefix: prefix,
         ContinuationToken: continuationToken,
-      }),
+      })
     );
     const found = (response.Contents ?? [])
       .map((item) => item.Key)
@@ -160,7 +157,7 @@ async function listUpdateJsonKeys(
 async function updateTargetVersionsForPlatform(
   client: S3Client,
   bucketName: string,
-  platform: string,
+  platform: string
 ): Promise<Set<string>> {
   // Retrieve all update.json files for the platform across channels.
   let continuationToken: string | undefined;
@@ -172,7 +169,7 @@ async function updateTargetVersionsForPlatform(
         Bucket: bucketName,
         Prefix: "",
         ContinuationToken: continuationToken,
-      }),
+      })
     );
     const found = (response.Contents ?? [])
       .map((item) => item.Key)
@@ -182,16 +179,13 @@ async function updateTargetVersionsForPlatform(
   } while (continuationToken);
 
   // Group keys by channel (channel is the first part of the key)
-  const keysByChannel = keys.reduce(
-    (acc, key) => {
-      const parts = key.split("/");
-      const channel = parts[0];
-      acc[channel] = acc[channel] || [];
-      acc[channel].push(key);
-      return acc;
-    },
-    {} as Record<string, string[]>,
-  );
+  const keysByChannel = keys.reduce((acc, key) => {
+    const parts = key.split("/");
+    const channel = parts[0];
+    acc[channel] = acc[channel] || [];
+    acc[channel].push(key);
+    return acc;
+  }, {} as Record<string, string[]>);
 
   const updatedTargetFiles = new Set<string>();
 
@@ -203,7 +197,7 @@ async function updateTargetVersionsForPlatform(
     const oldTargetVersions =
       (await loadJsonFromS3<string[]>(client, bucketName, targetKey)) ?? [];
     const newTargetVersions = oldTargetVersions.filter((v) =>
-      currentVersions.includes(v),
+      currentVersions.includes(v)
     );
     for (const v of currentVersions) {
       if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
@@ -222,7 +216,7 @@ async function updateTargetVersionsForPlatform(
 
 export const s3Database = (
   config: S3DatabaseConfig,
-  hooks?: DatabasePluginHooks,
+  hooks?: DatabasePluginHooks
 ) => {
   const { bucketName, cloudfrontDistributionId, ...s3Config } = config;
   if (!cloudfrontDistributionId) {
@@ -269,8 +263,7 @@ export const s3Database = (
     // Add pending bundles.
     for (const [id, bundle] of pendingBundlesMap.entries()) {
       bundlesMap.set(id, bundle);
-    }If an active bundle newer than the current app version exists, the app updates to the latest available bundle.
-
+    }
 
     return orderBy(allBundles, [(v) => v.id], ["desc"]);
   }
@@ -304,7 +297,7 @@ export const s3Database = (
               ([key, value]) =>
                 value === undefined ||
                 value === null ||
-                bundle[key as keyof Bundle] === value,
+                bundle[key as keyof Bundle] === value
             );
           });
         }
@@ -345,7 +338,7 @@ export const s3Database = (
 
             changedBundlesByKey[key] = changedBundlesByKey[key] || [];
             changedBundlesByKey[key].push(
-              removeBundleInternalKeys(bundleWithKey),
+              removeBundleInternalKeys(bundleWithKey)
             );
 
             // CloudFront 무효화를 위한 경로 추가
@@ -390,7 +383,7 @@ export const s3Database = (
               pendingBundlesMap.set(data.id, updatedBundle);
 
               changedBundlesByKey[newKey].push(
-                removeBundleInternalKeys(updatedBundle),
+                removeBundleInternalKeys(updatedBundle)
               );
 
               // Add paths for CloudFront invalidation
@@ -407,7 +400,7 @@ export const s3Database = (
             changedBundlesByKey[currentKey] =
               changedBundlesByKey[currentKey] || [];
             changedBundlesByKey[currentKey].push(
-              removeBundleInternalKeys(updatedBundle),
+              removeBundleInternalKeys(updatedBundle)
             );
 
             // CloudFront 무효화를 위한 경로 추가
@@ -422,12 +415,12 @@ export const s3Database = (
               (await loadJsonFromS3<Bundle[]>(client, bucketName, oldKey)) ??
               [];
             const updatedBundles = currentBundles.filter(
-              (b) => !removalsByKey[oldKey].includes(b.id),
+              (b) => !removalsByKey[oldKey].includes(b.id)
             );
             updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
             if (updatedBundles.length === 0) {
               await client.send(
-                new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey }),
+                new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey })
               );
             } else {
               await uploadJsonToS3(client, bucketName, oldKey, updatedBundles);
@@ -441,11 +434,11 @@ export const s3Database = (
             const currentBundles =
               (await loadJsonFromS3<Bundle[]>(client, bucketName, key)) ?? [];
             const pureBundles = changedBundlesByKey[key].map(
-              (bundle) => bundle,
+              (bundle) => bundle
             );
             for (const changedBundle of pureBundles) {
               const index = currentBundles.findIndex(
-                (b) => b.id === changedBundle.id,
+                (b) => b.id === changedBundle.id
               );
               if (index >= 0) {
                 currentBundles[index] = changedBundle;
@@ -464,7 +457,7 @@ export const s3Database = (
           const updatedPaths = await updateTargetVersionsForPlatform(
             client,
             bucketName,
-            platform,
+            platform
           );
           for (const path of updatedPaths) {
             updatedTargetFilePaths.add(path);
@@ -485,7 +478,7 @@ export const s3Database = (
           await invalidateCloudFront(
             cloudfrontClient,
             cloudfrontDistributionId,
-            Array.from(pathsToInvalidate),
+            Array.from(pathsToInvalidate)
           );
         }
 
@@ -493,6 +486,6 @@ export const s3Database = (
         hooks?.onDatabaseUpdated?.();
       },
     },
-    hooks,
+    hooks
   );
 };
