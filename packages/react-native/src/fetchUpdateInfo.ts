@@ -4,13 +4,19 @@ export const fetchUpdateInfo = async (
   source: string,
   { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
+  requestTimeout = 5000,
   onError?: (error: Error) => void,
 ): Promise<AppUpdateInfo | null> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, requestTimeout);
+
   try {
     const response = await fetch(source, {
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-
         "x-app-platform": platform,
         "x-app-version": appVersion,
         "x-bundle-id": bundleId,
@@ -20,11 +26,17 @@ export const fetchUpdateInfo = async (
       },
     });
 
+    clearTimeout(timeoutId);
+
     if (response.status !== 200) {
       throw new Error(response.statusText);
     }
     return response.json();
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name === "AbortError") {
+      onError?.(new Error("Request timed out"));
+      return null;
+    }
     onError?.(error as Error);
     return null;
   }
