@@ -76,11 +76,9 @@ class HotUpdater : ReactPackage {
             context: Context,
             bundleURL: String,
         ) {
-            val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            with(sharedPreferences.edit()) {
-                putString("HotUpdaterPendingBundleURL", bundleURL)
-                apply()
-            }
+            val updaterPrefs = getPrefs(context)
+            updaterPrefs.setItem("HotUpdaterPendingBundleURL", bundleURL)
+            
             val reactIntegrationManager = ReactIntegrationManager(context)
             val activity: Activity? = getCurrentActivity(context)
             val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
@@ -92,15 +90,12 @@ class HotUpdater : ReactPackage {
          * Called after the app has successfully launched to confirm the provisional bundle.
          */
         fun notifyAppReady(context: Context) {
-            val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            val pendingBundleURL = sharedPreferences.getString("HotUpdaterPendingBundleURL", null)
+            val updaterPrefs = getPrefs(context)
+            val pendingBundleURL = updaterPrefs.getItem("HotUpdaterPendingBundleURL")
             if (pendingBundleURL != null) {
                 // 임시 번들을 확정하여 안정 번들로 옮김.
-                with(sharedPreferences.edit()) {
-                    putString("HotUpdaterBundleURL", pendingBundleURL)
-                    remove("HotUpdaterPendingBundleURL")
-                    apply()
-                }
+                updaterPrefs.setItem("HotUpdaterBundleURL", pendingBundleURL)
+                updaterPrefs.removeItem("HotUpdaterPendingBundleURL")
                 Log.d("HotUpdater", "Bundle confirmed as ready: $pendingBundleURL")
             } else {
                 Log.d("HotUpdater", "No pending bundle found to confirm.")
@@ -112,19 +107,19 @@ class HotUpdater : ReactPackage {
          * 여기서 pending 상태가 남아 있다면 롤백 처리하여 안정 번들을 사용하도록 함.
          */
         fun getJSBundleFile(context: Context): String {
-            val sharedPreferences = context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
+            val updaterPrefs = getPrefs(context)
             // 롤백 처리: 이전 업데이트가 확정되지 않은 경우, pending 항목 삭제
-            if (sharedPreferences.contains("HotUpdaterPendingBundleURL")) {
-                sharedPreferences.edit().remove("HotUpdaterPendingBundleURL").apply()
+            if (updaterPrefs.getItem("HotUpdaterPendingBundleURL") != null) {
+                updaterPrefs.removeItem("HotUpdaterPendingBundleURL")
                 Log.d("HotUpdater", "Rollback executed: pending update not confirmed.")
             }
-            val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
+            val urlString = updaterPrefs.getItem("HotUpdaterBundleURL")
             if (urlString.isNullOrEmpty()) {
                 return "assets://index.android.bundle"
             }
             val file = File(urlString)
             if (!file.exists()) {
-                sharedPreferences.edit().remove("HotUpdaterBundleURL").apply()
+                updaterPrefs.removeItem("HotUpdaterBundleURL")
                 return "assets://index.android.bundle"
             }
             return urlString
@@ -182,7 +177,7 @@ class HotUpdater : ReactPackage {
 
             val file = File(urlString)
             if (!file.exists()) {
-                updaterPrefs.setItem("HotUpdaterBundleURL", null)
+                updaterPrefs.removeItem("HotUpdaterBundleURL")
                 return "assets://index.android.bundle"
             }
             return urlString
@@ -331,7 +326,6 @@ class HotUpdater : ReactPackage {
             Log.d("HotUpdater", "Setting provisional bundle URL: $bundlePath")
             setProvisionalBundleURL(context, bundlePath)
 
-            // Clean up old bundles in the bundle store to keep only up to 2 bundles
             Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
             setBundleURL(context, bundlePath)
             cleanupOldBundles(bundleStoreDir)

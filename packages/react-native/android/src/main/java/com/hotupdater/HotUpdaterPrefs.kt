@@ -39,4 +39,8 @@ class HotUpdaterPrefs(
     ) {
         prefs.edit().putString(key, value).apply()
     }
+    
+    fun removeItem(key: String) {
+        prefs.edit().remove(key).apply()
+    }
 }
