@@ -1,6 +1,6 @@
-import type { Bundle } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
+import { Bundle } from "./types";
 
 const DEFAULT_BUNDLE: Omit<
   Bundle,
