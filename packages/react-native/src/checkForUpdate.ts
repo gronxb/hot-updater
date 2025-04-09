@@ -12,6 +12,11 @@ export interface CheckForUpdateOptions {
   source: string;
   requestHeaders?: Record<string, string>;
   onError?: (error: Error) => void;
+  /**
+   * The timeout duration for the request.
+   * @default 5000
+   */
+  requestTimeout?: number;
 }
 
 export async function checkForUpdate(options: CheckForUpdateOptions) {
@@ -48,5 +53,6 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
     },
     options.requestHeaders,
     options.onError,
+    options.requestTimeout,
   );
 }

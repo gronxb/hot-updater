@@ -4,8 +4,8 @@ export const fetchUpdateInfo = async (
   source: string,
   { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
-  requestTimeout = 5000,
   onError?: (error: Error) => void,
+  requestTimeout = 5000,
 ): Promise<AppUpdateInfo | null> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
