@@ -46,6 +46,12 @@ program
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),
   )
+  .addOption(
+    new Option(
+      "-o, --bundle-output-path <bundleOutputPath>",
+      "the path where the bundle.zip will be generated",
+    ),
+  )
   .addOption(new Option("-i, --interactive", "interactive mode").default(false))
   .addOption(
     new Option(

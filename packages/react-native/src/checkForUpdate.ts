@@ -26,7 +26,7 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
     return null;
   }
 
-  const currentAppVersion = await getAppVersion();
+  const currentAppVersion = getAppVersion();
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
   const minBundleId = getMinBundleId();
@@ -44,7 +44,7 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
       bundleId: currentBundleId,
       platform,
       minBundleId,
-      channel,
+      channel: channel ?? undefined,
     },
     options.requestHeaders,
     options.onError,

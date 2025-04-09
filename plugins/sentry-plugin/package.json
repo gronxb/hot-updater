@@ -1,43 +1,55 @@
 {
-  "name": "@hot-updater/firebase",
-  "type": "module",
-  "private": true,
+  "name": "@hot-updater/sentry-plugin",
   "version": "0.16.0",
+  "type": "module",
   "description": "React Native OTA solution for self-hosted",
+  "sideEffects": false,
   "main": "dist/index.cjs",
   "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
-  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
   "license": "MIT",
+  "scripts": {
+    "build": "rslib build",
+    "test:type": "tsc --noEmit"
+  },
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "bugs": {
     "url": "https://github.com/gronxb/hot-updater/issues"
   },
   "homepage": "https://github.com/gronxb/hot-updater#readme",
-  "files": [
-    "dist",
-    "package.json"
-  ],
-  "scripts": {
-    "build": "rslib build",
-    "test:type": "tsc --noEmit",
-    "test": "vitest",
-    "test:run": "vitest run"
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@hot-updater/core": "0.16.0",
-    "@hot-updater/plugin-core": "0.16.0",
-    "firebase": "^11.3.1"
+    "@hot-updater/plugin-core": "0.16.0"
   },
   "devDependencies": {
-    "@types/node": "^22.13.5",
-    "mime": "^4.0.4",
-    "vitest": "2.1.8"
+    "@sentry/cli": "^2.43.0",
+    "@types/node": "^20.9.4"
+  },
+  "peerDependencies": {
+    "@sentry/cli": ">=1.51.1"
   }
 }

@@ -32,6 +32,11 @@ const getBundleId = () => {
 };
 
 export const getChannel = () => {
+  const currentEnv = process.env["BABEL_ENV"] || process.env["NODE_ENV"];
+  if (currentEnv === "development") {
+    return null;
+  }
+
   const envChannel = process.env["HOT_UPDATER_CHANNEL"];
   if (envChannel) {
     return envChannel;
@@ -63,7 +68,9 @@ export default function replaceHotUpdaterBundleId(): PluginObj {
             name: "CHANNEL",
           })
         ) {
-          path.replaceWith(t.stringLiteral(channel));
+          path.replaceWith(
+            channel ? t.stringLiteral(channel) : t.nullLiteral(),
+          );
         }
       },
     },

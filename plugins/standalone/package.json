@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/standalone",
-  "version": "0.13.5",
+  "version": "0.16.0",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -42,8 +42,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.13.5",
-    "@hot-updater/plugin-core": "0.13.5"
+    "@hot-updater/core": "0.16.0",
+    "@hot-updater/plugin-core": "0.16.0"
   },
   "devDependencies": {
     "mime": "2.6.0",

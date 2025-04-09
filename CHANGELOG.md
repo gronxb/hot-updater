@@ -1,3 +1,55 @@
+## 0.16.0 (2025-04-07)
+
+### 🚀 Features
+
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
+## 0.15.1 (2025-04-06)
+
+### 🚀 Features
+
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
+## 0.15.0 (2025-04-03)
+
+### 🩹 Fixes
+
+- **ios:** stable getMinBundleId ([#247](https://github.com/gronxb/hot-updater/pull/247))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.14.0 (2025-04-01)
+
+This was a version bump only, there were no code changes.
+
 ## 0.13.5 (2025-03-29)
 
 ### 🩹 Fixes
