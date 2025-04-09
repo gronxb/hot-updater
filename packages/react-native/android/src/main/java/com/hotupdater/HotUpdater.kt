@@ -32,7 +32,7 @@ class HotUpdater : ReactPackage {
         }
 
         /**
-         * Function to finalize and apply the existing stable bundle.
+         * Preference instance는 앱 버전 기준으로 캐싱됨.
          */
         @Volatile
         private var prefsInstance: HotUpdaterPrefs? = null
@@ -52,77 +52,66 @@ class HotUpdater : ReactPackage {
             }
         }
 
+        /**
+         * 안정 번들을 설정하고, React의 JS 번들로 적용함.
+         */
         private fun setBundleURL(
             context: Context,
             bundleURL: String?,
         ) {
-            val updaterPrefs = getPrefs(context)
-            updaterPrefs.setItem("HotUpdaterBundleURL", bundleURL)
+            val prefs = getPrefs(context)
+            prefs.setItem("HotUpdaterBundleURL", bundleURL)
 
             if (bundleURL == null) {
                 return
             }
             val reactIntegrationManager = ReactIntegrationManager(context)
             val activity: Activity? = getCurrentActivity(context)
-            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
+            val reactApplication: ReactApplication =
+                reactIntegrationManager.getReactApplication(activity?.application)
             reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
         }
 
         /**
-         * Function to apply a provisional bundle.
-         * Applies the new bundle immediately after download, but keeps it provisional until notifyAppReady is called.
-         */
-        private fun setProvisionalBundleURL(
-            context: Context,
-            bundleURL: String,
-        ) {
-            val updaterPrefs = getPrefs(context)
-            updaterPrefs.setItem("HotUpdaterPendingBundleURL", bundleURL)
-            
-            val reactIntegrationManager = ReactIntegrationManager(context)
-            val activity: Activity? = getCurrentActivity(context)
-            val reactApplication: ReactApplication = reactIntegrationManager.getReactApplication(activity?.application)
-            reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
-            Log.d("HotUpdater", "Provisional bundle set: $bundleURL")
-        }
-
-        /**
-         * Called after the app has successfully launched to confirm the provisional bundle.
+         * JS 측에서 앱이 정상 실행된 후 호출되어, 신규 업데이트를 확정함.
+         * 호출되면 provisional 플래그를 제거하고 이전(백업) 번들을 삭제함.
          */
         fun notifyAppReady(context: Context) {
-            val updaterPrefs = getPrefs(context)
-            val pendingBundleURL = updaterPrefs.getItem("HotUpdaterPendingBundleURL")
-            if (pendingBundleURL != null) {
-                // 임시 번들을 확정하여 안정 번들로 옮김.
-                updaterPrefs.setItem("HotUpdaterBundleURL", pendingBundleURL)
-                updaterPrefs.removeItem("HotUpdaterPendingBundleURL")
-                Log.d("HotUpdater", "Bundle confirmed as ready: $pendingBundleURL")
+            val prefs = getPrefs(context)
+            if (prefs.getItem("HotUpdaterProvisional") == "true") {
+                prefs.removeItem("HotUpdaterProvisional")
+                prefs.removeItem("HotUpdaterPrevBundleURL")
+                Log.d("HotUpdater", "New bundle confirmed as stable.")
             } else {
-                Log.d("HotUpdater", "No pending bundle found to confirm.")
+                Log.d("HotUpdater", "No provisional bundle found to confirm.")
             }
         }
 
         /**
-         * 앱 재시작 시 호출되는 getJSBundleFile.
-         * 여기서 pending 상태가 남아 있다면 롤백 처리하여 안정 번들을 사용하도록 함.
+         * 앱 실행 시 호출되어, 사용할 JS 번들을 결정함.
+         * 만약 신규 업데이트가 provisional 상태라면, 이전 안정 번들을 반환하여 롤백함.
          */
         fun getJSBundleFile(context: Context): String {
-            val updaterPrefs = getPrefs(context)
-            // 롤백 처리: 이전 업데이트가 확정되지 않은 경우, pending 항목 삭제
-            if (updaterPrefs.getItem("HotUpdaterPendingBundleURL") != null) {
-                updaterPrefs.removeItem("HotUpdaterPendingBundleURL")
-                Log.d("HotUpdater", "Rollback executed: pending update not confirmed.")
+            val prefs = getPrefs(context)
+            // 신규 업데이트가 확정되지 않은 상태이면 롤백 시도
+            if (prefs.getItem("HotUpdaterProvisional") == "true") {
+                val prev = prefs.getItem("HotUpdaterPrevBundleURL")
+                if (!prev.isNullOrEmpty() && File(prev).exists()) {
+                    Log.d("HotUpdater", "Rollback: Using previous stable bundle: $prev")
+                    return prev
+                } else {
+                    // 백업 파일이 없으면 provisional 플래그 제거
+                    prefs.removeItem("HotUpdaterProvisional")
+                }
             }
-            val urlString = updaterPrefs.getItem("HotUpdaterBundleURL")
-            if (urlString.isNullOrEmpty()) {
-                return "assets://index.android.bundle"
+
+            // 안정 번들을 반환
+            val stable = prefs.getItem("HotUpdaterBundleURL")
+            if (!stable.isNullOrEmpty()) {
+                if (File(stable).exists()) return stable
+                prefs.removeItem("HotUpdaterBundleURL")
             }
-            val file = File(urlString)
-            if (!file.exists()) {
-                updaterPrefs.removeItem("HotUpdaterBundleURL")
-                return "assets://index.android.bundle"
-            }
-            return urlString
+            return "assets://index.android.bundle"
         }
 
         private fun extractZipFileAtPath(
@@ -138,7 +127,9 @@ class HotUpdater : ReactPackage {
                         } else {
                             file.parentFile?.mkdirs()
                             zip.getInputStream(entry).use { input ->
-                                file.outputStream().use { output -> input.copyTo(output) }
+                                file.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
                             }
                         }
                     }
@@ -168,21 +159,6 @@ class HotUpdater : ReactPackage {
             }
         }
 
-        fun getJSBundleFile(context: Context): String {
-            val updaterPrefs = getPrefs(context)
-            val urlString = updaterPrefs.getItem("HotUpdaterBundleURL")
-            if (urlString.isNullOrEmpty()) {
-                return "assets://index.android.bundle"
-            }
-
-            val file = File(urlString)
-            if (!file.exists()) {
-                updaterPrefs.removeItem("HotUpdaterBundleURL")
-                return "assets://index.android.bundle"
-            }
-            return urlString
-        }
-
         fun setChannel(
             context: Context,
             channel: String,
@@ -196,6 +172,12 @@ class HotUpdater : ReactPackage {
             return updaterPrefs.getItem("HotUpdaterChannel")
         }
 
+        /**
+         * 번들을 업데이트하는 함수.
+         * 다운로드 및 압축 해제 성공 시,
+         * 업데이트 전에 기존 안정 번들을 백업("HotUpdaterPrevBundleURL")하고,
+         * 신규 업데이트를 provisional 상태("HotUpdaterProvisional" = "true")로 적용한 후, JS 번들로 설정함.
+         */
         suspend fun updateBundle(
             context: Context,
             bundleId: String,
@@ -323,15 +305,24 @@ class HotUpdater : ReactPackage {
 
             finalBundleDir.setLastModified(System.currentTimeMillis())
             val bundlePath = finalIndexFile.absolutePath
-            Log.d("HotUpdater", "Setting provisional bundle URL: $bundlePath")
-            setProvisionalBundleURL(context, bundlePath)
+            Log.d("HotUpdater", "New bundle ready: $bundlePath")
 
-            Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
+            // 업데이트 직전에 기존 안정 번들을 백업.
+            val prefs = getPrefs(context)
+            val currentStable = prefs.getItem("HotUpdaterBundleURL")
+            if (!currentStable.isNullOrEmpty()) {
+                prefs.setItem("HotUpdaterPrevBundleURL", currentStable)
+            }
+
+            // 신규 업데이트를 provisional 상태로 표기.
+            prefs.setItem("HotUpdaterProvisional", "true")
+
+            Log.d("HotUpdater", "Applying new bundle URL: $bundlePath")
             setBundleURL(context, bundlePath)
             cleanupOldBundles(bundleStoreDir)
             tempDir.deleteRecursively()
 
-            Log.d("HotUpdater", "Downloaded and extracted file successfully.")
+            Log.d("HotUpdater", "Downloaded and applied new bundle successfully.")
             return true
         }
 
