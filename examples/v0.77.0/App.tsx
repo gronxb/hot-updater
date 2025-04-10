@@ -108,7 +108,7 @@ function App(): React.JSX.Element {
           height: 100,
         }}
         source={require("./src/logo.png")}
-      // source={require("./src/test/_image.png")}
+        // source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
