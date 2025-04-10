@@ -1,12 +1,18 @@
 import type { AppUpdateInfo, GetBundlesArgs } from "@hot-updater/core";
 
+export type UpdateSource = string | (() => Promise<AppUpdateInfo | null>);
+
 export const fetchUpdateInfo = async (
-  source: string,
+  source: UpdateSource,
   { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
   onError?: (error: Error) => void,
   requestTimeout = 5000,
 ): Promise<AppUpdateInfo | null> => {
+  if (typeof source === "function") {
+    return source();
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
