@@ -233,15 +233,18 @@ export const runInit = async () => {
       title: "Deploy firestore indexes",
       task: async () => {
         try {
-          const deployArgs = [
-            "firebase",
-            "deploy",
-            "--only",
-            "firestore",
-            "--config",
-            "./.hot-updater/firebase.json",
-          ];
-          await execa("pnpm", deployArgs, { cwd: tmpDir });
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "firestore",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            { cwd: tmpDir },
+          );
         } catch (e) {
           console.error("Pass");
         }
@@ -251,39 +254,22 @@ export const runInit = async () => {
       title: "Deploy Firebase Functions",
       task: async () => {
         try {
-          const deployArgs = [
-            "firebase",
-            "deploy",
-            "--only",
-            "functions",
-            "--force",
-            "--config",
-            "./.hot-updater/firebase.json",
-          ];
-          await execa("pnpm", deployArgs, { cwd: tmpDir });
-        } catch (error) {
-          try {
-            await execa(
-              "pnpm",
-              [
-                "firebase",
-                "functions:delete",
-                "hot-updater",
-                "--project",
-                initializeVariable.projectId,
-                "--config",
-                "./.hot-updater/firebase.json",
-              ],
-              { cwd: tmpDir },
-            );
-            console.log(
-              "Successfully deleted function after failed deployment",
-            );
-          } catch (deleteError) {
-            console.error("Error deleting function:", deleteError);
-          }
-
-          throw error;
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "functions",
+              "--project",
+              initializeVariable.projectId,
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            { cwd: tmpDir },
+          );
+        } catch (e) {
+          console.log("Deploy error", e);
         }
       },
     },

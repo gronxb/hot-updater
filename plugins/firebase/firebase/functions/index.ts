@@ -3,7 +3,7 @@ import { signToken, verifyJwtSignedUrl } from "@hot-updater/js";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
-import { createApp } from "./createApp";
+import { createFirebaseApp } from "./createFirebaseApp";
 import { getUpdateInfo } from "./getUpdateInfo";
 
 declare global {
@@ -100,10 +100,9 @@ app.get("*", async (c) => {
   return c.body(result.responseBody, 200, result.responseHeaders);
 });
 
-const hotUpdaterFunction = createApp(functions, {
+const hotUpdaterFunction = createFirebaseApp(functions, {
   region: HotUpdater.REGION,
-  honoApp: app,
-});
+})(app);
 
 export const hot = {
   updater: hotUpdaterFunction,
