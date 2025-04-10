@@ -1,3 +1,5 @@
+import path from "path";
+
 export async function getBundleZipTargets(
   basePath: string,
   files: string[],
@@ -5,21 +7,28 @@ export async function getBundleZipTargets(
   const bundleCandidates: Record<string, string> = {};
   const targets: { path: string; name: string }[] = [];
 
+  const normalizeToPosix = (filePath: string) =>
+    filePath.split(path.sep).join("/");
+
+  const normalizedBase = normalizeToPosix(path.normalize(basePath));
+
   const getRelative = (file: string): string => {
-    if (file.startsWith(basePath)) {
-      const sliceIndex = basePath.endsWith("/")
-        ? basePath.length
-        : basePath.length + 1;
-      return file.slice(sliceIndex);
+    const normalizedFile = normalizeToPosix(path.normalize(file));
+
+    if (normalizedFile.startsWith(`${normalizedBase}/`)) {
+      return normalizedFile.slice(normalizedBase.length + 1);
     }
-    return file;
+    return normalizedFile;
   };
 
   for (const file of files) {
-    if (file.endsWith(".map")) {
+    const normalizedFile = normalizeToPosix(path.normalize(file));
+
+    if (normalizedFile.endsWith(".map")) {
       continue;
     }
-    const relative = getRelative(file);
+
+    const relative = getRelative(normalizedFile);
 
     if (relative.endsWith(".bundle") || relative.endsWith(".bundle.hbc")) {
       let bundleBase = relative;
@@ -29,23 +38,27 @@ export async function getBundleZipTargets(
       if (bundleCandidates[bundleBase]) {
         if (
           !bundleCandidates[bundleBase]?.endsWith(".hbc") &&
-          file.endsWith(".hbc")
+          normalizedFile.endsWith(".hbc")
         ) {
-          bundleCandidates[bundleBase] = file;
+          bundleCandidates[bundleBase] = normalizedFile;
         }
       } else {
-        bundleCandidates[bundleBase] = file;
+        bundleCandidates[bundleBase] = normalizedFile;
       }
     } else {
-      targets.push({ path: file, name: relative });
+      targets.push({
+        path: file,
+        name: relative.replace(/\\/g, "/"),
+      });
     }
   }
 
   for (const bundleBase in bundleCandidates) {
-    if (!bundleCandidates[bundleBase]) {
-      continue;
-    }
-    targets.push({ path: bundleCandidates[bundleBase], name: bundleBase });
+    if (!bundleCandidates[bundleBase]) continue;
+    targets.push({
+      path: bundleCandidates[bundleBase],
+      name: bundleBase.replace(/\\/g, "/"),
+    });
   }
 
   return targets;

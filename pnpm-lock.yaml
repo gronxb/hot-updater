@@ -36,9 +36,6 @@ importers:
       '@rslib/core':
         specifier: ^0.5.4
         version: 0.5.4(typescript@5.8.2)
-      firebase-tools:
-        specifier: ^13.32.0
-        version: 13.35.1(encoding@0.1.13)
       nx:
         specifier: 20.5.0
         version: 20.5.0(@swc-node/register@1.10.9(@swc/core@1.7.42(@swc/helpers@0.5.15))(@swc/types@0.1.13)(typescript@5.8.2))(@swc/core@1.7.42(@swc/helpers@0.5.15))
@@ -19915,7 +19912,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
@@ -19927,9 +19926,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-color@2.1.0': {}
 
