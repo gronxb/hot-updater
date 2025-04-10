@@ -10,7 +10,6 @@ export default defineConfig([
     entry: ["firebase/functions/index.ts"],
     format: ["cjs"],
     outDir: "dist/firebase",
-    noExternal: ["@hot-updater/core"],
   },
   {
     entry: ["iac/index.ts"],

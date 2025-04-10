@@ -19,7 +19,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "firebase-tools": "^13.32.0",
     "@cloudflare/vitest-pool-workers": "^0.8.0",
     "@nx/js": "^20.6.0",
     "@rslib/core": "^0.5.4",

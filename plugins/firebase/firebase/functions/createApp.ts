@@ -4,10 +4,11 @@ import type {
   Response as FunctionsResponse,
 } from "firebase-functions/v1";
 import type { Hono } from "hono";
+import type { BlankEnv, BlankSchema } from "hono/types";
 
 interface CreateAppOptions {
   region: string;
-  honoApp: Hono<any, any, any>;
+  honoApp: Hono<BlankEnv, BlankSchema, "/">;
 }
 
 export function createApp(
@@ -19,9 +20,10 @@ export function createApp(
   return functionsInstance
     .region(region)
     .https.onRequest(async (req: FunctionsRequest, res: FunctionsResponse) => {
-      const host = req.hostname || "localhost";
-      const protocol = req.protocol || "https";
-      const fullUrl = `${protocol}://${host}${req.originalUrl || req.url}`;
+      const host = req.hostname;
+      const path = req.originalUrl || req.url;
+
+      const fullUrl = new URL(path, `https://${host}`).toString();
 
       const request = new Request(fullUrl, {
         method: req.method,

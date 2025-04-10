@@ -20,19 +20,7 @@ if (!admin.apps.length) {
 
 const app = new Hono();
 
-app.use("*", async (c, next) => {
-  const path = c.req.path.replace(/^\/hot-updater/, "");
-
-  if (path === "") {
-    c.req.path = "/";
-  } else {
-    c.req.path = path;
-  }
-
-  await next();
-});
-
-app.get("", (c) => {
+app.get("/ping", (c) => {
   return c.text("pong");
 });
 
@@ -64,14 +52,15 @@ app.get("/api/check-update", async (c) => {
   }
 
   const hostUrl = `https://${HotUpdater.REGION}-${HotUpdater.PROJECT_ID}.cloudfunctions.net`;
-
   const filePath = `${updateInfo.id}/bundle.zip`;
+  const token = await signToken(`${filePath}`, HotUpdater.JWT_SECRET);
 
-  const token = await signToken(filePath, HotUpdater.JWT_SECRET);
+  const fileUrl = new URL(`hot-updater/${filePath}`, hostUrl);
+  fileUrl.searchParams.append("token", token);
 
   const appUpdateInfo = {
     ...updateInfo,
-    fileUrl: new URL(`${hostUrl}/hot-updater/${filePath}?token=${token}`),
+    fileUrl: fileUrl.toString(),
   };
 
   return c.json(appUpdateInfo, 200);
