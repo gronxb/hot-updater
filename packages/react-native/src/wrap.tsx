@@ -56,25 +56,29 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 }
 
-export function wrap<P>(
+export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
   options: HotUpdaterOptions,
-): (WrappedComponent: React.ComponentType) => React.ComponentType<P> {
+): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P> {
   const { reloadOnForceUpdate = true, ...restOptions } = options;
-  return (WrappedComponent) => {
-    const HotUpdaterHOC: React.FC<P> = () => {
+
+  return (WrappedComponent: React.ComponentType<P>) => {
+    const HotUpdaterHOC: React.FC<P> = (props: P) => {
       const progress = useHotUpdaterStore((state) => state.progress);
 
       const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
+
       const initHotUpdater = useEventCallback(async () => {
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
+
           const updateInfo = await checkForUpdate({
             source: restOptions.source,
             requestHeaders: restOptions.requestHeaders,
             onError: restOptions.onError,
           });
+
           setMessage(updateInfo?.message ?? null);
 
           if (!updateInfo) {
@@ -106,6 +110,7 @@ export function wrap<P>(
             updateInfo.id,
             updateInfo.fileUrl,
           );
+
           if (!isSuccess) {
             throw new Error(
               "New update was found but failed to download the bundle.",
@@ -122,6 +127,7 @@ export function wrap<P>(
             shouldForceUpdate: updateInfo.shouldForceUpdate,
             message: updateInfo.message,
           });
+
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         } catch (error) {
           if (error instanceof HotUpdaterError) {
@@ -154,9 +160,9 @@ export function wrap<P>(
         );
       }
 
-      return <WrappedComponent />;
+      return <WrappedComponent {...props} />;
     };
 
-    return HotUpdaterHOC;
+    return HotUpdaterHOC as React.ComponentType<P>;
   };
 }
