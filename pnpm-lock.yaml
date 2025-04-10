@@ -403,9 +403,6 @@ importers:
       '@hot-updater/cloudflare':
         specifier: workspace:*
         version: link:../../plugins/cloudflare
-      '@hot-updater/firebase':
-        specifier: workspace:*
-        version: link:../../plugins/firebase
       '@hot-updater/metro':
         specifier: workspace:*
         version: link:../../plugins/metro
@@ -460,9 +457,6 @@ importers:
       eslint:
         specifier: ^8.19.0
         version: 8.57.0
-      firebase-tools:
-        specifier: ^13.32.0
-        version: 13.35.1(encoding@0.1.13)
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
