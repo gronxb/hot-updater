@@ -334,9 +334,9 @@ RCT_EXPORT_MODULE();
         [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
         
         NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:finalFoundBundle];
-        NSLog(@"Setting bundle URL: %@", bundlePath);
+        NSLog(@"Setting provisional bundle URL: %@", bundlePath);
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self setBundleURL:bundlePath];
+            [self setProvisionalBundleURL:bundlePath];
             [self cleanupOldBundlesAtDirectory:bundleStoreDir];
             [fileManager removeItemAtPath:tempDir error:nil];
             if (completion) completion(YES);
@@ -395,7 +395,7 @@ RCT_EXPORT_MODULE();
         NSURLSessionDownloadTask *task = (NSURLSessionDownloadTask *)object;
         if (task.countOfBytesExpectedToReceive > 0) {
             double progress = (double)task.countOfBytesReceived / (double)task.countOfBytesExpectedToReceive;
-            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000; // In milliseconds
+            NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
             if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
                 self.lastUpdateTime = currentTime;
                 [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
@@ -423,6 +423,19 @@ RCT_EXPORT_MODULE();
 }
 
 #pragma mark - React Native Exports
+
+RCT_EXPORT_METHOD(notifyAppReady) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *pending = [defaults objectForKey:@"HotUpdaterPendingBundleURL"];
+    if (pending) {
+        [defaults setObject:pending forKey:@"HotUpdaterBundleURL"];
+        [defaults removeObjectForKey:@"HotUpdaterPendingBundleURL"];
+        [defaults synchronize];
+        NSLog(@"Bundle confirmed as ready: %@", pending);
+    } else {
+        NSLog(@"No pending bundle found to confirm.");
+    }
+}
 
 RCT_EXPORT_METHOD(setChannel:(NSString *)channel
                   resolve:(RCTPromiseResolveBlock)resolve
