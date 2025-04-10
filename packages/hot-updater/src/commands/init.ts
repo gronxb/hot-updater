@@ -1,7 +1,7 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { printBanner } from "@/utils/printBanner";
-import * as p from "@clack/prompts";
 import { isCancel, select } from "@clack/prompts";
+import * as p from "@clack/prompts";
 import { ExecaError } from "execa";
 
 const REQUIRED_PACKAGES = {
@@ -21,6 +21,10 @@ const PACKAGE_MAP = {
   cloudflare: {
     dependencies: [],
     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
+  },
+  firebase: {
+    dependencies: [],
+    devDependencies: ["firebase-tools", "@hot-updater/firebase"],
   },
 } as const;
 
@@ -53,6 +57,7 @@ export const init = async () => {
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
+      { value: "firebase", label: "Firebase" },
     ],
   });
 
@@ -97,6 +102,11 @@ export const init = async () => {
     case "aws": {
       const aws = await import("@hot-updater/aws/iac");
       await aws.runInit();
+      break;
+    }
+    case "firebase": {
+      const firebase = await import("@hot-updater/firebase/iac");
+      await firebase.runInit();
       break;
     }
     default:

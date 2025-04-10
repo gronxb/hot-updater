@@ -1,0 +1,328 @@
+import crypto from "crypto";
+import {} from "fs";
+import path from "path";
+import * as p from "@clack/prompts";
+import {
+  copyDirToTmp,
+  link,
+  transformEnv,
+  transformTemplate,
+} from "@hot-updater/plugin-core";
+import { execa } from "execa";
+import fs from "fs/promises";
+import { initFirebaseUser } from "./select";
+
+const SOURCE_TEMPLATE = `// add this to your App.tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function App() {
+  return ...
+}
+
+export default HotUpdater.wrap({
+  source: "%%source%%",
+})(App);`;
+
+const REGIONS = [
+  { value: "us-central1", label: "US Central (Iowa)" },
+  { value: "us-east1", label: "US East (South Carolina)" },
+  { value: "us-east4", label: "US East (Northern Virginia)" },
+  { value: "us-west1", label: "US West (Oregon)" },
+  { value: "us-west2", label: "US West (Los Angeles)" },
+  { value: "us-west3", label: "US West (Salt Lake City)" },
+  { value: "us-west4", label: "US West (Las Vegas)" },
+  { value: "europe-west1", label: "Europe West (Belgium)" },
+  { value: "europe-west2", label: "Europe West (London)" },
+  { value: "europe-west3", label: "Europe West (Frankfurt)" },
+  { value: "europe-west6", label: "Europe West (Zurich)" },
+  { value: "asia-east1", label: "Asia East (Taiwan)" },
+  { value: "asia-east2", label: "Asia East (Hong Kong)" },
+  { value: "asia-northeast1", label: "Asia Northeast (Tokyo)" },
+  { value: "asia-northeast2", label: "Asia Northeast (Osaka)" },
+  { value: "asia-northeast3", label: "Asia Northeast (Seoul)" },
+  { value: "asia-south1", label: "Asia South (Mumbai)" },
+  { value: "asia-southeast1", label: "Asia Southeast (Singapore)" },
+  { value: "asia-southeast2", label: "Asia Southeast (Jakarta)" },
+  {
+    value: "australia-southeast1",
+    label: "Australia Southeast (Sydney)",
+  },
+];
+
+interface FirebaseFunction {
+  platform: string;
+  id: string;
+  project: string;
+  region: string;
+  httpsTrigger: Record<string, any>;
+  entryPoint: string;
+  runtime: string;
+  source: Record<string, any>;
+  ingressSettings: string;
+  environmentVariables: Record<string, any>;
+  timeoutSeconds: number;
+  uri: string;
+  serviceAccount: string;
+  availableMemoryMb: number;
+  cpu: number;
+  maxInstances: number;
+  concurrency: number;
+  labels: Record<string, any>;
+  runServiceId: string;
+  codebase: string;
+  hash: string;
+}
+
+export const runInit = async () => {
+  const initializeVariable = await initFirebaseUser();
+
+  const firebaseDir = path.join(
+    path.dirname(path.dirname(require.resolve("@hot-updater/firebase"))),
+    "firebase",
+  );
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
+  const functionsDir = path.join(tmpDir, "functions");
+  const oldPackagePath = path.join(functionsDir, "_package.json");
+  const newPackagePath = path.join(functionsDir, "package.json");
+  const indexFile = require.resolve("@hot-updater/firebase/functions");
+  const destPath = path.join(functionsDir, path.basename(indexFile));
+  let isFunctionsExist = false;
+
+  await fs.copyFile(indexFile, destPath);
+
+  await p.tasks([
+    {
+      title: "Renaming files...",
+      task: async () => {
+        try {
+          await fs.rename(oldPackagePath, newPackagePath);
+        } catch (error) {
+          console.error("error in changing file name:", error);
+          throw error;
+        }
+      },
+    },
+    {
+      title: "Removing unnecessary files...",
+      task: async () => {
+        const indexTsPath = path.join(functionsDir, "index.ts");
+        const tsconfigPath = path.join(functionsDir, "tsconfig.json");
+
+        try {
+          await fs.rm(indexTsPath);
+        } catch (error) {
+          console.error(`Error deleting ${indexTsPath}:`, error);
+        }
+
+        try {
+          await fs.rm(tsconfigPath);
+        } catch (error) {
+          console.error(`Error deleting ${tsconfigPath}:`, error);
+        }
+      },
+    },
+    {
+      title: "Installing dependencies...",
+      task: async () => {
+        try {
+          await execa("npm", ["install"], {
+            cwd: functionsDir,
+          });
+        } catch (error) {
+          console.error("error in npm install:", error);
+          throw error;
+        }
+      },
+    },
+    {
+      title: `Setting up Firebase project (${initializeVariable.projectId})...`,
+      task: async () => {
+        try {
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "use",
+              "--add",
+              initializeVariable.projectId,
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
+        } catch (error) {
+          console.error("error in firebase use --add:", error);
+          throw error;
+        }
+      },
+    },
+    {
+      title: "Checking existing functions and setting region",
+      task: async () => {
+        let currentRegion = "us-central1";
+
+        try {
+          const { stdout } = await execa(
+            "pnpm",
+            [
+              "firebase",
+              "functions:list",
+              "--json",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
+
+          const parsedData = JSON.parse(stdout);
+          const functionsData = parsedData.result || [];
+
+          const hotUpdater = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "hot-updater",
+          );
+
+          if (hotUpdater?.region) {
+            currentRegion = hotUpdater.region;
+            isFunctionsExist = true;
+          }
+
+          if (hotUpdater) {
+            console.log(`Found existing functions in region: ${currentRegion}`);
+          }
+        } catch (error) {
+          console.log(
+            "Could not retrieve existing functions, will use default region",
+          );
+        }
+
+        let selectedRegion = currentRegion;
+
+        if (!isFunctionsExist) {
+          const selectRegion = await p.select({
+            message: "Select Region",
+            options: REGIONS,
+            initialValue: currentRegion,
+          });
+
+          if (p.isCancel(selectRegion)) {
+            p.cancel("Operation cancelled.");
+            throw new Error("Region selection cancelled");
+          }
+          selectedRegion = selectRegion as string;
+        } else {
+          console.log(`Using existing region: ${currentRegion}`);
+        }
+        const jwtSecret = crypto.randomBytes(48).toString("hex");
+
+        const code = await transformEnv(
+          await fs.readFile(path.join(functionsDir, "index.cjs"), "utf-8"),
+          {
+            REGION: selectedRegion,
+            JWT_SECRET: jwtSecret,
+            PROJECT_ID: initializeVariable.projectId,
+          },
+        );
+        await fs.writeFile(path.join(functionsDir, "index.cjs"), code);
+      },
+    },
+    {
+      title: "Deploy firestore indexes",
+      task: async () => {
+        try {
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "firestore",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            { cwd: tmpDir },
+          );
+        } catch (e) {
+          console.error("Pass");
+        }
+      },
+    },
+    {
+      title: "Deploy Firebase Functions",
+      task: async () => {
+        try {
+          await execa(
+            "pnpm",
+            [
+              "firebase",
+              "deploy",
+              "--only",
+              "functions",
+              "--project",
+              initializeVariable.projectId,
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            { cwd: tmpDir },
+          );
+        } catch (e) {
+          console.log("Deploy error", e);
+        }
+      },
+    },
+    {
+      title: "Getting function URL",
+      task: async () => {
+        let functionUrl = "";
+        try {
+          const { stdout } = await execa(
+            "pnpm",
+            [
+              "firebase",
+              "functions:list",
+              "--json",
+              "--config",
+              "./.hot-updater/firebase.json",
+            ],
+            {
+              cwd: tmpDir,
+            },
+          );
+
+          const parsedData = JSON.parse(stdout);
+          const functionsData = parsedData.result || [];
+
+          const hotUpdater = functionsData.find(
+            (fn: FirebaseFunction) => fn.id === "hot-updater",
+          );
+
+          functionUrl = `${hotUpdater?.uri}/api/check-update` || "";
+        } catch (error) {
+          console.error("Error getting function URL:", error);
+        }
+
+        p.note(
+          transformTemplate(SOURCE_TEMPLATE, {
+            source: functionUrl,
+          }),
+        );
+      },
+    },
+    {
+      title: "Cleaning up temporary directory...",
+      task: async () => {
+        await removeTmpDir();
+      },
+    },
+  ]);
+
+  p.log.message(
+    `Next step: ${link(
+      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-with-supabase.html#step-4-add-hotupdater-to-your-project",
+    )}`,
+  );
+  p.log.success("Done! 🎉");
+};

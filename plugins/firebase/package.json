@@ -10,6 +10,14 @@
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./iac": {
+      "types": "./dist/iac/index.d.ts",
+      "import": "./dist/iac/index.js",
+      "require": "./dist/iac/index.cjs"
+    },
+    "./functions": {
+      "require": "./dist/firebase/index.cjs"
     }
   },
   "types": "dist/index.d.ts",
@@ -25,7 +33,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "rslib build",
+    "build": "tsup",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run"
@@ -36,8 +44,17 @@
     "firebase": "^11.3.1"
   },
   "devDependencies": {
+    "@clack/prompts": "^0.10.0",
+    "@hot-updater/js": "workspace:*",
     "@types/node": "^22.13.5",
+    "execa": "^9.5.2",
+    "firebase-admin": "^13.2.0",
+    "firebase-functions": "^6.3.2",
+    "firebase-functions-test": "^3.4.0",
+    "fkill": "^9.0.0",
+    "hono": "^4.6.3",
     "mime": "^4.0.4",
+    "tsup": "^8.3.6",
     "vitest": "2.1.8"
   }
 }

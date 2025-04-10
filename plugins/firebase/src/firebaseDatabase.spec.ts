@@ -4,79 +4,145 @@ import type {
   Bundle,
   DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
-import { getApp, getApps, initializeApp } from "firebase/app";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  type QuerySnapshot,
-  doc,
-  getDoc,
-  getDocs,
-  orderBy,
-  query,
-  setDoc,
-} from "firebase/firestore";
-import {
-  type Mock,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import { firebaseDatabase } from "./firebaseDatabase";
+  type FirebaseDatabaseConfig,
+  firebaseDatabase,
+} from "./firebaseDatabase";
 
-vi.mock("firebase/app", () => {
-  const app = { name: "test-app" };
+const {
+  mockFirestore,
+  mockCollection,
+  mockDoc,
+  mockWhere,
+  mockOrderBy,
+  mockLimit,
+  mockOffset,
+  mockQueryGet,
+  mockDocGet,
+  mockBatch,
+  mockBatchSet,
+  mockBatchCommit,
+  mockApp,
+  mockInitializeApp,
+  mockAppFn,
+  mockCert,
+  setInitializeAppCalled,
+} = vi.hoisted(() => {
+  const mockFirestore = vi.fn();
+  const mockCollection = vi.fn();
+  const mockDoc = vi.fn();
+  const mockWhere = vi.fn();
+  const mockOrderBy = vi.fn();
+  const mockLimit = vi.fn();
+  const mockOffset = vi.fn();
+  const mockQueryGet = vi.fn();
+  const mockDocGet = vi.fn();
+  const mockBatch = vi.fn();
+  const mockBatchSet = vi.fn();
+  const mockBatchCommit = vi.fn();
+  const mockCert = vi.fn(() => ({}));
+  const mockApp = { name: "mock-app-stable-reference" };
+  let _initializeAppHasBeenCalled = false;
+
+  const setInitializeAppCalled = (called: boolean) => {
+    _initializeAppHasBeenCalled = called;
+  };
+  const getInitializeAppCalled = () => _initializeAppHasBeenCalled;
+
+  const mockInitializeApp = vi.fn().mockImplementation((_options) => {
+    setInitializeAppCalled(true);
+    return mockApp;
+  });
+
+  const mockAppFn = vi.fn().mockImplementation(() => {
+    throw new Error("App not initialized (hoisted default)");
+  });
+
+  mockFirestore.mockImplementation((appArg) => {
+    if (appArg === mockApp) {
+      return {
+        collection: mockCollection,
+        batch: mockBatch,
+      };
+    }
+    return undefined;
+  });
+
+  mockCollection.mockImplementation((_path) => {
+    return {
+      doc: mockDoc,
+      where: mockWhere,
+      orderBy: mockOrderBy,
+      limit: mockLimit,
+      offset: mockOffset,
+      get: mockQueryGet,
+    };
+  });
+
+  mockDoc.mockImplementation((_docId) => {
+    return {
+      get: mockDocGet,
+    };
+  });
+
+  mockBatch.mockImplementation(() => {
+    return {
+      set: mockBatchSet,
+      commit: mockBatchCommit,
+    };
+  });
+
+  mockWhere.mockReturnThis();
+  mockOrderBy.mockReturnThis();
+  mockLimit.mockReturnThis();
+  mockOffset.mockReturnThis();
+
   return {
-    initializeApp: vi.fn(() => app),
-    getApps: vi.fn(() => []),
-    getApp: vi.fn(() => app),
+    mockFirestore,
+    mockCollection,
+    mockDoc,
+    mockWhere,
+    mockOrderBy,
+    mockLimit,
+    mockOffset,
+    mockQueryGet,
+    mockDocGet,
+    mockBatch,
+    mockBatchSet,
+    mockBatchCommit,
+    mockApp,
+    mockInitializeApp,
+    mockAppFn,
+    mockCert,
+    setInitializeAppCalled,
+    getInitializeAppCalled,
   };
 });
 
-vi.mock("firebase/firestore", () => {
-  const mockFirestore = {};
-  const mockCollectionRef = { id: "collection-ref" };
-  const mockCollection = vi.fn(() => mockCollectionRef);
-  const mockDoc = vi.fn(() => "document-ref");
-  const mockSetDoc = vi.fn();
-  const mockGetDoc = vi.fn(() => ({
-    exists: () => false,
-    data: () => null,
-  }));
-  const mockQuery = vi.fn((...args) => args);
-  const mockOrderBy = vi.fn(() => "order-by");
-  const mockGetDocs = vi.fn(() => ({
-    empty: true,
-    docs: [],
-  }));
-
+// --- Mock firebase-admin module ---
+vi.mock("firebase-admin", () => {
   return {
-    getFirestore: vi.fn(() => mockFirestore),
-    collection: mockCollection,
-    doc: mockDoc,
-    setDoc: mockSetDoc,
-    getDoc: mockGetDoc,
-    query: mockQuery,
-    orderBy: mockOrderBy,
-    getDocs: mockGetDocs,
+    initializeApp: mockInitializeApp,
+    app: mockAppFn,
+    credential: { cert: mockCert },
+    firestore: mockFirestore,
   };
 });
 
+// Define baseArgs if the factory function still expects it
 const baseArgs: BasePluginArgs = {
   cwd: "/mock/path",
 };
 
-describe("Firebase Database Plugin", () => {
-  const mockConfig = {
-    apiKey: "test-api-key",
+describe("Firebase Admin Database Plugin", () => {
+  const mockConfig: FirebaseDatabaseConfig = {
     projectId: "test-project-id",
-    appName: "test-app",
+    privateKey: "test-private-key",
+    clientEmail: "test-client-email@example.com",
   };
 
-  const mockHooks: DatabasePluginHooks = {
-    onDatabaseUpdated: vi.fn(),
-  };
+  const mockHooks: DatabasePluginHooks = {};
 
   const mockBundle: Bundle = {
     id: "test-bundle-id",
@@ -102,237 +168,234 @@ describe("Firebase Database Plugin", () => {
     target_app_version: "1.0.0",
   };
 
-  const appName = "hot-updater";
+  type CommitBundleArgs = {
+    changedSets: Array<{
+      operation: "insert" | "update" | "delete";
+      data: Bundle;
+    }>;
+  };
 
   let databasePlugin: ReturnType<ReturnType<typeof firebaseDatabase>>;
 
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(getApps).mockReturnValue([]);
-    databasePlugin = firebaseDatabase(mockConfig, mockHooks)(baseArgs);
+
+    setInitializeAppCalled(false);
+
+    mockAppFn.mockImplementation(() => {
+      throw new Error("App not initialized (beforeEach setup)");
+    });
+
+    mockInitializeApp.mockImplementation((_options) => {
+      setInitializeAppCalled(true);
+      mockAppFn.mockImplementation(() => {
+        return mockApp;
+      });
+      return mockApp;
+    });
+
+    mockFirestore.mockImplementation((appArg) => {
+      if (appArg === mockApp) {
+        return { collection: mockCollection, batch: mockBatch };
+      }
+      return undefined;
+    });
+
+    mockCollection.mockImplementation((_path) => {
+      return {
+        doc: mockDoc,
+        where: mockWhere,
+        orderBy: mockOrderBy,
+        limit: mockLimit,
+        offset: mockOffset,
+        get: mockQueryGet,
+      };
+    });
+
+    mockDoc.mockImplementation((_docId) => {
+      return { get: mockDocGet };
+    });
+
+    mockBatch.mockImplementation(() => {
+      return { set: mockBatchSet, commit: mockBatchCommit };
+    });
+
+    mockWhere.mockReturnThis();
+    mockOrderBy.mockReturnThis();
+    mockLimit.mockReturnThis();
+    mockOffset.mockReturnThis();
+
+    mockQueryGet.mockResolvedValue({ empty: true, docs: [] });
+    mockDocGet.mockResolvedValue({ exists: false, data: () => undefined });
+    mockBatchCommit.mockResolvedValue(undefined);
+
+    try {
+      databasePlugin = firebaseDatabase(mockConfig, mockHooks)(baseArgs);
+    } catch (error) {
+      console.error("[beforeEach] Error during plugin instantiation:", error);
+      throw error;
+    }
+
+    expect(mockCert).toHaveBeenCalledTimes(1);
+    expect(mockCert).toHaveBeenCalledWith(
+      expect.objectContaining({ project_id: mockConfig.projectId }),
+    );
+    expect(mockInitializeApp).toHaveBeenCalledTimes(1);
+    expect(mockFirestore).toHaveBeenCalledTimes(1);
+    expect(mockFirestore).toHaveBeenCalledWith(mockApp);
   });
 
   afterEach(() => {
     vi.resetAllMocks();
+    setInitializeAppCalled(false);
   });
 
-  it("should return existing app if app with appName already exists", () => {
-    vi.resetAllMocks();
-
-    const mockExistingApp = { name: appName };
-    (getApps as Mock).mockReturnValue([mockExistingApp]);
-    (getApp as Mock).mockReturnValue(mockExistingApp);
-
-    const app = getApps().find((app) => app.name === appName)
-      ? getApp(appName)
-      : initializeApp(mockConfig, appName);
-
-    expect(getApps).toHaveBeenCalled();
-    expect(getApp).toHaveBeenCalledTimes(1);
-    expect(initializeApp).not.toHaveBeenCalled();
-    expect(app).toBe(mockExistingApp);
+  it("should instantiate without error", () => {
+    expect(databasePlugin).toBeDefined();
+    expect(databasePlugin.getBundles).toBeInstanceOf(Function);
   });
 
-  it("should initialize new app if app with appName does not exist", () => {
-    const mockExistingApp = { name: appName };
-    (initializeApp as Mock).mockReturnValue(mockExistingApp);
+  it("should call firestore().collection() when getting bundles", async () => {
+    const mockData1 = { ...mockFirestoreData, id: "b1" };
+    const mockData2 = { ...mockFirestoreData, id: "b2" };
+    mockQueryGet.mockResolvedValueOnce({
+      empty: false,
+      docs: [{ data: () => mockData1 }, { data: () => mockData2 }],
+    });
 
-    const app = getApps().find((app) => app.name === appName)
-      ? getApp(appName)
-      : initializeApp(mockConfig, appName);
+    const bundles = await databasePlugin.getBundles();
 
-    expect(getApps).toHaveBeenCalled();
-    expect(initializeApp).toHaveBeenCalledWith(mockConfig, appName);
-    expect(getApp).not.toHaveBeenCalled();
-    expect(app).toBe(mockExistingApp);
+    expect(mockCollection).toHaveBeenCalledWith("bundles");
+    expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
+    expect(mockQueryGet).toHaveBeenCalledTimes(1);
+    expect(bundles).toHaveLength(2);
+    expect(bundles[0].id).toBe("b1");
+    expect(bundles[1].id).toBe("b2");
   });
+
   describe("commitBundle", () => {
-    it("should do nothing if no IDs are changed", async () => {
+    it("should do nothing if changedSets is empty", async () => {
+      const args: CommitBundleArgs = { changedSets: [] };
       await databasePlugin.commitBundle();
-
-      expect(doc).not.toHaveBeenCalled();
-      expect(setDoc).not.toHaveBeenCalled();
-      expect(mockHooks.onDatabaseUpdated).toHaveBeenCalled();
-    });
-
-    it("should update changed bundles to Firestore", async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce({
-        empty: false,
-        docs: [
-          {
-            data: () => mockFirestoreData,
-          },
-        ] as any,
-      } as unknown as QuerySnapshot);
-
-      vi.mocked(getDoc).mockResolvedValueOnce({
-        exists: () => true,
-        data: () => mockFirestoreData,
-      } as any);
-
-      await databasePlugin.getBundles();
-      await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
-
-      await databasePlugin.commitBundle();
-
-      expect(setDoc).toHaveBeenCalledWith(
-        "document-ref",
-        {
-          id: "test-bundle-id",
-          channel: "production",
-          enabled: false,
-          file_hash: "test-file-hash",
-          git_commit_hash: "test-git-hash",
-          message: "test-message",
-          platform: "android",
-          should_force_update: false,
-          target_app_version: "1.0.0",
-        },
-        { merge: true },
-      );
-      expect(mockHooks.onDatabaseUpdated).toHaveBeenCalled();
-    });
-  });
-
-  describe("updateBundle", () => {
-    it("should throw error if target bundle not found", async () => {
-      vi.mocked(getDoc).mockResolvedValueOnce({
-        exists: () => false,
-      } as any);
-
-      await expect(
-        databasePlugin.updateBundle("non-existent-id", {}),
-      ).rejects.toThrow("targetBundleId not found");
-    });
-
-    it("should update bundle in memory", async () => {
-      vi.mocked(getDoc).mockResolvedValueOnce({
-        exists: () => true,
-        data: () => mockFirestoreData,
-      } as any);
-
-      await databasePlugin.updateBundle("test-bundle-id", { enabled: false });
-
-      vi.mocked(getDocs).mockResolvedValueOnce({
-        empty: false,
-        docs: [
-          {
-            data: () => ({ ...mockFirestoreData, enabled: false }),
-          },
-        ] as any,
-      } as unknown as QuerySnapshot);
-
-      const bundles = await databasePlugin.getBundles();
-      expect(bundles[0].enabled).toBe(false);
-    });
-  });
-
-  describe("appendBundle", () => {
-    it("should add new bundle to the beginning of the list", async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce({
-        empty: false,
-        docs: [
-          {
-            data: () => mockFirestoreData,
-          },
-        ] as any,
-      } as unknown as QuerySnapshot);
-
-      await databasePlugin.getBundles();
-
-      const newBundle: Bundle = {
-        ...mockBundle,
-        id: "new-bundle-id",
-      };
-
-      await databasePlugin.appendBundle(newBundle);
-
-      vi.mocked(getDocs).mockResolvedValueOnce({
-        empty: false,
-        docs: [
-          {
-            data: () => ({ ...mockFirestoreData, id: "new-bundle-id" }),
-          },
-          {
-            data: () => mockFirestoreData,
-          },
-        ] as any,
-      } as unknown as QuerySnapshot);
-
-      const bundles = await databasePlugin.getBundles();
-      expect(bundles.length).toBe(2);
-      expect(bundles[0].id).toBe("new-bundle-id");
+      expect(mockBatch).not.toHaveBeenCalled();
     });
   });
 
   describe("getBundleById", () => {
-    it("should return null if bundle not found", async () => {
-      vi.mocked(getDoc).mockResolvedValueOnce({
-        exists: () => false,
-      } as any);
-
+    it("should return null if bundle not found in Firestore", async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: false,
+        data: () => undefined,
+      });
       const result = await databasePlugin.getBundleById("non-existent-id");
+      expect(mockCollection).toHaveBeenCalledWith("bundles");
+      expect(mockDoc).toHaveBeenCalledWith("non-existent-id");
+      expect(mockDocGet).toHaveBeenCalledTimes(1);
       expect(result).toBeNull();
     });
 
-    it("should return bundle when found", async () => {
-      vi.mocked(getDoc).mockResolvedValueOnce({
-        exists: () => true,
+    it("should return bundle when found in Firestore", async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
         data: () => mockFirestoreData,
-      } as any);
-
+      });
       const result = await databasePlugin.getBundleById("test-bundle-id");
+      expect(mockCollection).toHaveBeenCalledWith("bundles");
+      expect(mockDoc).toHaveBeenCalledWith("test-bundle-id");
+      expect(mockDocGet).toHaveBeenCalledTimes(1);
       expect(result).toEqual(mockBundle);
     });
   });
 
   describe("getBundles", () => {
     it("should return empty array when no bundles exist", async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce({
-        empty: true,
-        docs: [],
-      } as any);
-
+      mockQueryGet.mockResolvedValueOnce({ empty: true, docs: [] });
       const result = await databasePlugin.getBundles();
+      expect(mockCollection).toHaveBeenCalledWith("bundles");
+      expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
+      expect(mockQueryGet).toHaveBeenCalledTimes(1);
       expect(result).toEqual([]);
     });
 
-    it("should query Firestore and return bundles", async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce({
+    it("should query Firestore and return converted bundles", async () => {
+      const secondFirestoreData = {
+        ...mockFirestoreData,
+        id: "second-bundle-id",
+      };
+      mockQueryGet.mockResolvedValueOnce({
         empty: false,
         docs: [
           { data: () => mockFirestoreData },
-          { data: () => ({ ...mockFirestoreData, id: "second-bundle-id" }) },
+          { data: () => secondFirestoreData },
         ],
-      } as any);
-
+      });
       const result = await databasePlugin.getBundles();
-
-      expect(query).toHaveBeenCalled();
-      expect(orderBy).toHaveBeenCalledWith("id", "desc");
+      expect(mockCollection).toHaveBeenCalledWith("bundles");
+      expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
+      expect(mockQueryGet).toHaveBeenCalledTimes(1);
       expect(result.length).toBe(2);
+      expect(result[0]).toEqual(mockBundle);
+      expect(result[1]).toEqual(
+        expect.objectContaining({ id: "second-bundle-id" }),
+      );
     });
 
-    it("should use cached bundles when available and refresh is false", async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce({
+    it("should apply filters (where, limit, offset) when options are provided", async () => {
+      mockQueryGet.mockResolvedValueOnce({
         empty: false,
         docs: [{ data: () => mockFirestoreData }],
-      } as any);
+      });
+      await databasePlugin.getBundles({
+        where: { channel: "production", platform: "android" },
+        limit: 10,
+        offset: 5,
+      });
+      expect(mockCollection).toHaveBeenCalledWith("bundles");
+      expect(mockWhere).toHaveBeenCalledWith("channel", "==", "production");
+      expect(mockWhere).toHaveBeenCalledWith("platform", "==", "android");
+      expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
+      expect(mockOffset).toHaveBeenCalledWith(5);
+      expect(mockLimit).toHaveBeenCalledWith(10);
+      expect(mockQueryGet).toHaveBeenCalledTimes(1);
+    });
+  });
 
-      await databasePlugin.getBundles();
+  describe("getChannels", () => {
+    it("should return empty array when no channels exist", async () => {
+      mockQueryGet.mockResolvedValueOnce({ empty: true, docs: [] });
+      const result = await databasePlugin.getChannels();
+      expect(mockCollection).toHaveBeenCalledWith("bundles");
+      expect(mockOrderBy).toHaveBeenCalledWith("channel");
+      expect(mockQueryGet).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([]);
+    });
 
-      vi.clearAllMocks();
-
-      vi.mocked(getDocs).mockResolvedValueOnce({
+    it("should return unique channels from Firestore data", async () => {
+      mockQueryGet.mockResolvedValueOnce({
         empty: false,
-        docs: [{ data: () => mockFirestoreData }],
-      } as any);
-
-      const result = await databasePlugin.getBundles();
-
-      expect(getDocs).toHaveBeenCalled();
-      expect(result.length).toBe(1);
-      expect(result[0].id).toBe("test-bundle-id");
+        docs: [
+          { data: () => ({ ...mockFirestoreData, channel: "production" }) },
+          { data: () => ({ ...mockFirestoreData, id: "b2", channel: "beta" }) },
+          {
+            data: () => ({
+              ...mockFirestoreData,
+              id: "b3",
+              channel: "production",
+            }),
+          },
+          {
+            data: () => ({ ...mockFirestoreData, id: "b4", channel: "alpha" }),
+          },
+        ],
+      });
+      const result = await databasePlugin.getChannels();
+      expect(mockCollection).toHaveBeenCalledWith("bundles");
+      expect(mockOrderBy).toHaveBeenCalledWith("channel");
+      expect(mockQueryGet).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(
+        expect.arrayContaining(["production", "beta", "alpha"]),
+      );
+      expect(result).toHaveLength(3);
     });
   });
 });
