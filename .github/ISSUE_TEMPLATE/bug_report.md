@@ -9,6 +9,7 @@ assignees: ''
 
 - [ ] Infrastructure may have changed. Did you retry `hot-updater init`?
 - [ ] It might be fixed in the latest version. Did you check the release notes?
+- [ ] Is your Node version v20 or higher?
 
 ## Problem
 
