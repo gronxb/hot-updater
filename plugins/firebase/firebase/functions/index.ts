@@ -57,6 +57,7 @@ app.get("/api/check-update", async (c) => {
       data: updateInfo,
       reqUrl: c.req.url,
       jwtSecret: HotUpdater.JWT_SECRET,
+      pathPrefix: "/hot-updater",
     });
 
     return c.json(appUpdateInfo, 200);
