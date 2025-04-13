@@ -76,27 +76,22 @@ export const getUpdateInfo = async (
       ),
     );
 
-    console.log(appVersions);
-
-    let baseQuery = db
-      .collection("bundles")
-      .where("platform", "==", platform)
-      .where("channel", "==", channel)
-      .where("enabled", "==", true)
-      .where("id", ">=", minBundleId);
-
     const targetAppVersionList = filterCompatibleAppVersions(
       appVersions,
       appVersion,
     );
 
-    if (targetAppVersionList.length > 0) {
-      baseQuery = baseQuery.where(
-        "target_app_version",
-        "in",
-        targetAppVersionList,
-      );
+    if (targetAppVersionList.length === 0) {
+      return bundleId === minBundleId ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
+
+    const baseQuery = db
+      .collection("bundles")
+      .where("platform", "==", platform)
+      .where("channel", "==", channel)
+      .where("enabled", "==", true)
+      .where("id", ">=", minBundleId)
+      .where("target_app_version", "in", targetAppVersionList);
 
     let updateCandidate: Bundle | null = null;
     let rollbackCandidate: Bundle | null = null;
