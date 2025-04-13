@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import * as p from "@clack/prompts";
 import { makeEnv } from "@hot-updater/plugin-core";
 import { execa } from "execa";
@@ -69,12 +70,14 @@ export const setEnv = async (): Promise<string> => {
   p.log.message(
     `${picocolors.blue("Firebase SDK credentials JSON")}: Project settings -> Service accounts -> Firebase Admin SDK -> Generate new private key`,
   );
+
+  const defaultPath = path.join(process.cwd(), "firebase-credentials.json");
   const jsonPath = await p.text({
     message: "Enter the Firebase SDK credentials JSON file path:",
     placeholder: "firebase-credentials.json",
-    defaultValue: "firebase-credentials.json",
+    defaultValue: defaultPath,
     validate: (value: string): string | undefined => {
-      if (!fs.existsSync(value)) {
+      if (!fs.existsSync(value || defaultPath)) {
         return "File does not exist";
       }
       return undefined;
