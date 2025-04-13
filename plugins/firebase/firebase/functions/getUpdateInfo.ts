@@ -28,6 +28,13 @@ const convertToBundle = (data: any): Bundle => ({
   gitCommitHash: data.git_commit_hash || "",
 });
 
+const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
+  id: bundle.id,
+  message: bundle.message,
+  shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
+  status,
+});
+
 export const getUpdateInfo = async (
   db: Firestore,
   {
@@ -40,138 +47,98 @@ export const getUpdateInfo = async (
 ): Promise<UpdateInfo | null> => {
   try {
     let currentBundle: Bundle | null = null;
-    let currentBundleExists = false;
-    let currentBundleEnabled = false;
-    let currentBundleChannel = "production";
-
     if (bundleId !== NIL_UUID) {
-      const currentBundleDoc = await db
-        .collection("bundles")
-        .doc(bundleId)
-        .get();
-      currentBundleExists = currentBundleDoc.exists;
-
-      if (currentBundleExists) {
-        const data = currentBundleDoc.data()!;
-        currentBundleEnabled = Boolean(data.enabled);
-        currentBundleChannel = data.channel || "production";
+      const doc = await db.collection("bundles").doc(bundleId).get();
+      if (doc.exists) {
+        const data = doc.data()!;
+        // 채널이 일치하지 않으면 바로 null 반환
+        if ((data.channel || "production") !== channel) {
+          return null;
+        }
         currentBundle = convertToBundle(data);
       }
-
-      if (currentBundleExists && currentBundleChannel !== channel) {
-        return null;
-      }
     }
 
-    const bundlesQuery = db
+    if (bundleId.localeCompare(minBundleId) < 0) {
+      return null;
+    }
+
+    const baseQuery = db
       .collection("bundles")
       .where("platform", "==", platform)
-      .where("channel", "==", channel);
+      .where("channel", "==", channel)
+      .where("enabled", "==", true)
+      .where("id", ">=", minBundleId);
 
-    const bundlesSnapshot = await bundlesQuery.get();
+    let updateCandidate: Bundle | null = null;
+    let rollbackCandidate: Bundle | null = null;
 
-    if (bundlesSnapshot.empty) {
-      if (bundleId === minBundleId) {
-        return null;
+    if (bundleId === NIL_UUID) {
+      const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
+      if (!snap.empty) {
+        const data = snap.docs[0].data();
+        if (
+          filterCompatibleAppVersions([data.target_app_version], appVersion)
+            .length > 0
+        ) {
+          updateCandidate = convertToBundle(data);
+        }
       }
-      return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-    }
-
-    const allBundles: Bundle[] = [];
-
-    for (const doc of bundlesSnapshot.docs) {
-      const data = doc.data();
-
-      const isCompatible =
-        filterCompatibleAppVersions([data.target_app_version], appVersion)
-          .length > 0;
-
-      if (isCompatible) {
-        allBundles.push(convertToBundle(data));
-      }
-    }
-
-    const enabledBundles = allBundles.filter((b) => b.enabled);
-
-    const candidateBundles = enabledBundles.filter(
-      (b) => b.id.localeCompare(minBundleId) >= 0,
-    );
-
-    const sortedCandidates = candidateBundles
-      .slice()
-      .sort((a, b) => b.id.localeCompare(a.id));
-
-    const makeResponse = (
-      bundle: Bundle,
-      status: UpdateStatus,
-    ): UpdateInfo => ({
-      id: bundle.id,
-      message: bundle.message,
-      shouldForceUpdate:
-        status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
-      status,
-    });
-
-    if (candidateBundles.length === 0) {
-      if (enabledBundles.length === 0) {
-        return bundleId === NIL_UUID ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
+    } else {
+      const updateSnap = await baseQuery
+        .where("id", ">=", bundleId)
+        .orderBy("id", "desc")
+        .limit(1)
+        .get();
+      if (!updateSnap.empty) {
+        const data = updateSnap.docs[0].data();
+        if (
+          filterCompatibleAppVersions([data.target_app_version], appVersion)
+            .length > 0
+        ) {
+          updateCandidate = convertToBundle(data);
+        }
       }
 
-      if (bundleId.localeCompare(minBundleId) <= 0) {
-        return null;
+      const rollbackSnap = await baseQuery
+        .where("id", "<", bundleId)
+        .orderBy("id", "desc")
+        .limit(1)
+        .get();
+      if (!rollbackSnap.empty) {
+        const data = rollbackSnap.docs[0].data();
+        if (
+          filterCompatibleAppVersions([data.target_app_version], appVersion)
+            .length > 0
+        ) {
+          rollbackCandidate = convertToBundle(data);
+        }
       }
-
-      return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
 
     if (bundleId === NIL_UUID) {
-      if (sortedCandidates.length > 0) {
-        return makeResponse(sortedCandidates[0], "UPDATE");
+      return updateCandidate ? makeResponse(updateCandidate, "UPDATE") : null;
+    }
+    if (updateCandidate && updateCandidate.id !== bundleId) {
+      return makeResponse(updateCandidate, "UPDATE");
+    }
+
+    if (updateCandidate && updateCandidate.id === bundleId) {
+      if (currentBundle?.enabled) {
+        return null;
       }
-      return null;
+      return rollbackCandidate
+        ? makeResponse(rollbackCandidate, "ROLLBACK")
+        : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
 
-    const currentBundleInCandidates = sortedCandidates.find(
-      (b) => b.id === bundleId,
-    );
-
-    if (currentBundleInCandidates) {
-      if (sortedCandidates[0].id !== currentBundleInCandidates.id) {
-        return makeResponse(sortedCandidates[0], "UPDATE");
+    if (!updateCandidate) {
+      if (rollbackCandidate) {
+        return makeResponse(rollbackCandidate, "ROLLBACK");
       }
-      return null;
+      return bundleId === minBundleId ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
-
-    if (currentBundleExists && !currentBundleEnabled) {
-      if (sortedCandidates.length > 0) {
-        return makeResponse(sortedCandidates[0], "ROLLBACK");
-      }
-      return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-    }
-
-    const higherBundles = sortedCandidates.filter(
-      (b) => b.id.localeCompare(bundleId) > 0,
-    );
-    const lowerBundles = sortedCandidates.filter(
-      (b) => b.id.localeCompare(bundleId) < 0,
-    );
-
-    if (higherBundles.length > 0) {
-      return makeResponse(higherBundles[0], "UPDATE");
-    }
-
-    if (lowerBundles.length > 0) {
-      const highestLowerBundle = lowerBundles.sort((a, b) =>
-        b.id.localeCompare(a.id),
-      )[0];
-      return makeResponse(highestLowerBundle, "ROLLBACK");
-    }
-
-    if (bundleId.localeCompare(minBundleId) === 0) {
-      return null;
-    }
-
-    return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
+    return null;
   } catch (error) {
     console.error("Error in getUpdateInfo:", error);
     throw error;
