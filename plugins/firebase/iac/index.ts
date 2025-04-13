@@ -88,38 +88,23 @@ export const runInit = async () => {
   let isFunctionsExist = false;
 
   await fs.promises.copyFile(indexFile, destPath);
+  await fs.promises.rename(oldPackagePath, newPackagePath);
+  const indexTsPath = path.join(functionsDir, "index.ts");
+  const tsconfigPath = path.join(functionsDir, "tsconfig.json");
+
+  try {
+    await fs.promises.rm(indexTsPath);
+  } catch (error) {
+    console.error(`Error deleting ${indexTsPath}:`, error);
+  }
+
+  try {
+    await fs.promises.rm(tsconfigPath);
+  } catch (error) {
+    console.error(`Error deleting ${tsconfigPath}:`, error);
+  }
 
   await p.tasks([
-    {
-      title: "Renaming files...",
-      task: async () => {
-        try {
-          await fs.promises.rename(oldPackagePath, newPackagePath);
-        } catch (error) {
-          console.error("error in changing file name:", error);
-          throw error;
-        }
-      },
-    },
-    {
-      title: "Removing unnecessary files...",
-      task: async () => {
-        const indexTsPath = path.join(functionsDir, "index.ts");
-        const tsconfigPath = path.join(functionsDir, "tsconfig.json");
-
-        try {
-          await fs.promises.rm(indexTsPath);
-        } catch (error) {
-          console.error(`Error deleting ${indexTsPath}:`, error);
-        }
-
-        try {
-          await fs.promises.rm(tsconfigPath);
-        } catch (error) {
-          console.error(`Error deleting ${tsconfigPath}:`, error);
-        }
-      },
-    },
     {
       title: "Installing dependencies...",
       task: async () => {
