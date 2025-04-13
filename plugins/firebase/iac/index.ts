@@ -8,6 +8,7 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/plugin-core";
+import { merge } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import { initFirebaseUser } from "./select";
 
@@ -73,6 +74,26 @@ interface FirebaseFunction {
 }
 
 const deployFirestore = async (cwd: string) => {
+  const original = execa("npx", ["firebase", "firestore:indexes"], {
+    cwd,
+  });
+
+  let originalIndexes = [];
+  try {
+    const originalStdout = JSON.parse(original.stdout.toString());
+    originalIndexes = originalStdout?.result ?? [];
+  } catch {}
+
+  const newIndexes = JSON.parse(
+    fs.readFileSync(path.join(cwd, "firestore.indexes.json"), "utf-8"),
+  );
+
+  const mergedIndexes = merge(newIndexes, originalIndexes);
+  fs.writeFileSync(
+    path.join(cwd, "firestore.indexes.json"),
+    JSON.stringify(mergedIndexes, null, 2),
+  );
+
   try {
     await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
       cwd,
