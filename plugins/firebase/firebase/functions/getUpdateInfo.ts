@@ -51,7 +51,7 @@ export const getUpdateInfo = async (
       const doc = await db.collection("bundles").doc(bundleId).get();
       if (doc.exists) {
         const data = doc.data()!;
-        if ((data.channel || "production") !== channel) {
+        if (data.channel !== channel) {
           return null;
         }
         currentBundle = convertToBundle(data);
@@ -62,12 +62,41 @@ export const getUpdateInfo = async (
       return null;
     }
 
-    const baseQuery = db
+    const appVersionsSnapshot = await db
+      .collection("target_app_versions")
+      .where("platform", "==", platform)
+      .select("target_app_version")
+      .get();
+
+    const appVersions = Array.from(
+      new Set(
+        appVersionsSnapshot.docs.map(
+          (doc) => doc.data().target_app_version as string,
+        ),
+      ),
+    );
+
+    console.log(appVersions);
+
+    let baseQuery = db
       .collection("bundles")
       .where("platform", "==", platform)
       .where("channel", "==", channel)
       .where("enabled", "==", true)
       .where("id", ">=", minBundleId);
+
+    const targetAppVersionList = filterCompatibleAppVersions(
+      appVersions,
+      appVersion,
+    );
+
+    if (targetAppVersionList.length > 0) {
+      baseQuery = baseQuery.where(
+        "target_app_version",
+        "in",
+        targetAppVersionList,
+      );
+    }
 
     let updateCandidate: Bundle | null = null;
     let rollbackCandidate: Bundle | null = null;
@@ -76,12 +105,7 @@ export const getUpdateInfo = async (
       const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
       if (!snap.empty) {
         const data = snap.docs[0].data();
-        if (
-          filterCompatibleAppVersions([data.target_app_version], appVersion)
-            .length > 0
-        ) {
-          updateCandidate = convertToBundle(data);
-        }
+        updateCandidate = convertToBundle(data);
       }
     } else {
       const updateSnap = await baseQuery
@@ -91,12 +115,7 @@ export const getUpdateInfo = async (
         .get();
       if (!updateSnap.empty) {
         const data = updateSnap.docs[0].data();
-        if (
-          filterCompatibleAppVersions([data.target_app_version], appVersion)
-            .length > 0
-        ) {
-          updateCandidate = convertToBundle(data);
-        }
+        updateCandidate = convertToBundle(data);
       }
 
       const rollbackSnap = await baseQuery
@@ -106,12 +125,7 @@ export const getUpdateInfo = async (
         .get();
       if (!rollbackSnap.empty) {
         const data = rollbackSnap.docs[0].data();
-        if (
-          filterCompatibleAppVersions([data.target_app_version], appVersion)
-            .length > 0
-        ) {
-          rollbackCandidate = convertToBundle(data);
-        }
+        rollbackCandidate = convertToBundle(data);
       }
     }
 

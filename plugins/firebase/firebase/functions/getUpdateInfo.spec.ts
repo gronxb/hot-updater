@@ -21,6 +21,7 @@ firestore.settings({
 });
 
 const bundlesCollection = firestore.collection("bundles");
+const targetAppVersionsCollection = firestore.collection("target_app_versions");
 
 let emulatorProcess: ReturnType<typeof execa>;
 
@@ -34,6 +35,11 @@ const createGetUpdateInfo =
     const batch = db.batch();
 
     for (const doc of snapshot.docs) {
+      batch.delete(doc.ref);
+    }
+
+    const targetAppVersionsSnapshot = await targetAppVersionsCollection.get();
+    for (const doc of targetAppVersionsSnapshot.docs) {
       batch.delete(doc.ref);
     }
 
@@ -55,6 +61,13 @@ const createGetUpdateInfo =
           message: bundle.message || null,
           channel: bundle.channel || "production",
         });
+
+        targetAppVersionsCollection
+          .doc(`${bundle.platform}-${bundle.targetAppVersion}`)
+          .set({
+            target_app_version: bundle.targetAppVersion,
+            platform: bundle.platform,
+          });
       }
 
       await writeBatch.commit();
