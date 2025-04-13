@@ -8,7 +8,7 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/plugin-core";
-import { merge } from "es-toolkit";
+import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import { initFirebaseUser } from "./select";
 
@@ -73,23 +73,58 @@ interface FirebaseFunction {
   hash: string;
 }
 
+type FirebaseIndex = {
+  collectionGroup: string;
+  queryScope: string;
+  fields: { fieldPath: string; order: string }[];
+};
+
+function normalizeIndex(index: FirebaseIndex) {
+  return {
+    collectionGroup: index.collectionGroup,
+    queryScope: index.queryScope,
+    fields: sortBy(index.fields, ["fieldPath", "order"]),
+  };
+}
+
+const mergeIndexes = (
+  originalIndexes: { indexes: FirebaseIndex[]; fieldOverrides: any[] },
+  newIndexes: { indexes: FirebaseIndex[]; fieldOverrides: any[] },
+) => {
+  const mergedIndexes = originalIndexes.indexes.concat(newIndexes.indexes);
+  const uniqueIndexes = uniqWith(mergedIndexes, (a, b) =>
+    isEqual(normalizeIndex(a), normalizeIndex(b)),
+  );
+  return {
+    indexes: uniqueIndexes,
+    fieldOverrides: merge(
+      originalIndexes.fieldOverrides,
+      newIndexes.fieldOverrides,
+    ),
+  };
+};
+
 const deployFirestore = async (cwd: string) => {
-  const original = execa("npx", ["firebase", "firestore:indexes"], {
+  const original = await execa("npx", ["firebase", "firestore:indexes"], {
     cwd,
   });
 
   let originalIndexes = [];
   try {
-    const originalStdout = JSON.parse(original.stdout.toString());
-    originalIndexes = originalStdout?.result ?? [];
+    const originalStdout = JSON.parse(original.stdout);
+    originalIndexes = originalStdout ?? [];
   } catch {}
 
   const newIndexes = JSON.parse(
-    fs.readFileSync(path.join(cwd, "firestore.indexes.json"), "utf-8"),
+    await fs.promises.readFile(
+      path.join(cwd, "firestore.indexes.json"),
+      "utf-8",
+    ),
   );
 
-  const mergedIndexes = merge(newIndexes, originalIndexes);
-  fs.writeFileSync(
+  const mergedIndexes = mergeIndexes(originalIndexes, newIndexes);
+
+  await fs.promises.writeFile(
     path.join(cwd, "firestore.indexes.json"),
     JSON.stringify(mergedIndexes, null, 2),
   );
