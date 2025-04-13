@@ -136,8 +136,8 @@ export const firebaseDatabase = (
               {
                 id: data.id,
                 channel: data.channel,
-                enabled: data.enabled ? 1 : 0,
-                should_force_update: data.shouldForceUpdate ? 1 : 0,
+                enabled: data.enabled,
+                should_force_update: data.shouldForceUpdate,
                 file_hash: data.fileHash,
                 git_commit_hash: data.gitCommitHash || null,
                 message: data.message || null,
