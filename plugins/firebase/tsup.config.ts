@@ -5,6 +5,7 @@ export default defineConfig([
     entry: ["./src/index.ts"],
     format: ["esm", "cjs"],
     outDir: "dist",
+    dts: true,
   },
   {
     entry: ["firebase/functions/index.ts"],
@@ -15,7 +16,6 @@ export default defineConfig([
   {
     entry: ["iac/index.ts"],
     format: ["esm", "cjs"],
-    dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/firebase"],
     banner: {
