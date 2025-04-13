@@ -95,13 +95,13 @@ export const runInit = async () => {
   try {
     await fs.promises.rm(indexTsPath);
   } catch (error) {
-    console.error(`Error deleting ${indexTsPath}:`, error);
+    p.log.error(`Error deleting ${indexTsPath}:`);
   }
 
   try {
     await fs.promises.rm(tsconfigPath);
   } catch (error) {
-    console.error(`Error deleting ${tsconfigPath}:`, error);
+    p.log.error(`Error deleting ${tsconfigPath}`);
   }
 
   await p.tasks([
@@ -113,8 +113,12 @@ export const runInit = async () => {
             cwd: functionsDir,
           });
         } catch (error) {
-          console.error("error in npm install:", error);
-          throw error;
+          if (error instanceof ExecaError) {
+            p.log.error(error.stderr || error.stdout || error.message);
+          } else if (error instanceof Error) {
+            p.log.error(error.message);
+          }
+          process.exit(1);
         }
       },
     },
@@ -130,8 +134,12 @@ export const runInit = async () => {
             },
           );
         } catch (error) {
-          console.error("error in firebase use --add:", error);
-          throw error;
+          if (error instanceof ExecaError) {
+            p.log.error(error.stderr || error.stdout || error.message);
+          } else if (error instanceof Error) {
+            p.log.error(error.message);
+          }
+          process.exit(1);
         }
       },
     },
@@ -162,13 +170,15 @@ export const runInit = async () => {
           }
 
           if (hotUpdater) {
-            console.log(`Found existing functions in region: ${currentRegion}`);
+            p.log.message(
+              `Found existing functions in region: ${currentRegion}`,
+            );
           }
         } catch (error) {
           if (error instanceof ExecaError) {
-            console.log(error.stderr || error.stdout || error.message);
+            p.log.error(error.stderr || error.stdout || error.message);
           } else if (error instanceof Error) {
-            console.log(error.message);
+            p.log.error(error.message);
           }
           process.exit(1);
         }
@@ -188,7 +198,7 @@ export const runInit = async () => {
           }
           selectedRegion = selectRegion as string;
         } else {
-          console.log(`Using existing region: ${currentRegion}`);
+          p.log.message(`Using existing region: ${currentRegion}`);
         }
         const jwtSecret = crypto.randomBytes(48).toString("hex");
 
@@ -215,9 +225,9 @@ export const runInit = async () => {
           });
         } catch (e) {
           if (e instanceof ExecaError) {
-            console.log("Deploy error", e.stderr || e.stdout || e.message);
+            p.log.error(e.stderr || e.stdout || e.message);
           } else if (e instanceof Error) {
-            console.log("Deploy error", e.message);
+            p.log.error(e.message);
           }
           process.exit(1);
         }
@@ -241,9 +251,9 @@ export const runInit = async () => {
           );
         } catch (e) {
           if (e instanceof ExecaError) {
-            console.log("Deploy error", e.stderr || e.stdout || e.message);
+            p.log.error(e.stderr || e.stdout || e.message);
           } else if (e instanceof Error) {
-            console.log("Deploy error", e.message);
+            p.log.error(e.message);
           }
           process.exit(1);
         }
@@ -272,12 +282,9 @@ export const runInit = async () => {
           functionUrl = `${hotUpdater?.uri}/api/check-update` || "";
         } catch (error) {
           if (error instanceof ExecaError) {
-            console.log(
-              "Error getting function URL:",
-              error.stderr || error.stdout || error.message,
-            );
+            p.log.error(error.stderr || error.stdout || error.message);
           } else if (error instanceof Error) {
-            console.log("Error getting function URL:", error.message);
+            p.log.error(error.message);
           }
           process.exit(1);
         }
