@@ -138,8 +138,9 @@ const handleError = (err: unknown) => {
 
 export const initFirebaseUser = async () => {
   try {
-    await execa("firebase", ["login"], {
+    await execa("npx", ["firebase", "login"], {
       stdio: "inherit",
+      shell: true,
     });
   } catch (err) {
     handleError(err);
