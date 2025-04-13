@@ -25,46 +25,53 @@ app.get("/ping", (c) => {
 });
 
 app.get("/api/check-update", async (c) => {
-  const platform = c.req.header("x-app-platform");
-  const appVersion = c.req.header("x-app-version");
-  const bundleId = c.req.header("x-bundle-id");
-  const minBundleId = c.req.header("x-min-bundle-id");
-  const channel = c.req.header("x-channel");
-  if (!platform || !appVersion || !bundleId) {
-    return c.json(
-      {
-        error:
-          "Missing required headers (x-app-platform, x-app-version, x-bundle-id)",
-      },
-      400,
+  try {
+    const platform = c.req.header("x-app-platform");
+    const appVersion = c.req.header("x-app-version");
+    const bundleId = c.req.header("x-bundle-id");
+    const minBundleId = c.req.header("x-min-bundle-id");
+    const channel = c.req.header("x-channel");
+    if (!platform || !appVersion || !bundleId) {
+      return c.json(
+        {
+          error:
+            "Missing required headers (x-app-platform, x-app-version, x-bundle-id)",
+        },
+        400,
+      );
+    }
+    const db = admin.firestore();
+    const updateInfo = await getUpdateInfo(db, {
+      platform: platform as Platform,
+      appVersion,
+      bundleId,
+      minBundleId: minBundleId || NIL_UUID,
+      channel: channel || "production",
+    });
+    if (!updateInfo) {
+      return c.json(null, 200);
+    }
+
+    const path = `${updateInfo.id}/bundle.zip`;
+    const fileUrl = new URL(
+      `hot-updater/${path}`,
+      `https://${HotUpdater.REGION}-${HotUpdater.PROJECT_ID}.cloudfunctions.net`,
     );
+    const token = await signToken(path, HotUpdater.JWT_SECRET);
+    fileUrl.searchParams.append("token", token);
+
+    const appUpdateInfo = {
+      ...updateInfo,
+      fileUrl: fileUrl.toString(),
+    };
+
+    return c.json(appUpdateInfo, 200);
+  } catch (error) {
+    if (error instanceof Error) {
+      return c.json({ error: error.message }, 500);
+    }
+    return c.json({ error: "Internal server error" }, 500);
   }
-  const db = admin.firestore();
-  const updateInfo = await getUpdateInfo(db, {
-    platform: platform as Platform,
-    appVersion,
-    bundleId,
-    minBundleId: minBundleId || NIL_UUID,
-    channel: channel || "production",
-  });
-  if (!updateInfo) {
-    return c.json(null, 200);
-  }
-
-  const path = `${updateInfo.id}/bundle.zip`;
-  const fileUrl = new URL(
-    `hot-updater/${path}`,
-    `https://${HotUpdater.REGION}-${HotUpdater.PROJECT_ID}.cloudfunctions.net`,
-  );
-  const token = await signToken(path, HotUpdater.JWT_SECRET);
-  fileUrl.searchParams.append("token", token);
-
-  const appUpdateInfo = {
-    ...updateInfo,
-    fileUrl: fileUrl.toString(),
-  };
-
-  return c.json(appUpdateInfo, 200);
 });
 
 app.get("*", async (c) => {

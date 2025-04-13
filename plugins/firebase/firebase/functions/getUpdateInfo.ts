@@ -51,7 +51,6 @@ export const getUpdateInfo = async (
       const doc = await db.collection("bundles").doc(bundleId).get();
       if (doc.exists) {
         const data = doc.data()!;
-        // 채널이 일치하지 않으면 바로 null 반환
         if ((data.channel || "production") !== channel) {
           return null;
         }
