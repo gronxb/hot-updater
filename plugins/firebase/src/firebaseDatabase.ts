@@ -126,43 +126,75 @@ export const firebaseDatabase = (
           return;
         }
 
-        const batch = db.batch();
-
-        for (const { operation, data } of changedSets) {
-          if (operation === "insert" || operation === "update") {
+        await db.runTransaction(async (transaction) => {
+          for (const { operation, data } of changedSets) {
             const bundleRef = bundlesCollection.doc(data.id);
-            batch.set(
-              bundleRef,
-              {
-                id: data.id,
-                channel: data.channel,
-                enabled: data.enabled,
-                should_force_update: data.shouldForceUpdate,
-                file_hash: data.fileHash,
-                git_commit_hash: data.gitCommitHash || null,
-                message: data.message || null,
-                platform: data.platform,
-                target_app_version: data.targetAppVersion,
-              },
-              { merge: true },
-            );
 
-            const versionDocId = `${data.platform}_${data.targetAppVersion}`;
-            const targetAppVersionsRef = db
-              .collection("target_app_versions")
-              .doc(versionDocId);
-            batch.set(
-              targetAppVersionsRef,
-              {
-                platform: data.platform,
-                target_app_version: data.targetAppVersion,
-              },
-              { merge: true },
-            );
+            if (operation === "insert" || operation === "update") {
+              if (data.targetAppVersion) {
+                transaction.set(
+                  bundleRef,
+                  {
+                    id: data.id,
+                    channel: data.channel,
+                    enabled: data.enabled,
+                    should_force_update: data.shouldForceUpdate,
+                    file_hash: data.fileHash,
+                    git_commit_hash: data.gitCommitHash || null,
+                    message: data.message || null,
+                    platform: data.platform,
+                    target_app_version: data.targetAppVersion,
+                  },
+                  { merge: true },
+                );
+
+                const versionDocId = `${data.platform}_${data.targetAppVersion}`;
+                const targetAppVersionsRef = db
+                  .collection("target_app_versions")
+                  .doc(versionDocId);
+                transaction.set(
+                  targetAppVersionsRef,
+                  {
+                    platform: data.platform,
+                    target_app_version: data.targetAppVersion,
+                  },
+                  { merge: true },
+                );
+              } else {
+                transaction.set(
+                  bundleRef,
+                  {
+                    id: data.id,
+                    channel: data.channel,
+                    enabled: data.enabled,
+                    should_force_update: data.shouldForceUpdate,
+                    file_hash: data.fileHash,
+                    git_commit_hash: data.gitCommitHash || null,
+                    message: data.message || null,
+                    platform: data.platform,
+                    target_app_version: admin.firestore.FieldValue.delete(),
+                  },
+                  { merge: true },
+                );
+              }
+            }
           }
-        }
 
-        await batch.commit();
+          const targetVersionsSnapshot = await transaction.get(
+            db.collection("target_app_versions"),
+          );
+
+          for (const targetDoc of targetVersionsSnapshot.docs) {
+            const { platform, target_app_version } = targetDoc.data();
+            const query = bundlesCollection
+              .where("platform", "==", platform)
+              .where("target_app_version", "==", target_app_version);
+            const querySnapshot = await transaction.get(query);
+            if (querySnapshot.empty) {
+              transaction.delete(targetDoc.ref);
+            }
+          }
+        });
       },
     },
     hooks,
