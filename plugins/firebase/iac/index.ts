@@ -8,7 +8,7 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/plugin-core";
-import { execa } from "execa";
+import { ExecaError, execa } from "execa";
 import { initFirebaseUser } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -124,14 +124,7 @@ export const runInit = async () => {
         try {
           await execa(
             "npx",
-            [
-              "firebase",
-              "use",
-              "--add",
-              initializeVariable.projectId,
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
+            ["firebase", "use", "--add", initializeVariable.projectId],
             {
               cwd: tmpDir,
             },
@@ -150,13 +143,7 @@ export const runInit = async () => {
         try {
           const { stdout } = await execa(
             "npx",
-            [
-              "firebase",
-              "functions:list",
-              "--json",
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
+            ["firebase", "functions:list", "--json"],
             {
               cwd: tmpDir,
             },
@@ -178,9 +165,12 @@ export const runInit = async () => {
             console.log(`Found existing functions in region: ${currentRegion}`);
           }
         } catch (error) {
-          console.log(
-            "Could not retrieve existing functions, will use default region",
-          );
+          if (error instanceof ExecaError) {
+            console.log(error.stderr || error.stdout || error.message);
+          } else if (error instanceof Error) {
+            console.log(error.message);
+          }
+          process.exit(1);
         }
 
         let selectedRegion = currentRegion;
@@ -220,20 +210,16 @@ export const runInit = async () => {
       title: "Deploy firestore indexes",
       task: async () => {
         try {
-          await execa(
-            "npx",
-            [
-              "firebase",
-              "deploy",
-              "--only",
-              "firestore",
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
-            { cwd: tmpDir },
-          );
+          await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
+            cwd: tmpDir,
+          });
         } catch (e) {
-          console.error("Pass");
+          if (e instanceof ExecaError) {
+            console.log("Deploy error", e.stderr || e.stdout || e.message);
+          } else if (e instanceof Error) {
+            console.log("Deploy error", e.message);
+          }
+          process.exit(1);
         }
       },
     },
@@ -250,13 +236,16 @@ export const runInit = async () => {
               "functions",
               "--project",
               initializeVariable.projectId,
-              "--config",
-              "./.hot-updater/firebase.json",
             ],
             { cwd: tmpDir },
           );
         } catch (e) {
-          console.log("Deploy error", e);
+          if (e instanceof ExecaError) {
+            console.log("Deploy error", e.stderr || e.stdout || e.message);
+          } else if (e instanceof Error) {
+            console.log("Deploy error", e.message);
+          }
+          process.exit(1);
         }
       },
     },
@@ -267,13 +256,7 @@ export const runInit = async () => {
         try {
           const { stdout } = await execa(
             "npx",
-            [
-              "firebase",
-              "functions:list",
-              "--json",
-              "--config",
-              "./.hot-updater/firebase.json",
-            ],
+            ["firebase", "functions:list", "--json"],
             {
               cwd: tmpDir,
             },
@@ -288,7 +271,15 @@ export const runInit = async () => {
 
           functionUrl = `${hotUpdater?.uri}/api/check-update` || "";
         } catch (error) {
-          console.error("Error getting function URL:", error);
+          if (error instanceof ExecaError) {
+            console.log(
+              "Error getting function URL:",
+              error.stderr || error.stdout || error.message,
+            );
+          } else if (error instanceof Error) {
+            console.log("Error getting function URL:", error.message);
+          }
+          process.exit(1);
         }
 
         p.note(
