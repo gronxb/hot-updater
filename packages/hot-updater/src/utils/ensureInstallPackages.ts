@@ -52,7 +52,7 @@ export const ensureInstallPackages = async (buildPluginPackages: {
           return `Installed ${dependenciesToInstall.join(", ")}`;
         } catch (e) {
           if (e instanceof ExecaError) {
-            p.log.error(e.stderr ?? e.message);
+            p.log.error(e.stderr ?? e.stdout ?? e.message);
           } else if (e instanceof Error) {
             p.log.error(e.message);
           }
@@ -80,7 +80,7 @@ export const ensureInstallPackages = async (buildPluginPackages: {
           return `Installed ${devDependenciesToInstall.join(", ")}`;
         } catch (e) {
           if (e instanceof ExecaError) {
-            p.log.error(e.stderr ?? e.message);
+            p.log.error(e.stderr ?? e.stdout ?? e.message);
           } else if (e instanceof Error) {
             p.log.error(e.message);
           }
