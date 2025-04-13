@@ -74,9 +74,6 @@ export const setEnv = async (): Promise<string> => {
     placeholder: "firebase-credentials.json",
     defaultValue: "firebase-credentials.json",
     validate: (value: string): string | undefined => {
-      if (!value) {
-        return "File path is required";
-      }
       if (!fs.existsSync(value)) {
         return "File does not exist";
       }

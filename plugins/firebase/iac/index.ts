@@ -222,6 +222,7 @@ export const runInit = async () => {
         try {
           await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
             cwd: tmpDir,
+            stdio: "inherit",
           });
         } catch (e) {
           if (e instanceof ExecaError) {
@@ -247,7 +248,7 @@ export const runInit = async () => {
               "--project",
               initializeVariable.projectId,
             ],
-            { cwd: tmpDir },
+            { cwd: tmpDir, stdio: "inherit" },
           );
         } catch (e) {
           if (e instanceof ExecaError) {
