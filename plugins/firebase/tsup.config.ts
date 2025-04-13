@@ -16,6 +16,7 @@ export default defineConfig([
   {
     entry: ["iac/index.ts"],
     format: ["esm", "cjs"],
+    dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/firebase"],
     banner: {
