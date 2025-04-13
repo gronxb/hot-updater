@@ -1,5 +1,5 @@
 import { NIL_UUID, type Platform } from "@hot-updater/core";
-import { signToken, verifyJwtSignedUrl } from "@hot-updater/js";
+import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
@@ -41,6 +41,7 @@ app.get("/api/check-update", async (c) => {
       );
     }
     const db = admin.firestore();
+
     const updateInfo = await getUpdateInfo(db, {
       platform: platform as Platform,
       appVersion,
@@ -52,16 +53,11 @@ app.get("/api/check-update", async (c) => {
       return c.json(null, 200);
     }
 
-    const path = `${updateInfo.id}/bundle.zip`;
-    const fileUrl = new URL(c.req.url);
-    fileUrl.pathname = `hot-updater/${path}`;
-    const token = await signToken(path, HotUpdater.JWT_SECRET);
-    fileUrl.searchParams.append("token", token);
-
-    const appUpdateInfo = {
-      ...updateInfo,
-      fileUrl: fileUrl.toString(),
-    };
+    const appUpdateInfo = await withJwtSignedUrl({
+      data: updateInfo,
+      reqUrl: c.req.url,
+      jwtSecret: HotUpdater.JWT_SECRET,
+    });
 
     return c.json(appUpdateInfo, 200);
   } catch (error) {
