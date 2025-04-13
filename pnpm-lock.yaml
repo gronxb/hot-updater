@@ -608,6 +608,9 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core
+      '@hot-updater/firebase':
+        specifier: workspace:*
+        version: link:../../plugins/firebase
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
@@ -645,9 +648,6 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.4
         version: 1.13.4(hono@4.6.3)
-      '@hot-updater/firebase':
-        specifier: workspace:*
-        version: link:../../plugins/firebase
       '@types/babel__core':
         specifier: 7.20.5
         version: 7.20.5

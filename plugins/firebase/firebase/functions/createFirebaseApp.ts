@@ -19,10 +19,10 @@ export function createFirebaseApp(
       .region(region)
       .https.onRequest(
         async (req: FunctionsRequest, res: FunctionsResponse) => {
-          const host: string = req.hostname;
-          const path: string = req.originalUrl || req.url;
-          const fullUrl: string = new URL(path, `https://${host}`).toString();
-          const request: Request = new Request(fullUrl, {
+          const host = req.hostname;
+          const path = req.originalUrl || req.url;
+          const fullUrl = new URL(path, `https://${host}`).toString();
+          const request = new Request(fullUrl, {
             method: req.method,
             headers: req.headers as Record<string, string>,
             body:
@@ -30,7 +30,7 @@ export function createFirebaseApp(
                 ? req.body
                 : undefined,
           });
-          const honoResponse: Response = await app.fetch(request);
+          const honoResponse = await app.fetch(request);
           res.status(honoResponse.status);
           honoResponse.headers.forEach((value: string, key: string) => {
             res.set(key, value);

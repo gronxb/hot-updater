@@ -1,3 +1,4 @@
+
 import { metro } from "@hot-updater/metro";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";

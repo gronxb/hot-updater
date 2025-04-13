@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import {} from "fs";
+import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
 import {
@@ -9,7 +9,6 @@ import {
   transformTemplate,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import fs from "fs/promises";
 import { initFirebaseUser } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -88,14 +87,14 @@ export const runInit = async () => {
   const destPath = path.join(functionsDir, path.basename(indexFile));
   let isFunctionsExist = false;
 
-  await fs.copyFile(indexFile, destPath);
+  await fs.promises.copyFile(indexFile, destPath);
 
   await p.tasks([
     {
       title: "Renaming files...",
       task: async () => {
         try {
-          await fs.rename(oldPackagePath, newPackagePath);
+          await fs.promises.rename(oldPackagePath, newPackagePath);
         } catch (error) {
           console.error("error in changing file name:", error);
           throw error;
@@ -109,13 +108,13 @@ export const runInit = async () => {
         const tsconfigPath = path.join(functionsDir, "tsconfig.json");
 
         try {
-          await fs.rm(indexTsPath);
+          await fs.promises.rm(indexTsPath);
         } catch (error) {
           console.error(`Error deleting ${indexTsPath}:`, error);
         }
 
         try {
-          await fs.rm(tsconfigPath);
+          await fs.promises.rm(tsconfigPath);
         } catch (error) {
           console.error(`Error deleting ${tsconfigPath}:`, error);
         }
@@ -139,7 +138,7 @@ export const runInit = async () => {
       task: async () => {
         try {
           await execa(
-            "pnpm",
+            "npx",
             [
               "firebase",
               "use",
@@ -165,7 +164,7 @@ export const runInit = async () => {
 
         try {
           const { stdout } = await execa(
-            "pnpm",
+            "npx",
             [
               "firebase",
               "functions:list",
@@ -219,14 +218,17 @@ export const runInit = async () => {
         const jwtSecret = crypto.randomBytes(48).toString("hex");
 
         const code = await transformEnv(
-          await fs.readFile(path.join(functionsDir, "index.cjs"), "utf-8"),
+          await fs.promises.readFile(
+            path.join(functionsDir, "index.cjs"),
+            "utf-8",
+          ),
           {
             REGION: selectedRegion,
             JWT_SECRET: jwtSecret,
             PROJECT_ID: initializeVariable.projectId,
           },
         );
-        await fs.writeFile(path.join(functionsDir, "index.cjs"), code);
+        await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);
       },
     },
     {
@@ -234,7 +236,7 @@ export const runInit = async () => {
       task: async () => {
         try {
           await execa(
-            "pnpm",
+            "npx",
             [
               "firebase",
               "deploy",
@@ -255,7 +257,7 @@ export const runInit = async () => {
       task: async () => {
         try {
           await execa(
-            "pnpm",
+            "npx",
             [
               "firebase",
               "deploy",
@@ -279,7 +281,7 @@ export const runInit = async () => {
         let functionUrl = "";
         try {
           const { stdout } = await execa(
-            "pnpm",
+            "npx",
             [
               "firebase",
               "functions:list",

@@ -1,6 +1,5 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { printBanner } from "@/utils/printBanner";
-import { isCancel, select } from "@clack/prompts";
 import * as p from "@clack/prompts";
 import { ExecaError } from "execa";
 
@@ -31,7 +30,7 @@ const PACKAGE_MAP = {
 export const init = async () => {
   printBanner();
 
-  const buildPluginPackage = await select({
+  const buildPluginPackage = await p.select({
     message: "Select a build plugin",
     options: [
       {
@@ -44,11 +43,11 @@ export const init = async () => {
     ],
   });
 
-  if (isCancel(buildPluginPackage)) {
+  if (p.isCancel(buildPluginPackage)) {
     process.exit(0);
   }
 
-  const provider = await select({
+  const provider = await p.select({
     message: "Select a provider",
     options: [
       { value: "supabase", label: "Supabase" },
@@ -61,7 +60,7 @@ export const init = async () => {
     ],
   });
 
-  if (isCancel(provider)) {
+  if (p.isCancel(provider)) {
     process.exit(0);
   }
 
