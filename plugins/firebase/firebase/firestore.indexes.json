@@ -7,6 +7,7 @@
         { "fieldPath": "channel", "order": "ASCENDING" },
         { "fieldPath": "platform", "order": "ASCENDING" },
         { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "target_app_version", "order": "ASCENDING" },
         { "fieldPath": "id", "order": "DESCENDING" }
       ]
     },

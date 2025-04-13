@@ -146,6 +146,19 @@ export const firebaseDatabase = (
               },
               { merge: true },
             );
+
+            const versionDocId = `${data.platform}_${data.targetAppVersion}`;
+            const targetAppVersionsRef = db
+              .collection("target_app_versions")
+              .doc(versionDocId);
+            batch.set(
+              targetAppVersionsRef,
+              {
+                platform: data.platform,
+                target_app_version: data.targetAppVersion,
+              },
+              { merge: true },
+            );
           }
         }
 
