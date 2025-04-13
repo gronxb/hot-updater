@@ -72,6 +72,73 @@ interface FirebaseFunction {
   hash: string;
 }
 
+const deployFirestore = async (cwd: string) => {
+  try {
+    await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
+      cwd,
+      stdio: "inherit",
+    });
+  } catch (e) {
+    if (e instanceof ExecaError) {
+      p.log.error(e.stderr || e.stdout || e.message);
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+    process.exit(1);
+  }
+};
+
+const deployFunctions = async (cwd: string) => {
+  try {
+    await execa("npx", ["firebase", "deploy", "--only", "functions"], {
+      cwd,
+      stdio: "inherit",
+    });
+  } catch (e) {
+    if (e instanceof ExecaError) {
+      p.log.error(e.stderr || e.stdout || e.message);
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+    process.exit(1);
+  }
+};
+
+const printTemplate = async (cwd: string) => {
+  let functionUrl = "";
+  try {
+    const { stdout } = await execa(
+      "npx",
+      ["firebase", "functions:list", "--json"],
+      {
+        cwd,
+      },
+    );
+
+    const parsedData = JSON.parse(stdout);
+    const functionsData = parsedData.result || [];
+
+    const hotUpdater = functionsData.find(
+      (fn: FirebaseFunction) => fn.id === "hot-updater",
+    );
+
+    functionUrl = `${hotUpdater?.uri}/api/check-update` || "";
+  } catch (error) {
+    if (error instanceof ExecaError) {
+      p.log.error(error.stderr || error.stdout || error.message);
+    } else if (error instanceof Error) {
+      p.log.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  p.note(
+    transformTemplate(SOURCE_TEMPLATE, {
+      source: functionUrl,
+    }),
+  );
+};
+
 export const runInit = async () => {
   const initializeVariable = await initFirebaseUser();
 
@@ -216,94 +283,13 @@ export const runInit = async () => {
         await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);
       },
     },
-    {
-      title: "Deploy firestore indexes",
-      task: async () => {
-        try {
-          await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
-            cwd: tmpDir,
-            stdio: "inherit",
-          });
-        } catch (e) {
-          if (e instanceof ExecaError) {
-            p.log.error(e.stderr || e.stdout || e.message);
-          } else if (e instanceof Error) {
-            p.log.error(e.message);
-          }
-          process.exit(1);
-        }
-      },
-    },
-    {
-      title: "Deploy Firebase Functions",
-      task: async () => {
-        try {
-          await execa(
-            "npx",
-            [
-              "firebase",
-              "deploy",
-              "--only",
-              "functions",
-              "--project",
-              initializeVariable.projectId,
-            ],
-            { cwd: tmpDir, stdio: "inherit" },
-          );
-        } catch (e) {
-          if (e instanceof ExecaError) {
-            p.log.error(e.stderr || e.stdout || e.message);
-          } else if (e instanceof Error) {
-            p.log.error(e.message);
-          }
-          process.exit(1);
-        }
-      },
-    },
-    {
-      title: "Getting function URL",
-      task: async () => {
-        let functionUrl = "";
-        try {
-          const { stdout } = await execa(
-            "npx",
-            ["firebase", "functions:list", "--json"],
-            {
-              cwd: tmpDir,
-            },
-          );
-
-          const parsedData = JSON.parse(stdout);
-          const functionsData = parsedData.result || [];
-
-          const hotUpdater = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "hot-updater",
-          );
-
-          functionUrl = `${hotUpdater?.uri}/api/check-update` || "";
-        } catch (error) {
-          if (error instanceof ExecaError) {
-            p.log.error(error.stderr || error.stdout || error.message);
-          } else if (error instanceof Error) {
-            p.log.error(error.message);
-          }
-          process.exit(1);
-        }
-
-        p.note(
-          transformTemplate(SOURCE_TEMPLATE, {
-            source: functionUrl,
-          }),
-        );
-      },
-    },
-    {
-      title: "Cleaning up temporary directory...",
-      task: async () => {
-        await removeTmpDir();
-      },
-    },
   ]);
+
+  await deployFirestore(tmpDir);
+  await deployFunctions(tmpDir);
+  await printTemplate(tmpDir);
+
+  void removeTmpDir();
 
   p.log.message(
     `Next step: ${link(
