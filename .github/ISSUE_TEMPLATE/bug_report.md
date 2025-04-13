@@ -8,8 +8,8 @@ assignees: ''
 ---
 
 - [ ] Infrastructure may have changed. Did you retry `hot-updater init`?
-- [ ] It might be fixed in the latest version. Did you check the release notes?
 - [ ] Is your Node version v20 or higher?
+- [ ] Are you aware that the update will only work properly if you `hot-updater deploy` after building the native app?
 
 ## Problem
 
