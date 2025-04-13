@@ -2,6 +2,7 @@ import fs from "fs";
 import * as p from "@clack/prompts";
 import { makeEnv } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import picocolors from "picocolors";
 
 const CONFIG_TEMPLATE = `import {metro} from '@hot-updater/metro';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
@@ -22,12 +23,6 @@ export default defineConfig({
     clientEmail:process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
   }),
 });`;
-
-interface Icred {
-  projectId: string | symbol;
-  privateKey: string | symbol;
-  clientEmail: string | symbol;
-}
 
 async function addToGitignore(): Promise<void> {
   const addContent = "*firebase*adminsdk*.json";
@@ -57,20 +52,41 @@ async function addToGitignore(): Promise<void> {
 }
 
 export const setEnv = async (): Promise<string> => {
-  const cred: Icred = {
-    projectId: "",
-    privateKey: "",
-    clientEmail: "",
+  const cred: {
+    projectId: string | null;
+    privateKey: string | null;
+    clientEmail: string | null;
+  } = {
+    projectId: null,
+    privateKey: null,
+    clientEmail: null,
   };
 
+  p.log.message(picocolors.blue("The following infrastructure is required:"));
+  p.log.message(`${picocolors.blue("Firebase Project")}`);
+  p.log.message(`${picocolors.blue("Firebase Storage")}`);
+  p.log.message(`${picocolors.blue("Firestore Database")}`);
+  p.log.message(
+    `${picocolors.blue("Firebase SDK credentials JSON")}: Project settings -> Service accounts -> Firebase Admin SDK -> Generate new private key`,
+  );
   const jsonPath = await p.text({
     message: "Enter the Firebase SDK credentials JSON file path:",
+    placeholder: "firebase-credentials.json",
+    defaultValue: "firebase-credentials.json",
     validate: (value: string): string | undefined => {
-      if (!value) return "File path is required";
-      if (!fs.existsSync(value)) return "File does not exist";
+      if (!value) {
+        return "File path is required";
+      }
+      if (!fs.existsSync(value)) {
+        return "File does not exist";
+      }
       return undefined;
     },
   });
+  if (p.isCancel(jsonPath)) {
+    p.log.error("Firebase credentials JSON file path is required");
+    process.exit(1);
+  }
 
   await addToGitignore();
 
