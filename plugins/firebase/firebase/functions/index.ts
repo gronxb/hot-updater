@@ -53,10 +53,8 @@ app.get("/api/check-update", async (c) => {
     }
 
     const path = `${updateInfo.id}/bundle.zip`;
-    const fileUrl = new URL(
-      `hot-updater/${path}`,
-      `https://${HotUpdater.REGION}-${HotUpdater.PROJECT_ID}.cloudfunctions.net`,
-    );
+    const fileUrl = new URL(c.req.url);
+    fileUrl.pathname = `hot-updater/${path}`;
     const token = await signToken(path, HotUpdater.JWT_SECRET);
     fileUrl.searchParams.append("token", token);
 
