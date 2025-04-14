@@ -58,5 +58,8 @@
     "picocolors": "^1.0.0",
     "tsup": "^8.3.6",
     "vitest": "2.1.8"
+  },
+  "peerDependencies": {
+    "firebase-admin": "*"
   }
 }

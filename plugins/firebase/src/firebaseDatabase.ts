@@ -3,29 +3,15 @@ import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 
-export interface FirebaseDatabaseConfig {
-  projectId: string;
-  privateKey: string;
-  clientEmail: string;
-}
-
 export const firebaseDatabase = (
-  config: FirebaseDatabaseConfig,
+  config: admin.AppOptions,
   hooks?: DatabasePluginHooks,
 ) => {
-  const firebaseConfig = {
-    project_id: config.projectId,
-    private_key: config.privateKey,
-    client_email: config.clientEmail,
-  };
-
   let app: admin.app.App;
   try {
     app = admin.app();
   } catch (e) {
-    app = admin.initializeApp({
-      credential: admin.credential.cert(firebaseConfig as admin.ServiceAccount),
-    });
+    app = admin.initializeApp(config);
   }
 
   const db = admin.firestore(app);

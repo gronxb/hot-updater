@@ -23,7 +23,11 @@ const PACKAGE_MAP = {
   },
   firebase: {
     dependencies: [],
-    devDependencies: ["firebase-tools", "@hot-updater/firebase"],
+    devDependencies: [
+      "firebase-tools",
+      "firebase-admin",
+      "@hot-updater/firebase",
+    ],
   },
 } as const;
 

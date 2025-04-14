@@ -8,38 +8,22 @@ import * as admin from "firebase-admin";
 import fs from "fs/promises";
 import mime from "mime";
 
-export interface FirebaseStorageConfig {
-  projectId: string;
-  privateKey: string;
-  clientEmail: string;
-}
-
 export const firebaseStorage =
-  (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
+  (config: admin.AppOptions, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
     const storageBucket = `${config.projectId}.firebasestorage.app`;
-    const firebaseConfig = {
-      project_id: config.projectId,
-      private_key: config.privateKey,
-      client_email: config.clientEmail,
-    };
 
     let app: admin.app.App;
     try {
       app = admin.app();
     } catch (e) {
-      app = admin.initializeApp({
-        credential: admin.credential.cert(
-          firebaseConfig as admin.ServiceAccount,
-        ),
-      });
+      app = admin.initializeApp(config);
     }
 
     const bucket = admin.storage().bucket(storageBucket);
 
     return {
       name: "firebaseStorage",
-
       async deleteBundle(bundleId) {
         const prefix = `${bundleId}/`;
         try {
