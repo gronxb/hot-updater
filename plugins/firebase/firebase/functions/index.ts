@@ -1,6 +1,6 @@
 import { NIL_UUID, type Platform } from "@hot-updater/core";
-import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
 import * as admin from "firebase-admin";
+import { cert } from "firebase-admin/app";
 import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
 import { createFirebaseApp } from "./createFirebaseApp";
@@ -9,13 +9,22 @@ import { getUpdateInfo } from "./getUpdateInfo";
 declare global {
   var HotUpdater: {
     REGION: string;
-    JWT_SECRET: string;
     PROJECT_ID: string;
+    CLIENT_EMAIL: string;
+    PRIVATE_KEY: string;
   };
 }
 
 if (!admin.apps.length) {
-  admin.initializeApp();
+  admin.initializeApp({
+    projectId: HotUpdater.PROJECT_ID,
+    storageBucket: `${HotUpdater.PROJECT_ID}.firebasestorage.app`,
+    credential: cert({
+      clientEmail: HotUpdater.CLIENT_EMAIL,
+      privateKey: HotUpdater.PRIVATE_KEY,
+      projectId: HotUpdater.PROJECT_ID,
+    }),
+  });
 }
 
 const app = new Hono();
@@ -53,54 +62,29 @@ app.get("/api/check-update", async (c) => {
       return c.json(null, 200);
     }
 
-    const appUpdateInfo = await withJwtSignedUrl({
-      data: updateInfo,
-      reqUrl: c.req.url,
-      jwtSecret: HotUpdater.JWT_SECRET,
-      pathPrefix: "/hot-updater",
-    });
+    if (updateInfo.id === NIL_UUID) {
+      return c.json({
+        ...updateInfo,
+        fileUrl: null,
+      });
+    }
 
-    return c.json(appUpdateInfo, 200);
+    const signedUrl = await admin
+      .storage()
+      .bucket(admin.app().options.storageBucket)
+      .file([updateInfo.id, "bundle.zip"].join("/"))
+      .getSignedUrl({
+        action: "read",
+        expires: Date.now() + 60 * 1000,
+      });
+
+    return c.json({ ...updateInfo, fileUrl: signedUrl }, 200);
   } catch (error) {
     if (error instanceof Error) {
       return c.json({ error: error.message }, 500);
     }
     return c.json({ error: "Internal server error" }, 500);
   }
-});
-
-app.get("*", async (c) => {
-  const path = c.req.path.substring(1);
-  const token = c.req.query("token");
-  const result = await verifyJwtSignedUrl({
-    path,
-    token,
-    jwtSecret: HotUpdater.JWT_SECRET,
-    handler: async (key) => {
-      const bucket = admin.storage().bucket(admin.app().options.storageBucket);
-
-      const file = bucket.file(key);
-      const [exists] = await file.exists();
-
-      if (!exists) {
-        console.error(`File not found: ${key}`);
-        return null;
-      }
-
-      const [metadata] = await file.getMetadata();
-      const [fileContent] = await file.download();
-
-      return {
-        body: fileContent,
-        contentType: metadata.contentType,
-      };
-    },
-  });
-
-  if (result.status !== 200) {
-    return c.json({ error: result.error }, result.status);
-  }
-  return c.body(result.responseBody, 200, result.responseHeaders);
 });
 
 const hotUpdaterFunction = createFirebaseApp(functions, {

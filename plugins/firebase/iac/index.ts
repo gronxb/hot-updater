@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
@@ -323,7 +322,6 @@ export const runInit = async () => {
         } else {
           p.log.message(`Using existing region: ${currentRegion}`);
         }
-        const jwtSecret = crypto.randomBytes(48).toString("hex");
 
         const code = await transformEnv(
           await fs.promises.readFile(
@@ -332,8 +330,9 @@ export const runInit = async () => {
           ),
           {
             REGION: selectedRegion,
-            JWT_SECRET: jwtSecret,
             PROJECT_ID: initializeVariable.projectId,
+            CLIENT_EMAIL: initializeVariable.clientEmail,
+            PRIVATE_KEY: initializeVariable.privateKey,
           },
         );
         await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);

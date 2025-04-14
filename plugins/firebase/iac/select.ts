@@ -52,7 +52,11 @@ async function addToGitignore(): Promise<void> {
   }
 }
 
-export const setEnv = async (): Promise<string> => {
+export const setEnv = async (): Promise<{
+  projectId: string;
+  privateKey: string;
+  clientEmail: string;
+}> => {
   const cred: {
     projectId: string | null;
     privateKey: string | null;
@@ -141,7 +145,16 @@ export const setEnv = async (): Promise<string> => {
     console.error("Error writing configuration file:", error.message);
   }
 
-  return cred.projectId as string;
+  if (!cred.projectId || !cred.privateKey || !cred.clientEmail) {
+    p.log.error("Failed to make Env and hot-updater.config.ts");
+    process.exit(1);
+  }
+
+  return {
+    projectId: cred.projectId,
+    clientEmail: cred.clientEmail,
+    privateKey: cred.privateKey,
+  };
 };
 
 const handleError = (err: unknown) => {
@@ -162,14 +175,16 @@ export const initFirebaseUser = async () => {
     handleError(err);
   }
 
-  const selectedProject = await setEnv();
+  const cred = await setEnv();
 
-  if (!selectedProject) {
+  if (!cred.projectId) {
     p.log.error("Failed to make Env and hot-updater.config.ts");
     process.exit(1);
   }
 
   return {
-    projectId: selectedProject,
+    projectId: cred.projectId,
+    clientEmail: cred.clientEmail,
+    privateKey: cred.privateKey,
   };
 };
