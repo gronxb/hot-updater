@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
-import { fetchUpdateInfo } from "./fetchUpdateInfo";
+import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
 import {
   getAppVersion,
   getBundleId,
@@ -9,7 +9,7 @@ import {
 } from "./native";
 
 export interface CheckForUpdateOptions {
-  source: string;
+  source: UpdateSource;
   requestHeaders?: Record<string, string>;
   onError?: (error: Error) => void;
   /**
