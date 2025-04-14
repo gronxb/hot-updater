@@ -330,9 +330,6 @@ export const runInit = async () => {
           ),
           {
             REGION: selectedRegion,
-            PROJECT_ID: initializeVariable.projectId,
-            CLIENT_EMAIL: initializeVariable.clientEmail,
-            PRIVATE_KEY: initializeVariable.privateKey,
           },
         );
         await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);

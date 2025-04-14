@@ -1,6 +1,5 @@
 import { NIL_UUID, type Platform } from "@hot-updater/core";
 import * as admin from "firebase-admin";
-import { cert } from "firebase-admin/app";
 import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
 import { createFirebaseApp } from "./createFirebaseApp";
@@ -9,22 +8,11 @@ import { getUpdateInfo } from "./getUpdateInfo";
 declare global {
   var HotUpdater: {
     REGION: string;
-    PROJECT_ID: string;
-    CLIENT_EMAIL: string;
-    PRIVATE_KEY: string;
   };
 }
 
 if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: HotUpdater.PROJECT_ID,
-    storageBucket: `${HotUpdater.PROJECT_ID}.firebasestorage.app`,
-    credential: cert({
-      clientEmail: HotUpdater.CLIENT_EMAIL,
-      privateKey: HotUpdater.PRIVATE_KEY,
-      projectId: HotUpdater.PROJECT_ID,
-    }),
-  });
+  admin.initializeApp();
 }
 
 const app = new Hono();
