@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/supabase",
   "type": "module",
-  "version": "0.12.6",
+  "version": "0.16.2",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -10,6 +10,15 @@
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./edge-functions": {
+      "import": "./supabase/index.ts",
+      "require": "./supabase/index.ts"
+    },
+    "./iac": {
+      "types": "./dist/iac/index.d.ts",
+      "import": "./dist/iac/index.js",
+      "require": "./dist/iac/index.cjs"
     }
   },
   "license": "MIT",
@@ -25,24 +34,27 @@
   "files": [
     "dist",
     "sql",
-    "supabase/functions",
-    "supabase/migrations",
+    "supabase",
+    "!supabase/.temp",
     "package.json"
   ],
   "scripts": {
-    "build": "rslib build",
+    "build": "tsup",
     "test:type": "tsc --noEmit",
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "0.12.6",
-    "@hot-updater/plugin-core": "0.12.6",
+    "@hot-updater/core": "0.16.2",
+    "@hot-updater/plugin-core": "0.16.2",
     "@supabase/supabase-js": "^2.47.10"
   },
   "devDependencies": {
-    "picocolors": "^1.0.0",
-    "@hot-updater/postgres": "0.12.6",
+    "@clack/prompts": "0.10.0",
+    "@hot-updater/postgres": "0.16.2",
     "dayjs": "^1.11.13",
-    "mime": "^4.0.4"
+    "es-toolkit": "^1.32.0",
+    "execa": "^9.5.2",
+    "mime": "^4.0.4",
+    "picocolors": "^1.0.0"
   }
 }

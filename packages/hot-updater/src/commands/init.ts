@@ -1,13 +1,12 @@
-import { printBanner } from "@/components/banner";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
+import { printBanner } from "@/utils/printBanner";
+import * as p from "@clack/prompts";
 import { isCancel, select } from "@clack/prompts";
-import { initAwsS3LambdaEdge } from "./init/aws";
-import { initCloudflareD1R2Worker } from "./init/cloudflareD1R2Worker";
-import { initSupabase } from "./init/supabase";
+import { ExecaError } from "execa";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv", "hot-updater"],
+  devDependencies: ["dotenv"],
 };
 
 const PACKAGE_MAP = {
@@ -19,7 +18,7 @@ const PACKAGE_MAP = {
     dependencies: [],
     devDependencies: ["@hot-updater/aws"],
   },
-  "cloudflare-d1-r2-worker": {
+  cloudflare: {
     dependencies: [],
     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
   },
@@ -50,7 +49,7 @@ export const init = async () => {
     options: [
       { value: "supabase", label: "Supabase" },
       {
-        value: "cloudflare-d1-r2-worker",
+        value: "cloudflare",
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
@@ -61,30 +60,43 @@ export const init = async () => {
     process.exit(0);
   }
 
-  await ensureInstallPackages({
-    dependencies: [
-      ...buildPluginPackage.dependencies,
-      ...REQUIRED_PACKAGES.dependencies,
-      ...PACKAGE_MAP[provider].dependencies,
-    ],
-    devDependencies: [
-      ...buildPluginPackage.devDependencies,
-      ...REQUIRED_PACKAGES.devDependencies,
-      ...PACKAGE_MAP[provider].devDependencies,
-    ],
-  });
+  try {
+    await ensureInstallPackages({
+      dependencies: [
+        ...buildPluginPackage.dependencies,
+        ...REQUIRED_PACKAGES.dependencies,
+        ...PACKAGE_MAP[provider].dependencies,
+      ],
+      devDependencies: [
+        ...buildPluginPackage.devDependencies,
+        ...REQUIRED_PACKAGES.devDependencies,
+        ...PACKAGE_MAP[provider].devDependencies,
+      ],
+    });
+  } catch (e) {
+    if (e instanceof ExecaError) {
+      p.log.error(e.stderr ?? e.message);
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+
+    process.exit(1);
+  }
 
   switch (provider) {
     case "supabase": {
-      await initSupabase();
+      const supabase = await import("@hot-updater/supabase/iac");
+      await supabase.runInit();
       break;
     }
-    case "cloudflare-d1-r2-worker": {
-      await initCloudflareD1R2Worker();
+    case "cloudflare": {
+      const cloudflare = await import("@hot-updater/cloudflare/iac");
+      await cloudflare.runInit();
       break;
     }
     case "aws": {
-      await initAwsS3LambdaEdge();
+      const aws = await import("@hot-updater/aws/iac");
+      await aws.runInit();
       break;
     }
     default:

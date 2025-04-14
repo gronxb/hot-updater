@@ -1,56 +1,58 @@
-import type { Bundle, BundleArg, UpdateInfo } from "@hot-updater/core";
-import { getUpdateInfo } from "@hot-updater/js";
 import { Platform } from "react-native";
-import { ensureUpdateInfo } from "./ensureUpdateInfo";
 import { HotUpdaterError } from "./error";
-import { getAppVersion, getBundleId } from "./native";
+import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
+import {
+  getAppVersion,
+  getBundleId,
+  getChannel,
+  getMinBundleId,
+} from "./native";
 
-export interface CheckForUpdateConfig {
-  source: BundleArg;
+export interface CheckForUpdateOptions {
+  source: UpdateSource;
   requestHeaders?: Record<string, string>;
+  onError?: (error: Error) => void;
+  /**
+   * The timeout duration for the request.
+   * @default 5000
+   */
+  requestTimeout?: number;
 }
 
-export async function checkForUpdate(config: CheckForUpdateConfig) {
+export async function checkForUpdate(options: CheckForUpdateOptions) {
   if (__DEV__) {
     return null;
   }
 
   if (!["ios", "android"].includes(Platform.OS)) {
-    throw new HotUpdaterError(
-      "HotUpdater is only supported on iOS and Android",
+    options.onError?.(
+      new HotUpdaterError("HotUpdater is only supported on iOS and Android"),
     );
+    return null;
   }
 
-  const currentAppVersion = await getAppVersion();
+  const currentAppVersion = getAppVersion();
   const platform = Platform.OS as "ios" | "android";
-  const currentBundleId = await getBundleId();
+  const currentBundleId = getBundleId();
+  const minBundleId = getMinBundleId();
+  const channel = getChannel();
 
   if (!currentAppVersion) {
-    throw new HotUpdaterError("Failed to get app version");
+    options.onError?.(new HotUpdaterError("Failed to get app version"));
+    return null;
   }
 
-  const ensuredUpdateInfo = await ensureUpdateInfo(
-    config.source,
+  return fetchUpdateInfo(
+    options.source,
     {
       appVersion: currentAppVersion,
       bundleId: currentBundleId,
       platform,
+      minBundleId,
+      channel: channel ?? undefined,
     },
-    config.requestHeaders,
+    options.requestHeaders,
+    options.onError,
+    options.requestTimeout,
   );
-
-  let updateInfo: UpdateInfo | null = null;
-  if (Array.isArray(ensuredUpdateInfo)) {
-    const bundles: Bundle[] = ensuredUpdateInfo;
-
-    updateInfo = await getUpdateInfo(bundles, {
-      appVersion: currentAppVersion,
-      bundleId: currentBundleId,
-      platform,
-    });
-  } else {
-    updateInfo = ensuredUpdateInfo;
-  }
-
-  return updateInfo;
 }

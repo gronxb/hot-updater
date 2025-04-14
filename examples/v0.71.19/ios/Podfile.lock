@@ -14,7 +14,7 @@ PODS:
   - hermes-engine (0.71.19):
     - hermes-engine/Pre-built (= 0.71.19)
   - hermes-engine/Pre-built (0.71.19)
-  - HotUpdater (0.6.0):
+  - HotUpdater (0.15.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
     - SSZipArchive (~> 2.2.2)
@@ -480,11 +480,11 @@ SPEC CHECKSUMS:
   FBLazyVector: 038aa5ab388c9eec7a6a65b71596afd9ff99c949
   FBReactNativeSpec: d3712bd711c0ebc865dd38d4a2d97e1d76fd1234
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
-  glog: 04b94705f318337d7ead9e6d17c019bd9b1f6b1b
-  hermes-engine: 1468b458e81705fcd55ed6e29c32ff069f04b69c
-  HotUpdater: 0b058a356331a997c0122e279b61b2bd8a0e2ece
+  glog: 791fe035093b84822da7f0870421a25839ca7870
+  hermes-engine: 1b2623da987a23d7d3122d883e22b716948ee6f1
+  HotUpdater: 10c24b0d2e0b9f399ec72bb11a122e5ec0d6616a
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
-  RCT-Folly: 424b8c9a7a0b9ab2886ffe9c3b041ef628fd4fb1
+  RCT-Folly: 85766c3226c7ec638f05ad7cb3cf6a268d6c4241
   RCTRequired: 79b5f823c2b4b865451ba9ddb33c676786760ea8
   RCTTypeSafety: 4f6d5414413d8848923ccd448c4cef4b6ffcd403
   React: d277ab7d840987a460690fcbe979e9234785ad63

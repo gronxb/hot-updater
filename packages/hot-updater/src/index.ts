@@ -1,30 +1,26 @@
 #!/usr/bin/env node
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
-import { getPluginEnv } from "@/commands/getPluginEnv";
 import { init } from "@/commands/init";
-import { banner, printBanner } from "@/components/banner";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
-import { getCwd, log } from "@hot-updater/plugin-core";
+import { banner, getCwd, log } from "@hot-updater/plugin-core";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
+import { printBanner } from "./utils/printBanner";
+
+const DEFAULT_CHANNEL = "production";
 
 const program = new Command();
 
 program
   .name("hot-updater")
-  .description(banner)
+  .description(banner(version))
   .version(version as string);
 
 program.command("init").description("Initialize Hot Updater").action(init);
-
-program
-  .command("get-plugin-env")
-  .description("Get the environment variables for the plugin")
-  .action(getPluginEnv);
 
 program
   .command("deploy")
@@ -50,7 +46,25 @@ program
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),
   )
+  .addOption(
+    new Option(
+      "-o, --bundle-output-path <bundleOutputPath>",
+      "the path where the bundle.zip will be generated",
+    ),
+  )
   .addOption(new Option("-i, --interactive", "interactive mode").default(false))
+  .addOption(
+    new Option(
+      "-c, --channel <channel>",
+      "specify the channel to deploy",
+    ).default(DEFAULT_CHANNEL),
+  )
+  .addOption(
+    new Option(
+      "-m, --message <message>",
+      "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+    ),
+  )
   .action(async (options: DeployOptions) => {
     deploy(options);
   });

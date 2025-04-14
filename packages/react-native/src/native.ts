@@ -4,6 +4,7 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 const HotUpdater = {
   HOT_UPDATER_BUNDLE_ID: NIL_UUID,
+  CHANNEL: "production",
 };
 
 const LINKING_ERROR =
@@ -66,8 +67,9 @@ export const updateBundle = (
 /**
  * Fetches the current app version.
  */
-export const getAppVersion = (): Promise<string | null> => {
-  return HotUpdaterNative.getAppVersion();
+export const getAppVersion = (): string | null => {
+  const constants = HotUpdaterNative.getConstants();
+  return constants?.APP_VERSION ?? null;
 };
 
 /**
@@ -80,11 +82,36 @@ export const reload = () => {
 };
 
 /**
+ * Fetches the minimum bundle id, which represents the initial bundle of the app
+ * since it is created at build time.
+ *
+ * @returns {string} Resolves with the minimum bundle id or null if not available.
+ */
+export const getMinBundleId = (): string => {
+  const constants = HotUpdaterNative.getConstants();
+  return constants.MIN_BUNDLE_ID;
+};
+
+/**
  * Fetches the current bundle version id.
  *
  * @async
  * @returns {Promise<string>} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  return HotUpdater.HOT_UPDATER_BUNDLE_ID;
+  return HotUpdater.HOT_UPDATER_BUNDLE_ID === NIL_UUID
+    ? getMinBundleId()
+    : HotUpdater.HOT_UPDATER_BUNDLE_ID;
+};
+
+/**
+ * Sets the channel for the app.
+ */
+export const setChannel = async (channel: string) => {
+  return HotUpdaterNative.setChannel(channel);
+};
+
+export const getChannel = (): string | null => {
+  const constants = HotUpdaterNative.getConstants();
+  return constants?.CHANNEL ?? HotUpdater.CHANNEL ?? null;
 };

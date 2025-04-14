@@ -1,3 +1,180 @@
+## 0.16.2 (2025-04-10)
+
+### 🚀 Features
+
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
+## 0.16.1 (2025-04-09)
+
+### 🚀 Features
+
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
+## 0.16.0 (2025-04-07)
+
+### 🚀 Features
+
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
+## 0.15.1 (2025-04-06)
+
+### 🚀 Features
+
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+
+### ❤️ Thank You
+
+- gronxb
+- Sungyu Kang
+
+## 0.15.0 (2025-04-03)
+
+### 🩹 Fixes
+
+- **ios:** stable getMinBundleId ([#247](https://github.com/gronxb/hot-updater/pull/247))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.14.0 (2025-04-01)
+
+This was a version bump only, there were no code changes.
+
+## 0.13.5 (2025-03-29)
+
+### 🩹 Fixes
+
+- **cli:** prevent update failure due to incorrect ZIP file generation during `hot-updater deploy` ([#237](https://github.com/gronxb/hot-updater/pull/237))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.13.4 (2025-03-29)
+
+### 🩹 Fixes
+
+- **plugin-core:** using `ts-morph` and not `typescript` peerDeps ([#236](https://github.com/gronxb/hot-updater/pull/236))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.13.3 (2025-03-28)
+
+### 🚀 Features
+
+- **postgresql:** `getUpdateInfo` node util ([#215](https://github.com/gronxb/hot-updater/pull/215))
+
+### 🩹 Fixes
+
+- **aws:** create s3 region us-east-1 ([#231](https://github.com/gronxb/hot-updater/pull/231))
+- **cli:** banner version not showing ([#226](https://github.com/gronxb/hot-updater/pull/226))
+
+### ❤️ Thank You
+
+- miso-kyoungminkim
+- Sungyu Kang
+
+## 0.13.2 (2025-03-28)
+
+### 🩹 Fixes
+
+- **supabase:** exports edge-functions entryPoint ([#224](https://github.com/gronxb/hot-updater/pull/224))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.13.1 (2025-03-27)
+
+### 🩹 Fixes
+
+- **cli:** getDefaultTargetAppVersion from info.plist ([#218](https://github.com/gronxb/hot-updater/pull/218))
+- **metro:** ensure `bundle.map` is generated correctly when `enableHermes` is set to true ([#219](https://github.com/gronxb/hot-updater/pull/219))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
+## 0.13.0 (2025-03-26)
+
+This was a version bump only, there were no code changes.
+
+## 0.12.7 (2025-03-19)
+
+### 🚀 Features
+
+- **console:** icon colorful ([#189](https://github.com/gronxb/hot-updater/pull/189))
+
+### 🩹 Fixes
+
+- **cli:** windows migration command blocking ([#195](https://github.com/gronxb/hot-updater/pull/195))
+
+### 🔥 Performance
+
+- **console:** migrate typia schema ([#188](https://github.com/gronxb/hot-updater/pull/188))
+
+### ❤️ Thank You
+
+- Sungyu Kang
+
 ## 0.12.6 (2025-03-17)
 
 ### 🩹 Fixes

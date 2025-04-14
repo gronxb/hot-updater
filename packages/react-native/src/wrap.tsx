@@ -1,9 +1,9 @@
-import type React from "react";
+import React from "react";
 import { useEffect, useLayoutEffect, useState } from "react";
-import { type CheckForUpdateConfig, checkForUpdate } from "./checkForUpdate";
+import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { reload, updateBundle } from "./native";
+import { getBundleId, reload, updateBundle } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
@@ -12,7 +12,7 @@ type UpdateStatus =
   | "UPDATING"
   | "UPDATE_PROCESS_COMPLETED";
 
-export interface HotUpdaterConfig extends CheckForUpdateConfig {
+export interface HotUpdaterOptions extends CheckForUpdateOptions {
   /**
    * Component to show while downloading a new bundle update.
    *
@@ -37,6 +37,7 @@ export interface HotUpdaterConfig extends CheckForUpdateConfig {
   fallbackComponent?: React.FC<{
     status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
     progress: number;
+    message: string | null;
   }>;
   onError?: (error: HotUpdaterError) => void;
   onProgress?: (progress: number) => void;
@@ -55,26 +56,37 @@ export interface HotUpdaterConfig extends CheckForUpdateConfig {
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 }
 
-export function wrap<P>(
-  config: HotUpdaterConfig,
-): (WrappedComponent: React.ComponentType) => React.ComponentType<P> {
-  const { reloadOnForceUpdate = true, ...restConfig } = config;
-  return (WrappedComponent) => {
-    const HotUpdaterHOC: React.FC<P> = () => {
+export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
+  options: HotUpdaterOptions,
+): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P> {
+  const { reloadOnForceUpdate = true, ...restOptions } = options;
+
+  return (WrappedComponent: React.ComponentType<P>) => {
+    const HotUpdaterHOC: React.FC<P> = (props: P) => {
       const progress = useHotUpdaterStore((state) => state.progress);
+
+      const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
 
       const initHotUpdater = useEventCallback(async () => {
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
+
           const updateInfo = await checkForUpdate({
-            source: restConfig.source,
-            requestHeaders: restConfig.requestHeaders,
+            source: restOptions.source,
+            requestHeaders: restOptions.requestHeaders,
+            onError: restOptions.onError,
           });
+
+          setMessage(updateInfo?.message ?? null);
+
           if (!updateInfo) {
-            restConfig.onUpdateProcessCompleted?.({
+            restOptions.onUpdateProcessCompleted?.({
               status: "UP_TO_DATE",
+              shouldForceUpdate: false,
+              message: null,
+              id: getBundleId(),
             });
             setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;
@@ -82,10 +94,11 @@ export function wrap<P>(
 
           if (updateInfo.shouldForceUpdate === false) {
             void updateBundle(updateInfo.id, updateInfo.fileUrl);
-            restConfig.onUpdateProcessCompleted?.({
+            restOptions.onUpdateProcessCompleted?.({
               id: updateInfo.id,
               status: updateInfo.status,
               shouldForceUpdate: updateInfo.shouldForceUpdate,
+              message: updateInfo.message,
             });
             setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;
@@ -97,6 +110,7 @@ export function wrap<P>(
             updateInfo.id,
             updateInfo.fileUrl,
           );
+
           if (!isSuccess) {
             throw new Error(
               "New update was found but failed to download the bundle.",
@@ -107,15 +121,17 @@ export function wrap<P>(
             reload();
           }
 
-          restConfig.onUpdateProcessCompleted?.({
+          restOptions.onUpdateProcessCompleted?.({
             id: updateInfo.id,
             status: updateInfo.status,
             shouldForceUpdate: updateInfo.shouldForceUpdate,
+            message: updateInfo.message,
           });
+
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         } catch (error) {
           if (error instanceof HotUpdaterError) {
-            restConfig.onError?.(error);
+            restOptions.onError?.(error);
           }
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
           throw error;
@@ -123,7 +139,7 @@ export function wrap<P>(
       });
 
       useEffect(() => {
-        restConfig.onProgress?.(progress);
+        restOptions.onProgress?.(progress);
       }, [progress]);
 
       useLayoutEffect(() => {
@@ -131,16 +147,22 @@ export function wrap<P>(
       }, []);
 
       if (
-        restConfig.fallbackComponent &&
+        restOptions.fallbackComponent &&
         updateStatus !== "UPDATE_PROCESS_COMPLETED"
       ) {
-        const Fallback = restConfig.fallbackComponent;
-        return <Fallback progress={progress} status={updateStatus} />;
+        const Fallback = restOptions.fallbackComponent;
+        return (
+          <Fallback
+            progress={progress}
+            status={updateStatus}
+            message={message}
+          />
+        );
       }
 
-      return <WrappedComponent />;
+      return <WrappedComponent {...props} />;
     };
 
-    return HotUpdaterHOC;
+    return HotUpdaterHOC as React.ComponentType<P>;
   };
 }

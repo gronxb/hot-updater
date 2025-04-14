@@ -22,10 +22,6 @@ export interface Bundle {
    */
   enabled: boolean;
   /**
-   * The file URL of the bundle.
-   */
-  fileUrl: string;
-  /**
    * The hash of the bundle.
    */
   fileHash: string;
@@ -37,6 +33,18 @@ export interface Bundle {
    * The message of the bundle.
    */
   message: string | null;
+  /**
+   * The name of the channel where the bundle is deployed.
+   *
+   * Examples:
+   * - production: Production channel for end users
+   * - development: Development channel for testing
+   * - staging: Staging channel for quality assurance before production
+   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
+   *
+   * Different channel values can be used based on each app's requirements.
+   */
+  channel: string;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -54,24 +62,54 @@ type SnakeKeyObject<T> = T extends Record<string, any>
 
 export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
 
-export type BundleArg =
-  | string
-  | Bundle[]
-  | (() => Promise<Bundle[]>)
-  | (() => Bundle[]);
-
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
+/**
+ * The update info for the database layer.
+ * This is the update info that is used by the database.
+ */
 export interface UpdateInfo {
   id: string;
   shouldForceUpdate: boolean;
-  fileUrl: string | null;
-  fileHash: string | null;
+  message: string | null;
   status: UpdateStatus;
+}
+
+/**
+ * The update info for the app layer.
+ * This is the update info that is used by the app.
+ */
+export interface AppUpdateInfo extends UpdateInfo {
+  fileUrl: string | null;
 }
 
 export interface GetBundlesArgs {
   platform: Platform;
+  /**
+   * The current bundle id of the app.
+   */
   bundleId: string;
+  /**
+   * The current app version.
+   */
   appVersion: string;
+  /**
+   * Minimum bundle id that should be used.
+   * This value is generated at build time via getMinBundleId().
+   *
+   * @default "00000000-0000-0000-0000-000000000000"
+   */
+  minBundleId?: string;
+  /**
+   * The name of the channel where the bundle is deployed.
+   *
+   * @default "production"
+   *
+   * Examples:
+   * - production: Production channel for end users
+   * - development: Development channel for testing
+   * - staging: Staging channel for quality assurance before production
+   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
+   */
+  channel?: string;
 }

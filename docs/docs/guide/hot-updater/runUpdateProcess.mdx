@@ -58,3 +58,19 @@ if(result.status !== "UP_TO_DATE" && result.shouldForceUpdate) {
 | `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
 | `shouldForceUpdate` | boolean | Whether the update process is forced |
 | `id` | string | The ID of the bundle to update |
+| `message` | string | The message of the update process |
+
+
+## Custom source Function
+
+You can pass an async function to the source option for full control over how update info is fetched.
+
+```tsx
+const result = await HotUpdater.runUpdateProcess({
+  source: async () => {
+    const res = await fetch("https://your.api/update-info");
+    return (await res.json()) as AppUpdateInfo | null;
+  },
+  // ... other options
+});
+```

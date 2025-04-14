@@ -31,16 +31,30 @@ class HotUpdater : ReactPackage {
             return packageInfo.versionName
         }
 
+        @Volatile
+        private var prefsInstance: HotUpdaterPrefs? = null
+
+        @Volatile
+        private var cachedAppVersion: String? = null
+
+        private fun getPrefs(context: Context): HotUpdaterPrefs {
+            val appContext = context.applicationContext
+            val currentAppVersion = getAppVersion(appContext) ?: "unknown"
+            synchronized(this) {
+                if (prefsInstance == null || cachedAppVersion != currentAppVersion) {
+                    prefsInstance = HotUpdaterPrefs(appContext, currentAppVersion)
+                    cachedAppVersion = currentAppVersion
+                }
+                return prefsInstance!!
+            }
+        }
+
         private fun setBundleURL(
             context: Context,
             bundleURL: String?,
         ) {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            with(sharedPreferences.edit()) {
-                putString("HotUpdaterBundleURL", bundleURL)
-                apply()
-            }
+            val updaterPrefs = getPrefs(context)
+            updaterPrefs.setItem("HotUpdaterBundleURL", bundleURL)
 
             if (bundleURL == null) {
                 return
@@ -98,20 +112,31 @@ class HotUpdater : ReactPackage {
         }
 
         fun getJSBundleFile(context: Context): String {
-            val sharedPreferences =
-                context.getSharedPreferences("HotUpdaterPrefs", Context.MODE_PRIVATE)
-            val urlString = sharedPreferences.getString("HotUpdaterBundleURL", null)
+            val updaterPrefs = getPrefs(context)
+            val urlString = updaterPrefs.getItem("HotUpdaterBundleURL")
             if (urlString.isNullOrEmpty()) {
                 return "assets://index.android.bundle"
             }
 
             val file = File(urlString)
             if (!file.exists()) {
-                setBundleURL(context, null)
+                updaterPrefs.setItem("HotUpdaterBundleURL", null)
                 return "assets://index.android.bundle"
             }
-
             return urlString
+        }
+
+        fun setChannel(
+            context: Context,
+            channel: String,
+        ) {
+            val updaterPrefs = getPrefs(context)
+            updaterPrefs.setItem("HotUpdaterChannel", channel)
+        }
+
+        fun getChannel(context: Context): String? {
+            val updaterPrefs = getPrefs(context)
+            return updaterPrefs.getItem("HotUpdaterChannel")
         }
 
         suspend fun updateBundle(
@@ -137,7 +162,6 @@ class HotUpdater : ReactPackage {
                 Log.d("HotUpdater", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
                 val existingIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
                 if (existingIndexFile != null) {
-                    // Update directory modification time to current time after update
                     finalBundleDir.setLastModified(System.currentTimeMillis())
                     setBundleURL(context, existingIndexFile.absolutePath)
                     cleanupOldBundles(bundleStoreDir)
@@ -153,7 +177,7 @@ class HotUpdater : ReactPackage {
             }
             tempDir.mkdirs()
 
-            val tempZipFile = File(tempDir, "build.zip")
+            val tempZipFile = File(tempDir, "bundle.zip")
             val extractedDir = File(tempDir, "extracted")
             extractedDir.mkdirs()
 
@@ -225,7 +249,6 @@ class HotUpdater : ReactPackage {
                 return false
             }
 
-            // Move (or copy) contents from temp folder to finalBundleDir
             if (finalBundleDir.exists()) {
                 finalBundleDir.deleteRecursively()
             }
@@ -241,38 +264,71 @@ class HotUpdater : ReactPackage {
                 return false
             }
 
-            // Update final bundle directory modification time to current time after bundle update
             finalBundleDir.setLastModified(System.currentTimeMillis())
-
             val bundlePath = finalIndexFile.absolutePath
             Log.d("HotUpdater", "Setting bundle URL: $bundlePath")
             setBundleURL(context, bundlePath)
-
-            // Clean up old bundles in the bundle store to keep only up to 2 bundles
             cleanupOldBundles(bundleStoreDir)
-
-            // Clean up temp directory
             tempDir.deleteRecursively()
 
             Log.d("HotUpdater", "Downloaded and extracted file successfully.")
             return true
         }
 
-        // Helper function to delete old bundles, keeping only up to 2 bundles in the bundle-store folder
         private fun cleanupOldBundles(bundleStoreDir: File) {
-            // Get list of all directories in bundle-store folder
             val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
-
-            // Sort by last modified time in descending order to keep most recently updated bundles at the top
             val sortedBundles = bundles.sortedByDescending { it.lastModified() }
-
-            // Delete all bundles except the top 2
-            if (sortedBundles.size > 2) {
-                sortedBundles.drop(2).forEach { oldBundle ->
+            if (sortedBundles.size > 1) {
+                sortedBundles.drop(1).forEach { oldBundle ->
                     Log.d("HotUpdater", "Removing old bundle: ${oldBundle.name}")
                     oldBundle.deleteRecursively()
                 }
             }
         }
+
+        fun getMinBundleId(): String =
+            try {
+                val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
+                val bytes =
+                    ByteArray(16).apply {
+                        this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
+                        this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
+                        this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
+                        this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
+                        this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
+                        this[5] = (buildTimestampMs and 0xFF).toByte()
+                        this[6] = 0x70.toByte()
+                        this[7] = 0x00.toByte()
+                        this[8] = 0x80.toByte()
+                        this[9] = 0x00.toByte()
+                        this[10] = 0x00.toByte()
+                        this[11] = 0x00.toByte()
+                        this[12] = 0x00.toByte()
+                        this[13] = 0x00.toByte()
+                        this[14] = 0x00.toByte()
+                        this[15] = 0x00.toByte()
+                    }
+                String.format(
+                    "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                    bytes[0].toInt() and 0xFF,
+                    bytes[1].toInt() and 0xFF,
+                    bytes[2].toInt() and 0xFF,
+                    bytes[3].toInt() and 0xFF,
+                    bytes[4].toInt() and 0xFF,
+                    bytes[5].toInt() and 0xFF,
+                    bytes[6].toInt() and 0xFF,
+                    bytes[7].toInt() and 0xFF,
+                    bytes[8].toInt() and 0xFF,
+                    bytes[9].toInt() and 0xFF,
+                    bytes[10].toInt() and 0xFF,
+                    bytes[11].toInt() and 0xFF,
+                    bytes[12].toInt() and 0xFF,
+                    bytes[13].toInt() and 0xFF,
+                    bytes[14].toInt() and 0xFF,
+                    bytes[15].toInt() and 0xFF,
+                )
+            } catch (e: Exception) {
+                "00000000-0000-0000-0000-000000000000"
+            }
     }
 }

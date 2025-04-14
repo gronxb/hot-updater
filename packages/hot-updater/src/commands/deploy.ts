@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import fs from "fs";
 import semverValid from "semver/ranges/valid";
 
 import open from "open";
@@ -7,25 +7,32 @@ import isPortReachable from "is-port-reachable";
 
 import * as p from "@clack/prompts";
 
-import { createZip } from "@/utils/createZip";
-
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
-import { getGitCommitHash, getLatestGitCommitMessage } from "@/utils/git";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { getLatestGitCommit } from "@/utils/git";
+import {
+  type Platform,
+  createZipTargetFiles,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
 import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
-import { printBanner } from "@/components/banner";
+import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
+import { printBanner } from "@/utils/printBanner";
 
 export interface DeployOptions {
-  targetAppVersion?: string;
-  platform?: Platform;
+  bundleOutputPath?: string;
+  channel: string;
   forceUpdate: boolean;
   interactive: boolean;
+  message?: string;
+  platform?: Platform;
+  targetAppVersion?: string;
 }
 
 export const deploy = async (options: DeployOptions) => {
@@ -33,10 +40,11 @@ export const deploy = async (options: DeployOptions) => {
 
   const cwd = getCwd();
 
-  const [gitCommitHash, gitMessage] = await Promise.all([
-    getGitCommitHash(),
-    getLatestGitCommitMessage(),
-  ]);
+  const gitCommit = await getLatestGitCommit();
+  const [gitCommitHash, gitMessage] = [
+    gitCommit?.id() ?? null,
+    gitCommit?.summary() ?? null,
+  ];
 
   const platform =
     options.platform ??
@@ -55,7 +63,9 @@ export const deploy = async (options: DeployOptions) => {
     return;
   }
 
-  const config = await loadConfig({ platform });
+  const channel = options.channel;
+
+  const config = await loadConfig({ platform, channel });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
@@ -80,6 +90,8 @@ export const deploy = async (options: DeployOptions) => {
         })
       : null);
 
+  const outputPath = options.bundleOutputPath ?? cwd;
+
   if (p.isCancel(targetAppVersion)) {
     return;
   }
@@ -93,9 +105,13 @@ export const deploy = async (options: DeployOptions) => {
   p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
 
   let bundleId: string | null = null;
-  let bundlePath: string;
-  let fileUrl: string;
   let fileHash: string;
+
+  const normalizeOutputPath = path.isAbsolute(outputPath)
+    ? outputPath
+    : path.join(cwd, outputPath);
+
+  const bundlePath = path.join(normalizeOutputPath, "bundle.zip");
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -120,19 +136,39 @@ export const deploy = async (options: DeployOptions) => {
       buildResult: null,
     };
 
+    p.log.info(`Channel: ${channel}`);
+
     await p.tasks([
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
+            channel,
           });
-          bundlePath = path.join(getCwd(), "bundle.zip");
 
-          await createZip({
+          await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
+
+          const buildPath = taskRef.buildResult?.buildPath;
+          if (!buildPath) {
+            throw new Error("Build result not found");
+          }
+          const files = await fs.promises.readdir(buildPath, {
+            recursive: true,
+          });
+
+          const targetFiles = await getBundleZipTargets(
+            buildPath,
+            files
+              .filter(
+                (file) =>
+                  !fs.statSync(path.join(buildPath, file)).isDirectory(),
+              )
+              .map((file) => path.join(buildPath, file)),
+          );
+          await createZipTargetFiles({
             outfile: bundlePath,
-            targetDir: taskRef.buildResult.buildPath,
-            excludeExts: [".map"],
+            targetFiles: targetFiles,
           });
 
           bundleId = taskRef.buildResult.bundleId;
@@ -156,10 +192,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            ({ fileUrl } = await storagePlugin.uploadBundle(
-              bundleId,
-              bundlePath,
-            ));
+            await storagePlugin.uploadBundle(bundleId, bundlePath);
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -180,13 +213,13 @@ export const deploy = async (options: DeployOptions) => {
             await databasePlugin.appendBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
-              fileUrl,
               fileHash,
               gitCommitHash,
-              message: gitMessage,
+              message: options?.message ?? gitMessage,
               targetAppVersion,
               id: bundleId,
               enabled: true,
+              channel,
             });
             await databasePlugin.commitBundle();
           } catch (e) {
@@ -196,7 +229,7 @@ export const deploy = async (options: DeployOptions) => {
             throw new Error("Failed to update database");
           }
           await databasePlugin.onUnmount?.();
-          await fs.rm(bundlePath);
+          await fs.promises.rm(bundlePath);
 
           return `✅ Update Complete (${databasePlugin.name})`;
         },
@@ -210,19 +243,26 @@ export const deploy = async (options: DeployOptions) => {
       const port = await getConsolePort(config);
       const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
 
-      const note = `Console: http://localhost:${port}/${bundleId}`;
+      const openUrl = new URL(`http://localhost:${port}`);
+      openUrl.searchParams.set("channel", channel);
+      openUrl.searchParams.set("platform", platform);
+      openUrl.searchParams.set("bundleId", bundleId);
+
+      const url = openUrl.toString();
+
+      const note = `Console: ${url}`;
       if (!isConsoleOpen) {
         const result = await p.confirm({
           message: "Console server is not running. Would you like to start it?",
           initialValue: false,
         });
-        if (result) {
+        if (!p.isCancel(result) && result) {
           await openConsole(port, () => {
-            open(`http://localhost:${port}/${bundleId}`);
+            open(url);
           });
         }
       } else {
-        open(`http://localhost:${port}/${bundleId}`);
+        open(url);
       }
 
       p.note(note);
@@ -230,9 +270,11 @@ export const deploy = async (options: DeployOptions) => {
     p.outro("🚀 Deployment Successful");
   } catch (e) {
     await databasePlugin.onUnmount?.();
+    await fs.promises.rm(bundlePath, { force: true });
     console.error(e);
     process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();
+    await fs.promises.rm(bundlePath, { force: true });
   }
 };

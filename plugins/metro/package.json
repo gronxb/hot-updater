@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/metro",
   "type": "module",
-  "version": "0.12.6",
+  "version": "0.16.2",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -25,7 +25,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "0.12.6"
+    "@hot-updater/plugin-core": "0.16.2"
   },
   "devDependencies": {
     "@types/node": "^22.8.7",

@@ -1,17 +1,14 @@
-import { type CheckForUpdateConfig, checkForUpdate } from "./checkForUpdate";
-import { reload, updateBundle } from "./native";
+import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
+import { getBundleId, reload, updateBundle } from "./native";
 
-export type RunUpdateProcessResponse =
-  | {
-      status: "ROLLBACK" | "UPDATE";
-      shouldForceUpdate: boolean;
-      id: string;
-    }
-  | {
-      status: "UP_TO_DATE";
-    };
+export interface RunUpdateProcessResponse {
+  status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
+  shouldForceUpdate: boolean;
+  message: string | null;
+  id: string;
+}
 
-export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
+export interface RunUpdateProcessOptions extends CheckForUpdateOptions {
   /**
    * If `true`, the app will be reloaded when the downloaded bundle is a force update.
    * If `false`, shouldForceUpdate will be returned as true but the app won't reload.
@@ -54,12 +51,15 @@ export interface RunUpdateProcessConfig extends CheckForUpdateConfig {
  */
 export const runUpdateProcess = async ({
   reloadOnForceUpdate = true,
-  ...checkForUpdateConfig
-}: RunUpdateProcessConfig): Promise<RunUpdateProcessResponse> => {
-  const updateInfo = await checkForUpdate(checkForUpdateConfig);
+  ...checkForUpdateOptions
+}: RunUpdateProcessOptions): Promise<RunUpdateProcessResponse> => {
+  const updateInfo = await checkForUpdate(checkForUpdateOptions);
   if (!updateInfo) {
     return {
       status: "UP_TO_DATE",
+      shouldForceUpdate: false,
+      message: null,
+      id: getBundleId(),
     };
   }
 
@@ -75,5 +75,6 @@ export const runUpdateProcess = async ({
     status: updateInfo.status,
     shouldForceUpdate: updateInfo.shouldForceUpdate,
     id: updateInfo.id,
+    message: updateInfo.message,
   };
 };

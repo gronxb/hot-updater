@@ -59,7 +59,7 @@ function App() {
 
 export default HotUpdater.wrap({ // [!code hl:22]
   source: "<your-update-server-url>",
-  fallbackComponent: ({ progress, status }) => (
+  fallbackComponent: ({ progress, status, message }) => (
       <View
         style={{
           flex: 1,
@@ -75,6 +75,11 @@ export default HotUpdater.wrap({ // [!code hl:22]
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
           {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
         </Text>
+        {message && (
+          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+            {message}
+          </Text>
+        )}
         {progress > 0 ? (
           <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
             {Math.round(progress * 100)}%
@@ -139,8 +144,8 @@ export default HotUpdater.wrap({
     "Authorization": "Bearer <your-access-token>",
   },
   reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
-  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id }) => {  // [!code hl]
-    console.log("Bundle updated:", status, shouldForceUpdate, id);  // [!code hl]
+  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {  // [!code hl]
+    console.log("Bundle updated:", status, shouldForceUpdate, id, message);  // [!code hl]
     if (shouldForceUpdate) { // [!code hl]
       HotUpdater.reload(); // [!code hl]
     } // [!code hl]
@@ -159,6 +164,7 @@ The `onUpdateProcessCompleted` option allows you to perform additional actions a
 | `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
 | `shouldForceUpdate` | boolean | Whether the update process is forced |
 | `id` | string | The ID of the bundle to update |
+| `message` | string | The message of the update process |
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -178,10 +184,10 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },
-  onUpdateProcessCompleted: ({ isBundleUpdated }) => {
+  onUpdateProcessCompleted: ({ isBundleUpdated, message }) => {
     // if isBundleUpdated is true, `HotUpdater.reload()` or restart the app to apply the new bundle
     // if isBundleUpdated is false, the app is up to date
-    console.log("Bundle updated:", isBundleUpdated);
+    console.log("Bundle updated:", isBundleUpdated, message);
   },
 
   // If you need to show the progress while downloading the new bundle, you can use the `onProgress` option.
@@ -197,3 +203,18 @@ export default HotUpdater.wrap({
 |---------------|----------------------------------------------------------|-------------------------------------------|
 | Default       | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
 | Force Update  | Downloads the update bundle and applies it immediately.   | Use the `--force-update` flag or console. |
+
+
+## Custom source Function
+
+You can pass an async function to the source option for full control over how update info is fetched.
+
+```tsx
+export default HotUpdater.wrap({
+  source: async () => {
+    const res = await fetch("https://your.api/update-info");
+    return (await res.json()) as AppUpdateInfo | null;
+  },
+  // ... other options
+});
+```

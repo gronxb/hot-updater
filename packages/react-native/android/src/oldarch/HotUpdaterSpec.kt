@@ -16,4 +16,9 @@ abstract class HotUpdaterSpec internal constructor(
     abstract fun reload()
 
     abstract fun getAppVersion(promise: Promise)
+
+    abstract fun setChannel(
+        channel: String,
+        promise: Promise,
+    )
 }
