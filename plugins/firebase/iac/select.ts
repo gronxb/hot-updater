@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
 import { makeEnv } from "@hot-updater/plugin-core";
-import { execa } from "execa";
+import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
 
 const CONFIG_TEMPLATE = `import { metro } from '@hot-updater/metro';
@@ -166,10 +166,36 @@ export const setEnv = async (): Promise<{
 };
 
 const handleError = (err: unknown) => {
-  if (err instanceof Error) {
+  if (err instanceof ExecaError) {
+    p.log.error(err.stderr || err.stdout || err.message);
+  } else if (err instanceof Error) {
     p.log.error(`Error occurred: ${err.message}`);
-  } else {
-    console.error("An unknown error occurred:", err);
+  }
+  process.exit(1);
+};
+
+const listProjects = async (): Promise<
+  {
+    projectId: string;
+    projectNumber: string;
+    displayName: string;
+    name: string;
+    state: string;
+    etag: string;
+  }[]
+> => {
+  try {
+    const projects = await execa(
+      "npx",
+      ["firebase", "projects:list", "--json"],
+      {
+        shell: true,
+      },
+    );
+    const projectsJson = JSON.parse(projects.stdout);
+    return projectsJson?.result ?? [];
+  } catch (err) {
+    return [];
   }
 };
 
@@ -183,16 +209,47 @@ export const initFirebaseUser = async () => {
     handleError(err);
   }
 
-  const cred = await setEnv();
+  const projects = await listProjects();
 
-  if (!cred.projectId) {
-    p.log.error("Failed to make Env and hot-updater.config.ts");
+  const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
+  const projectId = await p.select({
+    message: "Select a Firebase project",
+    options: [
+      ...projects.map((project) => ({
+        label: project.displayName,
+        value: project.projectId,
+      })),
+      { value: createKey, label: "Create new Firebase project" },
+    ],
+  });
+
+  if (p.isCancel(projectId)) {
+    p.log.error("Project ID is required");
     process.exit(1);
+  }
+  if (projectId === createKey) {
+    const newProjectId = await p.text({
+      message: "Enter the Firebase project ID:",
+    });
+    if (p.isCancel(newProjectId)) {
+      p.log.error("Project ID is required");
+      process.exit(1);
+    }
+    try {
+      await execa("npx", ["firebase", "projects:create", newProjectId], {
+        stdio: "inherit",
+        shell: true,
+      });
+      p.log.success("Firebase project created successfully");
+    } catch (err) {
+      handleError(err);
+    }
+    return {
+      projectId: newProjectId,
+    };
   }
 
   return {
-    projectId: cred.projectId,
-    clientEmail: cred.clientEmail,
-    privateKey: cred.privateKey,
+    projectId,
   };
 };
