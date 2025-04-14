@@ -16,7 +16,7 @@ open class ReactIntegrationManagerBase(
                 JSBundleLoader.createAssetLoader(
                     context,
                     bundleFileUrl,
-                    true,
+                    false,
                 )
         } else {
             bundleLoader = JSBundleLoader.createFileLoader(bundleFileUrl)
