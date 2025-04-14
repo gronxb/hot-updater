@@ -10,4 +10,4 @@ export * from "./transformEnv";
 export * from "./transformTsEnv";
 export * from "./makeEnv";
 export * from "./createZip";
-export * from './createBlobDatabasePlugin'
+export * from "./createBlobDatabasePlugin";

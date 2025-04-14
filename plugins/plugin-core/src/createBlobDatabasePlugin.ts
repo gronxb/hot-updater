@@ -20,7 +20,7 @@ export const createBlobDatabasePlugin = (
   uploadItem: (key: string, data: unknown) => Promise<unknown>,
   deleteItem: (key: string) => Promise<unknown>,
   invalidatePaths: (paths: string[]) => Promise<void>,
-  hooks?: DatabasePluginHooks
+  hooks?: DatabasePluginHooks,
 ) => {
   // Map for O(1) lookup of bundles.
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
@@ -66,7 +66,7 @@ export const createBlobDatabasePlugin = (
    * Returns true if the file was updated, false if no changes were made.
    */
   async function updateTargetVersionsForPlatform(
-    platform: string
+    platform: string,
   ): Promise<Set<string>> {
     // Retrieve all update.json files for the platform across channels.
     const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
@@ -74,13 +74,16 @@ export const createBlobDatabasePlugin = (
     const keys = (await litemItems("")).filter((key) => pattern.test(key));
 
     // Group keys by channel (channel is the first part of the key)
-    const keysByChannel = keys.reduce((acc, key) => {
-      const parts = key.split("/");
-      const channel = parts[0];
-      acc[channel] = acc[channel] || [];
-      acc[channel].push(key);
-      return acc;
-    }, {} as Record<string, string[]>);
+    const keysByChannel = keys.reduce(
+      (acc, key) => {
+        const parts = key.split("/");
+        const channel = parts[0];
+        acc[channel] = acc[channel] || [];
+        acc[channel].push(key);
+        return acc;
+      },
+      {} as Record<string, string[]>,
+    );
 
     const updatedTargetFiles = new Set<string>();
 
@@ -91,7 +94,7 @@ export const createBlobDatabasePlugin = (
       const currentVersions = updateKeys.map((key) => key.split("/")[2]);
       const oldTargetVersions = (await loadItem<string[]>(targetKey)) ?? [];
       const newTargetVersions = oldTargetVersions.filter((v) =>
-        currentVersions.includes(v)
+        currentVersions.includes(v),
       );
       for (const v of currentVersions) {
         if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
@@ -116,7 +119,7 @@ export const createBlobDatabasePlugin = (
    */
   async function listUpdateJsonKeys(
     platform?: string,
-    channel?: string
+    channel?: string,
   ): Promise<string[]> {
     const prefix = channel
       ? platform
@@ -129,11 +132,11 @@ export const createBlobDatabasePlugin = (
         ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
         : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
       : platform
-      ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
-      : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
+        ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
+        : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
 
     return litemItems(prefix).then((keys) =>
-      keys.filter((key) => pattern.test(key))
+      keys.filter((key) => pattern.test(key)),
     );
   }
 
@@ -166,7 +169,7 @@ export const createBlobDatabasePlugin = (
               ([key, value]) =>
                 value === undefined ||
                 value === null ||
-                bundle[key as keyof Bundle] === value
+                bundle[key as keyof Bundle] === value,
             );
           });
         }
@@ -207,7 +210,7 @@ export const createBlobDatabasePlugin = (
 
             changedBundlesByKey[key] = changedBundlesByKey[key] || [];
             changedBundlesByKey[key].push(
-              removeBundleInternalKeys(bundleWithKey)
+              removeBundleInternalKeys(bundleWithKey),
             );
 
             // CloudFront 무효화를 위한 경로 추가
@@ -252,7 +255,7 @@ export const createBlobDatabasePlugin = (
               pendingBundlesMap.set(data.id, updatedBundle);
 
               changedBundlesByKey[newKey].push(
-                removeBundleInternalKeys(updatedBundle)
+                removeBundleInternalKeys(updatedBundle),
               );
 
               // Add paths for CloudFront invalidation
@@ -269,7 +272,7 @@ export const createBlobDatabasePlugin = (
             changedBundlesByKey[currentKey] =
               changedBundlesByKey[currentKey] || [];
             changedBundlesByKey[currentKey].push(
-              removeBundleInternalKeys(updatedBundle)
+              removeBundleInternalKeys(updatedBundle),
             );
 
             // CloudFront 무효화를 위한 경로 추가
@@ -282,7 +285,7 @@ export const createBlobDatabasePlugin = (
           await (async () => {
             const currentBundles = (await loadItem<Bundle[]>(oldKey)) ?? [];
             const updatedBundles = currentBundles.filter(
-              (b) => !removalsByKey[oldKey].includes(b.id)
+              (b) => !removalsByKey[oldKey].includes(b.id),
             );
             updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
             if (updatedBundles.length === 0) {
@@ -298,11 +301,11 @@ export const createBlobDatabasePlugin = (
           await (async () => {
             const currentBundles = (await loadItem<Bundle[]>(key)) ?? [];
             const pureBundles = changedBundlesByKey[key].map(
-              (bundle) => bundle
+              (bundle) => bundle,
             );
             for (const changedBundle of pureBundles) {
               const index = currentBundles.findIndex(
-                (b) => b.id === changedBundle.id
+                (b) => b.id === changedBundle.id,
               );
               if (index >= 0) {
                 currentBundles[index] = changedBundle;
@@ -335,6 +338,6 @@ export const createBlobDatabasePlugin = (
         hooks?.onDatabaseUpdated?.();
       },
     },
-    hooks
+    hooks,
   );
 };

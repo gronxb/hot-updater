@@ -28,11 +28,11 @@ export interface S3DatabaseConfig extends S3ClientConfig {
 async function loadJsonFromS3<T>(
   client: S3Client,
   bucket: string,
-  key: string
+  key: string,
 ): Promise<T | null> {
   try {
     const { Body } = await client.send(
-      new GetObjectCommand({ Bucket: bucket, Key: key })
+      new GetObjectCommand({ Bucket: bucket, Key: key }),
     );
     if (!Body) return null;
     const bodyContents = await streamToString(Body);
@@ -50,7 +50,7 @@ async function uploadJsonToS3<T>(
   client: S3Client,
   bucket: string,
   key: string,
-  data: T
+  data: T,
 ) {
   const Body = JSON.stringify(data);
   const ContentType = mime.getType(key) ?? "application/json";
@@ -70,7 +70,7 @@ async function uploadJsonToS3<T>(
 async function listObjectsInS3(
   client: S3Client,
   bucketName: string,
-  prefix: string
+  prefix: string,
 ) {
   let continuationToken: string | undefined;
   const keys: string[] = [];
@@ -81,7 +81,7 @@ async function listObjectsInS3(
         Bucket: bucketName,
         Prefix: prefix,
         ContinuationToken: continuationToken,
-      })
+      }),
     );
     const found = (response.Contents ?? [])
       .map((item) => item.Key)
@@ -95,13 +95,13 @@ async function listObjectsInS3(
 async function deleteObjectInS3(
   client: S3Client,
   bucketName: string,
-  key: string
+  key: string,
 ) {
   await client.send(
     new DeleteObjectCommand({
       Bucket: bucketName,
       Key: key,
-    })
+    }),
   );
 }
 
@@ -111,7 +111,7 @@ async function deleteObjectInS3(
 async function invalidateCloudFront(
   client: CloudFrontClient,
   distributionId: string,
-  paths: string[]
+  paths: string[],
 ) {
   if (paths.length === 0) {
     return;
@@ -128,13 +128,13 @@ async function invalidateCloudFront(
           Items: paths,
         },
       },
-    })
+    }),
   );
 }
 
 export const s3Database = (
   config: S3DatabaseConfig,
-  hooks?: DatabasePluginHooks
+  hooks?: DatabasePluginHooks,
 ) => {
   const { bucketName, cloudfrontDistributionId, ...s3Config } = config;
   if (!cloudfrontDistributionId) {
@@ -171,7 +171,7 @@ export const s3Database = (
       await invalidateCloudFront(
         cloudfrontClient,
         cloudfrontDistributionId,
-        pathsToInvalidate
+        pathsToInvalidate,
       );
     }
   }
@@ -183,6 +183,6 @@ export const s3Database = (
     uploadItem,
     deleteItem,
     invalidatePaths,
-    hooks
+    hooks,
   );
 };
