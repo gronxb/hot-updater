@@ -194,7 +194,24 @@ const printTemplate = async (cwd: string) => {
   );
 };
 
+const checkIfGcloudCliInstalled = async () => {
+  try {
+    await execa("gcloud", ["--version"]);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
 export const runInit = async () => {
+  const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
+  if (!isGcloudCliInstalled) {
+    p.log.error("gcloud CLI is not installed");
+    p.log.step("Please go to the following link to install the gcloud CLI");
+    p.log.step(link("https://cloud.google.com/sdk/docs/install"));
+    process.exit(1);
+  }
+
   const initializeVariable = await initFirebaseUser();
 
   const firebaseDir = path.join(

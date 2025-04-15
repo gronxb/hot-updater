@@ -263,7 +263,113 @@ export const initFirebaseUser = async () => {
     };
   }
 
+  await execa(
+    "gcloud",
+    ["firestore", "databases", "describe", `--project=${projectId}`],
+    {
+      stdio: "inherit",
+      shell: true,
+    },
+  );
+
+  const buckets = await execa("gcloud", [
+    "storage",
+    "buckets",
+    "list",
+    `--project=${projectId}`,
+    "--format=json",
+  ]);
+
+  const bucketsJson = JSON.parse(buckets.stdout);
+  const storageBucket = bucketsJson.find(
+    (bucket: { name: string }) =>
+      bucket.name.endsWith(".firebasestorage.app") ||
+      bucket.name.endsWith(".appspot.com"),
+  )?.name;
+
+  if (!storageBucket) {
+    p.log.error("Storage Bucket not found");
+    p.log.step(
+      "Please Go to the following links to enable Firestore and Storage and Billing",
+    );
+    p.log.step(
+      link(
+        `https://console.firebase.google.com/project/${projectId}/firestore`,
+      ),
+    );
+  }
+  p.log.step(`Storage Bucket: ${storageBucket}`);
+
+  const project = await execa("gcloud", [
+    "projects",
+    "describe",
+    projectId,
+    "--format=json",
+  ]);
+  const projectJson = JSON.parse(project.stdout);
+  const projectNumber = Number(projectJson.projectNumber);
+  if (Number.isNaN(projectNumber)) {
+    p.log.error("Project Number not found");
+    process.exit(1);
+  }
+
+  await p.tasks([
+    {
+      title: "Check IAM policy",
+      async task(message) {
+        const checkIam = await execa("gcloud", [
+          "projects",
+          "get-iam-policy",
+          projectId,
+          "--format=json",
+        ]);
+        const iamJson = JSON.parse(checkIam.stdout);
+        const hasStorageAdmin = iamJson.bindings.some(
+          (binding: { role: string; members: string[] }) =>
+            binding.role === "roles/storage.admin" &&
+            binding.members.includes(
+              `serviceAccount:service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com`,
+            ),
+        );
+        if (!hasStorageAdmin) {
+          try {
+            message("Adding Storage Admin role to the service account");
+            await execa(
+              "gcloud",
+              [
+                "projects",
+                "add-iam-policy-binding",
+                projectId,
+                `--member=serviceAccount:service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com`,
+                "--role=roles/storage.admin",
+              ],
+              {
+                stdio: "inherit",
+                shell: true,
+              },
+            );
+            p.log.success(
+              "Storage Admin role has been added to the service account",
+            );
+          } catch (err) {
+            p.log.error(
+              "Please go to the following link to add the Storage Admin role to the service account",
+            );
+            p.log.step(
+              link(
+                `https://console.cloud.google.com/iam-admin/iam/project/${projectId}/serviceaccounts/service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com/edit?inv=1`,
+              ),
+            );
+            process.exit(1);
+          }
+        }
+        return "Added Storage Admin role to the service account";
+      },
+    },
+  ]);
+
   return {
+    storageBucket,
     projectId,
   };
 };
