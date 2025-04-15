@@ -8,11 +8,13 @@ import * as admin from "firebase-admin";
 import fs from "fs/promises";
 import mime from "mime";
 
-export const firebaseStorage =
-  (config: admin.AppOptions, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
-    const storageBucket = `${config.projectId}.firebasestorage.app`;
+export interface FirebaseStorageConfig extends admin.AppOptions {
+  storageBucket: string;
+}
 
+export const firebaseStorage =
+  (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
+  (_: BasePluginArgs): StoragePlugin => {
     let app: admin.app.App;
     try {
       app = admin.app();
@@ -20,7 +22,7 @@ export const firebaseStorage =
       app = admin.initializeApp(config);
     }
 
-    const bucket = admin.storage().bucket(storageBucket);
+    const bucket = admin.storage().bucket(config.storageBucket);
 
     return {
       name: "firebaseStorage",
@@ -54,7 +56,7 @@ export const firebaseStorage =
           hooks?.onStorageUploaded?.();
 
           return {
-            bucketName: storageBucket,
+            bucketName: config.storageBucket,
             key: key,
           };
         } catch (error) {

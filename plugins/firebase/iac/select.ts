@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
-import { makeEnv } from "@hot-updater/plugin-core";
+import { link, makeEnv } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
 
@@ -241,6 +241,20 @@ export const initFirebaseUser = async () => {
         shell: true,
       });
       p.log.success("Firebase project created successfully");
+
+      p.log.step(
+        "Please Go to the following links to enable Firestore and Storage and Billing",
+      );
+      p.log.step(
+        link(
+          `https://console.firebase.google.com/project/${newProjectId}/firestore`,
+        ),
+      );
+      p.log.step(
+        link(
+          `https://console.firebase.google.com/project/${newProjectId}/storage`,
+        ),
+      );
     } catch (err) {
       handleError(err);
     }
