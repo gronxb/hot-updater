@@ -215,10 +215,11 @@ export const runInit = async () => {
   const firebaseDir = path.dirname(
     require.resolve("@hot-updater/firebase/functions"),
   );
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
-  await fs.promises.mkdir(path.join(tmpDir, "functions"), { recursive: true });
 
-  const functionsIndexPath = path.join(tmpDir, "functions", "index.cjs");
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
+
+  const functionsDir = path.join(tmpDir, "functions");
+  const functionsIndexPath = path.join(functionsDir, "index.cjs");
   await fs.promises.rename(path.join(tmpDir, "index.cjs"), functionsIndexPath);
 
   let isFunctionsExist = false;
@@ -231,7 +232,7 @@ export const runInit = async () => {
       task: async () => {
         try {
           await execa("npm", ["install"], {
-            cwd: tmpDir,
+            cwd: functionsDir,
           });
           return "Installed dependencies";
         } catch (error) {
