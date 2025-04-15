@@ -250,6 +250,7 @@ export const runInit = async () => {
           await execa("npm", ["install"], {
             cwd: functionsDir,
           });
+          return "Installed dependencies";
         } catch (error) {
           if (error instanceof ExecaError) {
             p.log.error(error.stderr || error.stdout || error.message);
@@ -286,10 +287,8 @@ export const runInit = async () => {
             isFunctionsExist = true;
           }
 
-          if (hotUpdater) {
-            p.log.message(
-              `Found existing functions in region: ${currentRegion}`,
-            );
+          if (!hotUpdater) {
+            throw new Error("No existing functions found");
           }
         } catch (error) {
           if (error instanceof ExecaError) {
@@ -314,8 +313,6 @@ export const runInit = async () => {
             throw new Error("Region selection cancelled");
           }
           selectedRegion = selectRegion as string;
-        } else {
-          p.log.message(`Using existing region: ${currentRegion}`);
         }
 
         const code = await transformEnv(
@@ -328,6 +325,7 @@ export const runInit = async () => {
           },
         );
         await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);
+        return `Using existing functions in region: ${currentRegion}`;
       },
     },
   ]);
