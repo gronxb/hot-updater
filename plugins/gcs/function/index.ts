@@ -1,6 +1,5 @@
 import functions from "@google-cloud/functions-framework";
 import type { Bundle, Platform } from "@hot-updater/core";
-import { getJsonFromGCS, getPublicDownloadURL } from "../src/utils/gcs";
 import {
   filterCompatibleAppVersions,
   getUpdateInfo as getUpdateInfoJS,
@@ -13,6 +12,37 @@ declare global {
 }
 
 const bucketName = HotUpdater.GCS_BUCKET_NAME;
+
+const getPublicDownloadURL = async (
+  bucketName: string,
+  fileName: string,
+): Promise<string> => {
+  const storage = new Storage();
+  const bucket = storage.bucket(bucketName);
+  const file = bucket.file(fileName);
+  const [url] = await file.getSignedUrl({
+    action: "read",
+    expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    version: "v4",
+  });
+  return url;
+};
+const getJsonFromGCS = async <T>(
+  bucketName: string,
+  key: string,
+): Promise<T | null> => {
+  const storage = new Storage();
+  const bucket = storage.bucket(bucketName);
+  const file = bucket.file(key);
+  try {
+    const data = await file.download();
+    const json = JSON.parse(data.toString());
+    return json;
+  } catch (error) {
+    console.error("Failed to download or parse JSON:", error);
+    throw null;
+  }
+};
 
 async function signUpdateInfoFileUrl(updateInfo) {
   if (updateInfo?.fileUrl) {
