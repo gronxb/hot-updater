@@ -208,6 +208,14 @@ export const initFirebaseUser = async () => {
   } catch (err) {
     handleError(err);
   }
+  try {
+    await execa("gcloud", ["auth", "login"], {
+      stdio: "inherit",
+      shell: true,
+    });
+  } catch (err) {
+    handleError(err);
+  }
 
   const projects = await listProjects();
 
