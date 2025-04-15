@@ -336,24 +336,23 @@ export const initFirebaseUser = async (
             bucket.name === `${projectId}.firebasestorage.app` ||
             bucket.name === `${projectId}.appspot.com`,
         )?.name;
+
+        if (!storageBucket) {
+          p.log.error("Storage Bucket not found");
+          p.log.step(
+            "Please Go to the following links to enable Firestore and Storage and Billing",
+          );
+          p.log.step(
+            link(
+              `https://console.firebase.google.com/project/${projectId}/firestore`,
+            ),
+          );
+          process.exit(1);
+        }
+        return `Storage Bucket: ${storageBucket}`;
       },
     },
   ]);
-
-  if (!storageBucket) {
-    p.log.error("Storage Bucket not found");
-    p.log.step(
-      "Please Go to the following links to enable Firestore and Storage and Billing",
-    );
-    p.log.step(
-      link(
-        `https://console.firebase.google.com/project/${projectId}/firestore`,
-      ),
-    );
-    process.exit(1);
-  }
-
-  p.log.step(`Storage Bucket: ${storageBucket}`);
 
   const project = await execa("gcloud", [
     "projects",
