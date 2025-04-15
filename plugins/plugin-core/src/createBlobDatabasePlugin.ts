@@ -13,13 +13,50 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   return pureBundle;
 }
 
+/**
+ * @prefix {string} - The prefix to filter the objects in the storage.
+ */
+export type ListObjectsFn = (prefix: string) => Promise<string[]>;
+
+/**
+ * @key {string} - The key of the object to load.
+ */
+export type LoadObjectFn = <T>(key: string) => Promise<T | null>;
+
+/**
+ * @key {string} - The key of the object to upload.
+ * @data {any} - The data to upload as a Javascript Object.
+ */
+export type UploadObjectFn = (key: string, data: any) => Promise<void>;
+
+/**
+ * @key {string} - The key of the object to delete.
+ */
+export type DeleteObjectFn = (key: string) => Promise<void>;
+
+/**
+ * @paths {string[]} - The paths to invalidate in the CDN.
+ */
+export type InvalidatePathsFn = (paths: string[]) => Promise<void>;
+
+/**
+ *
+ * @param name - The name of the database plugin
+ * @param listObjects - Function to list objects in the storage
+ * @param loadObject - Function to load an JSON object from the storage
+ * @param uploadObject - Function to upload an JSON object to the storage
+ * @param deleteObject  - Function to delete an object from the storage
+ * @param invalidatePaths - Function to invalidate paths in the CDN
+ * @param hooks - Optional hooks for additional functionality - see createDatabasePlugin
+ * @returns
+ */
 export const createBlobDatabasePlugin = (
   name: string,
-  litemItems: (prefix: string) => Promise<string[]>,
-  loadItem: <T>(key: string) => Promise<T | null>,
-  uploadItem: (key: string, data: unknown) => Promise<unknown>,
-  deleteItem: (key: string) => Promise<unknown>,
-  invalidatePaths: (paths: string[]) => Promise<void>,
+  listObjects: ListObjectsFn,
+  loadObject: LoadObjectFn,
+  uploadObject: UploadObjectFn,
+  deleteObject: DeleteObjectFn,
+  invalidatePaths: InvalidatePathsFn,
   hooks?: DatabasePluginHooks,
 ) => {
   // Map for O(1) lookup of bundles.
@@ -37,7 +74,7 @@ export const createBlobDatabasePlugin = (
       // Retrieve update.json files for the platform across all channels.
       const keys = await listUpdateJsonKeys(platform);
       const filePromises = keys.map(async (key) => {
-        const bundlesData = (await loadItem<Bundle[]>(key)) ?? [];
+        const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
         return bundlesData.map((bundle) => ({
           ...bundle,
           _updateJsonKey: key,
@@ -71,7 +108,7 @@ export const createBlobDatabasePlugin = (
     // Retrieve all update.json files for the platform across channels.
     const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
 
-    const keys = (await litemItems("")).filter((key) => pattern.test(key));
+    const keys = (await listObjects("")).filter((key) => pattern.test(key));
 
     // Group keys by channel (channel is the first part of the key)
     const keysByChannel = keys.reduce(
@@ -92,7 +129,7 @@ export const createBlobDatabasePlugin = (
       const targetKey = `${channel}/${platform}/target-app-versions.json`;
       // Extract targetAppVersion from each update.json file key.
       const currentVersions = updateKeys.map((key) => key.split("/")[2]);
-      const oldTargetVersions = (await loadItem<string[]>(targetKey)) ?? [];
+      const oldTargetVersions = (await loadObject<string[]>(targetKey)) ?? [];
       const newTargetVersions = oldTargetVersions.filter((v) =>
         currentVersions.includes(v),
       );
@@ -103,7 +140,7 @@ export const createBlobDatabasePlugin = (
       if (
         JSON.stringify(oldTargetVersions) !== JSON.stringify(newTargetVersions)
       ) {
-        await uploadItem(targetKey, newTargetVersions);
+        await uploadObject(targetKey, newTargetVersions);
         updatedTargetFiles.add(`/${targetKey}`);
       }
     }
@@ -135,7 +172,7 @@ export const createBlobDatabasePlugin = (
         ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
         : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
 
-    return litemItems(prefix).then((keys) =>
+    return listObjects(prefix).then((keys) =>
       keys.filter((key) => pattern.test(key)),
     );
   }
@@ -283,15 +320,15 @@ export const createBlobDatabasePlugin = (
         // Remove bundles from their old keys.
         for (const oldKey of Object.keys(removalsByKey)) {
           await (async () => {
-            const currentBundles = (await loadItem<Bundle[]>(oldKey)) ?? [];
+            const currentBundles = (await loadObject<Bundle[]>(oldKey)) ?? [];
             const updatedBundles = currentBundles.filter(
               (b) => !removalsByKey[oldKey].includes(b.id),
             );
             updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
             if (updatedBundles.length === 0) {
-              await deleteItem(oldKey);
+              await deleteObject(oldKey);
             } else {
-              await uploadItem(oldKey, updatedBundles);
+              await uploadObject(oldKey, updatedBundles);
             }
           })();
         }
@@ -299,7 +336,7 @@ export const createBlobDatabasePlugin = (
         // Add or update bundles in their new keys.
         for (const key of Object.keys(changedBundlesByKey)) {
           await (async () => {
-            const currentBundles = (await loadItem<Bundle[]>(key)) ?? [];
+            const currentBundles = (await loadObject<Bundle[]>(key)) ?? [];
             const pureBundles = changedBundlesByKey[key].map(
               (bundle) => bundle,
             );
@@ -314,7 +351,7 @@ export const createBlobDatabasePlugin = (
               }
             }
             currentBundles.sort((a, b) => b.id.localeCompare(a.id));
-            await uploadItem(key, currentBundles);
+            await uploadObject(key, currentBundles);
           })();
         }
 
