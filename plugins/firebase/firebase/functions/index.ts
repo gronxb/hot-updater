@@ -7,11 +7,14 @@ import { getUpdateInfo } from "./getUpdateInfo";
 declare global {
   var HotUpdater: {
     REGION: string;
+    STORAGE_BUCKET: string;
   };
 }
 
 if (!admin.apps.length) {
-  admin.initializeApp();
+  admin.initializeApp({
+    storageBucket: HotUpdater.STORAGE_BUCKET,
+  });
 }
 
 const app = new Hono();

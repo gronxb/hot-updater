@@ -336,16 +336,18 @@ export const initFirebaseUser = async () => {
           "--format=json",
         ]);
         const iamJson = JSON.parse(checkIam.stdout);
-        const hasStorageAdmin = iamJson.bindings.some(
+        const hasTokenCreator = iamJson.bindings.some(
           (binding: { role: string; members: string[] }) =>
-            binding.role === "roles/storage.admin" &&
+            binding.role === "roles/iam.serviceAccountTokenCreator" &&
             binding.members.includes(
               `serviceAccount:service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com`,
             ),
         );
-        if (!hasStorageAdmin) {
+        if (!hasTokenCreator) {
           try {
-            message("Adding Storage Admin role to the service account");
+            message(
+              "Adding IAM Service Account Token Creator role to the service account",
+            );
             await execa(
               "gcloud",
               [
@@ -353,7 +355,7 @@ export const initFirebaseUser = async () => {
                 "add-iam-policy-binding",
                 projectId,
                 `--member=serviceAccount:service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com`,
-                "--role=roles/storage.admin",
+                "--role=roles/iam.serviceAccountTokenCreator",
               ],
               {
                 stdio: "inherit",
@@ -361,11 +363,11 @@ export const initFirebaseUser = async () => {
               },
             );
             p.log.success(
-              "Storage Admin role has been added to the service account",
+              "IAM Service Account Token Creator role has been added to the service account",
             );
           } catch (err) {
             p.log.error(
-              "Please go to the following link to add the Storage Admin role to the service account",
+              "Please go to the following link to add the IAM Service Account Token Creator role to the service account",
             );
             p.log.step(
               link(
@@ -375,7 +377,7 @@ export const initFirebaseUser = async () => {
             process.exit(1);
           }
         }
-        return "Added Storage Admin role to the service account";
+        return "Added IAM Service Account Token Creator role to the service account";
       },
     },
   ]);

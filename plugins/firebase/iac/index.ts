@@ -347,6 +347,7 @@ export const runInit = async () => {
           ),
           {
             REGION: selectedRegion,
+            STORAGE_BUCKET: initializeVariable.storageBucket,
           },
         );
         await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);
