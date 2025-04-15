@@ -18,7 +18,7 @@ async function signUpdateInfoFileUrl(updateInfo) {
   if (updateInfo?.fileUrl) {
     updateInfo.fileUrl = await getPublicDownloadURL(
       bucketName,
-      updateInfo.fileUrl
+      updateInfo.fileUrl,
     );
   }
   return updateInfo;
@@ -34,27 +34,27 @@ export const getUpdateInfo = async (
     platform: Platform;
     appVersion: string;
     bundleId: string;
-  }
+  },
 ) => {
   const targetAppVersions = await getJsonFromGCS(
     bucketName,
-    `${platform}/target-app-versions.json`
+    `${platform}/target-app-versions.json`,
   );
 
   const matchingVersions = filterCompatibleAppVersions(
     targetAppVersions ?? [],
-    appVersion
+    appVersion,
   );
 
   const results = await Promise.allSettled(
     matchingVersions.map((targetAppVersion) =>
-      getJsonFromGCS(bucketName, `${platform}/${targetAppVersion}/update.json`)
-    )
+      getJsonFromGCS(bucketName, `${platform}/${targetAppVersion}/update.json`),
+    ),
   );
 
   const bundles = results
     .filter(
-      (r): r is PromiseFulfilledResult<Bundle[]> => r.status === "fulfilled"
+      (r): r is PromiseFulfilledResult<Bundle[]> => r.status === "fulfilled",
     )
     .flatMap((r) => r.value ?? []);
 

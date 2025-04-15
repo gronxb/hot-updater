@@ -12,7 +12,7 @@ const storage = new Storage();
 
 export const gcsDatabase = (
   config: GCSDatabaseConfig,
-  hooks?: DatabasePluginHooks
+  hooks?: DatabasePluginHooks,
 ) => {
   const { bucketName } = config;
 
@@ -61,6 +61,10 @@ export const gcsDatabase = (
     }
   }
 
+  /**
+   * Delete a file from GCS
+   * @param fileName
+   */
   async function deleteObjectGCS(fileName: string) {
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(fileName);
@@ -76,6 +80,6 @@ export const gcsDatabase = (
     uploadJsonToGCS,
     deleteObjectGCS,
     invalidatePaths,
-    hooks
+    hooks,
   );
 };

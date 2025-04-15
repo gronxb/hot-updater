@@ -1,9 +1,9 @@
-// s3Database.spec.ts
+// gcsDatabase.spec.ts
 import { Buffer } from "buffer";
 import { Readable } from "stream";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { s3Database } from "./gcsDatabase";
+import { gcsDatabase } from "./gcsDatabase";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
