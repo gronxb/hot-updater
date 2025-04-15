@@ -159,25 +159,23 @@ const deployFunctions = async (cwd: string) => {
   }
 };
 
-const printTemplate = async (cwd: string) => {
+const printTemplate = async (projectId: string, region: string) => {
   let functionUrl = "";
   try {
-    const { stdout } = await execa(
-      "npx",
-      ["firebase", "functions:list", "--json"],
-      {
-        cwd,
-      },
-    );
-
+    const { stdout } = await execa("gcloud", [
+      "functions",
+      "describe",
+      "hot-updater",
+      "--project",
+      projectId,
+      "--region",
+      region,
+      "--format=json",
+    ]);
     const parsedData = JSON.parse(stdout);
-    const functionsData = parsedData.result || [];
+    const url = parsedData?.serviceConfig?.uri ?? parsedData.url;
 
-    const hotUpdater = functionsData.find(
-      (fn: FirebaseFunction) => fn.id === "hot-updater",
-    );
-
-    functionUrl = `${hotUpdater?.uri}/api/check-update` || "";
+    functionUrl = `${url}/api/check-update`;
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -226,6 +224,8 @@ export const runInit = async () => {
 
   const initializeVariable = await initFirebaseUser(tmpDir);
 
+  let currentRegion = "us-central1";
+
   await p.tasks([
     {
       title: "Installing dependencies...",
@@ -248,8 +248,6 @@ export const runInit = async () => {
     {
       title: "Checking existing functions and setting region",
       task: async () => {
-        let currentRegion = "us-central1";
-
         try {
           const { stdout } = await execa(
             "npx",
@@ -388,7 +386,7 @@ export const runInit = async () => {
     },
   ]);
 
-  await printTemplate(tmpDir);
+  await printTemplate(initializeVariable.projectId, currentRegion);
 
   void removeTmpDir();
 
