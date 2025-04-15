@@ -12,6 +12,6 @@
       "firebase-debug.*.log",
       "*.local"
     ],
-    "gen": 1
+    "gen": 2
   }
 }
