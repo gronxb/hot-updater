@@ -212,34 +212,17 @@ export const runInit = async () => {
     process.exit(1);
   }
 
-  const firebaseDir = path.join(
-    path.dirname(path.dirname(require.resolve("@hot-updater/firebase"))),
-    "firebase",
+  const firebaseDir = path.dirname(
+    require.resolve("@hot-updater/firebase/functions"),
   );
   const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
-  const functionsDir = path.join(tmpDir, "functions");
-  const oldPackagePath = path.join(functionsDir, "_package.json");
-  const newPackagePath = path.join(functionsDir, "package.json");
-  const indexFile = require.resolve("@hot-updater/firebase/functions");
-  const destPath = path.join(functionsDir, path.basename(indexFile));
+  await fs.promises.mkdir(path.join(tmpDir, "functions"), { recursive: true });
+
+  const functionsIndexPath = path.join(tmpDir, "functions", "index.cjs");
+  await fs.promises.rename(path.join(tmpDir, "index.cjs"), functionsIndexPath);
+
   let isFunctionsExist = false;
 
-  await fs.promises.copyFile(indexFile, destPath);
-  await fs.promises.rename(oldPackagePath, newPackagePath);
-  const indexTsPath = path.join(functionsDir, "index.ts");
-  const tsconfigPath = path.join(functionsDir, "tsconfig.json");
-
-  try {
-    await fs.promises.rm(indexTsPath);
-  } catch (error) {
-    p.log.error(`Error deleting ${indexTsPath}:`);
-  }
-
-  try {
-    await fs.promises.rm(tsconfigPath);
-  } catch (error) {
-    p.log.error(`Error deleting ${tsconfigPath}`);
-  }
   const initializeVariable = await initFirebaseUser(tmpDir);
 
   await p.tasks([
@@ -248,7 +231,7 @@ export const runInit = async () => {
       task: async () => {
         try {
           await execa("npm", ["install"], {
-            cwd: functionsDir,
+            cwd: tmpDir,
           });
           return "Installed dependencies";
         } catch (error) {
@@ -310,21 +293,18 @@ export const runInit = async () => {
 
           if (p.isCancel(selectRegion)) {
             p.cancel("Operation cancelled.");
-            throw new Error("Region selection cancelled");
+            process.exit(1);
           }
           selectedRegion = selectRegion as string;
         }
 
         const code = await transformEnv(
-          await fs.promises.readFile(
-            path.join(functionsDir, "index.cjs"),
-            "utf-8",
-          ),
+          await fs.promises.readFile(functionsIndexPath, "utf-8"),
           {
             REGION: selectedRegion,
           },
         );
-        await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);
+        await fs.promises.writeFile(functionsIndexPath, code);
         return `Using existing functions in region: ${currentRegion}`;
       },
     },

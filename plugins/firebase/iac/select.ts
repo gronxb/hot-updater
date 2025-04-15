@@ -353,6 +353,10 @@ export const initFirebaseUser = async (
       },
     },
   ]);
+  if (!storageBucket) {
+    p.log.error("Storage Bucket not found");
+    process.exit(1);
+  }
 
   const project = await execa("gcloud", [
     "projects",
