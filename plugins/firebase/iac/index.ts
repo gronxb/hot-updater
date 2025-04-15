@@ -262,7 +262,7 @@ export const runInit = async () => {
       },
     },
     {
-      title: `Setting up Firebase project (${initializeVariable.projectId})...`,
+      title: `Select Firebase project (${initializeVariable.projectId})...`,
       task: async () => {
         try {
           await execa(

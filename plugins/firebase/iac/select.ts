@@ -209,10 +209,14 @@ export const initFirebaseUser = async () => {
     handleError(err);
   }
   try {
-    await execa("gcloud", ["auth", "login"], {
-      stdio: "inherit",
-      shell: true,
-    });
+    const authList = await execa("gcloud", ["auth", "list", "--format=json"]);
+    const authListJson = JSON.parse(authList.stdout);
+    if (authListJson.length === 0) {
+      await execa("gcloud", ["auth", "login"], {
+        stdio: "inherit",
+        shell: true,
+      });
+    }
   } catch (err) {
     handleError(err);
   }

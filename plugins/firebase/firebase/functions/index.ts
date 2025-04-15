@@ -1,6 +1,5 @@
 import { NIL_UUID, type Platform } from "@hot-updater/core";
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions/v1";
 import { Hono } from "hono";
 import { createFirebaseApp } from "./createFirebaseApp";
 import { getUpdateInfo } from "./getUpdateInfo";
@@ -75,7 +74,7 @@ app.get("/api/check-update", async (c) => {
   }
 });
 
-const hotUpdaterFunction = createFirebaseApp(functions, {
+const hotUpdaterFunction = createFirebaseApp({
   region: HotUpdater.REGION,
 })(app);
 
