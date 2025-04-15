@@ -212,8 +212,6 @@ export const runInit = async () => {
     process.exit(1);
   }
 
-  const initializeVariable = await initFirebaseUser();
-
   const firebaseDir = path.join(
     path.dirname(path.dirname(require.resolve("@hot-updater/firebase"))),
     "firebase",
@@ -242,6 +240,7 @@ export const runInit = async () => {
   } catch (error) {
     p.log.error(`Error deleting ${tsconfigPath}`);
   }
+  const initializeVariable = await initFirebaseUser(tmpDir);
 
   await p.tasks([
     {
@@ -251,27 +250,6 @@ export const runInit = async () => {
           await execa("npm", ["install"], {
             cwd: functionsDir,
           });
-        } catch (error) {
-          if (error instanceof ExecaError) {
-            p.log.error(error.stderr || error.stdout || error.message);
-          } else if (error instanceof Error) {
-            p.log.error(error.message);
-          }
-          process.exit(1);
-        }
-      },
-    },
-    {
-      title: `Select Firebase project (${initializeVariable.projectId})...`,
-      task: async () => {
-        try {
-          await execa(
-            "npx",
-            ["firebase", "use", "--add", initializeVariable.projectId],
-            {
-              cwd: tmpDir,
-            },
-          );
         } catch (error) {
           if (error instanceof ExecaError) {
             p.log.error(error.stderr || error.stdout || error.message);

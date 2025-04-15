@@ -199,7 +199,9 @@ const listProjects = async (): Promise<
   }
 };
 
-export const initFirebaseUser = async (): Promise<{
+export const initFirebaseUser = async (
+  cwd: string,
+): Promise<{
   projectId: string;
   projectNumber: number;
   storageBucket: string;
@@ -277,29 +279,66 @@ export const initFirebaseUser = async (): Promise<{
     process.exit(0);
   }
 
-  await execa(
-    "gcloud",
-    ["firestore", "databases", "describe", `--project=${projectId}`],
+  await p.tasks([
     {
-      stdio: "inherit",
-      shell: true,
+      title: `Select Firebase project (${projectId})...`,
+      task: async () => {
+        try {
+          await execa("npx", ["firebase", "use", "--add", projectId], {
+            cwd,
+          });
+        } catch (error) {
+          if (error instanceof ExecaError) {
+            p.log.error(error.stderr || error.stdout || error.message);
+          } else if (error instanceof Error) {
+            p.log.error(error.message);
+          }
+          process.exit(1);
+        }
+      },
     },
-  );
-
-  const buckets = await execa("gcloud", [
-    "storage",
-    "buckets",
-    "list",
-    `--project=${projectId}`,
-    "--format=json",
   ]);
 
-  const bucketsJson = JSON.parse(buckets.stdout);
-  const storageBucket = bucketsJson.find(
-    (bucket: { name: string }) =>
-      bucket.name === `${projectId}.firebasestorage.app` ||
-      bucket.name === `${projectId}.appspot.com`,
-  )?.name;
+  try {
+    const indexes = await execa("npx", ["firebase", "firestore:indexes"], {
+      cwd,
+    });
+    if (indexes.exitCode !== 0) {
+      throw new Error(indexes.stderr);
+    }
+  } catch (err) {
+    // Create firestore database if it doesn't exist
+    await execa(
+      "gcloud",
+      ["firestore", "databases", "describe", `--project=${projectId}`],
+      {
+        stdio: "inherit",
+        shell: true,
+      },
+    );
+  }
+
+  let storageBucket: string | null = null;
+  await p.tasks([
+    {
+      title: "Getting storage bucket...",
+      task: async () => {
+        const buckets = await execa("gcloud", [
+          "storage",
+          "buckets",
+          "list",
+          `--project=${projectId}`,
+          "--format=json",
+        ]);
+        const bucketsJson = JSON.parse(buckets.stdout);
+        storageBucket = bucketsJson.find(
+          (bucket: { name: string }) =>
+            bucket.name === `${projectId}.firebasestorage.app` ||
+            bucket.name === `${projectId}.appspot.com`,
+        )?.name;
+      },
+    },
+  ]);
 
   if (!storageBucket) {
     p.log.error("Storage Bucket not found");
@@ -311,7 +350,9 @@ export const initFirebaseUser = async (): Promise<{
         `https://console.firebase.google.com/project/${projectId}/firestore`,
       ),
     );
+    process.exit(1);
   }
+
   p.log.step(`Storage Bucket: ${storageBucket}`);
 
   const project = await execa("gcloud", [
