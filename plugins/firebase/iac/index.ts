@@ -347,7 +347,6 @@ export const runInit = async () => {
           ),
           {
             REGION: selectedRegion,
-            STORAGE_BUCKET: initializeVariable.storageBucket,
           },
         );
         await fs.promises.writeFile(path.join(functionsDir, "index.cjs"), code);
@@ -357,6 +356,81 @@ export const runInit = async () => {
 
   await deployFirestore(tmpDir);
   await deployFunctions(tmpDir);
+
+  await p.tasks([
+    {
+      title: "Check IAM policy",
+      async task(message) {
+        const functionsList = await execa(
+          "npx",
+          ["firebase", "functions:list", "--json"],
+          {
+            cwd: tmpDir,
+          },
+        );
+        const functionsListJson = JSON.parse(functionsList.stdout);
+        const functionsData = functionsListJson.result || [];
+        const hotUpdater = functionsData.find(
+          (fn: FirebaseFunction) => fn.id === "hot-updater",
+        );
+        const account = hotUpdater?.serviceAccount as string | undefined;
+
+        if (!account) {
+          p.log.error("hot-updater function not found");
+          process.exit(1);
+        }
+
+        const checkIam = await execa("gcloud", [
+          "projects",
+          "get-iam-policy",
+          initializeVariable.projectId,
+          "--format=json",
+        ]);
+        const iamJson = JSON.parse(checkIam.stdout);
+        const hasTokenCreator = iamJson.bindings.some(
+          (binding: { role: string; members: string[] }) =>
+            binding.role === "roles/iam.serviceAccountTokenCreator" &&
+            binding.members.includes(`serviceAccount:${account}`),
+        );
+        if (!hasTokenCreator) {
+          try {
+            message(
+              "Adding IAM Service Account Token Creator role to the service account",
+            );
+            await execa(
+              "gcloud",
+              [
+                "projects",
+                "add-iam-policy-binding",
+                initializeVariable.projectId,
+                `--member=serviceAccount:${account}`,
+                "--role=roles/iam.serviceAccountTokenCreator",
+              ],
+              {
+                stdio: "inherit",
+                shell: true,
+              },
+            );
+            p.log.success(
+              "IAM Service Account Token Creator role has been added to the service account",
+            );
+          } catch (err) {
+            p.log.error(
+              "Please go to the following link to add the IAM Service Account Token Creator role to the service account",
+            );
+            p.log.step(
+              link(
+                `https://console.cloud.google.com/iam-admin/iam/project/${initializeVariable.projectId}/serviceaccounts/${account}/edit?inv=1`,
+              ),
+            );
+            process.exit(1);
+          }
+        }
+        return "Added IAM Service Account Token Creator role to the service account";
+      },
+    },
+  ]);
+
   await printTemplate(tmpDir);
 
   void removeTmpDir();

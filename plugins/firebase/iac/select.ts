@@ -199,7 +199,11 @@ const listProjects = async (): Promise<
   }
 };
 
-export const initFirebaseUser = async () => {
+export const initFirebaseUser = async (): Promise<{
+  projectId: string;
+  projectNumber: number;
+  storageBucket: string;
+}> => {
   try {
     await execa("npx", ["firebase", "login"], {
       stdio: "inherit",
@@ -270,9 +274,7 @@ export const initFirebaseUser = async () => {
     } catch (err) {
       handleError(err);
     }
-    return {
-      projectId: newProjectId,
-    };
+    process.exit(0);
   }
 
   await execa(
@@ -295,8 +297,8 @@ export const initFirebaseUser = async () => {
   const bucketsJson = JSON.parse(buckets.stdout);
   const storageBucket = bucketsJson.find(
     (bucket: { name: string }) =>
-      bucket.name.endsWith(".firebasestorage.app") ||
-      bucket.name.endsWith(".appspot.com"),
+      bucket.name === `${projectId}.firebasestorage.app` ||
+      bucket.name === `${projectId}.appspot.com`,
   )?.name;
 
   if (!storageBucket) {
@@ -325,65 +327,9 @@ export const initFirebaseUser = async () => {
     process.exit(1);
   }
 
-  await p.tasks([
-    {
-      title: "Check IAM policy",
-      async task(message) {
-        const checkIam = await execa("gcloud", [
-          "projects",
-          "get-iam-policy",
-          projectId,
-          "--format=json",
-        ]);
-        const iamJson = JSON.parse(checkIam.stdout);
-        const hasTokenCreator = iamJson.bindings.some(
-          (binding: { role: string; members: string[] }) =>
-            binding.role === "roles/iam.serviceAccountTokenCreator" &&
-            binding.members.includes(
-              `serviceAccount:service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com`,
-            ),
-        );
-        if (!hasTokenCreator) {
-          try {
-            message(
-              "Adding IAM Service Account Token Creator role to the service account",
-            );
-            await execa(
-              "gcloud",
-              [
-                "projects",
-                "add-iam-policy-binding",
-                projectId,
-                `--member=serviceAccount:service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com`,
-                "--role=roles/iam.serviceAccountTokenCreator",
-              ],
-              {
-                stdio: "inherit",
-                shell: true,
-              },
-            );
-            p.log.success(
-              "IAM Service Account Token Creator role has been added to the service account",
-            );
-          } catch (err) {
-            p.log.error(
-              "Please go to the following link to add the IAM Service Account Token Creator role to the service account",
-            );
-            p.log.step(
-              link(
-                `https://console.cloud.google.com/iam-admin/iam/project/${projectId}/serviceaccounts/service-${projectNumber}@gcf-admin-robot.iam.gserviceaccount.com/edit?inv=1`,
-              ),
-            );
-            process.exit(1);
-          }
-        }
-        return "Added IAM Service Account Token Creator role to the service account";
-      },
-    },
-  ]);
-
   return {
     storageBucket,
+    projectNumber,
     projectId,
   };
 };

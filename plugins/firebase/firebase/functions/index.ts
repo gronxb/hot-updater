@@ -8,13 +8,12 @@ declare global {
   var HotUpdater: {
     REGION: string;
     STORAGE_BUCKET: string;
+    PROJECT_ID: string;
   };
 }
 
 if (!admin.apps.length) {
-  admin.initializeApp({
-    storageBucket: HotUpdater.STORAGE_BUCKET,
-  });
+  admin.initializeApp();
 }
 
 const app = new Hono();
@@ -59,7 +58,7 @@ app.get("/api/check-update", async (c) => {
       });
     }
 
-    const signedUrl = await admin
+    const [signedUrl] = await admin
       .storage()
       .bucket(admin.app().options.storageBucket)
       .file([updateInfo.id, "bundle.zip"].join("/"))
@@ -68,10 +67,21 @@ app.get("/api/check-update", async (c) => {
         expires: Date.now() + 60 * 1000,
       });
 
-    return c.json({ ...updateInfo, fileUrl: signedUrl }, 200);
+    return c.json(
+      {
+        ...updateInfo,
+        fileUrl: signedUrl,
+      },
+      200,
+    );
   } catch (error) {
     if (error instanceof Error) {
-      return c.json({ error: error.message }, 500);
+      return c.json(
+        {
+          error: error.message,
+        },
+        500,
+      );
     }
     return c.json({ error: "Internal server error" }, 500);
   }
