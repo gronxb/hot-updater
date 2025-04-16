@@ -56,6 +56,7 @@ export async function setup() {
     "pnpm",
     ["firebase", "emulators:start", "--only", "firestore"],
     {
+      cwd: __dirname,
       stdio: "inherit",
       detached: true,
     },
