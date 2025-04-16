@@ -1,58 +1,17 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
-import { execa } from "execa";
-import * as admin from "firebase-admin";
 import type { Firestore } from "firebase-admin/firestore";
-import fkill from "fkill";
-import { afterAll, beforeAll, beforeEach, describe } from "vitest";
+import { beforeEach, describe } from "vitest";
+import { createFirestoreMock } from "../../test-utils/createFirestoreMock";
 import { getUpdateInfo as getUpdateInfoFromIndex } from "./getUpdateInfo";
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: "hot-updater-test",
-  });
-}
+const {
+  firestore,
+  bundlesCollection,
+  targetAppVersionsCollection,
+  clearCollections,
+} = createFirestoreMock("getUpdateInfo");
 
-const firestore = admin.firestore();
-firestore.settings({
-  host: "localhost:8080",
-  ssl: false,
-});
-
-const bundlesCollection = firestore.collection("bundles");
-const targetAppVersionsCollection = firestore.collection("target_app_versions");
-
-let emulatorProcess: ReturnType<typeof execa>;
-
-async function waitForEmulator(
-  maxRetries = 10,
-  retryDelay = 1000,
-): Promise<boolean> {
-  let retries = 0;
-  while (retries < maxRetries) {
-    try {
-      await firestore.listCollections();
-      console.log(`Firebase emulator ready after ${retries + 1} attempt(s)`);
-      return true;
-    } catch (error) {
-      console.log(
-        `Waiting for emulator to start (attempt ${retries + 1}/${maxRetries})...`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-      retries++;
-    }
-  }
-  return false;
-}
-
-async function isEmulatorReady() {
-  try {
-    await firestore.listCollections();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
 const createGetUpdateInfo =
   (db: Firestore) =>
   async (
@@ -115,41 +74,8 @@ const createGetUpdateInfo =
 describe("getUpdateInfo", () => {
   const getUpdateInfo = createGetUpdateInfo(firestore);
 
-  beforeAll(async () => {
-    console.log("Starting Firebase emulator...");
-    const isReady = await isEmulatorReady();
-    if (!isReady) {
-      emulatorProcess = execa(
-        "pnpm",
-        ["firebase", "emulators:start", "--only", "firestore"],
-        { cwd: __dirname, stdio: "inherit", detached: true },
-      );
-
-      const emulatorReady = await waitForEmulator();
-      if (!emulatorReady) {
-        throw new Error("Firebase emulator failed to start");
-      }
-    }
-
-    console.log("Firebase emulator started successfully");
-  }, 30000);
-
-  afterAll(async () => {
-    if (emulatorProcess?.pid) {
-      await fkill(":8080");
-    }
-  });
-
   beforeEach(async () => {
-    const collections = [bundlesCollection, targetAppVersionsCollection];
-    for (const coll of collections) {
-      const snapshot = await coll.get();
-      const batch = firestore.batch();
-      for (const doc of snapshot.docs) {
-        batch.delete(doc.ref);
-      }
-      await batch.commit();
-    }
+    await clearCollections();
   });
 
   setupGetUpdateInfoTestSuite({

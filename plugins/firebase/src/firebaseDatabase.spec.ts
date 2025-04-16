@@ -1,99 +1,27 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import { execa } from "execa";
-import admin from "firebase-admin";
-import fkill from "fkill";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: "firebaseDatabase",
-  });
-}
-
-const firestore = admin.firestore();
-firestore.settings({
-  host: "localhost:8081",
-  ssl: false,
-});
-
-const bundlesCollection = firestore.collection("bundles");
-const targetAppVersionsCollection = firestore.collection("target_app_versions");
-
-let emulatorProcess: ReturnType<typeof execa>;
-
-async function waitForEmulator(
-  maxRetries = 10,
-  retryDelay = 1000,
-): Promise<boolean> {
-  let retries = 0;
-  while (retries < maxRetries) {
-    try {
-      await firestore.listCollections();
-      console.log(`Firebase emulator ready after ${retries + 1} attempt(s)`);
-      return true;
-    } catch (error) {
-      console.log(
-        `Waiting for emulator to start (attempt ${retries + 1}/${maxRetries})...`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-      retries++;
-    }
-  }
-  return false;
-}
-
-async function isEmulatorReady() {
-  try {
-    await firestore.listCollections();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
+const {
+  firestore,
+  bundlesCollection,
+  targetAppVersionsCollection,
+  clearCollections,
+} = createFirestoreMock("firebaseDatabase");
 
 describe("firebaseDatabase plugin", () => {
   let plugin: DatabasePlugin;
 
-  beforeAll(async () => {
-    console.log("Starting Firebase emulator...");
-    const isReady = await isEmulatorReady();
-    if (!isReady) {
-      emulatorProcess = execa(
-        "pnpm",
-        ["firebase", "emulators:start", "--only", "firestore"],
-        { cwd: __dirname, stdio: "inherit", detached: true },
-      );
-
-      const emulatorReady = await waitForEmulator();
-      if (!emulatorReady) {
-        throw new Error("Firebase emulator failed to start");
-      }
-    }
-
-    console.log("Firebase emulator started successfully");
+  beforeAll(() => {
     plugin = firebaseDatabase({
       projectId: "hot-updater-test",
       storageBucket: "hot-updater-test.appspot.com",
     })({ cwd: "" });
-  }, 30000);
-
-  afterAll(async () => {
-    if (emulatorProcess?.pid) {
-      await fkill(":8081");
-    }
   });
 
   beforeEach(async () => {
-    const collections = [bundlesCollection, targetAppVersionsCollection];
-    for (const coll of collections) {
-      const snapshot = await coll.get();
-      const batch = firestore.batch();
-      for (const doc of snapshot.docs) {
-        batch.delete(doc.ref);
-      }
-      await batch.commit();
-    }
+    await clearCollections();
   });
 
   it("should return null for a non-existent bundle id", async () => {

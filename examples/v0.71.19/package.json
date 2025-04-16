@@ -40,7 +40,7 @@
     "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
     "firebase-admin": "^13.2.0",
-    "firebase-tools": "^13.32.0",
+    "firebase-tools": "^14.1.0",
     "hot-updater": "0.16.2",
     "invariant": "^2.2.4",
     "jest": "^29.2.1",
