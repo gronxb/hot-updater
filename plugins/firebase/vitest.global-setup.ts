@@ -41,7 +41,6 @@ async function waitForEmulator(
 export async function setup() {
   console.log("Starting Firebase emulator...");
 
-  // 기존 에뮬레이터 프로세스가 있는지 확인하고 종료
   try {
     await fkill(":8080");
     console.log("Killed existing emulator process");
@@ -49,7 +48,6 @@ export async function setup() {
     console.log("No existing emulator process found");
   }
 
-  // 에뮬레이터 시작 전에 환경 변수 설정
   process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
   process.env.FIREBASE_AUTH_EMULATOR_HOST = "localhost:9099";
   process.env.GCLOUD_PROJECT = "hot-updater-test";
@@ -60,12 +58,6 @@ export async function setup() {
     {
       stdio: "inherit",
       detached: true,
-      env: {
-        ...process.env,
-        FIRESTORE_EMULATOR_HOST: "localhost:8080",
-        FIREBASE_AUTH_EMULATOR_HOST: "localhost:9099",
-        GCLOUD_PROJECT: "hot-updater-test",
-      },
     },
   );
 

@@ -5,12 +5,8 @@ import { firebaseDatabase } from "./firebaseDatabase";
 
 const PROJECT_ID = "firebase-database-test";
 
-const {
-  firestore,
-  bundlesCollection,
-  targetAppVersionsCollection,
-  clearCollections,
-} = createFirestoreMock(PROJECT_ID);
+const { firestore, bundlesCollection, clearCollections } =
+  createFirestoreMock(PROJECT_ID);
 
 describe("firebaseDatabase plugin", () => {
   let plugin: DatabasePlugin;
