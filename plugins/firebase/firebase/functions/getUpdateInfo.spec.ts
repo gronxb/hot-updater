@@ -5,12 +5,14 @@ import { beforeEach, describe } from "vitest";
 import { createFirestoreMock } from "../../test-utils/createFirestoreMock";
 import { getUpdateInfo as getUpdateInfoFromIndex } from "./getUpdateInfo";
 
+const PROJECT_ID = "get-update-info-test";
+
 const {
   firestore,
   bundlesCollection,
   targetAppVersionsCollection,
   clearCollections,
-} = createFirestoreMock("getUpdateInfo");
+} = createFirestoreMock(PROJECT_ID);
 
 const createGetUpdateInfo =
   (db: Firestore) =>

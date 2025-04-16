@@ -3,20 +3,22 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 
+const PROJECT_ID = "firebase-database-test";
+
 const {
   firestore,
   bundlesCollection,
   targetAppVersionsCollection,
   clearCollections,
-} = createFirestoreMock("firebaseDatabase");
+} = createFirestoreMock(PROJECT_ID);
 
 describe("firebaseDatabase plugin", () => {
   let plugin: DatabasePlugin;
 
   beforeAll(() => {
     plugin = firebaseDatabase({
-      projectId: "hot-updater-test",
-      storageBucket: "hot-updater-test.appspot.com",
+      projectId: PROJECT_ID,
+      storageBucket: `${PROJECT_ID}.appspot.com`,
     })({ cwd: "" });
   });
 
