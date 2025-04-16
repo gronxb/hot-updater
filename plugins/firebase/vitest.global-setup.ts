@@ -58,7 +58,7 @@ export async function setup() {
     {
       cwd: __dirname,
       stdio: "inherit",
-      detached: true,
+      reject: false,
     },
   );
 
@@ -71,9 +71,9 @@ export async function setup() {
 }
 
 export async function teardown() {
-  if (emulatorProcess?.pid) {
+  if (emulatorProcess.pid) {
     try {
-      await fkill(":8080");
+      await fkill(":8080", { force: true });
       console.log("Successfully killed emulator process");
     } catch (error) {
       console.error("Failed to kill emulator process:", error);
