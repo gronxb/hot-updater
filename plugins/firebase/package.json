@@ -55,9 +55,7 @@
     "fkill": "^9.0.0",
     "hono": "^4.6.3",
     "mime": "^4.0.4",
-    "picocolors": "^1.0.0",
-    "tsup": "^8.3.6",
-    "vitest": "2.1.8"
+    "picocolors": "^1.0.0"
   },
   "peerDependencies": {
     "firebase-admin": "*"

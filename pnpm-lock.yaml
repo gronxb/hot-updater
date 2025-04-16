@@ -36,9 +36,6 @@ importers:
       '@rslib/core':
         specifier: ^0.5.4
         version: 0.5.4(typescript@5.8.2)
-      firebase-tools:
-        specifier: ^13.32.0
-        version: 13.35.1(encoding@0.1.13)
       nx:
         specifier: 20.5.0
         version: 20.5.0(@swc-node/register@1.10.9(@swc/core@1.7.42(@swc/helpers@0.5.15))(@swc/types@0.1.13)(typescript@5.8.2))(@swc/core@1.7.42(@swc/helpers@0.5.15))
@@ -928,12 +925,6 @@ importers:
       picocolors:
         specifier: ^1.0.0
         version: 1.1.1
-      tsup:
-        specifier: ^8.3.6
-        version: 8.4.0(@swc/core@1.7.42(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.3)(typescript@5.8.2)(yaml@2.6.1)
-      vitest:
-        specifier: 2.1.8
-        version: 2.1.8(@types/node@22.13.5)(jsdom@25.0.1)(msw@2.7.0(@types/node@22.13.5)(typescript@5.8.2))(sass-embedded@1.83.0)(terser@5.31.0)
 
   plugins/js:
     dependencies:
@@ -21558,7 +21549,7 @@ snapshots:
       '@typescript-eslint/type-utils': 6.21.0(eslint@8.57.0)(typescript@5.8.2)
       '@typescript-eslint/utils': 6.21.0(eslint@8.57.0)(typescript@5.8.2)
       '@typescript-eslint/visitor-keys': 6.21.0
-      debug: 4.3.7
+      debug: 4.4.0
       eslint: 8.57.0
       graphemer: 1.4.0
       ignore: 5.3.2
@@ -21606,7 +21597,7 @@ snapshots:
       '@typescript-eslint/types': 6.21.0
       '@typescript-eslint/typescript-estree': 6.21.0(typescript@5.8.2)
       '@typescript-eslint/visitor-keys': 6.21.0
-      debug: 4.3.7
+      debug: 4.4.0
       eslint: 8.57.0
     optionalDependencies:
       typescript: 5.8.2
