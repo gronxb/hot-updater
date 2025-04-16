@@ -65,6 +65,7 @@ export const getUpdateInfo = async (
     const appVersionsSnapshot = await db
       .collection("target_app_versions")
       .where("platform", "==", platform)
+      .where("channel", "==", channel)
       .select("target_app_version")
       .get();
 
