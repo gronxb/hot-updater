@@ -75,7 +75,6 @@ describe("firebaseDatabase plugin", () => {
     }
   });
 
-  // 각 테스트마다 컬렉션 클리어
   beforeEach(async () => {
     const collections = [bundlesCollection, targetAppVersionsCollection];
     for (const coll of collections) {
