@@ -91,8 +91,11 @@ export const firebaseDatabase = (
       },
 
       async getChannels() {
+        const targetAppVersionsCollection = db.collection(
+          "target_app_versions",
+        );
         const query: admin.firestore.Query<FirestoreData> =
-          bundlesCollection.orderBy("channel");
+          targetAppVersionsCollection.select("channel");
         const querySnapshot = await query.get();
 
         if (querySnapshot.empty) {
@@ -101,7 +104,10 @@ export const firebaseDatabase = (
 
         const channels = new Set<string>();
         for (const doc of querySnapshot.docs) {
-          channels.add((doc.data() as SnakeCaseBundle).channel);
+          const data = doc.data();
+          if (data.channel) {
+            channels.add(data.channel as string);
+          }
         }
 
         return Array.from(channels);
@@ -113,9 +119,42 @@ export const firebaseDatabase = (
         }
 
         await db.runTransaction(async (transaction) => {
+          const bundlesSnapshot = await transaction.get(bundlesCollection);
+          const targetVersionsSnapshot = await transaction.get(
+            db.collection("target_app_versions"),
+          );
+
+          const bundlesMap: { [id: string]: any } = {};
+          for (const doc of bundlesSnapshot.docs) {
+            bundlesMap[doc.id] = doc.data();
+          }
+
+          for (const { operation, data } of changedSets) {
+            if (operation === "insert" || operation === "update") {
+              bundlesMap[data.id] = {
+                id: data.id,
+                channel: data.channel,
+                enabled: data.enabled,
+                should_force_update: data.shouldForceUpdate,
+                file_hash: data.fileHash,
+                git_commit_hash: data.gitCommitHash || null,
+                message: data.message || null,
+                platform: data.platform,
+                target_app_version: data.targetAppVersion,
+              };
+            }
+          }
+
+          const requiredTargetVersionKeys = new Set<string>();
+          for (const bundle of Object.values(bundlesMap)) {
+            if (bundle.target_app_version) {
+              const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
+              requiredTargetVersionKeys.add(key);
+            }
+          }
+
           for (const { operation, data } of changedSets) {
             const bundleRef = bundlesCollection.doc(data.id);
-
             if (operation === "insert" || operation === "update") {
               if (data.targetAppVersion) {
                 transaction.set(
@@ -134,13 +173,14 @@ export const firebaseDatabase = (
                   { merge: true },
                 );
 
-                const versionDocId = `${data.platform}_${data.targetAppVersion}`;
+                const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
                 const targetAppVersionsRef = db
                   .collection("target_app_versions")
                   .doc(versionDocId);
                 transaction.set(
                   targetAppVersionsRef,
                   {
+                    channel: data.channel,
                     platform: data.platform,
                     target_app_version: data.targetAppVersion,
                   },
@@ -166,17 +206,8 @@ export const firebaseDatabase = (
             }
           }
 
-          const targetVersionsSnapshot = await transaction.get(
-            db.collection("target_app_versions"),
-          );
-
           for (const targetDoc of targetVersionsSnapshot.docs) {
-            const { platform, target_app_version } = targetDoc.data();
-            const query = bundlesCollection
-              .where("platform", "==", platform)
-              .where("target_app_version", "==", target_app_version);
-            const querySnapshot = await transaction.get(query);
-            if (querySnapshot.empty) {
+            if (!requiredTargetVersionKeys.has(targetDoc.id)) {
               transaction.delete(targetDoc.ref);
             }
           }

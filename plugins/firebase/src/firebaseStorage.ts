@@ -21,8 +21,7 @@ export const firebaseStorage =
     } catch (e) {
       app = admin.initializeApp(config);
     }
-
-    const bucket = admin.storage().bucket(config.storageBucket);
+    const bucket = app.storage().bucket(config.storageBucket);
 
     return {
       name: "firebaseStorage",

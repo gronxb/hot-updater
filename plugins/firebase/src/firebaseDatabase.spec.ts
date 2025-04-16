@@ -1,561 +1,645 @@
-import type { SnakeCaseBundle } from "@hot-updater/core";
-import type {
-  BasePluginArgs,
-  Bundle,
-  DatabasePluginHooks,
-} from "@hot-updater/plugin-core";
-import type * as admin from "firebase-admin";
-import { cert } from "firebase-admin/app";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { execa } from "execa";
+import admin from "firebase-admin";
+import fkill from "fkill";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { firebaseDatabase } from "./firebaseDatabase";
 
-const {
-  mockFirestore,
-  mockCollection,
-  mockDoc,
-  mockWhere,
-  mockOrderBy,
-  mockLimit,
-  mockOffset,
-  mockQueryGet,
-  mockDocGet,
-  mockBatch,
-  mockBatchSet,
-  mockBatchCommit,
-  mockApp,
-  mockInitializeApp,
-  mockAppFn,
-  mockCert,
-  setInitializeAppCalled,
-  getInitializeAppCalled,
-  // 추가: runTransaction 모킹
-  // runTransaction는 firestore 객체에서 호출하므로 모킹 처리
-} = vi.hoisted(() => {
-  const mockFirestore = vi.fn();
-  const mockCollection = vi.fn();
-  const mockDoc = vi.fn();
-  const mockWhere = vi.fn();
-  const mockOrderBy = vi.fn();
-  const mockLimit = vi.fn();
-  const mockOffset = vi.fn();
-  const mockQueryGet = vi.fn();
-  const mockDocGet = vi.fn();
-  const mockBatch = vi.fn();
-  const mockBatchSet = vi.fn();
-  const mockBatchCommit = vi.fn();
-  const mockCert = vi.fn(() => ({}));
-  const mockApp = { name: "mock-app-stable-reference" };
-  let _initializeAppHasBeenCalled = false;
-  const setInitializeAppCalled = (called: boolean) => {
-    _initializeAppHasBeenCalled = called;
-  };
-  const getInitializeAppCalled = () => _initializeAppHasBeenCalled;
-  const mockInitializeApp = vi.fn().mockImplementation((_options) => {
-    setInitializeAppCalled(true);
-    return mockApp;
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: "hot-updater-test",
   });
-  const mockAppFn = vi.fn().mockImplementation(() => {
-    throw new Error("App not initialized (hoisted default)");
-  });
+}
 
-  // 추가: runTransaction 모킹. 실제로는 전달된 콜백을 호출하는 식으로 단순하게 구현함.
-  const mockRunTransaction = vi
-    .fn()
-    .mockImplementation(async (updateFunction: any) => {
-      // fakeTransaction 객체를 생성하여 set, get, delete를 모킹합니다.
-      const fakeTransaction = {
-        set: vi.fn(),
-        delete: vi.fn(),
-        get: vi.fn(),
-      };
-      return updateFunction(fakeTransaction);
-    });
-
-  mockFirestore.mockImplementation((appArg) => {
-    if (appArg === mockApp) {
-      return {
-        collection: mockCollection,
-        batch: mockBatch,
-        runTransaction: mockRunTransaction,
-      };
-    }
-    return undefined;
-  });
-
-  mockCollection.mockImplementation((_path: string) => {
-    return {
-      doc: mockDoc,
-      where: mockWhere,
-      orderBy: mockOrderBy,
-      limit: mockLimit,
-      offset: mockOffset,
-      get: mockQueryGet,
-    };
-  });
-  mockDoc.mockImplementation((_docId: string) => {
-    return {
-      get: mockDocGet,
-    };
-  });
-  mockBatch.mockImplementation(() => {
-    return {
-      set: mockBatchSet,
-      commit: mockBatchCommit,
-    };
-  });
-  mockWhere.mockReturnThis();
-  mockOrderBy.mockReturnThis();
-  mockLimit.mockReturnThis();
-  mockOffset.mockReturnThis();
-  return {
-    mockFirestore,
-    mockCollection,
-    mockDoc,
-    mockWhere,
-    mockOrderBy,
-    mockLimit,
-    mockOffset,
-    mockQueryGet,
-    mockDocGet,
-    mockBatch,
-    mockBatchSet,
-    mockBatchCommit,
-    mockApp,
-    mockInitializeApp,
-    mockAppFn,
-    mockCert,
-    setInitializeAppCalled,
-    getInitializeAppCalled,
-  };
+const firestore = admin.firestore();
+firestore.settings({
+  host: "localhost:8080",
+  ssl: false,
 });
 
-// --- Mock firebase-admin module ---
-vi.mock("firebase-admin", () => {
-  return {
-    initializeApp: mockInitializeApp,
-    app: mockAppFn,
-    credential: { cert: mockCert },
-    firestore: mockFirestore,
-    // FieldValue.delete()를 단순 토큰으로 모킹
-    FieldValue: {
-      delete: () => ({ __delete: true }),
-    },
-  };
-});
+const bundlesCollection = firestore.collection("bundles");
+const targetAppVersionsCollection = firestore.collection("target_app_versions");
 
-// Define baseArgs if the factory function still expects it
-const baseArgs: BasePluginArgs = {
-  cwd: "/mock/path",
-};
+let emulatorProcess: ReturnType<typeof execa>;
 
-describe("Firebase Admin Database Plugin", () => {
-  const mockConfig: admin.AppOptions = {
-    projectId: "test-project-id",
-    credential: cert({
-      projectId: "test-project-id",
-      privateKey: "test-private-key",
-      clientEmail: "test-client-email@example.com",
-    }),
-  };
-
-  const mockHooks: DatabasePluginHooks = {};
-
-  const mockBundle: Bundle = {
-    id: "test-bundle-id",
-    enabled: true,
-    shouldForceUpdate: false,
-    fileHash: "test-file-hash",
-    gitCommitHash: "test-git-hash",
-    message: "test-message",
-    channel: "production",
-    platform: "android",
-    targetAppVersion: "1.0.0",
-  };
-
-  const mockFirestoreData: SnakeCaseBundle = {
-    id: "test-bundle-id",
-    enabled: true,
-    should_force_update: false,
-    file_hash: "test-file-hash",
-    git_commit_hash: "test-git-hash",
-    message: "test-message",
-    channel: "production",
-    platform: "android",
-    target_app_version: "1.0.0",
-  };
-
-  type CommitBundleArgs = {
-    changedSets: Array<{
-      operation: "insert" | "update" | "delete";
-      data: Bundle;
-    }>;
-  };
-
-  let databasePlugin: ReturnType<ReturnType<typeof firebaseDatabase>>;
-
-  beforeEach(() => {
-    vi.resetAllMocks();
-    setInitializeAppCalled(false);
-    mockAppFn.mockImplementation(() => {
-      throw new Error("App not initialized (beforeEach setup)");
-    });
-    mockInitializeApp.mockImplementation((_options) => {
-      setInitializeAppCalled(true);
-      mockAppFn.mockImplementation(() => {
-        return mockApp;
-      });
-      return mockApp;
-    });
-    mockFirestore.mockImplementation((appArg) => {
-      if (appArg === mockApp) {
-        return {
-          collection: mockCollection,
-          batch: mockBatch,
-          runTransaction: vi
-            .fn()
-            .mockImplementation(
-              async (fn) =>
-                await fn({ set: vi.fn(), get: vi.fn(), delete: vi.fn() }),
-            ),
-        };
-      }
-      return undefined;
-    });
-    mockCollection.mockImplementation((_path: string) => {
-      return {
-        doc: mockDoc,
-        where: mockWhere,
-        orderBy: mockOrderBy,
-        limit: mockLimit,
-        offset: mockOffset,
-        get: mockQueryGet,
-      };
-    });
-    mockDoc.mockImplementation((_docId: string) => {
-      return { get: mockDocGet };
-    });
-    mockBatch.mockImplementation(() => {
-      return { set: mockBatchSet, commit: mockBatchCommit };
-    });
-    mockWhere.mockReturnThis();
-    mockOrderBy.mockReturnThis();
-    mockLimit.mockReturnThis();
-    mockOffset.mockReturnThis();
-    mockQueryGet.mockResolvedValue({ empty: true, docs: [] });
-    mockDocGet.mockResolvedValue({ exists: false, data: () => undefined });
-    mockBatchCommit.mockResolvedValue(undefined);
-
+async function waitForEmulator(
+  maxRetries = 10,
+  retryDelay = 1000,
+): Promise<boolean> {
+  let retries = 0;
+  while (retries < maxRetries) {
     try {
-      databasePlugin = firebaseDatabase(mockConfig, mockHooks)(baseArgs);
+      await firestore.listCollections();
+      console.log(`Firebase emulator ready after ${retries + 1} attempt(s)`);
+      return true;
     } catch (error) {
-      console.error("[beforeEach] Error during plugin instantiation:", error);
-      throw error;
+      console.log(
+        `Waiting for emulator to start (attempt ${retries + 1}/${maxRetries})...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      retries++;
     }
-    expect(mockCert).toHaveBeenCalledTimes(1);
-    expect(mockCert).toHaveBeenCalledWith(
-      expect.objectContaining({ project_id: mockConfig.projectId }),
+  }
+  return false;
+}
+
+describe("firebaseDatabase plugin", () => {
+  let plugin: DatabasePlugin;
+
+  beforeAll(async () => {
+    console.log("Starting Firebase emulator...");
+    emulatorProcess = execa(
+      "pnpm",
+      ["firebase", "emulators:start", "--only", "firestore"],
+      {
+        stdio: "inherit",
+        detached: true,
+      },
     );
-    expect(mockInitializeApp).toHaveBeenCalledTimes(1);
-    expect(mockFirestore).toHaveBeenCalledTimes(1);
-    expect(mockFirestore).toHaveBeenCalledWith(mockApp);
+
+    const emulatorReady = await waitForEmulator();
+    if (!emulatorReady) {
+      throw new Error("Firebase emulator failed to start");
+    }
+
+    console.log("Firebase emulator started successfully");
+    plugin = firebaseDatabase({
+      projectId: "hot-updater-test",
+      storageBucket: "hot-updater-test.appspot.com",
+    })({ cwd: "" });
+  }, 30000);
+
+  afterAll(async () => {
+    if (emulatorProcess?.pid) {
+      await fkill(":8080");
+    }
   });
 
-  afterEach(() => {
-    vi.resetAllMocks();
-    setInitializeAppCalled(false);
+  // 각 테스트마다 컬렉션 클리어
+  beforeEach(async () => {
+    const collections = [bundlesCollection, targetAppVersionsCollection];
+    for (const coll of collections) {
+      const snapshot = await coll.get();
+      const batch = firestore.batch();
+      for (const doc of snapshot.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    }
   });
 
-  it("should instantiate without error", () => {
-    expect(databasePlugin).toBeDefined();
-    expect(databasePlugin.getBundles).toBeInstanceOf(Function);
+  it("should return null for a non-existent bundle id", async () => {
+    const bundle = await plugin.getBundleById("nonexistent");
+    expect(bundle).toBeNull();
   });
 
-  it("should call firestore().collection() when getting bundles", async () => {
-    const mockData1 = { ...mockFirestoreData, id: "b1" };
-    const mockData2 = { ...mockFirestoreData, id: "b2" };
-    mockQueryGet.mockResolvedValueOnce({
-      empty: false,
-      docs: [{ data: () => mockData1 }, { data: () => mockData2 }],
+  it("should retrieve a bundle by id after inserting into Firestore", async () => {
+    const snakeBundle = {
+      id: "bundle123",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "abc123",
+      gitCommitHash: "commit123",
+      message: "test bundle",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    } as const;
+    await plugin.appendBundle(snakeBundle);
+    await plugin.commitBundle();
+
+    const bundle = await plugin.getBundleById("bundle123");
+    expect(bundle).toEqual({
+      id: "bundle123",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "abc123",
+      gitCommitHash: "commit123",
+      message: "test bundle",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
     });
-    const bundles = await databasePlugin.getBundles();
-    expect(mockCollection).toHaveBeenCalledWith("bundles");
-    expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
-    expect(mockQueryGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("should get bundles with filtering, ordering and pagination", async () => {
+    const bundle1 = {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "android",
+      targetAppVersion: "2.0.0",
+    } as const;
+
+    const bundle2 = {
+      id: "bundle2",
+      channel: "production",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hash2",
+      gitCommitHash: "commit2",
+      message: "bundle 2",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    } as const;
+
+    const bundle3 = {
+      id: "bundle3",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash3",
+      gitCommitHash: "commit3",
+      message: "bundle 3",
+      platform: "android",
+      targetAppVersion: "1.5.0",
+    } as const;
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.appendBundle(bundle3);
+    await plugin.commitBundle();
+
+    const bundles = await plugin.getBundles({
+      where: { channel: "production" },
+    });
     expect(bundles).toHaveLength(2);
-    expect(bundles[0].id).toBe("b1");
-    expect(bundles[1].id).toBe("b2");
+    expect(bundles[0].id).toBe("bundle2");
+    expect(bundles[1].id).toBe("bundle1");
   });
 
-  describe("getBundleById", () => {
-    it("should return null if bundle not found in Firestore", async () => {
-      mockDocGet.mockResolvedValueOnce({
-        exists: false,
-        data: () => undefined,
-      });
-      const result = await databasePlugin.getBundleById("non-existent-id");
-      expect(mockCollection).toHaveBeenCalledWith("bundles");
-      expect(mockDoc).toHaveBeenCalledWith("non-existent-id");
-      expect(mockDocGet).toHaveBeenCalledTimes(1);
-      expect(result).toBeNull();
-    });
+  it("should get distinct channels", async () => {
+    const bundle1 = {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "android",
+      targetAppVersion: "2.0.0",
+    } as const;
+    const bundle2 = {
+      id: "bundle2",
+      channel: "staging",
+      enabled: false,
+      fileHash: "hash2",
+      gitCommitHash: "commit2",
+      message: "bundle 2",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      shouldForceUpdate: false,
+    } as const;
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.commitBundle();
 
-    it("should return bundle when found in Firestore", async () => {
-      mockDocGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => mockFirestoreData,
-      });
-      const result = await databasePlugin.getBundleById("test-bundle-id");
-      expect(mockCollection).toHaveBeenCalledWith("bundles");
-      expect(mockDoc).toHaveBeenCalledWith("test-bundle-id");
-      expect(mockDocGet).toHaveBeenCalledTimes(1);
-      expect(result).toEqual(mockBundle);
-    });
+    const channels = await plugin.getChannels();
+    expect(channels.sort()).toEqual(["production", "staging"].sort());
   });
 
-  describe("getBundles", () => {
-    it("should return empty array when no bundles exist", async () => {
-      mockQueryGet.mockResolvedValueOnce({ empty: true, docs: [] });
-      const result = await databasePlugin.getBundles();
-      expect(mockCollection).toHaveBeenCalledWith("bundles");
-      expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
-      expect(mockQueryGet).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([]);
+  it("should commit bundle changes and remove unused target_app_versions", async () => {
+    await plugin.appendBundle({
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
     });
 
-    it("should query Firestore and return converted bundles", async () => {
-      const secondFirestoreData = {
-        ...mockFirestoreData,
-        id: "second-bundle-id",
-      };
-      mockQueryGet.mockResolvedValueOnce({
-        empty: false,
-        docs: [
-          { data: () => mockFirestoreData },
-          { data: () => secondFirestoreData },
-        ],
-      });
-      const result = await databasePlugin.getBundles();
-      expect(mockCollection).toHaveBeenCalledWith("bundles");
-      expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
-      expect(mockQueryGet).toHaveBeenCalledTimes(1);
-      expect(result.length).toBe(2);
-      expect(result[0]).toEqual(mockBundle);
-      expect(result[1]).toEqual(
-        expect.objectContaining({ id: "second-bundle-id" }),
-      );
+    await plugin.commitBundle();
+
+    const bundleDoc = await bundlesCollection.doc("bundle1").get();
+    expect(bundleDoc.exists).toBeTruthy();
+    const bundleData = bundleDoc.data();
+    expect(bundleData?.target_app_version).toBe("1.0.0");
+
+    const versionDocId = "ios_production_1.0.0";
+    const targetDoc = await firestore
+      .collection("target_app_versions")
+      .doc(versionDocId)
+      .get();
+    expect(targetDoc.exists).toBeTruthy();
+    expect(targetDoc.data()?.channel).toBe("production");
+
+    await plugin.updateBundle("bundle1", {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle updated",
+      platform: "ios",
+      targetAppVersion: "1.0.x",
     });
 
-    it("should apply filters (where, limit, offset) when options are provided", async () => {
-      mockQueryGet.mockResolvedValueOnce({
-        empty: false,
-        docs: [{ data: () => mockFirestoreData }],
-      });
-      await databasePlugin.getBundles({
-        where: { channel: "production", platform: "android" },
-        limit: 10,
-        offset: 5,
-      });
-      expect(mockCollection).toHaveBeenCalledWith("bundles");
-      expect(mockWhere).toHaveBeenCalledWith("channel", "==", "production");
-      expect(mockWhere).toHaveBeenCalledWith("platform", "==", "android");
-      expect(mockOrderBy).toHaveBeenCalledWith("id", "desc");
-      expect(mockOffset).toHaveBeenCalledWith(5);
-      expect(mockLimit).toHaveBeenCalledWith(10);
-      expect(mockQueryGet).toHaveBeenCalledTimes(1);
-    });
+    await plugin.commitBundle();
+    const updatedBundleDoc = await bundlesCollection.doc("bundle1").get();
+    expect(updatedBundleDoc.exists).toBeTruthy();
+    const updatedData = updatedBundleDoc.data();
+    expect(updatedData?.target_app_version).toBe("1.0.x");
+
+    const oldVersionDocId = "ios_production_1.0.0";
+    const oldTargetDoc = await firestore
+      .collection("target_app_versions")
+      .doc(oldVersionDocId)
+      .get();
+    expect(oldTargetDoc.exists).toBeFalsy();
+
+    const newVersionDocId = "ios_production_1.0.x";
+    const newTargetDoc = await firestore
+      .collection("target_app_versions")
+      .doc(newVersionDocId)
+      .get();
+    expect(newTargetDoc.exists).toBeTruthy();
+    expect(newTargetDoc.data()?.channel).toBe("production");
   });
 
-  describe("getChannels", () => {
-    it("should return empty array when no channels exist", async () => {
-      mockQueryGet.mockResolvedValueOnce({ empty: true, docs: [] });
-      const result = await databasePlugin.getChannels();
-      expect(mockCollection).toHaveBeenCalledWith("bundles");
-      expect(mockOrderBy).toHaveBeenCalledWith("channel");
-      expect(mockQueryGet).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([]);
-    });
+  it("should retrieve all bundles without filtering in descending order", async () => {
+    const bundleA = {
+      id: "bundleA",
+      channel: "test",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hashA",
+      gitCommitHash: "commitA",
+      message: "Bundle A",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    } as const;
+    const bundleB = {
+      id: "bundleB",
+      channel: "test",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashB",
+      gitCommitHash: "commitB",
+      message: "Bundle B",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    } as const;
+    const bundleC = {
+      id: "bundleC",
+      channel: "test",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hashC",
+      gitCommitHash: "commitC",
+      message: "Bundle C",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    } as const;
 
-    it("should return unique channels from Firestore data", async () => {
-      mockQueryGet.mockResolvedValueOnce({
-        empty: false,
-        docs: [
-          { data: () => ({ ...mockFirestoreData, channel: "production" }) },
-          { data: () => ({ ...mockFirestoreData, id: "b2", channel: "beta" }) },
-          {
-            data: () => ({
-              ...mockFirestoreData,
-              id: "b3",
-              channel: "production",
-            }),
-          },
-          {
-            data: () => ({ ...mockFirestoreData, id: "b4", channel: "alpha" }),
-          },
-        ],
-      });
-      const result = await databasePlugin.getChannels();
-      expect(mockCollection).toHaveBeenCalledWith("bundles");
-      expect(mockOrderBy).toHaveBeenCalledWith("channel");
-      expect(mockQueryGet).toHaveBeenCalledTimes(1);
-      expect(result).toEqual(
-        expect.arrayContaining(["production", "beta", "alpha"]),
-      );
-      expect(result).toHaveLength(3);
-    });
+    await plugin.appendBundle(bundleA);
+    await plugin.appendBundle(bundleB);
+    await plugin.appendBundle(bundleC);
+    await plugin.commitBundle();
+
+    const bundles = await plugin.getBundles();
+    expect(bundles).toHaveLength(3);
+    expect(bundles[0].id).toBe("bundleC");
+    expect(bundles[1].id).toBe("bundleB");
+    expect(bundles[2].id).toBe("bundleA");
   });
 
-  // --- 추가 테스트: commitBundle 테스트 케이스 ---
-  describe("commitBundle", () => {
-    it("should do nothing if changedSets is empty", async () => {
-      const args: CommitBundleArgs = { changedSets: [] };
-      await databasePlugin.commitBundle(args);
-      // runTransaction를 호출하지 않아야 함
-      expect(mockFirestore).toHaveBeenCalled();
+  it("should paginate bundles correctly", async () => {
+    const bundlesData = [
+      {
+        id: "bundleA",
+        channel: "test",
+        enabled: true,
+        shouldForceUpdate: true,
+        fileHash: "hashA",
+        gitCommitHash: "commitA",
+        message: "A",
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+      },
+      {
+        id: "bundleB",
+        channel: "test",
+        enabled: true,
+        shouldForceUpdate: true,
+        fileHash: "hashB",
+        gitCommitHash: "commitB",
+        message: "B",
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+      },
+      {
+        id: "bundleC",
+        channel: "test",
+        enabled: true,
+        shouldForceUpdate: true,
+        fileHash: "hashC",
+        gitCommitHash: "commitC",
+        message: "C",
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+      },
+      {
+        id: "bundleD",
+        channel: "test",
+        enabled: true,
+        shouldForceUpdate: true,
+        fileHash: "hashD",
+        gitCommitHash: "commitD",
+        message: "D",
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+      },
+      {
+        id: "bundleE",
+        channel: "test",
+        enabled: true,
+        shouldForceUpdate: true,
+        fileHash: "hashE",
+        gitCommitHash: "commitE",
+        message: "E",
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+      },
+    ] as const;
+
+    for (const b of bundlesData) {
+      await plugin.appendBundle(b);
+    }
+    await plugin.commitBundle();
+    const paginatedBundles = await plugin.getBundles({
+      where: { channel: "test" },
+      limit: 2,
+      offset: 1,
     });
+    expect(paginatedBundles).toHaveLength(2);
+    expect(paginatedBundles[0].id).toBe("bundleD");
+    expect(paginatedBundles[1].id).toBe("bundleC");
+  });
 
-    it("should handle insert operation correctly", async () => {
-      // prepare a fake transaction to capture calls
-      const fakeTransaction = {
-        set: vi.fn(),
-        get: vi.fn(),
-        delete: vi.fn(),
-      };
-      // mock runTransaction to invoke the callback with our fakeTransaction
-      const mockRunTransaction = vi.fn().mockImplementation(async (fn) => {
-        return fn(fakeTransaction);
-      });
-      mockFirestore.mockImplementation(() => ({
-        collection: mockCollection,
-        runTransaction: mockRunTransaction,
-      }));
+  it("should filter bundles by both channel and platform", async () => {
+    const bundlesData = [
+      {
+        id: "bundleX",
+        channel: "production",
+        enabled: true,
+        shouldForceUpdate: false,
+        fileHash: "hashX",
+        gitCommitHash: "commitX",
+        message: "Bundle X",
+        platform: "ios",
+        targetAppVersion: "1.1.1",
+      },
+      {
+        id: "bundleY",
+        channel: "production",
+        enabled: true,
+        shouldForceUpdate: false,
+        fileHash: "hashY",
+        gitCommitHash: "commitY",
+        message: "Bundle Y",
+        platform: "android",
+        targetAppVersion: "1.1.1",
+      },
+      {
+        id: "bundleZ",
+        channel: "staging",
+        enabled: true,
+        shouldForceUpdate: false,
+        fileHash: "hashZ",
+        gitCommitHash: "commitZ",
+        message: "Bundle Z",
+        platform: "ios",
+        targetAppVersion: "1.1.1",
+      },
+    ] as const;
 
-      const changedSets: CommitBundleArgs["changedSets"] = [
-        {
-          operation: "insert",
-          data: mockBundle,
-        },
-      ];
-      await databasePlugin.commitBundle({ changedSets });
-      // bundle 문서에 대한 set 호출 검증
-      expect(fakeTransaction.set).toHaveBeenCalledWith(
-        expect.any(Object), // bundle 문서 참조 (mockDoc에서 생성)
-        expect.objectContaining({
-          id: mockBundle.id,
-          target_app_version: mockBundle.targetAppVersion,
-        }),
-        { merge: true },
-      );
-      // target_app_versions 컬렉션에 대한 set 호출 검증
-      expect(fakeTransaction.set).toHaveBeenCalledWith(
-        expect.any(Object), // target_app_versions 문서 참조
-        expect.objectContaining({
-          platform: mockBundle.platform,
-          target_app_version: mockBundle.targetAppVersion,
-        }),
-        { merge: true },
-      );
+    for (const bundle of bundlesData) {
+      await plugin.appendBundle(bundle);
+    }
+    await plugin.commitBundle();
+
+    const filteredBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
     });
+    expect(filteredBundles).toHaveLength(1);
+    expect(filteredBundles[0].id).toBe("bundleX");
+  });
 
-    it("should handle update operation with removal of target_app_version", async () => {
-      // update 시 target_app_version이 제거된 경우 테스트
-      const bundleWithoutVersion: Bundle = {
-        ...mockBundle,
-        targetAppVersion: "", // falsy 값으로 target_app_version 제거
-      };
+  it("should not modify data when commitBundle is called with no pending changes", async () => {
+    await plugin.commitBundle();
+    const snapshot = await bundlesCollection.get();
+    expect(snapshot.empty).toBe(true);
+  });
 
-      // prepare fake transaction
-      const fakeTransaction = {
-        set: vi.fn(),
-        get: vi.fn().mockResolvedValue({
-          exists: true,
-          data: () => ({ ...mockFirestoreData, target_app_version: "1.0.0" }),
-        }),
-        delete: vi.fn(),
-      };
-
-      const mockRunTransaction = vi.fn().mockImplementation(async (fn) => {
-        return fn(fakeTransaction);
-      });
-      mockFirestore.mockImplementation(() => ({
-        collection: mockCollection,
-        runTransaction: mockRunTransaction,
-      }));
-
-      const changedSets: CommitBundleArgs["changedSets"] = [
-        {
-          operation: "update",
-          data: bundleWithoutVersion,
-        },
-      ];
-      await databasePlugin.commitBundle({ changedSets });
-      // 번들 문서에 대해 target_app_version 필드 삭제 처리 (FieldValue.delete() 사용)
-      expect(fakeTransaction.set).toHaveBeenCalledWith(
-        expect.any(Object),
-        expect.objectContaining({
-          target_app_version: expect.objectContaining({ __delete: true }),
-        }),
-        { merge: true },
-      );
+  it("should handle bundles without targetAppVersion by deleting the field", async () => {
+    await plugin.appendBundle({
+      id: "bundleNoVersion",
+      channel: "staging",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hashNoVer",
+      gitCommitHash: "commitNoVer",
+      message: "Bundle with no target version",
+      platform: "ios",
+      targetAppVersion: "",
     });
+    await plugin.commitBundle();
 
-    it("should delete orphan target_app_versions in transaction cleanup", async () => {
-      // prepare fake transaction
-      const fakeTransaction = {
-        set: vi.fn(),
-        get: vi.fn(),
-        delete: vi.fn(),
-      };
+    const bundleDoc = await bundlesCollection.doc("bundleNoVersion").get();
+    expect(bundleDoc.exists).toBeTruthy();
+    const data = bundleDoc.data();
+    expect(data).not.toHaveProperty("target_app_version");
+  });
 
-      // 첫 get 호출: target_app_versions 컬렉션 전체 조회 시 두 문서를 반환
-      fakeTransaction.get = vi
-        .fn()
-        // 첫번째 get: return snapshot for target_app_versions collection
-        .mockResolvedValueOnce({
-          docs: [
-            {
-              id: "android_1.0.0",
-              data: () => ({
-                platform: "android",
-                target_app_version: "1.0.0",
-              }),
-              ref: { id: "android_1.0.0" },
-            },
-            {
-              id: "ios_2.0.0",
-              data: () => ({
-                platform: "ios",
-                target_app_version: "2.0.0",
-              }),
-              ref: { id: "ios_2.0.0" },
-            },
-          ],
-        })
-        // 두번째 get: bundles 쿼리 결과 (android 문서는 존재)
-        .mockResolvedValueOnce({ empty: false, docs: [{}] })
-        // 세번째 get: bundles 쿼리 결과 (ios 문서는 없음)
-        .mockResolvedValueOnce({ empty: true, docs: [] });
+  it("should fetch the latest bundle data from Firestore via getBundleById", async () => {
+    const bundleDirect = {
+      id: "bundleDirect",
+      channel: "direct",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "directHash",
+      gitCommitHash: "directCommit",
+      message: "Directly inserted bundle",
+      platform: "ios",
+      targetAppVersion: "2.0.0",
+    } as const;
+    await plugin.appendBundle(bundleDirect);
+    await plugin.commitBundle();
 
-      const mockRunTransaction = vi.fn().mockImplementation(async (fn) => {
-        return fn(fakeTransaction);
-      });
-      mockFirestore.mockImplementation(() => ({
-        collection: mockCollection,
-        runTransaction: mockRunTransaction,
-      }));
+    const fetched1 = await plugin.getBundleById("bundleDirect");
+    expect(fetched1).toBeTruthy();
+    expect(fetched1?.id).toBe("bundleDirect");
 
-      // commitBundle 실행을 위해 changedSets에 아무 작업이나 넣음(insert 처리)
-      const changedSets: CommitBundleArgs["changedSets"] = [
-        {
-          operation: "insert",
-          data: mockBundle,
-        },
-      ];
-      await databasePlugin.commitBundle({ changedSets });
+    await bundlesCollection
+      .doc(bundleDirect.id)
+      .update({ channel: "updatedDirect" });
+    const fetched2 = await plugin.getBundleById("bundleDirect");
+    expect(fetched2?.channel).toBe("updatedDirect");
+  });
 
-      // orphan cleanup 단계에서 ios_2.0.0에 대해 delete 호출이 일어나야 함
-      expect(fakeTransaction.delete).toHaveBeenCalledWith(
-        expect.objectContaining({ id: "ios_2.0.0" }),
-      );
+  it("should create a target_app_versions doc on bundle insertion", async () => {
+    await plugin.appendBundle({
+      id: "bundleTV1",
+      channel: "release",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashTV1",
+      gitCommitHash: "commitTV1",
+      message: "Test bundle TV1",
+      platform: "android",
+      targetAppVersion: "4.0.0",
     });
+    await plugin.commitBundle();
+
+    const tvDoc = await firestore
+      .collection("target_app_versions")
+      .doc("android_release_4.0.0")
+      .get();
+    expect(tvDoc.exists).toBeTruthy();
+    const data = tvDoc.data();
+    expect(data?.platform).toBe("android");
+    expect(data?.target_app_version).toBe("4.0.0");
+    expect(data?.channel).toBe("release");
+  });
+
+  it("should maintain target_app_versions doc if multiple bundles reference the same version", async () => {
+    await plugin.appendBundle({
+      id: "bundleTV2",
+      channel: "release",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashTV2",
+      gitCommitHash: "commitTV2",
+      message: "Test bundle TV2",
+      platform: "ios",
+      targetAppVersion: "5.0.0",
+    });
+    await plugin.appendBundle({
+      id: "bundleTV3",
+      channel: "release",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashTV3",
+      gitCommitHash: "commitTV3",
+      message: "Test bundle TV3",
+      platform: "ios",
+      targetAppVersion: "5.0.0",
+    });
+    await plugin.commitBundle();
+
+    const tvDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_release_5.0.0")
+      .get();
+    expect(tvDoc.exists).toBeTruthy();
+    expect(tvDoc.data()?.channel).toBe("release");
+
+    await plugin.updateBundle("bundleTV2", {
+      id: "bundleTV2",
+      channel: "release",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashTV2",
+      gitCommitHash: "commitTV2",
+      message: "Test bundle TV2 updated",
+      platform: "ios",
+      targetAppVersion: "5.1.0",
+    });
+    await plugin.commitBundle();
+
+    const tvDocOld = await firestore
+      .collection("target_app_versions")
+      .doc("ios_release_5.0.0")
+      .get();
+    expect(tvDocOld.exists).toBeTruthy();
+    expect(tvDocOld.data()?.channel).toBe("release");
+
+    const tvDocNew = await firestore
+      .collection("target_app_versions")
+      .doc("ios_release_5.1.0")
+      .get();
+    expect(tvDocNew.exists).toBeTruthy();
+    expect(tvDocNew.data()?.channel).toBe("release");
+
+    await plugin.updateBundle("bundleTV3", {
+      id: "bundleTV3",
+      channel: "beta",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashTV3",
+      gitCommitHash: "commitTV3",
+      message: "Test bundle TV3 updated",
+      platform: "ios",
+      targetAppVersion: "5.2.0",
+    });
+    await plugin.commitBundle();
+
+    const tvDocOldAfter = await firestore
+      .collection("target_app_versions")
+      .doc("ios_release_5.0.0")
+      .get();
+    expect(tvDocOldAfter.exists).toBeFalsy();
+    const tvDocInt = await firestore
+      .collection("target_app_versions")
+      .doc("ios_release_5.1.0")
+      .get();
+    expect(tvDocInt.exists).toBeTruthy();
+    expect(tvDocInt.data()?.channel).toBe("release");
+
+    const tvDocLatest = await firestore
+      .collection("target_app_versions")
+      .doc("ios_beta_5.2.0")
+      .get();
+    expect(tvDocLatest.exists).toBeTruthy();
+    expect(tvDocLatest.data()?.channel).toBe("beta");
+  });
+
+  it("should delete target_app_versions doc when no bundles reference them", async () => {
+    await plugin.appendBundle({
+      id: "bundleTV4",
+      channel: "beta",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashTV4",
+      gitCommitHash: "commitTV4",
+      message: "Test bundle TV4",
+      platform: "android",
+      targetAppVersion: "2.0.0",
+    });
+    await plugin.commitBundle();
+    const tvDoc = await firestore
+      .collection("target_app_versions")
+      .doc("android_beta_2.0.0")
+      .get();
+    expect(tvDoc.exists).toBeTruthy();
+    expect(tvDoc.data()?.channel).toBe("beta");
+
+    await plugin.updateBundle("bundleTV4", {
+      id: "bundleTV4",
+      channel: "beta",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashTV4",
+      gitCommitHash: "commitTV4",
+      message: "Test bundle TV4 removed version",
+      platform: "android",
+      targetAppVersion: "",
+    });
+    await plugin.commitBundle();
+
+    const tvDocAfter = await firestore
+      .collection("target_app_versions")
+      .doc("android_beta_2.0.0")
+      .get();
+    expect(tvDocAfter.exists).toBeFalsy();
   });
 });
