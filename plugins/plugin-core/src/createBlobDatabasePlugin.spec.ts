@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
-import { Bundle } from "./types";
+import type { Bundle } from "./types";
 
 const DEFAULT_BUNDLE: Omit<
   Bundle,

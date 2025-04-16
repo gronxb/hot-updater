@@ -1,6 +1,6 @@
-import type { Bundle, DatabasePluginHooks } from "./types";
-import { createDatabasePlugin } from "./createDatabasePlugin";
 import { orderBy } from "es-toolkit";
+import { createDatabasePlugin } from "./createDatabasePlugin";
+import type { Bundle, DatabasePluginHooks } from "./types";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
