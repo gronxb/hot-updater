@@ -4,78 +4,66 @@ import type {
   StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
-import { getApp, getApps, initializeApp } from "firebase/app";
-import {
-  type StorageReference,
-  deleteObject,
-  getStorage,
-  listAll,
-  ref,
-  uploadBytes,
-} from "firebase/storage";
+import * as admin from "firebase-admin";
 import fs from "fs/promises";
 import mime from "mime";
 
-export interface FirebaseStorageConfig {
-  apiKey: string;
-  projectId: string;
+export interface FirebaseStorageConfig extends admin.AppOptions {
   storageBucket: string;
 }
 
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
-    /**
-     * `appName` for Firebase `initializeApp(config, appName)`.
-     *
-     * Allows creating multiple Firebase app instances within the same project,
-     * useful for different environments (dev/prod) or purposes, while sharing the same database.
-     * Firebase uses `appName` for caching app instances for performance.
-     * Not user-facing, for internal Firebase management.
-     */
-    const appName = "hot-updater";
-    const app = getApps().find((app) => app.name === appName)
-      ? getApp(appName)
-      : initializeApp(config, appName);
-    const storage = getStorage(app);
+    let app: admin.app.App;
+    try {
+      app = admin.app();
+    } catch (e) {
+      app = admin.initializeApp(config);
+    }
+    const bucket = app.storage().bucket(config.storageBucket);
 
     return {
       name: "firebaseStorage",
       async deleteBundle(bundleId) {
-        const Key = [bundleId].join("/");
-        const listRef = ref(storage, bundleId);
+        const prefix = `${bundleId}/`;
         try {
-          const listResult = await listAll(listRef);
-          await Promise.all(
-            listResult.items.map((itemRef: StorageReference) =>
-              deleteObject(itemRef),
-            ),
-          );
+          const [files] = await bucket.getFiles({ prefix });
+          await Promise.all(files.map((file) => file.delete()));
+          return prefix;
         } catch (e) {
           console.error("Error listing or deleting files:", e);
-          throw e;
+          throw new Error("Bundle Not Found");
         }
-        return Key;
       },
+
       async uploadBundle(bundleId, bundlePath) {
-        const Body = await fs.readFile(bundlePath);
-        const ContentType =
-          mime.getType(bundlePath) ?? "application/octet-stream";
-        const filename = path.basename(bundlePath);
+        try {
+          const fileContent = await fs.readFile(bundlePath);
+          const contentType =
+            mime.getType(bundlePath) ?? "application/octet-stream";
+          const filename = path.basename(bundlePath);
+          const key = `${bundleId}/${filename}`;
 
-        const Key = [bundleId, filename].join("/");
-        const fileRef = ref(storage, Key);
+          const file = bucket.file(key);
+          await file.save(fileContent, {
+            metadata: {
+              contentType: contentType,
+            },
+          });
 
-        await uploadBytes(fileRef, new Uint8Array(Body), {
-          contentType: ContentType,
-        });
+          hooks?.onStorageUploaded?.();
 
-        hooks?.onStorageUploaded?.();
-
-        return {
-          bucketName: storage.app.name,
-          key: Key,
-        };
+          return {
+            bucketName: config.storageBucket,
+            key: key,
+          };
+        } catch (error) {
+          if (error instanceof Error) {
+            throw new Error(error.message);
+          }
+          throw error;
+        }
       },
     };
   };

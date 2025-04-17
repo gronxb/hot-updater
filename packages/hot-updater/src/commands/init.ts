@@ -1,7 +1,6 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
-import { isCancel, select } from "@clack/prompts";
 import { ExecaError } from "execa";
 
 const REQUIRED_PACKAGES = {
@@ -22,12 +21,20 @@ const PACKAGE_MAP = {
     dependencies: [],
     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
   },
+  firebase: {
+    dependencies: [],
+    devDependencies: [
+      "firebase-tools",
+      "firebase-admin",
+      "@hot-updater/firebase",
+    ],
+  },
 } as const;
 
 export const init = async () => {
   printBanner();
 
-  const buildPluginPackage = await select({
+  const buildPluginPackage = await p.select({
     message: "Select a build plugin",
     options: [
       {
@@ -40,11 +47,11 @@ export const init = async () => {
     ],
   });
 
-  if (isCancel(buildPluginPackage)) {
+  if (p.isCancel(buildPluginPackage)) {
     process.exit(0);
   }
 
-  const provider = await select({
+  const provider = await p.select({
     message: "Select a provider",
     options: [
       { value: "supabase", label: "Supabase" },
@@ -53,10 +60,11 @@ export const init = async () => {
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
+      { value: "firebase", label: "Firebase" },
     ],
   });
 
-  if (isCancel(provider)) {
+  if (p.isCancel(provider)) {
     process.exit(0);
   }
 
@@ -97,6 +105,11 @@ export const init = async () => {
     case "aws": {
       const aws = await import("@hot-updater/aws/iac");
       await aws.runInit();
+      break;
+    }
+    case "firebase": {
+      const firebase = await import("@hot-updater/firebase/iac");
+      await firebase.runInit();
       break;
     }
     default:
