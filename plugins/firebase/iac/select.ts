@@ -1,9 +1,7 @@
 import fs from "fs";
-import path from "path";
 import * as p from "@clack/prompts";
 import { link, makeEnv } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
-import picocolors from "picocolors";
 
 const CONFIG_TEMPLATE = `import { metro } from '@hot-updater/metro';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
@@ -11,135 +9,37 @@ import { cert } from "firebase-admin/app";
 import { defineConfig } from 'hot-updater';
 import 'dotenv/config';
 
+// https://firebase.google.com/docs/admin/setup
+// Internally, it calls firebase-admin's initializeApp which requires credential information.
+// Therefore, you need to provide credential information according to your environment.
+// For example, in CI environments: Project Settings => Service Accounts => Firebase Admin SDK => Download Credentials JSON
+const credentials = undefined;
+
 export default defineConfig({
   build: metro({
     enableHermes: true,
   }),
   storage: firebaseStorage({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-    credential: cert({
-      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-      privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
-      clientEmail: process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
-    }),
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET,
+    // credential: cert({}),
   }),
   database: firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-    credential: cert({
-      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-      privateKey: process.env.HOT_UPDATER_FIREBASE_PRIVATE_KEY,
-      clientEmail: process.env.HOT_UPDATER_FIREBASE_CLIENT_EMAIL,
-    }),
+    // credential: cert({}),
   }),
 });`;
 
-async function addToGitignore(): Promise<void> {
-  const addContent = "*firebase*adminsdk*.json";
-  try {
-    let gitignoreContent = "";
-
-    if (fs.existsSync(".gitignore")) {
-      gitignoreContent = await fs.promises.readFile(".gitignore", "utf8");
-
-      if (gitignoreContent.includes(addContent)) {
-        p.log.info(`${addContent} is already in .gitignore file.`);
-        return;
-      }
-
-      if (!gitignoreContent.endsWith("\n")) {
-        gitignoreContent += "\n";
-      }
-    }
-
-    gitignoreContent += `${addContent}\n`;
-
-    await fs.promises.writeFile(".gitignore", gitignoreContent);
-    p.log.success(`${addContent} has been successfully added to .gitignore.`);
-  } catch (error: any) {
-    console.error("Error updating .gitignore file:", error.message);
-  }
-}
-
-export const setEnv = async (): Promise<{
+export const setEnv = async ({
+  projectId,
+  storageBucket,
+}: {
   projectId: string;
-  privateKey: string;
-  clientEmail: string;
-}> => {
-  const cred: {
-    projectId: string | null;
-    privateKey: string | null;
-    clientEmail: string | null;
-  } = {
-    projectId: null,
-    privateKey: null,
-    clientEmail: null,
-  };
-
-  p.log.message(picocolors.blue("The following infrastructure is required:"));
-  p.log.message(`${picocolors.blue("Firebase Project")}`);
-  p.log.message(`${picocolors.blue("Firebase Storage")}`);
-  p.log.message(`${picocolors.blue("Firestore Database")}`);
-  p.log.message(
-    `${picocolors.blue("Firebase SDK credentials JSON")}: Project settings -> Service accounts -> Firebase Admin SDK -> Generate new private key`,
-  );
-
-  const defaultPath = path.join(process.cwd(), "firebase-credentials.json");
-  const jsonPath = await p.text({
-    message: "Enter the Firebase SDK credentials JSON file path:",
-    placeholder: "firebase-credentials.json",
-    defaultValue: defaultPath,
-    validate: (value: string): string | undefined => {
-      if (!fs.existsSync(value || defaultPath)) {
-        return "File does not exist";
-      }
-      return undefined;
-    },
-  });
-  if (p.isCancel(jsonPath)) {
-    p.log.error("Firebase credentials JSON file path is required");
-    process.exit(1);
-  }
-
-  await addToGitignore();
-
-  try {
-    const fileContent: string = await fs.promises.readFile(
-      jsonPath as string,
-      "utf8",
-    );
-    const credentials: {
-      project_id: string;
-      private_key: string;
-      client_email: string;
-    } = JSON.parse(fileContent);
-
-    cred.projectId = credentials.project_id;
-    cred.privateKey = credentials.private_key;
-    cred.clientEmail = credentials.client_email;
-
-    if (!cred.projectId) {
-      console.error("Could not find project_id in the JSON file");
-      process.exit(1);
-    }
-    if (!cred.privateKey) {
-      console.error("Could not find private_key in the JSON file");
-      process.exit(1);
-    }
-    if (!cred.clientEmail) {
-      console.error("Could not find client_email in the JSON file");
-      process.exit(1);
-    }
-
-    p.log.success(`Found project ID: ${cred.projectId}`);
-  } catch (error: any) {
-    console.error("Error reading JSON file:", error.message);
-    process.exit(1);
-  }
-
+  storageBucket: string;
+}) => {
   await makeEnv({
-    HOT_UPDATER_FIREBASE_PROJECT_ID: cred.projectId as string,
-    HOT_UPDATER_FIREBASE_PRIVATE_KEY: `"${cred.privateKey as string}"`,
-    HOT_UPDATER_FIREBASE_CLIENT_EMAIL: cred.clientEmail as string,
+    HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
+    HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
   });
 
   p.log.success("Firebase credentials have been successfully configured.");
@@ -152,17 +52,6 @@ export const setEnv = async (): Promise<{
   } catch (error: any) {
     console.error("Error writing configuration file:", error.message);
   }
-
-  if (!cred.projectId || !cred.privateKey || !cred.clientEmail) {
-    p.log.error("Failed to make Env and hot-updater.config.ts");
-    process.exit(1);
-  }
-
-  return {
-    projectId: cred.projectId,
-    clientEmail: cred.clientEmail,
-    privateKey: cred.privateKey,
-  };
 };
 
 const handleError = (err: unknown) => {

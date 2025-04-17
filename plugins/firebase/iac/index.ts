@@ -9,7 +9,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
-import { initFirebaseUser } from "./select";
+import { initFirebaseUser, setEnv } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -223,7 +223,10 @@ export const runInit = async () => {
   let isFunctionsExist = false;
 
   const initializeVariable = await initFirebaseUser(tmpDir);
-
+  await setEnv({
+    projectId: initializeVariable.projectId,
+    storageBucket: initializeVariable.storageBucket,
+  });
   let currentRegion = "us-central1";
 
   await p.tasks([
