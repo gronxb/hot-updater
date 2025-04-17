@@ -8,6 +8,7 @@ import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import admin from "firebase-admin/app";
 import { defineConfig } from 'hot-updater';
 import 'dotenv/config';
+
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Internally, Firebase Admin SDK calls initializeApp which requires authentication credentials.
 // You must provide appropriate credentials for your environment.
