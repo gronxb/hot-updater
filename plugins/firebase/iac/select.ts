@@ -5,7 +5,7 @@ import { ExecaError, execa } from "execa";
 
 const CONFIG_TEMPLATE = `import { metro } from '@hot-updater/metro';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
-import { cert } from "firebase-admin/app";
+import admin from "firebase-admin/app";
 import { defineConfig } from 'hot-updater';
 import 'dotenv/config';
 
@@ -13,7 +13,7 @@ import 'dotenv/config';
 // Internally, it calls firebase-admin's initializeApp which requires credential information.
 // Therefore, you need to provide credential information according to your environment.
 // For example, in CI environments: Project Settings => Service Accounts => Firebase Admin SDK => Download Credentials JSON
-const credentials = undefined;
+const credentials = admin.credential.applicationDefault();
 
 export default defineConfig({
   build: metro({
@@ -22,11 +22,11 @@ export default defineConfig({
   storage: firebaseStorage({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
     storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET,
-    // credential: cert({}),
+    credential,
   }),
   database: firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-    // credential: cert({}),
+    credential,
   }),
 });`;
 
