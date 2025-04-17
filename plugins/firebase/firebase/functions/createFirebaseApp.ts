@@ -28,9 +28,9 @@ export function createFirebaseApp({
         });
         const honoResponse = await app.fetch(request);
         res.status(honoResponse.status);
-        honoResponse.headers.forEach((value: string, key: string) => {
+        for (const [key, value] of honoResponse.headers.entries()) {
           res.setHeader(key, value);
-        });
+        }
         const body: string = await honoResponse.text();
         res.send(body);
       },
