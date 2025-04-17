@@ -80,6 +80,32 @@ export const setupGetUpdateInfoTestSuite = ({
     expect(update).toBeNull();
   });
 
+  it("tests target app version compatibility with available higher version", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0.0",
+        enabled: true,
+        id: "01963024-c131-7971-8725-ab47e232df41",
+        shouldForceUpdate: false,
+      },
+      {
+        ...DEFAULT_BUNDLE,
+        targetAppVersion: "1.0.1",
+        enabled: true,
+        id: "01963024-c131-7971-8725-ab47e232df42",
+        shouldForceUpdate: false,
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0.0",
+      bundleId: "01963024-c131-7971-8725-ab47e232df41",
+      platform: "ios",
+    });
+    expect(update).toBeNull();
+  });
+
   it("applies an update when a higher semver-compatible bundle is available", async () => {
     const bundles: Bundle[] = [
       {
@@ -852,5 +878,33 @@ export const setupGetUpdateInfoTestSuite = ({
     });
 
     expect(update).toBeNull();
+  });
+
+  it("returns null when there are no bundles and minBundleId equals bundleId", async () => {
+    const bundles: Bundle[] = [
+      {
+        ...DEFAULT_BUNDLE,
+        enabled: true,
+        shouldForceUpdate: true,
+        id: "01963024-c131-7971-8725-ab47e232df40",
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+      },
+    ];
+
+    const update = await getUpdateInfo(bundles, {
+      appVersion: "1.0",
+      bundleId: "00000000-0000-0000-0000-000000000000",
+      platform: "ios",
+      minBundleId: "00000000-0000-0000-0000-000000000000",
+      channel: "production",
+    });
+
+    expect(update).toStrictEqual({
+      id: "01963024-c131-7971-8725-ab47e232df40",
+      message: "hello",
+      shouldForceUpdate: true,
+      status: "UPDATE",
+    });
   });
 };
