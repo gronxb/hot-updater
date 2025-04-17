@@ -39,6 +39,11 @@ export const setEnv = async ({
   storageBucket: string;
 }) => {
   await makeEnv({
+    GOOGLE_APPLICATION_CREDENTIALS: {
+      comment:
+        "Project Settings > Service Accounts > New Private Key > Download JSON",
+      value: "your-credentials.json",
+    },
     HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
     HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
   });
