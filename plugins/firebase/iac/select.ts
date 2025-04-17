@@ -20,13 +20,13 @@ export default defineConfig({
     enableHermes: true,
   }),
   storage: firebaseStorage({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET,
-    credential,
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+    credentials,
   }),
   database: firebaseDatabase({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID,
-    credential,
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    credentials,
   }),
 });`;
 
