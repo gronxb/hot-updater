@@ -13,7 +13,7 @@ import 'dotenv/config';
 // Internally, it calls firebase-admin's initializeApp which requires credential information.
 // Therefore, you need to provide credential information according to your environment.
 // For example, in CI environments: Project Settings => Service Accounts => Firebase Admin SDK => Download Credentials JSON
-const credentials = admin.applicationDefault();
+const credential = admin.applicationDefault();
 
 export default defineConfig({
   build: metro({
@@ -22,11 +22,11 @@ export default defineConfig({
   storage: firebaseStorage({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-    credentials,
+    credential,
   }),
   database: firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    credentials,
+    credential,
   }),
 });`;
 
