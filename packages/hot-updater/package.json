@@ -90,6 +90,7 @@
   "peerDependencies": {
     "@hot-updater/aws": "*",
     "@hot-updater/cloudflare": "*",
+    "@hot-updater/firebase": "*",
     "@hot-updater/supabase": "*"
   },
   "peerDependenciesMeta": {
@@ -100,6 +101,9 @@
       "optional": true
     },
     "@hot-updater/aws": {
+      "optional": true
+    },
+    "@hot-updater/firebase": {
       "optional": true
     }
   }

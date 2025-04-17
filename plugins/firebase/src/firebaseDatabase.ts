@@ -1,107 +1,102 @@
-import type { DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type { SnakeCaseBundle } from "@hot-updater/core";
+import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import { getApp, getApps, initializeApp } from "firebase/app";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  getFirestore,
-  limit,
-  orderBy,
-  query,
-  setDoc,
-  startAfter,
-  where,
-} from "firebase/firestore";
-
-export interface FirebaseDatabaseConfig {
-  apiKey: string;
-  projectId: string;
-}
+import * as admin from "firebase-admin";
 
 export const firebaseDatabase = (
-  config: FirebaseDatabaseConfig,
+  config: admin.AppOptions,
   hooks?: DatabasePluginHooks,
 ) => {
-  const appName = "hot-updater";
-  const app = getApps().find((app) => app.name === appName)
-    ? getApp(appName)
-    : initializeApp(config, appName);
+  let app: admin.app.App;
+  try {
+    app = admin.app();
+  } catch (e) {
+    app = admin.initializeApp(config);
+  }
 
-  const db = getFirestore(app);
-  const bundlesCollection = collection(db, "bundles");
+  const db = admin.firestore(app);
+  const bundlesCollection = db.collection("bundles");
+
+  type FirestoreData = admin.firestore.DocumentData;
+
+  const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
+    channel: firestoreData.channel,
+    enabled: Boolean(firestoreData.enabled),
+    shouldForceUpdate: Boolean(firestoreData.should_force_update),
+    fileHash: firestoreData.file_hash,
+    gitCommitHash: firestoreData.git_commit_hash,
+    id: firestoreData.id,
+    message: firestoreData.message,
+    platform: firestoreData.platform,
+    targetAppVersion: firestoreData.target_app_version,
+  });
+
+  let bundles: Bundle[] = [];
 
   return createDatabasePlugin(
     "firebaseDatabase",
     {
-      async getBundleById(bundleId) {
-        const bundleRef = doc(bundlesCollection, bundleId);
-        const bundleSnap = await getDoc(bundleRef);
+      async getBundleById(bundleId: string) {
+        const found = bundles.find((b) => b.id === bundleId);
+        if (found) {
+          return found;
+        }
 
-        if (!bundleSnap.exists()) {
+        const bundleRef = bundlesCollection.doc(bundleId);
+        const bundleSnap = await bundleRef.get();
+
+        if (!bundleSnap.exists) {
           return null;
         }
 
-        const data = bundleSnap.data();
-        return {
-          enabled: data.enabled,
-          shouldForceUpdate: data.should_force_update,
-          fileHash: data.file_hash,
-          gitCommitHash: data.git_commit_hash,
-          id: data.id,
-          message: data.message,
-          platform: data.platform,
-          targetAppVersion: data.target_app_version,
-          channel: data.channel,
-        };
+        const firestoreData = bundleSnap.data() as SnakeCaseBundle;
+        return convertToBundle(firestoreData);
       },
 
       async getBundles(options) {
-        let q = query(bundlesCollection, orderBy("id", "desc"));
+        const { where, limit, offset = 0 } = options ?? {};
 
-        if (options?.where) {
-          if (options.where.channel) {
-            q = query(q, where("channel", "==", options.where.channel));
-          }
-          if (options.where.platform) {
-            q = query(q, where("platform", "==", options.where.platform));
-          }
+        let query: admin.firestore.Query<FirestoreData> = bundlesCollection;
+
+        if (where?.channel) {
+          query = query.where("channel", "==", where.channel);
         }
 
-        if (options?.limit) {
-          q = query(q, limit(options.limit));
+        if (where?.platform) {
+          query = query.where("platform", "==", where.platform);
         }
 
-        if (options?.offset) {
-          q = query(q, startAfter(options.offset));
+        query = query.orderBy("id", "desc");
+
+        if (offset) {
+          query = query.offset(offset);
         }
 
-        const querySnapshot = await getDocs(q);
+        if (limit) {
+          query = query.limit(limit);
+        }
+
+        const querySnapshot = await query.get();
 
         if (querySnapshot.empty) {
-          return [];
+          bundles = [];
+          return bundles;
         }
 
-        return querySnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            enabled: data.enabled,
-            shouldForceUpdate: data.should_force_update,
-            fileHash: data.file_hash,
-            gitCommitHash: data.git_commit_hash,
-            id: data.id,
-            message: data.message,
-            platform: data.platform,
-            targetAppVersion: data.target_app_version,
-            channel: data.channel,
-          };
-        });
+        bundles = querySnapshot.docs.map((doc) =>
+          convertToBundle(doc.data() as SnakeCaseBundle),
+        );
+
+        return bundles;
       },
 
       async getChannels() {
-        const q = query(bundlesCollection, orderBy("channel"));
-        const querySnapshot = await getDocs(q);
+        const targetAppVersionsCollection = db.collection(
+          "target_app_versions",
+        );
+        const query: admin.firestore.Query<FirestoreData> =
+          targetAppVersionsCollection.select("channel");
+        const querySnapshot = await query.get();
 
         if (querySnapshot.empty) {
           return [];
@@ -109,33 +104,114 @@ export const firebaseDatabase = (
 
         const channels = new Set<string>();
         for (const doc of querySnapshot.docs) {
-          channels.add(doc.data().channel);
+          const data = doc.data();
+          if (data.channel) {
+            channels.add(data.channel as string);
+          }
         }
 
         return Array.from(channels);
       },
 
       async commitBundle({ changedSets }) {
-        for (const { operation, data } of changedSets) {
-          if (operation === "insert" || operation === "update") {
-            const bundleRef = doc(bundlesCollection, data.id);
-            await setDoc(
-              bundleRef,
-              {
+        if (changedSets.length === 0) {
+          return;
+        }
+
+        await db.runTransaction(async (transaction) => {
+          const bundlesSnapshot = await transaction.get(bundlesCollection);
+          const targetVersionsSnapshot = await transaction.get(
+            db.collection("target_app_versions"),
+          );
+
+          const bundlesMap: { [id: string]: any } = {};
+          for (const doc of bundlesSnapshot.docs) {
+            bundlesMap[doc.id] = doc.data();
+          }
+
+          for (const { operation, data } of changedSets) {
+            if (operation === "insert" || operation === "update") {
+              bundlesMap[data.id] = {
                 id: data.id,
+                channel: data.channel,
                 enabled: data.enabled,
                 should_force_update: data.shouldForceUpdate,
                 file_hash: data.fileHash,
-                git_commit_hash: data.gitCommitHash,
-                message: data.message,
+                git_commit_hash: data.gitCommitHash || null,
+                message: data.message || null,
                 platform: data.platform,
                 target_app_version: data.targetAppVersion,
-                channel: data.channel,
-              },
-              { merge: true },
-            );
+              };
+            }
           }
-        }
+
+          const requiredTargetVersionKeys = new Set<string>();
+          for (const bundle of Object.values(bundlesMap)) {
+            if (bundle.target_app_version) {
+              const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
+              requiredTargetVersionKeys.add(key);
+            }
+          }
+
+          for (const { operation, data } of changedSets) {
+            const bundleRef = bundlesCollection.doc(data.id);
+            if (operation === "insert" || operation === "update") {
+              if (data.targetAppVersion) {
+                transaction.set(
+                  bundleRef,
+                  {
+                    id: data.id,
+                    channel: data.channel,
+                    enabled: data.enabled,
+                    should_force_update: data.shouldForceUpdate,
+                    file_hash: data.fileHash,
+                    git_commit_hash: data.gitCommitHash || null,
+                    message: data.message || null,
+                    platform: data.platform,
+                    target_app_version: data.targetAppVersion,
+                  },
+                  { merge: true },
+                );
+
+                const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
+                const targetAppVersionsRef = db
+                  .collection("target_app_versions")
+                  .doc(versionDocId);
+                transaction.set(
+                  targetAppVersionsRef,
+                  {
+                    channel: data.channel,
+                    platform: data.platform,
+                    target_app_version: data.targetAppVersion,
+                  },
+                  { merge: true },
+                );
+              } else {
+                transaction.set(
+                  bundleRef,
+                  {
+                    id: data.id,
+                    channel: data.channel,
+                    enabled: data.enabled,
+                    should_force_update: data.shouldForceUpdate,
+                    file_hash: data.fileHash,
+                    git_commit_hash: data.gitCommitHash || null,
+                    message: data.message || null,
+                    platform: data.platform,
+                    target_app_version: admin.firestore.FieldValue.delete(),
+                  },
+                  { merge: true },
+                );
+              }
+            }
+          }
+
+          for (const targetDoc of targetVersionsSnapshot.docs) {
+            if (!requiredTargetVersionKeys.has(targetDoc.id)) {
+              transaction.delete(targetDoc.ref);
+            }
+          }
+        });
       },
     },
     hooks,
