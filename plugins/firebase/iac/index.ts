@@ -160,7 +160,6 @@ const deployFunctions = async (cwd: string) => {
 };
 
 const printTemplate = async (projectId: string, region: string) => {
-  let functionUrl = "";
   try {
     const { stdout } = await execa("gcloud", [
       "functions",
@@ -175,7 +174,13 @@ const printTemplate = async (projectId: string, region: string) => {
     const parsedData = JSON.parse(stdout);
     const url = parsedData?.serviceConfig?.uri ?? parsedData.url;
 
-    functionUrl = `${url}/api/check-update`;
+    const functionUrl = `${url}/api/check-update`;
+
+    p.note(
+      transformTemplate(SOURCE_TEMPLATE, {
+        source: functionUrl,
+      }),
+    );
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -184,12 +189,6 @@ const printTemplate = async (projectId: string, region: string) => {
     }
     process.exit(1);
   }
-
-  p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      source: functionUrl,
-    }),
-  );
 };
 
 const checkIfGcloudCliInstalled = async () => {
@@ -395,7 +394,6 @@ export const runInit = async () => {
     process.exit(1);
   }
   await printTemplate(initializeVariable.projectId, currentRegion);
-
   await removeTmpDir();
 
   p.log.message(
