@@ -271,37 +271,37 @@ export const runInit = async () => {
             currentRegion = hotUpdater.region;
             isFunctionsExist = true;
           }
+
+          let selectedRegion = currentRegion;
+          if (!isFunctionsExist) {
+            const selectRegion = await p.select({
+              message: "Select Region",
+              options: REGIONS,
+              initialValue: currentRegion || REGIONS[0],
+            });
+            if (p.isCancel(selectRegion)) {
+              p.cancel("Operation cancelled.");
+              process.exit(1);
+            }
+            selectedRegion = selectRegion as string;
+          }
+          currentRegion = selectedRegion;
+
+          const code = await transformEnv(
+            await fs.promises.readFile(functionsIndexPath, "utf-8"),
+            {
+              REGION: selectedRegion,
+            },
+          );
+          await fs.promises.writeFile(functionsIndexPath, code);
         } catch (error) {
           if (error instanceof ExecaError) {
-            p.log.warn(error.stderr || error.stdout || error.message);
+            p.log.error(error.stderr || error.stdout || error.message);
           } else if (error instanceof Error) {
-            p.log.warn(error.message);
+            p.log.error(error.message);
           }
         }
-
-        let selectedRegion = currentRegion;
-        if (!isFunctionsExist) {
-          const selectRegion = await p.select({
-            message: "Select Region",
-            options: REGIONS,
-            initialValue: currentRegion || REGIONS[0],
-          });
-          if (p.isCancel(selectRegion)) {
-            p.cancel("Operation cancelled.");
-            process.exit(1);
-          }
-          selectedRegion = selectRegion as string;
-        }
-        currentRegion = selectedRegion;
-
-        const code = await transformEnv(
-          await fs.promises.readFile(functionsIndexPath, "utf-8"),
-          {
-            REGION: selectedRegion,
-          },
-        );
-        await fs.promises.writeFile(functionsIndexPath, code);
-        return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${selectedRegion}`;
+        return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${currentRegion}`;
       },
     },
   ]);
