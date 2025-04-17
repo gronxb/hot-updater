@@ -34,9 +34,9 @@ Enter a Bundle ID to determine its deployment time:
 
 `hot-updater` consists of three key components:
 
-- **Storage**: A place where JavaScript bundles are stored, supporting AWS S3, Cloudflare R2, Supabase Storage, etc.
+- **Storage**: A place where JavaScript bundles are stored, supporting AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage, etc.
 - **Database**: Stores metadata about deployed bundles (version information, etc.) and manages update information.
-- **Server**: Determines whether updates are required based on the app's current state, operating through AWS Lambda@Edge, Cloudflare Workers, or Supabase Edge Functions.
+- **Server**: Determines whether updates are required based on the app's current state, operating through AWS Lambda@Edge, Cloudflare Workers, Supabase Edge Functions, or Firebase Cloud Functions.
 
 Storage and Database are configured using plugins defined in `hot-updater.config.ts`. The Server is initialized and deployed using the `hot-updater init` command.
 
@@ -61,4 +61,3 @@ Storage and Database are configured using plugins defined in `hot-updater.config
 - The `minBundleId` is determined based on the native app's build timestamp.
 - The existence of a native app build ensures the embedded bundle is the latest at that point. Bundles older than the `minBundleId` are ignored.
 - Every new deployment generates a new Bundle ID, ensuring accurate and reliable updates.
-
