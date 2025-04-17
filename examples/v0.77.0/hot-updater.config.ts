@@ -1,18 +1,27 @@
+import { metro } from '@hot-updater/metro';
+import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
+import admin from "firebase-admin/app";
+import { defineConfig } from 'hot-updater';
+import 'dotenv/config';
 
-import { metro } from "@hot-updater/metro";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
+// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+// Internally, Firebase Admin SDK calls initializeApp which requires authentication credentials.
+// You must provide appropriate credentials for your environment.
+// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path.
+// Example: GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
+const credential = admin.applicationDefault();
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  build: metro({
+    enableHermes: true,
   }),
-  database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+  storage: firebaseStorage({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+    credential,
+  }),
+  database: firebaseDatabase({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    credential,
   }),
 });
