@@ -5,7 +5,7 @@ import { ExecaError, execa } from "execa";
 
 const CONFIG_TEMPLATE = `import { metro } from '@hot-updater/metro';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
-import admin from "firebase-admin/app";
+import * as admin from 'firebase-admin';
 import { defineConfig } from 'hot-updater';
 import 'dotenv/config';
 
@@ -14,7 +14,7 @@ import 'dotenv/config';
 // You must provide appropriate credentials for your environment.
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path.
 // Example: GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
-const credential = admin.applicationDefault();
+const credential = admin.credential.applicationDefault();
 
 export default defineConfig({
   build: metro({
