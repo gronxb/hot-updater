@@ -219,20 +219,19 @@ export const runInit = async () => {
   const functionsDir = path.join(tmpDir, "functions");
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
   await fs.promises.rename(path.join(tmpDir, "index.cjs"), functionsIndexPath);
-
   await fs.promises.rename(
     path.join(functionsDir, "_package.json"),
     path.join(functionsDir, "package.json"),
   );
 
-  let isFunctionsExist = false;
-
   const initializeVariable = await initFirebaseUser(tmpDir);
+
+  let currentRegion = "us-central1";
+
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
   });
-  let currentRegion = "us-central1";
 
   await p.tasks([
     {
@@ -256,6 +255,8 @@ export const runInit = async () => {
     {
       title: "Checking existing functions and setting region",
       task: async () => {
+        let isFunctionsExist = false;
+
         try {
           const { stdout } = await execa(
             "npx",
@@ -264,10 +265,8 @@ export const runInit = async () => {
               cwd: tmpDir,
             },
           );
-
           const parsedData = JSON.parse(stdout);
           const functionsData = parsedData.result || [];
-
           const hotUpdater = functionsData.find(
             (fn: FirebaseFunction) => fn.id === "hot-updater",
           );
@@ -277,9 +276,28 @@ export const runInit = async () => {
             isFunctionsExist = true;
           }
 
-          if (!hotUpdater) {
-            throw new Error("No existing functions found");
+          let selectedRegion = currentRegion;
+          if (!isFunctionsExist) {
+            const selectRegion = await p.select({
+              message: "Select Region",
+              options: REGIONS,
+              initialValue: currentRegion || REGIONS[0],
+            });
+            if (p.isCancel(selectRegion)) {
+              p.cancel("Operation cancelled.");
+              process.exit(1);
+            }
+            selectedRegion = selectRegion as string;
           }
+          currentRegion = selectedRegion;
+
+          const code = await transformEnv(
+            await fs.promises.readFile(functionsIndexPath, "utf-8"),
+            {
+              REGION: selectedRegion,
+            },
+          );
+          await fs.promises.writeFile(functionsIndexPath, code);
         } catch (error) {
           if (error instanceof ExecaError) {
             p.log.error(error.stderr || error.stdout || error.message);
@@ -306,15 +324,7 @@ export const runInit = async () => {
           }
           selectedRegion = selectRegion as string;
         }
-
-        const code = await transformEnv(
-          await fs.promises.readFile(functionsIndexPath, "utf-8"),
-          {
-            REGION: selectedRegion,
-          },
-        );
-        await fs.promises.writeFile(functionsIndexPath, code);
-        return `Using existing functions in region: ${currentRegion}`;
+        return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${currentRegion}`;
       },
     },
   ]);
