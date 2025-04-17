@@ -8,11 +8,11 @@ import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import admin from "firebase-admin/app";
 import { defineConfig } from 'hot-updater';
 import 'dotenv/config';
-
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Internally, it calls firebase-admin's initializeApp which requires credential information.
-// Therefore, you need to provide credential information according to your environment.
-// For example, in CI environments: Project Settings => Service Accounts => Firebase Admin SDK => Download Credentials JSON
+// Internally, Firebase Admin SDK calls initializeApp which requires authentication credentials.
+// You must provide appropriate credentials for your environment.
+// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path.
+// Example: GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 const credential = admin.applicationDefault();
 
 export default defineConfig({
