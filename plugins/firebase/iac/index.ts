@@ -219,6 +219,10 @@ export const runInit = async () => {
   const functionsDir = path.join(tmpDir, "functions");
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
   await fs.promises.rename(path.join(tmpDir, "index.cjs"), functionsIndexPath);
+  await fs.promises.rename(
+    path.join(functionsDir, "_package.json"),
+    path.join(functionsDir, "package.json"),
+  );
 
   const initializeVariable = await initFirebaseUser(tmpDir);
 
@@ -300,6 +304,25 @@ export const runInit = async () => {
           } else if (error instanceof Error) {
             p.log.error(error.message);
           }
+          await removeTmpDir();
+          process.exit(1);
+        }
+
+        let selectedRegion = currentRegion;
+
+        if (!isFunctionsExist) {
+          const selectRegion = await p.select({
+            message: "Select Region",
+            options: REGIONS,
+            initialValue: currentRegion,
+          });
+
+          if (p.isCancel(selectRegion)) {
+            p.cancel("Operation cancelled.");
+            await removeTmpDir();
+            process.exit(1);
+          }
+          selectedRegion = selectRegion as string;
         }
         return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${currentRegion}`;
       },
@@ -329,6 +352,7 @@ export const runInit = async () => {
 
         if (!account) {
           p.log.error("hot-updater function not found");
+          await removeTmpDir();
           process.exit(1);
         }
 
@@ -375,6 +399,7 @@ export const runInit = async () => {
                 `https://console.cloud.google.com/iam-admin/iam/project/${initializeVariable.projectId}/serviceaccounts/${account}/edit?inv=1`,
               ),
             );
+            await removeTmpDir();
             process.exit(1);
           }
         }
@@ -385,7 +410,7 @@ export const runInit = async () => {
 
   await printTemplate(initializeVariable.projectId, currentRegion);
 
-  void removeTmpDir();
+  await removeTmpDir();
 
   p.log.message(
     `Next step: ${link(
