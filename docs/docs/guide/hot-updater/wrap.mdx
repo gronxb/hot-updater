@@ -203,3 +203,18 @@ export default HotUpdater.wrap({
 |---------------|----------------------------------------------------------|-------------------------------------------|
 | Default       | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
 | Force Update  | Downloads the update bundle and applies it immediately.   | Use the `--force-update` flag or console. |
+
+
+## Custom source Function
+
+You can pass an async function to the source option for full control over how update info is fetched.
+
+```tsx
+export default HotUpdater.wrap({
+  source: async () => {
+    const res = await fetch("https://your.api/update-info");
+    return (await res.json()) as AppUpdateInfo | null;
+  },
+  // ... other options
+});
+```

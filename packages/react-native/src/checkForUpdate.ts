@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
-import { fetchUpdateInfo } from "./fetchUpdateInfo";
+import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
 import {
   getAppVersion,
   getBundleId,
@@ -9,9 +9,14 @@ import {
 } from "./native";
 
 export interface CheckForUpdateOptions {
-  source: string;
+  source: UpdateSource;
   requestHeaders?: Record<string, string>;
   onError?: (error: Error) => void;
+  /**
+   * The timeout duration for the request.
+   * @default 5000
+   */
+  requestTimeout?: number;
 }
 
 export async function checkForUpdate(options: CheckForUpdateOptions) {
@@ -48,5 +53,6 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
     },
     options.requestHeaders,
     options.onError,
+    options.requestTimeout,
   );
 }
