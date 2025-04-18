@@ -42,4 +42,9 @@
     [self.userDefaults synchronize];
 }
 
+- (void)removeItemForKey:(NSString *)key {
+    [self.userDefaults removeObjectForKey:key];
+    [self.userDefaults synchronize];
+}
+
 @end
