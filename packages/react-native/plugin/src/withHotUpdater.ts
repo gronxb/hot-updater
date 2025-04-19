@@ -94,7 +94,11 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (
 
   modifiedConfig = withMainApplication(modifiedConfig, (config) => {
     //kt: object : DefaultReactNativeHost(this) {
-    if (config.modResults.contents.includes("new DefaultReactNativeHost")) {
+    if (
+      config.modResults.contents.includes(
+        "object : DefaultReactNativeHost(this) {",
+      )
+    ) {
       config.modResults.contents = addContentIfNotExists(
         config.modResults.contents,
         "import com.hotupdater.HotUpdater",
