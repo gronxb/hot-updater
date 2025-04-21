@@ -146,18 +146,18 @@ export const s3Database = (
     region: s3Config.region,
   });
 
-  const litemItems = (prefix: string) =>
+  const listObjects = (prefix: string) =>
     listObjectsInS3(client, bucketName, prefix);
 
-  function loadItem<T>(key: string) {
+  function loadObject<T>(key: string) {
     return loadJsonFromS3<T>(client, bucketName, key);
   }
 
-  function uploadItem<T>(key: string, data: T) {
+  function uploadObject<T>(key: string, data: T) {
     return uploadJsonToS3(client, bucketName, key, data);
   }
 
-  function deleteItem(key: string) {
+  function deleteObject(key: string) {
     return deleteObjectInS3(client, bucketName, key);
   }
 
@@ -176,13 +176,13 @@ export const s3Database = (
     }
   }
 
-  return createBlobDatabasePlugin(
-    bucketName,
-    litemItems,
-    loadItem,
-    uploadItem,
-    deleteItem,
+  return createBlobDatabasePlugin({
+    name: "s3Database",
+    listObjects,
+    loadObject,
+    uploadObject,
+    deleteObject,
     invalidatePaths,
     hooks,
-  );
+  });
 };

@@ -41,12 +41,12 @@ afterEach(() => {
 });
 
 describe("blobDatabase plugin", () => {
-  async function listItems(prefix: string): Promise<string[]> {
+  async function listObjects(prefix: string): Promise<string[]> {
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
     return keys;
   }
 
-  async function loadItem<T>(path: string): Promise<T | null> {
+  async function loadObject<T>(path: string): Promise<T | null> {
     const data = fakeStore[path];
     if (data) {
       return JSON.parse(data);
@@ -54,11 +54,11 @@ describe("blobDatabase plugin", () => {
     return null;
   }
 
-  async function uploadItem<T>(path: string, data: T): Promise<void> {
+  async function uploadObject<T>(path: string, data: T): Promise<void> {
     fakeStore[path] = JSON.stringify(data);
   }
 
-  async function deleteItem(path: string): Promise<void> {
+  async function deleteObject(path: string): Promise<void> {
     delete fakeStore[path];
   }
 
@@ -66,24 +66,24 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.push({ paths });
   }
 
-  let plugin = createBlobDatabasePlugin(
-    "blobDatabase",
-    listItems,
-    loadItem,
-    uploadItem,
-    deleteItem,
+  let plugin = createBlobDatabasePlugin({
+    name: "blobDatabase",
+    listObjects,
+    loadObject,
+    uploadObject,
+    deleteObject,
     invalidatePaths,
-  )({ cwd: "" });
+  })({ cwd: "" });
 
   beforeEach(async () => {
-    plugin = createBlobDatabasePlugin(
-      "blobDatabase",
-      listItems,
-      loadItem,
-      uploadItem,
-      deleteItem,
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      listObjects,
+      loadObject,
+      uploadObject,
+      deleteObject,
       invalidatePaths,
-    )({ cwd: "" });
+    })({ cwd: "" });
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -577,15 +577,15 @@ describe("blobDatabase plugin", () => {
     // Verify hooks.onDatabaseUpdated is called after commit
     const onDatabaseUpdated = vi.fn();
 
-    const pluginWithHook = createBlobDatabasePlugin(
-      "blobDatabase",
-      listItems,
-      loadItem,
-      uploadItem,
-      deleteItem,
+    const pluginWithHook = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      listObjects,
+      loadObject,
+      uploadObject,
+      deleteObject,
       invalidatePaths,
-      { onDatabaseUpdated },
-    )({ cwd: "" });
+      hooks: { onDatabaseUpdated },
+    })({ cwd: "" });
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
     await pluginWithHook.commitBundle();

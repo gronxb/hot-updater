@@ -50,15 +50,23 @@ export type InvalidatePathsFn = (paths: string[]) => Promise<void>;
  * @param hooks - Optional hooks for additional functionality - see createDatabasePlugin
  * @returns
  */
-export const createBlobDatabasePlugin = (
-  name: string,
-  listObjects: ListObjectsFn,
-  loadObject: LoadObjectFn,
-  uploadObject: UploadObjectFn,
-  deleteObject: DeleteObjectFn,
-  invalidatePaths: InvalidatePathsFn,
-  hooks?: DatabasePluginHooks,
-) => {
+export const createBlobDatabasePlugin = ({
+  name,
+  listObjects,
+  loadObject,
+  uploadObject,
+  deleteObject,
+  invalidatePaths,
+  hooks,
+}: {
+  name: string;
+  listObjects: ListObjectsFn;
+  loadObject: LoadObjectFn;
+  uploadObject: UploadObjectFn;
+  deleteObject: DeleteObjectFn;
+  invalidatePaths: InvalidatePathsFn;
+  hooks?: DatabasePluginHooks;
+}) => {
   // Map for O(1) lookup of bundles.
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
   // Temporary store for newly added or modified bundles.
