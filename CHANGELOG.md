@@ -1,3 +1,36 @@
+## 0.16.3 (2025-04-17)
+
+### 🚀 Features
+
+- **firebase:** supports `firebase` ([#212](https://github.com/gronxb/hot-updater/pull/212))
+- **firebase:** makeEnv with GOOGLE_APPLICATION_CREDENTIALS ([e3edaeb](https://github.com/gronxb/hot-updater/commit/e3edaeb))
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **android:** loading assetLoader synchronously, cause crash, load async instead ([#281](https://github.com/gronxb/hot-updater/pull/281))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **firebase:** package.json to _package.json ([#286](https://github.com/gronxb/hot-updater/pull/286))
+- **firebase:** fix authentication method and region selection errors ([#284](https://github.com/gronxb/hot-updater/pull/284))
+- **firebase:** init-first ([42b6b65](https://github.com/gronxb/hot-updater/commit/42b6b65))
+- **firebase:** print template ([ae3e55c](https://github.com/gronxb/hot-updater/commit/ae3e55c))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- OskarAtJoint @OskarAtJoint
+- Sungyu Kang
+
 ## 0.16.2 (2025-04-10)
 
 ### 🚀 Features

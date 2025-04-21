@@ -160,7 +160,6 @@ const deployFunctions = async (cwd: string) => {
 };
 
 const printTemplate = async (projectId: string, region: string) => {
-  let functionUrl = "";
   try {
     const { stdout } = await execa("gcloud", [
       "functions",
@@ -175,7 +174,13 @@ const printTemplate = async (projectId: string, region: string) => {
     const parsedData = JSON.parse(stdout);
     const url = parsedData?.serviceConfig?.uri ?? parsedData.url;
 
-    functionUrl = `${url}/api/check-update`;
+    const functionUrl = `${url}/api/check-update`;
+
+    p.note(
+      transformTemplate(SOURCE_TEMPLATE, {
+        source: functionUrl,
+      }),
+    );
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -184,12 +189,6 @@ const printTemplate = async (projectId: string, region: string) => {
     }
     process.exit(1);
   }
-
-  p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      source: functionUrl,
-    }),
-  );
 };
 
 const checkIfGcloudCliInstalled = async () => {
@@ -226,7 +225,7 @@ export const runInit = async () => {
 
   const initializeVariable = await initFirebaseUser(tmpDir);
 
-  let currentRegion = "us-central1";
+  let currentRegion: string | undefined;
 
   await setEnv({
     projectId: initializeVariable.projectId,
@@ -275,55 +274,36 @@ export const runInit = async () => {
             currentRegion = hotUpdater.region;
             isFunctionsExist = true;
           }
+        } catch {
+          // no-op
+        }
 
-          let selectedRegion = currentRegion;
-          if (!isFunctionsExist) {
-            const selectRegion = await p.select({
-              message: "Select Region",
-              options: REGIONS,
-              initialValue: currentRegion || REGIONS[0],
-            });
-            if (p.isCancel(selectRegion)) {
-              p.cancel("Operation cancelled.");
-              process.exit(1);
-            }
-            selectedRegion = selectRegion as string;
+        if (!isFunctionsExist) {
+          const selectedRegion = await p.select({
+            message: "Select Region",
+            options: REGIONS,
+            initialValue: REGIONS[0].value,
+          });
+          if (p.isCancel(selectedRegion)) {
+            p.cancel("Operation cancelled.");
+            process.exit(1);
           }
           currentRegion = selectedRegion;
+        }
 
-          const code = await transformEnv(
-            await fs.promises.readFile(functionsIndexPath, "utf-8"),
-            {
-              REGION: selectedRegion,
-            },
-          );
-          await fs.promises.writeFile(functionsIndexPath, code);
-        } catch (error) {
-          if (error instanceof ExecaError) {
-            p.log.error(error.stderr || error.stdout || error.message);
-          } else if (error instanceof Error) {
-            p.log.error(error.message);
-          }
+        if (!currentRegion) {
+          p.log.error("Region is not set");
           await removeTmpDir();
           process.exit(1);
         }
 
-        let selectedRegion = currentRegion;
-
-        if (!isFunctionsExist) {
-          const selectRegion = await p.select({
-            message: "Select Region",
-            options: REGIONS,
-            initialValue: currentRegion,
-          });
-
-          if (p.isCancel(selectRegion)) {
-            p.cancel("Operation cancelled.");
-            await removeTmpDir();
-            process.exit(1);
-          }
-          selectedRegion = selectRegion as string;
-        }
+        const code = await transformEnv(
+          await fs.promises.readFile(functionsIndexPath, "utf-8"),
+          {
+            REGION: currentRegion,
+          },
+        );
+        await fs.promises.writeFile(functionsIndexPath, code);
         return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${currentRegion}`;
       },
     },
@@ -408,14 +388,21 @@ export const runInit = async () => {
     },
   ]);
 
+  if (!currentRegion) {
+    p.log.error("Region is not set");
+    await removeTmpDir();
+    process.exit(1);
+  }
   await printTemplate(initializeVariable.projectId, currentRegion);
-
   await removeTmpDir();
 
   p.log.message(
     `Next step: ${link(
-      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-with-supabase.html#step-4-add-hotupdater-to-your-project",
+      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-with-firebase.html#step-4-add-hotupdater-to-your-project",
     )}`,
+  );
+  p.log.message(
+    "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env file",
   );
   p.log.success("Done! 🎉");
 };
