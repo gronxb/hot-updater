@@ -398,7 +398,7 @@ export const runInit = async () => {
 
   p.log.message(
     `Next step: ${link(
-      "https://gronxb.github.io/hot-updater/guide/getting-started/quick-start-with-firebase.html#step-4-add-hotupdater-to-your-project",
+      "https://gronxb.github.io/hot-updater/guide/providers/4_firebase.html#step-3-generated-configurations",
     )}`,
   );
   p.log.message(
