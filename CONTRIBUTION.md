@@ -19,7 +19,7 @@ Get your local machine ready to work on `hot-updater`.
 2.  **enable `corepack`:**
     ```bash
     # Install corepack globally
-    npm install -g corepack
+    sudo npm install -g corepack
 
     # Enable corepack
     corepack enable
@@ -42,19 +42,31 @@ Get your local machine ready to work on `hot-updater`.
 
 ## 2. Running the Examples
 
-Test the library's functionality using the provided example applications. We'll use `v0.77.0` as the example here.
+## Test the library's functionality using the provided example applications.
 
-1.  **Navigate to Example:**
-    ```bash
-    cd examples/v0.77.0
-    ```
+1. **Navigate to Example:**
+   ```bash
+   cd examples/v0.71.19
+   ```
+Note: It's recommended to use the minimum version available in the examples folder (currently v0.71.19). Supporting the minimum version typically ensures compatibility with higher versions as well.
 
 2.  **Run on iOS:**
-    *   `pnpx pod-install`
-    *   `pnpm ios`
+    ```bash
+    pnpx pod-install
+    pnpm ios
+    pnpm start --reset-cache
+    ```
 
 3.  **Run on Android:**
-    *   `pnpm android`
+    ```bash
+    pnpm android
+    pnpm start --reset-cache
+    ```
+
+if yot want to start bundler dev mode
+    ```bash
+    pnpm start --reset-cache
+    ```
 
 *(Note: You might need to modify example code temporarily for testing, but remember to discard these changes before submitting a PR).*
 
@@ -79,19 +91,12 @@ Ready to contribute your changes back? Follow this checklist before submitting y
 
 ### PR Preparation Checklist
 
-1. **Format and Lint**
-    Format and lint the entire codebase to ensure code consistency and style correctness.
+1.  **Format and Lint:**
+    Ensure code consistency by running the Biome formatter/linter across the workspace.
     ```bash
     pnpm -w biome
     ```
-    Review and fix any reported issues.
-
-2. **Unit Test**
-    Run the unit tests to verify the correctness and behavior of the codebase.
-    ```bash
-    pnpm -w test
-    ```
-    Ensure all tests pass without errors.
+    Fix any reported issues.
 
 
 Thank you again for contributing!
