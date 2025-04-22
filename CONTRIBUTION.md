@@ -79,12 +79,19 @@ Ready to contribute your changes back? Follow this checklist before submitting y
 
 ### PR Preparation Checklist
 
-1.  **Format and Lint:**
-    Ensure code consistency by running the Biome formatter/linter across the workspace.
+1. **Format and Lint**
+    Format and lint the entire codebase to ensure code consistency and style correctness.
     ```bash
     pnpm -w biome
     ```
-    Fix any reported issues.
+    Review and fix any reported issues.
+
+2. **Unit Test**
+    Run the unit tests to verify the correctness and behavior of the codebase.
+    ```bash
+    pnpm -w test
+    ```
+    Ensure all tests pass without errors.
 
 
 Thank you again for contributing!
