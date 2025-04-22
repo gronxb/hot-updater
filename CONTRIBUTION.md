@@ -18,11 +18,6 @@ Get your local machine ready to work on `hot-updater`.
 
 2.  **enable `corepack`:**
     ```bash
-    corepack enable
-    ```
-
-    If you encounter an error like Error: Cannot find matching keyid, follow these steps:
-    ```bash
     # Install corepack globally
     sudo npm install -g corepack
 
