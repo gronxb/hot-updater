@@ -19,7 +19,7 @@ Get your local machine ready to work on `hot-updater`.
 2.  **enable `corepack`:**
     ```bash
     # Install corepack globally
-    sudo npm install -g corepack
+    npm install -g corepack
 
     # Enable corepack
     corepack enable
@@ -39,36 +39,49 @@ Get your local machine ready to work on `hot-updater`.
     *(The `-w` flag targets the workspace root)*
 
 ---
-
 ## 2. Running the Examples
 
-## Test the library's functionality using the provided example applications.
+Test the library’s functionality using the provided example applications.
 
-1. **Navigate to Example:**
-   ```bash
-   cd examples/v0.71.19
-   ```
-Note: It's recommended to use the minimum version available in the examples folder (currently v0.71.19). Supporting the minimum version typically ensures compatibility with higher versions as well.
+### 1. Navigate to Example
 
-2.  **Run on iOS:**
-    ```bash
-    pnpx pod-install
-    pnpm ios
-    pnpm start --reset-cache
-    ```
+Navigate to the example application directory:
 
-3.  **Run on Android:**
-    ```bash
-    pnpm android
-    pnpm start --reset-cache
-    ```
+```bash
+cd examples/v0.71.19
+```
 
-if yot want to start bundler dev mode
-    ```bash
-    pnpm start --reset-cache
-    ```
+### 2. OTA and Infrastructure Setup
+To test OTA update functionality, release mode is required (--mode Release). Additionally, you might need to initialize your OTA infrastructure:
+```bash
+pnpm hot-updater init
+```
 
-*(Note: You might need to modify example code temporarily for testing, but remember to discard these changes before submitting a PR).*
+For a quick and easy setup, Supabase is a good option for hosting and managing OTA updates.
+
+### 3. Run on iOS
+```bash
+pnpx pod-install
+pnpm ios
+pnpm start --reset-cache
+```
+
+To test Over-the-Air (OTA) updates, run the app in release mode:
+```bash
+pnpm ios --mode Release
+```
+
+### 4. Run on Android
+To start the Android example app in development mode:
+```bash
+pnpm android
+pnpm start --reset-cache
+```
+
+To test OTA updates on Android:
+```bash
+pnpm android --mode Release
+```
 
 ---
 
@@ -91,12 +104,17 @@ Ready to contribute your changes back? Follow this checklist before submitting y
 
 ### PR Preparation Checklist
 
-1.  **Format and Lint:**
-    Ensure code consistency by running the Biome formatter/linter across the workspace.
+1. **Format and Lint**
+    Format and lint the entire codebase to ensure code consistency and style correctness.
     ```bash
     pnpm -w biome
     ```
-    Fix any reported issues.
+    Review and fix any reported issues.
 
-
+2. **Unit Test**
+    Run the unit tests to verify the correctness and behavior of the codebase.
+    ```bash
+    pnpm -w test
+    ```
+    Ensure all tests pass without errors.
 Thank you again for contributing!
