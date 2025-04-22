@@ -19,7 +19,7 @@ Get your local machine ready to work on `hot-updater`.
 2.  **enable `corepack`:**
     ```bash
     # Install corepack globally
-    sudo npm install -g corepack
+    npm install -g corepack
 
     # Enable corepack
     corepack enable
