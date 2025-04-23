@@ -22,7 +22,7 @@ const createBundleJson = (
   channel: string,
   platform: "ios" | "android",
   targetAppVersion: string,
-  id: string
+  id: string,
 ): Bundle => ({
   ...DEFAULT_BUNDLE,
   channel,
@@ -81,7 +81,7 @@ describe("s3Database plugin", () => {
       "production",
       "ios",
       "1.0.0",
-      "00000000-0000-0000-0000-000000000001"
+      "00000000-0000-0000-0000-000000000001",
     );
 
     // Add bundle and commit
@@ -98,7 +98,7 @@ describe("s3Database plugin", () => {
 
     // Verify bundle can be retrieved from memory cache
     const fetchedBundle = await plugin.getBundleById(
-      "00000000-0000-0000-0000-000000000001"
+      "00000000-0000-0000-0000-000000000001",
     );
     expect(fetchedBundle).toStrictEqual(newBundle);
   });
@@ -110,7 +110,7 @@ describe("s3Database plugin", () => {
       "production",
       "android",
       "2.0.0",
-      "00000000-0000-0000-0000-000000000002"
+      "00000000-0000-0000-0000-000000000002",
     );
 
     // Pre-populate bundle data in fakeStore
@@ -136,7 +136,7 @@ describe("s3Database plugin", () => {
 
   it("should throw an error when trying to update a non-existent bundle", async () => {
     await expect(
-      plugin.updateBundle("nonexistent", { enabled: true })
+      plugin.updateBundle("nonexistent", { enabled: true }),
     ).rejects.toThrow("targetBundleId not found");
   });
 
@@ -151,19 +151,19 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000003"
+        "00000000-0000-0000-0000-000000000003",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000002"
+        "00000000-0000-0000-0000-000000000002",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000001"
+        "00000000-0000-0000-0000-000000000001",
       ),
     ];
 
@@ -172,13 +172,13 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "1.0.2",
-        "00000000-0000-0000-0000-000000000005"
+        "00000000-0000-0000-0000-000000000005",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.0.2",
-        "00000000-0000-0000-0000-000000000004"
+        "00000000-0000-0000-0000-000000000004",
       ),
     ];
 
@@ -206,19 +206,19 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "1.0.2",
-        "00000000-0000-0000-0000-000000000005"
+        "00000000-0000-0000-0000-000000000005",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.0.2",
-        "00000000-0000-0000-0000-000000000004"
+        "00000000-0000-0000-0000-000000000004",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.0.2",
-        "00000000-0000-0000-0000-000000000003"
+        "00000000-0000-0000-0000-000000000003",
       ),
     ]);
 
@@ -229,13 +229,13 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000002"
+        "00000000-0000-0000-0000-000000000002",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000001"
+        "00000000-0000-0000-0000-000000000001",
       ),
     ]);
 
@@ -255,19 +255,19 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000003"
+        "00000000-0000-0000-0000-000000000003",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000002"
+        "00000000-0000-0000-0000-000000000002",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000001"
+        "00000000-0000-0000-0000-000000000001",
       ),
     ];
 
@@ -276,13 +276,13 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "1.0.2",
-        "00000000-0000-0000-0000-000000000005"
+        "00000000-0000-0000-0000-000000000005",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.0.2",
-        "00000000-0000-0000-0000-000000000004"
+        "00000000-0000-0000-0000-000000000004",
       ),
     ];
 
@@ -315,31 +315,31 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000005"
+        "00000000-0000-0000-0000-000000000005",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000004"
+        "00000000-0000-0000-0000-000000000004",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000003"
+        "00000000-0000-0000-0000-000000000003",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000002"
+        "00000000-0000-0000-0000-000000000002",
       ),
       createBundleJson(
         "production",
         "ios",
         "1.x.x",
-        "00000000-0000-0000-0000-000000000001"
+        "00000000-0000-0000-0000-000000000001",
       ),
     ]);
 
@@ -354,19 +354,19 @@ describe("s3Database plugin", () => {
       "production",
       "ios",
       "1.0.0",
-      "bundle-ios-1"
+      "bundle-ios-1",
     );
     const iosBundle2 = createBundleJson(
       "production",
       "ios",
       "2.0.0",
-      "bundle-ios-2"
+      "bundle-ios-2",
     );
     const androidBundle1 = createBundleJson(
       "production",
       "android",
       "1.0.0",
-      "bundle-android-1"
+      "bundle-android-1",
     );
 
     // Valid update.json files
@@ -387,7 +387,7 @@ describe("s3Database plugin", () => {
         "production",
         "android",
         "1.0.0",
-        "should-not-be-included"
+        "should-not-be-included",
       ),
     ]);
 
@@ -397,7 +397,7 @@ describe("s3Database plugin", () => {
     // Assert: Returned bundle list should only include valid bundles
     expect(bundles).toHaveLength(3);
     expect(bundles).toEqual(
-      expect.arrayContaining([iosBundle1, iosBundle2, androidBundle1])
+      expect.arrayContaining([iosBundle1, iosBundle2, androidBundle1]),
     );
   });
 
@@ -407,31 +407,31 @@ describe("s3Database plugin", () => {
       "production",
       "ios",
       "1.0.0",
-      "prod-ios-1"
+      "prod-ios-1",
     );
     const betaIosBundle = createBundleJson(
       "beta",
       "ios",
       "1.0.0",
-      "beta-ios-1"
+      "beta-ios-1",
     );
     const alphaIosBundle = createBundleJson(
       "alpha",
       "ios",
       "1.0.0",
-      "alpha-ios-1"
+      "alpha-ios-1",
     );
     const productionAndroidBundle = createBundleJson(
       "production",
       "android",
       "1.0.0",
-      "prod-android-1"
+      "prod-android-1",
     );
     const betaAndroidBundle = createBundleJson(
       "beta",
       "android",
       "1.0.0",
-      "beta-android-1"
+      "beta-android-1",
     );
 
     // Set up update.json files for different channels
@@ -472,7 +472,7 @@ describe("s3Database plugin", () => {
         alphaIosBundle,
         productionAndroidBundle,
         betaAndroidBundle,
-      ])
+      ]),
     );
 
     // Test updating a bundle in a specific channel
@@ -484,14 +484,14 @@ describe("s3Database plugin", () => {
 
     // Verify only the beta channel bundle was updated
     const updatedBetaIosBundles = JSON.parse(
-      fakeStore["beta/ios/1.0.0/update.json"]
+      fakeStore["beta/ios/1.0.0/update.json"],
     );
     expect(updatedBetaIosBundles[0].enabled).toBe(false);
     expect(updatedBetaIosBundles[0].message).toBe("Disabled in beta channel");
 
     // Verify other channel bundles remain unchanged
     const productionIosBundles = JSON.parse(
-      fakeStore["production/ios/1.0.0/update.json"]
+      fakeStore["production/ios/1.0.0/update.json"],
     );
     expect(productionIosBundles[0].enabled).toBe(true);
   });
@@ -502,7 +502,7 @@ describe("s3Database plugin", () => {
       "beta",
       "ios",
       "1.0.0",
-      "channel-move-test"
+      "channel-move-test",
     );
 
     fakeStore["beta/ios/1.0.0/update.json"] = JSON.stringify([betaIosBundle]);
@@ -520,7 +520,7 @@ describe("s3Database plugin", () => {
 
     // Assert: Bundle should be moved to production channel
     const productionBundles = JSON.parse(
-      fakeStore["production/ios/1.0.0/update.json"]
+      fakeStore["production/ios/1.0.0/update.json"],
     );
     expect(productionBundles).toHaveLength(1);
     expect(productionBundles[0].id).toBe("channel-move-test");
@@ -528,7 +528,7 @@ describe("s3Database plugin", () => {
 
     // Beta channel should no longer have the bundle
     const betaBundles = JSON.parse(
-      fakeStore["beta/ios/1.0.0/update.json"] || "[]"
+      fakeStore["beta/ios/1.0.0/update.json"] || "[]",
     );
     expect(betaBundles).toHaveLength(0);
   });
@@ -546,7 +546,7 @@ describe("s3Database plugin", () => {
       "production",
       "ios",
       "1.0.0",
-      "bundle-1"
+      "bundle-1",
     );
     fakeStore[updateKey] = JSON.stringify([iosBundle]);
     // Pre-configure target-app-versions file
@@ -568,7 +568,7 @@ describe("s3Database plugin", () => {
         bucketName,
         ...s3Config,
       },
-      { onDatabaseUpdated }
+      { onDatabaseUpdated },
     )({ cwd: "" });
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
@@ -600,7 +600,7 @@ describe("s3Database plugin", () => {
       "production",
       "android",
       "2.0.0",
-      "internal-test"
+      "internal-test",
     );
     fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
       bundle,
@@ -618,7 +618,7 @@ describe("s3Database plugin", () => {
       "production",
       "android",
       "2.0.0",
-      "same-key-test"
+      "same-key-test",
     );
     await plugin.appendBundle(bundle);
     // Change only enabled property → path should remain the same
@@ -649,7 +649,7 @@ describe("s3Database plugin", () => {
       "production",
       "android",
       "2.0.0",
-      "multi-2"
+      "multi-2",
     );
 
     await plugin.appendBundle(bundle1);
@@ -672,7 +672,7 @@ describe("s3Database plugin", () => {
       "production",
       "ios",
       "1.0.0",
-      "00000000-0000-0000-0000-000000000010"
+      "00000000-0000-0000-0000-000000000010",
     );
 
     // Verify fakeStore is empty at start of test
@@ -696,19 +696,19 @@ describe("s3Database plugin", () => {
         "production",
         "ios",
         "3.0.0",
-        "00000000-0000-0000-0000-000000000010"
+        "00000000-0000-0000-0000-000000000010",
       ),
       createBundleJson(
         "production",
         "ios",
         "3.0.0",
-        "00000000-0000-0000-0000-000000000012"
+        "00000000-0000-0000-0000-000000000012",
       ),
       createBundleJson(
         "production",
         "android",
         "3.0.0",
-        "00000000-0000-0000-0000-000000000011"
+        "00000000-0000-0000-0000-000000000011",
       ),
     ];
     // Simulate existing files in S3
@@ -744,10 +744,10 @@ describe("s3Database plugin", () => {
 
     // Sanity check: getBundleById works for both
     const foundIos = await plugin.getBundleById(
-      "00000000-0000-0000-0000-000000000010"
+      "00000000-0000-0000-0000-000000000010",
     );
     const foundAndroid = await plugin.getBundleById(
-      "00000000-0000-0000-0000-000000000011"
+      "00000000-0000-0000-0000-000000000011",
     );
     expect(foundIos).toEqual(iosBundle);
     expect(foundAndroid).toEqual(androidBundle);
@@ -760,7 +760,7 @@ describe("s3Database plugin", () => {
       "production",
       "ios",
       "1.0.0",
-      "cloudfront-new-test"
+      "cloudfront-new-test",
     );
     await plugin.appendBundle(newBundle);
 
@@ -768,7 +768,7 @@ describe("s3Database plugin", () => {
 
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
-      (inv) => inv.paths
+      (inv) => inv.paths,
     );
     expect(invalidatedPaths).toContain(`/${bundleKey}`);
     expect(invalidatedPaths).toContain(`/${targetVersionsKey}`);
@@ -781,7 +781,7 @@ describe("s3Database plugin", () => {
       "production",
       "ios",
       "1.0.0",
-      "cloudfront-update-test"
+      "cloudfront-update-test",
     );
     await plugin.appendBundle(bundle);
     await plugin.commitBundle();
@@ -792,7 +792,7 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
-      (inv) => inv.paths
+      (inv) => inv.paths,
     );
     expect(invalidatedPaths).toContain(`/${bundleKey}`);
     expect(invalidatedPaths).not.toContain(`/${targetVersionsKey}`);
