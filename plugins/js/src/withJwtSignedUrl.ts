@@ -11,10 +11,12 @@ import { SignJWT } from "jose";
  * @returns {Promise<T|null>} - Update response object with fileUrl or null
  */
 export const withJwtSignedUrl = async <T extends { id: string }>({
+  pathPrefix = "",
   data,
   reqUrl,
   jwtSecret,
 }: {
+  pathPrefix?: string;
   data: T | null;
   reqUrl: string;
   jwtSecret: string;
@@ -31,7 +33,7 @@ export const withJwtSignedUrl = async <T extends { id: string }>({
   const token = await signToken(key, jwtSecret);
 
   const url = new URL(reqUrl);
-  url.pathname = `/${key}`;
+  url.pathname = `${pathPrefix}/${key}`;
   url.searchParams.set("token", token);
 
   return { ...data, fileUrl: url.toString() };
