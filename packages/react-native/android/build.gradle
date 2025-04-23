@@ -129,7 +129,22 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   
   // Test dependencies
-  testImplementation "junit:junit:4.13.2"
+   testImplementation("junit:junit:4.13.2")
+
+    // Kotlin Coroutines Testing
+    // Use a version compatible with your Kotlin version (1.8.1 works well with Kotlin 1.8.x)
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+
+    // MockK for mocking Kotlin code and Android specifics
+    testImplementation("io.mockk:mockk:1.13.11") // Use latest stable version
+    testImplementation("io.mockk:mockk-android:1.13.11") // For Android specific mocking if needed (like Log)
+
+    // AndroidX Test Core (provides Context, etc. for testing if needed, although we mock heavily)
+    // Optional, but can be helpful for some Android class interactions if not fully mocked
+    testImplementation("androidx.test:core-ktx:1.5.0")
+    testImplementation("androidx.test.ext:junit-ktx:1.1.5") // AndroidX extensions for JUnit
+
+
 }
 
 if (isNewArchitectureEnabled()) {
