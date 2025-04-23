@@ -12,12 +12,12 @@ const storage = new Storage();
 
 export const gcsDatabase = (
   config: GCSDatabaseConfig,
-  hooks?: DatabasePluginHooks,
+  hooks?: DatabasePluginHooks
 ) => {
   const { bucketName } = config;
 
   // List update.json paths for each platform in parallel
-  async function listUpdateJsonKeys(prefix: string): Promise<string[]> {
+  async function listObjects(prefix: string): Promise<string[]> {
     const bucket = storage.bucket(bucketName);
     const [files, a, b] = await bucket.getFiles({ prefix });
     // TODO - Handle pagination
@@ -28,7 +28,7 @@ export const gcsDatabase = (
    * Loads JSON data from GCS.
    * Returns null if an error occurs.
    */
-  async function getJsonFromGCS<T>(key: string): Promise<T | null> {
+  async function loadObject<T>(key: string): Promise<T | null> {
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
 
@@ -45,7 +45,7 @@ export const gcsDatabase = (
   /**
    * Converts data to JSON string and uploads to GCS.
    */
-  async function uploadJsonToGCS<T>(fileName: string, jsonObject: T) {
+  async function uploadObject<T>(fileName: string, jsonObject: T) {
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(fileName);
     const jsonString = JSON.stringify(jsonObject);
@@ -65,7 +65,7 @@ export const gcsDatabase = (
    * Delete a file from GCS
    * @param fileName
    */
-  async function deleteObjectGCS(fileName: string) {
+  async function deleteObject(fileName: string) {
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(fileName);
     await file.delete();
@@ -73,13 +73,13 @@ export const gcsDatabase = (
 
   const invalidatePaths = async (paths: string[]) => {};
 
-  return createBlobDatabasePlugin(
-    "gcsDatabase",
-    listUpdateJsonKeys,
-    getJsonFromGCS,
-    uploadJsonToGCS,
-    deleteObjectGCS,
+  return createBlobDatabasePlugin({
+    name: "gcsDatabase",
+    listObjects,
+    loadObject,
+    uploadObject,
+    deleteObject,
     invalidatePaths,
     hooks,
-  );
+  });
 };
