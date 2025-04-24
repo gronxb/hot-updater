@@ -288,6 +288,8 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
               "--project-ref",
               projectId,
               "--no-verify-jwt",
+              "--workdir",
+              workdir,
             ],
             {
               cwd: workdir,
@@ -352,15 +354,10 @@ export const runInit = async () => {
     "supabase",
   );
 
+  await linkSupabase(tmpDir, project.id);
+
   const supabasePath = path.join(tmpDir, "supabase");
-
-  await linkSupabase(supabasePath, project.id);
-
-  const functionsPath = path.join(
-    supabasePath,
-    "functions",
-    "update-server",
-  );
+  const functionsPath = path.join(supabasePath, "functions", "update-server");
   const code = await fs.readFile(path.join(functionsPath, "index.ts"), "utf-8");
 
   const updatedCode = await transformTsEnv(code, {
@@ -368,8 +365,8 @@ export const runInit = async () => {
   });
   await fs.writeFile(path.join(functionsPath, "index.ts"), updatedCode);
 
-  await pushDB(supabasePath);
-  await deployEdgeFunction(supabasePath, project.id);
+  await pushDB(tmpDir);
+  await deployEdgeFunction(tmpDir, project.id);
 
   await removeTmpDir();
 
