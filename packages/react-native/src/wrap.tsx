@@ -3,7 +3,13 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { getBundleId, reload, updateBundle } from "./native";
+import {
+  getBundleId,
+  reload,
+  updateBundle,
+  getExecutionCount,
+  updateExecutionCount,
+} from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
@@ -59,7 +65,7 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
 export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
   options: HotUpdaterOptions,
 ): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P> {
-  const { reloadOnForceUpdate = true, ...restOptions } = options;
+  const { reloadOnForceUpdate = true, maxRetries, ...restOptions } = options;
 
   return (WrappedComponent: React.ComponentType<P>) => {
     const HotUpdaterHOC: React.FC<P> = (props: P) => {
@@ -70,6 +76,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
 
       const initHotUpdater = useEventCallback(async () => {
+        updateExecutionCount();
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
 
@@ -143,7 +150,15 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
       }, [progress]);
 
       useLayoutEffect(() => {
-        initHotUpdater();
+        (async () => {
+          if (reloadOnForceUpdate && maxRetries) {
+            const count = await getExecutionCount();
+            if (count > maxRetries) {
+              return;
+            }
+          }
+          initHotUpdater();
+        })();
       }, []);
 
       if (

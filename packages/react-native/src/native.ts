@@ -115,3 +115,17 @@ export const getChannel = (): string | null => {
   const constants = HotUpdaterNative.getConstants();
   return constants?.CHANNEL ?? HotUpdater.CHANNEL ?? null;
 };
+
+/**
+ * Fetches the execution count
+ */
+export const getExecutionCount = (): Promise<number> => {
+  return HotUpdaterNative.getExecutionCount();
+};
+
+/**
+ * Increments the execution count
+ */
+export const updateExecutionCount = () => {
+  HotUpdaterNative.updateExecutionCount();
+};

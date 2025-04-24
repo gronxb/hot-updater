@@ -26,6 +26,16 @@ class HotUpdater : ReactPackage {
         listOf(HotUpdaterModule(context)).toMutableList()
 
     companion object {
+        private var count: Int = 0
+
+        fun incrementCount() {
+            count++
+        }
+
+        fun getCount(): Int {
+            return count
+        }
+
         fun getAppVersion(context: Context): String? {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             return packageInfo.versionName

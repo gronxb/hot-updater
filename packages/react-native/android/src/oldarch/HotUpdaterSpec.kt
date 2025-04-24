@@ -21,4 +21,8 @@ abstract class HotUpdaterSpec internal constructor(
         channel: String,
         promise: Promise,
     )
+
+    abstract fun getExecutionCount(promise: Promise)
+
+    abstract fun updateExecutionCount()
 }

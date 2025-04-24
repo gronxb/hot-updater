@@ -83,6 +83,16 @@ class HotUpdaterModule internal constructor(
         // No-op
     }
 
+    @ReactMethod
+    override fun getExecutionCount(promise: Promise) {
+        promise.resolve(HotUpdater.getCount())
+    }
+
+    @ReactMethod
+    override fun updateExecutionCount() {
+        HotUpdater.incrementCount()
+    }
+
     companion object {
         const val NAME = "HotUpdater"
     }

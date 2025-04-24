@@ -13,6 +13,9 @@ interface Spec extends TurboModule {
 
   setChannel(channel: string): Promise<void>;
 
+  getExecutionCount(): Promise<number>;
+  updateExecutionCount(): void;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;
