@@ -352,11 +352,12 @@ export const runInit = async () => {
     "supabase",
   );
 
-  await linkSupabase(tmpDir, project.id);
+  const supabasePath = path.join(tmpDir, "supabase");
+
+  await linkSupabase(supabasePath, project.id);
 
   const functionsPath = path.join(
-    tmpDir,
-    "supabase",
+    supabasePath,
     "functions",
     "update-server",
   );
@@ -367,8 +368,8 @@ export const runInit = async () => {
   });
   await fs.writeFile(path.join(functionsPath, "index.ts"), updatedCode);
 
-  await pushDB(tmpDir);
-  await deployEdgeFunction(tmpDir, project.id);
+  await pushDB(supabasePath);
+  await deployEdgeFunction(supabasePath, project.id);
 
   await removeTmpDir();
 
