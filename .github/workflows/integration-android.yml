@@ -64,3 +64,6 @@ jobs:
         run: cd examples/v0.71.19/android && ./gradlew assembleDebug --build-cache && cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
+
+      - name: Build Android
+        run: cd packages/react-native/android && ./gradlew test && cd ../../..
