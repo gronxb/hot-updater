@@ -43,7 +43,7 @@ Run the initialization script to start the interactive setup process. Use the fo
 
 ::: details {title="Interactive Setup Steps"}
 
-1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Metro for React Native).
+1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select Firebase as the provider for handling updates.
 
 During the setup, you will be prompted to:
@@ -91,7 +91,7 @@ GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 ```
 
 ```ts title=hot-updater.config.ts
-import { metro } from '@hot-updater/metro';
+import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import * as admin from 'firebase-admin';
 import { defineConfig } from 'hot-updater';
@@ -104,7 +104,7 @@ import 'dotenv/config';
 const credential = admin.credential.applicationDefault();
 
 export default defineConfig({
-  build: metro({
+  build: bare({
     enableHermes: true,
   }),
   storage: firebaseStorage({

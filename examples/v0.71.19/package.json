@@ -22,7 +22,7 @@
     "@hot-updater/aws": "0.16.3",
     "@hot-updater/cloudflare": "0.16.3",
     "@hot-updater/firebase": "0.16.3",
-    "@hot-updater/metro": "0.16.3",
+    "@hot-updater/bare": "0.16.3",
     "@hot-updater/sentry-plugin": "0.16.3",
     "@hot-updater/supabase": "0.16.3",
     "@react-native-community/cli-platform-android": "10.2.0",

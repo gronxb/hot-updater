@@ -3,7 +3,7 @@ import * as p from "@clack/prompts";
 import { link, makeEnv } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 
-const CONFIG_TEMPLATE = `import { metro } from '@hot-updater/metro';
+const CONFIG_TEMPLATE = `import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import * as admin from 'firebase-admin';
 import { defineConfig } from 'hot-updater';
@@ -16,7 +16,7 @@ import 'dotenv/config';
 const credential = admin.credential.applicationDefault();
 
 export default defineConfig({
-  build: metro({
+  build: bare({
     enableHermes: true,
   }),
   storage: firebaseStorage({
