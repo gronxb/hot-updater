@@ -97,7 +97,14 @@ export interface RnefPluginConfig extends BuildPluginConfig {
 }
 
 export const rnef =
-  (config: RnefPluginConfig) =>
+  (
+    config: RnefPluginConfig = {
+      outDir: "dist",
+      sourcemap: false,
+      entryFile: "index.js",
+      hermes: true,
+    },
+  ) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => {
     const {
       outDir = "dist",

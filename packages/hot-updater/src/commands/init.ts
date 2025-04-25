@@ -11,7 +11,7 @@ const REQUIRED_PACKAGES = {
 const PACKAGE_MAP = {
   supabase: {
     dependencies: [],
-    devDependencies: ["@hot-updater/supabase", "supabase"],
+    devDependencies: ["@hot-updater/supabase"],
   },
   aws: {
     dependencies: [],
