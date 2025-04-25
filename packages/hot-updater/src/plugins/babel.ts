@@ -53,17 +53,11 @@ export default function replaceHotUpdaterBundleId(): PluginObj {
   return {
     name: "replace-hot-updater-bundle-id",
     visitor: {
-      MemberExpression(path: NodePath<t.MemberExpression>) {
-        if (
-          t.isIdentifier(path.node.property) &&
-          path.node.property.name === "__HOT_UPDATER_BUNDLE_ID"
-        ) {
+      Identifier(path: NodePath<t.Identifier>) {
+        if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
           path.replaceWith(t.stringLiteral(bundleId));
         }
-        if (
-          t.isIdentifier(path.node.property) &&
-          path.node.property.name === "__HOT_UPDATER_CHANNEL"
-        ) {
+        if (path.node.name === "__HOT_UPDATER_CHANNEL") {
           path.replaceWith(
             channel ? t.stringLiteral(channel) : t.nullLiteral(),
           );
