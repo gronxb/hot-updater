@@ -1,0 +1,67 @@
+name: Remote Build iOS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - '**'
+
+concurrency:
+  group: remote-build-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-device:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: RNEF Remote Build - iOS device
+        uses: callstackincubator/ios@v1
+        with:
+          destination: device
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          scheme: SCHEME_FOR_DEVICES # replace with preferred scheme
+          configuration: Release # replace with preferred configuration
+          certificate-base64: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
+          certificate-password: ${{ secrets.APPLE_BUILD_CERTIFICATE_PASSWORD }}
+          provisioning-profile-base64: ${{ secrets.APPLE_BUILD_PROVISIONING_PROFILE_BASE64 }}
+          provisioning-profile-name: 'PROVISIONING_PROFILE_NAME' # replace with actual profile name
+          keychain-password: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+
+  build-simulator:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: RNEF Remote Build - iOS simulator
+        uses: callstackincubator/ios@v1
+        with:
+          destination: simulator
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          scheme: SCHEME_FOR_SIMULATORS # replace with preferred scheme
+          configuration: Debug # replace with preferred configuration
