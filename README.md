@@ -36,13 +36,13 @@
 
   * [Supabase](https://gronxb.github.io/hot-updater/guide/providers/1_supabase.html)
   ```tsx
-  import { metro } from "@hot-updater/metro";
+  import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
   import { defineConfig } from "hot-updater";
   import "dotenv/config";
 
   export default defineConfig({
-    build: metro({ enableHermes: true }),
+    build: bare({ enableHermes: true }),
     storage: supabaseStorage({
       supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
       supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
@@ -57,13 +57,13 @@
 
 * [Cloudflare](https://gronxb.github.io/hot-updater/guide/providers/2_cloudflare.html)
 ```tsx
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
+  build: bare({ enableHermes: true }),
   storage: r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
@@ -79,7 +79,7 @@ export default defineConfig({
 
 * [AWS S3 + Lambda@Edge](https://gronxb.github.io/hot-updater/guide/providers/3_aws-s3-lambda-edge.html)
 ```tsx
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
@@ -94,7 +94,7 @@ const options = {
 };
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
+  build: bare({ enableHermes: true }),
   storage: s3Storage(options),
   database: s3Database(options),
 });
@@ -102,7 +102,7 @@ export default defineConfig({
 
 * [Firebase](https://gronxb.github.io/hot-updater/guide/providers/4_firebase.html)
 ```tsx
-import { metro } from '@hot-updater/metro';
+import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import * as admin from 'firebase-admin';
 import { defineConfig } from 'hot-updater';
@@ -115,7 +115,7 @@ import 'dotenv/config';
 const credential = admin.credential.applicationDefault();
 
 export default defineConfig({
-  build: metro({
+  build: bare({
     enableHermes: true,
   }),
   storage: firebaseStorage({

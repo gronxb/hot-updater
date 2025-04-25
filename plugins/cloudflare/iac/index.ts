@@ -16,13 +16,13 @@ import { createWrangler } from "../src/utils/createWrangler";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
 const CONFIG_TEMPLATE = `
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
+  build: bare({ enableHermes: true }),
   storage: r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,

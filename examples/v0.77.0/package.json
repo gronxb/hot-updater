@@ -20,7 +20,7 @@
     "@babel/runtime": "^7.25.0",
     "@hot-updater/aws": "0.16.3",
     "@hot-updater/cloudflare": "0.16.3",
-    "@hot-updater/metro": "0.16.3",
+    "@hot-updater/bare": "0.16.3",
     "@hot-updater/supabase": "0.16.3",
     "@react-native-community/cli": "15.0.1",
     "@react-native-community/cli-platform-android": "15.0.1",

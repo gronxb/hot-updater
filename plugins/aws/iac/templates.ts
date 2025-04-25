@@ -1,5 +1,5 @@
 export const CONFIG_TEMPLATE_WITH_SESSION = `
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
@@ -16,7 +16,7 @@ const commonOptions = {
 };
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
+  build: bare({ enableHermes: true }),
   storage: s3Storage(commonOptions),
   database: s3Database({
     ...commonOptions,
@@ -26,7 +26,7 @@ export default defineConfig({
 `;
 
 export const CONFIG_TEMPLATE = `
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
@@ -41,7 +41,7 @@ const options = {
 };
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
+  build: bare({ enableHermes: true }),
   storage: s3Storage(options),
   database: s3Database(options),
 });

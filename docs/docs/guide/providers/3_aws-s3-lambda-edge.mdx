@@ -61,7 +61,7 @@ Run the initialization script to start the interactive setup process. Use the fo
 
 ::: details {title="Interactive Setup Steps"}
 
-1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Metro for React Native).
+1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
 During the setup, you will be prompted to:
 1. **Choose AWS Login Method**: Select between AWS Access Key or SSO login
@@ -104,7 +104,7 @@ During the initialization process, the following file is automatically generated
 
 ```ts title=hot-updater.config.ts
 
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
@@ -119,7 +119,7 @@ const options = {
 };
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
+  build: bare({ enableHermes: true }),
   storage: s3Storage(options),
   database: s3Database(options),
 });

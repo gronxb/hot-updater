@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/metro",
+  "name": "@hot-updater/bare",
   "type": "module",
   "version": "0.16.3",
   "description": "React Native OTA solution for self-hosted",
@@ -25,9 +25,11 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/bare": "0.16.3"
+    "@hot-updater/plugin-core": "0.16.3"
   },
   "devDependencies": {
-    "@types/node": "^22.8.7"
+    "@types/node": "^22.8.7",
+    "execa": "^9.5.2",
+    "uuidv7": "^1.0.2"
   }
 }
