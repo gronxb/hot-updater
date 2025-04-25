@@ -47,8 +47,8 @@ export const getChannel = () => {
 export class HotUpdaterPlugin implements RspackPluginInstance {
   apply(compiler: Compiler) {
     new compiler.webpack.DefinePlugin({
-      "HotUpdater.HOT_UPDATER_BUNDLE_ID": JSON.stringify(getBundleId()),
-      "HotUpdater.CHANNEL": JSON.stringify(getChannel()),
+      __HOT_UPDATER_BUNDLE_ID: JSON.stringify(getBundleId()),
+      __HOT_UPDATER_CHANNEL: JSON.stringify(getChannel()),
     }).apply(compiler);
   }
 }

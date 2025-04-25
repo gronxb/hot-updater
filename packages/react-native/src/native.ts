@@ -2,9 +2,12 @@ import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
+declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
+declare const __HOT_UPDATER_CHANNEL: string | undefined;
+
 const HotUpdater = {
-  HOT_UPDATER_BUNDLE_ID: NIL_UUID,
-  CHANNEL: "production",
+  HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
+  CHANNEL: __HOT_UPDATER_CHANNEL || "production",
 };
 
 const LINKING_ERROR =
