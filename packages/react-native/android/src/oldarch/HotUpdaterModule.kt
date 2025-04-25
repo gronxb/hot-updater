@@ -1,13 +1,10 @@
 package com.hotupdater
 
-import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import kotlinx.coroutines.launch
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
@@ -18,12 +15,13 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload() {
-        HotUpdater.reload(mReactApplicationContext)
+        val reloader = ReactNativeReloader(mReactApplicationContext)
+        reloader.reload()
     }
 
     @ReactMethod
     override fun getAppVersion(promise: Promise) {
-        promise.resolve(HotUpdater.getAppVersion(mReactApplicationContext))
+        promise.resolve(HotUpdaterUtils.getAppVersion(mReactApplicationContext))
     }
 
     @ReactMethod
@@ -31,7 +29,7 @@ class HotUpdaterModule internal constructor(
         channel: String,
         promise: Promise,
     ) {
-        HotUpdater.setChannel(mReactApplicationContext, channel)
+        HotUpdaterPreferenceManager.getInstance(mReactApplicationContext).setItem(HotUpdaterPreferenceManager.KEY_CHANNEL, channel)
         promise.resolve(null)
     }
 
@@ -41,26 +39,28 @@ class HotUpdaterModule internal constructor(
         zipUrl: String?,
         promise: Promise,
     ) {
-        // Use lifecycleScope when currentActivity is FragmentActivity
-        (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
-            val isSuccess =
-                HotUpdater.updateBundle(
-                    mReactApplicationContext,
-                    bundleId,
-                    zipUrl,
-                ) { progress ->
-                    val params =
-                        WritableNativeMap().apply {
-                            putDouble("progress", progress)
-                        }
-
-                    this@HotUpdaterModule
-                        .mReactApplicationContext
-                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                        .emit("onProgress", params)
+        HotUpdater.updateBundle(
+            mReactApplicationContext,
+            bundleId,
+            zipUrl,
+            progressCallback = { progress ->
+                val params =
+                    WritableNativeMap().apply {
+                        putDouble("progress", progress)
+                    }
+                mReactApplicationContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    ?.emit("onProgress", params)
+                    ?: System.err.println("RCTDeviceEventEmitter is null, cannot emit progress")
+            },
+            completionCallback = { isSuccess ->
+                if (isSuccess) {
+                    promise.resolve(true)
+                } else {
+                    promise.reject("UpdateError", "Failed to update bundle.")
                 }
-            promise.resolve(isSuccess)
-        }
+            },
+        )
     }
 
     @ReactMethod
@@ -79,9 +79,10 @@ class HotUpdaterModule internal constructor(
 
     override fun getConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
-        constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
-        constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
+        constants["MIN_BUNDLE_ID"] = HotUpdaterUtils.getMinBundleId()
+        constants["APP_VERSION"] = HotUpdaterUtils.getAppVersion(mReactApplicationContext)
+        constants["CHANNEL"] =
+            HotUpdaterPreferenceManager.getInstance(mReactApplicationContext).getItem(HotUpdaterPreferenceManager.KEY_CHANNEL)
         return constants
     }
 
