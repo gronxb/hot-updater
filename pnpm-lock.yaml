@@ -21,6 +21,7 @@ overrides:
   '@hot-updater/firebase': workspace:*
   '@hot-updater/sentry-plugin': workspace:*
   '@hot-updater/rnef': workspace:*
+  '@hot-updater/repack': workspace:*
 
 importers:
 
@@ -93,6 +94,9 @@ importers:
       '@expo/fingerprint':
         specifier: ^0.11.6
         version: 0.11.11
+      '@hot-updater/repack':
+        specifier: workspace:^
+        version: link:../../plugins/repack
       '@hot-updater/rnef':
         specifier: workspace:*
         version: link:../../plugins/rnef
@@ -1171,6 +1175,28 @@ importers:
       pg-minify:
         specifier: ^1.6.5
         version: 1.6.5
+
+  plugins/repack:
+    dependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+    devDependencies:
+      '@callstack/repack':
+        specifier: 5.0.6
+        version: 5.0.6(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@19.1.2)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))(esbuild@0.25.0))
+      '@rspack/core':
+        specifier: 1.3.7
+        version: 1.3.7(@swc/helpers@0.5.17)
+      '@types/node':
+        specifier: ^22.8.7
+        version: 22.13.5
+      picocolors:
+        specifier: ^1.0.0
+        version: 1.1.1
+      uuidv7:
+        specifier: ^1.0.2
+        version: 1.0.2
 
   plugins/rnef:
     dependencies:
@@ -4106,11 +4132,20 @@ packages:
   '@module-federation/error-codes@0.11.2':
     resolution: {integrity: sha512-ik1Qnn0I+WyEdprTck9WGlH41vGsVdUg8cfO+ZM02qOb2cZm5Vu3SlxGAobj6g7uAj0g8yINnd7h7Dci40BxQA==}
 
+  '@module-federation/error-codes@0.13.0':
+    resolution: {integrity: sha512-4soAMLr7qcVWuvCsyRmBbiBfuhxmnDeyl+qzjMx8VurQgL+XQDQJapM9RXngNGT4g8FoCq9o7rM5YWNgFFNUiw==}
+
   '@module-federation/runtime-core@0.11.2':
     resolution: {integrity: sha512-dia5kKybi6MFU0s5PgglJwN27k7n9Sf69Cy5xZ4BWaP0qlaXTsxHKO0PECHNt2Pt8jDdyU29sQ4DwAQfxpnXJQ==}
 
+  '@module-federation/runtime-core@0.13.0':
+    resolution: {integrity: sha512-Oj/1p0mfxZ+8EbU7ND4gMvRmikFpIvPCbblOgat9N8ZIVAKYpTimCgMhzg4yRqAwzlGCVwnnW7XZ8UlA+Zqrvg==}
+
   '@module-federation/runtime-tools@0.11.2':
     resolution: {integrity: sha512-4MJTGAxVq6vxQRkTtTlH7Mm9AVqgn0X9kdu+7RsL7T/qU+jeYsbrntN2CWG3GVVA8r5JddXyTI1iJ0VXQZLV1w==}
+
+  '@module-federation/runtime-tools@0.13.0':
+    resolution: {integrity: sha512-6ECWX18yGrQKcmkrQoNPd5VEpxZP1SMaB/Bp55xlpEhsrpn4zHnriQluxDw6xldjSOLl1qbokfxwCwjS2OaEbg==}
 
   '@module-federation/runtime-tools@0.5.1':
     resolution: {integrity: sha512-nfBedkoZ3/SWyO0hnmaxuz0R0iGPSikHZOAZ0N/dVSQaIzlffUo35B5nlC2wgWIc0JdMZfkwkjZRrnuuDIJbzg==}
@@ -4118,17 +4153,26 @@ packages:
   '@module-federation/runtime@0.11.2':
     resolution: {integrity: sha512-Ya9u/L6z2LvhgpqxuKCB7LcigIIRf1BbaxAZIH7mzbq/A7rZtTP7v+73E433jvgiAlbAfPSZkeoYGele6hfRwA==}
 
+  '@module-federation/runtime@0.13.0':
+    resolution: {integrity: sha512-Ne/3AEVWz6LL6G/i41O5MC6YYlg0SatNNqG/0XbuMAfyGM+llRmB6VKt0o2+JR4isxWuPNp97TbUkkfORit6Eg==}
+
   '@module-federation/runtime@0.5.1':
     resolution: {integrity: sha512-xgiMUWwGLWDrvZc9JibuEbXIbhXg6z2oUkemogSvQ4LKvrl/n0kbqP1Blk669mXzyWbqtSp6PpvNdwaE1aN5xQ==}
 
   '@module-federation/sdk@0.11.2':
     resolution: {integrity: sha512-SBFe5xOamluT900J4AGBx+2/kCH/JbfqXoUwPSAC6PRzb8Y7LB0posnOGzmqYsLZXT37vp3d6AmJDsVoajDqxw==}
 
+  '@module-federation/sdk@0.13.0':
+    resolution: {integrity: sha512-JdMZaPD+EQvMJYS+/8/8QjaAHQ3qljogvioXBsAuedcStu/msn5e1Fswc0G34kXY9ixs2hUPZU2cAllfSKWIBQ==}
+
   '@module-federation/sdk@0.5.1':
     resolution: {integrity: sha512-exvchtjNURJJkpqjQ3/opdbfeT2wPKvrbnGnyRkrwW5o3FH1LaST1tkiNviT6OXTexGaVc2DahbdniQHVtQ7pA==}
 
   '@module-federation/webpack-bundler-runtime@0.11.2':
     resolution: {integrity: sha512-WdwIE6QF+MKs/PdVu0cKPETF743JB9PZ62/qf7Uo3gU4fjsUMc37RnbJZ/qB60EaHHfjwp1v6NnhZw1r4eVsnw==}
+
+  '@module-federation/webpack-bundler-runtime@0.13.0':
+    resolution: {integrity: sha512-ycgAsFeCTo+3GR8JxkhCyg2UZm6Au98ISdLTdVXYphO4UDcO/KjqyJen1LXEslkpCEohDj68Prei2fUHRruK6g==}
 
   '@module-federation/webpack-bundler-runtime@0.5.1':
     resolution: {integrity: sha512-mMhRFH0k2VjwHt3Jol9JkUsmI/4XlrAoBG3E0o7HoyoPYv1UFOWyqAflfANcUPgbYpvqmyLzDcO+3IT36LXnrA==}
@@ -5281,6 +5325,11 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
+  '@rspack/binding-darwin-arm64@1.3.7':
+    resolution: {integrity: sha512-/5k4H0M7vvu7uorhc0OQKdQ7ybcjcJA//ptfYB646Ca/XY8FI1T/H88prPNrLNu97FGqUT4QWo5AHj01XymfDw==}
+    cpu: [arm64]
+    os: [darwin]
+
   '@rspack/binding-darwin-x64@1.1.8':
     resolution: {integrity: sha512-vfqf/c+mcx8rr1M8LnqKmzDdnrgguflZnjGerBLjNerAc+dcUp3lCvNxRIvZ2TkSZZBW8BpCMgjj3n70CZ4VLQ==}
     cpu: [x64]
@@ -5288,6 +5337,11 @@ packages:
 
   '@rspack/binding-darwin-x64@1.3.5':
     resolution: {integrity: sha512-ysNn7bd/5NdVb0mTDBQl+D9GypCSS7FJoJJEeSpPcN01zFF8lRUsvdbOvzrG/CUBA2qbeWhwZvG2eKOy3p2NRA==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@rspack/binding-darwin-x64@1.3.7':
+    resolution: {integrity: sha512-/eNcZFDHxo5RVmIxgVM5zxCXmufeWpvviWJMDjhycS175nJb6103YWpu6H0lHgbj0GnHM/Q2VjVRFNhaGbXqdA==}
     cpu: [x64]
     os: [darwin]
 
@@ -5301,6 +5355,11 @@ packages:
     cpu: [arm64]
     os: [linux]
 
+  '@rspack/binding-linux-arm64-gnu@1.3.7':
+    resolution: {integrity: sha512-bSxA4MgGOdSvf/nTqNMuLeeyWS4Okh1iPskGuyAv/Sdf7cGbflUyZe6+w7A9BZEFR0CVTfj3f8kt73N+lu72Kg==}
+    cpu: [arm64]
+    os: [linux]
+
   '@rspack/binding-linux-arm64-musl@1.1.8':
     resolution: {integrity: sha512-bX7exULSZwy8xtDh6Z65b6sRC4uSxGuyvSLCEKyhmG6AnJkg0gQMxk3hoO0hWnyGEZgdJEn+jEhk0fjl+6ZRAQ==}
     cpu: [arm64]
@@ -5308,6 +5367,11 @@ packages:
 
   '@rspack/binding-linux-arm64-musl@1.3.5':
     resolution: {integrity: sha512-4cUoxd8nGsCCnqWBqortJRF+VKWzUm7ac9YRMQ+wpoL5i0abcQf8GqeilsNtRBRNqAlAh3mfgRlyeZgWvoS44g==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@rspack/binding-linux-arm64-musl@1.3.7':
+    resolution: {integrity: sha512-i6QK6YodCA5R8/ShRylkyunwvNcRx/Q7af14jSCa7TPOi6pPoDUL2pmwGcJBk1uPc2wjQwAMZzfJjTWNjEyW2Q==}
     cpu: [arm64]
     os: [linux]
 
@@ -5321,6 +5385,11 @@ packages:
     cpu: [x64]
     os: [linux]
 
+  '@rspack/binding-linux-x64-gnu@1.3.7':
+    resolution: {integrity: sha512-6AmOHLOv4XAK7Y5cFDBtnetIZ44MqG8Q6wZ20zjql/khTxsRZa/edis/eUppGb8fy5gzi+qqSAznEZ+Qj3LMrQ==}
+    cpu: [x64]
+    os: [linux]
+
   '@rspack/binding-linux-x64-musl@1.1.8':
     resolution: {integrity: sha512-bnVGB/mQBKEdzOU/CPmcOE3qEXxGOGGW7/i6iLl2MamVOykJq8fYjL9j86yi6L0r009ja16OgWckykQGc4UqGw==}
     cpu: [x64]
@@ -5328,6 +5397,11 @@ packages:
 
   '@rspack/binding-linux-x64-musl@1.3.5':
     resolution: {integrity: sha512-t8BqaOXrqIXZHTrz4ItX/m6BOvbBkeb7qTewlkN5mMHtPAF/Xg203rQ814VXx59kjgGF7i79PXIK2dQxHnCYDA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@rspack/binding-linux-x64-musl@1.3.7':
+    resolution: {integrity: sha512-rPt0c9UHp5AxWHhjziEtd2uwiWyzM4UZLFJV6hawBWOoIQf2uLSl3fp0HTqxpslfTh3uo5ymhHN/bV48m5THzg==}
     cpu: [x64]
     os: [linux]
 
@@ -5341,6 +5415,11 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@rspack/binding-win32-arm64-msvc@1.3.7':
+    resolution: {integrity: sha512-+Db7NGBzad1dCcSm94uARkIIhbVv1+BXAl1duLBnYQMfqsu/pirsInE9wbp7WVUbSl2hmdRi9MYgWACjoReo4g==}
+    cpu: [arm64]
+    os: [win32]
+
   '@rspack/binding-win32-ia32-msvc@1.1.8':
     resolution: {integrity: sha512-FijUxym1INd5fFHwVCLuVP8XEAb4Sk1sMwEEQUlugiDra9ZsLaPw4OgPGxbxkD6SB0DeUz9Zq46Xbcf6d3OgfA==}
     cpu: [ia32]
@@ -5348,6 +5427,11 @@ packages:
 
   '@rspack/binding-win32-ia32-msvc@1.3.5':
     resolution: {integrity: sha512-dGfGJySHC/ktbNkK/FY2vEpFNK4UT+fgChhmUxIyQaHWjloFGVmEr6NttS0GtdtvblfF3tTzkTe9pGMIkdlegw==}
+    cpu: [ia32]
+    os: [win32]
+
+  '@rspack/binding-win32-ia32-msvc@1.3.7':
+    resolution: {integrity: sha512-VPqqC0U6FolGoonmZYBBiFyWjQ4+X+e/l/t4QZP2DRonlpE418+MdCxq2ldVGgvtxwERNlz61zxEX9yh/8KOfw==}
     cpu: [ia32]
     os: [win32]
 
@@ -5361,11 +5445,19 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@rspack/binding-win32-x64-msvc@1.3.7':
+    resolution: {integrity: sha512-zi9tKxlq85lSYTb1sbEluLjZlkbjuoJoy2TaNzVlfNkmiJ6EiqBbyCWoPPBJRP6HQ9pG25W0y4NWKp7iVhiBvg==}
+    cpu: [x64]
+    os: [win32]
+
   '@rspack/binding@1.1.8':
     resolution: {integrity: sha512-+/JzXx1HctfgPj+XtsCTbRkxiaOfAXGZZLEvs7jgp04WgWRSZ5u97WRCePNPvy+sCfOEH/2zw2ZK36Z7oQRGhQ==}
 
   '@rspack/binding@1.3.5':
     resolution: {integrity: sha512-2oluCT+iBnTg0w7XfR8AmfkvgMPSuqEndzhrlHY//qgyyI04CW1lCMgsh+9wcSOUWUKYSOMCiGiVlYFtae5Lcg==}
+
+  '@rspack/binding@1.3.7':
+    resolution: {integrity: sha512-jSXLktIGmNNZssxT+fjZ31IyUO7lRoFrFO+XuqKlMpbnHE8yCrpaHE6rLyDPVO4Vnl6xx/df8usUXtZwIc4jrw==}
 
   '@rspack/core@1.1.8':
     resolution: {integrity: sha512-pcZtcj5iXLCuw9oElTYC47bp/RQADm/MMEb3djHdwJuSlFWfWPQi5QFgJ/lJAxIW9UNHnTFrYtytycfjpuoEcA==}
@@ -5385,6 +5477,15 @@ packages:
     peerDependenciesMeta:
       '@rspack/tracing':
         optional: true
+      '@swc/helpers':
+        optional: true
+
+  '@rspack/core@1.3.7':
+    resolution: {integrity: sha512-InXnEmImLKkxzkY7XaAozycjMvS5myf/o3zu1rw5tNq3ONxWvW0QOHVTcrF0FbeKQ/jCOFSfdaoFjbXjdUs38w==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      '@swc/helpers': '>=0.5.1'
+    peerDependenciesMeta:
       '@swc/helpers':
         optional: true
 
@@ -17155,6 +17256,39 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@callstack/repack@5.0.6(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@19.1.2)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))(esbuild@0.25.0))':
+    dependencies:
+      '@callstack/repack-dev-server': 5.0.6
+      '@discoveryjs/json-ext': 0.5.7
+      '@rspack/plugin-react-refresh': 1.0.0(react-refresh@0.14.2)
+      babel-loader: 9.2.1(@babel/core@7.26.0)(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))(esbuild@0.25.0))
+      colorette: 2.0.20
+      dedent: 0.7.0
+      estree-util-is-identifier-name: 1.1.0
+      events: 3.3.0
+      execa: 5.1.1
+      flow-remove-types: 2.268.0
+      gradient-string: 2.0.2
+      image-size: 1.2.1
+      jsonwebtoken: 9.0.2
+      memfs: 4.17.0
+      mime-types: 2.1.35
+      pretty-format: 26.6.2
+      react-native: 0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@19.1.2)(react@19.0.0)
+      react-refresh: 0.14.2
+      schema-utils: 4.2.0
+      shallowequal: 1.1.0
+      throttleit: 2.1.0
+      webpack-merge: 6.0.1
+    optionalDependencies:
+      '@rspack/core': 1.3.7(@swc/helpers@0.5.17)
+      webpack: 5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))(esbuild@0.25.0)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
   '@clack/core@0.4.1':
     dependencies:
       picocolors: 1.1.1
@@ -18643,15 +18777,27 @@ snapshots:
 
   '@module-federation/error-codes@0.11.2': {}
 
+  '@module-federation/error-codes@0.13.0': {}
+
   '@module-federation/runtime-core@0.11.2':
     dependencies:
       '@module-federation/error-codes': 0.11.2
       '@module-federation/sdk': 0.11.2
 
+  '@module-federation/runtime-core@0.13.0':
+    dependencies:
+      '@module-federation/error-codes': 0.13.0
+      '@module-federation/sdk': 0.13.0
+
   '@module-federation/runtime-tools@0.11.2':
     dependencies:
       '@module-federation/runtime': 0.11.2
       '@module-federation/webpack-bundler-runtime': 0.11.2
+
+  '@module-federation/runtime-tools@0.13.0':
+    dependencies:
+      '@module-federation/runtime': 0.13.0
+      '@module-federation/webpack-bundler-runtime': 0.13.0
 
   '@module-federation/runtime-tools@0.5.1':
     dependencies:
@@ -18664,11 +18810,19 @@ snapshots:
       '@module-federation/runtime-core': 0.11.2
       '@module-federation/sdk': 0.11.2
 
+  '@module-federation/runtime@0.13.0':
+    dependencies:
+      '@module-federation/error-codes': 0.13.0
+      '@module-federation/runtime-core': 0.13.0
+      '@module-federation/sdk': 0.13.0
+
   '@module-federation/runtime@0.5.1':
     dependencies:
       '@module-federation/sdk': 0.5.1
 
   '@module-federation/sdk@0.11.2': {}
+
+  '@module-federation/sdk@0.13.0': {}
 
   '@module-federation/sdk@0.5.1': {}
 
@@ -18676,6 +18830,11 @@ snapshots:
     dependencies:
       '@module-federation/runtime': 0.11.2
       '@module-federation/sdk': 0.11.2
+
+  '@module-federation/webpack-bundler-runtime@0.13.0':
+    dependencies:
+      '@module-federation/runtime': 0.13.0
+      '@module-federation/sdk': 0.13.0
 
   '@module-federation/webpack-bundler-runtime@0.5.1':
     dependencies:
@@ -20179,6 +20338,23 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@react-native/community-cli-plugin@0.79.1(@react-native-community/cli@15.0.1(typescript@5.8.3))':
+    dependencies:
+      '@react-native/dev-middleware': 0.79.1
+      chalk: 4.1.2
+      debug: 2.6.9
+      invariant: 2.2.4
+      metro: 0.82.1
+      metro-config: 0.82.1
+      metro-core: 0.82.1
+      semver: 7.7.1
+    optionalDependencies:
+      '@react-native-community/cli': 15.0.1(typescript@5.8.3)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
   '@react-native/debugger-frontend@0.73.3': {}
 
   '@react-native/debugger-frontend@0.74.83': {}
@@ -20606,6 +20782,15 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.1.2
 
+  '@react-native/virtualized-lists@0.79.1(@types/react@19.1.2)(react-native@0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)':
+    dependencies:
+      invariant: 2.2.4
+      nullthrows: 1.1.1
+      react: 19.0.0
+      react-native: 0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@19.1.2)(react@19.0.0)
+    optionalDependencies:
+      '@types/react': 19.1.2
+
   '@remix-run/router@1.21.0': {}
 
   '@rnef/cli@0.7.1(typescript@5.0.4)':
@@ -20939,10 +21124,16 @@ snapshots:
   '@rspack/binding-darwin-arm64@1.3.5':
     optional: true
 
+  '@rspack/binding-darwin-arm64@1.3.7':
+    optional: true
+
   '@rspack/binding-darwin-x64@1.1.8':
     optional: true
 
   '@rspack/binding-darwin-x64@1.3.5':
+    optional: true
+
+  '@rspack/binding-darwin-x64@1.3.7':
     optional: true
 
   '@rspack/binding-linux-arm64-gnu@1.1.8':
@@ -20951,10 +21142,16 @@ snapshots:
   '@rspack/binding-linux-arm64-gnu@1.3.5':
     optional: true
 
+  '@rspack/binding-linux-arm64-gnu@1.3.7':
+    optional: true
+
   '@rspack/binding-linux-arm64-musl@1.1.8':
     optional: true
 
   '@rspack/binding-linux-arm64-musl@1.3.5':
+    optional: true
+
+  '@rspack/binding-linux-arm64-musl@1.3.7':
     optional: true
 
   '@rspack/binding-linux-x64-gnu@1.1.8':
@@ -20963,10 +21160,16 @@ snapshots:
   '@rspack/binding-linux-x64-gnu@1.3.5':
     optional: true
 
+  '@rspack/binding-linux-x64-gnu@1.3.7':
+    optional: true
+
   '@rspack/binding-linux-x64-musl@1.1.8':
     optional: true
 
   '@rspack/binding-linux-x64-musl@1.3.5':
+    optional: true
+
+  '@rspack/binding-linux-x64-musl@1.3.7':
     optional: true
 
   '@rspack/binding-win32-arm64-msvc@1.1.8':
@@ -20975,16 +21178,25 @@ snapshots:
   '@rspack/binding-win32-arm64-msvc@1.3.5':
     optional: true
 
+  '@rspack/binding-win32-arm64-msvc@1.3.7':
+    optional: true
+
   '@rspack/binding-win32-ia32-msvc@1.1.8':
     optional: true
 
   '@rspack/binding-win32-ia32-msvc@1.3.5':
     optional: true
 
+  '@rspack/binding-win32-ia32-msvc@1.3.7':
+    optional: true
+
   '@rspack/binding-win32-x64-msvc@1.1.8':
     optional: true
 
   '@rspack/binding-win32-x64-msvc@1.3.5':
+    optional: true
+
+  '@rspack/binding-win32-x64-msvc@1.3.7':
     optional: true
 
   '@rspack/binding@1.1.8':
@@ -21011,6 +21223,18 @@ snapshots:
       '@rspack/binding-win32-ia32-msvc': 1.3.5
       '@rspack/binding-win32-x64-msvc': 1.3.5
 
+  '@rspack/binding@1.3.7':
+    optionalDependencies:
+      '@rspack/binding-darwin-arm64': 1.3.7
+      '@rspack/binding-darwin-x64': 1.3.7
+      '@rspack/binding-linux-arm64-gnu': 1.3.7
+      '@rspack/binding-linux-arm64-musl': 1.3.7
+      '@rspack/binding-linux-x64-gnu': 1.3.7
+      '@rspack/binding-linux-x64-musl': 1.3.7
+      '@rspack/binding-win32-arm64-msvc': 1.3.7
+      '@rspack/binding-win32-ia32-msvc': 1.3.7
+      '@rspack/binding-win32-x64-msvc': 1.3.7
+
   '@rspack/core@1.1.8(@swc/helpers@0.5.17)':
     dependencies:
       '@module-federation/runtime-tools': 0.5.1
@@ -21024,6 +21248,15 @@ snapshots:
     dependencies:
       '@module-federation/runtime-tools': 0.11.2
       '@rspack/binding': 1.3.5
+      '@rspack/lite-tapable': 1.0.1
+      caniuse-lite: 1.0.30001715
+    optionalDependencies:
+      '@swc/helpers': 0.5.17
+
+  '@rspack/core@1.3.7(@swc/helpers@0.5.17)':
+    dependencies:
+      '@module-federation/runtime-tools': 0.13.0
+      '@rspack/binding': 1.3.7
       '@rspack/lite-tapable': 1.0.1
       caniuse-lite: 1.0.30001715
     optionalDependencies:
@@ -25273,7 +25506,7 @@ snapshots:
       '@nodelib/fs.walk': 1.2.8
       glob-parent: 5.1.2
       merge2: 1.4.1
-      micromatch: 4.0.5
+      micromatch: 4.0.8
 
   fast-json-stable-stringify@2.1.0: {}
 
@@ -31103,6 +31336,54 @@ snapshots:
       '@react-native/js-polyfills': 0.79.1
       '@react-native/normalize-colors': 0.79.1
       '@react-native/virtualized-lists': 0.79.1(@types/react@19.1.2)(react-native@0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)
+      abort-controller: 3.0.0
+      anser: 1.4.10
+      ansi-regex: 5.0.1
+      babel-jest: 29.7.0(@babel/core@7.26.0)
+      babel-plugin-syntax-hermes-parser: 0.25.1
+      base64-js: 1.5.1
+      chalk: 4.1.2
+      commander: 12.1.0
+      event-target-shim: 5.0.1
+      flow-enums-runtime: 0.0.6
+      glob: 7.2.3
+      invariant: 2.2.4
+      jest-environment-node: 29.7.0
+      memoize-one: 5.2.1
+      metro-runtime: 0.82.1
+      metro-source-map: 0.82.1
+      nullthrows: 1.1.1
+      pretty-format: 29.7.0
+      promise: 8.3.0
+      react: 19.0.0
+      react-devtools-core: 6.1.1
+      react-refresh: 0.14.2
+      regenerator-runtime: 0.13.11
+      scheduler: 0.25.0
+      semver: 7.7.1
+      stacktrace-parser: 0.1.10
+      whatwg-fetch: 3.6.19
+      ws: 6.2.3
+      yargs: 17.7.2
+    optionalDependencies:
+      '@types/react': 19.1.2
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@react-native-community/cli'
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  react-native@0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@19.1.2)(react@19.0.0):
+    dependencies:
+      '@jest/create-cache-key-function': 29.7.0
+      '@react-native/assets-registry': 0.79.1
+      '@react-native/codegen': 0.79.1(@babel/core@7.26.0)
+      '@react-native/community-cli-plugin': 0.79.1(@react-native-community/cli@15.0.1(typescript@5.8.3))
+      '@react-native/gradle-plugin': 0.79.1
+      '@react-native/js-polyfills': 0.79.1
+      '@react-native/normalize-colors': 0.79.1
+      '@react-native/virtualized-lists': 0.79.1(@types/react@19.1.2)(react-native@0.79.1(@babel/core@7.26.0)(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)
       abort-controller: 3.0.0
       anser: 1.4.10
       ansi-regex: 5.0.1

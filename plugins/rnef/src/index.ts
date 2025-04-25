@@ -43,16 +43,18 @@ const runBundle = async ({
   ];
 
   log.normal("\n");
+
+  let stdout: string | null = null;
   try {
-    await execa("npx", args, {
+    const result = await execa("npx", args, {
       cwd,
-      stdio: "inherit",
       env: {
         ...process.env,
         BUILD_OUT_DIR: buildPath,
         HOT_UPDATER_CHANNEL: channel,
       },
     });
+    stdout = result.stdout;
   } catch (error) {
     if (error instanceof ExecaError) {
       throw error.stderr;
@@ -73,7 +75,7 @@ Example:
 
   return {
     bundleId,
-    stdout: null,
+    stdout,
   };
 };
 

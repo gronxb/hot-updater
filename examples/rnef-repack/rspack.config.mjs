@@ -1,6 +1,7 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as Repack from '@callstack/repack';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import * as Repack from "@callstack/repack";
+import { HotUpdaterPlugin } from "@hot-updater/repack";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +15,7 @@ const __dirname = path.dirname(__filename);
 
 export default {
   context: __dirname,
-  entry: './index.js',
+  entry: "./index.js",
   resolve: {
     ...Repack.getResolveOptions(),
   },
@@ -24,5 +25,5 @@ export default {
       ...Repack.getAssetTransformRules(),
     ],
   },
-  plugins: [new Repack.RepackPlugin()],
+  plugins: [new Repack.RepackPlugin(), new HotUpdaterPlugin()],
 };

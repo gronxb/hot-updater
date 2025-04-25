@@ -45,7 +45,8 @@
       "@hot-updater/mock": "workspace:*",
       "@hot-updater/firebase": "workspace:*",
       "@hot-updater/sentry-plugin": "workspace:*",
-      "@hot-updater/rnef": "workspace:*"
+      "@hot-updater/rnef": "workspace:*",
+      "@hot-updater/repack": "workspace:*"
     }
   },
   "packageManager": "pnpm@10.6.3"

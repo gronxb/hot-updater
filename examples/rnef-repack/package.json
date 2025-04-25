@@ -20,6 +20,7 @@
     "@babel/runtime": "^7.25.0",
     "@callstack/repack": "^5.0.3",
     "@expo/fingerprint": "^0.11.6",
+    "@hot-updater/repack": "workspace:^",
     "@hot-updater/rnef": "0.16.3",
     "@hot-updater/supabase": "0.16.3",
     "@react-native/babel-preset": "0.79.1",
