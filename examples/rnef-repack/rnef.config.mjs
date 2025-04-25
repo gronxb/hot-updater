@@ -1,6 +1,6 @@
-import { platformIOS } from '@rnef/platform-ios';
-import { platformAndroid } from '@rnef/platform-android';
-import { pluginRepack } from '@rnef/plugin-repack';
+import { platformAndroid } from "@rnef/platform-android";
+import { platformIOS } from "@rnef/platform-ios";
+import { pluginRepack } from "@rnef/plugin-repack";
 
 export default {
   bundler: pluginRepack(),

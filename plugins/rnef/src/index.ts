@@ -53,6 +53,7 @@ const runBundle = async ({
         BUILD_OUT_DIR: buildPath,
         HOT_UPDATER_CHANNEL: channel,
       },
+      reject: true,
     });
     stdout = result.stdout;
   } catch (error) {
@@ -66,11 +67,23 @@ const runBundle = async ({
     .catch(() => null);
 
   if (!bundleId) {
-    throw new Error(`Please check if 'hot-updater/babel-plugin' is configured in babel.config.js
+    throw new Error(`If you are using Babel, please check if 'hot-updater/babel-plugin' is configured in babel.config.js
 Example:
+module.exports = {
+  plugins: [
+    ["@hot-updater/babel-plugin"]
+  ]
+}
+  
+
+If you are using Repack, please check if '@hot-updater/repack' plugin is configured in rspack.config.mjs
+Example:
+import { HotUpdaterPlugin } from "@hot-updater/repack";
+
 {
-  plugins: ['hot-updater/babel-plugin']
-}`);
+  plugins: [new Repack.RepackPlugin(), new HotUpdaterPlugin()],
+}
+`);
   }
 
   return {
