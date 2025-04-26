@@ -88,7 +88,7 @@
   },
   "dependencies": {
     "use-sync-external-store": "1.4.0",
-    "@hot-updater/js": "0.16.4",
-    "@hot-updater/core": "0.16.4"
+    "@hot-updater/js": "workspace:*",
+    "@hot-updater/core": "workspace:*"
   }
 }

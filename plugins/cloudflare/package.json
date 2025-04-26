@@ -45,9 +45,9 @@
     "dev": "wrangler dev worker/src/index.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "0.16.4",
-    "@hot-updater/js": "0.16.4",
-    "@hot-updater/plugin-core": "0.16.4",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/js": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "cloudflare": "4.2.0"
   },
   "devDependencies": {

@@ -35,6 +35,6 @@
     "@callstack/repack": "*"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "0.16.4"
+    "@hot-updater/plugin-core": "workspace:*"
   }
 }

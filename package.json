@@ -29,26 +29,5 @@
     "vitest": "^3.1.2",
     "@swc/helpers": "^0.5.17"    
   },
-  "pnpm": {
-    "overrides": {
-      "hot-updater": "workspace:*",
-      "@hot-updater/console": "workspace:*",
-      "@hot-updater/plugin-core": "workspace:*",
-      "@hot-updater/core": "workspace:*",
-      "@hot-updater/aws": "workspace:*",
-      "@hot-updater/metro": "workspace:*",
-      "@hot-updater/bare": "workspace:*",
-      "@hot-updater/react-native": "workspace:*",
-      "@hot-updater/postgres": "workspace:*",
-      "@hot-updater/supabase": "workspace:*",
-      "@hot-updater/cloudflare": "workspace:*",
-      "@hot-updater/js": "workspace:*",
-      "@hot-updater/mock": "workspace:*",
-      "@hot-updater/firebase": "workspace:*",
-      "@hot-updater/sentry-plugin": "workspace:*",
-      "@hot-updater/rnef": "workspace:*",
-      "@hot-updater/repack": "workspace:*"
-    }
-  },
-  "packageManager": "pnpm@10.6.3"
+  "packageManager": "pnpm@10.9.0"
 }
