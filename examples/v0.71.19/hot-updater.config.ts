@@ -7,7 +7,7 @@ import "dotenv/config";
 export default defineConfig({
   build: withSentry(
     bare({
-      enableHermes: false,
+      enableHermes: true,
       sourcemap: true, // sentry will upload sourcemaps to sentry
     }),
     {
