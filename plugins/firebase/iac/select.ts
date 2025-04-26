@@ -182,6 +182,7 @@ export const initFirebaseUser = async (
         try {
           await execa("npx", ["firebase", "use", "--add", projectId], {
             cwd,
+            shell: true,
           });
         } catch (error) {
           if (error instanceof ExecaError) {
@@ -198,6 +199,7 @@ export const initFirebaseUser = async (
   try {
     const indexes = await execa("npx", ["firebase", "firestore:indexes"], {
       cwd,
+      shell: true,
     });
     if (indexes.exitCode !== 0) {
       throw new Error(indexes.stderr);
