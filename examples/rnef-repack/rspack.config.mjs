@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import * as Repack from "@callstack/repack";
 import { HotUpdaterPlugin } from "@hot-updater/repack";
 import "dotenv/config";
+import rspack from "@rspack/core";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -29,7 +31,7 @@ export default {
     new Repack.RepackPlugin(),
     new HotUpdaterPlugin(),
     new rspack.EnvironmentPlugin({
-      "process.env.HOT_UPDATER_SUPABASE_URL": JSON.stringify(
+      HOT_UPDATER_SUPABASE_URL: JSON.stringify(
         process.env.HOT_UPDATER_SUPABASE_URL,
       ),
     }),

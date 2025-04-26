@@ -109,9 +109,15 @@ importers:
       '@react-native/babel-preset':
         specifier: 0.78.2
         version: 0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      '@react-native/codegen':
+        specifier: 0.78.2
+        version: 0.78.2(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@react-native/eslint-config':
         specifier: 0.78.2
         version: 0.78.2(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)
+      '@react-native/gradle-plugin':
+        specifier: 0.78.2
+        version: 0.78.2
       '@react-native/typescript-config':
         specifier: 0.78.2
         version: 0.78.2
