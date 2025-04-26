@@ -11,7 +11,7 @@ const REQUIRED_PACKAGES = {
 const PACKAGE_MAP = {
   supabase: {
     dependencies: [],
-    devDependencies: ["@hot-updater/supabase", "supabase"],
+    devDependencies: ["@hot-updater/supabase"],
   },
   aws: {
     dependencies: [],
@@ -42,7 +42,8 @@ export const init = async () => {
           dependencies: [],
           devDependencies: ["@hot-updater/bare"],
         },
-        label: "Bare (React Native CLI)",
+        label: "Bare",
+        hint: "React Native CLI",
       },
     ],
   });
