@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/firebase",
   "type": "module",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "types": "dist/index.d.ts",
@@ -39,8 +39,8 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/core": "0.16.3",
-    "@hot-updater/plugin-core": "0.16.3",
+    "@hot-updater/core": "0.16.4",
+    "@hot-updater/plugin-core": "0.16.4",
     "firebase": "^11.3.1"
   },
   "publishConfig": {
@@ -48,7 +48,7 @@
   },
   "devDependencies": {
     "@clack/prompts": "^0.10.0",
-    "@hot-updater/js": "0.16.3",
+    "@hot-updater/js": "0.16.4",
     "@types/node": "^22.13.5",
     "es-toolkit": "^1.32.0",
     "execa": "^9.5.2",

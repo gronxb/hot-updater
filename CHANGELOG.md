@@ -1,3 +1,42 @@
+## 0.16.4 (2025-04-26)
+
+### 🚀 Features
+
+- init commands hint ([b0ef3e9](https://github.com/gronxb/hot-updater/commit/b0ef3e9))
+- **bare:** migration metro to bare ([#299](https://github.com/gronxb/hot-updater/pull/299))
+- **firebase:** supports `firebase` ([#212](https://github.com/gronxb/hot-updater/pull/212))
+- **firebase:** makeEnv with GOOGLE_APPLICATION_CREDENTIALS ([e3edaeb](https://github.com/gronxb/hot-updater/commit/e3edaeb))
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **android:** loading assetLoader synchronously, cause crash, load async instead ([#281](https://github.com/gronxb/hot-updater/pull/281))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **firebase:** package.json to _package.json ([#286](https://github.com/gronxb/hot-updater/pull/286))
+- **firebase:** fix authentication method and region selection errors ([#284](https://github.com/gronxb/hot-updater/pull/284))
+- **firebase:** init-first ([42b6b65](https://github.com/gronxb/hot-updater/commit/42b6b65))
+- **firebase:** print template ([ae3e55c](https://github.com/gronxb/hot-updater/commit/ae3e55c))
+- **firebase:** edit URL for next step ([#294](https://github.com/gronxb/hot-updater/pull/294))
+- **firebase:** supports windows init ([#302](https://github.com/gronxb/hot-updater/pull/302))
+- **firebase:** execa shell ([e47fb0f](https://github.com/gronxb/hot-updater/commit/e47fb0f))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+- **supabase:** init correct supabase workdir ([#296](https://github.com/gronxb/hot-updater/pull/296))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- OskarAtJoint @OskarAtJoint
+- Sungyu Kang
+
 ## 0.16.3 (2025-04-17)
 
 ### 🚀 Features
