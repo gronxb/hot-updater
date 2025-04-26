@@ -55,13 +55,16 @@ importers:
     dependencies:
       '@hot-updater/react-native':
         specifier: workspace:*
-        version: link:../../packages/react-native
+        version: file:packages/react-native(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)
       react:
         specifier: 19.0.0
         version: 19.0.0
       react-native:
         specifier: 0.78.2
         version: 0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0)
+    dependenciesMeta:
+      '@hot-updater/react-native':
+        injected: true
     devDependencies:
       '@babel/core':
         specifier: ^7.25.2
@@ -3803,6 +3806,12 @@ packages:
 
   '@hot-updater/plugin-core@0.16.4':
     resolution: {integrity: sha512-PUmkk/5W9zXF2+lAmZLNZt2I3+QDph8my7ubIgi+4QgOn9B1JK20ewUDnKNDYNM7PdgA5W2CA3TGVU+Szl2DMg==}
+
+  '@hot-updater/react-native@file:packages/react-native':
+    resolution: {directory: packages/react-native, type: directory}
+    peerDependencies:
+      react: '*'
+      react-native: '*'
 
   '@hot-updater/supabase@0.16.4':
     resolution: {integrity: sha512-uEj4yFdnzmzu5KdaEYWiHUf4CpWrC1HZAlDSlmLLe4Xs5d61/31QMWVy99X8E0ODIIpkAWWe6Pab1uunNSzGQg==}
@@ -18248,6 +18257,14 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
       - typescript
+
+  '@hot-updater/react-native@file:packages/react-native(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)':
+    dependencies:
+      '@hot-updater/core': link:packages/core
+      '@hot-updater/js': link:plugins/js
+      react: 19.0.0
+      react-native: 0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0)
+      use-sync-external-store: 1.4.0(react@19.0.0)
 
   '@hot-updater/supabase@0.16.4(@types/node@22.9.0)(typescript@5.8.3)':
     dependencies:
@@ -33503,6 +33520,10 @@ snapshots:
   use-sync-external-store@1.4.0(react@18.3.1):
     dependencies:
       react: 18.3.1
+
+  use-sync-external-store@1.4.0(react@19.0.0):
+    dependencies:
+      react: 19.0.0
 
   util-deprecate@1.0.2: {}
 
