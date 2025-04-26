@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Repack from "@callstack/repack";
 import { HotUpdaterPlugin } from "@hot-updater/repack";
-
+import "dotenv/config";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -25,5 +25,13 @@ export default {
       ...Repack.getAssetTransformRules(),
     ],
   },
-  plugins: [new Repack.RepackPlugin(), new HotUpdaterPlugin()],
+  plugins: [
+    new Repack.RepackPlugin(),
+    new HotUpdaterPlugin(),
+    new rspack.EnvironmentPlugin({
+      "process.env.HOT_UPDATER_SUPABASE_URL": JSON.stringify(
+        process.env.HOT_UPDATER_SUPABASE_URL,
+      ),
+    }),
+  ],
 };

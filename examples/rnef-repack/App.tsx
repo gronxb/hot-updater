@@ -1,23 +1,117 @@
-import { HotUpdater } from "@hot-updater/react-native";
-import React from "react";
-import { Modal, StyleSheet, Text, View } from "react-native";
+/**
+ * Sample React Native App
+ * https://github.com/facebook/react-native
+ *
+ * @format
+ */
 
-const App = () => {
-  return (
-    <View style={styles.container}>
-      <Text>Welcome to React Native Enterprise Framework!</Text>
-    </View>
-  );
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import React from "react";
+import { useEffect, useState } from "react";
+import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
+
+export const extractFormatDateFromUUIDv7 = (uuid: string) => {
+  const timestampHex = uuid.split("-").join("").slice(0, 12);
+  const timestamp = Number.parseInt(timestampHex, 16);
+
+  const date = new Date(timestamp);
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
+function App(): React.JSX.Element {
+  const [bundleId, setBundleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const bundleId = HotUpdater.getBundleId();
+    setBundleId(bundleId);
+  }, []);
+
+  // @ts-ignore
+  const isTurboModuleEnabled = global.__turboModuleProxy != null;
+
+  // @ts-ignore
+  const isHermes = () => !!global.HermesInternal;
+
+  const progress = useHotUpdaterStore((state) => state.progress);
+  return (
+    <SafeAreaView>
+      <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>Channel "{HotUpdater.getChannel()}"</Text>
+
+      <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Hot Updater 0
+      </Text>
+
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Update {Math.round(progress * 100)}%
+      </Text>
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        BundleId: {bundleId}
+      </Text>
+
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        isTurboModuleEnabled: {isTurboModuleEnabled ? "true" : "false"}
+      </Text>
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        isHermes: {isHermes() ? "true" : "false"}
+      </Text>
+
+      <Image
+        style={{
+          width: 100,
+          height: 100,
+        }}
+        source={require("./src/logo.png")}
+        // source={require("./src/test/_image.png")}
+      />
+
+      <Button title="Reload" onPress={() => HotUpdater.reload()} />
+    </SafeAreaView>
+  );
+}
 
 export default HotUpdater.wrap({
   source: `${process.env.HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
