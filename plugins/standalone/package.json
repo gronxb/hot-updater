@@ -42,8 +42,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.16.4",
-    "@hot-updater/plugin-core": "0.16.4"
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
     "mime": "2.6.0",

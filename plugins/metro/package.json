@@ -25,7 +25,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/bare": "0.16.4"
+    "@hot-updater/bare": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.8.7"

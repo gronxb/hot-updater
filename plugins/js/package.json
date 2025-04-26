@@ -42,7 +42,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.16.4"
+    "@hot-updater/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.9.4",
