@@ -109,7 +109,9 @@ export const initFirebaseUser = async (
     handleError(err);
   }
   try {
-    const authList = await execa("gcloud", ["auth", "list", "--format=json"]);
+    const authList = await execa("gcloud", ["auth", "list", "--format=json"], {
+      shell: true,
+    });
     const authListJson = JSON.parse(authList.stdout);
     if (authListJson.length === 0) {
       await execa("gcloud", ["auth", "login"], {
@@ -217,13 +219,19 @@ export const initFirebaseUser = async (
     {
       title: "Getting storage bucket...",
       task: async () => {
-        const buckets = await execa("gcloud", [
-          "storage",
-          "buckets",
-          "list",
-          `--project=${projectId}`,
-          "--format=json",
-        ]);
+        const buckets = await execa(
+          "gcloud",
+          [
+            "storage",
+            "buckets",
+            "list",
+            `--project=${projectId}`,
+            "--format=json",
+          ],
+          {
+            shell: true,
+          },
+        );
         const bucketsJson = JSON.parse(buckets.stdout);
         storageBucket = bucketsJson.find(
           (bucket: { name: string }) =>
@@ -252,12 +260,13 @@ export const initFirebaseUser = async (
     process.exit(1);
   }
 
-  const project = await execa("gcloud", [
-    "projects",
-    "describe",
-    projectId,
-    "--format=json",
-  ]);
+  const project = await execa(
+    "gcloud",
+    ["projects", "describe", projectId, "--format=json"],
+    {
+      shell: true,
+    },
+  );
   const projectJson = JSON.parse(project.stdout);
   const projectNumber = Number(projectJson.projectNumber);
   if (Number.isNaN(projectNumber)) {
