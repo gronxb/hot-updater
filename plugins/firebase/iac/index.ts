@@ -106,6 +106,7 @@ const mergeIndexes = (
 const deployFirestore = async (cwd: string) => {
   const original = await execa("npx", ["firebase", "firestore:indexes"], {
     cwd,
+    shell: true,
   });
 
   let originalIndexes = [];
@@ -132,6 +133,7 @@ const deployFirestore = async (cwd: string) => {
     await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
       cwd,
       stdio: "inherit",
+      shell: true,
     });
   } catch (e) {
     if (e instanceof ExecaError) {
@@ -148,6 +150,7 @@ const deployFunctions = async (cwd: string) => {
     await execa("npx", ["firebase", "deploy", "--only", "functions"], {
       cwd,
       stdio: "inherit",
+      shell: true,
     });
   } catch (e) {
     if (e instanceof ExecaError) {
@@ -247,6 +250,7 @@ export const runInit = async () => {
         try {
           await execa("npm", ["install"], {
             cwd: functionsDir,
+            shell: true,
           });
           return "Installed dependencies";
         } catch (error) {
@@ -270,6 +274,7 @@ export const runInit = async () => {
             ["firebase", "functions:list", "--json"],
             {
               cwd: tmpDir,
+              shell: true,
             },
           );
           const parsedData = JSON.parse(stdout);
@@ -329,6 +334,7 @@ export const runInit = async () => {
           ["firebase", "functions:list", "--json"],
           {
             cwd: tmpDir,
+            shell: true,
           },
         );
         const functionsListJson = JSON.parse(functionsList.stdout);
