@@ -1,5 +1,5 @@
 import { NativeEventEmitter, Platform } from "react-native";
-import HotUpdaterModule, { type Spec } from "./specs/NativeHotUpdater";
+import type { Spec } from "./specs/NativeHotUpdater";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
@@ -10,6 +10,8 @@ const HotUpdater = {
   CHANNEL: __HOT_UPDATER_CHANNEL || "production",
 };
 
+const RCTNativeHotUpdater = require("./specs/NativeHotUpdater").default;
+
 const LINKING_ERROR =
   // biome-ignore lint/style/useTemplate: <explanation>
   `The package '@hot-updater/react-native' doesn't seem to be linked. Make sure: \n\n` +
@@ -18,8 +20,8 @@ const LINKING_ERROR =
   "- You are not using Expo Go\n";
 
 const HotUpdaterNative = (
-  HotUpdaterModule
-    ? HotUpdaterModule
+  RCTNativeHotUpdater
+    ? RCTNativeHotUpdater
     : new Proxy(
         {},
         {
