@@ -79,7 +79,7 @@ importers:
         specifier: ^0.11.6
         version: 0.11.11
       '@hot-updater/repack':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/repack
       '@hot-updater/rnef':
         specifier: workspace:*
