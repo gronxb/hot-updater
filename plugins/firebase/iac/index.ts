@@ -161,16 +161,22 @@ const deployFunctions = async (cwd: string) => {
 
 const printTemplate = async (projectId: string, region: string) => {
   try {
-    const { stdout } = await execa("gcloud", [
-      "functions",
-      "describe",
-      "hot-updater",
-      "--project",
-      projectId,
-      "--region",
-      region,
-      "--format=json",
-    ]);
+    const { stdout } = await execa(
+      "gcloud",
+      [
+        "functions",
+        "describe",
+        "hot-updater",
+        "--project",
+        projectId,
+        "--region",
+        region,
+        "--format=json",
+      ],
+      {
+        shell: true,
+      },
+    );
     const parsedData = JSON.parse(stdout);
     const url = parsedData?.serviceConfig?.uri ?? parsedData.url;
 
@@ -193,7 +199,9 @@ const printTemplate = async (projectId: string, region: string) => {
 
 const checkIfGcloudCliInstalled = async () => {
   try {
-    await execa("gcloud", ["--version"]);
+    await execa("gcloud", ["--version"], {
+      shell: true,
+    });
     return true;
   } catch (error) {
     return false;
@@ -336,12 +344,18 @@ export const runInit = async () => {
           process.exit(1);
         }
 
-        const checkIam = await execa("gcloud", [
-          "projects",
-          "get-iam-policy",
-          initializeVariable.projectId,
-          "--format=json",
-        ]);
+        const checkIam = await execa(
+          "gcloud",
+          [
+            "projects",
+            "get-iam-policy",
+            initializeVariable.projectId,
+            "--format=json",
+          ],
+          {
+            shell: true,
+          },
+        );
         const iamJson = JSON.parse(checkIam.stdout);
         const hasTokenCreator = iamJson.bindings.some(
           (binding: { role: string; members: string[] }) =>
