@@ -42,8 +42,16 @@ export const init = async () => {
           dependencies: [],
           devDependencies: ["@hot-updater/bare"],
         },
-        label: "Bare",
         hint: "React Native CLI",
+        label: "Bare",
+      },
+      {
+        value: {
+          dependencies: [],
+          devDependencies: ["@hot-updater/rnef"],
+        },
+        hint: "React Native Enterprise Framework by Callstack",
+        label: "RNEF",
       },
     ],
   });

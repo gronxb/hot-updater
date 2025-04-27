@@ -68,7 +68,7 @@ export interface StoragePluginHooks {
 export type ConfigInput = {
   /**
    * The channel used when building the native app.
-   * Used to replace HotUpdater.CHANNEL at build time.
+   * Used to replace __HOT_UPDATER_CHANNEL at build time.
    *
    * @default "production"
    */

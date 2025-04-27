@@ -26,7 +26,8 @@
     "rimraf": "^5.0.7",
     "tsup": "^8.4.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.2"
+    "vitest": "^3.1.2",
+    "@swc/helpers": "^0.5.17"    
   },
   "packageManager": "pnpm@10.9.0"
 }
