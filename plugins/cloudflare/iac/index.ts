@@ -2,6 +2,8 @@ import crypto from "crypto";
 import path from "path";
 import * as p from "@clack/prompts";
 import {
+  ConfigBuilder,
+  type ProviderConfig,
   copyDirToTmp,
   getCwd,
   link,
@@ -15,26 +17,30 @@ import fs from "fs/promises";
 import { createWrangler } from "../src/utils/createWrangler";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
-const CONFIG_TEMPLATE = `
-import { bare } from "@hot-updater/bare";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: r2Storage({
+const getConfigTemplate = (build: "bare" | "rnef") => {
+  const storageConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
+    configString: `r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-  }),
-  database: d1Database({
+  })`,
+  };
+  const databaseConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+    configString: `d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-  }),
-});
-`;
+  })`,
+  };
+
+  return new ConfigBuilder()
+    .setBuildType(build)
+    .setStorage(storageConfig)
+    .setDatabase(databaseConfig)
+    .getResult();
+};
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -120,7 +126,11 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async () => {
+export const runInit = async ({
+  build,
+}: {
+  build: "bare" | "rnef";
+}) => {
   const cwd = getCwd();
 
   let auth = getWranglerLoginAuthToken();
@@ -393,7 +403,7 @@ export const runInit = async () => {
     r2BucketName: selectedBucketName,
   });
 
-  await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+  await fs.writeFile("hot-updater.config.ts", getConfigTemplate(build));
 
   await makeEnv({
     HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,
