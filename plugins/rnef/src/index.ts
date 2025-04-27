@@ -40,6 +40,10 @@ const runBundle = async ({
     ...(sourcemap
       ? ["--sourcemap-output", path.join(buildPath, `index.${platform}.map`)]
       : []),
+    "--assets-dest",
+    buildPath,
+    "--dev",
+    String(false),
   ];
 
   log.normal("\n");
