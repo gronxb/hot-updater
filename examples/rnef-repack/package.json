@@ -1,6 +1,6 @@
 {
   "name": "rnef-repack",
-  "version": "1.0.0",
+  "version": "0.16.5",
   "private": true,
   "scripts": {
     "start": "rnef start",
