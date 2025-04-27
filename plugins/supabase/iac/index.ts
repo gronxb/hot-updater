@@ -5,6 +5,8 @@ import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 
 import path from "path";
 import {
+  ConfigBuilder,
+  type ProviderConfig,
   copyDirToTmp,
   link,
   makeEnv,
@@ -13,25 +15,29 @@ import {
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 
-const CONFIG_TEMPLATE = `
-import { bare } from "@hot-updater/bare";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: supabaseStorage({
+const getConfigTemplate = (build: "bare" | "rnef") => {
+  const storageConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
+    configString: `supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  }),
-  database: supabaseDatabase({
+  })`,
+  };
+  const databaseConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
+    configString: `supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
-  }),
-});
-`;
+  })`,
+  };
+
+  return new ConfigBuilder()
+    .setBuildType(build)
+    .setStorage(storageConfig)
+    .setDatabase(databaseConfig)
+    .getResult();
+};
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -309,7 +315,11 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
   ]);
 };
 
-export const runInit = async () => {
+export const runInit = async ({
+  build,
+}: {
+  build: "bare" | "rnef";
+}) => {
   const project = await selectProject();
 
   const spinner = p.spinner();
@@ -370,7 +380,7 @@ export const runInit = async () => {
 
   await removeTmpDir();
 
-  await fs.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+  await fs.writeFile("hot-updater.config.ts", getConfigTemplate(build));
 
   await makeEnv({
     HOT_UPDATER_SUPABASE_ANON_KEY: serviceRoleKey.api_key,

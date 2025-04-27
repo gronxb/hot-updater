@@ -211,7 +211,7 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async () => {
+export const runInit = async ({ build }: { build: "bare" | "rnef" }) => {
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
     p.log.error("gcloud CLI is not installed");
@@ -241,6 +241,7 @@ export const runInit = async () => {
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
+    build,
   });
 
   await p.tasks([

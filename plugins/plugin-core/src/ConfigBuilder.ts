@@ -50,9 +50,7 @@ export class ConfigBuilder implements IConfigBuilder {
     this.addImport({ pkg: "hot-updater", named: ["defineConfig"] });
   }
 
-  // --- Private Helper Methods ---
-
-  private addImport(info: ImportInfo): void {
+  public addImport(info: ImportInfo): this {
     const pkg = info.pkg;
     const existing = this.collectedImports.get(pkg);
 
@@ -78,6 +76,7 @@ export class ConfigBuilder implements IConfigBuilder {
         sideEffect: info.sideEffect ?? false,
       });
     }
+    return this;
   }
 
   private addImports(imports: ImportInfo[]): void {

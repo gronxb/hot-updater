@@ -1,29 +1,58 @@
-export const CONFIG_TEMPLATE_WITH_SESSION = `
-import { bare } from "@hot-updater/bare";
-import { s3Storage, s3Database } from "@hot-updater/aws";
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { ConfigBuilder, type ProviderConfig } from "@hot-updater/plugin-core";
 
+export const getConfigTemplate = (
+  build: "bare" | "rnef",
+  {
+    sessionToken,
+  }: {
+    sessionToken?: boolean;
+  },
+) => {
+  const storageConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
+    configString: "s3Storage(commonOptions)",
+  };
+  const databaseConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/aws", named: ["s3Database"] }],
+    configString: `s3Database({
+    ...commonOptions,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  })`,
+  };
+
+  let intermediate = "";
+
+  if (sessionToken) {
+    intermediate = `
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
     accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
     secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-    // This token may expire. For permanent use, it’s recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
+    // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
     sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
   },
-};
+};`.trim();
+  } else {
+    intermediate = `
+const commonOptions = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: {
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+  },
+};`.trim();
+  }
 
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage(commonOptions),
-  database: s3Database({
-    ...commonOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
-  }),
-});
-`;
+  return new ConfigBuilder()
+    .setBuildType(build)
+    .setStorage(storageConfig)
+    .setDatabase(databaseConfig)
+    .setIntermediateCode(intermediate)
+    .getResult();
+};
 
 export const CONFIG_TEMPLATE = `
 import { bare } from "@hot-updater/bare";
@@ -37,6 +66,30 @@ const options = {
   credentials: {
     accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
     secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+  },
+};
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: s3Storage(options),
+  database: s3Database(options),
+});
+`;
+
+export const CONFIG_TEMPLATE_WITH_SESSION = `
+import { bare } from "@hot-updater/bare";
+import { s3Storage, s3Database } from "@hot-updater/aws";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+const options = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: {
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+    // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
+    sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
   },
 };
 
