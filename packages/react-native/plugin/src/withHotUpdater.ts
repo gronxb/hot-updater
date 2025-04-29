@@ -10,27 +10,6 @@ import pkg from "../../package.json";
 // Type definitions
 type HotUpdaterConfig = any;
 
-// Interface for string resources
-interface StringResources {
-  string: Array<{
-    $: { name: string };
-    _: string;
-  }>;
-}
-
-// Utility function to add string resource
-const addStringResource = (
-  resources: StringResources,
-  name: string,
-  value: string,
-) => {
-  resources.string = resources.string || [];
-  resources.string.push({
-    $: { name },
-    _: value,
-  });
-};
-
 // Utility function to add content if not exists
 const addContentIfNotExists = (
   contents: string,
@@ -47,10 +26,7 @@ const addContentIfNotExists = (
   return contents;
 };
 
-const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (
-  config: ExpoConfig,
-  options: HotUpdaterConfig = {},
-) => {
+const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config: ExpoConfig) => {
   let modifiedConfig = config;
   // Configure iOS AppDelegate.mm
   modifiedConfig = withAppDelegate(modifiedConfig, (config) => {
