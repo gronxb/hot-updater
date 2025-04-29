@@ -1,10 +1,16 @@
 import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
 
+interface BundleData {
+  bundleId: string;
+  zipUrl: string | null;
+  maxRetries?: number;
+}
+
 interface Spec extends TurboModule {
   // Methods
   reload(): void;
-  updateBundle(bundleId: string, zipUrl: string): Promise<boolean>;
+  updateBundle(bundleData: BundleData): Promise<boolean>;
   /**
    * @deprecated
    * use getConstants().APP_VERSION instead
@@ -12,9 +18,6 @@ interface Spec extends TurboModule {
   getAppVersion(): Promise<string | null>;
 
   setChannel(channel: string): Promise<void>;
-
-  getExecutionCount(): Promise<number>;
-  updateExecutionCount(): void;
 
   // EventEmitter
   addListener(eventName: string): void;

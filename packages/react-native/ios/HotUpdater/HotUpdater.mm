@@ -104,12 +104,12 @@ RCT_EXPORT_MODULE();
     return [HotUpdaterPrefs sharedInstanceWithAppVersion:[self getAppVersion]];
 }
 
-#pragma mark - Method init count
+#pragma mark - Method init execution count
 
-static NSInteger count = 0;
+static NSInteger executionCount = 0;
 
-- (void)incrementCount {
-    count++;
++ (void)incrementExecutionCount {
+    executionCount++;
 }
 
 #pragma mark - Bundle URL Management
@@ -203,7 +203,13 @@ static NSInteger count = 0;
 
 #pragma mark - Update Bundle Method
 
-- (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl completion:(void (^)(BOOL success))completion {
+- (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl maxRetries:(NSNumber *)maxRetries completion:(void (^)(BOOL success))completion {
+    if (maxRetries != nil && executionCount > [maxRetries integerValue]) {
+        @throw [NSException exceptionWithName:@"MaxRetriesExceededException"
+                reason:[NSString stringWithFormat:@"Retry limit of %@ exceeded for bundle %@", maxRetries, bundleId]
+                userInfo:nil];
+    }
+    [HotUpdater incrementExecutionCount];
     if (!zipUrl) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self setBundleURL:nil];
@@ -455,24 +461,26 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromi
     resolve(version ?: [NSNull null]);
 }
 
-RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlString resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)bundleData resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+    NSString *bundleId = bundleData[@"bundleId"];
+    NSString *zipUrlString = bundleData[@"zipUrl"];
+    NSNumber *maxRetries = bundleData[@"maxRetries"];
     NSURL *zipUrl = nil;
     if (![zipUrlString isEqualToString:@""]) {
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
-    [self updateBundle:bundleId zipUrl:zipUrl completion:^(BOOL success) {
+    @try {
+        [self updateBundle:bundleId zipUrl:zipUrl maxRetries:maxRetries completion:^(BOOL success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                resolve(@[@(success)]);
+            });
+        }];
+    }
+    @catch (NSException *exception) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            resolve(@[@(success)]);
+            reject(@"UPDATE_ERROR", exception.reason, nil);
         });
-    }];
-}
-
-RCT_EXPORT_METHOD(getExecutionCount:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    resolve(@(count));
-}
-
-RCT_EXPORT_METHOD(updateExecutionCount) {
-    [self incrementCount];
+    }
 }
 
 #ifdef RCT_NEW_ARCH_ENABLED

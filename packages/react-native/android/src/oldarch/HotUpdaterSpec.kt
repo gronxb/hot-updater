@@ -3,13 +3,13 @@ package com.hotupdater
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReadableMap
 
 abstract class HotUpdaterSpec internal constructor(
     context: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(context) {
     abstract fun updateBundle(
-        bundleId: String,
-        zipUrl: String?,
+        bundleData: ReadableMap,
         promise: Promise,
     )
 
@@ -21,8 +21,4 @@ abstract class HotUpdaterSpec internal constructor(
         channel: String,
         promise: Promise,
     )
-
-    abstract fun getExecutionCount(promise: Promise)
-
-    abstract fun updateExecutionCount()
 }
