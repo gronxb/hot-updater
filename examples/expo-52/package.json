@@ -32,9 +32,6 @@
   "dependenciesMeta": {
     "@hot-updater/react-native": {
       "injected": true
-    },
-    "hot-updater": {
-      "injected": true
     }
   },
   "private": true
