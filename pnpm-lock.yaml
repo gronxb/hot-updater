@@ -54,8 +54,8 @@ importers:
   examples/expo-52:
     dependencies:
       '@hot-updater/react-native':
-        specifier: ^0.16.6
-        version: 0.16.6(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
+        specifier: workspace:*
+        version: file:packages/react-native(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
       expo:
         specifier: ~52.0.46
         version: 52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
@@ -80,12 +80,12 @@ importers:
       '@babel/core':
         specifier: ^7.25.2
         version: 7.26.0
-      '@hot-updater/bare':
-        specifier: 0.16.6
-        version: 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
+      '@hot-updater/expo':
+        specifier: workspace:*
+        version: link:../../plugins/expo
       '@hot-updater/supabase':
-        specifier: 0.16.6
-        version: 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       '@react-native/metro-config':
         specifier: ^0.79.1
         version: 0.79.1(@babel/core@7.26.0)
@@ -105,8 +105,8 @@ importers:
         specifier: ^16.4.5
         version: 16.4.5
       hot-updater:
-        specifier: ^0.16.6
-        version: 0.16.6(@hot-updater/aws@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3))(@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3))(@hot-updater/supabase@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@types/node@22.13.5)(typescript@5.8.3)
+        specifier: workspace:*
+        version: file:packages/hot-updater(@hot-updater/aws@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3))(@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3))(@hot-updater/supabase@plugins+supabase)(@types/node@22.13.5)(typescript@5.8.3)
       typescript:
         specifier: ^5.3.3
         version: 5.8.3
@@ -3806,14 +3806,8 @@ packages:
   '@hot-updater/aws@0.16.6':
     resolution: {integrity: sha512-IAgOhgaEW+vKhoLSeEGILResH87CdQG+F1sq6sjuxxwbsq0Mdo8cjEq+s1+seuJTxWnzo/wo/BcyjVb5E0222w==}
 
-  '@hot-updater/bare@0.16.6':
-    resolution: {integrity: sha512-mw3S2mMxr/WPLNa/8L1AfKwmqw1yUV0BNjci1aQI9ZWb9vM4+kct5zSbOrH/PJxpbtOuLzEdsEGJ5RvQk6pb7w==}
-
   '@hot-updater/cloudflare@0.16.6':
     resolution: {integrity: sha512-VaTV1TteeoFumAKYBiXqeyZmYwlshtfnzk/LeVkIrMpbelDdYTALTL+TaV7yu4U6azzuehTU7jKsDO0cgKrcpw==}
-
-  '@hot-updater/console@0.16.6':
-    resolution: {integrity: sha512-2SuCokzXVWicxwGbmUKRwC6iTThEONaUY38cork7VGQbd9uTMhxskI/lOM6GIOEApmJclwVJmeQe2z4ivEEkXg==}
 
   '@hot-updater/core@0.16.6':
     resolution: {integrity: sha512-xFHfqv/9c9JLKulza7tuQdzVLmxDbFyROpPJ8SnkIaBI0JJbpuFEIl1VKZwgjylkwCJySMClZM8vssMx0IklDQ==}
@@ -3829,12 +3823,6 @@ packages:
   '@hot-updater/plugin-core@0.16.6':
     resolution: {integrity: sha512-a/MLsQbc8PWZwstjRtENW5ECQa/DLWlW26wroBv0K9LQmbEU852S8tQ8zT42HbryvM9cPdZOk4ivSKo8oM/JDw==}
 
-  '@hot-updater/react-native@0.16.6':
-    resolution: {integrity: sha512-SueI5K7+gJuz1/0ktuegxdKK4zVqVwWHiCNpMG7q6kqjAuVrE9hAPmqvM9sVB717BN3RUpb28k3Z1BbQ2WjMMg==}
-    peerDependencies:
-      react: '*'
-      react-native: '*'
-
   '@hot-updater/react-native@file:packages/react-native':
     resolution: {directory: packages/react-native, type: directory}
     peerDependencies:
@@ -3844,9 +3832,6 @@ packages:
     peerDependenciesMeta:
       expo:
         optional: true
-
-  '@hot-updater/supabase@0.16.6':
-    resolution: {integrity: sha512-v8Qf6ulpDbK9IZavy1a0l97hnZYa6bn4Z2BNyZbARzt/rNHTL9lScwq4IjlyZ8Vbw0bI6bgMWoYl71xo0g60oA==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -10011,8 +9996,8 @@ packages:
     resolution: {integrity: sha512-puUZAUKT5m8Zzvs72XWy3HtvVbTWljRE66cP60bxJzAqf2DgICo7lYTY2IHUmLnNpjYvw5bvmoHvPc0QO2a62w==}
     engines: {node: ^16.14.0 || >=18.0.0}
 
-  hot-updater@0.16.6:
-    resolution: {integrity: sha512-Caa6KDPfBjB+UFpcR2R1Mjm9lVhzwUhgOjQhGk2LF9bQ/+OgBAUSy1aVgTTMAsQRLef21K0PvgidhEqC5l7gEA==}
+  hot-updater@file:packages/hot-updater:
+    resolution: {directory: packages/hot-updater, type: directory}
     hasBin: true
     peerDependencies:
       '@hot-updater/aws': '*'
@@ -19562,13 +19547,6 @@ snapshots:
       - typescript
     optional: true
 
-  '@hot-updater/bare@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-    transitivePeerDependencies:
-      - '@types/node'
-      - typescript
-
   '@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3)':
     dependencies:
       '@hot-updater/core': 0.16.6
@@ -19581,15 +19559,8 @@ snapshots:
       - typescript
     optional: true
 
-  '@hot-updater/console@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-    transitivePeerDependencies:
-      - '@types/node'
-      - typescript
-
-  '@hot-updater/core@0.16.6': {}
+  '@hot-updater/core@0.16.6':
+    optional: true
 
   '@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3)':
     dependencies:
@@ -19606,6 +19577,7 @@ snapshots:
   '@hot-updater/js@0.16.6':
     dependencies:
       '@hot-updater/core': 0.16.6
+    optional: true
 
   '@hot-updater/plugin-core@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
     dependencies:
@@ -19616,14 +19588,17 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
       - typescript
+    optional: true
 
-  '@hot-updater/react-native@0.16.6(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/js': 0.16.6
+  ? '@hot-updater/react-native@file:packages/react-native(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)'
+  : dependencies:
+      '@hot-updater/core': link:packages/core
+      '@hot-updater/js': link:plugins/js
       react: 18.3.1
       react-native: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
       use-sync-external-store: 1.4.0(react@18.3.1)
+    optionalDependencies:
+      expo: 52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
 
   '@hot-updater/react-native@file:packages/react-native(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)':
     dependencies:
@@ -19634,17 +19609,6 @@ snapshots:
       use-sync-external-store: 1.4.0(react@19.0.0)
     optionalDependencies:
       expo: 52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)
-
-  '@hot-updater/supabase@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      '@supabase/supabase-js': 2.47.10
-    transitivePeerDependencies:
-      - '@types/node'
-      - bufferutil
-      - typescript
-      - utf-8-validate
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
@@ -28864,12 +28828,12 @@ snapshots:
     dependencies:
       lru-cache: 10.2.2
 
-  hot-updater@0.16.6(@hot-updater/aws@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3))(@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3))(@hot-updater/supabase@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@types/node@22.13.5)(typescript@5.8.3):
+  hot-updater@file:packages/hot-updater(@hot-updater/aws@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3))(@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3))(@hot-updater/supabase@plugins+supabase)(@types/node@22.13.5)(typescript@5.8.3):
     dependencies:
       '@clack/prompts': 0.10.0
-      '@hot-updater/console': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
+      '@hot-updater/console': link:packages/console
+      '@hot-updater/core': link:packages/core
+      '@hot-updater/plugin-core': link:plugins/plugin-core
       commander: 11.1.0
       cosmiconfig: 9.0.0(typescript@5.8.3)
       cosmiconfig-typescript-loader: 5.0.0(@types/node@22.13.5)(cosmiconfig@9.0.0(typescript@5.8.3))(typescript@5.8.3)
@@ -28878,7 +28842,7 @@ snapshots:
       '@hot-updater/aws': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
       '@hot-updater/cloudflare': 0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3)
       '@hot-updater/firebase': 0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3)
-      '@hot-updater/supabase': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
+      '@hot-updater/supabase': link:plugins/supabase
     transitivePeerDependencies:
       - '@types/node'
       - typescript
