@@ -7,7 +7,7 @@ interface BundleData {
   maxRetries?: number;
 }
 
-interface Spec extends TurboModule {
+export interface Spec extends TurboModule {
   // Methods
   reload(): void;
   updateBundle(bundleData: BundleData): Promise<boolean>;
