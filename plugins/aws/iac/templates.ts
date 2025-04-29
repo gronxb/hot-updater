@@ -1,7 +1,11 @@
-import { ConfigBuilder, type ProviderConfig } from "@hot-updater/plugin-core";
+import {
+  type BuildType,
+  ConfigBuilder,
+  type ProviderConfig,
+} from "@hot-updater/plugin-core";
 
 export const getConfigTemplate = (
-  build: "bare" | "rnef",
+  build: BuildType,
   {
     sessionToken,
   }: {

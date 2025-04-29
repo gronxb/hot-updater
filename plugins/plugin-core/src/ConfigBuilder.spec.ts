@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ConfigBuilder, type ProviderConfig } from "./ConfigBuilder"; // Adjust the import path as necessary
+import {
+  type BuildType,
+  ConfigBuilder,
+  type ProviderConfig,
+} from "./ConfigBuilder"; // Adjust the import path as necessary
 
 const getAwsConfigTemplate = (
-  build: "bare" | "rnef",
+  build: BuildType,
   {
     sessionToken,
   }: {
@@ -55,7 +59,7 @@ const commonOptions = {
     .getResult();
 };
 
-const getSupabaseConfigTemplate = (build: "bare" | "rnef") => {
+const getSupabaseConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -79,7 +83,7 @@ const getSupabaseConfigTemplate = (build: "bare" | "rnef") => {
     .getResult();
 };
 
-const getCloudflareConfigTemplate = (build: "bare" | "rnef") => {
+const getCloudflareConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
     configString: `r2Storage({
@@ -104,7 +108,7 @@ const getCloudflareConfigTemplate = (build: "bare" | "rnef") => {
     .getResult();
 };
 
-const getFirebaseConfigTemplate = (build: "bare" | "rnef") => {
+const getFirebaseConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
     configString: `firebaseStorage({

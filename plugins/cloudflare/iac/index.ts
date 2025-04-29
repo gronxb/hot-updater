@@ -2,6 +2,7 @@ import crypto from "crypto";
 import path from "path";
 import * as p from "@clack/prompts";
 import {
+  type BuildType,
   ConfigBuilder,
   type ProviderConfig,
   copyDirToTmp,
@@ -17,7 +18,7 @@ import fs from "fs/promises";
 import { createWrangler } from "../src/utils/createWrangler";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
-const getConfigTemplate = (build: "bare" | "rnef") => {
+const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
     configString: `r2Storage({
@@ -129,7 +130,7 @@ const deployWorker = async (
 export const runInit = async ({
   build,
 }: {
-  build: "bare" | "rnef";
+  build: BuildType;
 }) => {
   const cwd = getCwd();
 

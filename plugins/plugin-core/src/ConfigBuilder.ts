@@ -1,6 +1,6 @@
 // types.ts (or place in the same file initially)
 
-export type BuildType = "bare" | "rnef";
+export type BuildType = "bare" | "rnef" | "expo";
 
 export type ImportInfo = {
   pkg: string;
@@ -16,7 +16,7 @@ export type ProviderConfig = {
 
 // Builder Interface
 export interface IConfigBuilder {
-  /** Sets the build type ('bare' or 'rnef') and adds necessary build imports. */
+  /** Sets the build type ('bare' or 'rnef' or 'expo') and adds necessary build imports. */
   setBuildType(buildType: BuildType): this;
 
   /** Sets the storage configuration and adds its required imports. */
@@ -132,6 +132,8 @@ export class ConfigBuilder implements IConfigBuilder {
         return "bare({ enableHermes: true })";
       case "rnef":
         return "rnef()";
+      case "expo":
+        return "expo()";
       default:
         // Should be caught by type system, but good practice
         throw new Error(`Invalid build type: ${this.buildType}`);

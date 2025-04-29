@@ -1,7 +1,12 @@
 import fs from "fs";
 import { fromSSO } from "@aws-sdk/credential-providers";
 import * as p from "@clack/prompts";
-import { link, makeEnv, transformTemplate } from "@hot-updater/plugin-core";
+import {
+  type BuildType,
+  link,
+  makeEnv,
+  transformTemplate,
+} from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
 import { CloudFrontManager } from "./cloudfront";
@@ -25,7 +30,7 @@ const checkIfAwsCliInstalled = async () => {
 export const runInit = async ({
   build,
 }: {
-  build: "bare" | "rnef";
+  build: BuildType;
 }) => {
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
   if (!isAwsCliInstalled) {
