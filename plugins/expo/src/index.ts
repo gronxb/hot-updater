@@ -85,26 +85,14 @@ module.exports = {
 
 export interface ExpoPluginConfig extends BuildPluginConfig {
   /**
-   * @default "index.js"
-   * The entry file to bundle.
-   */
-  entryFile?: string;
-  /**
    * @default false
    * Whether to generate sourcemap for the bundle.
    */
   sourcemap?: boolean;
-  /**
-   * Whether to use Hermes to compile the bundle
-   * Since React Native v0.70+, Hermes is enabled by default, so it's recommended to enable it.
-   * @link https://reactnative.dev/docs/hermes
-   * @recommended true
-   */
-  enableHermes: boolean;
 }
 
 export const expo =
-  (config: ExpoPluginConfig) =>
+  (config: ExpoPluginConfig = { outDir: "dist", sourcemap: false }) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => {
     const { outDir = "dist", sourcemap = false } = config;
     return {
