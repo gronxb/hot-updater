@@ -21,7 +21,7 @@ function addContentIfNotExists(
   if (!contents.includes(searchString)) {
     return contents.replace(
       beforeString,
-      `${beforeString}\n${importStatement}`,
+      [beforeString, importStatement].join("\n"),
     );
   }
   return contents;
@@ -106,11 +106,13 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
       // insert new override immediately after isHermesEnabled
       contents = contents.replace(
         "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED",
-        `override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-
-        override fun getJSBundleFile(): String? {
-            return HotUpdater.getJSBundleFile(applicationContext)
-        }`,
+        [
+          "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED",
+          "",
+          "          override fun getJSBundleFile(): String? {",
+          "              return HotUpdater.getJSBundleFile(applicationContext)",
+          "          }",
+        ].join("\n"),
       );
     }
 
@@ -137,18 +139,20 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
         protected Boolean isHermesEnabled() {
             return BuildConfig.IS_HERMES_ENABLED;
         }`,
-        `@Override
-        protected Boolean isHermesEnabled() {
-            return BuildConfig.IS_HERMES_ENABLED;
-        }
-        @Override
-        protected String getJSBundleFile() {
-            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());
-        }`,
+        [
+          "@Override",
+          "        protected Boolean isHermesEnabled() {",
+          "            return BuildConfig.IS_HERMES_ENABLED;",
+          "        }",
+          "        @Override",
+          "        protected String getJSBundleFile() {",
+          "            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());",
+          "        }",
+        ].join("\n"),
       );
     }
 
-    cfg.modResults.contents = contents;
+    cfg.modResults.contents = contents.trimEnd();
     return cfg;
   });
 
