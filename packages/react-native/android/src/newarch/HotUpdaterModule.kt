@@ -5,9 +5,9 @@ import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import com.facebook.react.bridge.ReadableMap
 import kotlinx.coroutines.launch
 
 class HotUpdaterModule internal constructor(
@@ -46,9 +46,12 @@ class HotUpdaterModule internal constructor(
             try {
                 val bundleId = bundleData.getString("bundleId")!!
                 val zipUrl = bundleData.getString("zipUrl")
-                val maxRetries = if (bundleData.hasKey("maxRetries") && !bundleData.isNull("maxRetries")) {
-                    bundleData.getDouble("maxRetries")
-                } else null
+                val maxRetries =
+                    if (bundleData.hasKey("maxRetries") && !bundleData.isNull("maxRetries")) {
+                        bundleData.getDouble("maxRetries")
+                    } else {
+                        null
+                    }
                 val isSuccess =
                     HotUpdater.updateBundle(
                         mReactApplicationContext,
