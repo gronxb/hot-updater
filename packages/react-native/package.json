@@ -28,7 +28,8 @@
   ],
   "scripts": {
     "prepare": "bob build",
-    "build": "rslib build",
+    "build": "rslib build && npm run build:plugin",
+    "build:plugin": "tsc -p plugin/tsconfig.json",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib"
@@ -73,9 +74,15 @@
     },
     "includesGeneratedCode": true
   },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    }
+  },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "expo": "~52.0.46"
   },
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",
