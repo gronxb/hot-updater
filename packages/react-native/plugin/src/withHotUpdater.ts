@@ -1,4 +1,3 @@
-import type { ExpoConfig } from "expo/config";
 import {
   type ConfigPlugin,
   createRunOncePlugin,
@@ -10,13 +9,15 @@ import pkg from "../../package.json";
 // Type definitions
 type HotUpdaterConfig = any;
 
-// Utility function to add content if not exists
-const addContentIfNotExists = (
+/**
+ * Inserts `importStatement` before `beforeString` if `searchString` is not already present.
+ */
+function addContentIfNotExists(
   contents: string,
   searchString: string,
   importStatement: string,
   beforeString: string,
-) => {
+): string {
   if (!contents.includes(searchString)) {
     return contents.replace(
       beforeString,
@@ -24,109 +25,131 @@ const addContentIfNotExists = (
     );
   }
   return contents;
-};
+}
 
-const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config: ExpoConfig) => {
+/**
+ * Removes all lines containing `target` from the file contents.
+ */
+function removeAllOccurrences(contents: string, target: string): string {
+  return contents
+    .split("\n")
+    .filter((line) => !line.includes(target))
+    .join("\n");
+}
+
+const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
   let modifiedConfig = config;
-  // Configure iOS AppDelegate.mm
-  modifiedConfig = withAppDelegate(modifiedConfig, (config) => {
-    // #import <React/RCTBundleURLProvider.h>
-    if (
-      config.modResults.contents.includes(
-        "#import <React/RCTBundleURLProvider.h>",
-      )
-    ) {
-      config.modResults.contents = addContentIfNotExists(
-        config.modResults.contents,
+
+  // === iOS: Objective-C & Swift in AppDelegate ===
+  modifiedConfig = withAppDelegate(modifiedConfig, (cfg) => {
+    let contents = cfg.modResults.contents;
+
+    // 1) Objective-C: always overwrite import and bundleURL
+    contents = removeAllOccurrences(
+      contents,
+      "#import <HotUpdater/HotUpdater.h>",
+    );
+    if (contents.includes("#import <React/RCTBundleURLProvider.h>")) {
+      contents = addContentIfNotExists(
+        contents,
         "#import <HotUpdater/HotUpdater.h>",
         "#import <HotUpdater/HotUpdater.h>",
         '#import "AppDelegate.h"',
       );
-      if (!config.modResults.contents.includes("[HotUpdater bundleURL]")) {
-        config.modResults.contents = config.modResults.contents.replace(
-          'return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];',
-          "return [HotUpdater bundleURL];",
-        );
-      }
+      // replace any existing main-bundle return
+      contents = contents.replace(
+        /\[\[NSBundle mainBundle\] URLForResource:@"main" withExtension:@"jsbundle"\]/g,
+        "[HotUpdater bundleURL]",
+      );
     }
 
-    // import React
-    if (config.modResults.contents.includes("import React")) {
-      config.modResults.contents = addContentIfNotExists(
-        config.modResults.contents,
+    // 2) Swift: always overwrite import and bundleURL()
+    contents = removeAllOccurrences(contents, "import HotUpdater");
+    if (contents.includes("import React")) {
+      contents = addContentIfNotExists(
+        contents,
         "import HotUpdater",
         "import HotUpdater",
         "import React",
       );
-      if (!config.modResults.contents.includes("HotUpdater.bundleURL()")) {
-        config.modResults.contents = config.modResults.contents.replace(
-          `Bundle.main.url(forResource: "main", withExtension: "jsbundle")`,
-          "HotUpdater.bundleURL()",
-        );
-      }
+      contents = contents.replace(
+        /Bundle\.main\.url\(forResource: "?main"?, withExtension: "jsbundle"\)/g,
+        "HotUpdater.bundleURL()",
+      );
     }
-    return config;
+
+    cfg.modResults.contents = contents;
+    return cfg;
   });
 
-  modifiedConfig = withMainApplication(modifiedConfig, (config) => {
-    //kt: object : DefaultReactNativeHost(this) {
-    if (
-      config.modResults.contents.includes(
-        "object : DefaultReactNativeHost(this) {",
-      )
-    ) {
-      config.modResults.contents = addContentIfNotExists(
-        config.modResults.contents,
+  // === Android: Kotlin & Java in MainApplication ===
+  modifiedConfig = withMainApplication(modifiedConfig, (cfg) => {
+    let contents = cfg.modResults.contents;
+
+    // 3) Kotlin: always overwrite import and getJSBundleFile()
+    contents = removeAllOccurrences(
+      contents,
+      "import com.hotupdater.HotUpdater",
+    );
+    if (contents.includes("object : DefaultReactNativeHost(this) {")) {
+      contents = addContentIfNotExists(
+        contents,
         "import com.hotupdater.HotUpdater",
         "import com.hotupdater.HotUpdater",
         "import com.facebook.react.ReactApplication",
       );
+      // remove any existing getJSBundleFile override
+      contents = contents.replace(
+        /override fun getJSBundleFile\(\): String\? \{[\s\S]*?\}/g,
+        "",
+      );
+      // insert new override immediately after isHermesEnabled
+      contents = contents.replace(
+        "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED",
+        `override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
 
-      if (
-        !config.modResults.contents.includes(
-          "override fun getJSBundleFile(): String",
-        )
-      ) {
-        config.modResults.contents = config.modResults.contents.replace(
-          "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED",
-          `override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-
-          override fun getJSBundleFile(): String? {  
-            return HotUpdater.getJSBundleFile(applicationContext)  
-          }`,
-        );
-      }
+        override fun getJSBundleFile(): String? {
+            return HotUpdater.getJSBundleFile(applicationContext)
+        }`,
+      );
     }
-    // java: new DefaultReactNativeHost(this) {
-    if (config.modResults.contents.includes("new DefaultReactNativeHost")) {
-      config.modResults.contents = addContentIfNotExists(
-        config.modResults.contents,
+
+    // 4) Java: always overwrite import and getJSBundleFile()
+    contents = removeAllOccurrences(
+      contents,
+      "import com.hotupdater.HotUpdater;",
+    );
+    if (contents.includes("new DefaultReactNativeHost")) {
+      contents = addContentIfNotExists(
+        contents,
         "import com.hotupdater.HotUpdater;",
         "import com.hotupdater.HotUpdater;",
         "import com.facebook.react.ReactApplication;",
       );
-      if (
-        config.modResults.contents.includes(
-          "protected String getJSBundleFile()",
-        )
-      ) {
-        config.modResults.contents = config.modResults.contents.replace(
-          `@Override
+      // remove any existing getJSBundleFile override
+      contents = contents.replace(
+        /@Override\s+protected String getJSBundleFile\(\)\s*\{[\s\S]*?\}/g,
+        "",
+      );
+      // insert new override immediately after Hermes override
+      contents = contents.replace(
+        `@Override
         protected Boolean isHermesEnabled() {
-          return BuildConfig.IS_HERMES_ENABLED;
+            return BuildConfig.IS_HERMES_ENABLED;
         }`,
-          `@Override
+        `@Override
         protected Boolean isHermesEnabled() {
-          return BuildConfig.IS_HERMES_ENABLED;
+            return BuildConfig.IS_HERMES_ENABLED;
         }
-        @Override 
-        protected String getJSBundleFile() {  
-            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  
+        @Override
+        protected String getJSBundleFile() {
+            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());
         }`,
-        );
-      }
+      );
     }
-    return config;
+
+    cfg.modResults.contents = contents;
+    return cfg;
   });
 
   return modifiedConfig;
