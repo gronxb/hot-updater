@@ -136,6 +136,7 @@ export async function compileHermes({
 
   const hermesArgs = [
     "-w",
+    "-O",
     "-emit-binary",
     "-max-diagnostic-width=80",
     "-out",

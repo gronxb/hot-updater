@@ -48,6 +48,9 @@ const runBundle = async ({
     entryFile,
     "--platform",
     platform,
+    // disable minify when enableHermes is true
+    "--minify",
+    String(!enableHermes),
     ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
     "--reset-cache",
   ];
