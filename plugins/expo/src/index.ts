@@ -42,6 +42,7 @@ const runBundle = async ({
     "--assets-dest",
     buildPath,
     ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
+    "--reset-cache",
   ];
 
   log.normal("\n");
