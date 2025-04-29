@@ -84,7 +84,7 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "expo": "^50.0.0"
+    "expo": ">=50.0.0"
   },
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",
