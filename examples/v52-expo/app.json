@@ -36,10 +36,7 @@
         }
       ],
       [
-        "expo-hot-updater",
-        {
-          "enabled": true
-        }
+        "@hot-updater/react-native/app.plugin.js"
       ]
     ],
     "experiments": {

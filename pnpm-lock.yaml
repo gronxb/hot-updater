@@ -577,9 +577,15 @@ importers:
 
   examples/v52-expo:
     dependencies:
+      '@expo/config':
+        specifier: ^10.0.11
+        version: 10.0.11
       '@expo/vector-icons':
         specifier: ^14.0.2
         version: 14.1.0(78d34f1fd89e5203dab4d21436b8777e)
+      '@hot-updater/react-native':
+        specifier: workspace:*
+        version: link:../../packages/react-native
       '@react-navigation/bottom-tabs':
         specifier: ^7.2.0
         version: 7.3.10(@react-navigation/native@7.1.6(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native-safe-area-context@4.12.0(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native-screens@4.4.0(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
@@ -628,6 +634,9 @@ importers:
       expo-web-browser:
         specifier: ~14.0.2
         version: 14.0.2(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.11.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.9(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))
+      metro-source-map:
+        specifier: 0.80.5
+        version: 0.80.5
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -10812,6 +10821,10 @@ packages:
     resolution: {integrity: sha512-o+AXmE7hpvM8r8MKsx7TI21/eerYYy2DCDkWfoBkv+jNkl61khvDHlQn0cXZa6lrcNZiZkl9oHSMcwLLIrFmpw==}
     engines: {node: '>=18'}
 
+  metro-source-map@0.80.5:
+    resolution: {integrity: sha512-DwSF4l03mKPNqCtyQ6K23I43qzU1BViAXnuH81eYWdHglP+sDlPpY+/7rUahXEo6qXEHXfAJgVoo1sirbXbmsQ==}
+    engines: {node: '>=18'}
+
   metro-source-map@0.81.4:
     resolution: {integrity: sha512-IOwVQ7mLqoqvsL70RZtl1EyE3f9jp43kVsAsb/B/zoWmu0/k4mwEhGLTxmjdXRkLJqPqPrh7WmFChAEf9trW4Q==}
     engines: {node: '>=18.18'}
@@ -10832,6 +10845,11 @@ packages:
 
   metro-symbolicate@0.80.12:
     resolution: {integrity: sha512-/dIpNdHksXkGHZXARZpL7doUzHqSNxgQ8+kQGxwpJuHnDhGkENxB5PS2QBaTDdEcmyTMjS53CN1rl9n1gR6fmw==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  metro-symbolicate@0.80.5:
+    resolution: {integrity: sha512-IsM4mTYvmo9JvIqwEkCZ5+YeDVPST78Q17ZgljfLdHLSpIivOHp9oVoiwQ/YGbLx0xRHRIS/tKiXueWBnj3UWA==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -11366,6 +11384,10 @@ packages:
 
   ob1@0.80.12:
     resolution: {integrity: sha512-VMArClVT6LkhUGpnuEoBuyjG9rzUyEzg4PDkav6wK1cLhOK02gPCYFxoiB4mqVnrMhDpIzJcrGNAMVi9P+hXrw==}
+    engines: {node: '>=18'}
+
+  ob1@0.80.5:
+    resolution: {integrity: sha512-zYDMnnNrFi/1Tqh0vo3PE4p97Tpl9/4MP2k2ECvkbLOZzQuAYZJLTUYVLZb7hJhbhjT+JJxAwBGS8iu5hCSd1w==}
     engines: {node: '>=18'}
 
   ob1@0.81.4:
@@ -28547,6 +28569,19 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  metro-source-map@0.80.5:
+    dependencies:
+      '@babel/traverse': 7.25.9
+      '@babel/types': 7.26.0
+      invariant: 2.2.4
+      metro-symbolicate: 0.80.5
+      nullthrows: 1.1.1
+      ob1: 0.80.5
+      source-map: 0.5.7
+      vlq: 1.0.1
+    transitivePeerDependencies:
+      - supports-color
+
   metro-source-map@0.81.4:
     dependencies:
       '@babel/traverse': 7.25.9
@@ -28605,6 +28640,17 @@ snapshots:
       flow-enums-runtime: 0.0.6
       invariant: 2.2.4
       metro-source-map: 0.80.12
+      nullthrows: 1.1.1
+      source-map: 0.5.7
+      through2: 2.0.5
+      vlq: 1.0.1
+    transitivePeerDependencies:
+      - supports-color
+
+  metro-symbolicate@0.80.5:
+    dependencies:
+      invariant: 2.2.4
+      metro-source-map: 0.80.5
       nullthrows: 1.1.1
       source-map: 0.5.7
       through2: 2.0.5
@@ -29723,6 +29769,8 @@ snapshots:
   ob1@0.80.12:
     dependencies:
       flow-enums-runtime: 0.0.6
+
+  ob1@0.80.5: {}
 
   ob1@0.81.4:
     dependencies:
