@@ -46,8 +46,9 @@ const runBundle = async ({
 
   log.normal("\n");
 
+  let stdout: string | null = null;
   try {
-    await execa("npx", args, {
+    const result = await execa("npx", args, {
       cwd,
       env: {
         ...process.env,
@@ -56,6 +57,7 @@ const runBundle = async ({
       },
       reject: true,
     });
+    stdout = result.stdout;
   } catch (error) {
     if (error instanceof ExecaError) {
       throw error.stderr;
@@ -79,7 +81,7 @@ module.exports = {
 
   return {
     bundleId,
-    stdout: null,
+    stdout,
   };
 };
 
