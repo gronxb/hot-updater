@@ -54,9 +54,9 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config: ExpoConfig) => {
     if (config.modResults.contents.includes("import React")) {
       config.modResults.contents = addContentIfNotExists(
         config.modResults.contents,
-        "import React",
-        "import React",
         "import HotUpdater",
+        "import HotUpdater",
+        "import React",
       );
       if (!config.modResults.contents.includes("HotUpdater.bundleURL()")) {
         config.modResults.contents = config.modResults.contents.replace(
