@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/js",
-  "version": "0.16.3",
+  "version": "0.16.6",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -42,7 +42,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "0.16.3"
+    "@hot-updater/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.9.4",

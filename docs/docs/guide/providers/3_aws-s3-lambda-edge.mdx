@@ -61,7 +61,7 @@ Run the initialization script to start the interactive setup process. Use the fo
 
 ::: details {title="Interactive Setup Steps"}
 
-1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Metro for React Native).
+1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
 During the setup, you will be prompted to:
 1. **Choose AWS Login Method**: Select between AWS Access Key or SSO login
@@ -104,7 +104,7 @@ During the initialization process, the following file is automatically generated
 
 ```ts title=hot-updater.config.ts
 
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
@@ -119,7 +119,7 @@ const options = {
 };
 
 export default defineConfig({
-  build: metro({ enableHermes: true }),
+  build: bare({ enableHermes: true }),
   storage: s3Storage(options),
   database: s3Database(options),
 });
@@ -186,12 +186,14 @@ export default HotUpdater.wrap({
 
 ```
 
-## Step 6: Add Babel Plugin to Your Project
+## Step 6: Add Babel / Re.Pack Plugin to Your Project
 
 In this step, you will configure Babel to set the bundle ID at build time. This is necessary for integrating the `hot-updater` plugin into your project.
 
 Add the following to your `babel.config.js` file:
 
+<Tabs>
+  <Tab label="Metro (Babel)">
 ```js title=babel.config.js
 module.exports = {
   presets: ['module:@react-native/babel-preset'],
@@ -199,7 +201,31 @@ module.exports = {
     'hot-updater/babel-plugin', // [!code ++]
   ],
 };
+ 
 ```
+</Tab>
+<Tab label="Re.Pack">
+<PackageManagerTabs command={
+  {
+    npm: "npm install @hot-updater/repack --save-dev",
+    pnpm: "pnpm add @hot-updater/repack -D",
+    yarn: "yarn add @hot-updater/repack -D",
+  }
+} />
+
+```js title=rspack.config.mjs
+import { HotUpdaterPlugin } from "@hot-updater/repack";
+
+export default {
+  // ...
+  plugins: [
+    new Repack.RepackPlugin(),
+    new HotUpdaterPlugin()
+  ],
+};
+```
+</Tab>
+</Tabs>
 
 ## Step 7: Add Native Code
 

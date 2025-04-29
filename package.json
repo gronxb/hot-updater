@@ -20,31 +20,14 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@cloudflare/vitest-pool-workers": "^0.8.0",
-    "@nx/js": "^20.6.0",
-    "@rslib/core": "^0.5.4",
-    "nx": "20.5.0",
+    "@nx/js": "^20.8.1",
+    "@rslib/core": "^0.6.7",
+    "nx": "20.8.1",
     "rimraf": "^5.0.7",
     "tsup": "^8.4.0",
-    "typescript": "^5.8.2",
-    "vitest": "^3.0.9"
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2",
+    "@swc/helpers": "^0.5.17"    
   },
-  "pnpm": {
-    "overrides": {
-      "hot-updater": "workspace:*",
-      "@hot-updater/console": "workspace:*",
-      "@hot-updater/plugin-core": "workspace:*",
-      "@hot-updater/core": "workspace:*",
-      "@hot-updater/aws": "workspace:*",
-      "@hot-updater/metro": "workspace:*",
-      "@hot-updater/react-native": "workspace:*",
-      "@hot-updater/postgres": "workspace:*",
-      "@hot-updater/supabase": "workspace:*",
-      "@hot-updater/cloudflare": "workspace:*",
-      "@hot-updater/js": "workspace:*",
-      "@hot-updater/mock": "workspace:*",
-      "@hot-updater/firebase": "workspace:*",
-      "@hot-updater/sentry-plugin": "workspace:*"
-    }
-  },
-  "packageManager": "pnpm@10.6.3"
+  "packageManager": "pnpm@10.9.0"
 }

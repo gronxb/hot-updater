@@ -39,10 +39,21 @@ export const init = async () => {
     options: [
       {
         value: {
+          name: "bare",
           dependencies: [],
-          devDependencies: ["@hot-updater/metro"],
+          devDependencies: ["@hot-updater/bare"],
         },
-        label: "Metro",
+        hint: "React Native CLI",
+        label: "Bare",
+      },
+      {
+        value: {
+          name: "rnef",
+          dependencies: [],
+          devDependencies: ["@hot-updater/rnef"],
+        },
+        hint: "React Native Enterprise Framework by Callstack",
+        label: "RNEF",
       },
     ],
   });
@@ -91,25 +102,26 @@ export const init = async () => {
     process.exit(1);
   }
 
+  const build = buildPluginPackage.name as "bare" | "rnef";
   switch (provider) {
     case "supabase": {
       const supabase = await import("@hot-updater/supabase/iac");
-      await supabase.runInit();
+      await supabase.runInit({ build });
       break;
     }
     case "cloudflare": {
       const cloudflare = await import("@hot-updater/cloudflare/iac");
-      await cloudflare.runInit();
+      await cloudflare.runInit({ build });
       break;
     }
     case "aws": {
       const aws = await import("@hot-updater/aws/iac");
-      await aws.runInit();
+      await aws.runInit({ build });
       break;
     }
     case "firebase": {
       const firebase = await import("@hot-updater/firebase/iac");
-      await firebase.runInit();
+      await firebase.runInit({ build });
       break;
     }
     default:
