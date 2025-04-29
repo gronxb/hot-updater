@@ -1046,6 +1046,22 @@ importers:
         specifier: ^8.3.0
         version: 8.3.0
 
+  plugins/expo:
+    dependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.8.7
+        version: 22.13.5
+      execa:
+        specifier: ^9.5.2
+        version: 9.5.2
+      uuidv7:
+        specifier: ^1.0.2
+        version: 1.0.2
+
   plugins/firebase:
     dependencies:
       '@hot-updater/core':
@@ -27149,7 +27165,7 @@ snapshots:
 
   execa@5.1.1:
     dependencies:
-      cross-spawn: 7.0.3
+      cross-spawn: 7.0.6
       get-stream: 6.0.1
       human-signals: 2.1.0
       is-stream: 2.0.1
