@@ -11,6 +11,7 @@ interface Spec extends TurboModule {
   // Methods
   reload(): void;
   updateBundle(bundleData: BundleData): Promise<boolean>;
+
   /**
    * @deprecated
    * use getConstants().APP_VERSION instead

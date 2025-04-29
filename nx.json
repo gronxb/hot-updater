@@ -4,6 +4,11 @@
     "projects": ["*", "!@hot-updater/docs"],
     "git": {
       "tag": false
+    },
+    "version": {
+      "generatorOptions": {
+        "preserveLocalDependencyProtocols": true
+      }
     }
   },
   "targetDefaults": {

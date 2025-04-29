@@ -59,7 +59,7 @@ export const withSentry =
 
         if (!bundleMapFile || !bundleFile) {
           throw new Error(
-            "Source map not found. Please enable sourcemap in your build plugin. e.g build: metro({ sourcemap: true })",
+            "Source map not found. Please enable sourcemap in your build plugin. e.g build: bare({ sourcemap: true })",
           );
         }
 

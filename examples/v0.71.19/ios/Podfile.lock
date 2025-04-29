@@ -14,7 +14,7 @@ PODS:
   - hermes-engine (0.71.19):
     - hermes-engine/Pre-built (= 0.71.19)
   - hermes-engine/Pre-built (0.71.19)
-  - HotUpdater (0.15.0):
+  - HotUpdater (0.16.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
     - SSZipArchive (~> 2.2.2)
@@ -354,6 +354,13 @@ PODS:
     - React-jsi (= 0.71.19)
     - React-logger (= 0.71.19)
     - React-perflogger (= 0.71.19)
+  - RNSentry (6.10.0):
+    - hermes-engine
+    - RCT-Folly (= 2021.07.22.00)
+    - React-Core
+    - React-hermes
+    - Sentry/HybridSDK (= 8.48.0)
+  - Sentry/HybridSDK (8.48.0)
   - SSZipArchive (2.2.3)
   - Yoga (1.14.0)
 
@@ -394,12 +401,14 @@ DEPENDENCIES:
   - React-RCTVibration (from `../node_modules/react-native/Libraries/Vibration`)
   - React-runtimeexecutor (from `../node_modules/react-native/ReactCommon/runtimeexecutor`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - "RNSentry (from `../node_modules/@sentry/react-native`)"
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
   trunk:
     - fmt
     - libevent
+    - Sentry
     - SSZipArchive
 
 EXTERNAL SOURCES:
@@ -471,6 +480,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/runtimeexecutor"
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  RNSentry:
+    :path: "../node_modules/@sentry/react-native"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -482,7 +493,7 @@ SPEC CHECKSUMS:
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
   glog: 791fe035093b84822da7f0870421a25839ca7870
   hermes-engine: 1b2623da987a23d7d3122d883e22b716948ee6f1
-  HotUpdater: 10c24b0d2e0b9f399ec72bb11a122e5ec0d6616a
+  HotUpdater: 9a386445553d03dfe67051092fe4b7b69de34a33
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
   RCT-Folly: 85766c3226c7ec638f05ad7cb3cf6a268d6c4241
   RCTRequired: 79b5f823c2b4b865451ba9ddb33c676786760ea8
@@ -511,6 +522,8 @@ SPEC CHECKSUMS:
   React-RCTVibration: 5b2bfab941e938ee5060acefdd7598077b394975
   React-runtimeexecutor: b9be1f58ce9a8b849cb8a37dd998f04ca97e3619
   ReactCommon: bb3d7051c9b8c58ee34f9af76f883bd0fd7c9c31
+  RNSentry: 22541a7ab6462945687ac99e0a96151c9ee262bc
+  Sentry: 1ca8405451040482877dcd344dfa3ef80b646631
   SSZipArchive: 62d4947b08730e4cda640473b0066d209ff033c9
   Yoga: d4f5b037672e6b68ba484c7cf7fe6790122df792
 

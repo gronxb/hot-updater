@@ -11,8 +11,8 @@ The **Build Plugin** is used during the execution of the `hot-updater deploy` co
 
 ### Supported Plugins
 
-- **`@hot-updater/metro`**: Supports Metro bundler for React Native projects.
-- **`@hot-updater/repack`**: Coming soon.
+- **`@hot-updater/bare`**: Executes the bundle command through React Native CLI. Bundles through Metro or Re.Pack.
+- **`@hot-updater/rnef`**: Executes the bundle command through [React Native Enterprise Framework by Callstack](https://github.com/callstack/rnef).
 
 ## Storage Plugin
 
@@ -33,6 +33,5 @@ The **Database Plugin** is responsible for storing the metadata required to chec
 
 - **`@hot-updater/supabase`**: Provides `supabaseDatabase` functionality, using Supabase as a database solution.
 - **`@hot-updater/aws`**: Provides `s3Database` functionality, utilizing AWS for database storage.
-- **`@hot-updater/postgres`**: Supports PostgreSQL for update metadata storage.
 - **`@hot-updater/cloudflare`**: Provides `d1Database` functionality, leveraging Cloudflare D1 for database storage.
 - **`@hot-updater/firebase`**: Provides `firebaseDatabase` functionality, using Firebase Firestore for storing update metadata.
