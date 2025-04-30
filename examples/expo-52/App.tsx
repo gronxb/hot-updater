@@ -77,8 +77,8 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        // source={require("./assets/logo.png")}
-        source={require("./assets/test/_image.png")}
+        source={require("./assets/logo.png")}
+        // source={require("./assets/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
