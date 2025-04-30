@@ -3,6 +3,8 @@ PODS:
   - DoubleConversion (1.1.6)
   - EXConstants (17.0.8):
     - ExpoModulesCore
+  - EXFont (11.10.3):
+    - ExpoModulesCore
   - EXJSONUtils (0.14.0)
   - EXManifests (0.15.8):
     - ExpoModulesCore
@@ -217,13 +219,11 @@ PODS:
     - Yoga
   - ExpoAsset (11.0.5):
     - ExpoModulesCore
-  - ExpoFileSystem (18.0.12):
+  - ExpoFileSystem (16.0.9):
     - ExpoModulesCore
-  - ExpoFont (13.0.4):
+  - ExpoKeepAwake (12.8.2):
     - ExpoModulesCore
-  - ExpoKeepAwake (14.0.3):
-    - ExpoModulesCore
-  - ExpoModulesCore (2.2.3):
+  - ExpoModulesCore (1.11.14):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -236,7 +236,6 @@ PODS:
     - React-featureflags
     - React-graphics
     - React-ImageManager
-    - React-jsinspector
     - React-NativeModulesApple
     - React-RCTAppDelegate
     - React-RCTFabric
@@ -1835,6 +1834,7 @@ DEPENDENCIES:
   - "boost (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@re_b72faf7004e50b055f5a16d3eda626d6/node_modules/react-native/third-party-podspecs/boost.podspec`)"
   - "DoubleConversion (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@re_b72faf7004e50b055f5a16d3eda626d6/node_modules/react-native/third-party-podspecs/DoubleConversion.podspec`)"
   - "EXConstants (from `../../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_dd66275ba05db42610cf035e205237ac/node_modules/expo-constants/ios`)"
+  - "EXFont (from `../../../node_modules/.pnpm/expo-font@11.10.3_expo@50.0.21_@babel+core@7.26.0_@react-native+babel-preset@0.79.1_@ba_9be89b354c518a1a68f9b3669ae05b1b/node_modules/expo-font/ios`)"
   - "EXJSONUtils (from `../../../node_modules/.pnpm/expo-json-utils@0.14.0/node_modules/expo-json-utils/ios`)"
   - "EXManifests (from `../../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_e3dc68bd6901c760dacf8cb8c3e960ac/node_modules/expo-manifests/ios`)"
   - "Expo (from `../../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_fd50e921dcbcc97cee4c7ba64e1be29f/node_modules/expo`)"
@@ -1843,10 +1843,9 @@ DEPENDENCIES:
   - "expo-dev-menu (from `../../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_e4e0bb3e55c8caff8782847b157dcb09/node_modules/expo-dev-menu`)"
   - "expo-dev-menu-interface (from `../../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__948cff95dc7b278e340884598c4e2313/node_modules/expo-dev-menu-interface/ios`)"
   - "ExpoAsset (from `../../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_a6192717c61c2998a37c35c5ca073ce7/node_modules/expo-asset/ios`)"
-  - "ExpoFileSystem (from `../../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_e67504e1f86968d6dfd87027e658c5a8/node_modules/expo-file-system/ios`)"
-  - "ExpoFont (from `../../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_b3b552608153b73d0b094f7c059fa045/node_modules/expo-font/ios`)"
-  - "ExpoKeepAwake (from `../../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_1be1f96e12b5e71557470a050e0ec684/node_modules/expo-keep-awake/ios`)"
-  - "ExpoModulesCore (from `../../../node_modules/.pnpm/expo-modules-core@2.2.3/node_modules/expo-modules-core`)"
+  - "ExpoFileSystem (from `../../../node_modules/.pnpm/expo-file-system@16.0.9_expo@50.0.21_@babel+core@7.26.0_@react-native+babel-preset@0.79_3fb5fc37fe0be3e6385fb3cf171a19a7/node_modules/expo-file-system/ios`)"
+  - "ExpoKeepAwake (from `../../../node_modules/.pnpm/expo-keep-awake@12.8.2_expo@50.0.21_@babel+core@7.26.0_@react-native+babel-preset@0.79._29af474b128c6af17ec40532c6dcb866/node_modules/expo-keep-awake/ios`)"
+  - "ExpoModulesCore (from `../../../node_modules/.pnpm/expo-modules-core@1.11.14/node_modules/expo-modules-core`)"
   - "EXUpdatesInterface (from `../../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_cedd178b3361298db12667f82248b0b2/node_modules/expo-updates-interface/ios`)"
   - "fast_float (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@re_b72faf7004e50b055f5a16d3eda626d6/node_modules/react-native/third-party-podspecs/fast_float.podspec`)"
   - "FBLazyVector (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@re_b72faf7004e50b055f5a16d3eda626d6/node_modules/react-native/Libraries/FBLazyVector`)"
@@ -1926,6 +1925,8 @@ EXTERNAL SOURCES:
     :podspec: "../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@re_b72faf7004e50b055f5a16d3eda626d6/node_modules/react-native/third-party-podspecs/DoubleConversion.podspec"
   EXConstants:
     :path: "../../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_dd66275ba05db42610cf035e205237ac/node_modules/expo-constants/ios"
+  EXFont:
+    :path: "../../../node_modules/.pnpm/expo-font@11.10.3_expo@50.0.21_@babel+core@7.26.0_@react-native+babel-preset@0.79.1_@ba_9be89b354c518a1a68f9b3669ae05b1b/node_modules/expo-font/ios"
   EXJSONUtils:
     :path: "../../../node_modules/.pnpm/expo-json-utils@0.14.0/node_modules/expo-json-utils/ios"
   EXManifests:
@@ -1943,13 +1944,11 @@ EXTERNAL SOURCES:
   ExpoAsset:
     :path: "../../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_a6192717c61c2998a37c35c5ca073ce7/node_modules/expo-asset/ios"
   ExpoFileSystem:
-    :path: "../../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_e67504e1f86968d6dfd87027e658c5a8/node_modules/expo-file-system/ios"
-  ExpoFont:
-    :path: "../../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_b3b552608153b73d0b094f7c059fa045/node_modules/expo-font/ios"
+    :path: "../../../node_modules/.pnpm/expo-file-system@16.0.9_expo@50.0.21_@babel+core@7.26.0_@react-native+babel-preset@0.79_3fb5fc37fe0be3e6385fb3cf171a19a7/node_modules/expo-file-system/ios"
   ExpoKeepAwake:
-    :path: "../../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_1be1f96e12b5e71557470a050e0ec684/node_modules/expo-keep-awake/ios"
+    :path: "../../../node_modules/.pnpm/expo-keep-awake@12.8.2_expo@50.0.21_@babel+core@7.26.0_@react-native+babel-preset@0.79._29af474b128c6af17ec40532c6dcb866/node_modules/expo-keep-awake/ios"
   ExpoModulesCore:
-    :path: "../../../node_modules/.pnpm/expo-modules-core@2.2.3/node_modules/expo-modules-core"
+    :path: "../../../node_modules/.pnpm/expo-modules-core@1.11.14/node_modules/expo-modules-core"
   EXUpdatesInterface:
     :path: "../../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_cedd178b3361298db12667f82248b0b2/node_modules/expo-updates-interface/ios"
   fast_float:
@@ -2084,6 +2083,7 @@ SPEC CHECKSUMS:
   boost: 1dca942403ed9342f98334bf4c3621f011aa7946
   DoubleConversion: f16ae600a246532c4020132d54af21d0ddb2a385
   EXConstants: a1f35b9aabbb3c6791f8e67722579b1ffcdd3f18
+  EXFont: f20669cb266ef48b004f1eb1f2b20db96cd1df9f
   EXJSONUtils: 01fc7492b66c234e395dcffdd5f53439c5c29c93
   EXManifests: 77e77c283c4c53a50b9bddebed25abe93f0b48f1
   Expo: 3e53243e3281214a7d613f8a875c0b732d7512c2
@@ -2092,10 +2092,9 @@ SPEC CHECKSUMS:
   expo-dev-menu: 32f62936b2b3ebb3ff84fcdcb5b927a36f80393a
   expo-dev-menu-interface: 00dc42302a72722fdecec3fa048de84a9133bcc4
   ExpoAsset: 0687fe05f5d051c4a34dd1f9440bd00858413cfe
-  ExpoFileSystem: c8c19bf80d914c83dda3beb8569d7fb603be0970
-  ExpoFont: 773955186469acc5108ff569712a2d243857475f
-  ExpoKeepAwake: 2a5f15dd4964cba8002c9a36676319a3394c85c7
-  ExpoModulesCore: dd965804a882f1dbb6036fceea4d912461aeaa0d
+  ExpoFileSystem: 74cc0fae916f9f044248433971dcfc8c3befd057
+  ExpoKeepAwake: 0f5cad99603a3268e50af9a6eb8b76d0d9ac956c
+  ExpoModulesCore: fb00d67d17848efad9c24859867a69f2752f6f70
   EXUpdatesInterface: 1dcebac98ac5dad4289e6ff2bd5616822e894397
   fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
   FBLazyVector: 7605ea4810e0e10ae4815292433c09bf4324ba45

@@ -37,7 +37,7 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
-      <Text>Channel "{HotUpdater.getChannel()}"</Text>
+      <Text>Channel {String(HotUpdater.getChannel())}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
@@ -77,8 +77,8 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
+        // source={require("./assets/logo.png")}
+        source={require("./assets/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />

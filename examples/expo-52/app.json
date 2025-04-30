@@ -23,7 +23,10 @@
       },
       "package": "com.anonymous.expo52"
     },
-    "plugins": ["@hot-updater/react-native"],
+    "plugins": [
+      "@hot-updater/react-native",
+      "expo-asset"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
