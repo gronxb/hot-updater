@@ -8,7 +8,7 @@
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React from "react";
 import { useEffect, useState } from "react";
-import { Button, Modal, SafeAreaView, Text, View } from "react-native";
+import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -71,7 +71,7 @@ function App(): React.JSX.Element {
       >
         BundleId: {bundleId}
       </Text>
-      {/* 
+
       <Image
         style={{
           width: 100,
@@ -79,7 +79,7 @@ function App(): React.JSX.Element {
         }}
         source={require("./src/logo.png")}
         // source={require("./src/test/_image.png")}
-      /> */}
+      />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
     </SafeAreaView>
