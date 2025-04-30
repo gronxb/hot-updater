@@ -1,11 +1,10 @@
-import { bare } from "@hot-updater/bare";
+import { expo } from "@hot-updater/expo";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import "dotenv/config";
 import { defineConfig } from "hot-updater";
 
-
 export default defineConfig({
-  build: bare({ enableHermes: true }),
+  build: expo(),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,

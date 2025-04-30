@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
 import {
+  type BuildType,
   copyDirToTmp,
   link,
   transformEnv,
@@ -211,7 +212,7 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build }: { build: "bare" | "rnef" }) => {
+export const runInit = async ({ build }: { build: BuildType }) => {
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
     p.log.error("gcloud CLI is not installed");

@@ -7,7 +7,7 @@ declare const __HOT_UPDATER_CHANNEL: string | undefined;
 
 const HotUpdater = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
-  CHANNEL: __HOT_UPDATER_CHANNEL || "production",
+  CHANNEL: __HOT_UPDATER_CHANNEL || (!__DEV__ ? "production" : null),
 };
 
 const RCTNativeHotUpdater = require("./specs/NativeHotUpdater").default;

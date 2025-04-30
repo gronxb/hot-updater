@@ -6,35 +6,49 @@ import {
 } from "expo/config-plugins";
 import pkg from "../../package.json";
 
-// Type definitions
-type HotUpdaterConfig = any;
+// Type definitions (Assuming HotUpdaterConfig might be used later)
+type HotUpdaterConfig = Record<string, unknown>; // Allow no props
 
 /**
- * Inserts `importStatement` before `beforeString` if `searchString` is not already present.
+ * Helper to add lines if they don't exist, anchored by a specific string.
  */
-function addContentIfNotExists(
+function addLinesOnce(
   contents: string,
-  searchString: string,
-  importStatement: string,
-  beforeString: string,
+  anchor: string,
+  linesToAdd: string[],
 ): string {
-  if (!contents.includes(searchString)) {
-    return contents.replace(
-      beforeString,
-      `${beforeString}\n${importStatement}`,
-    );
+  if (linesToAdd.every((line) => contents.includes(line))) {
+    // All lines already exist, do nothing
+    return contents;
   }
-  return contents;
+
+  // Check if the anchor exists
+  if (!contents.includes(anchor)) {
+    // Anchor not found, cannot add lines reliably.
+    // Consider logging a warning or throwing an error here if necessary.
+    return contents;
+  }
+
+  // Add lines after the anchor
+  // Ensure newline separation
+  return contents.replace(anchor, `${anchor}\n${linesToAdd.join("\n")}`);
 }
 
 /**
- * Removes all lines containing `target` from the file contents.
+ * Helper to replace content only if the target content exists and hasn't been replaced yet.
  */
-function removeAllOccurrences(contents: string, target: string): string {
-  return contents
-    .split("\n")
-    .filter((line) => !line.includes(target))
-    .join("\n");
+function replaceContentOnce(
+  contents: string,
+  searchRegex: RegExp,
+  replacement: string,
+  checkIfAlreadyReplaced: string, // A string unique to the replacement
+): string {
+  // If the replacement content is already present, assume it's done.
+  if (contents.includes(checkIfAlreadyReplaced)) {
+    return contents;
+  }
+  // Otherwise, perform the replacement if the search target exists.
+  return contents.replace(searchRegex, replacement);
 }
 
 const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
@@ -43,38 +57,45 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
   // === iOS: Objective-C & Swift in AppDelegate ===
   modifiedConfig = withAppDelegate(modifiedConfig, (cfg) => {
     let contents = cfg.modResults.contents;
+    const iosImport = "#import <HotUpdater/HotUpdater.h>";
+    const iosBundleUrl = "[HotUpdater bundleURL]";
+    const iosOriginalBundleUrlRegex =
+      /\[\[NSBundle mainBundle\] URLForResource:@"main" withExtension:@"jsbundle"\]/g;
+    const iosAppDelegateHeader = '#import "AppDelegate.h"'; // Anchor for import
 
-    // 1) Objective-C: always overwrite import and bundleURL
-    contents = removeAllOccurrences(
-      contents,
-      "#import <HotUpdater/HotUpdater.h>",
-    );
-    if (contents.includes("#import <React/RCTBundleURLProvider.h>")) {
-      contents = addContentIfNotExists(
+    const swiftImport = "import HotUpdater";
+    const swiftBundleUrl = "HotUpdater.bundleURL()";
+    const swiftOriginalBundleUrlRegex =
+      /Bundle\.main\.url\(forResource: "?main"?, withExtension: "jsbundle"\)/g;
+    const swiftReactImport = "import React"; // Anchor for import
+
+    // --- Objective-C ---
+    if (contents.includes(iosAppDelegateHeader)) {
+      // Check if it's likely Obj-C
+      // 1. Add import if missing
+      contents = addLinesOnce(contents, iosAppDelegateHeader, [iosImport]);
+
+      // 2. Replace bundleURL provider if the original exists and hasn't been replaced
+      contents = replaceContentOnce(
         contents,
-        "#import <HotUpdater/HotUpdater.h>",
-        "#import <HotUpdater/HotUpdater.h>",
-        '#import "AppDelegate.h"',
-      );
-      // replace any existing main-bundle return
-      contents = contents.replace(
-        /\[\[NSBundle mainBundle\] URLForResource:@"main" withExtension:@"jsbundle"\]/g,
-        "[HotUpdater bundleURL]",
+        iosOriginalBundleUrlRegex,
+        iosBundleUrl,
+        iosBundleUrl, // Check using the replacement itself
       );
     }
 
-    // 2) Swift: always overwrite import and bundleURL()
-    contents = removeAllOccurrences(contents, "import HotUpdater");
-    if (contents.includes("import React")) {
-      contents = addContentIfNotExists(
+    // --- Swift ---
+    if (contents.includes(swiftReactImport)) {
+      // Check if it's likely Swift
+      // 1. Add import if missing
+      contents = addLinesOnce(contents, swiftReactImport, [swiftImport]);
+
+      // 2. Replace bundleURL provider if the original exists and hasn't been replaced
+      contents = replaceContentOnce(
         contents,
-        "import HotUpdater",
-        "import HotUpdater",
-        "import React",
-      );
-      contents = contents.replace(
-        /Bundle\.main\.url\(forResource: "?main"?, withExtension: "jsbundle"\)/g,
-        "HotUpdater.bundleURL()",
+        swiftOriginalBundleUrlRegex,
+        swiftBundleUrl,
+        swiftBundleUrl, // Check using the replacement itself
       );
     }
 
@@ -86,66 +107,114 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
   modifiedConfig = withMainApplication(modifiedConfig, (cfg) => {
     let contents = cfg.modResults.contents;
 
-    // 3) Kotlin: always overwrite import and getJSBundleFile()
-    contents = removeAllOccurrences(
-      contents,
-      "import com.hotupdater.HotUpdater",
-    );
-    if (contents.includes("object : DefaultReactNativeHost(this) {")) {
-      contents = addContentIfNotExists(
-        contents,
-        "import com.hotupdater.HotUpdater",
-        "import com.hotupdater.HotUpdater",
-        "import com.facebook.react.ReactApplication",
-      );
-      // remove any existing getJSBundleFile override
-      contents = contents.replace(
-        /override fun getJSBundleFile\(\): String\? \{[\s\S]*?\}/g,
-        "",
-      );
-      // insert new override immediately after isHermesEnabled
-      contents = contents.replace(
-        "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED",
-        `override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+    const kotlinImport = "import com.hotupdater.HotUpdater";
+    const kotlinImportAnchor = "import com.facebook.react.ReactApplication";
+    const kotlinReactNativeHostAnchor =
+      "object : DefaultReactNativeHost(this) {"; // Start of block
+    const kotlinMethodCheck = "HotUpdater.getJSBundleFile(applicationContext)"; // Unique part of the method body
+    // Regex to find an existing getJSBundleFile override (non-greedy)
+    const kotlinExistingMethodRegex =
+      /^\s*override fun getJSBundleFile\(\): String\?\s*\{[\s\S]*?^\s*\}/gm;
+    const kotlinHermesAnchor =
+      "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED";
+    const kotlinNewMethod = `
+          override fun getJSBundleFile(): String? {
+              return HotUpdater.getJSBundleFile(applicationContext)
+          }`;
 
-        override fun getJSBundleFile(): String? {
-            return HotUpdater.getJSBundleFile(applicationContext)
-        }`,
-      );
-    }
-
-    // 4) Java: always overwrite import and getJSBundleFile()
-    contents = removeAllOccurrences(
-      contents,
-      "import com.hotupdater.HotUpdater;",
-    );
-    if (contents.includes("new DefaultReactNativeHost")) {
-      contents = addContentIfNotExists(
-        contents,
-        "import com.hotupdater.HotUpdater;",
-        "import com.hotupdater.HotUpdater;",
-        "import com.facebook.react.ReactApplication;",
-      );
-      // remove any existing getJSBundleFile override
-      contents = contents.replace(
-        /@Override\s+protected String getJSBundleFile\(\)\s*\{[\s\S]*?\}/g,
-        "",
-      );
-      // insert new override immediately after Hermes override
-      contents = contents.replace(
-        `@Override
-        protected Boolean isHermesEnabled() {
-            return BuildConfig.IS_HERMES_ENABLED;
-        }`,
-        `@Override
-        protected Boolean isHermesEnabled() {
-            return BuildConfig.IS_HERMES_ENABLED;
-        }
+    const javaImport = "import com.hotupdater.HotUpdater;";
+    const javaImportAnchor = "import com.facebook.react.ReactApplication;";
+    const javaReactNativeHostAnchor = "new DefaultReactNativeHost"; // Part of the instantiation
+    const javaMethodCheck = "HotUpdater.Companion.getJSBundleFile"; // Unique part of the method body
+    const javaMethodSignature = "protected String getJSBundleFile()";
+    // Regex to find an existing getJSBundleFile override (non-greedy)
+    const javaExistingMethodRegex =
+      /^\s*@Override\s+protected String getJSBundleFile\(\)\s*\{[\s\S]*?^\s*\}/gm;
+    const javaHermesBlockEndAnchor = `return BuildConfig.IS_HERMES_ENABLED;
+        }`; // End of the isHermesEnabled method block
+    const javaNewMethod = `
         @Override
         protected String getJSBundleFile() {
             return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());
-        }`,
-      );
+        }`;
+
+    // --- Kotlin ---
+    if (contents.includes(kotlinReactNativeHostAnchor)) {
+      // Check if likely Kotlin
+      // 1. Add import if missing
+      contents = addLinesOnce(contents, kotlinImportAnchor, [kotlinImport]);
+
+      // 2. Add/Replace getJSBundleFile method if needed
+      if (!contents.includes(kotlinMethodCheck)) {
+        // Desired method content not found
+        // Remove potentially existing (different) override first
+        contents = contents.replace(kotlinExistingMethodRegex, "");
+
+        // Add the new method after the isHermesEnabled property
+        if (contents.includes(kotlinHermesAnchor)) {
+          contents = contents.replace(
+            kotlinHermesAnchor,
+            `${kotlinHermesAnchor}\n${kotlinNewMethod}`,
+          );
+        } else {
+          // Fallback: Add before the closing brace of the object if anchor not found
+          const rnHostEndRegex =
+            /(\s*object\s*:\s*DefaultReactNativeHost\s*\([\s\S]*?\n)(\s*\})\s*$/m;
+          if (rnHostEndRegex.test(contents)) {
+            contents = contents.replace(
+              rnHostEndRegex,
+              `$1${kotlinNewMethod}\n$2`,
+            );
+            throw new Error(
+              "[withHotUpdater] Kotlin: Could not find Hermes anchor. Added getJSBundleFile before closing brace.",
+            );
+          }
+          throw new Error(
+            "[withHotUpdater] Kotlin: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
+          );
+        }
+      }
+    }
+
+    // --- Java ---
+    if (
+      contents.includes(javaReactNativeHostAnchor) &&
+      contents.includes("@Override")
+    ) {
+      // Check if likely Java
+      // 1. Add import if missing
+      contents = addLinesOnce(contents, javaImportAnchor, [javaImport]);
+
+      // 2. Add/Replace getJSBundleFile method if needed
+      if (!contents.includes(javaMethodCheck)) {
+        // Desired method content not found
+        // Remove potentially existing (different) override first
+        contents = contents.replace(javaExistingMethodRegex, "");
+
+        // Add the new method after the isHermesEnabled method block
+        if (contents.includes(javaHermesBlockEndAnchor)) {
+          contents = contents.replace(
+            javaHermesBlockEndAnchor,
+            `${javaHermesBlockEndAnchor}\n${javaNewMethod}`,
+          );
+        } else {
+          // Fallback: Add before the closing brace of the anonymous class
+          const rnHostEndRegex =
+            /(\s*new\s*DefaultReactNativeHost\s*\([\s\S]*?\n)(\s*\});\s*$/m;
+          if (rnHostEndRegex.test(contents)) {
+            contents = contents.replace(
+              rnHostEndRegex,
+              `$1${javaNewMethod}\n$2`,
+            );
+            throw new Error(
+              "[withHotUpdater] Java: Could not find Hermes anchor. Added getJSBundleFile before closing brace.",
+            );
+          }
+          throw new Error(
+            "[withHotUpdater] Java: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
+          );
+        }
+      }
     }
 
     cfg.modResults.contents = contents;
@@ -155,4 +224,5 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
   return modifiedConfig;
 };
 
+// Export the plugin using createRunOncePlugin for idempotency at the plugin level
 export default createRunOncePlugin(withHotUpdater, pkg.name, pkg.version);

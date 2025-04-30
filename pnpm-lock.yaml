@@ -54,8 +54,8 @@ importers:
   examples/expo-52:
     dependencies:
       '@hot-updater/react-native':
-        specifier: ^0.16.6
-        version: 0.16.6(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
+        specifier: workspace:*
+        version: link:../../packages/react-native
       expo:
         specifier: ~52.0.46
         version: 52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
@@ -71,27 +71,25 @@ importers:
       react-native:
         specifier: 0.76.9
         version: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
-    dependenciesMeta:
-      '@hot-updater/react-native':
-        injected: true
-      hot-updater:
-        injected: true
     devDependencies:
       '@babel/core':
         specifier: ^7.25.2
         version: 7.26.0
-      '@hot-updater/bare':
-        specifier: 0.16.6
-        version: 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
+      '@expo/metro-config':
+        specifier: ^0.19.12
+        version: 0.19.12
+      '@hot-updater/expo':
+        specifier: workspace:*
+        version: link:../../plugins/expo
       '@hot-updater/supabase':
-        specifier: 0.16.6
-        version: 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       '@react-native/metro-config':
-        specifier: ^0.79.1
-        version: 0.79.1(@babel/core@7.26.0)
+        specifier: 0.76.9
+        version: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.79.1(@babel/core@7.26.0))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
+        version: 2.0.1(@react-native/metro-config@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
@@ -99,14 +97,20 @@ importers:
         specifier: ~18.3.12
         version: 18.3.20
       babel-preset-expo:
-        specifier: ^12.0.11
+        specifier: 12.0.11
         version: 12.0.11(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
+      expo-font:
+        specifier: ^13.0.4
+        version: 13.0.4(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      expo-modules-core:
+        specifier: ^2.2.3
+        version: 2.2.3
       hot-updater:
-        specifier: ^0.16.6
-        version: 0.16.6(@hot-updater/aws@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3))(@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3))(@hot-updater/supabase@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@types/node@22.13.5)(typescript@5.8.3)
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
       typescript:
         specifier: ^5.3.3
         version: 5.8.3
@@ -1045,6 +1049,25 @@ importers:
       xdg-app-paths:
         specifier: ^8.3.0
         version: 8.3.0
+
+  plugins/expo:
+    dependencies:
+      '@hot-updater/bare':
+        specifier: workspace:*
+        version: link:../bare
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.8.7
+        version: 22.13.5
+      execa:
+        specifier: ^9.5.2
+        version: 9.5.2
+      uuidv7:
+        specifier: ^1.0.2
+        version: 1.0.2
 
   plugins/firebase:
     dependencies:
@@ -2176,12 +2199,6 @@ packages:
 
   '@babel/plugin-transform-flow-strip-types@7.25.9':
     resolution: {integrity: sha512-/VVukELzPDdci7UUsWQaSkhgnjIWXnIyRpM02ldxaVoFK96c41So8JcKT3m0gYjyv7j5FNPGS5vfELrWalkbDA==}
-    engines: {node: '>=6.9.0'}
-    peerDependencies:
-      '@babel/core': ^7.0.0-0
-
-  '@babel/plugin-transform-for-of@7.22.15':
-    resolution: {integrity: sha512-me6VGeHsx30+xh9fbDLLPi0J1HzmeIIyenoOQHuw2D4m2SAU3NrspX5XxJLBpqn5yrLzrlw2Iy3RA//Bx27iOA==}
     engines: {node: '>=6.9.0'}
     peerDependencies:
       '@babel/core': ^7.0.0-0
@@ -3787,38 +3804,6 @@ packages:
       wrangler:
         optional: true
 
-  '@hot-updater/aws@0.16.6':
-    resolution: {integrity: sha512-IAgOhgaEW+vKhoLSeEGILResH87CdQG+F1sq6sjuxxwbsq0Mdo8cjEq+s1+seuJTxWnzo/wo/BcyjVb5E0222w==}
-
-  '@hot-updater/bare@0.16.6':
-    resolution: {integrity: sha512-mw3S2mMxr/WPLNa/8L1AfKwmqw1yUV0BNjci1aQI9ZWb9vM4+kct5zSbOrH/PJxpbtOuLzEdsEGJ5RvQk6pb7w==}
-
-  '@hot-updater/cloudflare@0.16.6':
-    resolution: {integrity: sha512-VaTV1TteeoFumAKYBiXqeyZmYwlshtfnzk/LeVkIrMpbelDdYTALTL+TaV7yu4U6azzuehTU7jKsDO0cgKrcpw==}
-
-  '@hot-updater/console@0.16.6':
-    resolution: {integrity: sha512-2SuCokzXVWicxwGbmUKRwC6iTThEONaUY38cork7VGQbd9uTMhxskI/lOM6GIOEApmJclwVJmeQe2z4ivEEkXg==}
-
-  '@hot-updater/core@0.16.6':
-    resolution: {integrity: sha512-xFHfqv/9c9JLKulza7tuQdzVLmxDbFyROpPJ8SnkIaBI0JJbpuFEIl1VKZwgjylkwCJySMClZM8vssMx0IklDQ==}
-
-  '@hot-updater/firebase@0.16.6':
-    resolution: {integrity: sha512-ZckJsaKQqkEm/vZJuONLfClakFaUjvtfb7Ah513jZ77Rzz5DyTXZVi1Jv1u2TLCMvYheeM7Cwy9qIIHn5pz5Ng==}
-    peerDependencies:
-      firebase-admin: '*'
-
-  '@hot-updater/js@0.16.6':
-    resolution: {integrity: sha512-vZs/LDWfj1vbbtze4+JKSr2R2xLoZiKdCODUbOZhrNSpVSgDD9+AY2WsfakJD8peiQLeya/jM33U8syGeK0NBQ==}
-
-  '@hot-updater/plugin-core@0.16.6':
-    resolution: {integrity: sha512-a/MLsQbc8PWZwstjRtENW5ECQa/DLWlW26wroBv0K9LQmbEU852S8tQ8zT42HbryvM9cPdZOk4ivSKo8oM/JDw==}
-
-  '@hot-updater/react-native@0.16.6':
-    resolution: {integrity: sha512-SueI5K7+gJuz1/0ktuegxdKK4zVqVwWHiCNpMG7q6kqjAuVrE9hAPmqvM9sVB717BN3RUpb28k3Z1BbQ2WjMMg==}
-    peerDependencies:
-      react: '*'
-      react-native: '*'
-
   '@hot-updater/react-native@file:packages/react-native':
     resolution: {directory: packages/react-native, type: directory}
     peerDependencies:
@@ -3828,9 +3813,6 @@ packages:
     peerDependenciesMeta:
       expo:
         optional: true
-
-  '@hot-updater/supabase@0.16.6':
-    resolution: {integrity: sha512-v8Qf6ulpDbK9IZavy1a0l97hnZYa6bn4Z2BNyZbARzt/rNHTL9lScwq4IjlyZ8Vbw0bI6bgMWoYl71xo0g60oA==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -5060,6 +5042,10 @@ packages:
 
   '@react-native/metro-config@0.76.1':
     resolution: {integrity: sha512-RvsflPKsQ1tEaHDJksnMWwW5wtv8fskMRviL/jHlEW/ULEQ/MOE2yjuvJlRQkNvfqlJjkc1mczjy4+RO3mDQ6g==}
+    engines: {node: '>=18'}
+
+  '@react-native/metro-config@0.76.9':
+    resolution: {integrity: sha512-LWsj7mUfujALUa+iGuEGzW4BqtuHa8zI3zS2T+uIjy2vI40+hRoP70iPOEiesNwVQTq/uSZELbe3HAo4WaX5gA==}
     engines: {node: '>=18'}
 
   '@react-native/metro-config@0.77.0':
@@ -7153,10 +7139,6 @@ packages:
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
     engines: {node: '>=8'}
-
-  ansi-regex@6.0.1:
-    resolution: {integrity: sha512-n5M855fKb2SsfMIiFFoVrABHJC8QtHwVx+mHWP3QcEqBHYienj5dHSgjbxtC0WEZXYt4wcD6zrQElDPhFuZgfA==}
-    engines: {node: '>=12'}
 
   ansi-regex@6.1.0:
     resolution: {integrity: sha512-7HSX4QQb4CspciLpVFwyRe79O3xsIZDDLER21kERQ71oaPodF8jL725AgJMFAYbooIqolJoRLuM81SpeUkpkvA==}
@@ -9995,24 +9977,6 @@ packages:
     resolution: {integrity: sha512-puUZAUKT5m8Zzvs72XWy3HtvVbTWljRE66cP60bxJzAqf2DgICo7lYTY2IHUmLnNpjYvw5bvmoHvPc0QO2a62w==}
     engines: {node: ^16.14.0 || >=18.0.0}
 
-  hot-updater@0.16.6:
-    resolution: {integrity: sha512-Caa6KDPfBjB+UFpcR2R1Mjm9lVhzwUhgOjQhGk2LF9bQ/+OgBAUSy1aVgTTMAsQRLef21K0PvgidhEqC5l7gEA==}
-    hasBin: true
-    peerDependencies:
-      '@hot-updater/aws': '*'
-      '@hot-updater/cloudflare': '*'
-      '@hot-updater/firebase': '*'
-      '@hot-updater/supabase': '*'
-    peerDependenciesMeta:
-      '@hot-updater/aws':
-        optional: true
-      '@hot-updater/cloudflare':
-        optional: true
-      '@hot-updater/firebase':
-        optional: true
-      '@hot-updater/supabase':
-        optional: true
-
   hpack.js@2.1.6:
     resolution: {integrity: sha512-zJxVehUdMGIKsRaNt7apO2Gqp0BdqW5yaiGHXXmbpvxgBYVZnAql+BJb4RO5ad2MgpbZKn5G6nMnegrH1FcNYQ==}
 
@@ -10146,11 +10110,6 @@ packages:
   image-size@0.9.7:
     resolution: {integrity: sha512-KRVgLNZkr00YGN0qn9MlIrmlxbRhsCcEb1Byq3WKGnIV4M48iD185cprRtaoK4t5iC+ym2Q5qlArxZ/V1yzDgA==}
     engines: {node: '>=10.18.0'}
-    hasBin: true
-
-  image-size@1.0.2:
-    resolution: {integrity: sha512-xfOoWjceHntRb3qFCrh5ZFORYH8XCdYpASltMhZ/Q0KZiOwjdE/Yl2QCiWdwD+lygV5bMCvauzgu5PxBX/Yerg==}
-    engines: {node: '>=14.0.0'}
     hasBin: true
 
   image-size@1.2.1:
@@ -17335,11 +17294,6 @@ snapshots:
       '@babel/helper-plugin-utils': 7.25.9
       '@babel/plugin-syntax-flow': 7.26.0(@babel/core@7.26.0)
 
-  '@babel/plugin-transform-for-of@7.22.15(@babel/core@7.26.0)':
-    dependencies:
-      '@babel/core': 7.26.0
-      '@babel/helper-plugin-utils': 7.25.9
-
   '@babel/plugin-transform-for-of@7.25.9(@babel/core@7.26.0)':
     dependencies:
       '@babel/core': 7.26.0
@@ -19529,86 +19483,6 @@ snapshots:
       miniflare: 4.20250321.0
       wrangler: 4.5.0(@cloudflare/workers-types@4.20250317.0)
 
-  '@hot-updater/aws@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@aws-sdk/client-cloudfront': 3.772.0
-      '@aws-sdk/client-iam': 3.772.0
-      '@aws-sdk/client-lambda': 3.772.0
-      '@aws-sdk/client-s3': 3.772.0
-      '@aws-sdk/client-ssm': 3.772.0
-      '@aws-sdk/credential-providers': 3.772.0
-      '@aws-sdk/lib-storage': 3.772.0(@aws-sdk/client-s3@3.772.0)
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      aws-lambda: 1.0.7
-    transitivePeerDependencies:
-      - '@types/node'
-      - aws-crt
-      - typescript
-    optional: true
-
-  '@hot-updater/bare@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-    transitivePeerDependencies:
-      - '@types/node'
-      - typescript
-
-  '@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/js': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      cloudflare: 4.2.0(encoding@0.1.13)
-    transitivePeerDependencies:
-      - '@types/node'
-      - encoding
-      - typescript
-    optional: true
-
-  '@hot-updater/console@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-    transitivePeerDependencies:
-      - '@types/node'
-      - typescript
-
-  '@hot-updater/core@0.16.6': {}
-
-  '@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      firebase: 11.6.0
-      firebase-admin: 13.2.0(encoding@0.1.13)
-    transitivePeerDependencies:
-      - '@react-native-async-storage/async-storage'
-      - '@types/node'
-      - typescript
-    optional: true
-
-  '@hot-updater/js@0.16.6':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-
-  '@hot-updater/plugin-core@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      cosmiconfig: 9.0.0(typescript@5.8.3)
-      cosmiconfig-typescript-loader: 5.0.0(@types/node@22.13.5)(cosmiconfig@9.0.0(typescript@5.8.3))(typescript@5.8.3)
-      ts-morph: 25.0.1
-    transitivePeerDependencies:
-      - '@types/node'
-      - typescript
-
-  '@hot-updater/react-native@0.16.6(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/js': 0.16.6
-      react: 18.3.1
-      react-native: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
-      use-sync-external-store: 1.4.0(react@18.3.1)
-
   '@hot-updater/react-native@file:packages/react-native(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)':
     dependencies:
       '@hot-updater/core': link:packages/core
@@ -19618,17 +19492,6 @@ snapshots:
       use-sync-external-store: 1.4.0(react@19.0.0)
     optionalDependencies:
       expo: 52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.0.4))(@types/react@19.1.2)(react@19.0.0))(react@19.0.0)
-
-  '@hot-updater/supabase@0.16.6(@types/node@22.13.5)(typescript@5.8.3)':
-    dependencies:
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      '@supabase/supabase-js': 2.47.10
-    transitivePeerDependencies:
-      - '@types/node'
-      - bufferutil
-      - typescript
-      - utf-8-validate
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
@@ -21717,7 +21580,7 @@ snapshots:
 
   '@react-native/codegen@0.76.2(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
-      '@babel/parser': 7.26.2
+      '@babel/parser': 7.26.9
       '@babel/preset-env': 7.26.0(@babel/core@7.26.0)
       glob: 7.2.3
       hermes-parser: 0.23.1
@@ -21807,9 +21670,9 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       invariant: 2.2.4
-      metro: 0.81.0
+      metro: 0.81.4
       metro-config: 0.81.4
-      metro-core: 0.81.0
+      metro-core: 0.81.4
       node-fetch: 2.7.0(encoding@0.1.13)
       readline: 1.3.0
     optionalDependencies:
@@ -21829,9 +21692,9 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       invariant: 2.2.4
-      metro: 0.81.0
+      metro: 0.81.4
       metro-config: 0.81.4
-      metro-core: 0.81.0
+      metro-core: 0.81.4
       node-fetch: 2.7.0(encoding@0.1.13)
       readline: 1.3.0
       semver: 7.7.1
@@ -21875,9 +21738,9 @@ snapshots:
       chalk: 4.1.2
       debug: 2.6.9
       invariant: 2.2.4
-      metro: 0.81.0
+      metro: 0.81.4
       metro-config: 0.81.4
-      metro-core: 0.81.0
+      metro-core: 0.81.4
       readline: 1.3.0
       semver: 7.7.1
     optionalDependencies:
@@ -22195,7 +22058,8 @@ snapshots:
 
   '@react-native/js-polyfills@0.78.2': {}
 
-  '@react-native/js-polyfills@0.79.1': {}
+  '@react-native/js-polyfills@0.79.1':
+    optional: true
 
   '@react-native/metro-babel-transformer@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -22265,6 +22129,7 @@ snapshots:
       nullthrows: 1.1.1
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)':
     dependencies:
@@ -22286,6 +22151,19 @@ snapshots:
       '@react-native/metro-babel-transformer': 0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       metro-config: 0.81.0
       metro-runtime: 0.81.0
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@babel/preset-env'
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@react-native/metro-config@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
+    dependencies:
+      '@react-native/js-polyfills': 0.76.9
+      '@react-native/metro-babel-transformer': 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      metro-config: 0.81.4
+      metro-runtime: 0.81.4
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
@@ -22315,6 +22193,7 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+    optional: true
 
   '@react-native/normalize-color@2.1.0': {}
 
@@ -22520,6 +22399,16 @@ snapshots:
     optionalDependencies:
       '@react-native/metro-config': 0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
 
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@rnx-kit/tools-node': 3.0.0
+      '@rnx-kit/tools-react-native': 2.0.0
+      '@rnx-kit/tools-workspaces': 0.2.0
+      react: 18.3.1
+      react-native: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
+    optionalDependencies:
+      '@react-native/metro-config': 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@15.0.1)(@types/react@18.3.20)(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@rnx-kit/tools-node': 3.0.0
@@ -22537,16 +22426,6 @@ snapshots:
       '@rnx-kit/tools-workspaces': 0.2.0
       react: 18.2.0
       react-native: 0.71.19(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)(react@18.2.0)
-    optionalDependencies:
-      '@react-native/metro-config': 0.79.1(@babel/core@7.26.0)
-
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.79.1(@babel/core@7.26.0))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@rnx-kit/tools-node': 3.0.0
-      '@rnx-kit/tools-react-native': 2.0.0
-      '@rnx-kit/tools-workspaces': 0.2.0
-      react: 18.3.1
-      react-native: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
     optionalDependencies:
       '@react-native/metro-config': 0.79.1(@babel/core@7.26.0)
 
@@ -24811,8 +24690,6 @@ snapshots:
 
   ansi-regex@5.0.1: {}
 
-  ansi-regex@6.0.1: {}
-
   ansi-regex@6.1.0: {}
 
   ansi-sequence-parser@1.1.1: {}
@@ -24840,7 +24717,7 @@ snapshots:
 
   archiver-utils@5.0.2:
     dependencies:
-      glob: 10.4.1
+      glob: 10.4.5
       graceful-fs: 4.2.11
       is-stream: 2.0.1
       lazystream: 1.0.1
@@ -25266,25 +25143,25 @@ snapshots:
       '@babel/plugin-syntax-flow': 7.22.5(@babel/core@7.26.0)
       '@babel/plugin-syntax-jsx': 7.25.9(@babel/core@7.26.0)
       '@babel/plugin-syntax-object-rest-spread': 7.8.3(@babel/core@7.26.0)
-      '@babel/plugin-transform-arrow-functions': 7.22.5(@babel/core@7.26.0)
+      '@babel/plugin-transform-arrow-functions': 7.25.9(@babel/core@7.26.0)
       '@babel/plugin-transform-block-scoped-functions': 7.22.5(@babel/core@7.26.0)
-      '@babel/plugin-transform-block-scoping': 7.23.0(@babel/core@7.26.0)
-      '@babel/plugin-transform-classes': 7.22.15(@babel/core@7.26.0)
-      '@babel/plugin-transform-computed-properties': 7.22.5(@babel/core@7.26.0)
-      '@babel/plugin-transform-destructuring': 7.23.0(@babel/core@7.26.0)
-      '@babel/plugin-transform-flow-strip-types': 7.22.5(@babel/core@7.26.0)
-      '@babel/plugin-transform-for-of': 7.22.15(@babel/core@7.26.0)
-      '@babel/plugin-transform-function-name': 7.22.5(@babel/core@7.26.0)
-      '@babel/plugin-transform-literals': 7.22.5(@babel/core@7.26.0)
+      '@babel/plugin-transform-block-scoping': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-classes': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-computed-properties': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-destructuring': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-flow-strip-types': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-for-of': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-function-name': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-literals': 7.25.9(@babel/core@7.26.0)
       '@babel/plugin-transform-member-expression-literals': 7.22.5(@babel/core@7.26.0)
       '@babel/plugin-transform-modules-commonjs': 7.25.9(@babel/core@7.26.0)
       '@babel/plugin-transform-object-super': 7.22.5(@babel/core@7.26.0)
       '@babel/plugin-transform-parameters': 7.25.9(@babel/core@7.26.0)
       '@babel/plugin-transform-property-literals': 7.22.5(@babel/core@7.26.0)
-      '@babel/plugin-transform-react-display-name': 7.22.5(@babel/core@7.26.0)
-      '@babel/plugin-transform-react-jsx': 7.22.15(@babel/core@7.26.0)
-      '@babel/plugin-transform-shorthand-properties': 7.22.5(@babel/core@7.26.0)
-      '@babel/plugin-transform-spread': 7.22.5(@babel/core@7.26.0)
+      '@babel/plugin-transform-react-display-name': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-react-jsx': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-shorthand-properties': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-spread': 7.25.9(@babel/core@7.26.0)
       '@babel/plugin-transform-template-literals': 7.22.5(@babel/core@7.26.0)
       babel-plugin-syntax-trailing-function-commas: 7.0.0-beta.0
     transitivePeerDependencies:
@@ -27149,7 +27026,7 @@ snapshots:
 
   execa@5.1.1:
     dependencies:
-      cross-spawn: 7.0.3
+      cross-spawn: 7.0.6
       get-stream: 6.0.1
       human-signals: 2.1.0
       is-stream: 2.0.1
@@ -27213,7 +27090,7 @@ snapshots:
       content-type: 1.0.5
       deep-freeze: 0.0.1
       events-listener: 1.1.0
-      glob: 10.4.1
+      glob: 10.4.5
       json-ptr: 3.1.1
       json-schema-traverse: 1.0.0
       lodash: 4.17.21
@@ -28848,25 +28725,6 @@ snapshots:
     dependencies:
       lru-cache: 10.2.2
 
-  hot-updater@0.16.6(@hot-updater/aws@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@hot-updater/cloudflare@0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3))(@hot-updater/firebase@0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3))(@hot-updater/supabase@0.16.6(@types/node@22.13.5)(typescript@5.8.3))(@types/node@22.13.5)(typescript@5.8.3):
-    dependencies:
-      '@clack/prompts': 0.10.0
-      '@hot-updater/console': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      '@hot-updater/core': 0.16.6
-      '@hot-updater/plugin-core': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      commander: 11.1.0
-      cosmiconfig: 9.0.0(typescript@5.8.3)
-      cosmiconfig-typescript-loader: 5.0.0(@types/node@22.13.5)(cosmiconfig@9.0.0(typescript@5.8.3))(typescript@5.8.3)
-      es-git: 0.2.0
-    optionalDependencies:
-      '@hot-updater/aws': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-      '@hot-updater/cloudflare': 0.16.6(@types/node@22.13.5)(encoding@0.1.13)(typescript@5.8.3)
-      '@hot-updater/firebase': 0.16.6(@types/node@22.13.5)(firebase-admin@13.2.0(encoding@0.1.13))(typescript@5.8.3)
-      '@hot-updater/supabase': 0.16.6(@types/node@22.13.5)(typescript@5.8.3)
-    transitivePeerDependencies:
-      - '@types/node'
-      - typescript
-
   hpack.js@2.1.6:
     dependencies:
       inherits: 2.0.4
@@ -29025,10 +28883,6 @@ snapshots:
   image-size@0.6.3: {}
 
   image-size@0.9.7:
-    dependencies:
-      queue: 6.0.2
-
-  image-size@1.0.2:
     dependencies:
       queue: 6.0.2
 
@@ -29688,7 +29542,7 @@ snapshots:
       jest-runner: 29.7.0
       jest-util: 29.7.0
       jest-validate: 29.7.0
-      micromatch: 4.0.5
+      micromatch: 4.0.8
       parse-json: 5.2.0
       pretty-format: 29.7.0
       slash: 3.0.0
@@ -29719,7 +29573,7 @@ snapshots:
       jest-runner: 29.7.0
       jest-util: 29.7.0
       jest-validate: 29.7.0
-      micromatch: 4.0.5
+      micromatch: 4.0.8
       parse-json: 5.2.0
       pretty-format: 29.7.0
       slash: 3.0.0
@@ -29750,7 +29604,7 @@ snapshots:
       jest-runner: 29.7.0
       jest-util: 29.7.0
       jest-validate: 29.7.0
-      micromatch: 4.0.5
+      micromatch: 4.0.8
       parse-json: 5.2.0
       pretty-format: 29.7.0
       slash: 3.0.0
@@ -29829,7 +29683,7 @@ snapshots:
       '@types/stack-utils': 2.0.2
       chalk: 4.1.2
       graceful-fs: 4.2.11
-      micromatch: 4.0.5
+      micromatch: 4.0.8
       pretty-format: 29.7.0
       slash: 3.0.0
       stack-utils: 2.0.6
@@ -30908,6 +30762,7 @@ snapshots:
       nullthrows: 1.1.1
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   metro-cache-key@0.73.10: {}
 
@@ -30926,6 +30781,7 @@ snapshots:
   metro-cache-key@0.82.1:
     dependencies:
       flow-enums-runtime: 0.0.6
+    optional: true
 
   metro-cache@0.73.10:
     dependencies:
@@ -30959,6 +30815,7 @@ snapshots:
       exponential-backoff: 3.1.1
       flow-enums-runtime: 0.0.6
       metro-core: 0.82.1
+    optional: true
 
   metro-config@0.73.10(encoding@0.1.13):
     dependencies:
@@ -31047,6 +30904,7 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+    optional: true
 
   metro-core@0.73.10:
     dependencies:
@@ -31080,6 +30938,7 @@ snapshots:
       flow-enums-runtime: 0.0.6
       lodash.throttle: 4.1.1
       metro-resolver: 0.82.1
+    optional: true
 
   metro-file-map@0.73.10:
     dependencies:
@@ -31183,6 +31042,7 @@ snapshots:
       walker: 1.0.8
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   metro-hermes-compiler@0.73.10: {}
 
@@ -31236,6 +31096,7 @@ snapshots:
     dependencies:
       flow-enums-runtime: 0.0.6
       terser: 5.31.0
+    optional: true
 
   metro-minify-uglify@0.73.10:
     dependencies:
@@ -31376,6 +31237,7 @@ snapshots:
   metro-resolver@0.82.1:
     dependencies:
       flow-enums-runtime: 0.0.6
+    optional: true
 
   metro-runtime@0.73.10:
     dependencies:
@@ -31405,6 +31267,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.26.0
       flow-enums-runtime: 0.0.6
+    optional: true
 
   metro-source-map@0.73.10:
     dependencies:
@@ -31489,6 +31352,7 @@ snapshots:
       vlq: 1.0.1
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   metro-symbolicate@0.73.10:
     dependencies:
@@ -31556,6 +31420,7 @@ snapshots:
       vlq: 1.0.1
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   metro-transform-plugins@0.73.10:
     dependencies:
@@ -31619,6 +31484,7 @@ snapshots:
       nullthrows: 1.1.1
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   metro-transform-worker@0.73.10(encoding@0.1.13):
     dependencies:
@@ -31741,6 +31607,7 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+    optional: true
 
   metro@0.73.10(encoding@0.1.13):
     dependencies:
@@ -31877,7 +31744,7 @@ snapshots:
       error-stack-parser: 2.1.4
       graceful-fs: 4.2.11
       hermes-parser: 0.20.1
-      image-size: 1.0.2
+      image-size: 1.2.1
       invariant: 2.2.4
       jest-worker: 29.7.0
       jsc-safe-url: 0.2.4
@@ -31929,7 +31796,7 @@ snapshots:
       flow-enums-runtime: 0.0.6
       graceful-fs: 4.2.11
       hermes-parser: 0.24.0
-      image-size: 1.0.2
+      image-size: 1.2.1
       invariant: 2.2.4
       jest-worker: 29.7.0
       jsc-safe-url: 0.2.4
@@ -32052,6 +31919,7 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+    optional: true
 
   micromark-core-commonmark@1.1.0:
     dependencies:
@@ -32620,7 +32488,7 @@ snapshots:
     dependencies:
       env-paths: 2.2.1
       exponential-backoff: 3.1.1
-      glob: 10.4.1
+      glob: 10.4.5
       graceful-fs: 4.2.11
       make-fetch-happen: 13.0.1
       nopt: 7.2.1
@@ -32766,6 +32634,7 @@ snapshots:
   ob1@0.82.1:
     dependencies:
       flow-enums-runtime: 0.0.6
+    optional: true
 
   object-assign@4.1.1: {}
 
@@ -35377,7 +35246,7 @@ snapshots:
 
   strip-ansi@7.1.0:
     dependencies:
-      ansi-regex: 6.0.1
+      ansi-regex: 6.1.0
 
   strip-bom-string@1.0.0: {}
 

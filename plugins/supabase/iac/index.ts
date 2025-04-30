@@ -5,6 +5,7 @@ import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 
 import path from "path";
 import {
+  type BuildType,
   ConfigBuilder,
   type ProviderConfig,
   copyDirToTmp,
@@ -15,7 +16,7 @@ import {
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 
-const getConfigTemplate = (build: "bare" | "rnef") => {
+const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -318,7 +319,7 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
 export const runInit = async ({
   build,
 }: {
-  build: "bare" | "rnef";
+  build: BuildType;
 }) => {
   const project = await selectProject();
 

@@ -99,22 +99,6 @@ export async function getHermesCommand(cwd: string): Promise<string> {
 }
 
 /**
- * for sentry
- * insert debug_id to sourcemap
- * @param filePath
- * @param debugId
- */
-const insertDebugIdToSourceMap = (filePath: string, debugId: string) => {
-  const content = fs.readFileSync(filePath, "utf8");
-
-  const sourceMap = JSON.parse(content);
-  sourceMap.debug_id = debugId;
-  const patched = JSON.stringify(sourceMap);
-
-  fs.writeFileSync(filePath, patched);
-};
-
-/**
  * Compiles a JS bundle into an HBC file using the Hermes compiler,
  * and merges the source maps if enabled.
  *

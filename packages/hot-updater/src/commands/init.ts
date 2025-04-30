@@ -1,6 +1,7 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
+import type { BuildType } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
 const REQUIRED_PACKAGES = {
@@ -55,6 +56,14 @@ export const init = async () => {
         hint: "React Native Enterprise Framework by Callstack",
         label: "RNEF",
       },
+      {
+        value: {
+          name: "expo",
+          dependencies: [],
+          devDependencies: ["@hot-updater/expo"],
+        },
+        label: "Expo",
+      },
     ],
   });
 
@@ -102,7 +111,7 @@ export const init = async () => {
     process.exit(1);
   }
 
-  const build = buildPluginPackage.name as "bare" | "rnef";
+  const build = buildPluginPackage.name as BuildType;
   switch (provider) {
     case "supabase": {
       const supabase = await import("@hot-updater/supabase/iac");

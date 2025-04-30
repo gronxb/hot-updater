@@ -8,7 +8,7 @@
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React from "react";
 import { useEffect, useState } from "react";
-import { Button, Modal, SafeAreaView, Text, View } from "react-native";
+import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -37,7 +37,7 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
-      <Text>Channel "{HotUpdater.getChannel()}"</Text>
+      <Text>Channel {String(HotUpdater.getChannel())}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
@@ -71,15 +71,15 @@ function App(): React.JSX.Element {
       >
         BundleId: {bundleId}
       </Text>
-      {/* 
+
       <Image
         style={{
           width: 100,
           height: 100,
         }}
-        source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
-      /> */}
+        source={require("./assets/logo.png")}
+        // source={require("./assets/test/_image.png")}
+      />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
     </SafeAreaView>
@@ -87,7 +87,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `${process.env.HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  source: `${process.env.EXPO_PUBLIC_HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

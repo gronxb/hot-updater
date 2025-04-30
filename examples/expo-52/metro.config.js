@@ -1,4 +1,4 @@
-const path = require("node:path");
+const path = require("path");
 const { FileStore } = require("metro-cache");
 const { makeMetroConfig } = require("@rnx-kit/metro-config");
 const { getDefaultConfig } = require("expo/metro-config");

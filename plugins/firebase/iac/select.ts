@@ -1,6 +1,7 @@
 import fs from "fs";
 import * as p from "@clack/prompts";
 import {
+  type BuildType,
   ConfigBuilder,
   type ProviderConfig,
   link,
@@ -8,7 +9,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 
-const getConfigTemplate = (build: "bare" | "rnef") => {
+const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
     configString: `firebaseStorage({
@@ -48,7 +49,7 @@ export const setEnv = async ({
 }: {
   projectId: string;
   storageBucket: string;
-  build: "bare" | "rnef";
+  build: BuildType;
 }) => {
   await makeEnv({
     GOOGLE_APPLICATION_CREDENTIALS: {
