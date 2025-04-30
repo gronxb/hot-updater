@@ -18,25 +18,24 @@ interface RunBundleArgs {
   channel: string;
 }
 
-const isHermesEnabled = (cwd: string, platform: string) => {
-  let enableHermes = true;
+const isHermesEnabled = (cwd: string, platform: string): boolean => {
   try {
     const appJsonPath = path.join(cwd, "app.json");
-    const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
+    const { expo } = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
 
-    enableHermes = true;
+    const platformJsEngine = expo?.[platform]?.jsEngine;
+    const commonJsEngine = expo?.jsEngine;
 
-    if (appJson.expo?.jsEngine !== undefined) {
-      enableHermes = appJson.expo.jsEngine === "hermes";
+    if (platformJsEngine !== undefined) {
+      return platformJsEngine === "hermes";
     }
 
-    if (appJson.expo?.[platform]?.jsEngine !== undefined) {
-      enableHermes = appJson.expo[platform].jsEngine === "hermes";
+    if (commonJsEngine !== undefined) {
+      return commonJsEngine === "hermes";
     }
-  } catch (error) {
-    return true;
-  }
-  return enableHermes;
+  } catch {}
+
+  return true;
 };
 
 const runBundle = async ({
