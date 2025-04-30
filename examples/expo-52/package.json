@@ -20,7 +20,6 @@
     "@babel/core": "^7.25.2",
     "@hot-updater/expo": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
-    "@react-native/metro-config": "^0.79.1",
     "@rnx-kit/metro-config": "^2.0.1",
     "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
     "@types/react": "~18.3.12",
@@ -28,11 +27,6 @@
     "dotenv": "^16.4.5",
     "hot-updater": "workspace:*",
     "typescript": "^5.3.3"
-  },
-  "dependenciesMeta": {
-    "@hot-updater/react-native": {
-      "injected": true
-    }
   },
   "private": true
 }
