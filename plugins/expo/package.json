@@ -25,6 +25,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
+    "@hot-updater/bare": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
