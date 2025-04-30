@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/aws",
   "type": "module",
-  "version": "0.16.6",
+  "version": "0.16.7-0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
