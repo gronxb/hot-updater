@@ -27,7 +27,6 @@ class ReactIntegrationManager(
             }
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to setJSBundle: ${e.message}")
-            throw IllegalAccessException("Could not setJSBundle")
         }
     }
 
@@ -49,7 +48,6 @@ class ReactIntegrationManager(
             }
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload: ${e.message}")
-            throw e
         }
     }
 }
