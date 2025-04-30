@@ -75,24 +75,27 @@ importers:
       '@babel/core':
         specifier: ^7.25.2
         version: 7.26.0
-      '@expo/metro-config':
-        specifier: 0.19.12
-        version: 0.19.12
       '@hot-updater/expo':
         specifier: workspace:*
         version: link:../../plugins/expo
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
+      '@react-native/metro-config':
+        specifier: 0.76.9
+        version: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.79.1(@babel/core@7.26.0))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
+        version: 2.0.1(@react-native/metro-config@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
       '@types/react':
         specifier: ~18.3.12
         version: 18.3.20
+      babel-preset-expo:
+        specifier: ^12.0.11
+        version: 12.0.11(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
@@ -374,13 +377,13 @@ importers:
         version: 0.74.83
       '@react-native/metro-config':
         specifier: 0.74.83
-        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
+        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@react-native/typescript-config':
         specifier: 0.74.83
         version: 0.74.83
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
+        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
@@ -886,7 +889,7 @@ importers:
         version: 0.76.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@15.0.1)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
       react-native-builder-bob:
         specifier: ^0.33.1
-        version: 0.33.1(typescript@5.8.3)
+        version: 0.33.1(encoding@0.1.13)(typescript@5.8.3)
 
   plugins/aws:
     dependencies:
@@ -3331,7 +3334,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {'0': node >=0.10.0}
+    engines: {node: '>=0.10.0'}
 
   '@expo/cli@0.17.13':
     resolution: {integrity: sha512-n13yxOmI3I0JidzMdFCH68tYKGDtK4XlDFk1vysZX7AIRKeDVRsSbHhma5jCla2bDt25RKmJBHA9KtzielwzAA==}
@@ -5027,6 +5030,10 @@ packages:
 
   '@react-native/metro-config@0.76.1':
     resolution: {integrity: sha512-RvsflPKsQ1tEaHDJksnMWwW5wtv8fskMRviL/jHlEW/ULEQ/MOE2yjuvJlRQkNvfqlJjkc1mczjy4+RO3mDQ6g==}
+    engines: {node: '>=18'}
+
+  '@react-native/metro-config@0.76.9':
+    resolution: {integrity: sha512-LWsj7mUfujALUa+iGuEGzW4BqtuHa8zI3zS2T+uIjy2vI40+hRoP70iPOEiesNwVQTq/uSZELbe3HAo4WaX5gA==}
     engines: {node: '>=18'}
 
   '@react-native/metro-config@0.77.0':
@@ -21651,9 +21658,9 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       invariant: 2.2.4
-      metro: 0.81.0
+      metro: 0.81.4
       metro-config: 0.81.4
-      metro-core: 0.81.0
+      metro-core: 0.81.4
       node-fetch: 2.7.0(encoding@0.1.13)
       readline: 1.3.0
     optionalDependencies:
@@ -21719,9 +21726,9 @@ snapshots:
       chalk: 4.1.2
       debug: 2.6.9
       invariant: 2.2.4
-      metro: 0.81.0
+      metro: 0.81.4
       metro-config: 0.81.4
-      metro-core: 0.81.0
+      metro-core: 0.81.4
       readline: 1.3.0
       semver: 7.7.1
     optionalDependencies:
@@ -22112,7 +22119,7 @@ snapshots:
       - supports-color
     optional: true
 
-  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)':
+  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
       '@react-native/js-polyfills': 0.74.83
       '@react-native/metro-babel-transformer': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
@@ -22121,10 +22128,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
-      - encoding
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -22132,6 +22136,19 @@ snapshots:
       '@react-native/metro-babel-transformer': 0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       metro-config: 0.81.0
       metro-runtime: 0.81.0
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@babel/preset-env'
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@react-native/metro-config@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
+    dependencies:
+      '@react-native/js-polyfills': 0.76.9
+      '@react-native/metro-babel-transformer': 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      metro-config: 0.81.4
+      metro-runtime: 0.81.4
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
@@ -22347,7 +22364,7 @@ snapshots:
 
   '@rnx-kit/console@2.0.0': {}
 
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@rnx-kit/tools-node': 3.0.0
       '@rnx-kit/tools-react-native': 2.0.0
@@ -22355,7 +22372,7 @@ snapshots:
       react: 18.2.0
       react-native: 0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0)
     optionalDependencies:
-      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
+      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
 
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@15.0.1)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -22366,6 +22383,16 @@ snapshots:
       react-native: 0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@15.0.1)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
     optionalDependencies:
       '@react-native/metro-config': 0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@rnx-kit/tools-node': 3.0.0
+      '@rnx-kit/tools-react-native': 2.0.0
+      '@rnx-kit/tools-workspaces': 0.2.0
+      react: 18.3.1
+      react-native: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
+    optionalDependencies:
+      '@react-native/metro-config': 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
 
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@15.0.1)(@types/react@18.3.20)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -22384,16 +22411,6 @@ snapshots:
       '@rnx-kit/tools-workspaces': 0.2.0
       react: 18.2.0
       react-native: 0.71.19(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)(react@18.2.0)
-    optionalDependencies:
-      '@react-native/metro-config': 0.79.1(@babel/core@7.26.0)
-
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.79.1(@babel/core@7.26.0))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@rnx-kit/tools-node': 3.0.0
-      '@rnx-kit/tools-react-native': 2.0.0
-      '@rnx-kit/tools-workspaces': 0.2.0
-      react: 18.3.1
-      react-native: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@15.0.1(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)
     optionalDependencies:
       '@react-native/metro-config': 0.79.1(@babel/core@7.26.0)
 
@@ -33488,7 +33505,7 @@ snapshots:
 
   react-lazy-with-preload@2.2.1: {}
 
-  react-native-builder-bob@0.33.1(typescript@5.8.3):
+  react-native-builder-bob@0.33.1(encoding@0.1.13)(typescript@5.8.3):
     dependencies:
       '@babel/core': 7.26.0
       '@babel/plugin-transform-strict-mode': 7.25.9(@babel/core@7.26.0)
@@ -33513,8 +33530,11 @@ snapshots:
       which: 2.0.2
       yargs: 17.7.2
     transitivePeerDependencies:
+      - bufferutil
+      - encoding
       - supports-color
       - typescript
+      - utf-8-validate
 
   react-native-codegen@0.71.6(@babel/preset-env@7.26.0(@babel/core@7.26.0)):
     dependencies:
