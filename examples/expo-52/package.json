@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@expo/metro-config": "0.19.12",
     "@hot-updater/expo": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@rnx-kit/metro-config": "^2.0.1",
