@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
 import { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { getBundleId, reload, updateBundle } from "./native";
+import { getBundleId, notifyAppReady, reload, updateBundle } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
@@ -144,6 +144,10 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
 
       useLayoutEffect(() => {
         initHotUpdater();
+      }, []);
+
+      useEffect(() => {
+        void notifyAppReady();
       }, []);
 
       if (

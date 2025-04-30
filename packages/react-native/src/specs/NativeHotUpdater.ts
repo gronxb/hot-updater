@@ -10,6 +10,7 @@ export interface Spec extends TurboModule {
    * use getConstants().APP_VERSION instead
    */
   getAppVersion(): Promise<string | null>;
+  notifyAppReady(): Promise<void>;
 
   setChannel(channel: string): Promise<void>;
 
