@@ -87,7 +87,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `${process.env.HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  source: `${process.env.EXPO_PUBLIC_HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View
