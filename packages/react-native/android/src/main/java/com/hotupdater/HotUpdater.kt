@@ -26,6 +26,12 @@ class HotUpdater : ReactPackage {
         listOf(HotUpdaterModule(context)).toMutableList()
 
     companion object {
+        private var executionCount: Int = 0
+
+        fun incrementExecutionCount() {
+            executionCount++
+        }
+
         fun getAppVersion(context: Context): String? {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             return packageInfo.versionName
@@ -143,9 +149,16 @@ class HotUpdater : ReactPackage {
             context: Context,
             bundleId: String,
             zipUrl: String?,
+            maxRetries: Double?,
             progressCallback: ((Double) -> Unit),
         ): Boolean {
             Log.d("HotUpdater", "updateBundle bundleId $bundleId zipUrl $zipUrl")
+
+            if (maxRetries != null && executionCount > maxRetries) {
+                throw IllegalStateException("Retry limit of $maxRetries exceeded for bundle $bundleId")
+            }
+
+            incrementExecutionCount()
             if (zipUrl.isNullOrEmpty()) {
                 setBundleURL(context, null)
                 return true

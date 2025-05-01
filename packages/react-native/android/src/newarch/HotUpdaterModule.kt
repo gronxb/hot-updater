@@ -5,6 +5,7 @@ import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.launch
@@ -37,29 +38,41 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun updateBundle(
-        bundleId: String,
-        zipUrl: String?,
+        bundleData: ReadableMap,
         promise: Promise,
     ) {
         // Use lifecycleScope when currentActivity is FragmentActivity
         (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
-            val isSuccess =
-                HotUpdater.updateBundle(
-                    mReactApplicationContext,
-                    bundleId,
-                    zipUrl,
-                ) { progress ->
-                    val params =
-                        WritableNativeMap().apply {
-                            putDouble("progress", progress)
-                        }
+            try {
+                val bundleId = bundleData.getString("bundleId")!!
+                val zipUrl = bundleData.getString("zipUrl")
+                val maxRetries =
+                    if (bundleData.hasKey("maxRetries") && !bundleData.isNull("maxRetries")) {
+                        bundleData.getDouble("maxRetries")
+                    } else {
+                        null
+                    }
+                val isSuccess =
+                    HotUpdater.updateBundle(
+                        mReactApplicationContext,
+                        bundleId,
+                        zipUrl,
+                        maxRetries,
+                    ) { progress ->
+                        val params =
+                            WritableNativeMap().apply {
+                                putDouble("progress", progress)
+                            }
 
-                    this@HotUpdaterModule
-                        .mReactApplicationContext
-                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                        .emit("onProgress", params)
-                }
-            promise.resolve(isSuccess)
+                        this@HotUpdaterModule
+                            .mReactApplicationContext
+                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                            .emit("onProgress", params)
+                    }
+                promise.resolve(isSuccess)
+            } catch (e: Exception) {
+                promise.reject("updateBundle", e)
+            }
         }
     }
 

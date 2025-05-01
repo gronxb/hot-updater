@@ -57,11 +57,21 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
  * @param {string | null} zipUrl - zip file URL. If null, it means rolling back to the built-in bundle
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
-export const updateBundle = (
-  bundleId: string,
-  zipUrl: string | null,
-): Promise<boolean> => {
-  return HotUpdaterNative.updateBundle(bundleId, zipUrl);
+export const updateBundle = ({
+  bundleId,
+  zipUrl,
+  maxRetries,
+}: {
+  bundleId: string;
+  zipUrl: string | null;
+  maxRetries?: number;
+}): Promise<boolean> => {
+  const bundleData = {
+    bundleId,
+    zipUrl,
+    maxRetries,
+  };
+  return HotUpdaterNative.updateBundle(bundleData);
 };
 
 /**

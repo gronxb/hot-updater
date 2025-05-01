@@ -1,10 +1,17 @@
 import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
 
+interface BundleData {
+  bundleId: string;
+  zipUrl: string | null;
+  maxRetries?: number;
+}
+
 export interface Spec extends TurboModule {
   // Methods
   reload(): void;
-  updateBundle(bundleId: string, zipUrl: string | null): Promise<boolean>;
+  updateBundle(bundleData: BundleData): Promise<boolean>;
+
   /**
    * @deprecated
    * use getConstants().APP_VERSION instead
