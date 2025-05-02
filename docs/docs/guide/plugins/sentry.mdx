@@ -45,14 +45,14 @@ Use `withSentry()` to wrap any compatible build plugin such as metro.
 Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the `hot-updater deploy` process.
 
 ```ts title="hot-updater.config.ts"
-import { metro } from "@hot-updater/metro";
+import { bare } from "@hot-updater/bare";
 import { withSentry } from "@hot-updater/sentry-plugin";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
 export default defineConfig({
   build: withSentry(
-    metro({
+    bare({
       enableHermes: false,
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),

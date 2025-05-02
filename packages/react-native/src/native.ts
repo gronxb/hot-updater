@@ -1,11 +1,16 @@
-import { NativeEventEmitter, NativeModules, Platform } from "react-native";
-
+import { NativeEventEmitter, Platform } from "react-native";
+import type { Spec } from "./specs/NativeHotUpdater";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
+declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
+declare const __HOT_UPDATER_CHANNEL: string | undefined;
+
 const HotUpdater = {
-  HOT_UPDATER_BUNDLE_ID: NIL_UUID,
-  CHANNEL: "production",
+  HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
+  CHANNEL: __HOT_UPDATER_CHANNEL || (!__DEV__ ? "production" : null),
 };
+
+const RCTNativeHotUpdater = require("./specs/NativeHotUpdater").default;
 
 const LINKING_ERROR =
   // biome-ignore lint/style/useTemplate: <explanation>
@@ -14,23 +19,18 @@ const LINKING_ERROR =
   "- You rebuilt the app after installing the package\n" +
   "- You are not using Expo Go\n";
 
-// @ts-expect-error
-const isTurboModuleEnabled = global.__turboModuleProxy != null;
-
-const HotUpdaterModule = isTurboModuleEnabled
-  ? require("./specs/NativeHotUpdater").default
-  : NativeModules.HotUpdater;
-
-const HotUpdaterNative = HotUpdaterModule
-  ? HotUpdaterModule
-  : new Proxy(
-      {},
-      {
-        get() {
-          throw new Error(LINKING_ERROR);
+const HotUpdaterNative = (
+  RCTNativeHotUpdater
+    ? RCTNativeHotUpdater
+    : new Proxy(
+        {},
+        {
+          get() {
+            throw new Error(LINKING_ERROR);
+          },
         },
-      },
-    );
+      )
+) as Spec;
 
 export type HotUpdaterEvent = {
   onProgress: {
@@ -57,11 +57,21 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
  * @param {string | null} zipUrl - zip file URL. If null, it means rolling back to the built-in bundle
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
-export const updateBundle = (
-  bundleId: string,
-  zipUrl: string | null,
-): Promise<boolean> => {
-  return HotUpdaterNative.updateBundle(bundleId, zipUrl);
+export const updateBundle = ({
+  bundleId,
+  zipUrl,
+  maxRetries,
+}: {
+  bundleId: string;
+  zipUrl: string | null;
+  maxRetries?: number;
+}): Promise<boolean> => {
+  const bundleData = {
+    bundleId,
+    zipUrl,
+    maxRetries,
+  };
+  return HotUpdaterNative.updateBundle(bundleData);
 };
 
 /**

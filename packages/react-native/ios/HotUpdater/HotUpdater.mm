@@ -41,7 +41,7 @@ RCT_EXPORT_MODULE();
             uuid = @"00000000-0000-0000-0000-000000000000";
             return;
         }
-        
+
         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
         unsigned char bytes[16];
         bytes[0] = (buildTimestampMs >> 40) & 0xFF;
@@ -50,20 +50,20 @@ RCT_EXPORT_MODULE();
         bytes[3] = (buildTimestampMs >> 16) & 0xFF;
         bytes[4] = (buildTimestampMs >> 8) & 0xFF;
         bytes[5] = buildTimestampMs & 0xFF;
-        
+
         bytes[6] = 0x70;
         bytes[7] = 0x00;
-        
+
         bytes[8] = 0x80;
         bytes[9] = 0x00;
-        
+
         bytes[10] = 0x00;
         bytes[11] = 0x00;
         bytes[12] = 0x00;
         bytes[13] = 0x00;
         bytes[14] = 0x00;
         bytes[15] = 0x00;
-        
+
         uuid = [NSString stringWithFormat:
                 @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
                 bytes[0], bytes[1], bytes[2], bytes[3],
@@ -87,7 +87,7 @@ RCT_EXPORT_MODULE();
 }
 
 - (NSDictionary *)constantsToExport {
-    return @{ 
+    return @{
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
         @"APP_VERSION": [self getAppVersion] ?: [NSNull null],
         @"CHANNEL": [self getChannel] ?: [NSNull null]
@@ -102,6 +102,14 @@ RCT_EXPORT_MODULE();
 
 - (HotUpdaterPrefs *)getPrefs {
     return [HotUpdaterPrefs sharedInstanceWithAppVersion:[self getAppVersion]];
+}
+
+#pragma mark - Method init execution count
+
+static NSInteger executionCount = 0;
+
++ (void)incrementExecutionCount {
+    executionCount++;
 }
 
 #pragma mark - Bundle URL Management
@@ -161,7 +169,7 @@ RCT_EXPORT_MODULE();
         NSLog(@"Failed to list bundle store directory: %@", error);
         return;
     }
-    
+
     NSMutableArray *bundleDirs = [NSMutableArray array];
     for (NSString *item in contents) {
         NSString *fullPath = [bundleStoreDir stringByAppendingPathComponent:item];
@@ -179,7 +187,7 @@ RCT_EXPORT_MODULE();
         NSDate *date2 = attr2[NSFileModificationDate] ?: [NSDate dateWithTimeIntervalSince1970:0];
         return [date2 compare:date1];
     }];
-    
+
     if (bundleDirs.count > 1) {
         NSArray *oldBundles = [bundleDirs subarrayWithRange:NSMakeRange(1, bundleDirs.count - 1)];
         for (NSString *oldBundle in oldBundles) {
@@ -195,7 +203,13 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - Update Bundle Method
 
-- (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl completion:(void (^)(BOOL success))completion {
+- (void)updateBundle:(NSString *)bundleId zipUrl:(NSURL *)zipUrl maxRetries:(NSNumber *)maxRetries completion:(void (^)(BOOL success))completion {
+    if (maxRetries != nil && executionCount > [maxRetries integerValue]) {
+        @throw [NSException exceptionWithName:@"MaxRetriesExceededException"
+                reason:[NSString stringWithFormat:@"Retry limit of %@ exceeded for bundle %@", maxRetries, bundleId]
+                userInfo:nil];
+    }
+    [HotUpdater incrementExecutionCount];
     if (!zipUrl) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self setBundleURL:nil];
@@ -203,17 +217,17 @@ RCT_EXPORT_MODULE();
         });
         return;
     }
-    
+
     NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *bundleStoreDir = [documentsPath stringByAppendingPathComponent:@"bundle-store"];
-    
+
     NSFileManager *fileManager = [NSFileManager defaultManager];
     if (![fileManager fileExistsAtPath:bundleStoreDir]) {
         [fileManager createDirectoryAtPath:bundleStoreDir withIntermediateDirectories:YES attributes:nil error:nil];
     }
-    
+
     NSString *finalBundleDir = [bundleStoreDir stringByAppendingPathComponent:bundleId];
-    
+
     if ([fileManager fileExistsAtPath:finalBundleDir]) {
         NSDirectoryEnumerator *enumerator = [fileManager enumeratorAtPath:finalBundleDir];
         NSString *foundBundle = nil;
@@ -245,33 +259,33 @@ RCT_EXPORT_MODULE();
         [fileManager removeItemAtPath:tempDir error:nil];
     }
     [fileManager createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
-    
+
     NSString *tempZipFile = [tempDir stringByAppendingPathComponent:@"bundle.zip"];
     NSString *extractedDir = [tempDir stringByAppendingPathComponent:@"extracted"];
     [fileManager createDirectoryAtPath:extractedDir withIntermediateDirectories:YES attributes:nil error:nil];
-    
+
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
-    
+
     NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:zipUrl completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
             NSLog(@"Failed to download data from URL: %@, error: %@", zipUrl, error);
             if (completion) completion(NO);
             return;
         }
-                
+
         // Save temporary zip file
         if ([fileManager fileExistsAtPath:tempZipFile]) {
             [fileManager removeItemAtPath:tempZipFile error:nil];
         }
-        
+
         NSError *moveError = nil;
         if (![fileManager moveItemAtURL:location toURL:[NSURL fileURLWithPath:tempZipFile] error:&moveError]) {
             NSLog(@"Failed to save downloaded file: %@", moveError);
             if (completion) completion(NO);
             return;
         }
-        
+
         // Extract zip
         if (![self extractZipFileAtPath:tempZipFile toDestination:extractedDir]) {
             NSLog(@"Failed to extract zip file.");
@@ -288,13 +302,13 @@ RCT_EXPORT_MODULE();
                 break;
             }
         }
-        
+
         if (!foundBundle) {
             NSLog(@"index.ios.bundle not found in extracted files.");
             if (completion) completion(NO);
             return;
         }
-        
+
         // Move extracted folder to final bundle folder
         if ([fileManager fileExistsAtPath:finalBundleDir]) {
             [fileManager removeItemAtPath:finalBundleDir error:nil];
@@ -312,7 +326,7 @@ RCT_EXPORT_MODULE();
                 return;
             }
         }
-        
+
         // Recheck index.ios.bundle in final folder
         NSDirectoryEnumerator *finalEnum = [fileManager enumeratorAtPath:finalBundleDir];
         NSString *finalFoundBundle = nil;
@@ -322,7 +336,7 @@ RCT_EXPORT_MODULE();
                 break;
             }
         }
-        
+
         if (!finalFoundBundle) {
             NSLog(@"index.ios.bundle not found in final directory.");
             if (completion) completion(NO);
@@ -332,7 +346,7 @@ RCT_EXPORT_MODULE();
         // Update modification time of final bundle
         NSDictionary *attributes = @{NSFileModificationDate: [NSDate date]};
         [fileManager setAttributes:attributes ofItemAtPath:finalBundleDir error:nil];
-        
+
         NSString *bundlePath = [finalBundleDir stringByAppendingPathComponent:finalFoundBundle];
         NSLog(@"Setting bundle URL: %@", bundlePath);
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -342,11 +356,11 @@ RCT_EXPORT_MODULE();
             if (completion) completion(YES);
         });
     }];
-    
+
     // Register KVO for progress updates
     [downloadTask addObserver:self forKeyPath:@"countOfBytesReceived" options:NSKeyValueObservingOptionNew context:nil];
     [downloadTask addObserver:self forKeyPath:@"countOfBytesExpectedToReceive" options:NSKeyValueObservingOptionNew context:nil];
-    
+
     __weak HotUpdater *weakSelf = self;
     [[NSNotificationCenter defaultCenter] addObserverForName:@"NSURLSessionDownloadTaskDidFinishDownloading"
                                                       object:downloadTask
@@ -354,7 +368,7 @@ RCT_EXPORT_MODULE();
                                                   usingBlock:^(NSNotification * _Nonnull note) {
         [weakSelf removeObserversForTask:downloadTask];
     }];
-    
+
     [downloadTask resume];
 }
 
@@ -447,16 +461,26 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromi
     resolve(version ?: [NSNull null]);
 }
 
-RCT_EXPORT_METHOD(updateBundle:(NSString *)bundleId zipUrl:(NSString *)zipUrlString resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)bundleData resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+    NSString *bundleId = bundleData[@"bundleId"];
+    NSString *zipUrlString = bundleData[@"zipUrl"];
+    NSNumber *maxRetries = bundleData[@"maxRetries"];
     NSURL *zipUrl = nil;
     if (![zipUrlString isEqualToString:@""]) {
         zipUrl = [NSURL URLWithString:zipUrlString];
     }
-    [self updateBundle:bundleId zipUrl:zipUrl completion:^(BOOL success) {
+    @try {
+        [self updateBundle:bundleId zipUrl:zipUrl maxRetries:maxRetries completion:^(BOOL success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                resolve(@[@(success)]);
+            });
+        }];
+    }
+    @catch (NSException *exception) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            resolve(@[@(success)]);
+            reject(@"UPDATE_ERROR", exception.reason, nil);
         });
-    }];
+    }
 }
 
 #ifdef RCT_NEW_ARCH_ENABLED

@@ -1,7 +1,12 @@
 import fs from "fs";
 import { fromSSO } from "@aws-sdk/credential-providers";
 import * as p from "@clack/prompts";
-import { link, makeEnv, transformTemplate } from "@hot-updater/plugin-core";
+import {
+  type BuildType,
+  link,
+  makeEnv,
+  transformTemplate,
+} from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import picocolors from "picocolors";
 import { CloudFrontManager } from "./cloudfront";
@@ -11,11 +16,7 @@ import { Migration0001HotUpdater0_13_0 } from "./migrations/Migration0001HotUpda
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
-import {
-  CONFIG_TEMPLATE,
-  CONFIG_TEMPLATE_WITH_SESSION,
-  SOURCE_TEMPLATE,
-} from "./templates";
+import { SOURCE_TEMPLATE, getConfigTemplate } from "./templates";
 
 const checkIfAwsCliInstalled = async () => {
   try {
@@ -26,7 +27,11 @@ const checkIfAwsCliInstalled = async () => {
   }
 };
 
-export const runInit = async () => {
+export const runInit = async ({
+  build,
+}: {
+  build: BuildType;
+}) => {
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
   if (!isAwsCliInstalled) {
     p.log.error(
@@ -227,10 +232,13 @@ export const runInit = async () => {
   if (mode === "sso") {
     await fs.promises.writeFile(
       "hot-updater.config.ts",
-      CONFIG_TEMPLATE_WITH_SESSION,
+      getConfigTemplate(build, { sessionToken: true }),
     );
   } else {
-    await fs.promises.writeFile("hot-updater.config.ts", CONFIG_TEMPLATE);
+    await fs.promises.writeFile(
+      "hot-updater.config.ts",
+      getConfigTemplate(build, { sessionToken: false }),
+    );
   }
   const comment =
     mode === "account"

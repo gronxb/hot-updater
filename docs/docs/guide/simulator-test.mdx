@@ -16,28 +16,78 @@ Since hot-updater does not work in dev environment, you need to test it in Relea
 
 Use the commands below to simulate downloading from the app store. Running in Release mode will lock the bundle to your current code.
 
+
+
 <Tabs>
-    <Tab label="iOS">
-    ```sh
-    cd ios && pod install && cd ..
-    ```
-    <PackageManagerTabs command={
-      {
-        npm: "npx react-native run-ios --mode Release",
-        pnpm: "pnpm react-native run-ios --mode Release",
-        yarn: "cd ios && pod install && cd ..\nyarn react-native run-ios --mode Release",
-      }
-    } />
+  <Tab label="Bare (React Native CLI)">
+    <Tabs>
+        <Tab label="iOS">
+          ```sh
+          cd ios && pod install && cd ..
+          ```
+          <PackageManagerTabs command={
+            {
+              npm: "npx react-native run-ios --mode Release",
+              pnpm: "pnpm react-native run-ios --mode Release",
+              yarn: "cd ios && pod install && cd ..\nyarn react-native run-ios --mode Release",
+            }
+          } />
+        </Tab>
+        <Tab label="Android">
+        <PackageManagerTabs command={
+          {
+            npm: "npx react-native run-android --mode Release",
+            pnpm: "pnpm react-native run-android --mode Release",
+            yarn: "yarn react-native run-android --mode Release",
+          }
+        } />
+      </Tab>
+    </Tabs>
   </Tab>
-  <Tab label="Android">
-  <PackageManagerTabs command={
-    {
-      npm: "npx react-native run-android --mode Release",
-      pnpm: "pnpm react-native run-android --mode Release",
-      yarn: "yarn react-native run-android --mode Release",
-    }
-  } />
-</Tab>
+  <Tab label="RNEF (React Native Enterprise Framework)">
+    <Tabs>
+        <Tab label="iOS">
+          <PackageManagerTabs command={
+            {
+              npm: "npx rnef run:ios --configuration Release",
+              pnpm: "pnpm rnef run:ios --configuration Release",
+              yarn: "yarn rnef run:ios --configuration Release",
+            }
+          } />
+        </Tab>
+        <Tab label="Android">
+        <PackageManagerTabs command={
+          {
+            npm: "npx rnef run:android --configuration Release",
+            pnpm: "pnpm rnef run:android --configuration Release",
+            yarn: "yarn rnef run:android --configuration Release",
+          }
+        } />
+      </Tab>
+    </Tabs>
+  </Tab>
+  <Tab label="Expo">
+    <Tabs>
+        <Tab label="iOS">
+          <PackageManagerTabs command={
+            {
+              npm: "npx expo run:ios --variant release",
+              pnpm: "pnpm expo run:ios --variant release",
+              yarn: "yarn expo run:ios --variant release",
+            }
+          } />
+        </Tab>
+        <Tab label="Android">
+        <PackageManagerTabs command={
+          {
+            npm: "npx expo run:android --variant release",
+            pnpm: "pnpm expo run:android --variant release",
+            yarn: "yarn expo run:android --variant release",
+          }
+        } />
+      </Tab>
+    </Tabs>
+  </Tab>
 </Tabs>
 
 ## Step 2: Deploy

@@ -28,6 +28,11 @@ class HotUpdater : ReactPackage {
     companion object {
         private const val TAG = "HotUpdater"
         private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+        private var executionCount: Int = 0
+
+        fun incrementExecutionCount() {
+            executionCount++
+        }
 
         fun getAppVersion(context: Context): String? {
             val version = HotUpdaterUtils.getAppVersion(context)
@@ -138,6 +143,7 @@ class HotUpdater : ReactPackage {
             context: Context,
             bundleId: String,
             zipUrl: String?,
+            maxRetries: Double?,
             progressCallback: ((Double) -> Unit),
             completionCallback: ((Boolean) -> Unit),
         ) {

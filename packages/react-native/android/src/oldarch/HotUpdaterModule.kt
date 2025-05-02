@@ -3,6 +3,7 @@ package com.hotupdater
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 
@@ -35,8 +36,7 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun updateBundle(
-        bundleId: String,
-        zipUrl: String?,
+        bundleData: ReadableMap,
         promise: Promise,
     ) {
         HotUpdater.updateBundle(

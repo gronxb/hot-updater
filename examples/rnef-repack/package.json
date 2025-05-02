@@ -1,0 +1,56 @@
+{
+  "name": "rnef-repack",
+  "version": "0.17.0",
+  "private": true,
+  "scripts": {
+    "start": "rnef start",
+    "lint": "eslint .",
+    "test": "jest",
+    "ios": "rnef run:ios",
+    "android": "rnef run:android"
+  },
+  "dependencies": {
+    "@hot-updater/react-native": "workspace:*",
+    "react": "19.0.0",
+    "react-native": "0.78.2"
+  },
+  "dependenciesMeta": {
+    "@hot-updater/react-native": {
+      "injected": true
+    }
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@callstack/repack": "^5.0.3",
+    "@expo/fingerprint": "^0.11.6",
+    "@hot-updater/repack": "workspace:*",
+    "@hot-updater/rnef": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "@react-native/babel-preset": "0.78.2",
+    "@react-native/codegen": "0.78.2",
+    "@react-native/eslint-config": "0.78.2",
+    "@react-native/gradle-plugin": "0.78.2",
+    "@react-native/typescript-config": "0.78.2",
+    "@rnef/cli": "^0.7.0",
+    "@rnef/platform-android": "^0.7.1",
+    "@rnef/platform-ios": "^0.7.1",
+    "@rnef/plugin-repack": "^0.7.1",
+    "@rspack/core": "^1.2.8",
+    "@swc/helpers": "^0.5.17",
+    "@types/react": "^19.0.0",
+    "@types/react-test-renderer": "^19.0.0",
+    "babel-jest": "^29.6.3",
+    "dotenv": "^16.4.5",
+    "eslint": "^8.19.0",
+    "hot-updater": "workspace:*",
+    "jest": "^29.6.3",
+    "prettier": "2.8.8",
+    "react-test-renderer": "19.0.0",
+    "typescript": "5.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

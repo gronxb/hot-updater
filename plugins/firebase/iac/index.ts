@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
 import {
+  type BuildType,
   copyDirToTmp,
   link,
   transformEnv,
@@ -106,6 +107,7 @@ const mergeIndexes = (
 const deployFirestore = async (cwd: string) => {
   const original = await execa("npx", ["firebase", "firestore:indexes"], {
     cwd,
+    shell: true,
   });
 
   let originalIndexes = [];
@@ -132,6 +134,7 @@ const deployFirestore = async (cwd: string) => {
     await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
       cwd,
       stdio: "inherit",
+      shell: true,
     });
   } catch (e) {
     if (e instanceof ExecaError) {
@@ -148,6 +151,7 @@ const deployFunctions = async (cwd: string) => {
     await execa("npx", ["firebase", "deploy", "--only", "functions"], {
       cwd,
       stdio: "inherit",
+      shell: true,
     });
   } catch (e) {
     if (e instanceof ExecaError) {
@@ -161,16 +165,22 @@ const deployFunctions = async (cwd: string) => {
 
 const printTemplate = async (projectId: string, region: string) => {
   try {
-    const { stdout } = await execa("gcloud", [
-      "functions",
-      "describe",
-      "hot-updater",
-      "--project",
-      projectId,
-      "--region",
-      region,
-      "--format=json",
-    ]);
+    const { stdout } = await execa(
+      "gcloud",
+      [
+        "functions",
+        "describe",
+        "hot-updater",
+        "--project",
+        projectId,
+        "--region",
+        region,
+        "--format=json",
+      ],
+      {
+        shell: true,
+      },
+    );
     const parsedData = JSON.parse(stdout);
     const url = parsedData?.serviceConfig?.uri ?? parsedData.url;
 
@@ -193,14 +203,16 @@ const printTemplate = async (projectId: string, region: string) => {
 
 const checkIfGcloudCliInstalled = async () => {
   try {
-    await execa("gcloud", ["--version"]);
+    await execa("gcloud", ["--version"], {
+      shell: true,
+    });
     return true;
   } catch (error) {
     return false;
   }
 };
 
-export const runInit = async () => {
+export const runInit = async ({ build }: { build: BuildType }) => {
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
     p.log.error("gcloud CLI is not installed");
@@ -230,6 +242,7 @@ export const runInit = async () => {
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
+    build,
   });
 
   await p.tasks([
@@ -239,6 +252,7 @@ export const runInit = async () => {
         try {
           await execa("npm", ["install"], {
             cwd: functionsDir,
+            shell: true,
           });
           return "Installed dependencies";
         } catch (error) {
@@ -262,6 +276,7 @@ export const runInit = async () => {
             ["firebase", "functions:list", "--json"],
             {
               cwd: tmpDir,
+              shell: true,
             },
           );
           const parsedData = JSON.parse(stdout);
@@ -321,6 +336,7 @@ export const runInit = async () => {
           ["firebase", "functions:list", "--json"],
           {
             cwd: tmpDir,
+            shell: true,
           },
         );
         const functionsListJson = JSON.parse(functionsList.stdout);
@@ -336,12 +352,18 @@ export const runInit = async () => {
           process.exit(1);
         }
 
-        const checkIam = await execa("gcloud", [
-          "projects",
-          "get-iam-policy",
-          initializeVariable.projectId,
-          "--format=json",
-        ]);
+        const checkIam = await execa(
+          "gcloud",
+          [
+            "projects",
+            "get-iam-policy",
+            initializeVariable.projectId,
+            "--format=json",
+          ],
+          {
+            shell: true,
+          },
+        );
         const iamJson = JSON.parse(checkIam.stdout);
         const hasTokenCreator = iamJson.bindings.some(
           (binding: { role: string; members: string[] }) =>

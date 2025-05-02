@@ -3,9 +3,13 @@ packages:
   - plugins/*
   - docs
   - examples/*
+
 onlyBuiltDependencies:
+  - '@sentry/cli'
+  - '@swc/core'
   - core-js-pure
   - esbuild
   - nx
-  - workerd
   - sharp
+  - typia
+  - workerd

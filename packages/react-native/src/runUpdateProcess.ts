@@ -63,7 +63,11 @@ export const runUpdateProcess = async ({
     };
   }
 
-  const isUpdated = await updateBundle(updateInfo.id, updateInfo.fileUrl);
+  const isUpdated = await updateBundle({
+    bundleId: updateInfo.id,
+    zipUrl: updateInfo.fileUrl,
+    maxRetries: checkForUpdateOptions.maxRetries,
+  });
   if (isUpdated && updateInfo.shouldForceUpdate && reloadOnForceUpdate) {
     reload();
   }

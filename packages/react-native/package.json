@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.16.3",
+  "version": "0.17.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -14,6 +14,8 @@
     "ios",
     "cpp",
     "*.podspec",
+    "app.plugin.js",
+    "plugin/build/withHotUpdater.js",
     "react-native.config.js",
     "!ios/build",
     "!android/build",
@@ -28,7 +30,8 @@
   ],
   "scripts": {
     "prepare": "bob build",
-    "build": "rslib build",
+    "build": "rslib build && npm run build:plugin",
+    "build:plugin": "tsc -p plugin/tsconfig.json",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib"
@@ -73,9 +76,15 @@
     },
     "includesGeneratedCode": true
   },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    }
+  },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "expo": ">=50.0.0"
   },
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",
@@ -84,11 +93,12 @@
     "del-cli": "^6.0.0",
     "react": "18.3.1",
     "react-native": "0.76.2",
-    "react-native-builder-bob": "^0.33.1"
+    "react-native-builder-bob": "^0.33.1",
+    "expo": "^50.0.0"
   },
   "dependencies": {
     "use-sync-external-store": "1.4.0",
-    "@hot-updater/js": "0.16.3",
-    "@hot-updater/core": "0.16.3"
+    "@hot-updater/js": "workspace:*",
+    "@hot-updater/core": "workspace:*"
   }
 }

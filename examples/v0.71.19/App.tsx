@@ -54,12 +54,6 @@ function App(): React.JSX.Element {
     setBundleId(bundleId);
   }, []);
 
-  // @ts-ignore
-  const isTurboModuleEnabled = global.__turboModuleProxy != null;
-
-  // @ts-ignore
-  const isHermes = () => !!global.HermesInternal;
-
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
@@ -99,34 +93,13 @@ function App(): React.JSX.Element {
         BundleId: {bundleId}
       </Text>
 
-      <Text
-        style={{
-          marginVertical: 20,
-          fontSize: 20,
-          fontWeight: "bold",
-          textAlign: "center",
-        }}
-      >
-        isTurboModuleEnabled: {isTurboModuleEnabled ? "true" : "false"}
-      </Text>
-      <Text
-        style={{
-          marginVertical: 20,
-          fontSize: 20,
-          fontWeight: "bold",
-          textAlign: "center",
-        }}
-      >
-        isHermes: {isHermes() ? "true" : "false"}
-      </Text>
-
       <Image
         style={{
           width: 100,
           height: 100,
         }}
-        source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
+        // source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />

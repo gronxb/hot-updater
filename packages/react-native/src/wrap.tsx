@@ -93,7 +93,11 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
 
           if (updateInfo.shouldForceUpdate === false) {
-            void updateBundle(updateInfo.id, updateInfo.fileUrl);
+            void updateBundle({
+              bundleId: updateInfo.id,
+              zipUrl: updateInfo.fileUrl,
+              maxRetries: restOptions.maxRetries,
+            });
             restOptions.onUpdateProcessCompleted?.({
               id: updateInfo.id,
               status: updateInfo.status,
@@ -106,10 +110,11 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
 
           // Force Update Scenario
           setUpdateStatus("UPDATING");
-          const isSuccess = await updateBundle(
-            updateInfo.id,
-            updateInfo.fileUrl,
-          );
+          const isSuccess = await updateBundle({
+            bundleId: updateInfo.id,
+            zipUrl: updateInfo.fileUrl,
+            maxRetries: restOptions.maxRetries,
+          });
 
           if (!isSuccess) {
             throw new Error(

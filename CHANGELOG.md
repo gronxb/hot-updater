@@ -1,3 +1,219 @@
+## 0.17.0 (2025-04-30)
+
+### 🚀 Features
+
+- init commands hint ([b0ef3e9a](https://github.com/gronxb/hot-updater/commit/b0ef3e9a))
+- **bare:** migration metro to bare ([#299](https://github.com/gronxb/hot-updater/pull/299))
+- **cli:** init after config builder (RNEF) ([#305](https://github.com/gronxb/hot-updater/pull/305))
+- **expo:** `@hot-updater/expo` build plugin ([#310](https://github.com/gronxb/hot-updater/pull/310))
+- **firebase:** supports `firebase` ([#212](https://github.com/gronxb/hot-updater/pull/212))
+- **firebase:** makeEnv with GOOGLE_APPLICATION_CREDENTIALS ([e3edaeb9](https://github.com/gronxb/hot-updater/commit/e3edaeb9))
+- **hermes:** minify false when enable hermes ([#309](https://github.com/gronxb/hot-updater/pull/309))
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **react-native:** add expo-config-plugin ([#287](https://github.com/gronxb/hot-updater/pull/287))
+- **rnef:** supports `@hot-updater/repack` / `@hot-updater/rnef`  build plugin ([#300](https://github.com/gronxb/hot-updater/pull/300))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f526598](https://github.com/gronxb/hot-updater/commit/1f526598))
+- types ([0469e97b](https://github.com/gronxb/hot-updater/commit/0469e97b))
+- docs ([d56bbbb1](https://github.com/gronxb/hot-updater/commit/d56bbbb1))
+- pnpm lock ([8dabcedb](https://github.com/gronxb/hot-updater/commit/8dabcedb))
+- **android:** loading assetLoader synchronously, cause crash, load async instead ([#281](https://github.com/gronxb/hot-updater/pull/281))
+- **android:** supports expo 52 ([#312](https://github.com/gronxb/hot-updater/pull/312))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0c](https://github.com/gronxb/hot-updater/commit/c7d2ae0c))
+- **firebase:** package.json to _package.json ([#286](https://github.com/gronxb/hot-updater/pull/286))
+- **firebase:** fix authentication method and region selection errors ([#284](https://github.com/gronxb/hot-updater/pull/284))
+- **firebase:** init-first ([42b6b65f](https://github.com/gronxb/hot-updater/commit/42b6b65f))
+- **firebase:** print template ([ae3e55c3](https://github.com/gronxb/hot-updater/commit/ae3e55c3))
+- **firebase:** edit URL for next step ([#294](https://github.com/gronxb/hot-updater/pull/294))
+- **firebase:** supports windows init ([#302](https://github.com/gronxb/hot-updater/pull/302))
+- **firebase:** execa shell ([e47fb0f6](https://github.com/gronxb/hot-updater/commit/e47fb0f6))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+- **supabase:** init correct supabase workdir ([#296](https://github.com/gronxb/hot-updater/pull/296))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- OskarAtJoint @OskarAtJoint
+- Sungyu Kang
+- 阿邦 @BANG88
+
+## 0.16.7-0 (2025-04-30)
+
+### 🚀 Features
+
+- init commands hint ([b0ef3e9a](https://github.com/gronxb/hot-updater/commit/b0ef3e9a))
+- **bare:** migration metro to bare ([#299](https://github.com/gronxb/hot-updater/pull/299))
+- **cli:** init after config builder (RNEF) ([#305](https://github.com/gronxb/hot-updater/pull/305))
+- **expo:** `@hot-updater/expo` build plugin ([#310](https://github.com/gronxb/hot-updater/pull/310))
+- **firebase:** supports `firebase` ([#212](https://github.com/gronxb/hot-updater/pull/212))
+- **firebase:** makeEnv with GOOGLE_APPLICATION_CREDENTIALS ([e3edaeb9](https://github.com/gronxb/hot-updater/commit/e3edaeb9))
+- **hermes:** minify false when enable hermes ([#309](https://github.com/gronxb/hot-updater/pull/309))
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **react-native:** add expo-config-plugin ([#287](https://github.com/gronxb/hot-updater/pull/287))
+- **rnef:** supports `@hot-updater/repack` / `@hot-updater/rnef`  build plugin ([#300](https://github.com/gronxb/hot-updater/pull/300))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f526598](https://github.com/gronxb/hot-updater/commit/1f526598))
+- types ([0469e97b](https://github.com/gronxb/hot-updater/commit/0469e97b))
+- docs ([d56bbbb1](https://github.com/gronxb/hot-updater/commit/d56bbbb1))
+- pnpm lock ([8dabcedb](https://github.com/gronxb/hot-updater/commit/8dabcedb))
+- **android:** loading assetLoader synchronously, cause crash, load async instead ([#281](https://github.com/gronxb/hot-updater/pull/281))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0c](https://github.com/gronxb/hot-updater/commit/c7d2ae0c))
+- **firebase:** package.json to _package.json ([#286](https://github.com/gronxb/hot-updater/pull/286))
+- **firebase:** fix authentication method and region selection errors ([#284](https://github.com/gronxb/hot-updater/pull/284))
+- **firebase:** init-first ([42b6b65f](https://github.com/gronxb/hot-updater/commit/42b6b65f))
+- **firebase:** print template ([ae3e55c3](https://github.com/gronxb/hot-updater/commit/ae3e55c3))
+- **firebase:** edit URL for next step ([#294](https://github.com/gronxb/hot-updater/pull/294))
+- **firebase:** supports windows init ([#302](https://github.com/gronxb/hot-updater/pull/302))
+- **firebase:** execa shell ([e47fb0f6](https://github.com/gronxb/hot-updater/commit/e47fb0f6))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+- **supabase:** init correct supabase workdir ([#296](https://github.com/gronxb/hot-updater/pull/296))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- OskarAtJoint @OskarAtJoint
+- Sungyu Kang
+- 阿邦 @BANG88
+
+## 0.16.6 (2025-04-27)
+
+### 🚀 Features
+
+- init commands hint ([b0ef3e9](https://github.com/gronxb/hot-updater/commit/b0ef3e9))
+- **bare:** migration metro to bare ([#299](https://github.com/gronxb/hot-updater/pull/299))
+- **cli:** init after config builder (RNEF) ([#305](https://github.com/gronxb/hot-updater/pull/305))
+- **firebase:** supports `firebase` ([#212](https://github.com/gronxb/hot-updater/pull/212))
+- **firebase:** makeEnv with GOOGLE_APPLICATION_CREDENTIALS ([e3edaeb](https://github.com/gronxb/hot-updater/commit/e3edaeb))
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **rnef:** supports `@hot-updater/repack` / `@hot-updater/rnef`  build plugin ([#300](https://github.com/gronxb/hot-updater/pull/300))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- docs ([d56bbbb](https://github.com/gronxb/hot-updater/commit/d56bbbb))
+- **android:** loading assetLoader synchronously, cause crash, load async instead ([#281](https://github.com/gronxb/hot-updater/pull/281))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **firebase:** package.json to _package.json ([#286](https://github.com/gronxb/hot-updater/pull/286))
+- **firebase:** fix authentication method and region selection errors ([#284](https://github.com/gronxb/hot-updater/pull/284))
+- **firebase:** init-first ([42b6b65](https://github.com/gronxb/hot-updater/commit/42b6b65))
+- **firebase:** print template ([ae3e55c](https://github.com/gronxb/hot-updater/commit/ae3e55c))
+- **firebase:** edit URL for next step ([#294](https://github.com/gronxb/hot-updater/pull/294))
+- **firebase:** supports windows init ([#302](https://github.com/gronxb/hot-updater/pull/302))
+- **firebase:** execa shell ([e47fb0f](https://github.com/gronxb/hot-updater/commit/e47fb0f))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+- **supabase:** init correct supabase workdir ([#296](https://github.com/gronxb/hot-updater/pull/296))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- OskarAtJoint @OskarAtJoint
+- Sungyu Kang
+
+## 0.16.5 (2025-04-27)
+
+### 🚀 Features
+
+- init commands hint ([b0ef3e9](https://github.com/gronxb/hot-updater/commit/b0ef3e9))
+- **bare:** migration metro to bare ([#299](https://github.com/gronxb/hot-updater/pull/299))
+- **firebase:** supports `firebase` ([#212](https://github.com/gronxb/hot-updater/pull/212))
+- **firebase:** makeEnv with GOOGLE_APPLICATION_CREDENTIALS ([e3edaeb](https://github.com/gronxb/hot-updater/commit/e3edaeb))
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **rnef:** supports `@hot-updater/repack` / `@hot-updater/rnef`  build plugin ([#300](https://github.com/gronxb/hot-updater/pull/300))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **android:** loading assetLoader synchronously, cause crash, load async instead ([#281](https://github.com/gronxb/hot-updater/pull/281))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **firebase:** package.json to _package.json ([#286](https://github.com/gronxb/hot-updater/pull/286))
+- **firebase:** fix authentication method and region selection errors ([#284](https://github.com/gronxb/hot-updater/pull/284))
+- **firebase:** init-first ([42b6b65](https://github.com/gronxb/hot-updater/commit/42b6b65))
+- **firebase:** print template ([ae3e55c](https://github.com/gronxb/hot-updater/commit/ae3e55c))
+- **firebase:** edit URL for next step ([#294](https://github.com/gronxb/hot-updater/pull/294))
+- **firebase:** supports windows init ([#302](https://github.com/gronxb/hot-updater/pull/302))
+- **firebase:** execa shell ([e47fb0f](https://github.com/gronxb/hot-updater/commit/e47fb0f))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+- **supabase:** init correct supabase workdir ([#296](https://github.com/gronxb/hot-updater/pull/296))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- OskarAtJoint @OskarAtJoint
+- Sungyu Kang
+
+## 0.16.4 (2025-04-26)
+
+### 🚀 Features
+
+- init commands hint ([b0ef3e9](https://github.com/gronxb/hot-updater/commit/b0ef3e9))
+- **bare:** migration metro to bare ([#299](https://github.com/gronxb/hot-updater/pull/299))
+- **firebase:** supports `firebase` ([#212](https://github.com/gronxb/hot-updater/pull/212))
+- **firebase:** makeEnv with GOOGLE_APPLICATION_CREDENTIALS ([e3edaeb](https://github.com/gronxb/hot-updater/commit/e3edaeb))
+- **react-native:** fetchUpdateInfo timeout default 5000 ([#270](https://github.com/gronxb/hot-updater/pull/270))
+- **react-native:** source allow async function ([#274](https://github.com/gronxb/hot-updater/pull/274))
+- **sentry:** sourcemap upload plugin ([#255](https://github.com/gronxb/hot-updater/pull/255))
+
+### 🩹 Fixes
+
+- jsdoc ([1f52659](https://github.com/gronxb/hot-updater/commit/1f52659))
+- types ([0469e97](https://github.com/gronxb/hot-updater/commit/0469e97))
+- **android:** loading assetLoader synchronously, cause crash, load async instead ([#281](https://github.com/gronxb/hot-updater/pull/281))
+- **cli:** warning To load an ES module ([#251](https://github.com/gronxb/hot-updater/pull/251))
+- **cli:** windows os createZip incorrect assets ([#269](https://github.com/gronxb/hot-updater/pull/269))
+- **examples:** types ([c7d2ae0](https://github.com/gronxb/hot-updater/commit/c7d2ae0))
+- **firebase:** package.json to _package.json ([#286](https://github.com/gronxb/hot-updater/pull/286))
+- **firebase:** fix authentication method and region selection errors ([#284](https://github.com/gronxb/hot-updater/pull/284))
+- **firebase:** init-first ([42b6b65](https://github.com/gronxb/hot-updater/commit/42b6b65))
+- **firebase:** print template ([ae3e55c](https://github.com/gronxb/hot-updater/commit/ae3e55c))
+- **firebase:** edit URL for next step ([#294](https://github.com/gronxb/hot-updater/pull/294))
+- **firebase:** supports windows init ([#302](https://github.com/gronxb/hot-updater/pull/302))
+- **firebase:** execa shell ([e47fb0f](https://github.com/gronxb/hot-updater/commit/e47fb0f))
+- **ios:** HotUpdater.reload should work properly even in debug mode ([#254](https://github.com/gronxb/hot-updater/pull/254))
+- **native:** store data separately for each version of the native app ([#261](https://github.com/gronxb/hot-updater/pull/261))
+- **react-native:** HotUpdater.wrap pass origin props ([#273](https://github.com/gronxb/hot-updater/pull/273))
+- **supabase:** init correct supabase workdir ([#296](https://github.com/gronxb/hot-updater/pull/296))
+
+### ❤️ Thank You
+
+- gronxb
+- jingjinge @jingjing2222
+- OskarAtJoint @OskarAtJoint
+- Sungyu Kang
+
 ## 0.16.3 (2025-04-17)
 
 ### 🚀 Features
