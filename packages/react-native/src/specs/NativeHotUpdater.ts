@@ -1,7 +1,7 @@
 import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
 
-interface BundleData {
+export interface UpdateBundleParams {
   bundleId: string;
   zipUrl: string | null;
   maxRetries?: number;
@@ -10,7 +10,7 @@ interface BundleData {
 export interface Spec extends TurboModule {
   // Methods
   reload(): void;
-  updateBundle(bundleData: BundleData): Promise<boolean>;
+  updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
   /**
    * @deprecated
