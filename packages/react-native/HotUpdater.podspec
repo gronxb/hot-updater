@@ -19,13 +19,11 @@ Pod::Spec.new do |s|
     'DEFINES_MODULE' => 'YES'
   }
   
-  s.module_map = 'ios/HotUpdater/HotUpdater.modulemap'
-
-  s.source_files = "ios/**/*.{h,m,mm}"
-  if ENV['RCT_NEW_ARCH_ENABLED'] != '1' then
-    s.exclude_files = "ios/generated/**/*"
-  end
-
+  s.source_files  = "ios/**/*.{h,m,mm,swift}"
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'OTHER_SWIFT_FLAGS' => "-enable-experimental-feature AccessLevelOnImport"
+  }
   s.dependency "SSZipArchive", "~> 2.2.2"
 
   # Use install_modules_dependencies helper to install the dependencies if React Native version >=0.71.0.
