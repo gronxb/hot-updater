@@ -1,5 +1,7 @@
-import { NativeEventEmitter, Platform } from "react-native";
-import type { Spec } from "./specs/NativeHotUpdater";
+import { NativeEventEmitter } from "react-native";
+import type { UpdateBundleParams } from "./specs/NativeHotUpdater";
+import HotUpdaterNative from "./specs/NativeHotUpdater";
+
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
@@ -9,28 +11,6 @@ const HotUpdater = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
   CHANNEL: __HOT_UPDATER_CHANNEL || (!__DEV__ ? "production" : null),
 };
-
-const RCTNativeHotUpdater = require("./specs/NativeHotUpdater").default;
-
-const LINKING_ERROR =
-  // biome-ignore lint/style/useTemplate: <explanation>
-  `The package '@hot-updater/react-native' doesn't seem to be linked. Make sure: \n\n` +
-  Platform.select({ ios: "- You have run 'pod install'\n", default: "" }) +
-  "- You rebuilt the app after installing the package\n" +
-  "- You are not using Expo Go\n";
-
-const HotUpdaterNative = (
-  RCTNativeHotUpdater
-    ? RCTNativeHotUpdater
-    : new Proxy(
-        {},
-        {
-          get() {
-            throw new Error(LINKING_ERROR);
-          },
-        },
-      )
-) as Spec;
 
 export type HotUpdaterEvent = {
   onProgress: {
@@ -57,21 +37,8 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
  * @param {string | null} zipUrl - zip file URL. If null, it means rolling back to the built-in bundle
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
-export const updateBundle = ({
-  bundleId,
-  zipUrl,
-  maxRetries,
-}: {
-  bundleId: string;
-  zipUrl: string | null;
-  maxRetries?: number;
-}): Promise<boolean> => {
-  const bundleData = {
-    bundleId,
-    zipUrl,
-    maxRetries,
-  };
-  return HotUpdaterNative.updateBundle(bundleData);
+export const updateBundle = (params: UpdateBundleParams): Promise<boolean> => {
+  return HotUpdaterNative.updateBundle(params);
 };
 
 /**

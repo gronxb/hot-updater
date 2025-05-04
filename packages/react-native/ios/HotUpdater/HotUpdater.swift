@@ -12,7 +12,6 @@ import React
     
     // MARK: - Properties
     private var lastUpdateTime: TimeInterval = 0
-    private static var executionCount: Int = 0
     
     /**
      * 앱 버전을 반환합니다.
@@ -132,20 +131,9 @@ import React
      */
     public func updateBundle(bundleId: String, 
                                   zipUrlString: String,
-                                  maxRetries: NSNumber?,
                                   progressCallback: ((NSNumber) -> Void)?,
                                   completion: @escaping (Bool, Error?) -> Void) {
-        // 재시도 제한 확인
-        let maxRetriesInt = maxRetries?.intValue
-        if let maxRetriesInt = maxRetriesInt, HotUpdater.executionCount > maxRetriesInt {
-            let error = NSError(domain: "HotUpdater", code: 1001,
-                               userInfo: [NSLocalizedDescriptionKey: "Retry limit exceeded"])
-            completion(false, error)
-            return
-        }
-        
-        HotUpdater.executionCount += 1
-        
+     
         // URL이 비어있으면 번들 URL 초기화하고 성공 반환
         guard !zipUrlString.isEmpty, let zipUrl = URL(string: zipUrlString) else {
             setBundleURL("")

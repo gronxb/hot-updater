@@ -49,9 +49,6 @@ public class HotUpdaterModuleImpl: NSObject {
             return
         }
         
-        let maxRetries = bundleData["maxRetries"] as? Int
-        let maxRetriesNumber = maxRetries != nil ? NSNumber(value: maxRetries!) : nil
-        
         // 이벤트 전송 함수
         let sendProgressEvent: (NSNumber) -> Void = { progress in
             // onProgress 이벤트 전송
@@ -66,7 +63,6 @@ public class HotUpdaterModuleImpl: NSObject {
         HotUpdater.shared.updateBundle(
             bundleId: bundleId,
             zipUrlString: zipUrlString,
-            maxRetries: maxRetriesNumber,
             progressCallback: sendProgressEvent
         ) { success, error in
             DispatchQueue.main.async {

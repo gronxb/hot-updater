@@ -17,7 +17,6 @@ export interface CheckForUpdateOptions {
    * @default 5000
    */
   requestTimeout?: number;
-  maxRetries?: number;
 }
 
 export async function checkForUpdate(options: CheckForUpdateOptions) {

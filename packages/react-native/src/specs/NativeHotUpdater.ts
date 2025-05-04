@@ -4,7 +4,6 @@ import { TurboModuleRegistry } from "react-native";
 export interface UpdateBundleParams {
   bundleId: string;
   zipUrl: string | null;
-  maxRetries?: number;
 }
 
 export interface Spec extends TurboModule {
@@ -30,4 +29,4 @@ export interface Spec extends TurboModule {
   };
 }
 
-export default TurboModuleRegistry.get<Spec>("HotUpdater");
+export default TurboModuleRegistry.getEnforcing<Spec>("HotUpdater");
