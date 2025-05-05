@@ -7,9 +7,10 @@
 #else
 #import <React/RCTBridgeModule.h>
 @interface HotUpdater : RCTEventEmitter <RCTBridgeModule>
-#endif // RCT_NEW_ARCH_ENABLED
+#endif
 
 @property (nonatomic, assign) NSTimeInterval lastUpdateTime;
+
 + (NSURL *)bundleURL;
 
 @end

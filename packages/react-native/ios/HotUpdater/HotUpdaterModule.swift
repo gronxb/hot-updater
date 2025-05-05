@@ -2,14 +2,22 @@ import Foundation
 import React
 
 @objcMembers
-public class HotUpdaterModule: NSObject {
+public class HotUpdaterModule: HotUpdater {
+    
+    // MARK: - RCTEventEmitter Override
+    override public func supportedEvents() -> [String] {
+        return ["onProgress"]
+    }
     
     /**
      * 채널을 설정합니다.
      */
-    static public func setChannel(_ channel: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    @objc
+    public func setChannel(_ channel: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.main.async {
-            HotUpdater.shared.setChannel(channel)
+            let prefs = UserDefaults.standard
+            prefs.set(channel, forKey: "HotUpdaterChannel")
+            prefs.synchronize()
             resolve(nil)
         }
     }
@@ -17,12 +25,10 @@ public class HotUpdaterModule: NSObject {
     /**
      * React Native 앱을 리로드합니다.
      */
-    static public func reload() {
+    @objc
+    public func reload() {
         DispatchQueue.main.async {
-            if let bundleURL = HotUpdater.bundleURL() {
-                // React Native 브릿지에서 번들 URL 업데이트 및 리로드 
-                // 참고: 실제 구현에서는 bridige를 통해 이 작업을 수행
-                print("Reloading with bundle URL: \(bundleURL)")
+            if HotUpdater.bundleURL() != nil {
                 RCTTriggerReloadCommandListeners("HotUpdater requested reload")
             }
         }
@@ -31,18 +37,20 @@ public class HotUpdaterModule: NSObject {
     /**
      * 앱 버전을 가져옵니다.
      */
-    static public func getAppVersion(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    @objc
+    public func getAppVersion(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.main.async {
-            resolve(HotUpdater.shared.appVersion)
+            resolve(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
         }
     }
     
     /**
      * 번들을 업데이트합니다.
      */
-    static public func updateBundle(_ bundleData: [String: Any], 
-                                   resolve: @escaping RCTPromiseResolveBlock,
-                                   reject: @escaping RCTPromiseRejectBlock) {
+    @objc
+    public func updateBundle(_ bundleData: [String: Any], 
+                           resolve: @escaping RCTPromiseResolveBlock,
+                           reject: @escaping RCTPromiseRejectBlock) {
         guard let bundleId = bundleData["bundleId"] as? String,
               let zipUrlString = bundleData["zipUrl"] as? String else {
             reject("INVALID_PARAMS", "Invalid bundle data parameters", nil)
@@ -50,21 +58,13 @@ public class HotUpdaterModule: NSObject {
         }
         
         // 이벤트 전송 함수
-        let sendProgressEvent: (NSNumber) -> Void = { progress in
-            // onProgress 이벤트 전송
-            // 실제 구현에서는 RCTEventEmitter를 통해 이 작업을 수행
-            NotificationCenter.default.post(
-                name: NSNotification.Name("HotUpdaterProgressEvent"),
-                object: nil,
-                userInfo: ["progress": progress.doubleValue]
-            )
+        let sendProgressEvent: (NSNumber) -> Void = { [weak self] progress in
+            self?.sendEvent(withName: "onProgress", body: ["progress": progress.doubleValue])
         }
         
-        HotUpdater.shared.updateBundle(
-            bundleId: bundleId,
-            zipUrlString: zipUrlString,
-            progressCallback: sendProgressEvent
-        ) { success, error in
+        updateBundle(bundleId: bundleId,
+                    zipUrlString: zipUrlString,
+                    progressCallback: sendProgressEvent) { success, error in
             DispatchQueue.main.async {
                 if success {
                     resolve([NSNumber(value: true)])
@@ -74,12 +74,4 @@ public class HotUpdaterModule: NSObject {
             }
         }
     }
-}
-
-// MARK: - Notification 확장
-extension Notification.Name {
-    /**
-     * 핫 업데이트 진행 상태 알림
-     */
-    static let hotUpdaterProgress = Notification.Name("HotUpdaterProgressEvent")
 }

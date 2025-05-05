@@ -5,13 +5,22 @@ import React
 /**
  * HotUpdater는 React Native 앱의 번들을 동적으로 업데이트하는 기능을 제공합니다.
  */
-@objcMembers public class HotUpdater: NSObject {
+@objcMembers public class HotUpdater: RCTEventEmitter {
     
     // MARK: - Singleton Instance
     public static let shared = HotUpdater()
     
     // MARK: - Properties
-    private var lastUpdateTime: TimeInterval = 0
+    public var lastUpdateTime: TimeInterval = 0
+    
+    // MARK: - RCTEventEmitter Override
+    override public func supportedEvents() -> [String] {
+        return ["onProgress"]
+    }
+    
+    override public static func requiresMainQueueSetup() -> Bool {
+        return true
+    }
     
     /**
      * 앱 버전을 반환합니다.
@@ -69,9 +78,7 @@ import React
                       bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15])
         #endif
     }
-    
-    // MARK: - Bundle URL Management
-    
+
     /**
      * 채널을 설정합니다.
      * @param channel 설정할 채널
@@ -92,11 +99,17 @@ import React
         prefs.synchronize()
     }
     
+    // MARK: - Bundle URL Management
+    
     /**
-     * 캐시된 번들 URL을 반환합니다.
-     * @return 캐시된 번들 URL 또는 nil
+     * 현재 사용 가능한 번들 URL을 반환합니다.
+     * @return 번들 URL
      */
-    public func cachedBundleURL() -> URL? {
+    public static func bundleURL() -> URL? {
+        return cachedBundleURL() ?? fallbackURL()
+    }
+    
+    private static func cachedBundleURL() -> URL? {
         let prefs = UserDefaults.standard
         guard let savedURLString = prefs.string(forKey: "HotUpdaterBundleURL"),
               let bundleURL = URL(string: savedURLString),
@@ -106,24 +119,8 @@ import React
         return bundleURL
     }
     
-    /**
-     * 기본 번들 URL을 반환합니다.
-     * @return 기본 번들 URL
-     */
-    public static func fallbackURL() -> URL? {
+    private static func fallbackURL() -> URL? {
         return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
-    }
-    
-    /**
-     * 현재 사용 가능한 번들 URL을 반환합니다.
-     * @return 번들 URL
-     */
-    public static func bundleURL() -> URL? {
-        let instance = HotUpdater.shared
-        if let url = instance.cachedBundleURL() {
-            return url
-        }
-        return fallbackURL()
     }
     
     // MARK: - Update Methods

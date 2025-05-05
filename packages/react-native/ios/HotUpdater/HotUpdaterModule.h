@@ -1,8 +1,4 @@
-#ifdef __cplusplus
+#import "HotUpdater.h"
 
-#import <HotUpdater/HotUpdater.h>
-
-@interface HotUpdaterModule : NSObject <NativeHotUpdaterSpec>
+@interface HotUpdaterModule : HotUpdater
 @end
-
-#endif
