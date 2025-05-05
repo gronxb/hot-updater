@@ -56,7 +56,7 @@
     "access": "public"
   },
   "codegenConfig": {
-    "name": "HotUpdater",
+    "name": "HotUpdaterSpec",
     "type": "modules",
     "jsSrcsDir": "./src",
     "android": {
