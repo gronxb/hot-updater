@@ -2,7 +2,7 @@ import Foundation
 import React
 
 @objcMembers
-public class HotUpdaterModuleImpl: NSObject {
+public class HotUpdaterModule: NSObject {
     
     /**
      * 채널을 설정합니다.

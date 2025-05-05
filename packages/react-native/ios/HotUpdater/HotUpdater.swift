@@ -35,10 +35,12 @@ import React
         #if DEBUG
         return "00000000-0000-0000-0000-000000000000"
         #else
-        let compileDateStr = "\(__DATE__) \(__TIME__)"
+        let compileDate = String(cString: BUILD_DATE)  // 예: "May  5 2025"
+        let compileTime = String(cString: BUILD_TIME)  // 예: "11:37:12"
+        let compileDateStr = "\(compileDate) \(compileTime)"
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")  // 영어 로케일 설정
         formatter.dateFormat = "MMM d yyyy HH:mm:ss"
-        
         guard let buildDate = formatter.date(from: compileDateStr) else {
             return "00000000-0000-0000-0000-000000000000"
         }
