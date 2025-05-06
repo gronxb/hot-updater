@@ -6,9 +6,6 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
-    banner: {
-      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
-    },
   },
   {
     entry: ["iac/index.ts"],
@@ -16,8 +13,11 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/supabase"],
-    banner: {
-      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
-    },
+    banner: ({ format }) => ({
+      js:
+        format === "esm"
+          ? `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`
+          : "",
+    }),
   },
 ]);

@@ -1,4 +1,12 @@
+import type { Options } from "tsup";
 import { defineConfig } from "tsup";
+
+const getBanner: Options["banner"] = ({ format }) => ({
+  js:
+    format === "esm"
+      ? `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`
+      : "",
+});
 
 export default defineConfig([
   {
@@ -6,9 +14,7 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
-    banner: {
-      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
-    },
+    banner: getBanner,
   },
   {
     entry: ["lambda/index.ts"],
@@ -21,8 +27,6 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/aws"],
-    banner: {
-      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
-    },
+    banner: getBanner,
   },
 ]);
