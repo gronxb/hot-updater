@@ -1,9 +1,14 @@
-#import <React/RCTBridgeModule.h>
 #import <React/RCTEventEmitter.h>
+#import <React/RCTBundleURLProvider.h>
 #import <Foundation/Foundation.h>
 
-// Declare the Objective-C++ module class which inherits from RCTEventEmitter
+#ifdef RCT_NEW_ARCH_ENABLED
+#import "HotUpdaterSpec.h"
+@interface HotUpdater : RCTEventEmitter <NativeHotUpdaterSpec>
+#else
+#import <React/RCTBridgeModule.h>
 @interface HotUpdater : RCTEventEmitter <RCTBridgeModule>
+#endif // RCT_NEW_ARCH_ENABLED
 
 /**
  * Returns the currently active bundle URL.

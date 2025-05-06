@@ -240,16 +240,12 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)bundleData
 
 #pragma mark - Turbo Module Support (Keep as is)
 
-#ifdef RCT_NEW_ARCH_ENABLED
-#import "HotUpdaterSpec.h"
 
-- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
-    (const facebook::react::ObjCTurboModule::InitParams &)params
-{
-    // *** Use HotUpdaterImpl *** (The Spec name remains NativeHotUpdaterSpecJSI)
-    // The underlying implementation instance type doesn't affect the Spec conformance.
+#ifdef RCT_NEW_ARCH_ENABLED
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
     return std::make_shared<facebook::react::NativeHotUpdaterSpecJSI>(params);
 }
-#endif // RCT_NEW_ARCH_ENABLED
+#endif
+
 
 @end

@@ -16,11 +16,6 @@
     "react": "18.3.1",
     "react-native": "0.76.9"
   },
-  "dependenciesMeta": {
-    "@hot-updater/react-native": {
-      "injected": true
-    }
-  },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@expo/metro-config": "^0.19.12",
