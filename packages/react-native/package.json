@@ -42,8 +42,7 @@
     "!**/.*"
   ],
   "scripts": {
-    "prepare": "bob build",
-    "build": "tsc -p plugin/tsconfig.json",
+    "build": "bob build && tsc -p plugin/tsconfig.json",
     "build:plugin": "tsc -p plugin/tsconfig.json",
     "test:type": "tsc --noEmit",
     "test": "vitest",
@@ -90,8 +89,7 @@
         {
           "project": "tsconfig.build.json"
         }
-      ],
-      "codegen"
+      ]
     ]
   },
   "codegenConfig": {
@@ -100,12 +98,7 @@
     "jsSrcsDir": "./src",
     "android": {
       "javaPackageName": "com.hotupdater"
-    },
-    "outputDir": {
-      "ios": "ios/generated",
-      "android": "android/generated"
-    },
-    "includesGeneratedCode": true
+    }
   },
   "peerDependenciesMeta": {
     "expo": {
