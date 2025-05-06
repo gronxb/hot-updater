@@ -232,13 +232,11 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromi
 }
 
 // *** SIMPLIFIED: Delegate directly to the Swift handler method ***
-RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)bundleData
+RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     RCTLogInfo(@"[HotUpdater.mm] updateBundle called. Delegating to Swift Impl.");
-    // Call the Swift method that handles parsing, logic, and promise resolution
-    // *** Use HotUpdaterImpl ***
-    [[HotUpdaterImpl shared] handleUpdateBundleFromJSWithBundleData:bundleData resolver:resolve rejecter:reject];
+    [[HotUpdaterImpl shared] updateBundleFromJS:params resolver:resolve rejecter:reject];
 }
 
 

@@ -80,14 +80,14 @@ import React // RCTPromiseResolveBlock/RejectBlock을 위해 React 임포트
 
     // *** RCT_EXPORT_METHOD 호출을 처리하는 새 메소드 ***
     // Objective-C에서 직접 딕셔너리 및 promise 블록을 받음
-    public func handleUpdateBundleFromJS(bundleData: [String: Any]?,
+    @objc public func updateBundleFromJS(_ params: NSDictionary?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
 
         // 1. 인수 구문 분석 및 유효성 검사
-        guard let data = bundleData else {
-            print("[HotUpdaterImpl] Error: bundleData dictionary is nil")
-            let error = NSError(domain: "HotUpdaterError", code: 101, userInfo: [NSLocalizedDescriptionKey: "Missing bundleData dictionary"])
+        guard let data = params else {
+            print("[HotUpdaterImpl] Error: params dictionary is nil")
+            let error = NSError(domain: "HotUpdaterError", code: 101, userInfo: [NSLocalizedDescriptionKey: "Missing params dictionary"])
             reject("UPDATE_ERROR", error.localizedDescription, error)
             return
         }
@@ -112,7 +112,7 @@ import React // RCTPromiseResolveBlock/RejectBlock을 위해 React 임포트
             zipUrl = url
         }
 
-        print("[HotUpdaterImpl] handleUpdateBundleFromJS called with bundleId: \(bundleId), zipUrl: \(zipUrl?.absoluteString ?? "nil")")
+        print("[HotUpdaterImpl] updateBundleFromJS called with bundleId: \(bundleId), zipUrl: \(zipUrl?.absoluteString ?? "nil")")
 
         // 2. 내부 업데이트 로직 호출
         // promise 블록을 직접 전달하거나 완료 핸들러 사용
