@@ -1,7 +1,8 @@
-import { type BucketLocationConstraint, S3 } from "@aws-sdk/client-s3";
+import {type BucketLocationConstraint, PutBucketTaggingCommand, S3} from "@aws-sdk/client-s3";
 import * as p from "@clack/prompts";
 import { type S3Migration, S3Migrator } from "./migrations/migrator";
 import type { AwsRegion } from "./regionLocationMap";
+import {getTagsAsKeyValuePairs} from "./tags";
 
 export class S3Manager {
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -45,6 +46,13 @@ export class S3Manager {
           }),
     });
     p.log.info(`Created S3 bucket: ${bucketName}`);
+
+    await s3Client.send(new PutBucketTaggingCommand({
+      Bucket: bucketName,
+      Tagging: {
+        TagSet: getTagsAsKeyValuePairs(),
+      },
+    }));
   }
 
   async runMigrations({
