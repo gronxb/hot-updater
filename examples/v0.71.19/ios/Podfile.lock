@@ -14,7 +14,7 @@ PODS:
   - hermes-engine (0.71.19):
     - hermes-engine/Pre-built (= 0.71.19)
   - hermes-engine/Pre-built (0.71.19)
-  - HotUpdater (0.16.0):
+  - HotUpdater (0.17.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
     - SSZipArchive (~> 2.2.2)
@@ -493,7 +493,7 @@ SPEC CHECKSUMS:
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
   glog: 791fe035093b84822da7f0870421a25839ca7870
   hermes-engine: 1b2623da987a23d7d3122d883e22b716948ee6f1
-  HotUpdater: 9a386445553d03dfe67051092fe4b7b69de34a33
+  HotUpdater: b68c6f383e3ebfba0f363332e9dfc73854bc4023
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
   RCT-Folly: 85766c3226c7ec638f05ad7cb3cf6a268d6c4241
   RCTRequired: 79b5f823c2b4b865451ba9ddb33c676786760ea8
