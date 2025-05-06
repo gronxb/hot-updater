@@ -46,7 +46,7 @@ class HotUpdaterModule internal constructor(
             try {
                 val bundleId = bundleData.getString("bundleId")!!
                 val zipUrl = bundleData.getString("zipUrl")
-                
+
                 val isSuccess =
                     HotUpdater.updateBundle(
                         mReactApplicationContext,
