@@ -7,4 +7,11 @@ module.exports = {
       packageName: 'com.hotupdater',
     },
   },
+  dependency: {
+    platforms: {
+      android: {
+        cmakeListsPath: 'generated/jni/CMakeLists.txt',
+      },
+    },
+  },
 };
