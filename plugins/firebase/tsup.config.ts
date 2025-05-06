@@ -21,8 +21,11 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/firebase"],
-    banner: {
-      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
-    },
+    banner: ({ format }) => ({
+      js:
+        format === "esm"
+          ? `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`
+          : "",
+    }),
   },
 ]);
