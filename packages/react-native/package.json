@@ -2,20 +2,33 @@
   "name": "@hot-updater/react-native",
   "version": "0.17.0",
   "description": "React Native OTA solution for self-hosted",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "source": "src/index.ts",
-  "react-native": "src/index.ts",
-  "types": "dist/index.d.ts",
+  "main": "lib/commonjs/index",
+  "module": "lib/module/index",
+  "types": "./lib/typescript/commonjs/index.d.ts",
+  "react-native": "src/index",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./lib/typescript/module/index.d.ts",
+        "default": "./lib/module/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/index.d.ts",
+        "default": "./lib/commonjs/index.js"
+      }
+    },
+    "./package.json": "./package.json",
+    "./app.plugin.js": "./app.plugin.js"
+  },
   "files": [
     "src",
-    "dist",
+    "lib",
     "android",
     "ios",
     "cpp",
-    "*.podspec",
     "app.plugin.js",
     "plugin/build/withHotUpdater.js",
+    "*.podspec",
     "react-native.config.js",
     "!ios/build",
     "!android/build",
@@ -29,7 +42,8 @@
     "!**/.*"
   ],
   "scripts": {
-    "build": "rslib build && npm run build:plugin",
+    "prepare": "bob build",
+    "build": "tsc -p plugin/tsconfig.json",
     "build:plugin": "tsc -p plugin/tsconfig.json",
     "test:type": "tsc --noEmit",
     "test": "vitest",
@@ -55,6 +69,30 @@
   "publishConfig": {
     "access": "public"
   },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      [
+        "commonjs",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "typescript",
+        {
+          "project": "tsconfig.build.json"
+        }
+      ]
+    ]
+  },
   "codegenConfig": {
     "name": "HotUpdaterSpec",
     "type": "modules",
@@ -69,23 +107,24 @@
     }
   },
   "peerDependencies": {
+    "expo": ">=50.0.0",
     "react": "*",
-    "react-native": "*",
-    "expo": ">=50.0.0"
+    "react-native": "*"
   },
   "devDependencies": {
     "@react-native-community/cli": "15.0.1",
     "@types/react": "^18.2.44",
     "@types/use-sync-external-store": "^0.0.6",
     "del-cli": "^6.0.0",
+    "expo": "^50.0.0",
     "react": "18.3.1",
     "react-native": "0.76.2",
     "react-native-builder-bob": "^0.40.8",
-    "expo": "^50.0.0"
+    "typescript": "^5.8.3"
   },
   "dependencies": {
-    "use-sync-external-store": "1.4.0",
+    "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
-    "@hot-updater/core": "workspace:*"
+    "use-sync-external-store": "1.4.0"
   }
 }
