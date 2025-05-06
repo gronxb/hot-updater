@@ -118,7 +118,7 @@
     "react-native": "*"
   },
   "devDependencies": {
-    "@react-native-community/cli": "15.0.1",
+    "@react-native-community/cli": "18.0.0",
     "@types/react": "^18.2.44",
     "@types/use-sync-external-store": "^0.0.6",
     "del-cli": "^6.0.0",
