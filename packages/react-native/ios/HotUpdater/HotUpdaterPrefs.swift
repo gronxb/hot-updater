@@ -17,9 +17,9 @@ public class HotUpdaterPrefs {
 
     // 앱 버전을 설정하여 키 접두사를 초기화하는 메소드
     // HotUpdaterImpl에서 사용 시작 시 호출 필요
-    public func configure(appVersion: String) {
+    public func configure(appVersion: String?) {
         // 앱 버전을 포함하여 UserDefaults 키 충돌 방지
-        self.keyPrefix = "hotupdater_\(appVersion)_"
+        self.keyPrefix = "hotupdater_\(appVersion ?? "unknown")_"
         print("[HotUpdaterPrefs] Configured with appVersion: \(appVersion). Key prefix: \(self.keyPrefix)")
     }
 

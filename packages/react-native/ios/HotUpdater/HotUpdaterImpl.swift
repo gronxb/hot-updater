@@ -5,8 +5,6 @@ import React // RCTPromiseResolveBlock/RejectBlock을 위해 React 임포트
 // Objective-C에서 이 클래스에 접근 가능하도록 설정
 @objcMembers public class HotUpdaterImpl: NSObject { // *** 클래스 이름 변경됨 ***
 
-    public static let shared = HotUpdaterImpl() // *** 새 클래스 이름 사용 ***
-
     private let fileManager = FileManager.default
     // URLSessionConfiguration.default를 사용하고 delegate를 self로 설정하여 진행률 추적
     private lazy var session: URLSession = {
@@ -22,29 +20,28 @@ import React // RCTPromiseResolveBlock/RejectBlock을 위해 React 임포트
     // HotUpdaterPrefs 인스턴스에 접근합니다. configure가 호출되었는지 확인하세요.
     private let prefs = HotUpdaterPrefs.shared
 
-    private override init() {
+    public override init() {
         super.init()
         // 앱 버전으로 HotUpdaterPrefs 구성
         prefs.configure(appVersion: HotUpdaterImpl.appVersion)
     }
 
 
-    // 앱 버전 가져오기
-    public static var appVersion: String {
-        return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    public static var appVersion: String? {
+        return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
 
     // MARK: - 상수 & 환경설정 접근 (여기서는 변경 필요 없음)
 
-    public static func setChannel(_ channel: String?) {
+    public func setChannel(_ channel: String?) {
         // HotUpdaterPrefs 인스턴스를 통해 채널 저장
-        shared.prefs.setItem(channel, forKey: "HotUpdaterChannel")
+        prefs.setItem(channel, forKey: "HotUpdaterChannel")
         print("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
     }
 
-    public static func getChannel() -> String? {
+    public func getChannel() -> String? {
         // HotUpdaterPrefs 인스턴스를 통해 채널 검색
-        return shared.prefs.getItem(forKey: "HotUpdaterChannel") // 수정: getItemForKey -> getItem
+        return prefs.getItem(forKey: "HotUpdaterChannel") // 수정: getItemForKey -> getItem
     }
 
     // MARK: - 번들 URL 관리 (여기서는 변경 필요 없음)
@@ -52,12 +49,12 @@ import React // RCTPromiseResolveBlock/RejectBlock을 위해 React 임포트
     private func setBundleURLInternal(localPath: String?) {
         print("[HotUpdaterImpl] Setting bundle URL to: \(localPath ?? "nil")")
         // HotUpdaterPrefs 인스턴스를 통해 번들 URL 저장
-        HotUpdaterImpl.shared.prefs.setItem(localPath, forKey: "HotUpdaterBundleURL")
+        prefs.setItem(localPath, forKey: "HotUpdaterBundleURL")
     }
 
     private func cachedURLFromBundle() -> URL? {
         // HotUpdaterPrefs 인스턴스를 통해 번들 URL 검색
-        guard let savedURLString = HotUpdaterImpl.shared.prefs.getItem(forKey: "HotUpdaterBundleURL"), // 수정: getItemForKey -> getItem
+        guard let savedURLString = prefs.getItem(forKey: "HotUpdaterBundleURL"), // 수정: getItemForKey -> getItem
               let bundleURL = URL(string: savedURLString),
               fileManager.fileExists(atPath: bundleURL.path) else {
             return nil
@@ -65,15 +62,15 @@ import React // RCTPromiseResolveBlock/RejectBlock을 위해 React 임포트
         return bundleURL
     }
 
-    public static func fallbackURL() -> URL? {
+    private func fallbackURL() -> URL? {
         return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     }
 
-    // Objective-C 정적 메소드 서명과 일치해야 함
-    public static func bundleURL() -> URL? {
-        let url = shared.cachedURLFromBundle()
+    // 번들 URL 메서드를 인스턴스 메서드로 변경
+    public func bundleURL() -> URL? {
+        let url = cachedURLFromBundle()
         print("[HotUpdaterImpl] Resolved bundle URL: \(url?.absoluteString ?? "Fallback")")
-        return url ?? fallbackURL()
+        return url ?? self.fallbackURL()
     }
 
     // MARK: - 번들 업데이트 로직 - JS에서 진입점

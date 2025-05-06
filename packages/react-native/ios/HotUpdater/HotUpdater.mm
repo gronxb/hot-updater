@@ -14,6 +14,8 @@
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
 
+// 정적 HotUpdaterImpl 인스턴스 생성
+static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterImpl new];
 
 @implementation HotUpdater {
     bool hasListeners;
@@ -29,6 +31,7 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
     self = [super init];
     if (self) {
         observedTasks = [NSMutableSet set];
+        
         // Start observing notifications needed for cleanup/events
         // Using self as observer
         [[NSNotificationCenter defaultCenter] addObserver:self
@@ -100,21 +103,12 @@ RCT_EXPORT_MODULE();
      return uuid;
 }
 
-// Delegate to Swift *** Use HotUpdaterImpl ***
-- (NSString *)getChannel {
-    return [HotUpdaterImpl getChannel];
-}
-
-// Delegate to Swift *** Use HotUpdaterImpl ***
-- (NSString *)getAppVersion {
-    return [HotUpdaterImpl appVersion];
-}
 
 - (NSDictionary *)constantsToExport {
     return @{
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null], // Local
-        @"APP_VERSION": [self getAppVersion] ?: [NSNull null], // Swift
-        @"CHANNEL": [self getChannel] ?: [NSNull null]        // Swift
+        @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null], // Swift
+        @"CHANNEL": [_hotUpdaterImpl getChannel] ?: [NSNull null]        // Swift
     };
 }
 
@@ -123,22 +117,14 @@ RCT_EXPORT_MODULE();
 }
 
 
-#pragma mark - Bundle URL Management (Delegate to Swift)
-
-// Delegate to Swift static method *** Use HotUpdaterImpl ***
-+ (void)setChannel:(NSString *)channel {
-    [HotUpdaterImpl setChannel:channel];
-}
-
-// Keep the public static interface, delegate to Swift *** Use HotUpdaterImpl ***
+// 정적 인스턴스를 사용하여 bundleURL 가져오기
 + (NSURL *)bundleURL {
-    return [HotUpdaterImpl bundleURL];
+    return [_hotUpdaterImpl bundleURL];
 }
 
 
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
 
-// Handle progress notification from Swift Impl
 - (void)handleDownloadProgress:(NSNotification *)notification {
      if (!hasListeners) return;
 
@@ -157,7 +143,6 @@ RCT_EXPORT_MODULE();
      }
  }
 
-// Handle completion notification from Swift Impl (mainly for potential cleanup)
 - (void)handleDownloadCompletion:(NSNotification *)notification {
       NSURLSessionTask *task = notification.object; // Task that finished
       RCTLogInfo(@"[HotUpdater.mm] Received download completion notification for task: %@", task.originalRequest.URL);
@@ -198,8 +183,8 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(setChannel:(NSString *)channel
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    // Delegate directly to the Swift static method *** Use HotUpdaterImpl ***
-    [HotUpdaterImpl setChannel:channel];
+    // 정적 인스턴스 사용
+    [_hotUpdaterImpl setChannel:channel];
     resolve(nil);
 }
 
@@ -207,8 +192,8 @@ RCT_EXPORT_METHOD(setChannel:(NSString *)channel
 RCT_EXPORT_METHOD(reload) {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Get the bundle URL from Swift Impl *** Use HotUpdaterImpl ***
-        NSURL *bundleURL = [HotUpdaterImpl bundleURL];
+        // 정적 인스턴스를 사용하여 bundleURL 가져오기
+        NSURL *bundleURL = [_hotUpdaterImpl bundleURL];
         RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
         if (bundleURL && self.bridge) {
             @try {
@@ -226,7 +211,7 @@ RCT_EXPORT_METHOD(reload) {
 }
 
 RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    // Delegate to Swift static property *** Use HotUpdaterImpl ***
+    // Static 메서드 사용
     NSString *version = [HotUpdaterImpl appVersion];
     resolve(version ?: [NSNull null]);
 }
@@ -241,14 +226,14 @@ RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)param
         @"bundleId": params.bundleId(),
         @"zipUrl": params.zipUrl(),
     };
-    [[HotUpdaterImpl shared] updateBundleFromJS:paramDict resolver:resolve rejecter:reject];
+    [_hotUpdaterImpl updateBundleFromJS:paramDict resolver:resolve rejecter:reject];
 }
 #else
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSLog(@"[HotUpdater.mm] updateBundle called. Delegating to Swift Impl.");
-    [[HotUpdaterImpl shared] updateBundleFromJS:params resolver:resolve rejecter:reject];
+    [_hotUpdaterImpl updateBundleFromJS:params resolver:resolve rejecter:reject];
 }
 #endif
 
