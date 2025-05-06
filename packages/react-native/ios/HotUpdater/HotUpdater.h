@@ -12,6 +12,11 @@
  */
 + (NSURL *)bundleURL;
 
+/**
+ * 다운로드 진행 상황 업데이트 시간을 추적하는 속성
+ */
+@property (nonatomic, assign) NSTimeInterval lastUpdateTime;
+
 // No need to declare the exported methods (setChannel, reload, etc.) here
 // as RCT_EXPORT_METHOD handles their exposure to JavaScript.
 // We also don't need to declare supportedEvents or requiresMainQueueSetup here

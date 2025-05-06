@@ -1,94 +1,255 @@
-#import "HotUpdater.h" // 이 파일은 그대로 사용 (RN 모듈 인터페이스 정의)
+#import "HotUpdater.h"
+#import <React/RCTReloadCommand.h>
+#import <React/RCTLog.h>
 
-// 생성된 Swift 헤더 파일을 임포트합니다. 여기에는 HotUpdaterModule 정의가 포함됩니다.
-#import "HotUpdaterModule-Swift.h"
+// Import the generated Swift header
+#import "HotUpdaterImpl-Swift.h" // *** Replace YourProductModuleName ***
 
-// 레거시 브릿지 구현
-// @implementation HotUpdater는 HotUpdater.h에 선언된 인터페이스를 구현합니다.
-@implementation HotUpdater
-{
-    // FIX: Swift 클래스 인스턴스 타입 변경
-    // Swift 클래스의 공유 인스턴스에 대한 참조 유지
-    HotUpdaterModule *swiftInstance; // 타입 변경됨
+// Define Notification names used for observing Swift Core
+NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
+NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
+
+
+@implementation HotUpdater {
+    bool hasListeners;
+    // Keep track of tasks ONLY for removing observers when this ObjC instance is invalidated
+    NSMutableSet<NSURLSessionTask *> *observedTasks; // Changed to NSURLSessionTask for broader compatibility if needed
+    NSTimeInterval lastUpdateTime; // 인스턴스 변수로 선언
 }
 
-// JavaScript에 모듈 이름 노출 ("HotUpdater" 이름 유지)
-RCT_EXPORT_MODULE();
++ (BOOL)requiresMainQueueSetup {
+    return YES;
+}
 
-// 초기화 시 Swift 공유 인스턴스 가져오기
 - (instancetype)init {
     self = [super init];
     if (self) {
-        // FIX: Swift 공유 인스턴스 가져오기 변경
-        // HotUpdaterModule.swift에 정의된 공유 인스턴스를 가져옴
-        swiftInstance = [HotUpdaterModule shared]; // 클래스 이름 변경됨
+        observedTasks = [NSMutableSet set];
+        // Start observing notifications needed for cleanup/events
+        // Using self as observer
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handleDownloadProgress:)
+                                                     name:HotUpdaterDownloadProgressUpdateNotification
+                                                   object:nil]; // Observe all tasks from Impl
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handleDownloadCompletion:)
+                                                     name:HotUpdaterDownloadDidFinishNotification
+                                                   object:nil]; // Observe all tasks from Impl
     }
     return self;
 }
 
-// AppDelegate 등에서 사용할 정적 번들 URL 메서드
-+ (NSURL *)bundleURL {
-  // FIX: Swift 정적 메서드 호출 변경
-  // Swift 클래스([HotUpdaterModule class])의 정적 메서드(+bundleURL)를 호출합니다.
-  return [HotUpdaterModule bundleURL]; // 클래스 이름 변경됨
+// Clean up observers when module is invalidated or deallocated
+- (void)invalidate {
+    RCTLogInfo(@"[HotUpdater.mm] invalidate called, removing observers.");
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    // Swift side should handle KVO observer removal for its tasks
+    [super invalidate];
 }
 
-// --- JavaScript로 메서드 내보내기 ---
-// 모든 메서드 호출을 swiftInstance (HotUpdaterModule 타입)로 전달합니다.
+- (void)dealloc {
+    RCTLogInfo(@"[HotUpdater.mm] dealloc called, removing observers.");
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+
+RCT_EXPORT_MODULE();
+
+#pragma mark - React Native Constants (Keep getMinBundleId, delegate others)
+
+// Keep local implementation if complex or uses macros
+- (NSString *)getMinBundleId {
+     static NSString *uuid = nil;
+     static dispatch_once_t onceToken;
+     dispatch_once(&onceToken, ^{
+     #if DEBUG
+         uuid = @"00000000-0000-0000-0000-000000000000";
+     #else
+         NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+         [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
+         [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
+         NSDate *buildDate = [formatter dateFromString:compileDateStr];
+         if (!buildDate) {
+             RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
+             uuid = @"00000000-0000-0000-0000-000000000000";
+             return;
+         }
+         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
+         unsigned char bytes[16];
+         bytes[0] = (buildTimestampMs >> 40) & 0xFF; // ... rest of UUID logic ...
+         bytes[1] = (buildTimestampMs >> 32) & 0xFF;
+         bytes[2] = (buildTimestampMs >> 24) & 0xFF;
+         bytes[3] = (buildTimestampMs >> 16) & 0xFF;
+         bytes[4] = (buildTimestampMs >> 8) & 0xFF;
+         bytes[5] = buildTimestampMs & 0xFF;
+         bytes[6] = 0x70; bytes[7] = 0x00; bytes[8] = 0x80; bytes[9] = 0x00;
+         bytes[10] = 0x00; bytes[11] = 0x00; bytes[12] = 0x00; bytes[13] = 0x00; bytes[14] = 0x00; bytes[15] = 0x00;
+         uuid = [NSString stringWithFormat:
+                 @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                 bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                 bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+     #endif
+     });
+     return uuid;
+}
+
+// Delegate to Swift *** Use HotUpdaterImpl ***
+- (NSString *)getChannel {
+    return [HotUpdaterImpl getChannel];
+}
+
+// Delegate to Swift *** Use HotUpdaterImpl ***
+- (NSString *)getAppVersion {
+    return [HotUpdaterImpl appVersion];
+}
+
+- (NSDictionary *)constantsToExport {
+    return @{
+        @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null], // Local
+        @"APP_VERSION": [self getAppVersion] ?: [NSNull null], // Swift
+        @"CHANNEL": [self getChannel] ?: [NSNull null]        // Swift
+    };
+}
+
+#if !RCT_NEW_ARCH_ENABLED
+- (NSDictionary *)getConstants {
+ return [self constantsToExport];
+}
+#endif
+
+
+#pragma mark - Bundle URL Management (Delegate to Swift)
+
+// Delegate to Swift static method *** Use HotUpdaterImpl ***
++ (void)setChannel:(NSString *)channel {
+    [HotUpdaterImpl setChannel:channel];
+}
+
+// Keep the public static interface, delegate to Swift *** Use HotUpdaterImpl ***
++ (NSURL *)bundleURL {
+    return [HotUpdaterImpl bundleURL];
+}
+
+
+#pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
+
+// Handle progress notification from Swift Impl
+- (void)handleDownloadProgress:(NSNotification *)notification {
+     if (!hasListeners) return;
+
+     NSDictionary *userInfo = notification.userInfo;
+     NSNumber *progressNum = userInfo[@"progress"];
+
+     if (progressNum) {
+         double progress = [progressNum doubleValue];
+         NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
+         // Throttle events
+         if ((currentTime - lastUpdateTime) >= 100 || progress >= 1.0) {
+             lastUpdateTime = currentTime;
+             // RCTLogInfo(@"[HotUpdater.mm] Sending progress event: %.2f", progress); // Reduce log noise
+             [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
+         }
+     }
+ }
+
+// Handle completion notification from Swift Impl (mainly for potential cleanup)
+- (void)handleDownloadCompletion:(NSNotification *)notification {
+      NSURLSessionTask *task = notification.object; // Task that finished
+      RCTLogInfo(@"[HotUpdater.mm] Received download completion notification for task: %@", task.originalRequest.URL);
+      // Swift side handles KVO observer removal internally now when task finishes.
+      // No specific cleanup needed here based on this notification anymore.
+}
+
+
+#pragma mark - React Native Events (Keep as is)
+
+- (NSArray<NSString *> *)supportedEvents {
+    return @[@"onProgress"];
+}
+
+- (void)startObserving {
+    hasListeners = YES;
+    RCTLogInfo(@"[HotUpdater.mm] Start observing JS events.");
+    // Observers are added in init now
+}
+
+- (void)stopObserving {
+    hasListeners = NO;
+    RCTLogInfo(@"[HotUpdater.mm] Stop observing JS events.");
+    // Observers are removed in invalidate/dealloc
+}
+
+- (void)sendEventWithName:(NSString * _Nonnull)name body:(id)body { // Changed body type to id
+    if (hasListeners) {
+        [super sendEventWithName:name body:body];
+    } else {
+        // RCTLogInfo(@"[HotUpdater.mm] Suppressed event '%@' because no listeners are registered.", name); // Reduce log noise
+    }
+}
+
+
+#pragma mark - React Native Exports (Slimmed Down)
 
 RCT_EXPORT_METHOD(setChannel:(NSString *)channel
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-  // Swift 인스턴스(HotUpdaterModule)의 setChannel(channel:resolve:reject:) 메서드 호출
-  [swiftInstance setChannel:channel resolve:resolve reject:reject];
+    // Delegate directly to the Swift static method *** Use HotUpdaterImpl ***
+    [HotUpdaterImpl setChannel:channel];
+    resolve(nil);
 }
 
+// Keep reload logic here as it interacts with RN Bridge
 RCT_EXPORT_METHOD(reload) {
-  // Swift 인스턴스(HotUpdaterModule)의 reload() 메서드 호출
-  [swiftInstance reload];
+    RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Get the bundle URL from Swift Impl *** Use HotUpdaterImpl ***
+        NSURL *bundleURL = [HotUpdaterImpl bundleURL];
+        RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+        if (bundleURL && self.bridge) {
+            @try {
+                 // This method of setting bundleURL might be outdated depending on RN version.
+                 // Consider alternatives if this doesn't work reliably.
+                 [self.bridge setValue:bundleURL forKey:@"bundleURL"];
+            } @catch (NSException *exception) {
+                 RCTLogError(@"[HotUpdater.mm] Failed to set bundleURL on bridge: %@", exception);
+            }
+        } else if (!self.bridge) {
+             RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
+        }
+        RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+    });
 }
 
-RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
-  // Swift 인스턴스(HotUpdaterModule)의 getAppVersion(resolve:reject:) 메서드 호출
-  [swiftInstance getAppVersionWithResolve:resolve reject:reject];
+RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+    // Delegate to Swift static property *** Use HotUpdaterImpl ***
+    NSString *version = [HotUpdaterImpl appVersion];
+    resolve(version ?: [NSNull null]);
 }
 
+// *** SIMPLIFIED: Delegate directly to the Swift handler method ***
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)bundleData
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-  // Swift 인스턴스(HotUpdaterModule)의 updateBundle(_:resolve:reject:) 메서드 호출
-  [swiftInstance updateBundle:bundleData resolve:resolve reject:reject];
+    RCTLogInfo(@"[HotUpdater.mm] updateBundle called. Delegating to Swift Impl.");
+    // Call the Swift method that handles parsing, logic, and promise resolution
+    // *** Use HotUpdaterImpl ***
+    [[HotUpdaterImpl shared] handleUpdateBundleFromJSWithBundleData:bundleData resolver:resolve rejecter:reject];
 }
 
-// --- EventEmitter 관련 메서드 ---
 
-// 지원하는 이벤트 목록 반환 (Swift 인스턴스에서 가져옴)
-- (NSArray<NSString *> *)supportedEvents {
-  // Swift 인스턴스(HotUpdaterModule)의 supportedEvents() 메서드 호출
-  return [swiftInstance supportedEvents];
-}
-
-// 메인 스레드 설정 필요 여부 반환 (Swift 클래스에서 가져옴)
-+ (BOOL)requiresMainQueueSetup {
-  // FIX: Swift 정적 메서드 호출 변경
-  // Swift 클래스(HotUpdaterModule)의 정적 requiresMainQueueSetup() 메서드 호출
-  return [HotUpdaterModule requiresMainQueueSetup]; // 클래스 이름 변경됨
-}
-
-// --- 상수 내보내기 ---
-
-// JavaScript로 내보낼 상수 반환 (Swift 인스턴스에서 가져옴)
-- (NSDictionary *)constantsToExport {
-    // Swift 인스턴스(HotUpdaterModule)의 constantsToExport() 메서드 호출
-    return [swiftInstance constantsToExport];
-}
+#pragma mark - Turbo Module Support (Keep as is)
 
 #ifdef RCT_NEW_ARCH_ENABLED
-- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
-  return std::make_shared<facebook::react::NativeHotUpdaterSpecJSI>(params);
-}
-#endif
+#import "HotUpdaterSpec.h"
 
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+    (const facebook::react::ObjCTurboModule::InitParams &)params
+{
+    // *** Use HotUpdaterImpl *** (The Spec name remains NativeHotUpdaterSpecJSI)
+    // The underlying implementation instance type doesn't affect the Spec conformance.
+    return std::make_shared<facebook::react::NativeHotUpdaterSpecJSI>(params);
+}
+#endif // RCT_NEW_ARCH_ENABLED
 
 @end

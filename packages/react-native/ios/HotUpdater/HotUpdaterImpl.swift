@@ -1,470 +1,496 @@
-import UIKit
 import Foundation
-// React import는 이 파일에서 직접적으로 필요하지 않을 수 있습니다.
-// import React
+import SSZipArchive // SSZipArchive가 Swift에서 접근 가능한지 확인하세요
+import React // RCTPromiseResolveBlock/RejectBlock을 위해 React 임포트
 
-@objcMembers public class HotUpdaterImpl: NSObject {
+// Objective-C에서 이 클래스에 접근 가능하도록 설정
+@objcMembers public class HotUpdaterImpl: NSObject { // *** 클래스 이름 변경됨 ***
 
-    public static let shared = HotUpdaterImpl()
-    private override init() { super.init() }
+    public static let shared = HotUpdaterImpl() // *** 새 클래스 이름 사용 ***
 
-    // 앱 버전 (Info.plist에서 가져옴)
-    public var appVersion: String {
-        return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    private let fileManager = FileManager.default
+    // URLSessionConfiguration.default를 사용하고 delegate를 self로 설정하여 진행률 추적
+    private lazy var session: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        // delegateQueue를 nil로 설정하면 메인 스레드가 아닌 별도의 직렬 대기열에서 콜백이 실행됩니다.
+        // UI 업데이트는 메인 스레드에서 수행해야 합니다. NotificationCenter를 사용하므로 여기서는 괜찮습니다.
+        return URLSession(configuration: configuration, delegate: nil, delegateQueue: nil)
+    }()
+
+
+    // 다운로드 작업 및 진행률 핸들러 추적 (내부적으로 필요한 경우)
+    // NotificationCenter는 ObjC로 진행률을 보고하는 데 사용됩니다.
+    // HotUpdaterPrefs 인스턴스에 접근합니다. configure가 호출되었는지 확인하세요.
+    private let prefs = HotUpdaterPrefs.shared
+
+    private override init() {
+        super.init()
+        // 앱 버전으로 HotUpdaterPrefs 구성
+        prefs.configure(appVersion: HotUpdaterImpl.appVersion)
     }
 
-    // 현재 설정된 채널 (UserDefaults에서 읽기)
-    public var channel: String? {
-        let prefs = UserDefaults.standard
-        return prefs.string(forKey: "HotUpdaterChannel")
+
+    // 앱 버전 가져오기
+    public static var appVersion: String {
+        return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
     }
 
-    // 최소 허용 번들 ID (빌드 시간 기준 UUID 생성)
-    public var minBundleId: String {
-        #if DEBUG
-        // 디버그 모드에서는 항상 업데이트 허용
-        return "00000000-0000-0000-0000-000000000000"
-        #else
-        // BuildInfo.h가 브리징 헤더에 포함되어 있어야 함
-        guard let buildDateStr = String(cString: BUILD_DATE, encoding: .utf8),
-              let buildTimeStr = String(cString: BUILD_TIME, encoding: .utf8) else {
-            print("HotUpdater Error: Could not read BUILD_DATE or BUILD_TIME C strings.")
-            return "00000000-0000-0000-0000-000000000000" // Fallback
-        }
+    // MARK: - 상수 & 환경설정 접근 (여기서는 변경 필요 없음)
 
-        let compileDateStr = "\(buildDateStr) \(buildTimeStr)"
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX") // POSIX locale for fixed format parsing
-        formatter.dateFormat = "MMM d yyyy HH:mm:ss" // Example: May 6 2025 10:08:35
-
-        // Try parsing with single-digit day
-        formatter.dateFormat = "MMM d yyyy HH:mm:ss"
-        var buildDate = formatter.date(from: compileDateStr)
-
-        // If parsing failed, try with double-digit day
-        if buildDate == nil {
-            formatter.dateFormat = "MMM dd yyyy HH:mm:ss" // Example: May 06 2025 10:08:35
-            buildDate = formatter.date(from: compileDateStr)
-        }
-
-        // Fallback parsing attempt (handle extra spaces often inserted by __DATE__)
-        if buildDate == nil {
-            let cleanedDateStr = compileDateStr.replacingOccurrences(of: "  ", with: " ") // Replace double space with single
-            formatter.dateFormat = "MMM d yyyy HH:mm:ss"
-            buildDate = formatter.date(from: cleanedDateStr)
-            if buildDate == nil {
-                formatter.dateFormat = "MMM dd yyyy HH:mm:ss"
-                buildDate = formatter.date(from: cleanedDateStr)
-            }
-        }
-
-        guard let finalBuildDate = buildDate else {
-            print("HotUpdater Error: Could not parse build date string '\(compileDateStr)'. Using fallback minBundleId.")
-            return "00000000-0000-0000-0000-000000000000"
-        }
-
-        return generateBundleId(from: finalBuildDate)
-        #endif
+    public static func setChannel(_ channel: String?) {
+        // HotUpdaterPrefs 인스턴스를 통해 채널 저장
+        shared.prefs.setItem(channel, forKey: "HotUpdaterChannel")
+        print("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
     }
 
-    // 날짜로부터 UUID v7 유사 형식 생성 (시간 순서 보장)
-    private func generateBundleId(from date: Date) -> String {
-         let buildTimestampMs = UInt64(date.timeIntervalSince1970 * 1000.0)
-         var bytes = [UInt8](repeating: 0, count: 16)
-
-         // unixtime_ms (48 bits)
-         bytes[0] = UInt8((buildTimestampMs >> 40) & 0xFF)
-         bytes[1] = UInt8((buildTimestampMs >> 32) & 0xFF)
-         bytes[2] = UInt8((buildTimestampMs >> 24) & 0xFF)
-         bytes[3] = UInt8((buildTimestampMs >> 16) & 0xFF)
-         bytes[4] = UInt8((buildTimestampMs >> 8) & 0xFF)
-         bytes[5] = UInt8(buildTimestampMs & 0xFF)
-
-         // version (4 bits = 0b0111) + rand_a (12 bits)
-         bytes[6] = 0x70 | UInt8.random(in: 0...15) // Set version to 7 (0111)
-         bytes[7] = UInt8.random(in: 0...255)
-
-         // variant (2 bits = 0b10) + rand_b (62 bits)
-         bytes[8] = 0x80 | UInt8.random(in: 0...63) // Set variant to RFC 4122 (10xx)
-         bytes[9] = UInt8.random(in: 0...255)
-         for i in 10..<16 { bytes[i] = UInt8.random(in: 0...255) }
-
-         // Format as UUID string
-         return String(format: "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                       bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-                       bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15])
+    public static func getChannel() -> String? {
+        // HotUpdaterPrefs 인스턴스를 통해 채널 검색
+        return shared.prefs.getItem(forKey: "HotUpdaterChannel") // 수정: getItemForKey -> getItem
     }
 
-    // 채널 설정 (UserDefaults에 저장)
-    public func updateChannel(_ channel: String) {
-        let prefs = UserDefaults.standard
-        prefs.set(channel, forKey: "HotUpdaterChannel")
-        prefs.synchronize() // 변경사항 즉시 반영 (필수는 아님)
-        print("HotUpdaterImpl: Channel updated to \(channel)")
+    // MARK: - 번들 URL 관리 (여기서는 변경 필요 없음)
+
+    private func setBundleURLInternal(localPath: String?) {
+        print("[HotUpdaterImpl] Setting bundle URL to: \(localPath ?? "nil")")
+        // HotUpdaterPrefs 인스턴스를 통해 번들 URL 저장
+        HotUpdaterImpl.shared.prefs.setItem(localPath, forKey: "HotUpdaterBundleURL")
     }
 
-    // 현재 활성화된 번들 URL 설정 (UserDefaults에 저장)
-    public func setBundleURL(_ localPath: String) {
-        let prefs = UserDefaults.standard
-        if localPath.isEmpty {
-             // 경로가 비어있으면 저장된 URL 제거 (Fallback 사용 유도)
-             prefs.removeObject(forKey: "HotUpdaterBundleURL")
-             print("HotUpdaterImpl: Bundle URL cleared.")
-        } else {
-             // 유효한 경로 저장
-             prefs.set(localPath, forKey: "HotUpdaterBundleURL")
-             print("HotUpdaterImpl: Bundle URL set to \(localPath)")
-        }
-        prefs.synchronize() // 변경사항 즉시 반영
-    }
-
-    // --- Static Methods ---
-
-    // 앱에서 사용할 최종 번들 URL 반환 (캐시 -> Fallback 순)
-    public static func bundleURL() -> URL? {
-        let url = cachedBundleURL() ?? fallbackURL()
-        #if DEBUG
-        print("HotUpdaterImpl: Using bundle URL: \(url?.absoluteString ?? "nil")")
-        #endif
-        return url
-    }
-
-    // UserDefaults에 저장된 유효한 번들 URL 반환
-    private static func cachedBundleURL() -> URL? {
-        let prefs = UserDefaults.standard
-        guard let savedURLString = prefs.string(forKey: "HotUpdaterBundleURL"),
-              !savedURLString.isEmpty,
+    private func cachedURLFromBundle() -> URL? {
+        // HotUpdaterPrefs 인스턴스를 통해 번들 URL 검색
+        guard let savedURLString = HotUpdaterImpl.shared.prefs.getItem(forKey: "HotUpdaterBundleURL"), // 수정: getItemForKey -> getItem
               let bundleURL = URL(string: savedURLString),
-              FileManager.default.fileExists(atPath: bundleURL.path) else {
-            // 저장된 URL이 없거나, 있더라도 해당 파일이 존재하지 않으면 nil 반환
-            if prefs.string(forKey: "HotUpdaterBundleURL") != nil {
-                print("HotUpdaterImpl Warning: Cached bundle URL exists but file not found at path. Clearing cache.")
-                prefs.removeObject(forKey: "HotUpdaterBundleURL")
-                prefs.synchronize()
-            }
+              fileManager.fileExists(atPath: bundleURL.path) else {
             return nil
         }
-        // 유효한 캐시 URL 반환
         return bundleURL
     }
 
-    // 앱 내부에 포함된 기본 번들 URL 반환
-    static func fallbackURL() -> URL? {
-        // 기본적으로 main.jsbundle을 찾음
+    public static func fallbackURL() -> URL? {
         return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     }
 
-    // --- Update Logic ---
+    // Objective-C 정적 메소드 서명과 일치해야 함
+    public static func bundleURL() -> URL? {
+        let url = shared.cachedURLFromBundle()
+        print("[HotUpdaterImpl] Resolved bundle URL: \(url?.absoluteString ?? "Fallback")")
+        return url ?? fallbackURL()
+    }
 
-    // 번들 업데이트 시작
-    public func updateBundle(bundleId: String,
-                             zipUrlString: String,
-                             progressCallback: ((NSNumber) -> Void)?,
-                             completion: @escaping (Bool, Error?) -> Void) {
+    // MARK: - 번들 업데이트 로직 - JS에서 진입점
 
-        print("HotUpdaterImpl: Starting updateBundle for ID \(bundleId) from URL: \(zipUrlString)")
+    // *** RCT_EXPORT_METHOD 호출을 처리하는 새 메소드 ***
+    // Objective-C에서 직접 딕셔너리 및 promise 블록을 받음
+    public func handleUpdateBundleFromJS(bundleData: [String: Any]?,
+                                         resolver resolve: @escaping RCTPromiseResolveBlock,
+                                         rejecter reject: @escaping RCTPromiseRejectBlock) {
 
-        // 1. URL 유효성 검사 또는 클리어 요청 처리
-        guard !zipUrlString.isEmpty, let zipUrl = URL(string: zipUrlString) else {
-            print("HotUpdaterImpl: zipUrlString is empty. Clearing bundle URL.")
-            setBundleURL("") // 저장된 번들 URL 제거 -> Fallback 사용
-            completion(true, nil) // URL 비우는 것은 성공으로 간주
+        // 1. 인수 구문 분석 및 유효성 검사
+        guard let data = bundleData else {
+            print("[HotUpdaterImpl] Error: bundleData dictionary is nil")
+            let error = NSError(domain: "HotUpdaterError", code: 101, userInfo: [NSLocalizedDescriptionKey: "Missing bundleData dictionary"])
+            reject("UPDATE_ERROR", error.localizedDescription, error)
             return
         }
 
-        let fileManager = FileManager.default
-
-        // 2. 저장 경로 설정
-        guard let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-             completion(false, NSError(domain: "HotUpdaterImpl", code: 1000, userInfo: [NSLocalizedDescriptionKey: "Could not access Documents directory."]))
-             return
-        }
-        let bundleStoreDir = documentsPath.appendingPathComponent("bundle-store") // 모든 번들 저장 폴더
-        let finalBundleDir = bundleStoreDir.appendingPathComponent(bundleId) // 이번 번들 최종 위치
-
-        // 3. bundle-store 디렉토리 생성 (없으면)
-        do {
-            if !fileManager.fileExists(atPath: bundleStoreDir.path) {
-                 try fileManager.createDirectory(at: bundleStoreDir, withIntermediateDirectories: true, attributes: nil)
-            }
-        } catch {
-            completion(false, NSError(domain: "HotUpdaterImpl", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Failed to create bundle-store directory: \(error.localizedDescription)"]))
+        guard let bundleId = data["bundleId"] as? String, !bundleId.isEmpty else {
+            print("[HotUpdaterImpl] Error: Missing or empty 'bundleId'")
+            let error = NSError(domain: "HotUpdaterError", code: 102, userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
+            reject("UPDATE_ERROR", error.localizedDescription, error)
             return
         }
 
-        // 4. 이미 해당 번들이 유효하게 존재하는지 확인
-        if fileManager.fileExists(atPath: finalBundleDir.path) {
-            if let bundlePath = self.findBundleFile(in: finalBundleDir.path) {
-                print("HotUpdaterImpl: Bundle \(bundleId) already exists and is valid.")
-                 do {
-                     // 최근 사용됨을 표시하기 위해 수정 날짜 갱신 (cleanup 시 활용)
-                     try fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir.path)
-                     setBundleURL(URL(fileURLWithPath: bundlePath).absoluteString) // 현재 번들로 설정
-                     cleanupOldBundles(in: bundleStoreDir.path) // 오래된 번들 정리
-                     completion(true, nil) // 이미 존재하므로 성공
-                 } catch {
-                      print("HotUpdaterImpl Warning: Failed to update modification date for \(finalBundleDir.path): \(error)")
-                      // 날짜 갱신 실패해도 치명적이지 않으므로 성공 처리
-                      setBundleURL(URL(fileURLWithPath: bundlePath).absoluteString)
-                      cleanupOldBundles(in: bundleStoreDir.path)
-                      completion(true, nil)
-                 }
-                 return // 이미 존재하므로 더 이상 진행 안 함
-             } else {
-                 // 폴더는 있지만 내부 번들 파일이 없거나 잘못된 경우, 해당 폴더 삭제 후 진행
-                 print("HotUpdaterImpl Warning: Bundle directory \(finalBundleDir.path) exists but is invalid. Removing.")
-                 try? fileManager.removeItem(at: finalBundleDir)
-             }
-         }
+        let zipUrlString = data["zipUrl"] as? String ?? "" // 리셋을 위해 빈 문자열 허용
 
-        // 5. 임시 다운로드 및 압축 해제 폴더 준비
-        let tempDir = documentsPath.appendingPathComponent("bundle-temp") // 임시 작업 폴더
-        if fileManager.fileExists(atPath: tempDir.path) {
-            try? fileManager.removeItem(at: tempDir) // 이전 작업 찌꺼기 제거
-        }
-        do {
-            try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-           completion(false, NSError(domain: "HotUpdaterImpl", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Failed to create temp directory: \(error.localizedDescription)"]))
-           return
-        }
-        let tempZipFile = tempDir.appendingPathComponent("bundle.zip") // 다운로드될 zip 파일 경로
-        let extractedDir = tempDir.appendingPathComponent("extracted") // 압축 해제될 폴더 경로
-        do {
-             try fileManager.createDirectory(at: extractedDir, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-           completion(false, NSError(domain: "HotUpdaterImpl", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Failed to create temp extraction directory: \(error.localizedDescription)"]))
-           return
-        }
-
-        // 6. 파일 다운로드
-        downloadFile(from: zipUrl, to: tempZipFile.path, progressHandler: progressCallback) { [weak self] success, error in
-            guard let self = self else { return } // self 참조 확인
-
-            guard success, error == nil else {
-                print("HotUpdaterImpl Error: Download failed. Error: \(error?.localizedDescription ?? "Unknown download error")")
-                try? fileManager.removeItem(at: tempDir) // 임시 폴더 정리
-                completion(false, error ?? NSError(domain: "HotUpdaterImpl", code: 1002, userInfo: [NSLocalizedDescriptionKey: "Download failed."]))
+        var zipUrl: URL? = nil
+        if !zipUrlString.isEmpty {
+            guard let url = URL(string: zipUrlString) else {
+                print("[HotUpdaterImpl] Error: Invalid 'zipUrl': \(zipUrlString)")
+                let error = NSError(domain: "HotUpdaterError", code: 103, userInfo: [NSLocalizedDescriptionKey: "Invalid 'zipUrl' provided: \(zipUrlString)"])
+                reject("UPDATE_ERROR", error.localizedDescription, error)
                 return
             }
-            print("HotUpdaterImpl: Download successful.")
+            zipUrl = url
+        }
 
-            // 7. 압축 해제 (SSZipArchive 사용 가정)
-            // *** 중요: 실제 SSZipArchive 라이브러리 연동 및 Bridging Header 설정 필요 ***
-            if !SSZipArchive.unzipFile(atPath: tempZipFile.path, toDestination: extractedDir.path, overwrite: true, password: nil) {
-                 print("HotUpdaterImpl Error: Failed to extract zip file at \(tempZipFile.path)")
-                 try? fileManager.removeItem(at: tempDir) // 임시 폴더 정리
-                 completion(false, NSError(domain: "HotUpdaterImpl", code: 1003, userInfo: [NSLocalizedDescriptionKey: "Failed to extract zip file"]))
+        print("[HotUpdaterImpl] handleUpdateBundleFromJS called with bundleId: \(bundleId), zipUrl: \(zipUrl?.absoluteString ?? "nil")")
+
+        // 2. 내부 업데이트 로직 호출
+        // promise 블록을 직접 전달하거나 완료 핸들러 사용
+        updateBundleInternal(bundleId: bundleId, zipUrl: zipUrl) { success, error in
+            // 내부 업데이트 로직 완료 시 이 완료 블록 실행
+            if success {
+                print("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
+                resolve(true) // 성공 bool로 resolve
+            } else {
+                let resolvedError = error ?? NSError(domain: "HotUpdaterError", code: 999, userInfo: [NSLocalizedDescriptionKey: "Unknown update error"])
+                print("[HotUpdaterImpl] Update failed for \(bundleId): \(resolvedError.localizedDescription). Rejecting promise.")
+                reject("UPDATE_ERROR", resolvedError.localizedDescription, resolvedError)
+            }
+        }
+    }
+
+
+    // MARK: - 내부 업데이트 로직 (이전 updateBundle)
+
+    private func updateBundleInternal(bundleId: String, zipUrl: URL?,
+                                      completion: @escaping (Bool, Error?) -> Void) { // Internal로 이름 변경
+
+
+        // --- nil zipUrl 처리 (리셋 시나리오) ---
+        guard let validZipUrl = zipUrl else {
+            print("[HotUpdaterImpl] zipUrl is nil, resetting bundle URL.")
+            setBundleURLInternal(localPath: nil)
+            cleanupOldBundles(currentBundleId: nil)
+            completion(true, nil)
+            return
+        }
+
+        let storeDir = bundleStoreDir()
+        let finalBundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+
+        // --- 캐시 확인 ---
+        if fileManager.fileExists(atPath: finalBundleDir),
+           let existingBundlePath = findBundleFile(in: finalBundleDir) {
+            print("[HotUpdaterImpl] Using cached bundle at path: \(existingBundlePath)")
+            try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
+            setBundleURLInternal(localPath: existingBundlePath)
+            cleanupOldBundles(currentBundleId: bundleId)
+            completion(true, nil)
+            return
+        } else if fileManager.fileExists(atPath: finalBundleDir) {
+             print("[HotUpdaterImpl] Cached directory exists but invalid, removing: \(finalBundleDir)")
+             try? fileManager.removeItem(atPath: finalBundleDir)
+        }
+
+        // --- 디렉토리 준비 ---
+        let tempDirectory = tempDir()
+        _ = try? fileManager.removeItem(atPath: tempDirectory)
+        guard createDir(at: tempDirectory), createDir(at: storeDir) else {
+            let error = NSError(domain: "HotUpdaterError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create temporary or bundle store directories"])
+            completion(false, error)
+            return
+        }
+        let tempZipFile = (tempDirectory as NSString).appendingPathComponent("bundle.zip")
+        let extractedDir = (tempDirectory as NSString).appendingPathComponent("extracted")
+        guard createDir(at: extractedDir) else {
+            let error = NSError(domain: "HotUpdaterError", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create extracted directory"])
+            completion(false, error)
+            return
+        }
+        // --- 다운로드 ---
+        print("[HotUpdaterImpl] Starting download from \(validZipUrl)")
+        
+        // 먼저 task 변수 선언
+        var task: URLSessionDownloadTask!
+        
+        // 클로저 내부에서 사용할 다운로드 완료 핸들러 정의
+        let downloadCompletionHandler: (URL?, URLResponse?, Error?) -> Void = { [weak self] location, response, error in
+            guard let self = self else {
+                completion(false, NSError(domain: "HotUpdaterError", code: 998, userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"]))
+                return
+            }
+
+            // 성공/오류에 관계없이 항상 완료 알림 게시
+            // ObjC 래퍼는 이를 사용하여 관찰자 정리
+            defer {
+                NotificationCenter.default.post(name: .downloadDidFinish, object: task)
+                // 작업 완료 시 KVO 관찰자 제거 (중요!)
+                 DispatchQueue.main.async { // KVO 제거는 관찰자를 추가한 스레드(여기서는 메인 스레드 가정) 또는 안전한 곳에서 수행
+                    // downloadTask에서 self에 대한 참조가 더 이상 유효하지 않을 수 있으므로 안전하게 제거
+                    // NotificationCenter를 통해 완료를 알리는 것이 더 안전할 수 있음
+                    // 또는 downloadTask 객체 자체를 추적하고 완료 시 제거
+                     print("[HotUpdaterImpl] Attempting to remove observers post-download.")
+                     // downloadTask 인스턴스가 여전히 유효하다면... (캡처 리스트 사용으로 self는 약한 참조)
+                     // 이 블록 실행 시점에 downloadTask가 유효하다는 보장은 없음.
+                     // NotificationCenter 리스너에서 정리하는 것이 더 견고함.
+                     // 아래 두 줄은 ObjC 래퍼에서 Notification을 받고 정리한다고 가정하고 주석 처리하거나 제거할 수 있습니다.
+                     // task.removeObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesReceived), context: nil)
+                     // task.removeObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesExpectedToReceive), context: nil)
+                 }
+            }
+
+
+            if let error = error {
+                print("[HotUpdaterImpl] Download failed: \(error.localizedDescription)")
+                try? self.fileManager.removeItem(atPath: tempDirectory)
+                completion(false, error)
+                return
+            }
+            guard let location = location else {
+                 let error = NSError(domain: "HotUpdaterError", code: 4, userInfo: [NSLocalizedDescriptionKey: "Download location URL is nil"])
+                 try? self.fileManager.removeItem(atPath: tempDirectory)
+                 completion(false, error)
+                 return
+            }
+
+            // --- 다운로드된 파일 이동 ---
+             do {
+                 try? self.fileManager.removeItem(atPath: tempZipFile)
+                 try self.fileManager.moveItem(at: location, to: URL(fileURLWithPath: tempZipFile))
+             } catch let moveError {
+                 print("[HotUpdaterImpl] Failed to move downloaded file: \(moveError.localizedDescription)")
+                 try? self.fileManager.removeItem(atPath: tempDirectory)
+                 completion(false, moveError)
                  return
              }
-             print("HotUpdaterImpl: Extraction successful to \(extractedDir.path).")
-
-            // 8. 압축 해제된 파일에서 번들 파일(.jsbundle) 찾기
-            guard let extractedBundlePath = self.findBundleFile(in: extractedDir.path) else {
-                 print("HotUpdaterImpl Error: Bundle file not found in extracted package at \(extractedDir.path)")
-                 try? fileManager.removeItem(at: tempDir) // 임시 폴더 정리
-                 completion(false, NSError(domain: "HotUpdaterImpl", code: 1004, userInfo: [NSLocalizedDescriptionKey: "Bundle file not found in extracted package"]))
-                 return
-            }
-            print("HotUpdaterImpl: Found bundle file in extracted package: \(extractedBundlePath)")
-
-            // 9. 압축 해제된 폴더를 최종 번들 위치로 이동/복사
-            if fileManager.fileExists(atPath: finalBundleDir.path) {
-                // 만약을 위해 다시 확인하고 삭제 (이론상 위에서 처리되었어야 함)
-                try? fileManager.removeItem(at: finalBundleDir)
-            }
-
+            // --- Zip 압축 해제 ---
+            // SSZipArchive.unzipFile은 반환 값이 없는 void 타입이므로 try-catch로 오류 처리
             do {
-                // 먼저 이동(move) 시도 (빠름)
-                try fileManager.moveItem(at: extractedDir, to: finalBundleDir)
-                 print("HotUpdaterImpl: Successfully moved bundle to final destination: \(finalBundleDir.path)")
-            } catch let moveError {
-                 print("HotUpdaterImpl Warning: Failed to move extracted files: \(moveError.localizedDescription). Attempting copy.")
-                // 이동 실패 시 복사(copy) 시도 (느리지만 안전할 수 있음)
-                do {
-                    try fileManager.copyItem(at: extractedDir, to: finalBundleDir)
-                    try? fileManager.removeItem(at: extractedDir) // 복사 성공 시 원본 삭제 시도
-                    print("HotUpdaterImpl: Successfully copied bundle to final destination.")
-                } catch let copyError {
-                     // 복사마저 실패하면 최종 실패
-                     print("HotUpdaterImpl Error: Failed to copy extracted files: \(copyError.localizedDescription)")
-                     try? fileManager.removeItem(at: tempDir) // 임시 폴더 정리
-                     completion(false, moveError) // 원인이 된 moveError를 반환하는 것이 더 나을 수 있음
-                     return
+                try SSZipArchive.unzipFile(atPath: tempZipFile, toDestination: extractedDir, overwrite: true, password: nil)
+                
+                // 압축 해제 후 디렉토리가 존재하고 내용물이 있는지 확인
+                if !self.fileManager.fileExists(atPath: extractedDir) {
+                    throw NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "압축 해제 디렉토리가 존재하지 않습니다"])
                 }
+                
+                // 디렉토리 내용물 확인
+                let contents = try self.fileManager.contentsOfDirectory(atPath: extractedDir)
+                if contents.isEmpty {
+                    throw NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "압축 해제된 파일이 없습니다"])
+                }
+            } catch let unzipError {
+                print("[HotUpdaterImpl] 압축 해제 실패: \(unzipError.localizedDescription)")
+                let error = NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Failed to unzip file: \(unzipError.localizedDescription)"])
+                try? self.fileManager.removeItem(atPath: tempDirectory)
+                completion(false, error)
+                return
             }
 
-            // 10. 최종 위치에서 번들 파일 재확인 및 설정
-            if let finalBundlePath = self.findBundleFile(in: finalBundleDir.path) {
-                  print("HotUpdaterImpl: Verified bundle file in final location: \(finalBundlePath)")
+            // --- 추출된 번들 확인 ---
+             guard let _ = self.findBundleFile(in: extractedDir) else { // 사용되지 않으므로 _ 사용
+                  let error = NSError(domain: "HotUpdaterError", code: 6, userInfo: [NSLocalizedDescriptionKey: "index.ios.bundle or main.jsbundle not found in extracted files"])
+                  try? self.fileManager.removeItem(atPath: tempDirectory)
+                  completion(false, error)
+                  return
+             }
+
+            // --- 추출된 파일을 최종 위치로 이동 ---
+             do {
+                 try? self.fileManager.removeItem(atPath: finalBundleDir)
+                 try self.fileManager.moveItem(atPath: extractedDir, toPath: finalBundleDir)
+                 try? self.fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
+             } catch {
+                 print("[HotUpdaterImpl] Move failed, attempting copy: \(error.localizedDescription)")
                  do {
-                     // 최근 사용됨 표시 (수정 날짜 갱신)
-                     try fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir.path)
-                 } catch {
-                     // 날짜 갱신 실패는 경고만 출력
-                     print("HotUpdaterImpl Warning: Failed to update modification date for final bundle directory \(finalBundleDir.path): \(error)")
+                    try self.fileManager.copyItem(atPath: extractedDir, toPath: finalBundleDir)
+                    try self.fileManager.removeItem(atPath: extractedDir) // 복사 성공 후 원본 제거
+                    try? self.fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
+                 } catch let copyError {
+                    print("[HotUpdaterImpl] Copy also failed: \(copyError.localizedDescription)")
+                    try? self.fileManager.removeItem(atPath: tempDirectory) // 임시 디렉토리 정리
+                    try? self.fileManager.removeItem(atPath: finalBundleDir) // 실패한 최종 디렉토리 정리 시도
+                    completion(false, copyError)
+                    return
                  }
-                 self.setBundleURL(URL(fileURLWithPath: finalBundlePath).absoluteString) // 새 번들로 설정
-                 self.cleanupOldBundles(in: bundleStoreDir.path) // 오래된 번들 정리
-                 try? fileManager.removeItem(at: tempDir) // 임시 폴더 최종 정리
-                 print("HotUpdaterImpl: Update successful for bundle \(bundleId).")
-                 completion(true, nil) // 모든 과정 성공
-             } else {
-                 // 이동/복사 후에도 번들 파일이 없으면 심각한 오류
-                 print("HotUpdaterImpl Error: Bundle file not found in final location after move/copy: \(finalBundleDir.path)")
-                 try? fileManager.removeItem(at: tempDir) // 임시 폴더 정리
-                 try? fileManager.removeItem(at: finalBundleDir) // 실패한 최종 폴더 정리
-                 completion(false, NSError(domain: "HotUpdaterImpl", code: 1005, userInfo: [NSLocalizedDescriptionKey: "Bundle not found after installation"]))
              }
-        }
-    }
 
-    // 지정된 디렉토리 내에서 .jsbundle 파일 찾기
-    private func findBundleFile(in directory: String) -> String? {
-        let fileManager = FileManager.default
-        do {
-            let items = try fileManager.contentsOfDirectory(atPath: directory)
-            for item in items {
-                if item.lowercased().hasSuffix(".jsbundle") {
-                    return URL(fileURLWithPath: directory).appendingPathComponent(item).path
-                }
-            }
-            // 하위 폴더 1단계까지 탐색 (예: "ios" 폴더 안에 있는 경우)
-            for item in items {
-                 let subDirPath = URL(fileURLWithPath: directory).appendingPathComponent(item).path
-                 var isDir: ObjCBool = false
-                 if fileManager.fileExists(atPath: subDirPath, isDirectory: &isDir), isDir.boolValue {
-                     let subItems = try fileManager.contentsOfDirectory(atPath: subDirPath)
-                     for subItem in subItems {
-                         if subItem.lowercased().hasSuffix(".jsbundle") {
-                             return URL(fileURLWithPath: subDirPath).appendingPathComponent(subItem).path
-                         }
-                     }
-                 }
-            }
-        } catch {
-            print("HotUpdaterImpl Error: Failed to list contents of directory \(directory): \(error)")
-        }
-        return nil // 찾지 못함
-    }
-
-    // 오래된 번들 정리 (가장 최근 5개만 남김)
-    private func cleanupOldBundles(in directory: String) {
-        let fileManager = FileManager.default
-        let maxBundlesToKeep = 5 // 유지할 최대 번들 수
-
-        do {
-            let bundleDirs = try fileManager.contentsOfDirectory(at: URL(fileURLWithPath: directory),
-                                                                 includingPropertiesForKeys: [.contentModificationDateKey],
-                                                                 options: .skipsHiddenFiles)
-
-            // 수정 날짜 기준으로 정렬 (최신이 나중에 오도록)
-            let sortedDirs = bundleDirs.sorted { url1, url2 in
-                do {
-                    let date1 = try url1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? Date.distantPast
-                    let date2 = try url2.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? Date.distantPast
-                    return date1 < date2 // 오름차순 (오래된 것이 먼저)
-                } catch {
-                    print("HotUpdaterImpl Warning: Could not get modification date during sort - \(error)")
-                    return false
-                }
-            }
-
-            // 유지할 개수보다 많으면 오래된 것부터 삭제
-            if sortedDirs.count > maxBundlesToKeep {
-                let bundlesToRemove = sortedDirs.prefix(sortedDirs.count - maxBundlesToKeep)
-                for dirToRemove in bundlesToRemove {
-                    // 현재 사용 중인 번들은 삭제하지 않음
-                    if let currentBundleURL = HotUpdaterImpl.cachedBundleURL(),
-                       URL(fileURLWithPath: dirToRemove.path) == URL(fileURLWithPath: currentBundleURL.deletingLastPathComponent().path) {
-                         print("HotUpdaterImpl: Skipping cleanup of currently active bundle directory: \(dirToRemove.path)")
-                        continue
-                    }
-
-                    print("HotUpdaterImpl: Cleaning up old bundle: \(dirToRemove.path)")
-                    try? fileManager.removeItem(at: dirToRemove)
-                }
-            }
-        } catch {
-            print("HotUpdaterImpl Error: Failed during cleanupOldBundles in \(directory): \(error)")
-        }
-    }
-
-    // 파일 다운로드 함수 (URLSession 사용)
-    private func downloadFile(from url: URL,
-                             to destinationPath: String,
-                             progressHandler: ((NSNumber) -> Void)?,
-                             completion: @escaping (Bool, Error?) -> Void) {
-
-        let session = URLSession(configuration: .default, delegate: nil, delegateQueue: nil)
-        var downloadTask: URLSessionDownloadTask?
-        var observation: NSKeyValueObservation? // KVO를 위한 관찰자 참조
-
-        downloadTask = session.downloadTask(with: url) { (tempLocalURL, response, error) in
-            // 다운로드 완료 후 KVO 관찰 중지
-            observation?.invalidate()
-            observation = nil
-
-            // 기본적인 에러 처리
-            guard let tempLocalURL = tempLocalURL, error == nil else {
-                 print("HotUpdaterImpl Downloader: Download error: \(error?.localizedDescription ?? "Unknown URLSession error")")
-                 // 메인 스레드에서 콜백 호출 보장
-                 DispatchQueue.main.async { completion(false, error) }
+             // --- 최종 확인 및 설정 ---
+             guard let finalBundlePath = self.findBundleFile(in: finalBundleDir) else {
+                 let error = NSError(domain: "HotUpdaterError", code: 7, userInfo: [NSLocalizedDescriptionKey: "Bundle file not found in final directory after move/copy"])
+                 try? self.fileManager.removeItem(atPath: finalBundleDir) // 문제 발생 시 최종 디렉토리 정리
+                 try? self.fileManager.removeItem(atPath: tempDirectory) // 임시 디렉토리 정리
+                 completion(false, error)
                  return
              }
 
-            // HTTP 상태 코드 확인
-            if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
-                 print("HotUpdaterImpl Downloader: Invalid HTTP response: \(httpResponse.statusCode)")
-                 let httpError = NSError(domain: "HotUpdaterImpl.Download", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"])
-                 DispatchQueue.main.async { completion(false, httpError) }
-                 return
-             }
-
-            // 다운로드된 임시 파일을 최종 목적지로 이동
-            do {
-                let fileManager = FileManager.default
-                let destinationURL = URL(fileURLWithPath: destinationPath)
-                // 목적지에 이미 파일이 있으면 삭제 (덮어쓰기)
-                if fileManager.fileExists(atPath: destinationPath) {
-                    try fileManager.removeItem(at: destinationURL)
-                }
-                try fileManager.moveItem(at: tempLocalURL, to: destinationURL)
-                 print("HotUpdaterImpl Downloader: Successfully moved downloaded file to \(destinationPath)")
-                 DispatchQueue.main.async { completion(true, nil) } // 성공 콜백
-            } catch let fileError {
-                // 파일 이동 실패 시 에러 처리
-                print("HotUpdaterImpl Downloader: File move error from \(tempLocalURL.path) to \(destinationPath): \(fileError.localizedDescription)")
-                DispatchQueue.main.async { completion(false, fileError) } // 실패 콜백
-            }
+            print("[HotUpdaterImpl] Bundle update successful. Path: \(finalBundlePath)")
+            self.setBundleURLInternal(localPath: finalBundlePath)
+            self.cleanupOldBundles(currentBundleId: bundleId)
+            try? self.fileManager.removeItem(atPath: tempDirectory) // 성공 시 임시 디렉토리 정리
+            completion(true, nil)
         }
+        
+        // 이제 다운로드 작업 생성 및 할당
+        task = session.downloadTask(with: validZipUrl, completionHandler: downloadCompletionHandler)
 
-        // 진행률 콜백이 있으면 KVO 설정
-        if let handler = progressHandler {
-            observation = downloadTask?.progress.observe(\.fractionCompleted, options: [.new]) { progress, change in
-                // fractionCompleted 값 변경 시 콜백 호출
-                if let fraction = change.newValue {
-                     // 메인 스레드에서 UI 업데이트 등을 할 수 있도록 보장
-                     DispatchQueue.main.async {
-                         handler(NSNumber(value: fraction))
-                     }
-                 }
-            }
-        }
+        // --- 진행률 보고 설정 ---
+        // KVO 또는 NotificationCenter를 사용하여 진행률 업데이트 (ObjC 래퍼가 관찰)
+        // 작업 재개 전에 진행률 관찰자 추가
+
+        // options 매개변수에 NSKeyValueObservingOptions.new 명시적으로 지정
+        task.addObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesReceived), options: [NSKeyValueObservingOptions.new], context: nil as UnsafeMutableRawPointer?)
+        task.addObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesExpectedToReceive), options: [NSKeyValueObservingOptions.new], context: nil as UnsafeMutableRawPointer?)
+        // 참고: KVO 관찰자는 제거해야 합니다! 이것은 observeValue 또는 작업 완료 시 발생해야 합니다.
+        // 여기서는 downloadDidFinish 알림을 사용하여 ObjC 측에서 정리한다고 가정합니다.
 
         // 다운로드 시작
-        downloadTask?.resume()
+        task.resume()
+    }
+
+    // MARK: - 다운로드 진행률 KVO
+
+    override public func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+
+        // <<< FIX for Line 263/264 context check >>>
+        // context가 nil인지 확인 (addObserver에서 nil로 설정했으므로)
+        guard context == nil else {
+             // 우리가 설정하지 않은 다른 컨텍스트의 KVO 알림이면 super 호출
+             super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
+             return
+        }
+
+        guard let task = object as? URLSessionDownloadTask,
+              (keyPath == #keyPath(URLSessionDownloadTask.countOfBytesReceived) || keyPath == #keyPath(URLSessionDownloadTask.countOfBytesExpectedToReceive))
+        else {
+            // 관련 없는 KVO 알림이면 super 호출 (이 경우는 거의 발생하지 않음)
+            super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
+            return
+        }
+
+        // 0으로 나누는 것을 방지하기 위해 totalBytesExpected > 0 확인
+        let totalBytesExpected = task.countOfBytesExpectedToReceive
+        let totalBytesReceived = task.countOfBytesReceived
+
+        if totalBytesExpected > 0 {
+            let progress = Double(totalBytesReceived) / Double(totalBytesExpected)
+            // ObjC 래퍼가 관찰할 알림 게시
+            // userInfo에 필요한 값 전달
+             let progressInfo: [String: Any] = [
+                 "progress": progress,
+                 "totalBytesReceived": totalBytesReceived,
+                 "totalBytesExpected": totalBytesExpected
+             ]
+             NotificationCenter.default.post(name: .downloadProgressUpdate, object: task, userInfo: progressInfo)
+
+            // 디버깅 로그 (필요한 경우)
+            // print(String(format: "[HotUpdaterImpl] Progress: %.2f%% (%lld / %lld bytes)", progress * 100, totalBytesReceived, totalBytesExpected))
+
+        } else {
+            // totalBytesExpected가 0이거나 아직 알 수 없는 경우 (다운로드 시작 전)
+            // print("[HotUpdaterImpl] Progress: Waiting for total size...")
+             NotificationCenter.default.post(name: .downloadProgressUpdate, object: task, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
+        }
+
+        // KVO 관찰자 제거는 다운로드 완료 핸들러 또는 downloadDidFinish 알림 리스너에서 수행하는 것이 더 안전합니다.
+        // 여기서 제거하면 진행 중인 알림이 누락될 수 있습니다.
+    }
+
+
+    // MARK: - 파일 유틸리티 (여기서는 변경 필요 없음)
+
+    private func documentsPath() -> String {
+       return NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
+    }
+    private func bundleStoreDir() -> String {
+       return (documentsPath() as NSString).appendingPathComponent("bundle-store")
+    }
+    private func tempDir() -> String {
+        return (documentsPath() as NSString).appendingPathComponent("bundle-temp")
+    }
+    private func createDir(at path: String) -> Bool {
+        do {
+            try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+            return true
+        } catch {
+            print("[HotUpdaterImpl] Failed to create directory at \(path): \(error)")
+            return false
+        }
+    }
+    private func findBundleFile(in directoryPath: String) -> String? {
+        do {
+            let items = try fileManager.contentsOfDirectory(atPath: directoryPath)
+            // 먼저 'index.ios.bundle'을 찾고, 없으면 'main.jsbundle'을 찾습니다.
+            if let bundleFile = items.first(where: { $0 == "index.ios.bundle" }) {
+                 return (directoryPath as NSString).appendingPathComponent(bundleFile)
+            } else if let bundleFile = items.first(where: { $0 == "main.jsbundle" }) {
+                 return (directoryPath as NSString).appendingPathComponent(bundleFile)
+            }
+        } catch {
+            print("[HotUpdaterImpl] Error listing directory contents at \(directoryPath): \(error)")
+        }
+        print("[HotUpdaterImpl] Bundle file (index.ios.bundle or main.jsbundle) not found in \(directoryPath)")
+        return nil // 찾을 수 없거나 오류 발생 시 nil 반환
+    }
+
+    private func cleanupOldBundles(currentBundleId: String?) {
+        let storeDir = bundleStoreDir()
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: storeDir) else {
+             print("[HotUpdaterImpl] Failed to list contents of bundle store directory: \(storeDir)")
+            return
+        }
+
+        var bundleDirs = [(path: String, modDate: Date)]()
+
+        for item in contents {
+            let fullPath = (storeDir as NSString).appendingPathComponent(item)
+            var isDir: ObjCBool = false
+            // 디렉토리인지 확인하고, 메타데이터를 가져올 수 있는지 확인
+            if fileManager.fileExists(atPath: fullPath, isDirectory: &isDir), isDir.boolValue {
+                do {
+                    let attributes = try fileManager.attributesOfItem(atPath: fullPath)
+                    if let modDate = attributes[.modificationDate] as? Date {
+                        bundleDirs.append((path: fullPath, modDate: modDate))
+                    } else {
+                        // 수정 날짜를 가져올 수 없는 경우 오래된 것으로 간주
+                        bundleDirs.append((path: fullPath, modDate: .distantPast))
+                         print("[HotUpdaterImpl] Warning: Could not get modification date for \(fullPath), treating as old.")
+                    }
+                } catch {
+                     print("[HotUpdaterImpl] Warning: Could not get attributes for \(fullPath): \(error)")
+                     bundleDirs.append((path: fullPath, modDate: .distantPast)) // 오류 발생 시 오래된 것으로 간주
+                }
+            }
+        }
+
+        // 최신 수정 날짜 순으로 정렬 (내림차순)
+        bundleDirs.sort { $0.modDate > $1.modDate }
+
+        // 유지할 번들 결정 (최대 2개: 현재 사용 중인 번들과 가장 최근 번들)
+        var bundlesToKeep = Set<String>()
+
+        // 현재 사용 중인 번들 ID가 있고, 해당 경로가 존재하면 유지 목록에 추가
+        if let currentId = currentBundleId, let currentPath = bundleDirs.first(where: { ($0.path as NSString).lastPathComponent == currentId })?.path {
+            bundlesToKeep.insert(currentPath)
+            print("[HotUpdaterImpl] Keeping current bundle: \(currentId)")
+        }
+
+        // 가장 최근에 수정된 번들 유지 (현재 번들과 같을 수도 있음)
+        if let latestBundle = bundleDirs.first {
+            bundlesToKeep.insert(latestBundle.path)
+             print("[HotUpdaterImpl] Keeping latest bundle (by mod date): \((latestBundle.path as NSString).lastPathComponent)")
+        }
+
+        // 제거할 번들 결정 (유지 목록에 없는 모든 번들)
+        let bundlesToRemove = bundleDirs.filter { !bundlesToKeep.contains($0.path) }
+
+        if bundlesToRemove.isEmpty {
+            print("[HotUpdaterImpl] No old bundles to remove.")
+        } else {
+            print("[HotUpdaterImpl] Found \(bundlesToRemove.count) old bundle(s) to remove.")
+        }
+
+
+        for oldBundle in bundlesToRemove {
+            do {
+                try fileManager.removeItem(atPath: oldBundle.path)
+                print("[HotUpdaterImpl] Removed old bundle: \((oldBundle.path as NSString).lastPathComponent)")
+            } catch {
+                print("[HotUpdaterImpl] Failed to remove old bundle at \(oldBundle.path): \(error)")
+            }
+        }
     }
 }
 
 
-// --- SSZipArchive 스텁 ---
-// 실제 라이브러리 연동이 필요합니다. CocoaPods 등으로 설치 후 Bridging Header에 추가하세요.
-@objcMembers class SSZipArchive: NSObject {
-    static func unzipFile(atPath path: String, toDestination destination: String, overwrite: Bool, password: String?) -> Bool {
-        print("SSZipArchive STUB: Called unzipFileAtPath: '\(path)' to '\(destination)'. *** YOU NEED THE REAL SSZipArchive LIBRARY LINKED! ***")
-        // ** 실제 구현에서는 이 부분을 라이브러리 호출로 바꿔야 합니다. **
-        // return true // 테스트용 성공 시뮬레이션
-        return false // 테스트용 실패 시뮬레이션 (압축 해제 실패 테스트)
+// 사용자 정의 알림 이름 (여기서는 변경 필요 없음)
+extension Notification.Name {
+    static let downloadProgressUpdate = Notification.Name("HotUpdaterDownloadProgressUpdate")
+    static let downloadDidFinish = Notification.Name("HotUpdaterDownloadDidFinish")
+}
+
+// KVO를 위한 키 경로 (Swift 4+ 필요)
+// 이 extension은 URLSessionDownloadTask의 속성을 KVO 가능하게 만듭니다.
+// 실제 값은 URLSessionDownloadTask의 인스턴스에서 가져오지만,
+// KVO 메커니즘이 작동하려면 @objc dynamic 속성 선언이 필요할 수 있습니다.
+extension URLSessionDownloadTask {
+    // <<< FIX for Line 381 & 382 >>>
+    // 'open override' 추가. 접근 수준(open)과 재정의(override) 명시.
+    // 기본 구현을 반환하거나 필요에 따라 0을 반환합니다. KVO 트리거 목적.
+    @objc dynamic open override var countOfBytesReceived: Int64 {
+        return super.countOfBytesReceived // 기본값 반환 또는 필요시 `return 0` 유지
+    }
+
+    @objc dynamic open override var countOfBytesExpectedToReceive: Int64 {
+        return super.countOfBytesExpectedToReceive // 기본값 반환 또는 필요시 `return 0` 유지
     }
 }

@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   s.source_files  = "ios/**/*.{h,m,mm,swift}"
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
-    'SWIFT_OBJC_INTERFACE_HEADER_NAME' => 'HotUpdaterModule-Swift.h',
+    'SWIFT_OBJC_INTERFACE_HEADER_NAME' => 'HotUpdaterImpl-Swift.h',
     'SWIFT_INSTALL_OBJC_HEADER' => 'YES',
     'OTHER_SWIFT_FLAGS' => "-enable-experimental-feature AccessLevelOnImport"
   }
