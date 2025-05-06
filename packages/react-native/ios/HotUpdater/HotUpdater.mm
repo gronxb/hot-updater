@@ -231,13 +231,28 @@ RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromi
     resolve(version ?: [NSNull null]);
 }
 
-// *** SIMPLIFIED: Delegate directly to the Swift handler method ***
+#ifdef RCT_NEW_ARCH_ENABLED
+
+RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    NSLog(@"[HotUpdater.mm] updateBundle called. Delegating to Swift Impl.");
+    NSDictionary *paramDict = @{
+        @"bundleId": params.bundleId(),
+        @"zipUrl": params.zipUrl(),
+    };
+    [[HotUpdaterImpl shared] updateBundleFromJS:paramDict resolver:resolve rejecter:reject];
+}
+#else
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    RCTLogInfo(@"[HotUpdater.mm] updateBundle called. Delegating to Swift Impl.");
+    NSLog(@"[HotUpdater.mm] updateBundle called. Delegating to Swift Impl.");
     [[HotUpdaterImpl shared] updateBundleFromJS:params resolver:resolve rejecter:reject];
 }
+#endif
+
+
 
 
 #pragma mark - Turbo Module Support (Keep as is)
