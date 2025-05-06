@@ -2,8 +2,13 @@
 #import <React/RCTReloadCommand.h>
 #import <React/RCTLog.h>
 
-// Import the generated Swift header
-#import "HotUpdaterImpl-Swift.h" // *** Replace YourProductModuleName ***
+
+#if __has_include("HotUpdater/HotUpdater-Swift.h")
+#import "HotUpdater/HotUpdater-Swift.h"
+#else
+#import "HotUpdater-Swift.h"
+#endif
+
 
 // Define Notification names used for observing Swift Core
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
@@ -14,7 +19,6 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
     bool hasListeners;
     // Keep track of tasks ONLY for removing observers when this ObjC instance is invalidated
     NSMutableSet<NSURLSessionTask *> *observedTasks; // Changed to NSURLSessionTask for broader compatibility if needed
-    NSTimeInterval lastUpdateTime; // 인스턴스 변수로 선언
 }
 
 + (BOOL)requiresMainQueueSetup {
@@ -35,6 +39,8 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
                                                  selector:@selector(handleDownloadCompletion:)
                                                      name:HotUpdaterDownloadDidFinishNotification
                                                    object:nil]; // Observe all tasks from Impl
+
+        _lastUpdateTime = 0;
     }
     return self;
 }
@@ -112,11 +118,9 @@ RCT_EXPORT_MODULE();
     };
 }
 
-#if !RCT_NEW_ARCH_ENABLED
 - (NSDictionary *)getConstants {
  return [self constantsToExport];
 }
-#endif
 
 
 #pragma mark - Bundle URL Management (Delegate to Swift)
@@ -145,8 +149,8 @@ RCT_EXPORT_MODULE();
          double progress = [progressNum doubleValue];
          NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
          // Throttle events
-         if ((currentTime - lastUpdateTime) >= 100 || progress >= 1.0) {
-             lastUpdateTime = currentTime;
+         if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
+             self.lastUpdateTime = currentTime;
              // RCTLogInfo(@"[HotUpdater.mm] Sending progress event: %.2f", progress); // Reduce log noise
              [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
          }

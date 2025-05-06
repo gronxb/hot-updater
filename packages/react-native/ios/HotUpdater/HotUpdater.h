@@ -1,6 +1,5 @@
 #import <React/RCTEventEmitter.h>
 #import <React/RCTBundleURLProvider.h>
-#import <Foundation/Foundation.h>
 
 #ifdef RCT_NEW_ARCH_ENABLED
 #import "HotUpdaterSpec.h"
