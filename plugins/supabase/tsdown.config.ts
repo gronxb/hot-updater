@@ -1,4 +1,4 @@
-import { defineConfig } from "tsup";
+import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
@@ -13,11 +13,5 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/supabase"],
-    banner: ({ format }) => ({
-      js:
-        format === "esm"
-          ? `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`
-          : "",
-    }),
   },
 ]);
