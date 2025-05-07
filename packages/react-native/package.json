@@ -89,8 +89,7 @@
         {
           "project": "tsconfig.build.json"
         }
-      ],
-      "codegen"
+      ]
     ]
   },
   "codegenConfig": {
@@ -99,12 +98,7 @@
     "jsSrcsDir": "./src",
     "android": {
       "javaPackageName": "com.hotupdater"
-    },
-    "outputDir": {
-      "ios": "ios/generated",
-      "android": "android/generated"
-    },
-    "includesGeneratedCode": true
+    }
   },
   "peerDependenciesMeta": {
     "expo": {
