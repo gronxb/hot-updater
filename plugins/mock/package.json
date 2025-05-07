@@ -25,7 +25,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "rslib build",
+    "build": "tsdown",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run"
