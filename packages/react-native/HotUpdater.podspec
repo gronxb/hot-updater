@@ -14,12 +14,12 @@ Pod::Spec.new do |s|
   s.platforms    = { :ios => min_ios_version_supported }
   s.source       = { :git => "https://github.com/gronxb/hot-updater.git", :tag => "#{s.version}" }
   s.source_files  = "ios/**/*.{h,m,mm,swift}"
-  s.public_header_files = 'ios/HotUpdater/Public/*.h'
+  s.public_header_files = "ios/HotUpdater/Public/*.h"
   s.private_header_files = "ios/HotUpdater/Internal/*.h"
 
   s.pod_target_xcconfig = {
-    'DEFINES_MODULE' => 'YES',
-    'OTHER_SWIFT_FLAGS' => "-enable-experimental-feature AccessLevelOnImport"
+    "DEFINES_MODULE" => "YES",
+    "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport"
   }
   s.dependency "SSZipArchive", "~> 2.2.2"
 
@@ -31,7 +31,7 @@ Pod::Spec.new do |s|
     s.dependency "React-Core"
 
     # Don't install the dependencies when we run `pod install` in the old architecture.
-    if ENV['RCT_NEW_ARCH_ENABLED'] == '1' then
+    if ENV["RCT_NEW_ARCH_ENABLED"] == "1" then
       s.compiler_flags = folly_compiler_flags + " -DRCT_NEW_ARCH_ENABLED=1"
       s.pod_target_xcconfig    = {
           "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\"",
