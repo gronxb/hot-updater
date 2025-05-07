@@ -39,7 +39,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "test:type": "tsc --noEmit",
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },

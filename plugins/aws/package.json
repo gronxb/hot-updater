@@ -35,7 +35,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
