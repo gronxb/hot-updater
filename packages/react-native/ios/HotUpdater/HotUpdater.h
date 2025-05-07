@@ -2,7 +2,7 @@
 #import <React/RCTBundleURLProvider.h>
 
 #ifdef RCT_NEW_ARCH_ENABLED
-#import "HotUpdaterSpec.h"
+#import <HotUpdaterSpec/HotUpdaterSpec.h>
 @interface HotUpdater : RCTEventEmitter <NativeHotUpdaterSpec>
 #else
 #import <React/RCTBridgeModule.h>

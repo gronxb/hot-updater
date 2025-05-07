@@ -99,12 +99,7 @@
     "jsSrcsDir": "./src",
     "android": {
       "javaPackageName": "com.hotupdater"
-    },
-    "outputDir": {
-      "ios": "ios/generated",
-      "android": "android/generated"
-    },
-    "includesGeneratedCode": true
+    }
   },
   "peerDependenciesMeta": {
     "expo": {
