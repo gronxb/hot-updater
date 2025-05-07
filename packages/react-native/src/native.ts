@@ -31,16 +31,31 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
 };
 
 /**
- * Downloads files from given URLs.
+ * Downloads files and applies them to the app.
  *
- * @param {string} bundleId - identifier for the bundle id.
- * @param {string | null} zipUrl - zip file URL. If null, it means rolling back to the built-in bundle
+ * @param {UpdateBundleParams} params - Parameters object required for bundle update
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
-export const updateBundle = (params: UpdateBundleParams): Promise<boolean> => {
-  return HotUpdaterNative.updateBundle(params);
-};
-
+export function updateBundle(params: UpdateBundleParams): Promise<boolean>;
+/**
+ * @deprecated Use updateBundle(params: UpdateBundleParams) instead
+ */
+export function updateBundle(
+  bundleId: string,
+  zipUrl: string | null,
+): Promise<boolean>;
+export function updateBundle(
+  paramsOrBundleId: UpdateBundleParams | string,
+  zipUrl?: string | null,
+): Promise<boolean> {
+  if (typeof paramsOrBundleId === "string") {
+    return HotUpdaterNative.updateBundle({
+      bundleId: paramsOrBundleId,
+      zipUrl: zipUrl || null,
+    });
+  }
+  return HotUpdaterNative.updateBundle(paramsOrBundleId);
+}
 /**
  * Fetches the current app version.
  */
