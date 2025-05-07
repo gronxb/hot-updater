@@ -11,7 +11,7 @@
 
 /**
  * Returns the currently active bundle URL.
- * Callable from Objective-C (e.g., AppDelegate).
+* Callable from Objective-C (e.g., AppDelegate).
  * This is implemented in HotUpdater.mm and calls the Swift static method.
  */
 + (NSURL *)bundleURL;
