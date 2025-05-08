@@ -23,11 +23,6 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
-    override fun getAppVersion(promise: Promise) {
-        promise.resolve(HotUpdater.getAppVersion(mReactApplicationContext))
-    }
-
-    @ReactMethod
     override fun setChannel(
         channel: String,
         promise: Promise,
