@@ -3,19 +3,13 @@ import { TurboModuleRegistry } from "react-native";
 
 export interface UpdateBundleParams {
   bundleId: string;
-  zipUrl: string | null;
+  fileUrl: string | null;
 }
 
 export interface Spec extends TurboModule {
   // Methods
   reload(): void;
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
-
-  /**
-   * @deprecated
-   * use getConstants().APP_VERSION instead
-   */
-  getAppVersion(): Promise<string | null>;
 
   setChannel(channel: string): Promise<void>;
 

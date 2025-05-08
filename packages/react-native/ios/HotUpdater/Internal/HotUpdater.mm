@@ -221,7 +221,7 @@ RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)param
     NSLog(@"[HotUpdater.mm] updateBundle called. Delegating to Swift Impl.");
     NSDictionary *paramDict = @{
         @"bundleId": params.bundleId(),
-        @"zipUrl": params.zipUrl(),
+        @"fileUrl": params.fileUrl(),
     };
     [_hotUpdaterImpl updateBundleFromJS:paramDict resolver:resolve rejecter:reject];
 }

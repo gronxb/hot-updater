@@ -1,6 +1,7 @@
 import { NativeEventEmitter } from "react-native";
-import type { UpdateBundleParams } from "./specs/NativeHotUpdater";
-import HotUpdaterNative from "./specs/NativeHotUpdater";
+import HotUpdaterNative, {
+  type UpdateBundleParams,
+} from "./specs/NativeHotUpdater";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -36,25 +37,44 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
  * @param {UpdateBundleParams} params - Parameters object required for bundle update
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
-export function updateBundle(params: UpdateBundleParams): Promise<boolean>;
+export async function updateBundle(
+  params: UpdateBundleParams,
+): Promise<boolean>;
 /**
  * @deprecated Use updateBundle(params: UpdateBundleParams) instead
  */
-export function updateBundle(
+export async function updateBundle(
   bundleId: string,
-  zipUrl: string | null,
+  fileUrl: string | null,
 ): Promise<boolean>;
-export function updateBundle(
+export async function updateBundle(
   paramsOrBundleId: UpdateBundleParams | string,
-  zipUrl?: string | null,
+  fileUrl?: string | null,
 ): Promise<boolean> {
+  const updateBundleId =
+    typeof paramsOrBundleId === "string"
+      ? paramsOrBundleId
+      : paramsOrBundleId.bundleId;
+
+  const currentBundleId = getBundleId();
+
+  // updateBundleId <= currentBundleId
+  if (updateBundleId.localeCompare(currentBundleId) <= 0) {
+    throw new Error(
+      "Update bundle id is the same as the current bundle id. Preventing infinite update loop.",
+    );
+  }
+
   if (typeof paramsOrBundleId === "string") {
     return HotUpdaterNative.updateBundle({
-      bundleId: paramsOrBundleId,
-      zipUrl: zipUrl || null,
+      bundleId: updateBundleId,
+      fileUrl: fileUrl || null,
     });
   }
-  return HotUpdaterNative.updateBundle(paramsOrBundleId);
+  return HotUpdaterNative.updateBundle({
+    bundleId: updateBundleId,
+    fileUrl: paramsOrBundleId.fileUrl,
+  });
 }
 /**
  * Fetches the current app version.
