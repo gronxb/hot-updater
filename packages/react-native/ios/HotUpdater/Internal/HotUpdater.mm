@@ -14,7 +14,7 @@
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
 
-// 정적 HotUpdaterImpl 인스턴스 생성
+// Create static HotUpdaterImpl instance
 static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterImpl new];
 
 @implementation HotUpdater {
@@ -117,7 +117,7 @@ RCT_EXPORT_MODULE();
 }
 
 
-// 정적 인스턴스를 사용하여 bundleURL 가져오기
+// Get bundleURL using static instance
 + (NSURL *)bundleURL {
     return [_hotUpdaterImpl bundleURL];
 }
@@ -172,8 +172,6 @@ RCT_EXPORT_MODULE();
 - (void)sendEventWithName:(NSString * _Nonnull)name body:(id)body { // Changed body type to id
     if (hasListeners) {
         [super sendEventWithName:name body:body];
-    } else {
-        // RCTLogInfo(@"[HotUpdater.mm] Suppressed event '%@' because no listeners are registered.", name); // Reduce log noise
     }
 }
 
@@ -183,7 +181,7 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(setChannel:(NSString *)channel
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    // 정적 인스턴스 사용
+    // Use static instance
     [_hotUpdaterImpl setChannel:channel];
     resolve(nil);
 }
@@ -192,7 +190,7 @@ RCT_EXPORT_METHOD(setChannel:(NSString *)channel
 RCT_EXPORT_METHOD(reload) {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
-        // 정적 인스턴스를 사용하여 bundleURL 가져오기
+        // Get bundleURL using static instance
         NSURL *bundleURL = [_hotUpdaterImpl bundleURL];
         RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
         if (bundleURL && self.bridge) {
@@ -211,7 +209,6 @@ RCT_EXPORT_METHOD(reload) {
 }
 
 RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    // Static 메서드 사용
     NSString *version = [HotUpdaterImpl appVersion];
     resolve(version ?: [NSNull null]);
 }
