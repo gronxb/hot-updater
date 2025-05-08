@@ -15,10 +15,12 @@
     "release:test": "nx release --dry-run",
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
     "publish:all": "nx release publish",
-    "publish:rc": "nx release publish --tag rc"
+    "publish:rc": "nx release publish --tag rc",
+    "changeset": "changeset"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@changesets/cli": "^2.29.3",
     "@cloudflare/vitest-pool-workers": "^0.8.26",
     "@nx/js": "^21.0.1",
     "@swc/helpers": "^0.5.17",
