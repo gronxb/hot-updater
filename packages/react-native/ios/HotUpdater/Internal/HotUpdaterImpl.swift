@@ -1,83 +1,107 @@
 import Foundation
-import SSZipArchive
 import React
 
 @objcMembers public class HotUpdaterImpl: NSObject {
-
-    private let fileManager = FileManager.default
-    private lazy var session: URLSession = {
-        let configuration = URLSessionConfiguration.default
-        return URLSession(configuration: configuration, delegate: nil, delegateQueue: nil)
-    }()
-
-
-    private let prefs = HotUpdaterPrefs.shared
-
-    public override init() {
-        super.init()
-        prefs.configure(appVersion: HotUpdaterImpl.appVersion)
+    private let fileSystem: FileSystemService
+    private let bundleStorage: BundleStorageService
+    private let preferences: PreferencesService
+    private let downloadService: DownloadService
+    private let unzipService: UnzipService
+    
+    private var activeTasks: [URLSessionTask] = []
+    
+    public convenience override init() {
+        let fileSystem = FileManagerService()
+        let bundleStorage = LocalBundleStorageService(fileSystem: fileSystem)
+        let preferences = UserDefaultsPreferencesService()
+        let downloadService = URLSessionDownloadService()
+        let unzipService = SSZipArchiveUnzipService()
+        
+        self.init(
+            fileSystem: fileSystem,
+            bundleStorage: bundleStorage,
+            preferences: preferences,
+            downloadService: downloadService,
+            unzipService: unzipService
+        )
     }
-
-
+    
+    init(fileSystem: FileSystemService, 
+         bundleStorage: BundleStorageService, 
+         preferences: PreferencesService, 
+         downloadService: DownloadService,
+         unzipService: UnzipService) {
+        
+        self.fileSystem = fileSystem
+        self.bundleStorage = bundleStorage
+        self.preferences = preferences
+        self.downloadService = downloadService
+        self.unzipService = unzipService
+        
+        super.init()
+        
+        if let appVersion = HotUpdaterImpl.appVersion {
+            (preferences as? UserDefaultsPreferencesService)?.configure(appVersion: appVersion)
+        }
+    }
+    
     public static var appVersion: String? {
         return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
-
-
+    
     public func setChannel(_ channel: String?) {
-        prefs.setItem(channel, forKey: "HotUpdaterChannel")
+        preferences.setItem(channel, forKey: "HotUpdaterChannel")
         print("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
     }
-
+    
     public func getChannel() -> String? {
-        return prefs.getItem(forKey: "HotUpdaterChannel")
+        return preferences.getItem(forKey: "HotUpdaterChannel")
     }
-
-
+    
     private func setBundleURLInternal(localPath: String?) {
         print("[HotUpdaterImpl] Setting bundle URL to: \(localPath ?? "nil")")
-        prefs.setItem(localPath, forKey: "HotUpdaterBundleURL")
+        preferences.setItem(localPath, forKey: "HotUpdaterBundleURL")
     }
-
+    
     private func cachedURLFromBundle() -> URL? {
-        guard let savedURLString = prefs.getItem(forKey: "HotUpdaterBundleURL"),
+        guard let savedURLString = preferences.getItem(forKey: "HotUpdaterBundleURL"),
               let bundleURL = URL(string: savedURLString),
-              fileManager.fileExists(atPath: bundleURL.path) else {
+              fileSystem.fileExists(atPath: bundleURL.path) else {
             return nil
         }
         return bundleURL
     }
-
+    
     private func fallbackURL() -> URL? {
         return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     }
-
+    
     public func bundleURL() -> URL? {
         let url = cachedURLFromBundle()
         print("[HotUpdaterImpl] Resolved bundle URL: \(url?.absoluteString ?? "Fallback")")
         return url ?? self.fallbackURL()
     }
-
+    
     @objc public func updateBundleFromJS(_ params: NSDictionary?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
-
+        
         guard let data = params else {
             print("[HotUpdaterImpl] Error: params dictionary is nil")
             let error = NSError(domain: "HotUpdaterError", code: 101, userInfo: [NSLocalizedDescriptionKey: "Missing params dictionary"])
             reject("UPDATE_ERROR", error.localizedDescription, error)
             return
         }
-
+        
         guard let bundleId = data["bundleId"] as? String, !bundleId.isEmpty else {
             print("[HotUpdaterImpl] Error: Missing or empty 'bundleId'")
             let error = NSError(domain: "HotUpdaterError", code: 102, userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
             reject("UPDATE_ERROR", error.localizedDescription, error)
             return
         }
-
+        
         let fileUrlString = data["fileUrl"] as? String ?? ""
-
+        
         var fileUrl: URL? = nil
         if !fileUrlString.isEmpty {
             guard let url = URL(string: fileUrlString) else {
@@ -88,9 +112,9 @@ import React
             }
             fileUrl = url
         }
-
+        
         print("[HotUpdaterImpl] updateBundleFromJS called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
-
+        
         updateBundleInternal(bundleId: bundleId, fileUrl: fileUrl) { success, error in
             if success {
                 print("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
@@ -102,289 +126,148 @@ import React
             }
         }
     }
-
-
+    
     private func updateBundleInternal(bundleId: String, fileUrl: URL?,
-                                    completion: @escaping (Bool, Error?) -> Void) {
-
+                                      completion: @escaping (Bool, Error?) -> Void) {
+        
         guard let validFileUrl = fileUrl else {
             print("[HotUpdaterImpl] fileUrl is nil, resetting bundle URL.")
             setBundleURLInternal(localPath: nil)
-            cleanupOldBundles(currentBundleId: nil)
+            bundleStorage.cleanupOldBundles(currentBundleId: nil)
             completion(true, nil)
             return
         }
-
-        let storeDir = bundleStoreDir()
+        
+        let storeDir = bundleStorage.bundleStoreDir()
         let finalBundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
-
-        // Check if bundle already exists in the file system
-        if fileManager.fileExists(atPath: finalBundleDir) {
+        
+        // 이미 존재하는 번들인지 체크
+        if fileSystem.fileExists(atPath: finalBundleDir) {
             print("[HotUpdaterImpl] Bundle already exists for bundleId: \(bundleId). Rejecting update.")
             let error = NSError(domain: "HotUpdaterError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Bundle already exists. Preventing infinite updates."])
             completion(false, error)
             return
         }
-
-        let tempDirectory = tempDir()
-        _ = try? fileManager.removeItem(atPath: tempDirectory)
-        guard createDir(at: tempDirectory), createDir(at: storeDir) else {
+        
+        let tempDirectory = bundleStorage.tempDir()
+        _ = try? fileSystem.removeItem(atPath: tempDirectory)
+        
+        guard fileSystem.createDirectory(at: tempDirectory), fileSystem.createDirectory(at: storeDir) else {
             let error = NSError(domain: "HotUpdaterError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create temporary or bundle store directories"])
             completion(false, error)
             return
         }
+        
         let tempZipFile = (tempDirectory as NSString).appendingPathComponent("bundle.zip")
         let extractedDir = (tempDirectory as NSString).appendingPathComponent("extracted")
-        guard createDir(at: extractedDir) else {
+        
+        guard fileSystem.createDirectory(at: extractedDir) else {
             let error = NSError(domain: "HotUpdaterError", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create extracted directory"])
             completion(false, error)
             return
         }
+        
         print("[HotUpdaterImpl] Starting download from \(validFileUrl)")
         
-        var task: URLSessionDownloadTask!
-        
-        let downloadCompletionHandler: (URL?, URLResponse?, Error?) -> Void = { [weak self] location, response, error in
+        let task = downloadService.downloadFile(from: validFileUrl, to: tempZipFile, progressHandler: { progress in
+            // 진행상황 처리는 DownloadService에서 처리됨
+        }, completion: { [weak self] result in
             guard let self = self else {
                 completion(false, NSError(domain: "HotUpdaterError", code: 998, userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"]))
                 return
             }
-
-            defer {
-                NotificationCenter.default.post(name: .downloadDidFinish, object: task)
-                DispatchQueue.main.async {
-                    print("[HotUpdaterImpl] Attempting to remove observers post-download.")
-                }
-            }
-
-
-            if let error = error {
+            
+            switch result {
+            case .success(let location):
+                self.processDownloadedFile(location: location, tempZipFile: tempZipFile, extractedDir: extractedDir, finalBundleDir: finalBundleDir, bundleId: bundleId, tempDirectory: tempDirectory, completion: completion)
+                
+            case .failure(let error):
                 print("[HotUpdaterImpl] Download failed: \(error.localizedDescription)")
-                try? self.fileManager.removeItem(atPath: tempDirectory)
+                try? self.fileSystem.removeItem(atPath: tempDirectory)
                 completion(false, error)
-                return
             }
-            guard let location = location else {
-                let error = NSError(domain: "HotUpdaterError", code: 4, userInfo: [NSLocalizedDescriptionKey: "Download location URL is nil"])
-                try? self.fileManager.removeItem(atPath: tempDirectory)
-                completion(false, error)
-                return
-            }
-
-            do {
-                try? self.fileManager.removeItem(atPath: tempZipFile)
-                try self.fileManager.moveItem(at: location, to: URL(fileURLWithPath: tempZipFile))
-            } catch let moveError {
-                print("[HotUpdaterImpl] Failed to move downloaded file: \(moveError.localizedDescription)")
-                try? self.fileManager.removeItem(atPath: tempDirectory)
-                completion(false, moveError)
-                return
-            }
-            do {
-                try SSZipArchive.unzipFile(atPath: tempZipFile, toDestination: extractedDir, overwrite: true, password: nil)
-                
-                if !self.fileManager.fileExists(atPath: extractedDir) {
-                    throw NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Extraction directory does not exist"])
-                }
-                
-                let contents = try self.fileManager.contentsOfDirectory(atPath: extractedDir)
-                if contents.isEmpty {
-                    throw NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "No files were extracted"])
-                }
-            } catch let unzipError {
-                print("[HotUpdaterImpl] Extraction failed: \(unzipError.localizedDescription)")
-                let error = NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Failed to unzip file: \(unzipError.localizedDescription)"])
-                try? self.fileManager.removeItem(atPath: tempDirectory)
-                completion(false, error)
-                return
-            }
-
-            guard let _ = self.findBundleFile(in: extractedDir) else {
-                let error = NSError(domain: "HotUpdaterError", code: 6, userInfo: [NSLocalizedDescriptionKey: "index.ios.bundle or main.jsbundle not found in extracted files"])
-                try? self.fileManager.removeItem(atPath: tempDirectory)
-                completion(false, error)
-                return
-            }
-
-            do {
-                try? self.fileManager.removeItem(atPath: finalBundleDir)
-                try self.fileManager.moveItem(atPath: extractedDir, toPath: finalBundleDir)
-                try? self.fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-            } catch {
-                print("[HotUpdaterImpl] Move failed, attempting copy: \(error.localizedDescription)")
-                do {
-                    try self.fileManager.copyItem(atPath: extractedDir, toPath: finalBundleDir)
-                    try self.fileManager.removeItem(atPath: extractedDir)
-                    try? self.fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-                } catch let copyError {
-                    print("[HotUpdaterImpl] Copy also failed: \(copyError.localizedDescription)")
-                    try? self.fileManager.removeItem(atPath: tempDirectory)
-                    try? self.fileManager.removeItem(atPath: finalBundleDir)
-                    completion(false, copyError)
-                    return
-                }
-            }
-
-            guard let finalBundlePath = self.findBundleFile(in: finalBundleDir) else {
-                let error = NSError(domain: "HotUpdaterError", code: 7, userInfo: [NSLocalizedDescriptionKey: "Bundle file not found in final directory after move/copy"])
-                try? self.fileManager.removeItem(atPath: finalBundleDir)
-                try? self.fileManager.removeItem(atPath: tempDirectory)
-                completion(false, error)
-                return
-            }
-
-            print("[HotUpdaterImpl] Bundle update successful. Path: \(finalBundlePath)")
-            self.setBundleURLInternal(localPath: finalBundlePath)
-            self.cleanupOldBundles(currentBundleId: bundleId)
-            try? self.fileManager.removeItem(atPath: tempDirectory)
-            completion(true, nil)
+        })
+        
+        if let task = task {
+            activeTasks.append(task)
+        }
+    }
+    
+    private func processDownloadedFile(location: URL, tempZipFile: String, extractedDir: String, finalBundleDir: String, bundleId: String, tempDirectory: String, completion: @escaping (Bool, Error?) -> Void) {
+        
+        // 1. 다운로드된 파일 이동
+        do {
+            try? fileSystem.removeItem(atPath: tempZipFile)
+            try fileSystem.moveItem(at: location, to: URL(fileURLWithPath: tempZipFile))
+        } catch let moveError {
+            print("[HotUpdaterImpl] Failed to move downloaded file: \(moveError.localizedDescription)")
+            try? fileSystem.removeItem(atPath: tempDirectory)
+            completion(false, moveError)
+            return
         }
         
-        task = session.downloadTask(with: validFileUrl, completionHandler: downloadCompletionHandler)
-
-        task.addObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesReceived), options: [NSKeyValueObservingOptions.new], context: nil as UnsafeMutableRawPointer?)
-        task.addObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesExpectedToReceive), options: [NSKeyValueObservingOptions.new], context: nil as UnsafeMutableRawPointer?)
-
-        task.resume()
-    }
-
-    override public func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-
-        guard context == nil else {
-             super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
-             return
-        }
-
-        guard let task = object as? URLSessionDownloadTask,
-              (keyPath == #keyPath(URLSessionDownloadTask.countOfBytesReceived) || keyPath == #keyPath(URLSessionDownloadTask.countOfBytesExpectedToReceive))
-        else {
-            super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
+        // 2. 압축 해제
+        do {
+            try unzipService.unzip(file: tempZipFile, to: extractedDir)
+            
+            if !fileSystem.fileExists(atPath: extractedDir) {
+                throw NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Extraction directory does not exist"])
+            }
+            
+            let contents = try fileSystem.contentsOfDirectory(atPath: extractedDir)
+            if contents.isEmpty {
+                throw NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "No files were extracted"])
+            }
+        } catch let unzipError {
+            print("[HotUpdaterImpl] Extraction failed: \(unzipError.localizedDescription)")
+            let error = NSError(domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Failed to unzip file: \(unzipError.localizedDescription)"])
+            try? fileSystem.removeItem(atPath: tempDirectory)
+            completion(false, error)
             return
         }
-
-        let totalBytesExpected = task.countOfBytesExpectedToReceive
-        let totalBytesReceived = task.countOfBytesReceived
-
-        if totalBytesExpected > 0 {
-            let progress = Double(totalBytesReceived) / Double(totalBytesExpected)
-             let progressInfo: [String: Any] = [
-                 "progress": progress,
-                 "totalBytesReceived": totalBytesReceived,
-                 "totalBytesExpected": totalBytesExpected
-             ]
-             NotificationCenter.default.post(name: .downloadProgressUpdate, object: task, userInfo: progressInfo)
-
-        } else {
-             NotificationCenter.default.post(name: .downloadProgressUpdate, object: task, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
-        }
-    }
-
-    private func documentsPath() -> String {
-       return NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
-    }
-    private func bundleStoreDir() -> String {
-       return (documentsPath() as NSString).appendingPathComponent("bundle-store")
-    }
-    private func tempDir() -> String {
-        return (documentsPath() as NSString).appendingPathComponent("bundle-temp")
-    }
-    private func createDir(at path: String) -> Bool {
-        do {
-            try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
-            return true
-        } catch {
-            print("[HotUpdaterImpl] Failed to create directory at \(path): \(error)")
-            return false
-        }
-    }
-    private func findBundleFile(in directoryPath: String) -> String? {
-        do {
-            let items = try fileManager.contentsOfDirectory(atPath: directoryPath)
-            if let bundleFile = items.first(where: { $0 == "index.ios.bundle" }) {
-                 return (directoryPath as NSString).appendingPathComponent(bundleFile)
-            } else if let bundleFile = items.first(where: { $0 == "main.jsbundle" }) {
-                 return (directoryPath as NSString).appendingPathComponent(bundleFile)
-            }
-        } catch {
-            print("[HotUpdaterImpl] Error listing directory contents at \(directoryPath): \(error)")
-        }
-        print("[HotUpdaterImpl] Bundle file (index.ios.bundle or main.jsbundle) not found in \(directoryPath)")
-        return nil
-    }
-
-    private func cleanupOldBundles(currentBundleId: String?) {
-        let storeDir = bundleStoreDir()
-        guard let contents = try? fileManager.contentsOfDirectory(atPath: storeDir) else {
-             print("[HotUpdaterImpl] Failed to list contents of bundle store directory: \(storeDir)")
+        
+        // 3. 번들 파일 확인
+        guard let _ = bundleStorage.findBundleFile(in: extractedDir) else {
+            let error = NSError(domain: "HotUpdaterError", code: 6, userInfo: [NSLocalizedDescriptionKey: "index.ios.bundle or main.jsbundle not found in extracted files"])
+            try? fileSystem.removeItem(atPath: tempDirectory)
+            completion(false, error)
             return
         }
-
-        var bundleDirs = [(path: String, modDate: Date)]()
-
-        for item in contents {
-            let fullPath = (storeDir as NSString).appendingPathComponent(item)
-            var isDir: ObjCBool = false
-            if fileManager.fileExists(atPath: fullPath, isDirectory: &isDir), isDir.boolValue {
-                do {
-                    let attributes = try fileManager.attributesOfItem(atPath: fullPath)
-                    if let modDate = attributes[.modificationDate] as? Date {
-                        bundleDirs.append((path: fullPath, modDate: modDate))
-                    } else {
-                        bundleDirs.append((path: fullPath, modDate: .distantPast))
-                         print("[HotUpdaterImpl] Warning: Could not get modification date for \(fullPath), treating as old.")
-                    }
-                } catch {
-                     print("[HotUpdaterImpl] Warning: Could not get attributes for \(fullPath): \(error)")
-                     bundleDirs.append((path: fullPath, modDate: .distantPast))
-                }
-            }
-        }
-
-        bundleDirs.sort { $0.modDate > $1.modDate }
-
-        var bundlesToKeep = Set<String>()
-
-        if let currentId = currentBundleId, let currentPath = bundleDirs.first(where: { ($0.path as NSString).lastPathComponent == currentId })?.path {
-            bundlesToKeep.insert(currentPath)
-            print("[HotUpdaterImpl] Keeping current bundle: \(currentId)")
-        }
-
-        if let latestBundle = bundleDirs.first {
-            bundlesToKeep.insert(latestBundle.path)
-             print("[HotUpdaterImpl] Keeping latest bundle (by mod date): \((latestBundle.path as NSString).lastPathComponent)")
-        }
-
-        let bundlesToRemove = bundleDirs.filter { !bundlesToKeep.contains($0.path) }
-
-        if bundlesToRemove.isEmpty {
-            print("[HotUpdaterImpl] No old bundles to remove.")
-        } else {
-            print("[HotUpdaterImpl] Found \(bundlesToRemove.count) old bundle(s) to remove.")
-        }
-
-
-        for oldBundle in bundlesToRemove {
+        
+        // 4. 최종 디렉토리로 이동
+        do {
+            try? fileSystem.removeItem(atPath: finalBundleDir)
+            try fileSystem.moveItem(at: URL(fileURLWithPath: extractedDir), to: URL(fileURLWithPath: finalBundleDir))
+            try? fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
+        } catch {
+            print("[HotUpdaterImpl] Move failed, attempting copy: \(error.localizedDescription)")
             do {
-                try fileManager.removeItem(atPath: oldBundle.path)
-                print("[HotUpdaterImpl] Removed old bundle: \((oldBundle.path as NSString).lastPathComponent)")
-            } catch {
-                print("[HotUpdaterImpl] Failed to remove old bundle at \(oldBundle.path): \(error)")
+                try fileSystem.copyItem(atPath: extractedDir, toPath: finalBundleDir)
+                try fileSystem.removeItem(atPath: extractedDir)
+                try? fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
+            } catch let copyError {
+                print("[HotUpdaterImpl] Copy also failed: \(copyError.localizedDescription)")
+                try? fileSystem.removeItem(atPath: tempDirectory)
+                try? fileSystem.removeItem(atPath: finalBundleDir)
+                completion(false, copyError)
+                return
             }
         }
-    }
-}
-
-extension Notification.Name {
-    static let downloadProgressUpdate = Notification.Name("HotUpdaterDownloadProgressUpdate")
-    static let downloadDidFinish = Notification.Name("HotUpdaterDownloadDidFinish")
-}
-
-extension URLSessionDownloadTask {
-    @objc dynamic open override var countOfBytesReceived: Int64 {
-        return super.countOfBytesReceived
-    }
-
-    @objc dynamic open override var countOfBytesExpectedToReceive: Int64 {
-        return super.countOfBytesExpectedToReceive
+        
+        // 5. 최종 번들 검증
+        guard let finalBundlePath = bundleStorage.findBundleFile(in: finalBundleDir) else {
+            let error = NSError(domain: "HotUpdaterError", code: 7, userInfo: [NSLocalizedDescriptionKey: "Bundle file not found in final directory after move/copy"])
+            try? fileSystem.removeItem(atPath: finalBundleDir)
+            try? fileSystem.removeItem(atPath: tempDirectory)
+            completion(false, error)
+            return
+        }
+        
+        // 6. 성공 처리
+        print("[HotUpdaterImpl] Bundle update successful. Path: \(finalBundlePath)")
+        setBundleURLInternal(localPath: finalBundlePath)
+        bundleStorage.cleanupOldBundles(currentBundleId: bundleId)
+        try? fileSystem.removeItem(atPath: tempDirectory)
+        completion(true, nil)
     }
 }

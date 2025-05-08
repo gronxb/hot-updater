@@ -15,7 +15,7 @@ NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpd
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
 
 // Create static HotUpdaterImpl instance
-static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterImpl new];
+static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
 
 @implementation HotUpdater {
     bool hasListeners;
