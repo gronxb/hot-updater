@@ -11,7 +11,9 @@
     "@hot-updater/example-react-native-v76",
     "@hot-updater/example-react-native-v77"
   ],
-  "fixed": [["*"]],
+  "linked": [
+    ["hot-updater", "@hot-updater/*"]
+  ],
   "access": "public",
   "baseBranch": "main",
   "bumpVersionsWithWorkspaceProtocolOnly": true
