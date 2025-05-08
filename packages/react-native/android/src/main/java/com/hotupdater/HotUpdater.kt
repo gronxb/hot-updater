@@ -142,12 +142,12 @@ class HotUpdater : ReactPackage {
         suspend fun updateBundle(
             context: Context,
             bundleId: String,
-            zipUrl: String?,
+            fileUrl: String?,
             progressCallback: ((Double) -> Unit),
         ): Boolean {
-            Log.d("HotUpdater", "updateBundle bundleId $bundleId zipUrl $zipUrl")
+            Log.d("HotUpdater", "updateBundle bundleId $bundleId fileUrl $fileUrl")
 
-            if (zipUrl.isNullOrEmpty()) {
+            if (fileUrl.isNullOrEmpty()) {
                 setBundleURL(context, null)
                 return true
             }
@@ -184,7 +184,7 @@ class HotUpdater : ReactPackage {
 
             val isSuccess =
                 withContext(Dispatchers.IO) {
-                    val downloadUrl = URL(zipUrl)
+                    val downloadUrl = URL(fileUrl)
                     val conn =
                         try {
                             downloadUrl.openConnection() as HttpURLConnection
@@ -223,7 +223,7 @@ class HotUpdater : ReactPackage {
                             }
                         }
                     } catch (e: Exception) {
-                        Log.d("HotUpdater", "Failed to download data from URL: $zipUrl, Error: ${e.message}")
+                        Log.d("HotUpdater", "Failed to download data from URL: $fileUrl, Error: ${e.message}")
                         tempDir.deleteRecursively()
                         return@withContext false
                     } finally {

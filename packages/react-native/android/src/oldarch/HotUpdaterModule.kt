@@ -45,13 +45,13 @@ class HotUpdaterModule internal constructor(
         (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
             try {
                 val bundleId = bundleData.getString("bundleId")!!
-                val zipUrl = bundleData.getString("zipUrl")
+                val fileUrl = bundleData.getString("fileUrl")
 
                 val isSuccess =
                     HotUpdater.updateBundle(
                         mReactApplicationContext,
                         bundleId,
-                        zipUrl,
+                        fileUrl,
                     ) { progress ->
                         val params =
                             WritableNativeMap().apply {

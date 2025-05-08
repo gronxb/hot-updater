@@ -76,22 +76,22 @@ import React
             return
         }
 
-        let zipUrlString = data["zipUrl"] as? String ?? ""
+        let fileUrlString = data["fileUrl"] as? String ?? ""
 
-        var zipUrl: URL? = nil
-        if !zipUrlString.isEmpty {
-            guard let url = URL(string: zipUrlString) else {
-                print("[HotUpdaterImpl] Error: Invalid 'zipUrl': \(zipUrlString)")
-                let error = NSError(domain: "HotUpdaterError", code: 103, userInfo: [NSLocalizedDescriptionKey: "Invalid 'zipUrl' provided: \(zipUrlString)"])
+        var fileUrl: URL? = nil
+        if !fileUrlString.isEmpty {
+            guard let url = URL(string: fileUrlString) else {
+                print("[HotUpdaterImpl] Error: Invalid 'fileUrl': \(fileUrlString)")
+                let error = NSError(domain: "HotUpdaterError", code: 103, userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
                 reject("UPDATE_ERROR", error.localizedDescription, error)
                 return
             }
-            zipUrl = url
+            fileUrl = url
         }
 
-        print("[HotUpdaterImpl] updateBundleFromJS called with bundleId: \(bundleId), zipUrl: \(zipUrl?.absoluteString ?? "nil")")
+        print("[HotUpdaterImpl] updateBundleFromJS called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
 
-        updateBundleInternal(bundleId: bundleId, zipUrl: zipUrl) { success, error in
+        updateBundleInternal(bundleId: bundleId, fileUrl: fileUrl) { success, error in
             if success {
                 print("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
                 resolve(true)
@@ -104,12 +104,11 @@ import React
     }
 
 
-    private func updateBundleInternal(bundleId: String, zipUrl: URL?,
-                                      completion: @escaping (Bool, Error?) -> Void) {
+    private func updateBundleInternal(bundleId: String, fileUrl: URL?,
+                                    completion: @escaping (Bool, Error?) -> Void) {
 
-
-        guard let validZipUrl = zipUrl else {
-            print("[HotUpdaterImpl] zipUrl is nil, resetting bundle URL.")
+        guard let validFileUrl = fileUrl else {
+            print("[HotUpdaterImpl] fileUrl is nil, resetting bundle URL.")
             setBundleURLInternal(localPath: nil)
             cleanupOldBundles(currentBundleId: nil)
             completion(true, nil)
@@ -119,17 +118,12 @@ import React
         let storeDir = bundleStoreDir()
         let finalBundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
 
-        if fileManager.fileExists(atPath: finalBundleDir),
-           let existingBundlePath = findBundleFile(in: finalBundleDir) {
-            print("[HotUpdaterImpl] Using cached bundle at path: \(existingBundlePath)")
-            try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-            setBundleURLInternal(localPath: existingBundlePath)
-            cleanupOldBundles(currentBundleId: bundleId)
-            completion(true, nil)
+        // Check if bundle already exists in the file system
+        if fileManager.fileExists(atPath: finalBundleDir) {
+            print("[HotUpdaterImpl] Bundle already exists for bundleId: \(bundleId). Rejecting update.")
+            let error = NSError(domain: "HotUpdaterError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Bundle already exists. Preventing infinite updates."])
+            completion(false, error)
             return
-        } else if fileManager.fileExists(atPath: finalBundleDir) {
-             print("[HotUpdaterImpl] Cached directory exists but invalid, removing: \(finalBundleDir)")
-             try? fileManager.removeItem(atPath: finalBundleDir)
         }
 
         let tempDirectory = tempDir()
@@ -146,7 +140,7 @@ import React
             completion(false, error)
             return
         }
-        print("[HotUpdaterImpl] Starting download from \(validZipUrl)")
+        print("[HotUpdaterImpl] Starting download from \(validFileUrl)")
         
         var task: URLSessionDownloadTask!
         
@@ -171,21 +165,21 @@ import React
                 return
             }
             guard let location = location else {
-                 let error = NSError(domain: "HotUpdaterError", code: 4, userInfo: [NSLocalizedDescriptionKey: "Download location URL is nil"])
-                 try? self.fileManager.removeItem(atPath: tempDirectory)
-                 completion(false, error)
-                 return
+                let error = NSError(domain: "HotUpdaterError", code: 4, userInfo: [NSLocalizedDescriptionKey: "Download location URL is nil"])
+                try? self.fileManager.removeItem(atPath: tempDirectory)
+                completion(false, error)
+                return
             }
 
             do {
-                 try? self.fileManager.removeItem(atPath: tempZipFile)
-                 try self.fileManager.moveItem(at: location, to: URL(fileURLWithPath: tempZipFile))
-             } catch let moveError {
-                 print("[HotUpdaterImpl] Failed to move downloaded file: \(moveError.localizedDescription)")
-                 try? self.fileManager.removeItem(atPath: tempDirectory)
-                 completion(false, moveError)
-                 return
-             }
+                try? self.fileManager.removeItem(atPath: tempZipFile)
+                try self.fileManager.moveItem(at: location, to: URL(fileURLWithPath: tempZipFile))
+            } catch let moveError {
+                print("[HotUpdaterImpl] Failed to move downloaded file: \(moveError.localizedDescription)")
+                try? self.fileManager.removeItem(atPath: tempDirectory)
+                completion(false, moveError)
+                return
+            }
             do {
                 try SSZipArchive.unzipFile(atPath: tempZipFile, toDestination: extractedDir, overwrite: true, password: nil)
                 
@@ -205,39 +199,39 @@ import React
                 return
             }
 
-             guard let _ = self.findBundleFile(in: extractedDir) else {
-                  let error = NSError(domain: "HotUpdaterError", code: 6, userInfo: [NSLocalizedDescriptionKey: "index.ios.bundle or main.jsbundle not found in extracted files"])
-                  try? self.fileManager.removeItem(atPath: tempDirectory)
-                  completion(false, error)
-                  return
-             }
+            guard let _ = self.findBundleFile(in: extractedDir) else {
+                let error = NSError(domain: "HotUpdaterError", code: 6, userInfo: [NSLocalizedDescriptionKey: "index.ios.bundle or main.jsbundle not found in extracted files"])
+                try? self.fileManager.removeItem(atPath: tempDirectory)
+                completion(false, error)
+                return
+            }
 
-             do {
-                 try? self.fileManager.removeItem(atPath: finalBundleDir)
-                 try self.fileManager.moveItem(atPath: extractedDir, toPath: finalBundleDir)
-                 try? self.fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-             } catch {
-                 print("[HotUpdaterImpl] Move failed, attempting copy: \(error.localizedDescription)")
-                 do {
+            do {
+                try? self.fileManager.removeItem(atPath: finalBundleDir)
+                try self.fileManager.moveItem(atPath: extractedDir, toPath: finalBundleDir)
+                try? self.fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
+            } catch {
+                print("[HotUpdaterImpl] Move failed, attempting copy: \(error.localizedDescription)")
+                do {
                     try self.fileManager.copyItem(atPath: extractedDir, toPath: finalBundleDir)
                     try self.fileManager.removeItem(atPath: extractedDir)
                     try? self.fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-                 } catch let copyError {
+                } catch let copyError {
                     print("[HotUpdaterImpl] Copy also failed: \(copyError.localizedDescription)")
                     try? self.fileManager.removeItem(atPath: tempDirectory)
                     try? self.fileManager.removeItem(atPath: finalBundleDir)
                     completion(false, copyError)
                     return
-                 }
-             }
+                }
+            }
 
-             guard let finalBundlePath = self.findBundleFile(in: finalBundleDir) else {
-                 let error = NSError(domain: "HotUpdaterError", code: 7, userInfo: [NSLocalizedDescriptionKey: "Bundle file not found in final directory after move/copy"])
-                 try? self.fileManager.removeItem(atPath: finalBundleDir)
-                 try? self.fileManager.removeItem(atPath: tempDirectory)
-                 completion(false, error)
-                 return
-             }
+            guard let finalBundlePath = self.findBundleFile(in: finalBundleDir) else {
+                let error = NSError(domain: "HotUpdaterError", code: 7, userInfo: [NSLocalizedDescriptionKey: "Bundle file not found in final directory after move/copy"])
+                try? self.fileManager.removeItem(atPath: finalBundleDir)
+                try? self.fileManager.removeItem(atPath: tempDirectory)
+                completion(false, error)
+                return
+            }
 
             print("[HotUpdaterImpl] Bundle update successful. Path: \(finalBundlePath)")
             self.setBundleURLInternal(localPath: finalBundlePath)
@@ -246,7 +240,7 @@ import React
             completion(true, nil)
         }
         
-        task = session.downloadTask(with: validZipUrl, completionHandler: downloadCompletionHandler)
+        task = session.downloadTask(with: validFileUrl, completionHandler: downloadCompletionHandler)
 
         task.addObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesReceived), options: [NSKeyValueObservingOptions.new], context: nil as UnsafeMutableRawPointer?)
         task.addObserver(self, forKeyPath: #keyPath(URLSessionDownloadTask.countOfBytesExpectedToReceive), options: [NSKeyValueObservingOptions.new], context: nil as UnsafeMutableRawPointer?)
