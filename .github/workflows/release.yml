@@ -37,11 +37,11 @@ jobs:
           pnpm build
 
       - name: Create and publish versions
-            uses: changesets/action@v1
-            with:
-              commit: "chore: update versions"
-              title: "chore: update versions"
-              publish: pnpm publish:all
-            env:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        uses: changesets/action@v1
+        with:
+          commit: "chore: update versions"
+          title: "chore: update versions"
+          publish: pnpm publish:all
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
