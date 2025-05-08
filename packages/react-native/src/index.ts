@@ -167,8 +167,9 @@ export const HotUpdater = {
   /**
    * Updates the bundle of the app.
    *
-   * @param {string} bundleId - The bundle ID of the app
-   * @param {string} zipUrl - The URL of the zip file
+   * @param {UpdateBundleParams} params - Parameters object required for bundle update
+   * @param {string} params.bundleId - The bundle ID of the app
+   * @param {string|null} params.zipUrl - The URL of the zip file
    *
    * @returns {Promise<boolean>} Whether the update was successful
    *
@@ -187,7 +188,10 @@ export const HotUpdater = {
    *   };
    * }
    *
-   * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+   * await HotUpdater.updateBundle({
+   *   bundleId: updateInfo.id,
+   *   zipUrl: updateInfo.fileUrl
+   * });
    * if (updateInfo.shouldForceUpdate) {
    *   HotUpdater.reload();
    * }

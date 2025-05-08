@@ -96,7 +96,6 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
             void updateBundle({
               bundleId: updateInfo.id,
               zipUrl: updateInfo.fileUrl,
-              maxRetries: restOptions.maxRetries,
             });
             restOptions.onUpdateProcessCompleted?.({
               id: updateInfo.id,
@@ -113,7 +112,6 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           const isSuccess = await updateBundle({
             bundleId: updateInfo.id,
             zipUrl: updateInfo.fileUrl,
-            maxRetries: restOptions.maxRetries,
           });
 
           if (!isSuccess) {
