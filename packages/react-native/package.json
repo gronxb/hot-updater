@@ -31,6 +31,8 @@
     "*.podspec",
     "react-native.config.js",
     "!ios/build",
+    "!ios/HotUpdater/Test",
+    "!ios/HotUpdater/Package.swift",
     "!android/build",
     "!android/gradle",
     "!android/gradlew",
@@ -46,7 +48,8 @@
     "build:plugin": "tsc -p plugin/tsconfig.json",
     "test:type": "tsc --noEmit",
     "test": "vitest",
-    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib"
+    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
+    "test:ios": "swift test --package-path ios/HotUpdater"
   },
   "keywords": [
     "react-native",

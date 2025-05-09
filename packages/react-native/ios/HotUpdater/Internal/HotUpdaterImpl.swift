@@ -1,4 +1,6 @@
 import Foundation
+import React
+
 @objcMembers public class HotUpdaterImpl: NSObject {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
