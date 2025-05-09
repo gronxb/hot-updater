@@ -1,8 +1,18 @@
 import Foundation
 
+
 protocol DownloadService {
+    /**
+     * Downloads a file from a URL.
+     * @param url The URL to download from
+     * @param destination The local path to save to
+     * @param progressHandler Callback for download progress updates
+     * @param completion Callback with result of the download
+     * @return The download task (optional)
+     */
     func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?
 }
+
 
 class URLSessionDownloadService: NSObject, DownloadService {
     private var session: URLSession!

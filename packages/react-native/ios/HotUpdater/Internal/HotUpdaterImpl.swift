@@ -5,6 +5,11 @@ import React
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
     
+    // MARK: - Initialization
+    
+    /**
+     * Convenience initializer that creates and configures all dependencies.
+     */
     public convenience override init() {
         let fileSystem = FileManagerService()
         let preferences = UserDefaultsPreferencesService()
@@ -21,29 +26,51 @@ import React
         self.init(bundleStorage: bundleStorage, preferences: preferences)
     }
     
+    /**
+     * Primary initializer with dependency injection.
+     * @param bundleStorage Service for bundle storage operations
+     * @param preferences Service for preference storage
+     */
     internal init(bundleStorage: BundleStorageService, preferences: PreferencesService) {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
         super.init()
         
+        // Configure preferences with app version
         if let appVersion = HotUpdaterImpl.appVersion {
             (preferences as? UserDefaultsPreferencesService)?.configure(appVersion: appVersion)
         }
     }
     
+    // MARK: - Static Properties
+    
+    /**
+     * Returns the app version from main bundle info.
+     */
     public static var appVersion: String? {
         return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
     
+    // MARK: - Channel Management
+    
+    /**
+     * Sets the update channel.
+     * @param channel The channel to set, or nil to clear
+     */
     public func setChannel(_ channel: String?) {
         do {
             try preferences.setItem(channel, forKey: "HotUpdaterChannel")
             print("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
         } catch let error {
             print("[HotUpdaterImpl] Error setting channel: \(error.localizedDescription)")
+            // Error is ignored as there's no reject handler for this operation
         }
     }
     
+    /**
+     * Gets the current update channel.
+     * @return The channel name or nil if not set
+     */
     public func getChannel() -> String? {
         do {
             return try preferences.getItem(forKey: "HotUpdaterChannel")
@@ -53,6 +80,12 @@ import React
         }
     }
     
+    // MARK: - Bundle URL Management
+    
+    /**
+     * Gets the URL to the bundle file.
+     * @return URL to the bundle or nil
+     */
     public func bundleURL() -> URL? {
         do {
             return try bundleStorage.resolveBundleURL()
@@ -62,17 +95,29 @@ import React
         }
     }
     
+    // MARK: - Bundle Update
+    
+    /**
+     * Updates the bundle from JavaScript bridge.
+     * This method acts as the primary error boundary for all bundle operations.
+     * @param params Dictionary with bundleId and fileUrl parameters
+     * @param resolve Promise resolve callback
+     * @param reject Promise reject callback
+     */
     @objc public func updateBundle(_ params: NSDictionary?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
         
         do {
+            // Validate parameters
             guard let data = params else {
-                throw NSError(domain: "HotUpdaterError", code: 101, userInfo: [NSLocalizedDescriptionKey: "Missing params dictionary"])
+                throw NSError(domain: "HotUpdaterError", code: 101, 
+                             userInfo: [NSLocalizedDescriptionKey: "Missing params dictionary"])
             }
             
             guard let bundleId = data["bundleId"] as? String, !bundleId.isEmpty else {
-                throw NSError(domain: "HotUpdaterError", code: 102, userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
+                throw NSError(domain: "HotUpdaterError", code: 102, 
+                             userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
             }
             
             let fileUrlString = data["fileUrl"] as? String ?? ""
@@ -80,15 +125,19 @@ import React
             var fileUrl: URL? = nil
             if !fileUrlString.isEmpty {
                 guard let url = URL(string: fileUrlString) else {
-                    throw NSError(domain: "HotUpdaterError", code: 103, userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
+                    throw NSError(domain: "HotUpdaterError", code: 103, 
+                                 userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
                 }
                 fileUrl = url
             }
             
             print("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
+            
+            // Delegate to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl) { [weak self] result in
                 guard self != nil else {
-                    let error = NSError(domain: "HotUpdaterError", code: 998, userInfo: [NSLocalizedDescriptionKey: "Self deallocated during update"])
+                    let error = NSError(domain: "HotUpdaterError", code: 998, 
+                                       userInfo: [NSLocalizedDescriptionKey: "Self deallocated during update"])
                     reject("UPDATE_ERROR", error.localizedDescription, error)
                     return
                 }
@@ -103,6 +152,7 @@ import React
                 }
             }
         } catch let error {
+            // Main error boundary - catch and convert all errors to JS rejection
             print("[HotUpdaterImpl] Error in updateBundleFromJS: \(error.localizedDescription)")
             reject("UPDATE_ERROR", error.localizedDescription, error)
         }
