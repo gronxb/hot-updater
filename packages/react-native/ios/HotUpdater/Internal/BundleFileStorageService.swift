@@ -248,12 +248,17 @@ class BundleFileStorageService: BundleStorageService {
      * Gets the URL to the cached bundle file if it exists.
      */
     func getCachedBundleURL() -> URL? {
-        guard let savedURLString = preferences.getItem(forKey: "HotUpdaterBundleURL"), // Corrected: self.preferences
-              let bundleURL = URL(string: savedURLString),
-              fileSystem.fileExists(atPath: bundleURL.path) else { // Corrected: self.fileSystem
+        do {
+            guard let savedURLString = try self.preferences.getItem(forKey: "HotUpdaterBundleURL"),
+                  let bundleURL = URL(string: savedURLString),
+                  self.fileSystem.fileExists(atPath: bundleURL.path) else {
+                return nil
+            }
+            return bundleURL
+        } catch {
+            print("[BundleStorage] Error getting cached bundle URL: \(error.localizedDescription)")
             return nil
         }
-        return bundleURL
     }
     
     /**
