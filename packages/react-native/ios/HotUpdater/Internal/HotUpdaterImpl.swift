@@ -87,7 +87,7 @@ import React
      * @return URL to the bundle or nil
      */
     public func bundleURL() -> URL? {
-        return bundleStorage.resolveBundleURL()
+        return bundleStorage.getBundleURL()
     }
     
     // MARK: - Bundle Update
