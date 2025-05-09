@@ -60,9 +60,9 @@ import React
     public func setChannel(_ channel: String?) {
             do {
                 try preferences.setItem(channel, forKey: "HotUpdaterChannel")
-                print("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
+                NSLog("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
             } catch let error {
-                print("[HotUpdaterImpl] Error setting channel: \(error.localizedDescription)")
+                NSLog("[HotUpdaterImpl] Error setting channel: \(error.localizedDescription)")
                 // Error is ignored as there's no reject handler for this operation
         }
     }
@@ -75,7 +75,7 @@ import React
         do {
             return try preferences.getItem(forKey: "HotUpdaterChannel")
         } catch let error {
-            print("[HotUpdaterImpl] Error getting channel: \(error.localizedDescription)")
+            NSLog("[HotUpdaterImpl] Error getting channel: \(error.localizedDescription)")
             return nil
         }
     }
@@ -126,11 +126,11 @@ import React
                 fileUrl = url
             }
             
-            print("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
+            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
             
             // Heavy work is delegated to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl) { [weak self] result in
-                guard let strongSelf = self else {
+                guard self != nil else {
                     let error = NSError(domain: "HotUpdaterError", code: 998, 
                                        userInfo: [NSLocalizedDescriptionKey: "Self deallocated during update"])
                     DispatchQueue.main.async {
@@ -138,22 +138,21 @@ import React
                     }
                     return
                 }
-                
                 // Return results on main thread for React Native bridge
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
-                        print("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
+                        NSLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
                         resolve(true)
                     case .failure(let error):
-                        print("[HotUpdaterImpl] Update failed for \(bundleId): \(error.localizedDescription). Rejecting promise.")
+                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId): \(error.localizedDescription). Rejecting promise.")
                         reject("UPDATE_ERROR", error.localizedDescription, error)
                     }
                 }
             }
         } catch let error {
             // Main error boundary - catch and convert all errors to JS rejection
-            print("[HotUpdaterImpl] Error in updateBundleFromJS: \(error.localizedDescription)")
+            NSLog("[HotUpdaterImpl] Error in updateBundleFromJS: \(error.localizedDescription)")
             reject("UPDATE_ERROR", error.localizedDescription, error)
         }
     }

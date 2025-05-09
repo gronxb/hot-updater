@@ -234,7 +234,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param localPath Path to the bundle file (or nil to reset)
      * @return Result of operation
      */
-    private func setBundleURL(localPath: String?) -> Result<Void, Error> {
+    func setBundleURL(localPath: String?) -> Result<Void, Error> {
         do {
             print("[BundleStorage] Setting bundle URL to: \(localPath ?? "nil")")
             try self.preferences.setItem(localPath, forKey: "HotUpdaterBundleURL")
@@ -247,7 +247,7 @@ class BundleFileStorageService: BundleStorageService {
     /**
      * Gets the URL to the cached bundle file if it exists.
      */
-    private func getCachedBundleURL() -> URL? {
+    func getCachedBundleURL() -> URL? {
         guard let savedURLString = preferences.getItem(forKey: "HotUpdaterBundleURL"), // Corrected: self.preferences
               let bundleURL = URL(string: savedURLString),
               fileSystem.fileExists(atPath: bundleURL.path) else { // Corrected: self.fileSystem
@@ -260,7 +260,7 @@ class BundleFileStorageService: BundleStorageService {
      * Gets the URL to the fallback bundle included in the app.
      * @return URL to the fallback bundle or nil if not found
      */
-    private func getFallbackBundleURL() -> URL? {
+    func getFallbackBundleURL() -> URL? {
         return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     }
     
@@ -508,7 +508,7 @@ class BundleFileStorageService: BundleStorageService {
                 }
                 try self.fileSystem.moveItem(at: URL(fileURLWithPath: extractedDir), to: URL(fileURLWithPath: finalBundleDir))
                 try? self.fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-            } catch {
+            } catch let error {
                 print("[BundleStorage] Move failed, attempting copy: \(error.localizedDescription)")
                 do {
                     try self.fileSystem.copyItem(atPath: extractedDir, toPath: finalBundleDir)
