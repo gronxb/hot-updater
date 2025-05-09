@@ -1,3 +1,4 @@
+import type { UpdateStatus } from "@hot-updater/core";
 import { NativeEventEmitter } from "react-native";
 import HotUpdaterNative, {
   type UpdateBundleParams,
@@ -31,24 +32,26 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
   };
 };
 
+export type UpdateParams = UpdateBundleParams & {
+  status: UpdateStatus;
+};
+
 /**
  * Downloads files and applies them to the app.
  *
- * @param {UpdateBundleParams} params - Parameters object required for bundle update
+ * @param {UpdateParams} params - Parameters object required for bundle update
  * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
  */
-export async function updateBundle(
-  params: UpdateBundleParams,
-): Promise<boolean>;
+export async function updateBundle(params: UpdateParams): Promise<boolean>;
 /**
- * @deprecated Use updateBundle(params: UpdateBundleParams) instead
+ * @deprecated Use updateBundle(params: UpdateBundleParamsWithStatus) instead
  */
 export async function updateBundle(
   bundleId: string,
   fileUrl: string | null,
 ): Promise<boolean>;
 export async function updateBundle(
-  paramsOrBundleId: UpdateBundleParams | string,
+  paramsOrBundleId: UpdateParams | string,
   fileUrl?: string | null,
 ): Promise<boolean> {
   const updateBundleId =
@@ -56,10 +59,16 @@ export async function updateBundle(
       ? paramsOrBundleId
       : paramsOrBundleId.bundleId;
 
+  const status =
+    typeof paramsOrBundleId === "string" ? "UPDATE" : paramsOrBundleId.status;
+
   const currentBundleId = getBundleId();
 
   // updateBundleId <= currentBundleId
-  if (updateBundleId.localeCompare(currentBundleId) <= 0) {
+  if (
+    status === "UPDATE" &&
+    updateBundleId.localeCompare(currentBundleId) <= 0
+  ) {
     throw new Error(
       "Update bundle id is the same as the current bundle id. Preventing infinite update loop.",
     );
@@ -76,6 +85,7 @@ export async function updateBundle(
     fileUrl: paramsOrBundleId.fileUrl,
   });
 }
+
 /**
  * Fetches the current app version.
  */

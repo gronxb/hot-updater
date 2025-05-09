@@ -15,7 +15,7 @@ NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpd
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
 
 // Create static HotUpdaterImpl instance
-static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterImpl new];
+static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
 
 @implementation HotUpdater {
     bool hasListeners;
@@ -193,24 +193,19 @@ RCT_EXPORT_METHOD(reload) {
         // Get bundleURL using static instance
         NSURL *bundleURL = [_hotUpdaterImpl bundleURL];
         RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
-        if (bundleURL && self.bridge) {
+        if (bundleURL && super.bridge) {
             @try {
                  // This method of setting bundleURL might be outdated depending on RN version.
                  // Consider alternatives if this doesn't work reliably.
-                 [self.bridge setValue:bundleURL forKey:@"bundleURL"];
+                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
             } @catch (NSException *exception) {
                  RCTLogError(@"[HotUpdater.mm] Failed to set bundleURL on bridge: %@", exception);
             }
-        } else if (!self.bridge) {
+        } else if (!super.bridge) {
              RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
         }
         RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
     });
-}
-
-RCT_EXPORT_METHOD(getAppVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    NSString *version = [HotUpdaterImpl appVersion];
-    resolve(version ?: [NSNull null]);
 }
 
 #ifdef RCT_NEW_ARCH_ENABLED
