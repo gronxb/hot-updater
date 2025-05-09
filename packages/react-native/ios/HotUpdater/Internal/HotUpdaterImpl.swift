@@ -23,7 +23,7 @@ import React
         self.init(bundleStorage: bundleStorage, preferences: preferences)
     }
     
-    init(bundleStorage: BundleStorageService, preferences: PreferencesService) {
+    internal init(bundleStorage: BundleStorageService, preferences: PreferencesService) {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
         super.init()

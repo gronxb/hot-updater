@@ -1,23 +1,24 @@
 import Foundation
 
-public class HotUpdaterFactory {
+@objcMembers
+public class HotUpdaterFactory: NSObject {
     public static let shared = HotUpdaterFactory()
     
-    private init() {}
+    private override init() {}
     
     public func create() -> HotUpdaterImpl {
         let fileSystem = FileManagerService()
-        let bundleStorage = LocalBundleStorageService(fileSystem: fileSystem)
         let preferences = UserDefaultsPreferencesService()
         let downloadService = URLSessionDownloadService()
         let unzipService = SSZipArchiveUnzipService()
         
-        return HotUpdaterImpl(
+        let bundleStorage = LocalBundleStorageService(
             fileSystem: fileSystem,
-            bundleStorage: bundleStorage,
-            preferences: preferences,
             downloadService: downloadService,
-            unzipService: unzipService
+            unzipService: unzipService,
+            preferences: preferences
         )
+        
+        return HotUpdaterImpl(bundleStorage: bundleStorage, preferences: preferences)
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 
-protocol BundleStorageService {
+public protocol BundleStorageService {
     func bundleStoreDir() -> String
     
     func tempDir() -> String
@@ -31,7 +31,7 @@ class LocalBundleStorageService: BundleStorageService {
     private var activeTasks: [URLSessionTask] = []
     
     
-    init(fileSystem: FileSystemService, 
+    public init(fileSystem: FileSystemService, 
          downloadService: DownloadService,
          unzipService: UnzipService,
          preferences: PreferencesService) {
@@ -79,8 +79,8 @@ class LocalBundleStorageService: BundleStorageService {
             let fullPath = (storeDir as NSString).appendingPathComponent(item)
             if fileSystem.fileExists(atPath: fullPath) {
                 do {
-                    let attributes = try fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: fullPath)
-                    if let modDate = attributes[.modificationDate] as? Date {
+                    let attributes = try fileSystem.attributesOfItem(atPath: fullPath)
+                    if let modDate = attributes[FileAttributeKey.modificationDate] as? Date {
                         bundleDirs.append((path: fullPath, modDate: modDate))
                     } else {
                         bundleDirs.append((path: fullPath, modDate: .distantPast))

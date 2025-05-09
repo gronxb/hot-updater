@@ -9,6 +9,7 @@ protocol FileSystemService {
     func copyItem(atPath srcPath: String, toPath dstPath: String) throws
     func contentsOfDirectory(atPath path: String) throws -> [String]
     func setAttributes(_ attributes: [FileAttributeKey: Any], ofItemAtPath path: String) throws
+    func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any]
     func documentsPath() -> String
 }
 
@@ -47,6 +48,10 @@ class FileManagerService: FileSystemService {
     
     func setAttributes(_ attributes: [FileAttributeKey: Any], ofItemAtPath path: String) throws {
         try fileManager.setAttributes(attributes, ofItemAtPath: path)
+    }
+
+    func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
+        return try fileManager.attributesOfItem(atPath: path)
     }
     
     func documentsPath() -> String {
