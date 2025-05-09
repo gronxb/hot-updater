@@ -1,4 +1,3 @@
-// HotUpdaterImpl.swift
 import Foundation
 import React
 
