@@ -12,7 +12,7 @@ import React
         let downloadService = URLSessionDownloadService()
         let unzipService = SSZipArchiveUnzipService()
         
-        let bundleStorage = LocalBundleStorageService(
+        let bundleStorage = BundleFileStorageService(
             fileSystem: fileSystem,
             downloadService: downloadService,
             unzipService: unzipService,

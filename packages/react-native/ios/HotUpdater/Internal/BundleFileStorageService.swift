@@ -22,7 +22,7 @@ public protocol BundleStorageService {
 }
 
 
-class LocalBundleStorageService: BundleStorageService {
+class BundleFileStorageService: BundleStorageService {
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let unzipService: UnzipService
