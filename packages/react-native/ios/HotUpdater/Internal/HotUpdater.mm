@@ -213,7 +213,7 @@ RCT_EXPORT_METHOD(reload) {
 RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
+    NSLog(@"[HotUpdater.mm] updateBundle called.");
     NSMutableDictionary *paramDict = [NSMutableDictionary dictionary];
     if (params.bundleId()) {
         paramDict[@"bundleId"] = params.bundleId();
