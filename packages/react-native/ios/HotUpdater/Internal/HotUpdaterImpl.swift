@@ -58,12 +58,12 @@ import React
      * @param channel The channel to set, or nil to clear
      */
     public func setChannel(_ channel: String?) {
-        do {
-            try preferences.setItem(channel, forKey: "HotUpdaterChannel")
-            print("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
-        } catch let error {
-            print("[HotUpdaterImpl] Error setting channel: \(error.localizedDescription)")
-            // Error is ignored as there's no reject handler for this operation
+            do {
+                try preferences.setItem(channel, forKey: "HotUpdaterChannel")
+                print("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
+            } catch let error {
+                print("[HotUpdaterImpl] Error setting channel: \(error.localizedDescription)")
+                // Error is ignored as there's no reject handler for this operation
         }
     }
     
@@ -87,12 +87,23 @@ import React
      * @return URL to the bundle or nil
      */
     public func bundleURL() -> URL? {
-        do {
-            return try bundleStorage.resolveBundleURL()
-        } catch let error {
-            print("[HotUpdaterImpl] Error resolving bundle URL: \(error.localizedDescription)")
-            return bundleStorage.fallbackBundleURL()
+        let semaphore = DispatchSemaphore(value: 0)
+        var resultURL: URL? = nil
+        
+        bundleStorage.resolveBundleURL { result in
+            switch result {
+            case .success(let url):
+                resultURL = url
+            case .failure(let error):
+                print("[HotUpdaterImpl] Error resolving bundle URL: \(error.localizedDescription)")
+                resultURL = self.bundleStorage.fallbackBundleURL()
+            }
+            semaphore.signal()
         }
+        
+        // Wait with a reasonable timeout
+        _ = semaphore.wait(timeout: .now() + 1.0)
+        return resultURL ?? bundleStorage.fallbackBundleURL()
     }
     
     // MARK: - Bundle Update
@@ -109,7 +120,7 @@ import React
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
         
         do {
-            // Validate parameters
+            // Validate parameters (this runs on calling thread - typically JS thread)
             guard let data = params else {
                 throw NSError(domain: "HotUpdaterError", code: 101, 
                              userInfo: [NSLocalizedDescriptionKey: "Missing params dictionary"])
@@ -133,7 +144,7 @@ import React
             
             print("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
             
-            // Delegate to bundle storage service with safe error handling
+            // Heavy work is delegated to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl) { [weak self] result in
                 guard self != nil else {
                     let error = NSError(domain: "HotUpdaterError", code: 998, 
@@ -142,13 +153,16 @@ import React
                     return
                 }
                 
-                switch result {
-                case .success:
-                    print("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
-                    resolve(true)
-                case .failure(let error):
-                    print("[HotUpdaterImpl] Update failed for \(bundleId): \(error.localizedDescription). Rejecting promise.")
-                    reject("UPDATE_ERROR", error.localizedDescription, error)
+                // Return results on main thread for React Native bridge
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        print("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
+                        resolve(true)
+                    case .failure(let error):
+                        print("[HotUpdaterImpl] Update failed for \(bundleId): \(error.localizedDescription). Rejecting promise.")
+                        reject("UPDATE_ERROR", error.localizedDescription, error)
+                    }
                 }
             }
         } catch let error {
