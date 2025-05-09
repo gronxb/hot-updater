@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {} from "execa";
 import fs from "fs/promises";
+import {getTagsAsKeyValuePairs, tags} from "./tags";
 
 export class LambdaEdgeDeployer {
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -81,6 +82,7 @@ export class LambdaEdgeDeployer {
               Description: "Hot Updater Lambda@Edge function",
               Publish: true,
               Timeout: 10,
+              Tags: tags
             });
             functionArn.arn = createResp.FunctionArn || null;
             functionArn.version = createResp.Version || "1";

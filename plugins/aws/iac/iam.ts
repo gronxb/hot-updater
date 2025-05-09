@@ -1,5 +1,6 @@
 import { IAM } from "@aws-sdk/client-iam";
 import * as p from "@clack/prompts";
+import {getTagsAsKeyValuePairs} from "./tags";
 
 export class IAMManager {
   private region: string;
@@ -49,6 +50,7 @@ export class IAMManager {
           RoleName: roleName,
           AssumeRolePolicyDocument: assumeRolePolicyDocument,
           Description: "Role for Lambda@Edge to access S3",
+          Tags: getTagsAsKeyValuePairs()
         });
         const lambdaRoleArn = createRoleResp.Role?.Arn!;
         p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);

@@ -1,11 +1,12 @@
 import crypto from "crypto";
 import {
   CloudFront,
-  type DistributionConfig,
+  type DistributionConfig, TagResourceCommand,
 } from "@aws-sdk/client-cloudfront";
 import * as p from "@clack/prompts";
 import { delay, merge } from "es-toolkit";
 import type { AwsRegion } from "./regionLocationMap";
+import {getTagsAsKeyValuePairs} from "./tags";
 
 export class CloudFrontManager {
   private region: AwsRegion;
@@ -340,6 +341,15 @@ export class CloudFrontManager {
       p.log.success(
         `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
       );
+      // Add tagging
+      await cloudfrontClient.send(new TagResourceCommand({
+        Resource: distResp.Distribution!.ARN!,
+        Tags: {
+          Items: getTagsAsKeyValuePairs()
+        }
+      }))
+
+      distResp.Distribution
       let retryCount = 0;
       await p.tasks([
         {
