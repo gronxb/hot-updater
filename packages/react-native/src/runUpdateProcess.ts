@@ -66,6 +66,7 @@ export const runUpdateProcess = async ({
   const isUpdated = await updateBundle({
     bundleId: updateInfo.id,
     fileUrl: updateInfo.fileUrl,
+    status: updateInfo.status,
   });
   if (isUpdated && updateInfo.shouldForceUpdate && reloadOnForceUpdate) {
     reload();
