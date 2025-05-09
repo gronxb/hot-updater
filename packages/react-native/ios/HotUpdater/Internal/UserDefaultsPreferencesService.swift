@@ -1,8 +1,14 @@
 import Foundation
 
+enum PreferencesError: Error {
+    case configurationError
+    case setItemError(String)
+    case getItemError(String)
+}
+
 protocol PreferencesService {
-    func setItem(_ value: String?, forKey key: String)
-    func getItem(forKey key: String) -> String?
+    func setItem(_ value: String?, forKey key: String) throws
+    func getItem(forKey key: String) throws -> String?
 }
 
 class UserDefaultsPreferencesService: PreferencesService {
@@ -18,27 +24,37 @@ class UserDefaultsPreferencesService: PreferencesService {
         print("[PreferencesService] Configured with appVersion: \(appVersion ?? "nil"). Key prefix: \(self.keyPrefix)")
     }
     
-    private func prefixedKey(forKey key: String) -> String {
+    private func prefixedKey(forKey key: String) throws -> String {
         guard !keyPrefix.isEmpty else {
             print("[PreferencesService] Warning: PreferencesService used before configure(appVersion:) was called. Key prefix is empty.")
-            return key
+            throw PreferencesError.configurationError
         }
         return "\(keyPrefix)\(key)"
     }
     
-    func setItem(_ value: String?, forKey key: String) {
-        let fullKey = prefixedKey(forKey: key)
-        if let valueToSet = value {
-            userDefaults.set(valueToSet, forKey: fullKey)
-            print("[PreferencesService] Set '\(fullKey)' = '\(valueToSet)'")
-        } else {
-            userDefaults.removeObject(forKey: fullKey)
-            print("[PreferencesService] Removed '\(fullKey)'")
+    func setItem(_ value: String?, forKey key: String) throws {
+        do {
+            let fullKey = try prefixedKey(forKey: key)
+            if let valueToSet = value {
+                userDefaults.set(valueToSet, forKey: fullKey)
+                print("[PreferencesService] Set '\(fullKey)' = '\(valueToSet)'")
+            } else {
+                userDefaults.removeObject(forKey: fullKey)
+                print("[PreferencesService] Removed '\(fullKey)'")
+            }
+        } catch {
+            print("[PreferencesService] Error setting key '\(key)': \(error)")
+            throw PreferencesError.setItemError(key)
         }
     }
     
-    func getItem(forKey key: String) -> String? {
-        let fullKey = prefixedKey(forKey: key)
-        return userDefaults.string(forKey: fullKey)
+    func getItem(forKey key: String) throws -> String? {
+        do {
+            let fullKey = try prefixedKey(forKey: key)
+            return userDefaults.string(forKey: fullKey)
+        } catch {
+            print("[PreferencesService] Error getting key '\(key)': \(error)")
+            throw PreferencesError.getItemError(key)
+        }
     }
 }
