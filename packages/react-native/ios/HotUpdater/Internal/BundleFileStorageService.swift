@@ -27,9 +27,9 @@ public protocol BundleStorageService {
     
     // Bundle URL operations
     func setBundleURL(localPath: String?, completion: @escaping (Result<Void, Error>) -> Void)
-    func cachedBundleURL(completion: @escaping (Result<URL?, Error>) -> Void)
+    func cachedBundleURL() -> URL?
     func fallbackBundleURL() -> URL? // Synchronous as it's lightweight
-    func resolveBundleURL(completion: @escaping (Result<URL?, Error>) -> Void)
+    func resolveBundleURL() -> URL?
     
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, completion: @escaping (Result<Bool, Error>) -> Void)
@@ -158,17 +158,13 @@ class BundleFileStorageService: BundleStorageService {
                             contents = try self.fileSystem.contentsOfDirectory(atPath: storeDir)
                         } catch let error {
                             print("[BundleStorage] Failed to list contents of bundle store directory: \(storeDir)")
-                            DispatchQueue.main.async {
-                                completion(.failure(BundleStorageError.fileSystemError(error)))
-                            }
+                            completion(.failure(BundleStorageError.fileSystemError(error)))
                             return
                         }
 
                         if contents.isEmpty {
                             print("[BundleStorage] No bundles to clean up.")
-                            DispatchQueue.main.async {
-                                completion(.success(()))
-                            }
+                            completion(.success(()))
                             return
                         }
 
@@ -242,20 +238,14 @@ class BundleFileStorageService: BundleStorageService {
                             print("[BundleStorage] Removed \(removedCount) old bundle(s).")
                         }
                         
-                        DispatchQueue.main.async {
-                            completion(.success(()))
-                        }
+                        completion(.success(()))
                     } catch let error {
-                        DispatchQueue.main.async {
-                            completion(.failure(error))
-                        }
+                        completion(.failure(error))
                     }
                 }
                 
             case .failure(let error):
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
+                completion(.failure(error))
             }
         }
     }
@@ -265,79 +255,40 @@ class BundleFileStorageService: BundleStorageService {
      * @param localPath Path to the bundle file (or nil to reset)
      * @param completion Callback with result of operation
      */
-    func setBundleURL(localPath: String?, completion: @escaping (Result<Void, Error>) -> Void) {
-        DispatchQueue.global(qos: .utility).async {
+    private func setBundleURL(localPath: String?, completion: @escaping (Result<Void, Error>) -> Void) {
+        fileOperationQueue.async {
             do {
                 print("[BundleStorage] Setting bundle URL to: \(localPath ?? "nil")")
                 try self.preferences.setItem(localPath, forKey: "HotUpdaterBundleURL")
-                DispatchQueue.main.async {
-                    completion(.success(()))
-                }
+                completion(.success(()))
             } catch let error {
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
+                completion(.failure(error))
             }
         }
     }
     
     /**
      * Gets the URL to the cached bundle file if it exists.
-     * @param completion Callback with URL to cached bundle or nil
      */
-    func cachedBundleURL(completion: @escaping (Result<URL?, Error>) -> Void) {
-        DispatchQueue.global(qos: .utility).async {
-            do {
-                let savedURLString = try self.preferences.getItem(forKey: "HotUpdaterBundleURL")
-                
-                guard let urlString = savedURLString,
-                      let bundleURL = URL(string: urlString),
-                      self.fileSystem.fileExists(atPath: bundleURL.path) else {
-                    DispatchQueue.main.async {
-                        completion(.success(nil))
-                    }
-                    return
-                }
-                
-                DispatchQueue.main.async {
-                    completion(.success(bundleURL))
-                }
-            } catch let error {
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
-            }
+    private func cachedBundleURL() -> URL? {
+        guard let savedURLString = prefs.getItem(forKey: "HotUpdaterBundleURL"),
+              let bundleURL = URL(string: savedURLString),
+              fileManager.fileExists(atPath: bundleURL.path) else {
+            return nil
         }
+        return bundleURL
     }
     
     /**
      * Gets the URL to the fallback bundle included in the app.
      * @return URL to the fallback bundle or nil if not found
      */
-    func fallbackBundleURL() -> URL? {
+    private func fallbackBundleURL() -> URL? {
         return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     }
-    
-    /**
-     * Resolves the most appropriate bundle URL to use.
-     * @param completion Callback with URL to the bundle
-     */
-    func resolveBundleURL(completion: @escaping (Result<URL?, Error>) -> Void) {
-        cachedBundleURL { result in
-            switch result {
-            case .success(let url):
-                print("[BundleStorage] Resolved bundle URL: \(url?.absoluteString ?? "Fallback")")
-                if let resolvedUrl = url {
-                    completion(.success(resolvedUrl))
-                } else {
-                    let fallbackUrl = self.fallbackBundleURL()
-                    completion(.success(fallbackUrl))
-                }
-            case .failure(let error):
-                print("[BundleStorage] Error resolving bundle URL: \(error.localizedDescription)")
-                completion(.success(self.fallbackBundleURL()))
-            }
-        }
+
+    public func resolveBundleURL() -> URL? {
+        return cachedBundleURL() ?? fallbackBundleURL()
     }
     
     // MARK: - Bundle Update
@@ -361,8 +312,8 @@ class BundleFileStorageService: BundleStorageService {
                         case .success:
                             completion(.success(true))
                         case .failure(let error):
-                            print("[BundleStorage] Error during cleanup: \(error)")
-                            completion(.success(true)) // Still consider it a success
+                            print("[BundleStorage] Error during cleanup after reset: \(error)")
+                            completion(.failure(error))
                         }
                     }
                 case .failure(let error):
@@ -401,7 +352,7 @@ class BundleFileStorageService: BundleStorageService {
                                                         completion(.success(true))
                                                     case .failure(let error):
                                                         print("[BundleStorage] Warning: Cleanup failed but bundle is set: \(error)")
-                                                        completion(.success(true)) // Still a success
+                                                        completion(.failure(error))
                                                     }
                                                 }
                                             case .failure(let error):
@@ -409,9 +360,7 @@ class BundleFileStorageService: BundleStorageService {
                                             }
                                         }
                                     } catch let error {
-                                        DispatchQueue.main.async {
-                                            completion(.failure(error))
-                                        }
+                                        completion(.failure(error))
                                     }
                                 }
                                 return
@@ -424,9 +373,7 @@ class BundleFileStorageService: BundleStorageService {
                                         self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, finalBundleDir: finalBundleDir, completion: completion)
                                     } catch let error {
                                         print("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
-                                        DispatchQueue.main.async {
-                                            completion(.failure(BundleStorageError.fileSystemError(error)))
-                                        }
+                                        completion(.failure(BundleStorageError.fileSystemError(error)))
                                     }
                                 }
                             }
@@ -463,9 +410,7 @@ class BundleFileStorageService: BundleStorageService {
                     
                     // Create necessary directories
                     if !self.fileSystem.createDirectory(at: tempDirectory) {
-                        DispatchQueue.main.async {
-                            completion(.failure(BundleStorageError.directoryCreationFailed))
-                        }
+                        completion(.failure(BundleStorageError.directoryCreationFailed))
                         return
                     }
                     
@@ -473,27 +418,25 @@ class BundleFileStorageService: BundleStorageService {
                     let extractedDir = (tempDirectory as NSString).appendingPathComponent("extracted")
                     
                     if !self.fileSystem.createDirectory(at: extractedDir) {
-                        DispatchQueue.main.async {
-                            completion(.failure(BundleStorageError.directoryCreationFailed))
-                        }
+                        completion(.failure(BundleStorageError.directoryCreationFailed))
                         return
                     }
                     
                     // Start download on main thread (URLSession handles its own threading)
-                    DispatchQueue.main.async {
-                        print("[BundleStorage] Starting download from \(fileUrl)")
+                    print("[BundleStorage] Starting download from \(fileUrl)")
+                    
+                    // Start download
+                    let task = self.downloadService.downloadFile(from: fileUrl, to: tempZipFile, progressHandler: { progress in
+                        // Progress updates handled by notification system
+                    }, completion: { [weak self] result in
+                        guard let self = self else {
+                            let error = NSError(domain: "HotUpdaterError", code: 998, 
+                                               userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"])
+                            completion(.failure(error))
+                            return
+                        }
                         
-                        // Start download
-                        let task = self.downloadService.downloadFile(from: fileUrl, to: tempZipFile, progressHandler: { progress in
-                            // Progress updates handled by notification system
-                        }, completion: { [weak self] result in
-                            guard let self = self else {
-                                let error = NSError(domain: "HotUpdaterError", code: 998, 
-                                                   userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"])
-                                completion(.failure(error))
-                                return
-                            }
-                            
+                        self.fileOperationQueue.async {
                             switch result {
                             case .success(let location):
                                 self.processDownloadedFile(
@@ -511,11 +454,11 @@ class BundleFileStorageService: BundleStorageService {
                                 self.cleanupTemporaryFiles([tempDirectory])
                                 completion(.failure(BundleStorageError.downloadFailed(error)))
                             }
-                        })
-                        
-                        if let task = task {
-                            self.activeTasks.append(task)
                         }
+                    })
+                    
+                    if let task = task {
+                        self.activeTasks.append(task)
                     }
                 }
                 
@@ -554,9 +497,7 @@ class BundleFileStorageService: BundleStorageService {
             } catch let moveError {
                 print("[BundleStorage] Failed to move downloaded file: \(moveError.localizedDescription)")
                 self.cleanupTemporaryFiles([tempDirectory])
-                DispatchQueue.main.async {
-                    completion(.failure(BundleStorageError.moveOperationFailed(moveError)))
-                }
+                completion(.failure(BundleStorageError.moveOperationFailed(moveError)))
                 return
             }
             
@@ -587,9 +528,7 @@ class BundleFileStorageService: BundleStorageService {
             } catch let unzipError {
                 print("[BundleStorage] Extraction failed: \(unzipError.localizedDescription)")
                 self.cleanupTemporaryFiles([tempDirectory])
-                DispatchQueue.main.async {
-                    completion(.failure(BundleStorageError.extractionFailed(unzipError)))
-                }
+                completion(.failure(BundleStorageError.extractionFailed(unzipError)))
                 return
             }
             
@@ -625,9 +564,7 @@ class BundleFileStorageService: BundleStorageService {
                             } catch let copyError {
                                 print("[BundleStorage] Copy also failed: \(copyError.localizedDescription)")
                                 self.cleanupTemporaryFiles([tempDirectory, finalBundleDir])
-                                DispatchQueue.main.async {
-                                    completion(.failure(BundleStorageError.copyOperationFailed(copyError)))
-                                }
+                                completion(.failure(BundleStorageError.copyOperationFailed(copyError)))
                                 return
                             }
                         }
@@ -651,7 +588,7 @@ class BundleFileStorageService: BundleStorageService {
                                                     completion(.success(true))
                                                 case .failure(let error):
                                                     print("[BundleStorage] Warning: Final cleanup failed but bundle is set: \(error)")
-                                                    completion(.success(true)) // Still a success
+                                                    completion(.failure(error))
                                                 }
                                             }
                                         case .failure(let error):

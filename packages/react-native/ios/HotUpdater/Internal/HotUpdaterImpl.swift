@@ -87,23 +87,7 @@ import React
      * @return URL to the bundle or nil
      */
     public func bundleURL() -> URL? {
-        let semaphore = DispatchSemaphore(value: 0)
-        var resultURL: URL? = nil
-        
-        bundleStorage.resolveBundleURL { result in
-            switch result {
-            case .success(let url):
-                resultURL = url
-            case .failure(let error):
-                print("[HotUpdaterImpl] Error resolving bundle URL: \(error.localizedDescription)")
-                resultURL = self.bundleStorage.fallbackBundleURL()
-            }
-            semaphore.signal()
-        }
-        
-        // Wait with a reasonable timeout
-        _ = semaphore.wait(timeout: .now() + 1.0)
-        return resultURL ?? bundleStorage.fallbackBundleURL()
+        return bundleStorage.resolveBundleURL()
     }
     
     // MARK: - Bundle Update
@@ -115,7 +99,7 @@ import React
      * @param resolve Promise resolve callback
      * @param reject Promise reject callback
      */
-    @objc public func updateBundle(_ params: NSDictionary?,
+    public func updateBundle(_ params: NSDictionary?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
         
@@ -146,10 +130,12 @@ import React
             
             // Heavy work is delegated to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl) { [weak self] result in
-                guard self != nil else {
+                guard let strongSelf = self else {
                     let error = NSError(domain: "HotUpdaterError", code: 998, 
                                        userInfo: [NSLocalizedDescriptionKey: "Self deallocated during update"])
-                    reject("UPDATE_ERROR", error.localizedDescription, error)
+                    DispatchQueue.main.async {
+                        reject("UPDATE_ERROR", error.localizedDescription, error)
+                    }
                     return
                 }
                 
