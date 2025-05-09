@@ -49,7 +49,7 @@ import React
         return bundleStorage.resolveBundleURL()
     }
     
-    @objc public func updateBundleFromJS(_ params: NSDictionary?,
+    @objc public func updateBundle(_ params: NSDictionary?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
         
@@ -80,7 +80,7 @@ import React
             fileUrl = url
         }
         
-        print("[HotUpdaterImpl] updateBundleFromJS called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
+        print("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
         
         bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl) { success, error in
             if success {
