@@ -44,7 +44,6 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             progressHandlers.removeValue(forKey: task)
             completionHandlers.removeValue(forKey: task)
             
-            // 다운로드 완료 알림
             NotificationCenter.default.post(name: .downloadDidFinish, object: task)
         }
         
@@ -60,7 +59,6 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
             progressHandler?(progress)
             
-            // 진행상황 알림
             let progressInfo: [String: Any] = [
                 "progress": progress,
                 "totalBytesReceived": totalBytesWritten,
@@ -70,7 +68,6 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
         } else {
             progressHandler?(0)
             
-            // 진행상황 알림 (총 용량 알 수 없음)
             NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
         }
     }
