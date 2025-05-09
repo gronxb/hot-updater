@@ -124,9 +124,10 @@ Replace `<channel>` with your target channel name (e.g., `dev`, `staging`, `prod
 
 ## Retrieving the Current Channel
 
-Use the `HotUpdater.getChannel()` function to retrieve the current release channel within your app. This ensures your app logic aligns correctly with the intended update channel.
+Use the `HotUpdater.getChannel()` function to retrieve the current release channel within your app.
+We recommend displaying this value in your app UI to visually confirm that it’s using the intended update channel.
 
-Returns null when running in development mode.
+Returns `null` when running in development mode.
 
 ### Example Usage
 
