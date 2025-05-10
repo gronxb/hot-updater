@@ -23,7 +23,7 @@ public protocol BundleStorageService {
     func setBundleURL(localPath: String?) -> Result<Void, Error>
     func getCachedBundleURL() -> URL?
     func getFallbackBundleURL() -> URL? // Synchronous as it's lightweight
-    func getBundleURL() -> URL?
+    func getBundleURL() -> URL
     
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, completion: @escaping (Result<Bool, Error>) -> Void)
@@ -291,11 +291,11 @@ class BundleFileStorageService: BundleStorageService {
      * Gets the URL to the fallback bundle included in the app.
      * @return URL to the fallback bundle or nil if not found
      */
-    func getFallbackBundleURL() -> URL? {
-        return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+    func getFallbackBundleURL() -> URL {
+        return Bundle.main.url(forResource: "main", withExtension: "jsbundle")!
     }
     
-    public func getBundleURL() -> URL? {
+    public func getBundleURL() -> URL {
         return getCachedBundleURL() ?? getFallbackBundleURL()
     }
     
