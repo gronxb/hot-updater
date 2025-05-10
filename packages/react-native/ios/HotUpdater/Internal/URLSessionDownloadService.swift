@@ -1,6 +1,5 @@
 import Foundation
 
-
 protocol DownloadService {
     /**
      * Downloads a file from a URL.
@@ -18,6 +17,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
     private var session: URLSession!
     private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
+    private var destinations: [URLSessionTask: String] = [:]
     
     override init() {
         super.init()
@@ -29,6 +29,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
         let task = session.downloadTask(with: url)
         progressHandlers[task] = progressHandler
         completionHandlers[task] = completion
+        destinations[task] = destination
         task.resume()
         return task
     }
@@ -37,15 +38,30 @@ class URLSessionDownloadService: NSObject, DownloadService {
 extension URLSessionDownloadService: URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         let completion = completionHandlers[downloadTask]
+        let destination = destinations[downloadTask]
+        
         defer {
             progressHandlers.removeValue(forKey: downloadTask)
             completionHandlers.removeValue(forKey: downloadTask)
+            destinations.removeValue(forKey: downloadTask)
             
             // 다운로드 완료 알림
             NotificationCenter.default.post(name: .downloadDidFinish, object: downloadTask)
         }
         
-        completion?(.success(location))
+        guard let destination = destination else {
+            completion?(.failure(NSError(domain: "HotUpdaterError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Destination path not found"])))
+            return
+        }
+        
+        do {
+            let destinationURL = URL(fileURLWithPath: destination)
+            try FileManager.default.copyItem(at: location, to: destinationURL)
+            completion?(.success(destinationURL))
+        } catch {
+            NSLog("[DownloadService] Failed to copy downloaded file: \(error.localizedDescription)")
+            completion?(.failure(error))
+        }
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -53,6 +69,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
         defer {
             progressHandlers.removeValue(forKey: task)
             completionHandlers.removeValue(forKey: task)
+            destinations.removeValue(forKey: task)
             
             NotificationCenter.default.post(name: .downloadDidFinish, object: task)
         }

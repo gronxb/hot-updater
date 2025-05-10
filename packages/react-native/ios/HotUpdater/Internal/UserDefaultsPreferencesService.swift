@@ -25,7 +25,7 @@ class UserDefaultsPreferencesService: PreferencesService {
      */
     func configure(appVersion: String?) {
         self.keyPrefix = "hotupdater_\(appVersion ?? "unknown")_"
-        print("[PreferencesService] Configured with appVersion: \(appVersion ?? "nil"). Key prefix: \(self.keyPrefix)")
+        NSLog("[PreferencesService] Configured with appVersion: \(appVersion ?? "nil"). Key prefix: \(self.keyPrefix)")
     }
     
     /**
@@ -36,7 +36,7 @@ class UserDefaultsPreferencesService: PreferencesService {
      */
     private func prefixedKey(forKey key: String) throws -> String {
         guard !keyPrefix.isEmpty else {
-            print("[PreferencesService] Warning: PreferencesService used before configure(appVersion:) was called. Key prefix is empty.")
+            NSLog("[PreferencesService] Warning: PreferencesService used before configure(appVersion:) was called. Key prefix is empty.")
             throw PreferencesError.configurationError
         }
         return "\(keyPrefix)\(key)"
@@ -53,13 +53,13 @@ class UserDefaultsPreferencesService: PreferencesService {
             let fullKey = try prefixedKey(forKey: key)
             if let valueToSet = value {
                 userDefaults.set(valueToSet, forKey: fullKey)
-                print("[PreferencesService] Set '\(fullKey)' = '\(valueToSet)'")
+                NSLog("[PreferencesService] Set '\(fullKey)' = '\(valueToSet)'")
             } else {
                 userDefaults.removeObject(forKey: fullKey)
-                print("[PreferencesService] Removed '\(fullKey)'")
+                NSLog("[PreferencesService] Removed '\(fullKey)'")
             }
         } catch {
-            print("[PreferencesService] Error setting key '\(key)': \(error)")
+            NSLog("[PreferencesService] Error setting key '\(key)': \(error)")
             throw PreferencesError.setItemError(key)
         }
     }
@@ -75,7 +75,7 @@ class UserDefaultsPreferencesService: PreferencesService {
             let fullKey = try prefixedKey(forKey: key)
             return userDefaults.string(forKey: fullKey)
         } catch {
-            print("[PreferencesService] Error getting key '\(key)': \(error)")
+            NSLog("[PreferencesService] Error getting key '\(key)': \(error)")
             throw PreferencesError.getItemError(key)
         }
     }

@@ -18,13 +18,6 @@ public enum BundleStorageError: Error {
  * Other operations are synchronous.
  */
 public protocol BundleStorageService {
-    // Directory operations
-    func bundleStoreDir() -> Result<String, Error>
-    func tempDir() -> Result<String, Error>
-    
-    // Bundle file operations
-    func findBundleFile(in directoryPath: String) -> Result<String?, Error>
-    func cleanupOldBundles(currentBundleId: String?) -> Result<Void, Error>
     
     // Bundle URL operations
     func setBundleURL(localPath: String?) -> Result<Void, Error>
@@ -104,9 +97,19 @@ class BundleFileStorageService: BundleStorageService {
      * @param paths Array of file/directory paths to clean up
      */
     private func cleanupTemporaryFiles(_ paths: [String]) {
-        for path in paths {
-            try? self.fileSystem.removeItem(atPath: path)
+        let workItem = DispatchWorkItem {
+            for path in paths {
+                do {
+                    if self.fileSystem.fileExists(atPath: path) {
+                        try self.fileSystem.removeItem(atPath: path)
+                        NSLog("[BundleStorage] Cleaned up temporary file: \(path)")
+                    }
+                } catch {
+                    NSLog("[BundleStorage] Failed to clean up temporary file \(path): \(error.localizedDescription)")
+                }
+            }
         }
+        DispatchQueue.global(qos: .background).async(execute: workItem)
     }
     
     // MARK: - Bundle File Operations
@@ -118,20 +121,43 @@ class BundleFileStorageService: BundleStorageService {
      * @return Result with path to bundle file or error
      */
     func findBundleFile(in directoryPath: String) -> Result<String?, Error> {
-        // Check for iOS bundle file directly
-        let iosBundlePath = (directoryPath as NSString).appendingPathComponent("index.ios.bundle")
-        if self.fileSystem.fileExists(atPath: iosBundlePath) {
-            return .success(iosBundlePath)
-        }
+        NSLog("[BundleStorage] Searching for bundle file in directory: \(directoryPath)")
         
-        // Check for main bundle file
-        let mainBundlePath = (directoryPath as NSString).appendingPathComponent("main.jsbundle")
-        if self.fileSystem.fileExists(atPath: mainBundlePath) {
-            return .success(mainBundlePath)
+        // 디렉토리 내용 확인
+        do {
+            let contents = try self.fileSystem.contentsOfDirectory(atPath: directoryPath)
+            NSLog("[BundleStorage] Directory contents: \(contents)")
+            
+            // Check for iOS bundle file directly
+            let iosBundlePath = (directoryPath as NSString).appendingPathComponent("index.ios.bundle")
+            if self.fileSystem.fileExists(atPath: iosBundlePath) {
+                NSLog("[BundleStorage] Found iOS bundle at: \(iosBundlePath)")
+                return .success(iosBundlePath)
+            }
+            
+            // Check for main bundle file
+            let mainBundlePath = (directoryPath as NSString).appendingPathComponent("main.jsbundle")
+            if self.fileSystem.fileExists(atPath: mainBundlePath) {
+                NSLog("[BundleStorage] Found main bundle at: \(mainBundlePath)")
+                return .success(mainBundlePath)
+            }
+            
+            // 추가 검색: 모든 .bundle 파일 확인
+            for file in contents {
+                if file.hasSuffix(".bundle") {
+                    let bundlePath = (directoryPath as NSString).appendingPathComponent(file)
+                    NSLog("[BundleStorage] Found alternative bundle at: \(bundlePath)")
+                    return .success(bundlePath)
+                }
+            }
+            
+            NSLog("[BundleStorage] No bundle file found in directory: \(directoryPath)")
+            NSLog("[BundleStorage] Available files: \(contents)")
+            return .success(nil)
+        } catch let error {
+            NSLog("[BundleStorage] Error reading directory contents: \(error.localizedDescription)")
+            return .failure(error)
         }
-        
-        print("[BundleStorage] Bundle file (index.ios.bundle or main.jsbundle) not found in \(directoryPath)")
-        return .success(nil)
     }
     
     /**
@@ -152,12 +178,12 @@ class BundleFileStorageService: BundleStorageService {
             do {
                 contents = try self.fileSystem.contentsOfDirectory(atPath: storeDir)
             } catch let error {
-                print("[BundleStorage] Failed to list contents of bundle store directory: \(storeDir)")
+                NSLog("[BundleStorage] Failed to list contents of bundle store directory: \(storeDir)")
                 return .failure(BundleStorageError.fileSystemError(error))
             }
             
             if contents.isEmpty {
-                print("[BundleStorage] No bundles to clean up.")
+                NSLog("[BundleStorage] No bundles to clean up.")
                 return .success(())
             }
             
@@ -184,7 +210,7 @@ class BundleFileStorageService: BundleStorageService {
                             }
                         }
                     } catch {
-                        print("[BundleStorage] Warning: Could not get attributes for \(fullPath): \(error)")
+                        NSLog("[BundleStorage] Warning: Could not get attributes for \(fullPath): \(error)")
                     }
                 }
             }
@@ -193,12 +219,12 @@ class BundleFileStorageService: BundleStorageService {
             
             if let currentPath = currentBundlePath, self.fileSystem.fileExists(atPath: currentPath) {
                 bundlesToKeep.insert(currentPath)
-                print("[BundleStorage] Keeping current bundle: \(currentBundleId!)")
+                NSLog("[BundleStorage] Keeping current bundle: \(currentBundleId!)")
             }
             
             if let latestPath = latestBundlePath {
                 bundlesToKeep.insert(latestPath)
-                print("[BundleStorage] Keeping latest bundle: \((latestPath as NSString).lastPathComponent)")
+                NSLog("[BundleStorage] Keeping latest bundle: \((latestPath as NSString).lastPathComponent)")
             }
             
             var removedCount = 0
@@ -208,18 +234,18 @@ class BundleFileStorageService: BundleStorageService {
                     do {
                         try self.fileSystem.removeItem(atPath: fullPath)
                         removedCount += 1
-                        print("[BundleStorage] Removed old bundle: \(item)")
+                        NSLog("[BundleStorage] Removed old bundle: \(item)")
                     } catch {
-                        print("[BundleStorage] Failed to remove old bundle at \(fullPath): \(error)")
+                        NSLog("[BundleStorage] Failed to remove old bundle at \(fullPath): \(error)")
                         // Optionally, collect errors and return a multiple error type or first error
                     }
                 }
             }
             
             if removedCount == 0 {
-                print("[BundleStorage] No old bundles to remove.")
+                NSLog("[BundleStorage] No old bundles to remove.")
             } else {
-                print("[BundleStorage] Removed \(removedCount) old bundle(s).")
+                NSLog("[BundleStorage] Removed \(removedCount) old bundle(s).")
             }
             
             return .success(())
@@ -236,7 +262,7 @@ class BundleFileStorageService: BundleStorageService {
      */
     func setBundleURL(localPath: String?) -> Result<Void, Error> {
         do {
-            print("[BundleStorage] Setting bundle URL to: \(localPath ?? "nil")")
+            NSLog("[BundleStorage] Setting bundle URL to: \(localPath ?? "nil")")
             try self.preferences.setItem(localPath, forKey: "HotUpdaterBundleURL")
             return .success(())
         } catch let error {
@@ -256,7 +282,7 @@ class BundleFileStorageService: BundleStorageService {
             }
             return bundleURL
         } catch {
-            print("[BundleStorage] Error getting cached bundle URL: \(error.localizedDescription)")
+            NSLog("[BundleStorage] Error getting cached bundle URL: \(error.localizedDescription)")
             return nil
         }
     }
@@ -283,7 +309,7 @@ class BundleFileStorageService: BundleStorageService {
      */
     func updateBundle(bundleId: String, fileUrl: URL?, completion: @escaping (Result<Bool, Error>) -> Void) {
         guard let validFileUrl = fileUrl else {
-            print("[BundleStorage] fileUrl is nil, resetting bundle URL.")
+            NSLog("[BundleStorage] fileUrl is nil, resetting bundle URL.")
             // Dispatch the sequence to the file operation queue to ensure completion is called asynchronously
             // and to keep file operations off the calling thread if it's the main thread.
             fileOperationQueue.async {
@@ -295,11 +321,11 @@ class BundleFileStorageService: BundleStorageService {
                     case .success:
                         completion(.success(true))
                     case .failure(let error):
-                        print("[BundleStorage] Error during cleanup after reset: \(error)")
+                        NSLog("[BundleStorage] Error during cleanup after reset: \(error)")
                         completion(.failure(error))
                     }
                 case .failure(let error):
-                    print("[BundleStorage] Error resetting bundle URL: \(error)")
+                    NSLog("[BundleStorage] Error resetting bundle URL: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -321,7 +347,7 @@ class BundleFileStorageService: BundleStorageService {
                 switch findResult {
                 case .success(let existingBundlePath):
                     if let bundlePath = existingBundlePath {
-                        print("[BundleStorage] Using cached bundle at path: \(bundlePath)")
+                        NSLog("[BundleStorage] Using cached bundle at path: \(bundlePath)")
                         do {
                             try self.fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
                             
@@ -333,7 +359,7 @@ class BundleFileStorageService: BundleStorageService {
                                 case .success:
                                     completion(.success(true))
                                 case .failure(let error):
-                                    print("[BundleStorage] Warning: Cleanup failed but bundle is set: \(error)")
+                                    NSLog("[BundleStorage] Warning: Cleanup failed but bundle is set: \(error)")
                                     completion(.failure(error)) // Or consider .success(true) if main operation succeeded
                                 }
                             case .failure(let error):
@@ -344,14 +370,14 @@ class BundleFileStorageService: BundleStorageService {
                         }
                         return
                     } else {
-                        print("[BundleStorage] Cached directory exists but invalid, removing: \(finalBundleDir)")
+                        NSLog("[BundleStorage] Cached directory exists but invalid, removing: \(finalBundleDir)")
                         do {
                             try self.fileSystem.removeItem(atPath: finalBundleDir)
                             // Continue with download process on success (must be called on a thread that can continue,
                             // but prepareAndDownloadBundle will manage its own threading for download)
                             self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, finalBundleDir: finalBundleDir, completion: completion)
                         } catch let error {
-                            print("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
+                            NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
                             completion(.failure(BundleStorageError.fileSystemError(error)))
                         }
                     }
@@ -402,7 +428,7 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
         
-        print("[BundleStorage] Starting download from \(fileUrl)")
+        NSLog("[BundleStorage] Starting download from \(fileUrl)")
         
         // DownloadService handles its own threading for the download task.
         // The completion handler for downloadService.downloadFile is then dispatched to fileOperationQueue.
@@ -431,7 +457,7 @@ class BundleFileStorageService: BundleStorageService {
                     )
                     
                 case .failure(let error):
-                    print("[BundleStorage] Download failed: \(error.localizedDescription)")
+                    NSLog("[BundleStorage] Download failed: \(error.localizedDescription)")
                     self.cleanupTemporaryFiles([tempDirectory]) // Sync cleanup
                     completion(.failure(BundleStorageError.downloadFailed(error)))
                 }
@@ -463,106 +489,84 @@ class BundleFileStorageService: BundleStorageService {
         tempDirectory: String,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
-        // This function is already called within fileOperationQueue.async
-        // File operations: move, unzip, verify, move to final
+        NSLog("[BundleStorage] Processing downloaded file at: \(location.path)")
+        
+        // 1. 소스 파일 존재 확인
+        guard self.fileSystem.fileExists(atPath: location.path) else {
+            NSLog("[BundleStorage] Source file does not exist at: \(location.path)")
+            self.cleanupTemporaryFiles([tempDirectory])
+            completion(.failure(BundleStorageError.fileSystemError(NSError(
+                domain: "HotUpdaterError",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Source file does not exist at: \(location.path)"]
+            ))))
+            return
+        }
+        
+        // 2. 대상 디렉토리 생성
         do {
-            try? self.fileSystem.removeItem(atPath: tempZipFile)
+            let tempZipFileURL = URL(fileURLWithPath: tempZipFile)
+            let tempZipFileDirectory = tempZipFileURL.deletingLastPathComponent()
+            
+            if !self.fileSystem.fileExists(atPath: tempZipFileDirectory.path) {
+                try self.fileSystem.createDirectory(at: tempZipFileDirectory, withIntermediateDirectories: true)
+                NSLog("[BundleStorage] Created directory at: \(tempZipFileDirectory.path)")
+            }
+            
+            // 3. 기존 파일 삭제
+            if self.fileSystem.fileExists(atPath: tempZipFile) {
+                try self.fileSystem.removeItem(atPath: tempZipFile)
+                NSLog("[BundleStorage] Removed existing file at: \(tempZipFile)")
+            }
+            
+            // 4. 파일 이동
             try self.fileSystem.moveItem(at: location, to: URL(fileURLWithPath: tempZipFile))
-        } catch let moveError {
-            print("[BundleStorage] Failed to move downloaded file: \(moveError.localizedDescription)")
-            self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(BundleStorageError.moveOperationFailed(moveError)))
-            return
-        }
-        
-        do {
+            NSLog("[BundleStorage] Successfully moved file to: \(tempZipFile)")
+            
+            // 5. 압축 해제
             try self.unzipService.unzip(file: tempZipFile, to: extractedDir)
+            NSLog("[BundleStorage] Successfully extracted to: \(extractedDir)")
+            
+            // 6. 임시 zip 파일 삭제
             try? self.fileSystem.removeItem(atPath: tempZipFile)
             
-            if !self.fileSystem.fileExists(atPath: extractedDir) {
-                throw BundleStorageError.extractionFailed(NSError(
-                    domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Extraction directory does not exist"]
-                ))
-            }
-            let contents = try self.fileSystem.contentsOfDirectory(atPath: extractedDir)
-            if contents.isEmpty {
-                throw BundleStorageError.extractionFailed(NSError(
-                    domain: "HotUpdaterError", code: 5, userInfo: [NSLocalizedDescriptionKey: "No files were extracted"]
-                ))
-            }
-        } catch let unzipError {
-            print("[BundleStorage] Extraction failed: \(unzipError.localizedDescription)")
-            self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(BundleStorageError.extractionFailed(unzipError)))
-            return
-        }
-        
-        let findResult = self.findBundleFile(in: extractedDir) // Sync call
-        switch findResult {
-        case .success(let bundlePath):
-            if bundlePath == nil {
-                self.cleanupTemporaryFiles([tempDirectory])
-                completion(.failure(BundleStorageError.invalidBundle))
-                return
-            }
-            
-            // Move/copy operations
-            do {
-                if self.fileSystem.fileExists(atPath: finalBundleDir) {
-                    try self.fileSystem.removeItem(atPath: finalBundleDir)
-                }
-                try self.fileSystem.moveItem(at: URL(fileURLWithPath: extractedDir), to: URL(fileURLWithPath: finalBundleDir))
-                try? self.fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-            } catch let error {
-                print("[BundleStorage] Move failed, attempting copy: \(error.localizedDescription)")
-                do {
-                    try self.fileSystem.copyItem(atPath: extractedDir, toPath: finalBundleDir)
-                    try self.fileSystem.removeItem(atPath: extractedDir)
-                    try? self.fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-                } catch let copyError {
-                    print("[BundleStorage] Copy also failed: \(copyError.localizedDescription)")
-                    self.cleanupTemporaryFiles([tempDirectory, finalBundleDir])
-                    completion(.failure(BundleStorageError.copyOperationFailed(copyError)))
-                    return
-                }
-            }
-            
-            let finalFindResult = self.findBundleFile(in: finalBundleDir) // Sync call
-            switch finalFindResult {
-            case .success(let finalBundlePath):
-                if let finalPath = finalBundlePath {
-                    print("[BundleStorage] Bundle update successful. Path: \(finalPath)")
-                    let setResult = self.setBundleURL(localPath: finalPath) // Sync call
-                    switch setResult {
-                    case .success:
-                        let cleanupResult = self.cleanupOldBundles(currentBundleId: bundleId) // Sync call
-                        self.cleanupTemporaryFiles([tempDirectory]) // Sync call
-                        
-                        switch cleanupResult {
-                        case .success:
-                            completion(.success(true))
-                        case .failure(let error):
-                            print("[BundleStorage] Warning: Final cleanup failed but bundle is set: \(error)")
-                            completion(.failure(error)) // Or .success(true)
-                        }
-                    case .failure(let error):
-                        self.cleanupTemporaryFiles([tempDirectory])
-                        completion(.failure(error))
+            // 7. 번들 파일 검색
+            switch self.findBundleFile(in: extractedDir) {
+            case .success(let bundlePath):
+                if let bundlePath = bundlePath {
+                    NSLog("[BundleStorage] Found bundle at: \(bundlePath)")
+                    
+                    // 8. 최종 번들 디렉토리 생성
+                    if !self.fileSystem.fileExists(atPath: finalBundleDir) {
+                        try self.fileSystem.createDirectory(at: URL(fileURLWithPath: finalBundleDir), withIntermediateDirectories: true)
+                        NSLog("[BundleStorage] Created final bundle directory at: \(finalBundleDir)")
                     }
-                } else {
+                    
+                    // 9. 번들 파일 이동
+                    let finalBundlePath = (finalBundleDir as NSString).appendingPathComponent("index.ios.bundle")
+                    if self.fileSystem.fileExists(atPath: finalBundlePath) {
+                        try self.fileSystem.removeItem(atPath: finalBundlePath)
+                    }
+                    try self.fileSystem.moveItem(atPath: bundlePath, toPath: finalBundlePath)
+                    NSLog("[BundleStorage] Successfully moved bundle to: \(finalBundlePath)")
+                    
+                    // 10. 정리
                     self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.bundleNotFound))
+                    completion(.success(true))
+                } else {
+                    NSLog("[BundleStorage] No bundle file found in extracted directory")
+                    self.cleanupTemporaryFiles([tempDirectory])
+                    completion(.failure(BundleStorageError.invalidBundle))
                 }
             case .failure(let error):
-                print("[BundleStorage] Final bundle processing failed: \(error)")
+                NSLog("[BundleStorage] Error finding bundle file: \(error.localizedDescription)")
                 self.cleanupTemporaryFiles([tempDirectory])
                 completion(.failure(error))
             }
-            
-        case .failure(let error):
-            print("[BundleStorage] Failed to check extracted bundle: \(error)")
+        } catch let error {
+            NSLog("[BundleStorage] Error processing downloaded file: \(error.localizedDescription)")
             self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(error))
+            completion(.failure(BundleStorageError.fileSystemError(error)))
         }
     }
 }
