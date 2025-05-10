@@ -30,7 +30,7 @@ interface PreferencesService {
  * Implementation of PreferencesService using SharedPreferences
  * Modified from original HotUpdaterPrefs to follow the service pattern
  */
-class UserPreferencesService(
+class VersionedPreferencesService(
     private val context: Context,
     private val appVersion: String,
 ) : PreferencesService {

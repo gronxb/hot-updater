@@ -30,7 +30,7 @@ object HotUpdaterFactory {
 
         // Create services
         val fileSystem = FileManagerService(appContext)
-        val preferences = UserPreferencesService(appContext, appVersion)
+        val preferences = VersionedPreferencesService(appContext, appVersion)
         val downloadService = HttpDownloadService()
         val unzipService = ZipFileUnzipService()
 
