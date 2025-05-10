@@ -23,7 +23,7 @@ public protocol BundleStorageService {
     func setBundleURL(localPath: String?) -> Result<Void, Error>
     func getCachedBundleURL() -> URL?
     func getFallbackBundleURL() -> URL? // Synchronous as it's lightweight
-    func getBundleURL() -> URL
+    func getBundleURL() -> URL?
     
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, completion: @escaping (Result<Bool, Error>) -> Void)
