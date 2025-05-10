@@ -581,6 +581,9 @@ importers:
       '@react-native/babel-preset':
         specifier: 0.77.0
         version: 0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      '@react-native/codegen':
+        specifier: 0.77.0
+        version: 0.77.0(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@react-native/eslint-config':
         specifier: 0.77.0
         version: 0.77.0(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)
@@ -17875,9 +17878,9 @@ snapshots:
   '@babel/preset-flow@7.25.9(@babel/core@7.26.0)':
     dependencies:
       '@babel/core': 7.26.0
-      '@babel/helper-plugin-utils': 7.25.9
+      '@babel/helper-plugin-utils': 7.27.1
       '@babel/helper-validator-option': 7.25.9
-      '@babel/plugin-transform-flow-strip-types': 7.25.9(@babel/core@7.26.0)
+      '@babel/plugin-transform-flow-strip-types': 7.27.1(@babel/core@7.26.0)
 
   '@babel/preset-modules@0.1.6-no-external-plugins(@babel/core@7.26.0)':
     dependencies:
@@ -22556,9 +22559,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -22582,7 +22583,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.79.1(@babel/core@7.26.0)':
     dependencies:
@@ -35718,7 +35721,7 @@ snapshots:
     dependencies:
       '@jridgewell/gen-mapping': 0.3.5
       commander: 4.1.1
-      glob: 10.4.1
+      glob: 10.4.5
       lines-and-columns: 1.2.4
       mz: 2.7.0
       pirates: 4.0.6
