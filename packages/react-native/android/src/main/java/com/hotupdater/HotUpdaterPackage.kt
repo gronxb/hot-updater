@@ -29,7 +29,7 @@ class HotUpdaterPackage : BaseReactPackage() {
                     false, // needsEagerInit
                     true, // hasConstants
                     false, // isCxxModule
-                    true // isTurboModule
+                    true, // isTurboModule
                 )
             moduleInfos
         }
