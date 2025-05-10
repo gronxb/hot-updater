@@ -123,7 +123,7 @@ class BundleFileStorageService: BundleStorageService {
     func findBundleFile(in directoryPath: String) -> Result<String?, Error> {
         NSLog("[BundleStorage] Searching for bundle file in directory: \(directoryPath)")
         
-        // 디렉토리 내용 확인
+        // Check directory contents
         do {
             let contents = try self.fileSystem.contentsOfDirectory(atPath: directoryPath)
             NSLog("[BundleStorage] Directory contents: \(contents)")
@@ -142,7 +142,7 @@ class BundleFileStorageService: BundleStorageService {
                 return .success(mainBundlePath)
             }
             
-            // 추가 검색: 모든 .bundle 파일 확인
+            // Additional search: check all .bundle files
             for file in contents {
                 if file.hasSuffix(".bundle") {
                     let bundlePath = (directoryPath as NSString).appendingPathComponent(file)
@@ -491,7 +491,7 @@ class BundleFileStorageService: BundleStorageService {
     ) {
         NSLog("[BundleStorage] Processing downloaded file at: \(location.path)")
         
-        // 1. 소스 파일 존재 확인
+        // 1. Check if source file exists
         guard self.fileSystem.fileExists(atPath: location.path) else {
             NSLog("[BundleStorage] Source file does not exist at: \(location.path)")
             self.cleanupTemporaryFiles([tempDirectory])
@@ -503,46 +503,46 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
         
-        // 2. 대상 디렉토리 생성
+        // 2. Create target directory
         do {
             let tempZipFileURL = URL(fileURLWithPath: tempZipFile)
             let tempZipFileDirectory = tempZipFileURL.deletingLastPathComponent()
             
             if !self.fileSystem.fileExists(atPath: tempZipFileDirectory.path) {
-                try self.fileSystem.createDirectory(at: tempZipFileDirectory, withIntermediateDirectories: true)
+                try self.fileSystem.createDirectory(at: tempZipFileDirectory)
                 NSLog("[BundleStorage] Created directory at: \(tempZipFileDirectory.path)")
             }
             
-            // 3. 기존 파일 삭제
+            // 3. Remove existing file
             if self.fileSystem.fileExists(atPath: tempZipFile) {
                 try self.fileSystem.removeItem(atPath: tempZipFile)
                 NSLog("[BundleStorage] Removed existing file at: \(tempZipFile)")
             }
             
-            // 4. 파일 이동
+            // 4. Move file
             try self.fileSystem.moveItem(at: location, to: URL(fileURLWithPath: tempZipFile))
             NSLog("[BundleStorage] Successfully moved file to: \(tempZipFile)")
             
-            // 5. 압축 해제
+            // 5. Extract archive
             try self.unzipService.unzip(file: tempZipFile, to: extractedDir)
             NSLog("[BundleStorage] Successfully extracted to: \(extractedDir)")
             
-            // 6. 임시 zip 파일 삭제
+            // 6. Remove temporary zip file
             try? self.fileSystem.removeItem(atPath: tempZipFile)
             
-            // 7. 번들 파일 검색
+            // 7. Search for bundle file
             switch self.findBundleFile(in: extractedDir) {
             case .success(let bundlePath):
                 if let bundlePath = bundlePath {
                     NSLog("[BundleStorage] Found bundle at: \(bundlePath)")
                     
-                    // 8. 최종 번들 디렉토리 생성
+                    // 8. Create final bundle directory
                     if !self.fileSystem.fileExists(atPath: finalBundleDir) {
-                        try self.fileSystem.createDirectory(at: URL(fileURLWithPath: finalBundleDir), withIntermediateDirectories: true)
+                        try self.fileSystem.createDirectory(at: URL(fileURLWithPath: finalBundleDir))
                         NSLog("[BundleStorage] Created final bundle directory at: \(finalBundleDir)")
                     }
                     
-                    // 9. 번들 파일 이동
+                    // 9. Move bundle file
                     let finalBundlePath = (finalBundleDir as NSString).appendingPathComponent("index.ios.bundle")
                     if self.fileSystem.fileExists(atPath: finalBundlePath) {
                         try self.fileSystem.removeItem(atPath: finalBundlePath)
@@ -550,7 +550,7 @@ class BundleFileStorageService: BundleStorageService {
                     try self.fileSystem.moveItem(atPath: bundlePath, toPath: finalBundlePath)
                     NSLog("[BundleStorage] Successfully moved bundle to: \(finalBundlePath)")
                     
-                    // 10. 정리
+                    // 10. Cleanup
                     self.cleanupTemporaryFiles([tempDirectory])
                     completion(.success(true))
                 } else {
