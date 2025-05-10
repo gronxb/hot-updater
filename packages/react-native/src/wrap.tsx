@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { getBundleId, reload, updateBundle } from "./native";
+import { getBundleId, reload } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
@@ -93,11 +93,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
 
           if (updateInfo.shouldForceUpdate === false) {
-            void updateBundle({
-              bundleId: updateInfo.id,
-              fileUrl: updateInfo.fileUrl,
-              status: updateInfo.status,
-            }).catch((error) => {
+            void updateInfo.updateBundle().catch((error) => {
               restOptions.onError?.(error);
             });
 
@@ -112,11 +108,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
           // Force Update Scenario
           setUpdateStatus("UPDATING");
-          const isSuccess = await updateBundle({
-            bundleId: updateInfo.id,
-            fileUrl: updateInfo.fileUrl,
-            status: updateInfo.status,
-          });
+          const isSuccess = await updateInfo.updateBundle();
 
           if (!isSuccess) {
             throw new Error(

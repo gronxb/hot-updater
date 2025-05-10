@@ -26,7 +26,26 @@ async function applyAppUpdate(updateInfo: UpdateInfo) {
       };
     }
 
-    await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+    /**
+     * You can apply updates using one of two methods:
+     * 
+     * Method 1: Use the updateBundle() method from the updateInfo object
+     * - A convenience method built into the return value from checkForUpdate
+     * - Performs the same function as HotUpdater.updateBundle with all required arguments pre-filled
+     */
+    // await updateInfo.updateBundle();
+
+    /**
+     * Method 2: Call HotUpdater.updateBundle() directly
+     * - Explicitly pass the necessary values extracted from updateInfo
+     */
+    await HotUpdater.updateBundle({
+      bundleId: updateInfo.id,
+      fileUrl: updateInfo.fileUrl,
+      status: updateInfo.status,
+    });
+
+
     if (updateInfo.shouldForceUpdate) {
       HotUpdater.reload();
     }
