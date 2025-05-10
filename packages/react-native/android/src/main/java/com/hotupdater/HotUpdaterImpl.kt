@@ -20,8 +20,17 @@ class HotUpdaterImpl(
      * @return App version name or null if not available
      */
     fun getAppVersion(): String? {
-        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-        return packageInfo.versionName
+        return try {
+            val packageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            packageInfo.versionName
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /**
@@ -32,7 +41,12 @@ class HotUpdaterImpl(
     companion object {
         fun getAppVersion(context: Context): String? =
             try {
-                val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                val packageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.packageManager.getPackageInfo(context.packageName, 0)
+                }
                 packageInfo.versionName
             } catch (e: Exception) {
                 null
@@ -148,6 +162,7 @@ class HotUpdaterImpl(
      * @param context Context that might be a ReactApplicationContext
      * @return The current activity or null
      */
+    @Suppress("UNUSED_PARAMETER")
     fun getCurrentActivity(context: Context): Activity? {
         // This would need to be implemented differently or moved
         // since it requires ReactApplicationContext which introduces circular dependencies

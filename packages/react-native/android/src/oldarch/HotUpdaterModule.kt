@@ -33,14 +33,14 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun updateBundle(
-        bundleData: ReadableMap,
+        params: ReadableMap,
         promise: Promise,
     ) {
         // Use lifecycleScope when currentActivity is FragmentActivity
         (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
             try {
-                val bundleId = bundleData.getString("bundleId")!!
-                val fileUrl = bundleData.getString("fileUrl")
+                val bundleId = params.getString("bundleId")!!
+                val fileUrl = params.getString("fileUrl")
 
                 val isSuccess =
                     HotUpdater.updateBundle(
@@ -48,7 +48,7 @@ class HotUpdaterModule internal constructor(
                         bundleId,
                         fileUrl,
                     ) { progress ->
-                        val params =
+                        val progressParams =
                             WritableNativeMap().apply {
                                 putDouble("progress", progress)
                             }
@@ -56,7 +56,7 @@ class HotUpdaterModule internal constructor(
                         this@HotUpdaterModule
                             .mReactApplicationContext
                             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                            .emit("onProgress", params)
+                            .emit("onProgress", progressParams)
                     }
                 promise.resolve(isSuccess)
             } catch (e: Exception) {
