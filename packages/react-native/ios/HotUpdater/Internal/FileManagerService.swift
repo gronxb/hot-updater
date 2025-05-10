@@ -10,9 +10,9 @@ enum FileSystemError: Error {
 
 protocol FileSystemService {
     func fileExists(atPath path: String) -> Bool
-    func createDirectory(at path: String) -> Bool
+    func createDirectory(atPath path: String) -> Bool
     func removeItem(atPath path: String) throws
-    func moveItem(at srcPath: URL, to dstPath: URL) throws
+    func moveItem(atPath srcPath: String, toPath dstPath: String) throws
     func copyItem(atPath srcPath: String, toPath dstPath: String) throws
     func contentsOfDirectory(atPath path: String) throws -> [String]
     func setAttributes(_ attributes: [FileAttributeKey: Any], ofItemAtPath path: String) throws
@@ -27,7 +27,7 @@ class FileManagerService: FileSystemService {
         return fileManager.fileExists(atPath: path)
     }
     
-    func createDirectory(at path: String) -> Bool {
+    func createDirectory(atPath path: String) -> Bool {
         do {
             try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
             return true
@@ -46,12 +46,12 @@ class FileManagerService: FileSystemService {
         }
     }
     
-    func moveItem(at srcPath: URL, to dstPath: URL) throws {
+    func moveItem(atPath srcPath: String, toPath dstPath: String) throws {
         do {
-            try fileManager.moveItem(at: srcPath, to: dstPath)
+            try fileManager.moveItem(atPath: srcPath, toPath: dstPath)
         } catch let error {
             NSLog("[FileSystemService] Failed to move item from \(srcPath) to \(dstPath): \(error)")
-            throw FileSystemError.fileOperationFailed(srcPath.path, error)
+            throw FileSystemError.fileOperationFailed(srcPath, error)
         }
     }
     
