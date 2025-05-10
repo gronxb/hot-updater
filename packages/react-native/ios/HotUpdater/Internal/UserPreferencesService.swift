@@ -11,7 +11,7 @@ protocol PreferencesService {
     func getItem(forKey key: String) throws -> String?
 }
 
-class UserDefaultsPreferencesService: PreferencesService {
+class UserPreferencesService: PreferencesService {
     private let userDefaults: UserDefaults
     private var keyPrefix: String = ""
     

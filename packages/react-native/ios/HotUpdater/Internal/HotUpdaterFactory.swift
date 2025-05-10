@@ -8,7 +8,7 @@ public class HotUpdaterFactory: NSObject {
     
     public func create() -> HotUpdaterImpl {
         let fileSystem = FileManagerService()
-        let preferences = UserDefaultsPreferencesService()
+        let preferences = UserPreferencesService()
         let downloadService = URLSessionDownloadService()
         let unzipService = SSZipArchiveUnzipService()
         
