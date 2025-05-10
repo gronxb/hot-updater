@@ -1,12 +1,6 @@
-package com.hotupdater.core
+package com.hotupdater
 
 import android.content.Context
-import com.hotupdater.core.HotUpdaterImpl
-import com.hotupdater.services.BundleFileStorageService
-import com.hotupdater.services.FileManagerService
-import com.hotupdater.services.HttpDownloadService
-import com.hotupdater.services.UserPreferencesService
-import com.hotupdater.services.ZipFileUnzipService
 
 /**
  * Factory for creating HotUpdaterImpl instances with proper dependency injection

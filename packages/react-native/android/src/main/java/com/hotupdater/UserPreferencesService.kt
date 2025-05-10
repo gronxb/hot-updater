@@ -1,4 +1,4 @@
-package com.hotupdater.services
+package com.hotupdater
 
 import android.content.Context
 import android.content.SharedPreferences

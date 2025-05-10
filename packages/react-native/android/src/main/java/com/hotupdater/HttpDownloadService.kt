@@ -1,4 +1,4 @@
-package com.hotupdater.services
+package com.hotupdater
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers

@@ -8,8 +8,6 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ReactShadowNode
 import com.facebook.react.uimanager.ViewManager
-import com.hotupdater.core.HotUpdaterFactory
-import com.hotupdater.core.HotUpdaterImpl
 
 /**
  * Main React Native package for HotUpdater
@@ -26,13 +24,14 @@ class HotUpdater : ReactPackage {
          * @param context Application context
          * @return App version name or null if not available
          */
-        fun getAppVersion(context: Context): String? = HotUpdaterImpl.getAppVersion(context)
+        fun getAppVersion(context: Context): String? = HotUpdaterFactory.getInstance(context).getAppVersion()
 
         /**
          * Generates a bundle ID based on build timestamp
+         * @param context Application context
          * @return The minimum bundle ID string
          */
-        fun getMinBundleId(): String = HotUpdaterImpl.getMinBundleId()
+        fun getMinBundleId(context: Context): String = HotUpdaterFactory.getInstance(context).getMinBundleId()
 
         /**
          * Sets the update channel
