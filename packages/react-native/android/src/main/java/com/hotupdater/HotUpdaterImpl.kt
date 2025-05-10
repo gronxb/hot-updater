@@ -30,14 +30,13 @@ class HotUpdaterImpl(
      * @return App version name or null if not available
      */
     companion object {
-        fun getAppVersion(context: Context): String? {
-            return try {
+        fun getAppVersion(context: Context): String? =
+            try {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
                 packageInfo.versionName
             } catch (e: Exception) {
                 null
             }
-        }
     }
 
     /**
