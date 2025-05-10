@@ -291,11 +291,11 @@ class BundleFileStorageService: BundleStorageService {
      * Gets the URL to the fallback bundle included in the app.
      * @return URL to the fallback bundle or nil if not found
      */
-    func getFallbackBundleURL() -> URL {
-        return Bundle.main.url(forResource: "main", withExtension: "jsbundle")!
+    func getFallbackBundleURL() -> URL? {
+        return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     }
     
-    public func getBundleURL() -> URL {
+    public func getBundleURL() -> URL? {
         return getCachedBundleURL() ?? getFallbackBundleURL()
     }
     
