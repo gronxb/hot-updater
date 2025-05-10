@@ -12,7 +12,7 @@ import React
      */
     public convenience override init() {
         let fileSystem = FileManagerService()
-        let preferences = UserDefaultsPreferencesService()
+        let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
         let unzipService = SSZipArchiveUnzipService()
         
@@ -38,7 +38,7 @@ import React
         
         // Configure preferences with app version
         if let appVersion = HotUpdaterImpl.appVersion {
-            (preferences as? UserDefaultsPreferencesService)?.configure(appVersion: appVersion)
+            (preferences as? VersionedPreferencesService)?.configure(appVersion: appVersion)
         }
     }
     
