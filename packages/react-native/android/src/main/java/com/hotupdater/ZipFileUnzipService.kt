@@ -14,16 +14,21 @@ interface UnzipService {
      * @param destinationPath Directory to extract contents to
      * @return true if extraction was successful, false otherwise
      */
-    fun extractZipFile(filePath: String, destinationPath: String): Boolean
+    fun extractZipFile(
+        filePath: String,
+        destinationPath: String,
+    ): Boolean
 }
 
 /**
  * Implementation of UnzipService using standard Zip API
  */
 class ZipFileUnzipService : UnzipService {
-    
-    override fun extractZipFile(filePath: String, destinationPath: String): Boolean {
-        return try {
+    override fun extractZipFile(
+        filePath: String,
+        destinationPath: String,
+    ): Boolean =
+        try {
             ZipFile(filePath).use { zip ->
                 zip.entries().asSequence().forEach { entry ->
                     val file = File(destinationPath, entry.name)
@@ -32,8 +37,8 @@ class ZipFileUnzipService : UnzipService {
                     } else {
                         file.parentFile?.mkdirs()
                         zip.getInputStream(entry).use { input ->
-                            file.outputStream().use { output -> 
-                                input.copyTo(output) 
+                            file.outputStream().use { output ->
+                                input.copyTo(output)
                             }
                         }
                     }
@@ -44,5 +49,4 @@ class ZipFileUnzipService : UnzipService {
             Log.d("UnzipService", "Failed to unzip file: ${e.message}")
             false
         }
-    }
 }
