@@ -1,9 +1,9 @@
 package com.hotupdater.core
 
 import android.content.Context
+import com.hotupdater.core.HotUpdaterImpl
 import com.hotupdater.services.BundleFileStorageService
 import com.hotupdater.services.FileManagerService
-import com.hotupdater.core.HotUpdaterImpl
 import com.hotupdater.services.HttpDownloadService
 import com.hotupdater.services.UserPreferencesService
 import com.hotupdater.services.ZipFileUnzipService
