@@ -19,7 +19,11 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload() {
-        HotUpdater.reload(mReactApplicationContext)
+        try {
+            HotUpdater.reload(mReactApplicationContext)
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to reload", e)
+        }
     }
 
     @ReactMethod
@@ -27,8 +31,12 @@ class HotUpdaterModule internal constructor(
         channel: String,
         promise: Promise,
     ) {
-        HotUpdater.setChannel(mReactApplicationContext, channel)
-        promise.resolve(null)
+        try {
+            HotUpdater.setChannel(mReactApplicationContext, channel)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("setChannel", e)
+        }
     }
 
     @ReactMethod
