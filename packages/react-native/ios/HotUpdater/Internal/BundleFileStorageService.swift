@@ -513,17 +513,9 @@ class BundleFileStorageService: BundleStorageService {
                 NSLog("[BundleStorage] Created directory atPath: \(tempZipFileDirectory.path)")
             }
             
-            // 3. Remove existing file
-            if self.fileSystem.fileExists(atPath: tempZipFile) {
-                try self.fileSystem.removeItem(atPath: tempZipFile)
-                NSLog("[BundleStorage] Removed existing file atPath: \(tempZipFile)")
-            }
-            
-            // 4. Move file
             try self.fileSystem.moveItem(atPath: location.path, toPath: tempZipFile)
             NSLog("[BundleStorage] Successfully moved file to: \(tempZipFile)")
             
-            // 5. Extract archive
             try self.unzipService.unzip(file: tempZipFile, to: extractedDir)
             NSLog("[BundleStorage] Successfully extracted to: \(extractedDir)")
             
@@ -542,13 +534,12 @@ class BundleFileStorageService: BundleStorageService {
                         NSLog("[BundleStorage] Created final bundle directory atPath: \(finalBundleDir)")
                     }
                     
-                    // 9. Move bundle file
-                    let finalBundlePath = (finalBundleDir as NSString).appendingPathComponent("index.ios.bundle")
-                    if self.fileSystem.fileExists(atPath: finalBundlePath) {
-                        try self.fileSystem.removeItem(atPath: finalBundlePath)
+                    // 9. Move entire extracted directory to final location
+                    if self.fileSystem.fileExists(atPath: finalBundleDir) {
+                        try self.fileSystem.removeItem(atPath: finalBundleDir)
                     }
-                    try self.fileSystem.moveItem(atPath: bundlePath, toPath: finalBundlePath)
-                    NSLog("[BundleStorage] Successfully moved bundle to: \(finalBundlePath)")
+                    try self.fileSystem.moveItem(atPath: extractedDir, toPath: finalBundleDir)
+                    NSLog("[BundleStorage] Successfully moved entire bundle directory to: \(finalBundleDir)")
                     
                     // 10. Cleanup
                     self.cleanupTemporaryFiles([tempDirectory])
