@@ -1,7 +1,7 @@
   # Hot Updater
   
   ## DI Fork
-  This is the DI fork of hot-updater. For DI specific documentation, see the [DI docs]().
+  This is the DI fork of hot-updater. For DI specific documentation, see the [DI docs](https://github.com/distribution-innovation/di-docs/blob/main/Frontend/mobile/how-to/deploy-hot-updater-infrastructure.md).
 
 [![NPM](https://img.shields.io/npm/v/hot-updater)](https://www.npmjs.com/package/hot-updater)
 
