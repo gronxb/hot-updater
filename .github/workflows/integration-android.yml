@@ -1,12 +1,12 @@
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - "packages/react-native/android/**"
-  pull_request:
-    paths:
-      - "packages/react-native/android/**"
+#on:
+#  push:
+#    branches:
+#      - main
+#    paths:
+#      - "packages/react-native/android/**"
+#  pull_request:
+#    paths:
+#      - "packages/react-native/android/**"
 
 name: Android Integration
 
