@@ -1,9 +1,9 @@
 import React from "react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
-import { HotUpdaterError } from "./error";
+import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { getBundleId, reload, updateBundle } from "./native";
+import { getBundleId, reload } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
@@ -39,7 +39,7 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
     progress: number;
     message: string | null;
   }>;
-  onError?: (error: HotUpdaterError) => void;
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
   onProgress?: (progress: number) => void;
   /**
    * When a force update exists, the app will automatically reload.
@@ -93,11 +93,10 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
 
           if (updateInfo.shouldForceUpdate === false) {
-            void updateBundle({
-              bundleId: updateInfo.id,
-              zipUrl: updateInfo.fileUrl,
-              maxRetries: restOptions.maxRetries,
+            void updateInfo.updateBundle().catch((error) => {
+              restOptions.onError?.(error);
             });
+
             restOptions.onUpdateProcessCompleted?.({
               id: updateInfo.id,
               status: updateInfo.status,
@@ -107,14 +106,9 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
             setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;
           }
-
           // Force Update Scenario
           setUpdateStatus("UPDATING");
-          const isSuccess = await updateBundle({
-            bundleId: updateInfo.id,
-            zipUrl: updateInfo.fileUrl,
-            maxRetries: restOptions.maxRetries,
-          });
+          const isSuccess = await updateInfo.updateBundle();
 
           if (!isSuccess) {
             throw new Error(
@@ -135,11 +129,8 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
 
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         } catch (error) {
-          if (error instanceof HotUpdaterError) {
-            restOptions.onError?.(error);
-          }
+          restOptions.onError?.(error);
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
-          throw error;
         }
       });
 

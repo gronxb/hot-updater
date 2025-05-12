@@ -1,3 +1,4 @@
+import type { AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
@@ -6,6 +7,7 @@ import {
   getBundleId,
   getChannel,
   getMinBundleId,
+  updateBundle,
 } from "./native";
 
 export interface CheckForUpdateOptions {
@@ -17,10 +19,19 @@ export interface CheckForUpdateOptions {
    * @default 5000
    */
   requestTimeout?: number;
-  maxRetries?: number;
 }
 
-export async function checkForUpdate(options: CheckForUpdateOptions) {
+export type CheckForUpdateResult = AppUpdateInfo & {
+  /**
+   * Updates the bundle.
+   * This method is equivalent to `HotUpdater.updateBundle()` but with all required arguments pre-filled.
+   */
+  updateBundle: () => Promise<boolean>;
+};
+
+export async function checkForUpdate(
+  options: CheckForUpdateOptions,
+): Promise<CheckForUpdateResult | null> {
   if (__DEV__) {
     return null;
   }
@@ -55,5 +66,20 @@ export async function checkForUpdate(options: CheckForUpdateOptions) {
     options.requestHeaders,
     options.onError,
     options.requestTimeout,
-  );
+  ).then((updateInfo) => {
+    if (!updateInfo) {
+      return null;
+    }
+
+    return {
+      ...updateInfo,
+      updateBundle: async () => {
+        return updateBundle({
+          bundleId: updateInfo.id,
+          fileUrl: updateInfo.fileUrl,
+          status: updateInfo.status,
+        });
+      },
+    };
+  });
 }

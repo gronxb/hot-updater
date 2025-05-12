@@ -48,7 +48,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rslib build",
+    "build": "tsdown",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {

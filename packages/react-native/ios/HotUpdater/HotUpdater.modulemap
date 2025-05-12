@@ -1,6 +1,0 @@
-framework module HotUpdater {
-  umbrella header "HotUpdater.h"
-  
-  export *
-  module * { export * }
-} 

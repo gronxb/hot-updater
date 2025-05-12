@@ -255,7 +255,7 @@ PODS:
   - hermes-engine (0.76.9):
     - hermes-engine/Pre-built (= 0.76.9)
   - hermes-engine/Pre-built (0.76.9)
-  - HotUpdater (0.16.0):
+  - HotUpdater (0.17.0):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -2102,7 +2102,7 @@ SPEC CHECKSUMS:
   fmt: 01b82d4ca6470831d1cc0852a1af644be019e8f6
   glog: 08b301085f15bcbb6ff8632a8ebaf239aae04e6a
   hermes-engine: 9e868dc7be781364296d6ee2f56d0c1a9ef0bb11
-  HotUpdater: 8391cc5ad303bbb32e94bbbb16347a9c012645cb
+  HotUpdater: c44adebd397a9716666a4d093b3c52a5c3700360
   RCT-Folly: 7b4f73a92ad9571b9dbdb05bb30fad927fa971e1
   RCTDeprecation: ebe712bb05077934b16c6bf25228bdec34b64f83
   RCTRequired: ca91e5dd26b64f577b528044c962baf171c6b716

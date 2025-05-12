@@ -9,13 +9,11 @@ abstract class HotUpdaterSpec internal constructor(
     context: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(context) {
     abstract fun updateBundle(
-        bundleData: ReadableMap,
+        params: ReadableMap,
         promise: Promise,
     )
 
     abstract fun reload()
-
-    abstract fun getAppVersion(promise: Promise)
 
     abstract fun setChannel(
         channel: String,

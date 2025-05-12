@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "ignore": [
+    "@hot-updater/docs",
+    "expo-52",
+    "rnef-repack",
+    "@hot-updater/example-react-native-v71",
+    "@hot-updater/example-react-native-v74",
+    "@hot-updater/example-react-native-v76",
+    "@hot-updater/example-react-native-v77"
+  ],
+  "linked": [
+    ["hot-updater", "@hot-updater/*"]
+  ],
+  "access": "public",
+  "baseBranch": "main",
+  "bumpVersionsWithWorkspaceProtocolOnly": true
+}

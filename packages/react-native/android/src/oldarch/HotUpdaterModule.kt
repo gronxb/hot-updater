@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.util.Log
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
@@ -19,12 +20,11 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload() {
-        HotUpdater.reload(mReactApplicationContext)
-    }
-
-    @ReactMethod
-    override fun getAppVersion(promise: Promise) {
-        promise.resolve(HotUpdater.getAppVersion(mReactApplicationContext))
+        try {
+            HotUpdater.reload(mReactApplicationContext)
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to reload", e)
+        }
     }
 
     @ReactMethod
@@ -32,34 +32,32 @@ class HotUpdaterModule internal constructor(
         channel: String,
         promise: Promise,
     ) {
-        HotUpdater.setChannel(mReactApplicationContext, channel)
-        promise.resolve(null)
+        try {
+            HotUpdater.setChannel(mReactApplicationContext, channel)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("setChannel", e)
+        }
     }
 
     @ReactMethod
     override fun updateBundle(
-        bundleData: ReadableMap,
+        params: ReadableMap,
         promise: Promise,
     ) {
         // Use lifecycleScope when currentActivity is FragmentActivity
         (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
             try {
-                val bundleId = bundleData.getString("bundleId")!!
-                val zipUrl = bundleData.getString("zipUrl")
-                val maxRetries =
-                    if (bundleData.hasKey("maxRetries") && !bundleData.isNull("maxRetries")) {
-                        bundleData.getDouble("maxRetries")
-                    } else {
-                        null
-                    }
+                val bundleId = params.getString("bundleId")!!
+                val fileUrl = params.getString("fileUrl")
+
                 val isSuccess =
                     HotUpdater.updateBundle(
                         mReactApplicationContext,
                         bundleId,
-                        zipUrl,
-                        maxRetries,
+                        fileUrl,
                     ) { progress ->
-                        val params =
+                        val progressParams =
                             WritableNativeMap().apply {
                                 putDouble("progress", progress)
                             }
@@ -67,7 +65,7 @@ class HotUpdaterModule internal constructor(
                         this@HotUpdaterModule
                             .mReactApplicationContext
                             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                            .emit("onProgress", params)
+                            .emit("onProgress", progressParams)
                     }
                 promise.resolve(isSuccess)
             } catch (e: Exception) {
@@ -92,7 +90,7 @@ class HotUpdaterModule internal constructor(
 
     override fun getConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
+        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId(mReactApplicationContext)
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
         constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
         return constants

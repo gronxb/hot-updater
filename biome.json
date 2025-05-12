@@ -5,6 +5,7 @@
   },
   "files": {
     "ignore": [
+      "**/lib/**",
       "**/package.json",
       "**/dist/**",
       "**/build/**",

@@ -1,7 +1,8 @@
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
 import "dotenv/config";
+import { defineConfig } from "hot-updater";
+
 
 export default defineConfig({
   build: bare({ enableHermes: true }),

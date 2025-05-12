@@ -1,5 +1,5 @@
 import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
-import { getBundleId, reload, updateBundle } from "./native";
+import { getBundleId, reload } from "./native";
 
 export interface RunUpdateProcessResponse {
   status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
@@ -63,11 +63,7 @@ export const runUpdateProcess = async ({
     };
   }
 
-  const isUpdated = await updateBundle({
-    bundleId: updateInfo.id,
-    zipUrl: updateInfo.fileUrl,
-    maxRetries: checkForUpdateOptions.maxRetries,
-  });
+  const isUpdated = await updateInfo.updateBundle();
   if (isUpdated && updateInfo.shouldForceUpdate && reloadOnForceUpdate) {
     reload();
   }
