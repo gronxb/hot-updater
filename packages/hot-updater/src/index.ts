@@ -6,6 +6,7 @@ import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
 import { banner, getCwd, log } from "@hot-updater/plugin-core";
+import { nativeFingerprint } from "@rnef/tools";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
@@ -21,6 +22,35 @@ program
   .version(version as string);
 
 program.command("init").description("Initialize Hot Updater").action(init);
+
+program
+  .command("fingerprint")
+  .description("Generate fingerprint")
+  .addOption(
+    new Option("-p, --platform <platform>", "specify the platform").choices([
+      "ios",
+      "android",
+    ]),
+  )
+  .action(async (options) => {
+    if (!options.platform) {
+      p.log.error("-p, --platform is required");
+      process.exit(1);
+    }
+    await p.tasks([
+      {
+        title: "Generating fingerprint...",
+        task: async () => {
+          const fingerprint = await nativeFingerprint(getCwd(), {
+            platform: options.platform,
+            extraSources: [],
+            ignorePaths: [],
+          });
+          return `Fingerprint: ${fingerprint.hash}`;
+        },
+      },
+    ]);
+  });
 
 program
   .command("deploy")
