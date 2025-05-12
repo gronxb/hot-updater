@@ -10,10 +10,6 @@ export interface Bundle {
    */
   platform: Platform;
   /**
-   * The target app version of the bundle.
-   */
-  targetAppVersion: string;
-  /**
    * Whether the bundle should force an update.
    */
   shouldForceUpdate: boolean;
@@ -25,6 +21,14 @@ export interface Bundle {
    * The hash of the bundle.
    */
   fileHash: string;
+  /**
+   * The storage key of the bundle.
+   * @example "s3://my-bucket/my-app/bundles/123"
+   * @example "r2://my-bucket/my-app/bundles/123"
+   * @example "firebase-storage://my-bucket/my-app/bundles/123"
+   * @example "storage://my-app/bundles/123"
+   */
+  storageKey: string;
   /**
    * The git commit hash of the bundle.
    */
@@ -45,6 +49,14 @@ export interface Bundle {
    * Different channel values can be used based on each app's requirements.
    */
   channel: string;
+  /**
+   * The target app version of the bundle.
+   */
+  targetAppVersion?: string;
+  /**
+   * The fingerprint of the bundle.
+   */
+  fingerprint?: string;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
