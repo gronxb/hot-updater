@@ -8,10 +8,12 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
 declare const __HOT_UPDATER_CHANNEL: string | undefined;
+declare const __HOT_UPDATER_FINGERPRINT: string;
 
 const HotUpdater = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
   CHANNEL: __HOT_UPDATER_CHANNEL || (!__DEV__ ? "production" : null),
+  FINGERPRINT: __HOT_UPDATER_FINGERPRINT,
 };
 
 export type HotUpdaterEvent = {
@@ -136,4 +138,13 @@ export const setChannel = async (channel: string) => {
 export const getChannel = (): string | null => {
   const constants = HotUpdaterNative.getConstants();
   return constants?.CHANNEL ?? HotUpdater.CHANNEL ?? null;
+};
+
+/**
+ * Fetches the fingerprint for the app.
+ *
+ * @returns {string} Resolves with the fingerprint.
+ */
+export const getFingerprint = (): string => {
+  return HotUpdater.FINGERPRINT;
 };

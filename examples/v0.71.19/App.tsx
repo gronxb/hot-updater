@@ -93,6 +93,7 @@ function App(): React.JSX.Element {
       >
         BundleId: {bundleId}
       </Text>
+      <Text>Fingerprint: {HotUpdater.getFingerprint()}</Text>
 
       <Image
         style={{

@@ -4,6 +4,7 @@ import {
   getAppVersion,
   getBundleId,
   getChannel,
+  getFingerprint,
   getMinBundleId,
   reload,
   setChannel,
@@ -198,4 +199,16 @@ export const HotUpdater = {
    * ```
    */
   updateBundle,
+  /**
+   * Fetches the fingerprint of the app.
+   *
+   * @returns {string} The fingerprint of the app
+   *
+   * @example
+   * ```ts
+   * const fingerprint = HotUpdater.getFingerprint();
+   * console.log(`Fingerprint: ${fingerprint}`);
+   * ```
+   */
+  getFingerprint,
 };
