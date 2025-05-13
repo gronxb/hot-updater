@@ -42,6 +42,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toStrictEqual({
@@ -59,6 +60,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -78,6 +80,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -104,6 +107,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0.0",
       bundleId: "01963024-c131-7971-8725-ab47e232df41",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -130,6 +134,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000002",
@@ -153,6 +158,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toStrictEqual({
@@ -178,6 +184,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
@@ -202,6 +209,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000005",
@@ -233,6 +241,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       message: "hello",
@@ -264,6 +273,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -290,6 +300,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual(null);
   });
@@ -312,6 +323,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: NIL_UUID,
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       id: "00000000-0000-0000-0000-000000000001",
@@ -328,6 +340,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
@@ -354,6 +367,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -373,6 +387,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       message: "hello",
@@ -411,6 +426,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       message: "hello",
@@ -464,6 +480,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       message: "hello",
@@ -502,6 +519,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -528,6 +546,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toStrictEqual({
@@ -560,6 +579,7 @@ export const setupGetUpdateInfoTestSuite = ({
       appVersion: "1.0",
       bundleId: "00000000-0000-0000-0000-000000000002",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
@@ -580,6 +600,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
       bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -607,6 +628,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
       bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
@@ -639,6 +661,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
       bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
@@ -659,6 +682,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
       bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
@@ -686,6 +710,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
       bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -720,6 +745,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
       bundleId: "01957167-0389-7064-8d86-f8af7950daed", // 2025-03-07T16:18:51.401Z
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
   });
@@ -768,6 +794,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
       bundleId: "0195716c-d426-7308-9924-c3f8cb2eaaad", // 2025-03-07T16:25:12.486Z
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toStrictEqual({
       id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
@@ -793,6 +820,7 @@ export const setupGetUpdateInfoTestSuite = ({
       minBundleId: "0195715b-9591-7000-8000-000000000000",
       bundleId: "01957179-d99d-7fbb-bc1e-feff6b3236f0",
       platform: "ios",
+      _updateStrategy: "appVersion",
     });
     expect(update).toBeNull();
   });
@@ -814,6 +842,7 @@ export const setupGetUpdateInfoTestSuite = ({
       bundleId: NIL_UUID,
       platform: "ios",
       channel: "production",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toBeNull();
@@ -836,6 +865,7 @@ export const setupGetUpdateInfoTestSuite = ({
       bundleId: NIL_UUID,
       platform: "ios",
       channel: "beta",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toStrictEqual({
@@ -863,6 +893,7 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
       minBundleId: "01957bb4-b13c-7000-8000-000000000000",
       channel: "production",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toBeNull();
@@ -877,6 +908,7 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
       minBundleId: "0195d325-767a-7000-8000-000000000000",
       channel: "production",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toBeNull();
@@ -900,6 +932,7 @@ export const setupGetUpdateInfoTestSuite = ({
       platform: "ios",
       minBundleId: "00000000-0000-0000-0000-000000000000",
       channel: "production",
+      _updateStrategy: "appVersion",
     });
 
     expect(update).toStrictEqual({
