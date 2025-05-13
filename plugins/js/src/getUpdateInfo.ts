@@ -27,15 +27,15 @@ export const getUpdateInfo = async (
   args: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   if (args._updateStrategy === "appVersion") {
-    return getUpdateInfoStrategyAppVersion(bundles, args);
+    return appVersionStrategy(bundles, args);
   }
 
   // TODO: Implement fingerprint strategy
-  // return getUpdateInfoStrategyFingerprint(bundles, args);
+  // return fingerprintStrategy(bundles, args);
   return null;
 };
 
-export const getUpdateInfoStrategyAppVersion = async (
+const appVersionStrategy = async (
   bundles: Bundle[],
   args: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
