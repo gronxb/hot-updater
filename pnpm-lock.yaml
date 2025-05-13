@@ -4,11 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@rnef/tools':
-    hash: 863eca0bc294604f19c2891885a626dfd4a8b2e38b3cb8f08aa4c10ef2f83904
-    path: patches/@rnef__tools.patch
-
 importers:
 
   .:

@@ -18,7 +18,7 @@ const getMetadataSync = createSyncFn<
     releaseChannel: string;
   } | null
 >(require.resolve("./worker"), {
-  tsRunner: "swc",
+  tsRunner: "node",
 });
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
