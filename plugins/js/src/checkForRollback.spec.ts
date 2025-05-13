@@ -10,6 +10,8 @@ const DEFAULT_BUNDLE = {
   message: null,
   targetAppVersion: "1.0",
   channel: "production",
+  storageUri:
+    "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
 } as const;
 
 describe("checkForRollback", () => {
@@ -24,6 +26,8 @@ describe("checkForRollback", () => {
         id: "00000000-0000-0000-0000-000000000002",
         enabled: false,
         ...DEFAULT_BUNDLE,
+        storageUri:
+          "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
       },
       {
         id: "00000000-0000-0000-0000-000000000003",
