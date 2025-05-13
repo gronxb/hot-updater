@@ -95,64 +95,72 @@ export interface AppUpdateInfo extends UpdateInfo {
   fileUrl: string | null;
 }
 
+export type UpdateStrategy = "fingerprint" | "appVersion";
+
+export type FingerprintGetBundlesArgs = {
+  _updateStrategy: "fingerprint";
+  platform: Platform;
+  /**
+   * The current bundle id of the app.
+   */
+  bundleId: string;
+  /**
+   * Minimum bundle id that should be used.
+   * This value is generated at build time via getMinBundleId().
+   *
+   * @default "00000000-0000-0000-0000-000000000000"
+   */
+  minBundleId?: string;
+  /**
+   * The name of the channel where the bundle is deployed.
+   *
+   * @default "production"
+   *
+   * Examples:
+   * - production: Production channel for end users
+   * - development: Development channel for testing
+   * - staging: Staging channel for quality assurance before production
+   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
+   */
+  channel?: string;
+  /**
+   * The fingerprint of the bundle.
+   */
+  fingerprint: string;
+};
+
+export type AppVersionGetBundlesArgs = {
+  _updateStrategy: "appVersion";
+  platform: Platform;
+  /**
+   * The current bundle id of the app.
+   */
+  bundleId: string;
+  /**
+   * Minimum bundle id that should be used.
+   * This value is generated at build time via getMinBundleId().
+   *
+   * @default "00000000-0000-0000-0000-000000000000"
+   */
+  minBundleId?: string;
+  /**
+   * The name of the channel where the bundle is deployed.
+   *
+   * @default "production"
+   *
+   * Examples:
+   * - production: Production channel for end users
+   * - development: Development channel for testing
+   * - staging: Staging channel for quality assurance before production
+   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
+   */
+  channel?: string;
+  /**
+   * The current app version.
+   */
+  appVersion: string;
+};
+
 export type GetBundlesArgs =
-  | {
-      platform: Platform;
-      /**
-       * The current bundle id of the app.
-       */
-      bundleId: string;
-      /**
-       * Minimum bundle id that should be used.
-       * This value is generated at build time via getMinBundleId().
-       *
-       * @default "00000000-0000-0000-0000-000000000000"
-       */
-      minBundleId?: string;
-      /**
-       * The name of the channel where the bundle is deployed.
-       *
-       * @default "production"
-       *
-       * Examples:
-       * - production: Production channel for end users
-       * - development: Development channel for testing
-       * - staging: Staging channel for quality assurance before production
-       * - app-name: Channel for specific app instances (e.g., my-app, app-test)
-       */
-      channel?: string;
-      /**
-       * The fingerprint of the bundle.
-       */
-      fingerprint: string;
-    }
-  | {
-      platform: Platform;
-      /**
-       * The current bundle id of the app.
-       */
-      bundleId: string;
-      /**
-       * Minimum bundle id that should be used.
-       * This value is generated at build time via getMinBundleId().
-       *
-       * @default "00000000-0000-0000-0000-000000000000"
-       */
-      minBundleId?: string;
-      /**
-       * The name of the channel where the bundle is deployed.
-       *
-       * @default "production"
-       *
-       * Examples:
-       * - production: Production channel for end users
-       * - development: Development channel for testing
-       * - staging: Staging channel for quality assurance before production
-       * - app-name: Channel for specific app instances (e.g., my-app, app-test)
-       */
-      channel?: string;
-      /**
-       * The current app version.
-       */
-      appVersion: string;
-    };
+  | FingerprintGetBundlesArgs
+  | AppVersionGetBundlesArgs;

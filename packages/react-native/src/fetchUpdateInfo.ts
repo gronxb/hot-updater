@@ -13,34 +13,44 @@ export const fetchUpdateInfo = async (
     return source();
   }
 
-  const appVersion = "appVersion" in args ? args.appVersion : undefined;
-  const fingerprint = "fingerprint" in args ? args.fingerprint : undefined;
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
   }, requestTimeout);
 
   try {
-    if (!appVersion && !fingerprint) {
-      throw new Error("appVersion or fingerprint is required");
-    }
-    if (appVersion && fingerprint) {
-      throw new Error("appVersion and fingerprint cannot both be provided");
+    let headers: Record<string, string> = {};
+
+    switch (args._updateStrategy) {
+      case "fingerprint":
+        headers = {
+          "Content-Type": "application/json",
+          "x-app-platform": args.platform,
+          "x-bundle-id": args.bundleId,
+          "x-fingerprint": args.fingerprint,
+          ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
+          ...(args.channel ? { "x-channel": args.channel } : {}),
+          ...requestHeaders,
+        };
+        break;
+      case "appVersion":
+        headers = {
+          "Content-Type": "application/json",
+          "x-app-platform": args.platform,
+          "x-bundle-id": args.bundleId,
+          "x-app-version": args.appVersion,
+          ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
+          ...(args.channel ? { "x-channel": args.channel } : {}),
+          ...requestHeaders,
+        };
+        break;
+      default:
+        throw new Error("Invalid update strategy");
     }
 
     const response = await fetch(source, {
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "x-app-platform": args.platform,
-        "x-bundle-id": args.bundleId,
-        ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
-        ...(args.channel ? { "x-channel": args.channel } : {}),
-        ...(appVersion ? { "x-app-version": appVersion } : {}),
-        ...(fingerprint ? { "x-fingerprint": fingerprint } : {}),
-        ...requestHeaders,
-      },
+      headers,
     });
 
     clearTimeout(timeoutId);
