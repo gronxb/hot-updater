@@ -85,15 +85,21 @@ export default function ({
         }
 
         console.log(
-          "[fingerprint:android]",
-          picocolors.green(data.fingerprintHash.android),
+          picocolors.green(
+            `[HotUpdater] Fingerprint(iOS): ${data.fingerprintHash.ios}`,
+          ),
         );
         console.log(
-          "[fingerprint:ios]",
-          picocolors.green(data.fingerprintHash.ios),
+          picocolors.green(
+            `[HotUpdater] Fingerprint(Android): ${data.fingerprintHash.android}`,
+          ),
         );
-        console.log("[releaseChannel]", picocolors.green(data.releaseChannel));
-        console.log("[bundleId]", picocolors.green(bundleId));
+        console.log(
+          picocolors.green(
+            `[HotUpdater] Release Channel: ${data.releaseChannel}`,
+          ),
+        );
+        console.log(picocolors.green(`[HotUpdater] Bundle ID: ${bundleId}`));
 
         if (fs.existsSync(hotUpdaterDir)) {
           try {
