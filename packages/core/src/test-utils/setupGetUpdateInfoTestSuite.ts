@@ -8,6 +8,8 @@ const DEFAULT_BUNDLE = {
   gitCommitHash: null,
   fileHash: "hash",
   channel: "production",
+  storageUri:
+    "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
 } as const;
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {

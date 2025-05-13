@@ -4,7 +4,7 @@ export type UpdateSource = string | (() => Promise<AppUpdateInfo | null>);
 
 export const fetchUpdateInfo = async (
   source: UpdateSource,
-  { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
+  args: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
   onError?: (error: Error) => void,
   requestTimeout = 5000,
@@ -13,21 +13,32 @@ export const fetchUpdateInfo = async (
     return source();
   }
 
+  const appVersion = "appVersion" in args ? args.appVersion : undefined;
+  const fingerprint = "fingerprint" in args ? args.fingerprint : undefined;
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
   }, requestTimeout);
 
   try {
+    if (!appVersion && !fingerprint) {
+      throw new Error("appVersion or fingerprint is required");
+    }
+    if (appVersion && fingerprint) {
+      throw new Error("appVersion and fingerprint cannot both be provided");
+    }
+
     const response = await fetch(source, {
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        "x-app-platform": platform,
-        "x-app-version": appVersion,
-        "x-bundle-id": bundleId,
-        ...(minBundleId ? { "x-min-bundle-id": minBundleId } : {}),
-        ...(channel ? { "x-channel": channel } : {}),
+        "x-app-platform": args.platform,
+        "x-bundle-id": args.bundleId,
+        ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
+        ...(args.channel ? { "x-channel": args.channel } : {}),
+        ...(appVersion ? { "x-app-version": appVersion } : {}),
+        ...(fingerprint ? { "x-fingerprint": fingerprint } : {}),
         ...requestHeaders,
       },
     });
