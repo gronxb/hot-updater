@@ -1,5 +1,5 @@
 import type { UpdateStatus } from "@hot-updater/core";
-import { NativeEventEmitter } from "react-native";
+import { NativeEventEmitter, Platform } from "react-native";
 import HotUpdaterNative, {
   type UpdateBundleParams,
 } from "./specs/NativeHotUpdater";
@@ -8,12 +8,17 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
 declare const __HOT_UPDATER_CHANNEL: string | undefined;
-declare const __HOT_UPDATER_FINGERPRINT: string;
+declare const __HOT_UPDATER_FINGERPRINT_HASH_IOS: string;
+declare const __HOT_UPDATER_FINGERPRINT_HASH_ANDROID: string;
 
 const HotUpdater = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
   CHANNEL: __HOT_UPDATER_CHANNEL || (!__DEV__ ? "production" : null),
-  FINGERPRINT: __HOT_UPDATER_FINGERPRINT,
+  FINGERPRINT_HASH: Platform.select({
+    ios: __HOT_UPDATER_FINGERPRINT_HASH_IOS,
+    android: __HOT_UPDATER_FINGERPRINT_HASH_ANDROID,
+    default: "",
+  }),
 };
 
 export type HotUpdaterEvent = {
@@ -145,6 +150,6 @@ export const getChannel = (): string | null => {
  *
  * @returns {string} Resolves with the fingerprint.
  */
-export const getFingerprint = (): string => {
-  return HotUpdater.FINGERPRINT;
+export const getFingerprintHash = (): string => {
+  return HotUpdater.FINGERPRINT_HASH;
 };

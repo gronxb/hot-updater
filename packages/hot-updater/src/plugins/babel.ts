@@ -2,10 +2,24 @@ import fs from "fs";
 import path from "path";
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
-import * as t from "@babel/types";
-import { loadConfigSync } from "@hot-updater/plugin-core";
+
+import type * as babelTypes from "@babel/types";
+import { getCwd } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
+import { createSyncFn } from "synckit";
 import { uuidv7 } from "uuidv7";
+
+const getMetadataSync = createSyncFn<
+  () => {
+    fingerprintHash: {
+      ios: string;
+      android: string;
+    };
+    releaseChannel: string;
+  } | null
+>(require.resolve("./worker"), {
+  tsRunner: "swc",
+});
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -31,36 +45,101 @@ const getBundleId = () => {
   return bundleId;
 };
 
-export const getChannel = () => {
-  const currentEnv = process.env["BABEL_ENV"] || process.env["NODE_ENV"];
-  if (currentEnv === "development") {
-    return null;
-  }
-
-  const envChannel = process.env["HOT_UPDATER_CHANNEL"];
-  if (envChannel) {
-    return envChannel;
-  }
-
-  const { releaseChannel } = loadConfigSync(null);
-  return releaseChannel;
-};
-
-export default function replaceHotUpdaterBundleId(): PluginObj {
+export default function ({
+  types: t,
+}: { types: typeof babelTypes }): PluginObj {
   const bundleId = getBundleId();
-  const channel = getChannel();
 
+  const metadata: {
+    fingerprintHash: {
+      ios: string;
+      android: string;
+    } | null;
+    releaseChannel: string | null;
+    bundleId: string;
+  } = {
+    fingerprintHash: null,
+    releaseChannel: null,
+    bundleId: NIL_UUID,
+  };
   return {
-    name: "replace-hot-updater-bundle-id",
+    name: "hot-updater-babel-plugin",
+    pre: () => {
+      const hotUpdaterDir = path.join(getCwd(), ".hot-updater");
+      const metadataJsonPath = path.join(hotUpdaterDir, "metadata.json");
+      // 계소 캐시 됨..
+      if (fs.existsSync(metadataJsonPath)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(metadataJsonPath, "utf-8"));
+          Object.assign(metadata, data);
+          return;
+        } catch (error) {
+          console.error("Failed to read metadata.json:", error);
+        }
+      }
+
+      try {
+        const data = getMetadataSync();
+        if (!data) {
+          throw new Error("Failed to get metadata");
+        }
+
+        console.log(
+          "[fingerprint:android]",
+          picocolors.green(data.fingerprintHash.android),
+        );
+        console.log(
+          "[fingerprint:ios]",
+          picocolors.green(data.fingerprintHash.ios),
+        );
+        console.log("[releaseChannel]", picocolors.green(data.releaseChannel));
+        console.log("[bundleId]", picocolors.green(bundleId));
+
+        if (fs.existsSync(hotUpdaterDir)) {
+          try {
+            fs.rmSync(hotUpdaterDir, { recursive: true, force: true });
+          } catch (error) {
+            console.error("Failed to remove .hot-updater directory:", error);
+          }
+        }
+
+        try {
+          fs.mkdirSync(hotUpdaterDir, { recursive: true });
+          fs.writeFileSync(metadataJsonPath, JSON.stringify(data, null, 2));
+          Object.assign(metadata, data);
+        } catch (error) {
+          console.error(
+            "Failed to create .hot-updater directory or write metadata.json:",
+            error,
+          );
+        }
+      } catch (error) {
+        console.error("Error in hot-updater pre function:", error);
+      }
+    },
     visitor: {
-      Identifier(path: NodePath<t.Identifier>) {
+      Identifier(path: NodePath<babelTypes.Identifier>) {
         if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
           path.replaceWith(t.stringLiteral(bundleId));
         }
         if (path.node.name === "__HOT_UPDATER_CHANNEL") {
           path.replaceWith(
-            channel ? t.stringLiteral(channel) : t.nullLiteral(),
+            metadata.releaseChannel
+              ? t.stringLiteral(metadata.releaseChannel)
+              : t.nullLiteral(),
           );
+        }
+        if (
+          metadata.fingerprintHash?.ios &&
+          path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_IOS"
+        ) {
+          path.replaceWith(t.stringLiteral(metadata.fingerprintHash.ios));
+        }
+        if (
+          metadata.fingerprintHash?.android &&
+          path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_ANDROID"
+        ) {
+          path.replaceWith(t.stringLiteral(metadata.fingerprintHash.android));
         }
       },
     },

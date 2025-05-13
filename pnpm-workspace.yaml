@@ -3,7 +3,6 @@ packages:
   - plugins/*
   - docs
   - examples/*
-
 onlyBuiltDependencies:
   - '@sentry/cli'
   - '@swc/core'
@@ -13,3 +12,5 @@ onlyBuiltDependencies:
   - sharp
   - typia
   - workerd
+patchedDependencies:
+  '@rnef/tools': patches/@rnef__tools.patch
