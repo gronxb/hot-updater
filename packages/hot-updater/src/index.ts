@@ -64,7 +64,7 @@ fingerprintCommand
       {
         title: "Creating fingerprint.json",
         task: async () => {
-          const config = loadConfig(null);
+          const config = await loadConfig(null);
           const [ios, android] = await Promise.all([
             nativeFingerprint(getCwd(), {
               platform: "ios",
