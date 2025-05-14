@@ -6,7 +6,6 @@ export default defineConfig([
       index: "./src/index.ts",
       config: "./src/config.ts",
       "plugins/babel": "./src/plugins/babel.ts",
-      "plugins/worker": "./src/plugins/worker.ts",
     },
     format: ["esm", "cjs"],
     outDir: "dist",

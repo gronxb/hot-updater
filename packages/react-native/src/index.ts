@@ -4,7 +4,7 @@ import {
   getAppVersion,
   getBundleId,
   getChannel,
-  getFingerprint,
+  getFingerprintHash,
   getMinBundleId,
   reload,
   setChannel,
@@ -206,9 +206,9 @@ export const HotUpdater = {
    *
    * @example
    * ```ts
-   * const fingerprint = HotUpdater.getFingerprint();
+   * const fingerprint = HotUpdater.getFingerprintHash();
    * console.log(`Fingerprint: ${fingerprint}`);
    * ```
    */
-  getFingerprint,
+  getFingerprintHash,
 };

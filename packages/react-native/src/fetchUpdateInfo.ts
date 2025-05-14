@@ -27,7 +27,7 @@ export const fetchUpdateInfo = async (
           "Content-Type": "application/json",
           "x-app-platform": args.platform,
           "x-bundle-id": args.bundleId,
-          "x-fingerprint": args.fingerprint,
+          "x-fingerprint-hash": args.fingerprintHash,
           ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
           ...(args.channel ? { "x-channel": args.channel } : {}),
           ...requestHeaders,

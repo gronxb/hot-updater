@@ -1,4 +1,4 @@
-import type { UpdateStatus } from "@hot-updater/core";
+import type { UpdateStatus, UpdateStrategy } from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
 import HotUpdaterNative, {
   type UpdateBundleParams,
@@ -8,17 +8,19 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
 declare const __HOT_UPDATER_CHANNEL: string | undefined;
-declare const __HOT_UPDATER_FINGERPRINT_HASH_IOS: string;
-declare const __HOT_UPDATER_FINGERPRINT_HASH_ANDROID: string;
+declare const __HOT_UPDATER_FINGERPRINT_HASH_IOS: string | null;
+declare const __HOT_UPDATER_FINGERPRINT_HASH_ANDROID: string | null;
+declare const __HOT_UPDATER_UPDATE_STRATEGY: UpdateStrategy;
 
-const HotUpdater = {
+export const HotUpdaterConstants = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
   CHANNEL: __HOT_UPDATER_CHANNEL || (!__DEV__ ? "production" : null),
   FINGERPRINT_HASH: Platform.select({
     ios: __HOT_UPDATER_FINGERPRINT_HASH_IOS,
     android: __HOT_UPDATER_FINGERPRINT_HASH_ANDROID,
-    default: "",
+    default: null,
   }),
+  UPDATE_STRATEGY: __HOT_UPDATER_UPDATE_STRATEGY,
 };
 
 export type HotUpdaterEvent = {
@@ -142,14 +144,14 @@ export const setChannel = async (channel: string) => {
 
 export const getChannel = (): string | null => {
   const constants = HotUpdaterNative.getConstants();
-  return constants?.CHANNEL ?? HotUpdater.CHANNEL ?? null;
+  return constants?.CHANNEL ?? HotUpdaterConstants.CHANNEL ?? null;
 };
 
 /**
  * Fetches the fingerprint for the app.
  *
- * @returns {string} Resolves with the fingerprint.
+ * @returns {string | null} Resolves with the fingerprint hash
  */
-export const getFingerprintHash = (): string => {
-  return HotUpdater.FINGERPRINT_HASH;
+export const getFingerprintHash = (): string | null => {
+  return HotUpdaterConstants.FINGERPRINT_HASH;
 };

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
+import fs from "fs";
+import path from "path";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
-import { banner, getCwd, log } from "@hot-updater/plugin-core";
+import { banner, getCwd, loadConfig, log } from "@hot-updater/plugin-core";
 import { nativeFingerprint } from "@rnef/tools";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
@@ -23,30 +25,65 @@ program
 
 program.command("init").description("Initialize Hot Updater").action(init);
 
-program
+const fingerprintCommand = program
   .command("fingerprint")
-  .description("Generate fingerprint")
-  .addOption(
-    new Option("-p, --platform <platform>", "specify the platform").choices([
-      "ios",
-      "android",
-    ]),
-  )
-  .action(async (options) => {
-    if (!options.platform) {
-      p.log.error("-p, --platform is required");
-      process.exit(1);
-    }
+  .description("Generate fingerprint");
+
+fingerprintCommand.action(async () => {
+  await p.tasks([
+    {
+      title: "Generating fingerprint (iOS)",
+      task: async () => {
+        const fingerprint = await nativeFingerprint(getCwd(), {
+          platform: "ios",
+          extraSources: [],
+          ignorePaths: [],
+        });
+        return `Fingerprint(iOS): ${fingerprint.hash}`;
+      },
+    },
+    {
+      title: "Generating fingerprint (Android)",
+      task: async () => {
+        const fingerprint = await nativeFingerprint(getCwd(), {
+          platform: "android",
+          extraSources: [],
+          ignorePaths: [],
+        });
+        return `Fingerprint(Android): ${fingerprint.hash}`;
+      },
+    },
+  ]);
+});
+
+fingerprintCommand
+  .command("create")
+  .description("Create fingerprint")
+  .action(async () => {
     await p.tasks([
       {
-        title: "Generating fingerprint...",
+        title: "Creating fingerprint.json",
         task: async () => {
-          const fingerprint = await nativeFingerprint(getCwd(), {
-            platform: options.platform,
-            extraSources: [],
-            ignorePaths: [],
-          });
-          return `Fingerprint: ${fingerprint.hash}`;
+          const config = loadConfig(null);
+          const [ios, android] = await Promise.all([
+            nativeFingerprint(getCwd(), {
+              platform: "ios",
+              ...config.fingerprint,
+            }),
+            nativeFingerprint(getCwd(), {
+              platform: "android",
+
+              ...config.fingerprint,
+            }),
+          ]);
+          const fingerprint = {
+            ios: ios,
+            android: android,
+          };
+          await fs.promises.writeFile(
+            path.join(getCwd(), "fingerprint.json"),
+            JSON.stringify(fingerprint, null, 2),
+          );
         },
       },
     ]);

@@ -124,9 +124,9 @@ export type FingerprintGetBundlesArgs = {
    */
   channel?: string;
   /**
-   * The fingerprint of the bundle.
+   * The fingerprint hash of the bundle.
    */
-  fingerprint: string;
+  fingerprintHash: string;
 };
 
 export type AppVersionGetBundlesArgs = {
