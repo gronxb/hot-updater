@@ -24,6 +24,7 @@ import { getConsolePort, openConsole } from "./console";
 import path from "path";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { printBanner } from "@/utils/printBanner";
+import { nativeFingerprint } from "@rnef/tools";
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -69,6 +70,28 @@ export const deploy = async (options: DeployOptions) => {
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
+  }
+
+  if (config.updateStrategy === "fingerprint") {
+    const fingerprint = await nativeFingerprint(cwd, {
+      platform,
+      ...config.fingerprint,
+    });
+    const projectFingerprintJsonFile = fs.readFileSync(
+      path.join(cwd, "fingerprint.json"),
+      "utf-8",
+    );
+
+    const projectFingerprint = JSON.parse(projectFingerprintJsonFile);
+
+    if (fingerprint.hash !== projectFingerprint.hash) {
+      p.log.error(
+        "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
+      );
+      process.exit(1);
+    }
+  } else {
+    // target app version
   }
 
   const defaultTargetAppVersion =
