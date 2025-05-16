@@ -1,4 +1,3 @@
-DROP FUNCTION IF EXISTS get_update_info;
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
 
 ALTER TABLE bundles ADD COLUMN IF NOT EXISTS fingerprint_hash text;
@@ -6,6 +5,14 @@ ALTER TABLE bundles ADD CONSTRAINT IF NOT EXISTS check_version_or_fingerprint CH
     (target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL)
 );
 
+
+ALTER TABLE bundles ADD COLUMN IF NOT EXISTS storage_uri TEXT;
+UPDATE bundles
+SET storage_uri = 'supabase-storage://bucket/' || id || '/bundle.zip' -- TODO: 버킷 이름 변경
+WHERE storage_uri IS NULL;
+ALTER TABLE bundles ALTER COLUMN storage_uri SET NOT NULL;
+
+DROP FUNCTION IF EXISTS get_update_info;
 
 -- HotUpdater.get_update_info
 CREATE OR REPLACE FUNCTION get_update_info_by_fingerprint_hash (
