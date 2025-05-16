@@ -12,7 +12,6 @@ import {
   link,
   makeEnv,
   transformTemplate,
-  transformTsEnv,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 
@@ -366,15 +365,6 @@ export const runInit = async ({
   );
 
   await linkSupabase(tmpDir, project.id);
-
-  const supabasePath = path.join(tmpDir, "supabase");
-  const functionsPath = path.join(supabasePath, "functions", "update-server");
-  const code = await fs.readFile(path.join(functionsPath, "index.ts"), "utf-8");
-
-  const updatedCode = await transformTsEnv(code, {
-    BUCKET_NAME: bucket.name,
-  });
-  await fs.writeFile(path.join(functionsPath, "index.ts"), updatedCode);
 
   await pushDB(tmpDir);
   await deployEdgeFunction(tmpDir, project.id);

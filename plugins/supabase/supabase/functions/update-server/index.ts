@@ -40,12 +40,6 @@ const createErrorResponse = (message: string, statusCode: number) => {
   });
 };
 
-declare global {
-  var HotUpdater: {
-    BUCKET_NAME: string;
-  };
-}
-
 const appVersionStrategy = async (
   supabase: SupabaseClient,
   {
