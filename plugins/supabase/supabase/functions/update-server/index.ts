@@ -46,6 +46,69 @@ declare global {
   };
 }
 
+const appVersionStrategy = async (
+  supabase: SupabaseClient,
+  {
+    appPlatform,
+    minBundleId,
+    bundleId,
+    appVersion,
+    channel,
+  }: {
+    appPlatform: string;
+    minBundleId: string;
+    bundleId: string;
+    appVersion: string;
+    channel: string;
+  },
+) => {
+  const { data: appVersionList } = await supabase.rpc(
+    "get_target_app_version_list",
+    {
+      app_platform: appPlatform,
+      min_bundle_id: minBundleId || NIL_UUID,
+    },
+  );
+  const compatibleAppVersionList = filterCompatibleAppVersions(
+    appVersionList?.map((group) => group.target_app_version) ?? [],
+    appVersion,
+  );
+
+  return supabase.rpc("get_update_info_by_app_version", {
+    app_platform: appPlatform,
+    app_version: appVersion,
+    bundle_id: bundleId,
+    min_bundle_id: minBundleId || NIL_UUID,
+    target_channel: channel || "production",
+    target_app_version_list: compatibleAppVersionList,
+  });
+};
+
+const fingerprintHashStrategy = async (
+  supabase: SupabaseClient,
+  {
+    appPlatform,
+    minBundleId,
+    bundleId,
+    channel,
+    fingerprintHash,
+  }: {
+    appPlatform: string;
+    bundleId: string;
+    minBundleId: string | null;
+    channel: string | null;
+    fingerprintHash: string;
+  },
+) => {
+  return supabase.rpc("get_update_info_by_fingerprint_hash", {
+    app_platform: appPlatform,
+    bundle_id: bundleId,
+    min_bundle_id: minBundleId || NIL_UUID,
+    target_channel: channel || "production",
+    target_fingerprint_hash: fingerprintHash,
+  });
+};
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(
@@ -58,39 +121,36 @@ Deno.serve(async (req) => {
 
     const bundleId = req.headers.get("x-bundle-id") as string;
     const appPlatform = req.headers.get("x-app-platform") as "ios" | "android";
-    const appVersion = req.headers.get("x-app-version") as string;
+    const appVersion = req.headers.get("x-app-version") as string | null;
+    const fingerprintHash = req.headers.get("x-app-version") as string | null;
     const minBundleId = req.headers.get("x-min-bundle-id") as
       | string
       | undefined;
     const channel = req.headers.get("x-channel") as string | undefined;
 
-    if (!bundleId || !appPlatform || !appVersion) {
-      return createErrorResponse(
-        "Missing bundleId, appPlatform, or appVersion",
-        400,
-      );
+    if (!appVersion && !fingerprintHash) {
+      return createErrorResponse("Missing appVersion or fingerprintHash", 400);
     }
 
-    const { data: appVersionList } = await supabase.rpc(
-      "get_target_app_version_list",
-      {
-        app_platform: appPlatform,
-        min_bundle_id: minBundleId || NIL_UUID,
-      },
-    );
-    const compatibleAppVersionList = filterCompatibleAppVersions(
-      appVersionList?.map((group) => group.target_app_version) ?? [],
-      appVersion,
-    );
+    if (!bundleId || !appPlatform) {
+      return createErrorResponse("Missing bundleId and appPlatform", 400);
+    }
 
-    const { data, error } = await supabase.rpc("get_update_info", {
-      app_platform: appPlatform,
-      app_version: appVersion,
-      bundle_id: bundleId,
-      min_bundle_id: minBundleId || NIL_UUID,
-      target_channel: channel || "production",
-      target_app_version_list: compatibleAppVersionList,
-    });
+    const { data, error } = fingerprintHash
+      ? await fingerprintHashStrategy(supabase, {
+          appPlatform,
+          minBundleId: minBundleId || NIL_UUID,
+          bundleId,
+          channel: channel || "production",
+          fingerprintHash,
+        })
+      : await appVersionStrategy(supabase, {
+          appPlatform,
+          minBundleId: minBundleId || NIL_UUID,
+          bundleId,
+          appVersion: appVersion!,
+          channel: channel || "production",
+        });
 
     if (error) {
       throw error;
@@ -117,9 +177,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    const storageUri = new URL(response.storageUri);
+    const storageBucket = storageUri.host;
+    const storagePath = storageUri.pathname;
+
     const { data: signedUrlData } = await supabase.storage
-      .from(HotUpdater.BUCKET_NAME)
-      .createSignedUrl([response.id, "bundle.zip"].join("/"), 60);
+      .from(storageBucket)
+      .createSignedUrl(storagePath, 60);
 
     return new Response(
       JSON.stringify({
