@@ -52,11 +52,11 @@ export interface Bundle {
   /**
    * The target app version of the bundle.
    */
-  targetAppVersion?: string;
+  targetAppVersion: string | null;
   /**
-   * The fingerprint of the bundle.
+   * The fingerprint hash of the bundle.
    */
-  fingerprint?: string;
+  fingerprintHash: string | null;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`

@@ -57,6 +57,7 @@ export const firebaseStorage =
           return {
             bucketName: config.storageBucket,
             key: key,
+            storageUri: `firebase-storage://${config.storageBucket}/${key}`,
           };
         } catch (error) {
           if (error instanceof Error) {

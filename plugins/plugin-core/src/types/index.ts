@@ -55,6 +55,7 @@ export interface StoragePlugin {
   ) => Promise<{
     bucketName: string;
     key: string;
+    storageUri: string;
   }>;
 
   deleteBundle: (bundleId: string) => Promise<string>;

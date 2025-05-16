@@ -53,6 +53,7 @@ export const supabaseStorage =
         return {
           bucketName: config.bucketName,
           key: fullPath,
+          storageUri: `supabase-storage://${config.bucketName}/${fullPath}`,
         };
       },
     };
