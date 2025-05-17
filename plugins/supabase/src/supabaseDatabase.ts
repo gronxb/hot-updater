@@ -40,6 +40,8 @@ export const supabaseDatabase = (
           message: data.message,
           platform: data.platform,
           targetAppVersion: data.target_app_version,
+          fingerprintHash: data.fingerprint_hash,
+          storageUri: data.storage_uri,
         } as Bundle;
       },
 
@@ -82,6 +84,8 @@ export const supabaseDatabase = (
           message: bundle.message,
           platform: bundle.platform,
           targetAppVersion: bundle.target_app_version,
+          fingerprintHash: bundle.fingerprint_hash,
+          storageUri: bundle.storage_uri,
         })) as Bundle[];
       },
 
@@ -111,6 +115,8 @@ export const supabaseDatabase = (
             message: bundle.message,
             platform: bundle.platform,
             target_app_version: bundle.targetAppVersion,
+            fingerprint_hash: bundle.fingerprintHash,
+            storage_uri: bundle.storageUri,
           })),
           { onConflict: "id" },
         );
