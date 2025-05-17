@@ -1,7 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import camelcaseKeys from "npm:camelcase-keys@9.1.3";
 import semver from "npm:semver@7.7.1";
-import { createClient } from "jsr:@supabase/supabase-js@2.49.1";
+import {
+  type SupabaseClient,
+  createClient,
+} from "jsr:@supabase/supabase-js@2.49.4";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -41,7 +44,7 @@ const createErrorResponse = (message: string, statusCode: number) => {
 };
 
 const appVersionStrategy = async (
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<any, "public", any>,
   {
     appPlatform,
     minBundleId,
@@ -79,7 +82,7 @@ const appVersionStrategy = async (
 };
 
 const fingerprintHashStrategy = async (
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<any, "public", any>,
   {
     appPlatform,
     minBundleId,

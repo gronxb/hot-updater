@@ -364,6 +364,21 @@ export const runInit = async ({
     "supabase",
   );
 
+  const migrationPath = await path.join(tmpDir, "supabase", "migrations");
+  const migrationFiles = await fs.readdir(migrationPath);
+  for (const file of migrationFiles) {
+    if (file.endsWith(".sql")) {
+      const filePath = path.join(migrationPath, file);
+      const content = await fs.readFile(filePath, "utf-8");
+      await fs.writeFile(
+        filePath,
+        transformTemplate(content, {
+          BUCKET_NAME: bucket.name,
+        }),
+      );
+    }
+  }
+
   await linkSupabase(tmpDir, project.id);
 
   await pushDB(tmpDir);
