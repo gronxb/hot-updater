@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
 import {
+  HotUpdaterConstants,
   getAppVersion,
   getBundleId,
   getChannel,
@@ -54,15 +55,26 @@ export async function checkForUpdate(
     return null;
   }
 
+  const baseArgs = {
+    bundleId: currentBundleId,
+    platform,
+    minBundleId,
+    channel: channel ?? undefined,
+  };
+
   return fetchUpdateInfo(
     options.source,
-    {
-      appVersion: currentAppVersion,
-      bundleId: currentBundleId,
-      platform,
-      minBundleId,
-      channel: channel ?? undefined,
-    },
+    HotUpdaterConstants.UPDATE_STRATEGY === "appVersion"
+      ? {
+          _updateStrategy: HotUpdaterConstants.UPDATE_STRATEGY,
+          appVersion: currentAppVersion,
+          ...baseArgs,
+        }
+      : {
+          _updateStrategy: HotUpdaterConstants.UPDATE_STRATEGY,
+          fingerprintHash: HotUpdaterConstants.FINGERPRINT_HASH!,
+          ...baseArgs,
+        },
     options.requestHeaders,
     options.onError,
     options.requestTimeout,

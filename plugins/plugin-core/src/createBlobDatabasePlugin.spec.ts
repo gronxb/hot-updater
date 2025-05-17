@@ -11,6 +11,8 @@ const DEFAULT_BUNDLE: Omit<
   message: null,
   enabled: true,
   shouldForceUpdate: false,
+  storageUri:
+    "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
 };
 
 const createBundleJson = (

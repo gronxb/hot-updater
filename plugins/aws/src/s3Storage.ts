@@ -81,6 +81,7 @@ export const s3Storage =
         return {
           bucketName: response.Bucket,
           key: response.Key,
+          storageUri: `s3://${bucketName}/${Key}`,
         };
       },
     };

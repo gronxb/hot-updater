@@ -16,6 +16,11 @@ export type HotUpdaterConfigOptions = {
 
 const defaultConfig: ConfigInput = {
   releaseChannel: "production",
+  updateStrategy: "fingerprint",
+  fingerprint: {
+    extraSources: [],
+    ignorePaths: [],
+  },
   console: {
     port: 1422,
   },
