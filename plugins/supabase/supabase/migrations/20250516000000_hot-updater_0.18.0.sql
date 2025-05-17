@@ -9,7 +9,7 @@ WHERE storage_uri IS NULL;
 
 ALTER TABLE bundles ALTER COLUMN storage_uri SET NOT NULL;
 
-ALTER TABLE bundles ADD CONSTRAINT IF NOT EXISTS check_version_or_fingerprint CHECK (
+ALTER TABLE bundles ADD CONSTRAINT check_version_or_fingerprint CHECK (
     (target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL)
 );
 
