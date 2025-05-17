@@ -134,7 +134,7 @@ export const deploy = async (options: DeployOptions) => {
     target.appVersion = targetAppVersion;
   }
 
-  if (!target.fingerprintHash || !target.appVersion) {
+  if (!target.fingerprintHash && !target.appVersion) {
     if (config.updateStrategy === "fingerprint") {
       p.log.error(
         "Fingerprint hash not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
