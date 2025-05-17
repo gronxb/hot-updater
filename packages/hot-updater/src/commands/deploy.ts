@@ -91,8 +91,7 @@ export const deploy = async (options: DeployOptions) => {
     );
 
     const projectFingerprint = JSON.parse(projectFingerprintJsonFile);
-
-    if (fingerprint.hash !== projectFingerprint.hash) {
+    if (fingerprint.hash !== projectFingerprint[platform].hash) {
       p.log.error(
         "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
       );
@@ -240,10 +239,11 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            taskRef.storageUri = await storagePlugin.uploadBundle(
+            const { storageUri } = await storagePlugin.uploadBundle(
               bundleId,
               bundlePath,
             );
+            taskRef.storageUri = storageUri;
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
