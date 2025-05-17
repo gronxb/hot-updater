@@ -184,6 +184,9 @@ export const deploy = async (options: DeployOptions) => {
     };
 
     p.log.info(`Channel: ${channel}`);
+    if (target.fingerprintHash) {
+      p.log.info(`Fingerprint: ${target.fingerprintHash}`);
+    }
 
     await p.tasks([
       {
