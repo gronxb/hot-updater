@@ -130,9 +130,9 @@ export const getMinBundleId = (): string => {
  * @returns {Promise<string>} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  return HotUpdater.HOT_UPDATER_BUNDLE_ID === NIL_UUID
+  return HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID === NIL_UUID
     ? getMinBundleId()
-    : HotUpdater.HOT_UPDATER_BUNDLE_ID;
+    : HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID;
 };
 
 /**
