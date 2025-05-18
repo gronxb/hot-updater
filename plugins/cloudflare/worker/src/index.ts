@@ -14,9 +14,11 @@ const app = new Hono<{ Bindings: Env }>();
 app.get("/api/check-update", async (c) => {
   const bundleId = c.req.header("x-bundle-id") as string;
   const appPlatform = c.req.header("x-app-platform") as "ios" | "android";
-  const appVersion = c.req.header("x-app-version") as string;
-  const minBundleId = c.req.header("x-min-bundle-id") as string | undefined;
-  const channel = c.req.header("x-channel") as string | undefined;
+  const minBundleId = c.req.header("x-min-bundle-id") as string;
+  const appVersion = c.req.header("x-app-version") as string | null;
+  const channel = c.req.header("x-channel") as string | null;
+  const fingerprintHash =
+    c.req.header("x-fingerprint-hash") ?? (null as string | null);
 
   if (!bundleId || !appPlatform || !appVersion) {
     return c.json(
@@ -25,13 +27,31 @@ app.get("/api/check-update", async (c) => {
     );
   }
 
-  const updateInfo = await getUpdateInfo(c.env.DB, {
-    appVersion,
-    bundleId,
-    platform: appPlatform,
-    minBundleId: minBundleId || NIL_UUID,
-    channel: channel || "production",
-  });
+  if (!appVersion && !fingerprintHash) {
+    return c.json({ error: "Missing appVersion or fingerprintHash" }, 400);
+  }
+
+  if (!bundleId || !appPlatform) {
+    return c.json({ error: "Missing bundleId and appPlatform" }, 400);
+  }
+
+  const updateInfo = fingerprintHash
+    ? await getUpdateInfo(c.env.DB, {
+        fingerprintHash,
+        bundleId,
+        platform: appPlatform,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "fingerprint",
+      })
+    : await getUpdateInfo(c.env.DB, {
+        appVersion,
+        bundleId,
+        platform: appPlatform,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "appVersion",
+      });
 
   const appUpdateInfo = await withJwtSignedUrl({
     data: updateInfo,

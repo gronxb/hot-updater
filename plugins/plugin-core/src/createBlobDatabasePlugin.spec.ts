@@ -13,6 +13,7 @@ const DEFAULT_BUNDLE: Omit<
   shouldForceUpdate: false,
   storageUri:
     "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+  fingerprintHash: null,
 };
 
 const createBundleJson = (

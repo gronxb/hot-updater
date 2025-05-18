@@ -47,6 +47,8 @@ export const postgres = (
           platform: data.platform,
           targetAppVersion: data.target_app_version,
           channel: data.channel,
+          storageUri: data.storage_uri,
+          fingerprintHash: data.fingerprint_hash,
         } as Bundle;
       },
 
@@ -83,6 +85,8 @@ export const postgres = (
           platform: bundle.platform,
           targetAppVersion: bundle.target_app_version,
           channel: bundle.channel,
+          storageUri: bundle.storage_uri,
+          fingerprintHash: bundle.fingerprint_hash,
         })) as Bundle[];
       },
 
@@ -116,6 +120,8 @@ export const postgres = (
                 platform: bundle.platform,
                 target_app_version: bundle.targetAppVersion,
                 channel: bundle.channel,
+                storage_uri: bundle.storageUri,
+                fingerprint_hash: bundle.fingerprintHash,
               })
               .onConflict((oc) =>
                 oc.column("id").doUpdateSet({
@@ -127,6 +133,8 @@ export const postgres = (
                   platform: bundle.platform,
                   target_app_version: bundle.targetAppVersion,
                   channel: bundle.channel,
+                  storage_uri: bundle.storageUri,
+                  fingerprint_hash: bundle.fingerprintHash,
                 }),
               )
               .execute();

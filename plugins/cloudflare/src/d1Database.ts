@@ -65,6 +65,8 @@ export const d1Database = (
           message: row.message,
           platform: row.platform,
           targetAppVersion: row.target_app_version,
+          storageUri: row.storage_uri,
+          fingerprintHash: row.fingerprint_hash,
         } as Bundle;
       },
 
@@ -122,6 +124,8 @@ export const d1Database = (
             message: row.message,
             platform: row.platform,
             targetAppVersion: row.target_app_version,
+            storageUri: row.storage_uri,
+            fingerprintHash: row.fingerprint_hash,
           }));
         }
         return bundles;
@@ -163,8 +167,10 @@ export const d1Database = (
               b.message || null,
               b.platform,
               b.targetAppVersion,
+              b.storageUri,
+              b.fingerprintHash,
             );
-            return "(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
           })
           .join(",\n");
 
@@ -178,7 +184,9 @@ export const d1Database = (
             git_commit_hash,
             message,
             platform,
-            target_app_version
+            target_app_version,
+            storage_uri,
+            fingerprint_hash
           )
           VALUES
           ${valuesSql};`);

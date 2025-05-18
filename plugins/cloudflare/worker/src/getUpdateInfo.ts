@@ -1,13 +1,14 @@
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 
 import {
+  type AppVersionGetBundlesArgs,
   type GetBundlesArgs,
   NIL_UUID,
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
 
-export const getUpdateInfo = async (
+export const appVersionStrategy = async (
   DB: D1Database,
   {
     platform,
@@ -15,7 +16,7 @@ export const getUpdateInfo = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-  }: GetBundlesArgs,
+  }: AppVersionGetBundlesArgs,
 ) => {
   const appVersionList = await DB.prepare(
     /* sql */ `
@@ -117,4 +118,14 @@ export const getUpdateInfo = async (
     status: result.status,
     message: result.message,
   } as UpdateInfo;
+};
+
+export const getUpdateInfo = (DB: D1Database, args: GetBundlesArgs) => {
+  if (args._updateStrategy === "appVersion") {
+    return appVersionStrategy(DB, args);
+  }
+
+  // TODO:
+  // return fingerprintStrategy(bundles, args);
+  return null;
 };
