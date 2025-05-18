@@ -1,8 +1,10 @@
+import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
+
 import { extractTimestampFromUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
 import type { Bundle } from "@hot-updater/core";
 import type { ColumnDef } from "@tanstack/solid-table";
 import dayjs from "dayjs";
-import { Check, X } from "lucide-solid";
+import { Check, Fingerprint, Package, X } from "lucide-solid";
 
 export const columns: ColumnDef<Bundle>[] = [
   {
@@ -21,16 +23,43 @@ export const columns: ColumnDef<Bundle>[] = [
     cell: (info) => {
       switch (info.getValue()) {
         case "ios":
-          return "iOS";
+          return (
+            <div class="flex flex-row items-center">
+              <AiFillApple class="mr-2" size={16} />
+              iOS
+            </div>
+          );
         case "android":
-          return "Android";
+          return (
+            <div class="flex flex-row items-center">
+              <AiFillAndroid class="mr-2" size={16} color="#3DDC84" />
+              Android
+            </div>
+          );
       }
     },
   },
   {
-    accessorKey: "targetAppVersion",
-    header: "Target App Version",
-    cell: (info) => info.getValue(),
+    header: "Target",
+    cell: (info) => {
+      if (info.row.original.targetAppVersion) {
+        return (
+          <div class="flex flex-row items-center">
+            <Package class="mr-2" size={16} />
+            {info.row.original.targetAppVersion}
+          </div>
+        );
+      }
+      if (info.row.original.fingerprintHash) {
+        return (
+          <div class="flex flex-row items-center">
+            <Fingerprint class="mr-2" size={16} />
+            {info.row.original.fingerprintHash}
+          </div>
+        );
+      }
+      return "N/A";
+    },
   },
   {
     accessorKey: "enabled",
