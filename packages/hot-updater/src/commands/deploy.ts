@@ -79,6 +79,7 @@ export const deploy = async (options: DeployOptions) => {
     appVersion: null,
     fingerprintHash: null,
   };
+  p.log.step(`Channel: ${channel}`);
 
   if (config.updateStrategy === "fingerprint") {
     const s = p.spinner();
@@ -101,7 +102,7 @@ export const deploy = async (options: DeployOptions) => {
     }
 
     target.fingerprintHash = fingerprint.hash;
-    s.stop();
+    s.stop(`Fingerprint(${platform}): ${fingerprint.hash}`);
   } else {
     const defaultTargetAppVersion =
       (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
@@ -185,11 +186,6 @@ export const deploy = async (options: DeployOptions) => {
       buildResult: null,
       storageUri: null,
     };
-
-    p.log.info(`Channel: ${channel}`);
-    if (target.fingerprintHash) {
-      p.log.info(`Fingerprint(${platform}): ${target.fingerprintHash}`);
-    }
 
     await p.tasks([
       {
