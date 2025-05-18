@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "../types";
 import { NIL_UUID } from "../uuid";
 
-const DEFAULT_BUNDLE = {
+const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   message: "hello",
   platform: "ios",
   gitCommitHash: null,
@@ -10,6 +10,7 @@ const DEFAULT_BUNDLE = {
   channel: "production",
   storageUri:
     "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+  fingerprintHash: null,
 } as const;
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
@@ -30,7 +31,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("applies an update when a '*' bundle is available", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "*",
         shouldForceUpdate: false,
         enabled: true,
@@ -68,7 +69,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null when the app version does not qualify for the available higher version", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.1",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -88,14 +89,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("tests target app version compatibility with available higher version", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0.0",
         enabled: true,
         id: "01963024-c131-7971-8725-ab47e232df41",
         shouldForceUpdate: false,
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0.1",
         enabled: true,
         id: "01963024-c131-7971-8725-ab47e232df42",
@@ -115,14 +116,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("applies an update when a higher semver-compatible bundle is available", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.x.x",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
@@ -147,7 +148,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("applies an update if shouldForceUpdate is true for a matching version", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -172,7 +173,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("applies an update for a matching version even if shouldForceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000001",
@@ -197,7 +198,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("applies an update when the app version is the same but the bundle is still considered higher", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -222,14 +223,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("falls back to an older enabled bundle when the latest is disabled", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -254,14 +255,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null if all bundles are disabled", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: false, // Disabled
@@ -281,14 +282,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("triggers a rollback if the latest bundle is disabled and no other updates are enabled", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: false, // Disabled
@@ -308,7 +309,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("applies an update when a same-version bundle is available and enabled", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         shouldForceUpdate: false,
         fileHash:
           "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
@@ -348,14 +349,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null if the user is already up-to-date with an available bundle", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -375,7 +376,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("triggers a rollback if the previously used bundle no longer exists", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -400,21 +401,21 @@ export const setupGetUpdateInfoTestSuite = ({
   it("selects the next available bundle even if shouldForceUpdate is false", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -439,21 +440,21 @@ export const setupGetUpdateInfoTestSuite = ({
   it("applies the highest available bundle even if the app version is unchanged", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000005", // Higher than the current version
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000004",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         platform: "ios",
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
@@ -461,14 +462,14 @@ export const setupGetUpdateInfoTestSuite = ({
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -493,21 +494,21 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null if the newest matching bundle is disabled", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000003",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: true,
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -527,14 +528,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("rolls back to an older enabled bundle if the current one is disabled", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -560,14 +561,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("rolls back to the original bundle when all available bundles are disabled", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: true,
         enabled: false, // Disabled
         id: "00000000-0000-0000-0000-000000000002",
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: false, // Disabled
@@ -587,7 +588,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null when there is an available bundle lower than minBundleId", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -608,14 +609,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns the bundle when there is an available bundle higher than minBundleId", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -641,14 +642,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("rolls back to initial bundle when current bundle is disabled and only bundles lower than minBundleId exist", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: false, // disabled
         id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -669,7 +670,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("rolls back to initial bundle when current bundle does not exist and only bundles lower than minBundleId exist", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -690,14 +691,14 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null when current bundle is enabled and no updates are available", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true, // disabled
         id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -718,21 +719,21 @@ export const setupGetUpdateInfoTestSuite = ({
   it("rolls back when current bundle does not exist in DB and no bundles higher than minBundleId exist", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "01957165-bee7-7df3-a25d-6686f01b02ba", //2025-03-07T16:17:28.295Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "01957165-19fb-75af-a361-131c17a65ef2", // 2025-03-07T16:16:46.075Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -753,35 +754,35 @@ export const setupGetUpdateInfoTestSuite = ({
   it("rolls back to the bundle when current bundle does not exist in DB and a bundle exists that is higher than minBundleId but lower than current bundleId", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "01957167-0389-7064-8d86-f8af7950daed", // 2025-03-07T16:18:51.401Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "01957165-bee7-7df3-a25d-6686f01b02ba", //2025-03-07T16:17:28.295Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
         id: "01957165-19fb-75af-a361-131c17a65ef2", // 2025-03-07T16:16:46.075Z
       },
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -807,7 +808,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null when installed bundle id exactly equals minBundleId and no newer bundle is available", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -828,7 +829,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("does not update bundles from different channels", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -851,7 +852,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("updates bundles from the same channel", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         targetAppVersion: "1.0",
         shouldForceUpdate: false,
         enabled: true,
@@ -879,7 +880,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null when minBundleId is greater than current bundle", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         enabled: true,
         shouldForceUpdate: false,
         targetAppVersion: "1.0",
@@ -917,7 +918,7 @@ export const setupGetUpdateInfoTestSuite = ({
   it("returns null when there are no bundles and minBundleId equals bundleId", async () => {
     const bundles: Bundle[] = [
       {
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
         enabled: true,
         shouldForceUpdate: true,
         id: "01963024-c131-7971-8725-ab47e232df40",
