@@ -1,6 +1,8 @@
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import {
+  type AppVersionGetBundlesArgs,
   type Bundle,
+  type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
   NIL_UUID,
   type UpdateInfo,
@@ -56,13 +58,35 @@ export const getUpdateInfo = async (
     keyPairId: string;
     privateKey: string;
   },
+  args: GetBundlesArgs,
+): Promise<UpdateInfo | null> => {
+  switch (args._updateStrategy) {
+    case "appVersion":
+      return appVersionStrategy({ baseUrl, keyPairId, privateKey }, args);
+    case "fingerprint":
+      return fingerprintStrategy({ baseUrl, keyPairId, privateKey }, args);
+    default:
+      return null;
+  }
+};
+
+const appVersionStrategy = async (
+  {
+    baseUrl,
+    keyPairId,
+    privateKey,
+  }: {
+    baseUrl: string;
+    keyPairId: string;
+    privateKey: string;
+  },
   {
     platform,
     appVersion,
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-  }: GetBundlesArgs,
+  }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const targetAppVersions = await getCdnJson<string[]>({
     baseUrl,
@@ -99,5 +123,46 @@ export const getUpdateInfo = async (
     appVersion,
     minBundleId,
     channel,
+    _updateStrategy: "appVersion",
+  });
+};
+
+const fingerprintStrategy = async (
+  {
+    baseUrl,
+    keyPairId,
+    privateKey,
+  }: {
+    baseUrl: string;
+    keyPairId: string;
+    privateKey: string;
+  },
+  {
+    platform,
+    fingerprintHash,
+    bundleId,
+    minBundleId = NIL_UUID,
+    channel = "production",
+  }: FingerprintGetBundlesArgs,
+): Promise<UpdateInfo | null> => {
+  const result = await getCdnJson<Bundle[]>({
+    baseUrl,
+    key: `${channel}/${platform}/${fingerprintHash}/update.json`,
+    keyPairId,
+    privateKey,
+  });
+  console.log(
+    "result",
+    `${channel}/${platform}/${fingerprintHash}/update.json`,
+    result,
+  );
+
+  return getUpdateInfoJS(result ?? [], {
+    platform,
+    bundleId,
+    fingerprintHash,
+    minBundleId,
+    channel,
+    _updateStrategy: "fingerprint",
   });
 };
