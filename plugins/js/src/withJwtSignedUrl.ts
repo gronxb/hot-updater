@@ -10,13 +10,13 @@ import { SignJWT } from "jose";
  * @param {string} options.jwtSecret - Secret key for JWT signing
  * @returns {Promise<T|null>} - Update response object with fileUrl or null
  */
-export const withJwtSignedUrl = async <T extends { id: string }>({
-  pathPrefix = "",
+export const withJwtSignedUrl = async <
+  T extends { id: string; storageUri: string | null },
+>({
   data,
   reqUrl,
   jwtSecret,
 }: {
-  pathPrefix?: string;
   data: T | null;
   reqUrl: string;
   jwtSecret: string;
@@ -25,15 +25,16 @@ export const withJwtSignedUrl = async <T extends { id: string }>({
     return null;
   }
 
-  if (data.id === NIL_UUID) {
+  if (data.id === NIL_UUID || !data.storageUri) {
     return { ...data, fileUrl: null };
   }
 
-  const key = `${data.id}/bundle.zip`;
+  const storageUrl = new URL(data.storageUri);
+  const key = `${storageUrl.host}${storageUrl.pathname}`;
   const token = await signToken(key, jwtSecret);
 
   const url = new URL(reqUrl);
-  url.pathname = `${pathPrefix}/${key}`;
+  url.pathname = key;
   url.searchParams.set("token", token);
 
   return { ...data, fileUrl: url.toString() };

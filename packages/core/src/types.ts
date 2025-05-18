@@ -85,6 +85,7 @@ export interface UpdateInfo {
   shouldForceUpdate: boolean;
   message: string | null;
   status: UpdateStatus;
+  storageUri: string | null;
 }
 
 /**
