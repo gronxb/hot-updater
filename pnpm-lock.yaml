@@ -30,8 +30,8 @@ importers:
         specifier: ^5.0.7
         version: 5.0.7
       tsdown:
-        specifier: ^0.11.5
-        version: 0.11.5(typescript@5.8.3)
+        specifier: ^0.11.11
+        version: 0.11.11(typescript@5.8.3)
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -386,13 +386,13 @@ importers:
         version: 0.74.83
       '@react-native/metro-config':
         specifier: 0.74.83
-        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
       '@react-native/typescript-config':
         specifier: 0.74.83
         version: 0.74.83
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
+        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
@@ -907,7 +907,7 @@ importers:
         version: 0.79.1(@babel/core@7.27.1)(@react-native-community/cli@18.0.0(typescript@5.8.3))(@types/react@19.1.3)(react@19.1.0)
       react-native-builder-bob:
         specifier: ^0.40.10
-        version: 0.40.10(encoding@0.1.13)
+        version: 0.40.10
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -3396,7 +3396,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {node: '>=0.10.0'}
+    engines: {'0': node >=0.10.0}
 
   '@expo/cli@0.17.13':
     resolution: {integrity: sha512-n13yxOmI3I0JidzMdFCH68tYKGDtK4XlDFk1vysZX7AIRKeDVRsSbHhma5jCla2bDt25RKmJBHA9KtzielwzAA==}
@@ -5293,68 +5293,68 @@ packages:
     resolution: {integrity: sha512-EjyFBASHOgXGATBjv0IHdqkiGf23s31dr/TjqUagmMHT4fGxxTUgI6rkC11cGYaL0u6QczsbhSi390B4k6cByg==}
     engines: {node: '>=16.17'}
 
-  '@rolldown/binding-darwin-arm64@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-/spXLHL3pRnRueeNbfpnUSzN8jB4B+leIsDsGN0qLiPpKsC4ddknW6ObQ7ZO0zyynGJZy+spXW+Ri9Xaen6+RQ==}
+  '@rolldown/binding-darwin-arm64@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-Qnj12Et8isg99mLZoWYKCdepAUVVeBNdpBKAG/L+jEz6sQ2L2FhHB4owmF3wXyzHVzLUmhT1Io1q49vBEldbjQ==}
     cpu: [arm64]
     os: [darwin]
 
-  '@rolldown/binding-darwin-x64@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-p5AwLDnE5lkCQC7V5EqbskCkT+xba8XaZroINk/UsJ6hlD1ZimnZwlJPDEeGDAzawuEdAbWmvPIaW2RpjXNzXg==}
+  '@rolldown/binding-darwin-x64@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-xgkCsHfe353jWscfOay8eyHdj/jg9Qp7fEsB9k1+YGnfinBtRbyAVhJ6LmZOVNfchN316bB59l4HFIL01S/kMQ==}
     cpu: [x64]
     os: [darwin]
 
-  '@rolldown/binding-freebsd-x64@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-SfX9uf1UOpDviKA6m3/gcZ8Rn4mKlIiEK28BCL/nFqmfPQ/kK06ISuy07/FpNoNNgYtjpauAGo6ElXw13NIcpw==}
+  '@rolldown/binding-freebsd-x64@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-H6ZAQq4B0D03sGxVn5KDCHnopXV+QHoYk2yemRqSx4tjXDnynt8fRXxdjDbBcsmlxSp/l4t/zKeSzVjXRIT3RA==}
     cpu: [x64]
     os: [freebsd]
 
-  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-pc5M8Dl0+btKIFwTw19nKBzqgPVbbYVwVBN/hkdwSE2w6D7WjYQJ+2wT31bgIzSIOLar3nLu8vS4o5j4HqSOiA==}
+  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-GwxeaGEC/qfgnd63SsklcQft04ygrnJDzdIbH5FvMPZ2L7eQ6FqhYYfF2aoQqnjgim5UO5BrFm97EmSjDWhBsA==}
     cpu: [arm]
     os: [linux]
 
-  '@rolldown/binding-linux-arm64-gnu@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-t8KwgD5hjyXYZVavfL9DEhqC/nCoyOCJzRZ16iIfadxKn3aSjG9yE0A4/Msz9mGvEmnZ/SOs67hUtbDOo8qGVA==}
+  '@rolldown/binding-linux-arm64-gnu@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-ItBOhvZtYHIGJ1AtX7xf7v0RvZbXgdsv5gHk8vDykGMAbl+t4Wa9OJIIa6C8V2nBFJXWH+14GudrEfQfQUFbtQ==}
     cpu: [arm64]
     os: [linux]
 
-  '@rolldown/binding-linux-arm64-musl@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-lp0HtDGoR+AIuJH+5M2HmdRhE1x0q8NkdxCs2HlzrUCbFvzwQSAnL/NKevme7VZOP321q0yJ5z9uFL5zfsSbJA==}
+  '@rolldown/binding-linux-arm64-musl@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-UiHjNo1ffN9Nt53mmawmnuVn2l9vdYGd91XxFrOTrEKRxO5bJL6wBhd82t+uBeHWycR/6qlSCJkTsHJQPf2UbA==}
     cpu: [arm64]
     os: [linux]
 
-  '@rolldown/binding-linux-x64-gnu@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-6O7BdO7bUFQ170MZmNWIpFZpxRqIV1Cp3MfK61tp1VVOwxKo2aboTusuunGMvc59r+JOXqOQFie/ojkecUSvoA==}
+  '@rolldown/binding-linux-x64-gnu@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-p3sIHw1vmqqK70474mEvyl0aj1PvvUEWiKxG+zvpNRTzWxcTxrsRCtlqxTJ1A8R0z76tdn00PsMQrFOSMnLotQ==}
     cpu: [x64]
     os: [linux]
 
-  '@rolldown/binding-linux-x64-musl@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-KKsXIEUcgV8uv0GNr2KA4oMtG1F8mHUKhyNZriDzfc6D1vXU2uxqV+h+qKwD+7b86Ly041Ks8X+VFjxrdC1q9w==}
+  '@rolldown/binding-linux-x64-musl@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-STOhk06GmHu/mvrZnp32JkQAN07g1ZjuaChf8r0/7NnnOIg6xiTcBxhMxL5hTR7os075ziRRUoHlfEssIJxSBw==}
     cpu: [x64]
     os: [linux]
 
-  '@rolldown/binding-wasm32-wasi@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-eytL/KFiAU10dr56E9jTuwVYg5+UxakZZEIp+TJyE9/LIYtiy6QYw1LxO2zbbX+8YVFwKw4gOk0Cf1ejJ+BQBQ==}
+  '@rolldown/binding-wasm32-wasi@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-18l5SdnDs49KuWsJ1ZjxQ72f4OBv++wQDkYeTkIDFON+lWIY6pCc4Zb7ehD8aflq6gisokt0GsZWO8Dyi7iqrA==}
     engines: {node: '>=14.21.3'}
     cpu: [wasm32]
 
-  '@rolldown/binding-win32-arm64-msvc@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-0qSs4OmSQ+GANzXD7HuYL2+Ce7qtotmy4Pqhlo5wIEat50vRUK2/pKbRe/5/EAnF9Acr4qxnMrKATUilN+wAEQ==}
+  '@rolldown/binding-win32-arm64-msvc@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-LqyxWnfBr0IkLVrFwBxARbEUYcpzXgDaBCqBn1rrKiLt6KUxoTA95WWkHQhYFjqmQHJOoBAFHXykoRpqdJPH9w==}
     cpu: [arm64]
     os: [win32]
 
-  '@rolldown/binding-win32-ia32-msvc@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-YYk5Pyjl3Ek3e6NAKIRMF/uFqh+1GjOo/WM9awFxrBstv4p1ZVFqQ1TqbpZrOnjKkLg7YArARF67N1o67JwI1g==}
+  '@rolldown/binding-win32-ia32-msvc@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-v4DdzJg8hmZL2koD/CphCUK79oCfdVnGLkCXmNhlmNId9f/6e0xKYgMnxcKL6B/ToM+Jl0iiVfGpKPE3ss+a1g==}
     cpu: [ia32]
     os: [win32]
 
-  '@rolldown/binding-win32-x64-msvc@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-livj2HgGfV7/54LmwnYQAujR2Ry6DX8q7QxS+d+RtzXyhjvs3QcCgwitIPya88JKdwfN/uP0047O8hIIMgzQlA==}
+  '@rolldown/binding-win32-x64-msvc@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-4WHgT6kseymPm32LrUISpKnX/rX1YAPsfys7uWUm4sdEHJA16kX7ZLCDrAkgNMfbYD3ZuMzEnV6pbD2bDHQn0A==}
     cpu: [x64]
     os: [win32]
 
-  '@rolldown/pluginutils@1.0.0-beta.8-commit.2a5c6a6':
-    resolution: {integrity: sha512-00vGY8ox2diQ6ZOw9lllyV3e7KrtaczhOz2hsHkOoVIBWyMFGcJD6CpFN10nTLkaaSSqerQjmjxeVwTJH2yhYQ==}
+  '@rolldown/pluginutils@1.0.0-beta.8-commit.d95f99e':
+    resolution: {integrity: sha512-m0VRAx0VjzbiV55GPB3kRbxonm9pkiTzn5HVu/xWfCqGfnFY2G9bjJCnwwZ+pNE0Lg/dppOYHfnPIZcOLgF4tg==}
 
   '@rollup/pluginutils@5.1.4':
     resolution: {integrity: sha512-USm05zrsFxYLPdWWq+K3STlWiT/3ELn3RcV5hJMghpeAIhxfsUIg6mt12CBJBInWMV4VneoV7SfGv8xIwo2qNQ==}
@@ -7593,6 +7593,9 @@ packages:
   birpc@0.2.14:
     resolution: {integrity: sha512-37FHE8rqsYM5JEKCnXFyHpBCzvgHEExwVVTq+nUmloInU7l8ezD1TpOhKpS8oe1DTYFqEK27rFZVKG43oTqXRA==}
 
+  birpc@2.3.0:
+    resolution: {integrity: sha512-ijbtkn/F3Pvzb6jHypHRyve2QApOCZDR25D/VnkY2G/lBNcXCTsnsCxgY4k4PkVB7zfwzYbY3O9Lcqe3xufS5g==}
+
   bl@4.1.0:
     resolution: {integrity: sha512-1W07cM9gS6DcLperZfFSj+bWLtaPGSOHWhPiGzXmvVJbRLdG82sH/Kn8EtW1VqWVA54AKf2h5k5BbnIbwF3h6w==}
 
@@ -8363,6 +8366,15 @@ packages:
       supports-color:
         optional: true
 
+  debug@4.4.1:
+    resolution: {integrity: sha512-KcKCqiftBJcZr++7ykoDIEwSa3XWowTfNPo92BYxjXiyYEVrUQh2aLyhxBCwww+heortUFxEJYcRzosstTEBYQ==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+
   decamelize@1.2.0:
     resolution: {integrity: sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==}
     engines: {node: '>=0.10.0'}
@@ -8539,8 +8551,8 @@ packages:
     resolution: {integrity: sha512-uIFDxqpRZGZ6ThOk84hEfqWoHx2devRFvpTZcTHur85vImfaxUbTW9Ryh4CpCuDnToOP1CEtXKIgytHBPVff5A==}
     engines: {node: '>=0.3.1'}
 
-  diff@7.0.0:
-    resolution: {integrity: sha512-PJWHUb1RFevKCwaFA9RlG5tCd+FO5iRh9A8HEtkmBH2Li03iJriB6m6JIN4rGz3K3JLawI7/veA1xzRKP6ISBw==}
+  diff@8.0.1:
+    resolution: {integrity: sha512-rEaM3KmVm78zE3dFZaop3aCQa2MTm+T4kcigUFLVU/KbOYdiY6JnL2g2puOYnct3QFw9pjZadaCbCZ1O8ArMlQ==}
     engines: {node: '>=0.3.1'}
 
   dir-glob@3.0.1:
@@ -13722,11 +13734,11 @@ packages:
     engines: {node: '>=14.18'}
     hasBin: true
 
-  rolldown-plugin-dts@0.12.0:
-    resolution: {integrity: sha512-kwLRukEsGBlXlDfWH28LQ/Q3vHTfSbXnO4jBabz6LoNycbOuhq0dQvM6bxZsEL49+oYG+nWrmfZCqJA0Z8vtZw==}
+  rolldown-plugin-dts@0.13.2:
+    resolution: {integrity: sha512-3/jQZ2d+cOFuPQZ/QC0wmGQv3n6XbJswEgNIPaUoNusTtBrl2Owxn05EOhosr3jkv8eUlzOX4rf9klt2z14SRg==}
     engines: {node: '>=20.18.0'}
     peerDependencies:
-      rolldown: ^1.0.0-beta.8-commit.534fde3
+      rolldown: ^1.0.0-beta.8-commit.2a5c6a6
       typescript: ^5.0.0
       vue-tsc: ~2.2.0
     peerDependenciesMeta:
@@ -13735,8 +13747,8 @@ packages:
       vue-tsc:
         optional: true
 
-  rolldown@1.0.0-beta.8-commit.2a5c6a6:
-    resolution: {integrity: sha512-zRMtW6eT+Q4bQO4wRKu6TtIuyFMrXh/1rFxsR3FS0eJhKjFsaz50gfKlC41QWbGSq5epvE7bdL0j+kZygCrXQA==}
+  rolldown@1.0.0-beta.8-commit.d95f99e:
+    resolution: {integrity: sha512-A/10eaVhZhiRyHPz5jMQN4MU2i4JQGSci0vcqqhuozk/sertEUmZHkwHntNBKujdRdgG99apR2LSWYUsU7iKbA==}
     hasBin: true
     peerDependencies:
       '@oxc-project/runtime': 0.69.0
@@ -14012,6 +14024,11 @@ packages:
 
   semver@7.7.1:
     resolution: {integrity: sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA==}
+    engines: {node: '>=10'}
+    hasBin: true
+
+  semver@7.7.2:
+    resolution: {integrity: sha512-RF0Fw+rO5AMf9MAyaRXI4AV0Ulj5lMHqVxxdSgiVbixSCXoEmmX/jk0CuJw4+3SqroYO9VoUh+HcuJivvtJemA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -14844,16 +14861,19 @@ packages:
     resolution: {integrity: sha512-NoZ4roiN7LnbKn9QqE1amc9DJfzvZXxF4xDavcOWt1BPkdx+m+0gJuPM+S0vCe7zTJMYUP0R8pO2XMr+Y8oLIg==}
     engines: {node: '>=6'}
 
-  tsdown@0.11.5:
-    resolution: {integrity: sha512-HT74DMwjlKJ+8yBWeh5XXfZ7V4rR3lCgpxLyKac8xlFulvYwkDmcJjWOLo0EhiueJLAxWKxIM+Alk8d+ZP8rvQ==}
+  tsdown@0.11.11:
+    resolution: {integrity: sha512-Hd3rOtoOKsHxBOQ9PhNkwe6nfkLtELQaV6cvIvqzVnU3SS42DChIdtK1kR48F9yBSrc7/InuLTlpayQbys18mw==}
     engines: {node: '>=18.0.0'}
     hasBin: true
     peerDependencies:
       publint: ^0.3.0
+      typescript: ^5.0.0
       unplugin-lightningcss: ^0.4.0
       unplugin-unused: ^0.5.0
     peerDependenciesMeta:
       publint:
+        optional: true
+      typescript:
         optional: true
       unplugin-lightningcss:
         optional: true
@@ -23380,7 +23400,7 @@ snapshots:
       - supports-color
     optional: true
 
-  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
+  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)':
     dependencies:
       '@react-native/js-polyfills': 0.74.83
       '@react-native/metro-babel-transformer': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
@@ -23389,7 +23409,10 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
+      - encoding
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -23625,7 +23648,7 @@ snapshots:
 
   '@rnx-kit/console@2.0.0': {}
 
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@rnx-kit/tools-node': 3.0.0
       '@rnx-kit/tools-react-native': 2.0.0
@@ -23633,7 +23656,7 @@ snapshots:
       react: 18.2.0
       react-native: 0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0)
     optionalDependencies:
-      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
 
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@19.0.0)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -23695,45 +23718,45 @@ snapshots:
       read-yaml-file: 2.1.0
       strip-json-comments: 3.1.1
 
-  '@rolldown/binding-darwin-arm64@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-darwin-arm64@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-darwin-x64@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-darwin-x64@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-freebsd-x64@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-freebsd-x64@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-linux-arm64-gnu@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-linux-arm64-gnu@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-linux-arm64-musl@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-linux-arm64-musl@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-linux-x64-gnu@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-linux-x64-gnu@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-linux-x64-musl@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-linux-x64-musl@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-wasm32-wasi@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-wasm32-wasi@1.0.0-beta.8-commit.d95f99e':
     dependencies:
       '@napi-rs/wasm-runtime': 0.2.9
     optional: true
 
-  '@rolldown/binding-win32-arm64-msvc@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-win32-arm64-msvc@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-win32-ia32-msvc@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-win32-ia32-msvc@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/binding-win32-x64-msvc@1.0.0-beta.8-commit.2a5c6a6':
+  '@rolldown/binding-win32-x64-msvc@1.0.0-beta.8-commit.d95f99e':
     optional: true
 
-  '@rolldown/pluginutils@1.0.0-beta.8-commit.2a5c6a6': {}
+  '@rolldown/pluginutils@1.0.0-beta.8-commit.d95f99e': {}
 
   '@rollup/pluginutils@5.1.4(rollup@4.34.9)':
     dependencies:
@@ -26518,6 +26541,8 @@ snapshots:
 
   birpc@0.2.14: {}
 
+  birpc@2.3.0: {}
+
   bl@4.1.0:
     dependencies:
       buffer: 5.7.1
@@ -27432,6 +27457,10 @@ snapshots:
     dependencies:
       ms: 2.1.3
 
+  debug@4.4.1:
+    dependencies:
+      ms: 2.1.3
+
   decamelize@1.2.0: {}
 
   decimal.js@10.4.3:
@@ -27589,7 +27618,7 @@ snapshots:
 
   diff@5.2.0: {}
 
-  diff@7.0.0: {}
+  diff@8.0.1: {}
 
   dir-glob@3.0.1:
     dependencies:
@@ -34833,7 +34862,7 @@ snapshots:
 
   react-lazy-with-preload@2.2.1: {}
 
-  react-native-builder-bob@0.40.10(encoding@0.1.13):
+  react-native-builder-bob@0.40.10:
     dependencies:
       '@babel/core': 7.27.1
       '@babel/plugin-transform-flow-strip-types': 7.27.1(@babel/core@7.27.1)
@@ -34859,10 +34888,7 @@ snapshots:
       which: 2.0.2
       yargs: 17.7.2
     transitivePeerDependencies:
-      - bufferutil
-      - encoding
       - supports-color
-      - utf-8-validate
 
   react-native-codegen@0.71.6(@babel/preset-env@7.26.0(@babel/core@7.26.0)):
     dependencies:
@@ -35716,40 +35742,41 @@ snapshots:
     dependencies:
       glob: 10.4.1
 
-  rolldown-plugin-dts@0.12.0(rolldown@1.0.0-beta.8-commit.2a5c6a6)(typescript@5.8.3):
+  rolldown-plugin-dts@0.13.2(rolldown@1.0.0-beta.8-commit.d95f99e)(typescript@5.8.3):
     dependencies:
       '@babel/generator': 7.27.1
       '@babel/parser': 7.27.2
       '@babel/types': 7.27.1
       ast-kit: 2.0.0
-      debug: 4.4.0
+      birpc: 2.3.0
+      debug: 4.4.1
       dts-resolver: 2.0.1
       get-tsconfig: 4.10.0
-      rolldown: 1.0.0-beta.8-commit.2a5c6a6
+      rolldown: 1.0.0-beta.8-commit.d95f99e
     optionalDependencies:
       typescript: 5.8.3
     transitivePeerDependencies:
       - oxc-resolver
       - supports-color
 
-  rolldown@1.0.0-beta.8-commit.2a5c6a6:
+  rolldown@1.0.0-beta.8-commit.d95f99e:
     dependencies:
       '@oxc-project/types': 0.69.0
-      '@rolldown/pluginutils': 1.0.0-beta.8-commit.2a5c6a6
+      '@rolldown/pluginutils': 1.0.0-beta.8-commit.d95f99e
       ansis: 4.0.0
     optionalDependencies:
-      '@rolldown/binding-darwin-arm64': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-darwin-x64': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-freebsd-x64': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-linux-arm-gnueabihf': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-linux-arm64-gnu': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-linux-arm64-musl': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-linux-x64-gnu': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-linux-x64-musl': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-wasm32-wasi': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-win32-arm64-msvc': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-win32-ia32-msvc': 1.0.0-beta.8-commit.2a5c6a6
-      '@rolldown/binding-win32-x64-msvc': 1.0.0-beta.8-commit.2a5c6a6
+      '@rolldown/binding-darwin-arm64': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-darwin-x64': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-freebsd-x64': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-linux-arm-gnueabihf': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-linux-arm64-gnu': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-linux-arm64-musl': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-linux-x64-gnu': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-linux-x64-musl': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-wasm32-wasi': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-win32-arm64-msvc': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-win32-ia32-msvc': 1.0.0-beta.8-commit.d95f99e
+      '@rolldown/binding-win32-x64-msvc': 1.0.0-beta.8-commit.d95f99e
 
   rollup@4.32.1:
     dependencies:
@@ -36042,6 +36069,8 @@ snapshots:
       lru-cache: 6.0.0
 
   semver@7.7.1: {}
+
+  semver@7.7.2: {}
 
   send@0.18.0:
     dependencies:
@@ -37088,26 +37117,27 @@ snapshots:
       minimist: 1.2.8
       strip-bom: 3.0.0
 
-  tsdown@0.11.5(typescript@5.8.3):
+  tsdown@0.11.11(typescript@5.8.3):
     dependencies:
       ansis: 4.0.0
       cac: 6.7.14
       chokidar: 4.0.3
-      debug: 4.4.0
-      diff: 7.0.0
+      debug: 4.4.1
+      diff: 8.0.1
       empathic: 1.1.0
       hookable: 5.5.3
-      rolldown: 1.0.0-beta.8-commit.2a5c6a6
-      rolldown-plugin-dts: 0.12.0(rolldown@1.0.0-beta.8-commit.2a5c6a6)(typescript@5.8.3)
-      semver: 7.7.1
+      rolldown: 1.0.0-beta.8-commit.d95f99e
+      rolldown-plugin-dts: 0.13.2(rolldown@1.0.0-beta.8-commit.d95f99e)(typescript@5.8.3)
+      semver: 7.7.2
       tinyexec: 1.0.1
       tinyglobby: 0.2.13
       unconfig: 7.3.2
+    optionalDependencies:
+      typescript: 5.8.3
     transitivePeerDependencies:
       - '@oxc-project/runtime'
       - oxc-resolver
       - supports-color
-      - typescript
       - vue-tsc
 
   tslib@1.14.1: {}
