@@ -79,8 +79,6 @@ export const s3Storage =
 
         hooks?.onStorageUploaded?.();
         return {
-          bucketName: response.Bucket,
-          key: response.Key,
           storageUri: `s3://${bucketName}/${Key}`,
         };
       },

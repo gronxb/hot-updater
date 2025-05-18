@@ -29,6 +29,8 @@ export const firebaseDatabase = (
     message: firestoreData.message,
     platform: firestoreData.platform,
     targetAppVersion: firestoreData.target_app_version,
+    storageUri: firestoreData.storage_uri,
+    fingerprintHash: firestoreData.fingerprint_hash,
   });
 
   let bundles: Bundle[] = [];
@@ -141,6 +143,8 @@ export const firebaseDatabase = (
                 message: data.message || null,
                 platform: data.platform,
                 target_app_version: data.targetAppVersion,
+                storage_uri: data.storageUri,
+                fingerprint_hash: data.fingerprintHash,
               };
             }
           }
@@ -169,6 +173,8 @@ export const firebaseDatabase = (
                     message: data.message || null,
                     platform: data.platform,
                     target_app_version: data.targetAppVersion,
+                    storage_uri: data.storageUri,
+                    fingerprint_hash: data.fingerprintHash,
                   },
                   { merge: true },
                 );
@@ -199,6 +205,8 @@ export const firebaseDatabase = (
                     message: data.message || null,
                     platform: data.platform,
                     target_app_version: admin.firestore.FieldValue.delete(),
+                    storage_uri: data.storageUri,
+                    fingerprint_hash: data.fingerprintHash,
                   },
                   { merge: true },
                 );

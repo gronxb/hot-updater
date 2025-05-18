@@ -23,6 +23,8 @@ const DEFAULT_BUNDLE: Omit<
   message: null,
   enabled: true,
   shouldForceUpdate: false,
+  storageUri: "s3://test-bucket/test-key",
+  fingerprintHash: null,
 };
 
 const createBundleJson = (

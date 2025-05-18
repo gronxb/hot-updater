@@ -29,7 +29,9 @@ app.get("/api/check-update", async (c) => {
     const bundleId = c.req.header("x-bundle-id");
     const minBundleId = c.req.header("x-min-bundle-id");
     const channel = c.req.header("x-channel");
-    if (!platform || !appVersion || !bundleId) {
+    const fingerprintHash = c.req.header("x-fingerprint-hash");
+
+    if (!platform || !bundleId) {
       return c.json(
         {
           error:
@@ -40,13 +42,24 @@ app.get("/api/check-update", async (c) => {
     }
     const db = admin.firestore();
 
-    const updateInfo = await getUpdateInfo(db, {
-      platform: platform as Platform,
-      appVersion,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-    });
+    const updateInfo = fingerprintHash
+      ? await getUpdateInfo(db, {
+          platform: platform as Platform,
+          fingerprintHash,
+          bundleId,
+          minBundleId: minBundleId || NIL_UUID,
+          channel: channel || "production",
+          _updateStrategy: "fingerprint",
+        })
+      : await getUpdateInfo(db, {
+          platform: platform as Platform,
+          appVersion: appVersion!,
+          bundleId,
+          minBundleId: minBundleId || NIL_UUID,
+          channel: channel || "production",
+          _updateStrategy: "appVersion",
+        });
+
     if (!updateInfo) {
       return c.json(null, 200);
     }

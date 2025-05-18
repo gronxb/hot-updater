@@ -38,6 +38,8 @@ describe("firebaseDatabase plugin", () => {
       message: "test bundle",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     await plugin.appendBundle(snakeBundle);
     await plugin.commitBundle();
@@ -53,6 +55,8 @@ describe("firebaseDatabase plugin", () => {
       message: "test bundle",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
   });
 
@@ -67,6 +71,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 1",
       platform: "android",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     const bundle2 = {
@@ -79,6 +85,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 2",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     const bundle3 = {
@@ -91,6 +99,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 3",
       platform: "android",
       targetAppVersion: "1.5.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     await plugin.appendBundle(bundle1);
@@ -117,6 +127,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 1",
       platform: "android",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     const bundle2 = {
       id: "bundle2",
@@ -128,6 +140,8 @@ describe("firebaseDatabase plugin", () => {
       platform: "ios",
       targetAppVersion: "1.0.0",
       shouldForceUpdate: false,
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     await plugin.appendBundle(bundle1);
     await plugin.appendBundle(bundle2);
@@ -148,6 +162,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 1",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
 
     await plugin.commitBundle();
@@ -175,6 +191,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle updated",
       platform: "ios",
       targetAppVersion: "1.0.x",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
 
     await plugin.commitBundle();
@@ -210,6 +228,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Bundle A",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     const bundleB = {
       id: "bundleB",
@@ -221,6 +241,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Bundle B",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     const bundleC = {
       id: "bundleC",
@@ -232,6 +254,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Bundle C",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     await plugin.appendBundle(bundleA);
@@ -258,6 +282,8 @@ describe("firebaseDatabase plugin", () => {
         message: "A",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleB",
@@ -269,6 +295,8 @@ describe("firebaseDatabase plugin", () => {
         message: "B",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleC",
@@ -280,6 +308,8 @@ describe("firebaseDatabase plugin", () => {
         message: "C",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleD",
@@ -291,6 +321,8 @@ describe("firebaseDatabase plugin", () => {
         message: "D",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleE",
@@ -302,6 +334,8 @@ describe("firebaseDatabase plugin", () => {
         message: "E",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
     ] as const;
 
@@ -331,6 +365,8 @@ describe("firebaseDatabase plugin", () => {
         message: "Bundle X",
         platform: "ios",
         targetAppVersion: "1.1.1",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleY",
@@ -342,6 +378,8 @@ describe("firebaseDatabase plugin", () => {
         message: "Bundle Y",
         platform: "android",
         targetAppVersion: "1.1.1",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleZ",
@@ -353,6 +391,8 @@ describe("firebaseDatabase plugin", () => {
         message: "Bundle Z",
         platform: "ios",
         targetAppVersion: "1.1.1",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
     ] as const;
 
@@ -385,6 +425,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Bundle with no target version",
       platform: "ios",
       targetAppVersion: "",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -405,6 +447,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Directly inserted bundle",
       platform: "ios",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     await plugin.appendBundle(bundleDirect);
     await plugin.commitBundle();
@@ -431,6 +475,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV1",
       platform: "android",
       targetAppVersion: "4.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -456,6 +502,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV2",
       platform: "ios",
       targetAppVersion: "5.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.appendBundle({
       id: "bundleTV3",
@@ -467,6 +515,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV3",
       platform: "ios",
       targetAppVersion: "5.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -487,6 +537,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV2 updated",
       platform: "ios",
       targetAppVersion: "5.1.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -514,6 +566,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV3 updated",
       platform: "ios",
       targetAppVersion: "5.2.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -548,6 +602,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV4",
       platform: "android",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
     const tvDoc = await firestore
@@ -567,6 +623,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV4 removed version",
       platform: "android",
       targetAppVersion: "",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 

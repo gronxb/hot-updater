@@ -55,8 +55,6 @@ export const firebaseStorage =
           hooks?.onStorageUploaded?.();
 
           return {
-            bucketName: config.storageBucket,
-            key: key,
             storageUri: `firebase-storage://${config.storageBucket}/${key}`,
           };
         } catch (error) {

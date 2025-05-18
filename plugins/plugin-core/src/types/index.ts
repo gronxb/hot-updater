@@ -53,8 +53,6 @@ export interface StoragePlugin {
     bundleId: string,
     bundlePath: string,
   ) => Promise<{
-    bucketName: string;
-    key: string;
     storageUri: string;
   }>;
 

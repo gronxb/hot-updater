@@ -72,8 +72,6 @@ export const r2Storage =
         hooks?.onStorageUploaded?.();
 
         return {
-          bucketName,
-          key: Key,
           storageUri: `r2://${bucketName}/${Key}`,
         };
       },
