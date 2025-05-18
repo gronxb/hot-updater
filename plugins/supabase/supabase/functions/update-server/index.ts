@@ -1,10 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import camelcaseKeys from "npm:camelcase-keys@9.1.3";
 import semver from "npm:semver@7.7.1";
 import {
   type SupabaseClient,
   createClient,
 } from "jsr:@supabase/supabase-js@2.49.4";
+import type { UpdateInfo } from "@hot-updater/core";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -155,7 +155,15 @@ Deno.serve(async (req) => {
       throw error;
     }
 
-    const response = data[0] ? camelcaseKeys(data[0]) : null;
+    const storageUri = data[0]?.storage_uri;
+    const response = data[0]
+      ? ({
+          id: data[0].id,
+          shouldForceUpdate: data[0].should_force_update,
+          message: data[0].message,
+          status: data[0].status,
+        } as UpdateInfo)
+      : null;
     if (!response) {
       return new Response(JSON.stringify(null), {
         headers: { "Content-Type": "application/json" },
@@ -176,9 +184,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const storageUri = new URL(response.storageUri);
-    const storageBucket = storageUri.host;
-    const storagePath = storageUri.pathname;
+    const storageURL = new URL(storageUri);
+    const storageBucket = storageURL.host;
+    const storagePath = storageURL.pathname;
 
     const { data: signedUrlData } = await supabase.storage
       .from(storageBucket)

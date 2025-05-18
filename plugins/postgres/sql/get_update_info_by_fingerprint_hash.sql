@@ -11,7 +11,8 @@ RETURNS TABLE (
     id            uuid,
     should_force_update  boolean,
     message       text,
-    status        text
+    status        text,
+    storage_uri   text
 )
 LANGUAGE plpgsql
 AS
@@ -25,7 +26,8 @@ BEGIN
             b.id,
             b.should_force_update,
             b.message,
-            'UPDATE' AS status
+            'UPDATE' AS status,
+            b.storage_uri
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -41,7 +43,8 @@ BEGIN
             b.id,
             TRUE AS should_force_update,
             b.message,
-            'ROLLBACK' AS status
+            'ROLLBACK' AS status,
+            b.storage_uri
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -68,7 +71,8 @@ BEGIN
         NIL_UUID      AS id,
         TRUE          AS should_force_update,
         NULL          AS message,
-        'ROLLBACK'    AS status
+        'ROLLBACK'    AS status,
+        NULL          AS storage_uri
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
