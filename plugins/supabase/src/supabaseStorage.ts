@@ -51,9 +51,7 @@ export const supabaseStorage =
 
         hooks?.onStorageUploaded?.();
         return {
-          bucketName: config.bucketName,
-          key: fullPath,
-          storageUri: `supabase-storage://${config.bucketName}/${fullPath}`,
+          storageUri: `supabase-storage://${fullPath}`,
         };
       },
     };
