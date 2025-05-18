@@ -21,7 +21,8 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel
+      should_force_update, enabled, git_commit_hash, message, channel,
+      storage_uri, fingerprint_hash
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileHash}',
@@ -31,7 +32,9 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"},
-      '${bundle.channel}'
+      '${bundle.channel}',
+      '${bundle.storageUri}',
+      ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"}
     );
   `;
 };
