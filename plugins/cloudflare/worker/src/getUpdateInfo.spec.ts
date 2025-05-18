@@ -27,13 +27,13 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       '${bundle.id}',
       '${bundle.fileHash}',
       '${bundle.platform}',
-      '${bundle.targetAppVersion}',
+      ${bundle.targetAppVersion ? `'${bundle.targetAppVersion}'` : "null"},
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"},
       '${bundle.channel}',
-      '${bundle.storageUri}',
+      ${bundle.storageUri ? `'${bundle.storageUri}'` : "null"},
       ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"}
     );
   `;

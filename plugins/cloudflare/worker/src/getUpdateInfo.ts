@@ -51,6 +51,7 @@ const appVersionStrategy = async (
       b.id,
       b.should_force_update,
       b.message,
+      b.storage_uri,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -69,6 +70,7 @@ const appVersionStrategy = async (
       b.id,
       1 AS should_force_update,
       b.message,
+      b.storage_uri,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -84,7 +86,7 @@ const appVersionStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status
+  SELECT id, should_force_update, message, status, storage_uri
   FROM final_result, input
   WHERE id <> bundle_id
   
@@ -94,7 +96,8 @@ const appVersionStrategy = async (
     nil_uuid AS id,
     1 AS should_force_update,
     NULL AS message,
-    'ROLLBACK' AS status
+    'ROLLBACK' AS status,
+    NULL AS storage_uri
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;
@@ -107,6 +110,7 @@ const appVersionStrategy = async (
       should_force_update: number;
       status: UpdateStatus;
       message: string | null;
+      storage_uri: string | null;
     }>();
 
   if (!result) {
@@ -118,6 +122,7 @@ const appVersionStrategy = async (
     shouldForceUpdate: Boolean(result.should_force_update),
     status: result.status,
     message: result.message,
+    storageUri: result.storage_uri,
   } as UpdateInfo;
 };
 
@@ -190,9 +195,9 @@ export const fingerprintStrategy = async (
   SELECT 
     nil_uuid AS id,
     1 AS should_force_update,
-    NULL AS storage_uri,
     NULL AS message,
-    'ROLLBACK' AS status
+    'ROLLBACK' AS status,
+    NULL AS storage_uri
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;

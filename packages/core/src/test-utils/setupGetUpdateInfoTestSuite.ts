@@ -8,8 +8,7 @@ const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   gitCommitHash: null,
   fileHash: "hash",
   channel: "production",
-  storageUri:
-    "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+  storageUri: "storage://my-app/bundle.zip",
   fingerprintHash: null,
 } as const;
 
@@ -19,8 +18,7 @@ const DEFAULT_BUNDLE_FINGERPRINT_STRATEGY = {
   gitCommitHash: null,
   fileHash: "hash",
   channel: "production",
-  storageUri:
-    "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+  storageUri: "storage://my-app/bundle.zip",
   targetAppVersion: null,
 } as const;
 
@@ -29,6 +27,7 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
   message: null,
   shouldForceUpdate: true,
   status: "ROLLBACK",
+  storageUri: null,
 } as const;
 
 export const setupGetUpdateInfoTestSuite = ({
@@ -63,6 +62,7 @@ export const setupGetUpdateInfoTestSuite = ({
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -154,6 +154,7 @@ export const setupGetUpdateInfoTestSuite = ({
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -179,6 +180,7 @@ export const setupGetUpdateInfoTestSuite = ({
         shouldForceUpdate: true,
         status: "UPDATE",
         message: "hello",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -204,6 +206,7 @@ export const setupGetUpdateInfoTestSuite = ({
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -229,6 +232,7 @@ export const setupGetUpdateInfoTestSuite = ({
         shouldForceUpdate: false,
         message: "hello",
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -261,6 +265,7 @@ export const setupGetUpdateInfoTestSuite = ({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -343,6 +348,7 @@ export const setupGetUpdateInfoTestSuite = ({
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hi",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -407,6 +413,7 @@ export const setupGetUpdateInfoTestSuite = ({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true,
         status: "ROLLBACK",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -446,6 +453,7 @@ export const setupGetUpdateInfoTestSuite = ({
         id: "00000000-0000-0000-0000-000000000003",
         shouldForceUpdate: false,
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -500,6 +508,7 @@ export const setupGetUpdateInfoTestSuite = ({
         id: "00000000-0000-0000-0000-000000000005",
         shouldForceUpdate: false,
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -567,6 +576,7 @@ export const setupGetUpdateInfoTestSuite = ({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true, // Cause the app to reload
         status: "ROLLBACK",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -648,6 +658,7 @@ export const setupGetUpdateInfoTestSuite = ({
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -814,6 +825,7 @@ export const setupGetUpdateInfoTestSuite = ({
         message: "hello",
         shouldForceUpdate: true,
         status: "ROLLBACK",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -886,6 +898,7 @@ export const setupGetUpdateInfoTestSuite = ({
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -953,6 +966,7 @@ export const setupGetUpdateInfoTestSuite = ({
         message: "hello",
         shouldForceUpdate: true,
         status: "UPDATE",
+        storageUri: "storage://my-app/bundle.zip",
       });
     });
 
@@ -1041,10 +1055,11 @@ export const setupGetUpdateInfoTestSuite = ({
           _updateStrategy: "fingerprint",
         });
         expect(update).toStrictEqual({
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0000-0000-0000-000000000001",
           shouldForceUpdate: false,
           status: "UPDATE",
           message: "hello",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1070,6 +1085,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: true,
           status: "UPDATE",
           message: "hello",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1095,6 +1111,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: false,
           status: "UPDATE",
           message: "hello",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1120,6 +1137,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: false,
           message: "hello",
           status: "UPDATE",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1152,6 +1170,7 @@ export const setupGetUpdateInfoTestSuite = ({
           id: "00000000-0000-0000-0000-000000000001",
           shouldForceUpdate: false,
           status: "UPDATE",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1234,6 +1253,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: false,
           status: "UPDATE",
           message: "hi",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1298,6 +1318,7 @@ export const setupGetUpdateInfoTestSuite = ({
           id: "00000000-0000-0000-0000-000000000001",
           shouldForceUpdate: true,
           status: "ROLLBACK",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1337,6 +1358,7 @@ export const setupGetUpdateInfoTestSuite = ({
           id: "00000000-0000-0000-0000-000000000003",
           shouldForceUpdate: false,
           status: "UPDATE",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1390,6 +1412,7 @@ export const setupGetUpdateInfoTestSuite = ({
           id: "00000000-0000-0000-0000-000000000005",
           shouldForceUpdate: false,
           status: "UPDATE",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1457,6 +1480,7 @@ export const setupGetUpdateInfoTestSuite = ({
           id: "00000000-0000-0000-0000-000000000001",
           shouldForceUpdate: true, // Cause the app to reload
           status: "ROLLBACK",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1538,6 +1562,7 @@ export const setupGetUpdateInfoTestSuite = ({
           message: "hello",
           shouldForceUpdate: false,
           status: "UPDATE",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1704,6 +1729,7 @@ export const setupGetUpdateInfoTestSuite = ({
           message: "hello",
           shouldForceUpdate: true,
           status: "ROLLBACK",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1776,6 +1802,7 @@ export const setupGetUpdateInfoTestSuite = ({
           message: "hello",
           shouldForceUpdate: false,
           status: "UPDATE",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
 
@@ -1843,6 +1870,7 @@ export const setupGetUpdateInfoTestSuite = ({
           message: "hello",
           shouldForceUpdate: true,
           status: "UPDATE",
+          storageUri: "storage://my-app/bundle.zip",
         });
       });
     });
