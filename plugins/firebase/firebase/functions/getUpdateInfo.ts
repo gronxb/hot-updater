@@ -24,8 +24,10 @@ const convertToBundle = (data: any): Bundle => ({
   targetAppVersion: data.target_app_version,
   platform: data.platform,
   channel: data.channel || "production",
-  fileHash: data.file_hash || "",
-  gitCommitHash: data.git_commit_hash || "",
+  fileHash: data.file_hash,
+  gitCommitHash: data.git_commit_hash,
+  fingerprintHash: data.fingerprint_hash,
+  storageUri: data.storage_uri,
 });
 
 const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({

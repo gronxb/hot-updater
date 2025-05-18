@@ -81,6 +81,8 @@ export const deploy = async (options: DeployOptions) => {
   };
 
   if (config.updateStrategy === "fingerprint") {
+    const s = p.spinner();
+    s.start(`Fingerprinting (${platform})`);
     const fingerprint = await nativeFingerprint(cwd, {
       platform,
       ...config.fingerprint,
@@ -99,6 +101,7 @@ export const deploy = async (options: DeployOptions) => {
     }
 
     target.fingerprintHash = fingerprint.hash;
+    s.stop();
   } else {
     const defaultTargetAppVersion =
       (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
@@ -259,8 +262,11 @@ export const deploy = async (options: DeployOptions) => {
       {
         title: `📦 Updating Database (${databasePlugin.name})`,
         task: async () => {
-          if (!bundleId || !taskRef.storageUri) {
+          if (!bundleId) {
             throw new Error("Bundle ID not found");
+          }
+          if (!taskRef.storageUri) {
+            throw new Error("Storage URI not found");
           }
 
           try {
@@ -282,7 +288,7 @@ export const deploy = async (options: DeployOptions) => {
             if (e instanceof Error) {
               p.log.error(e.message);
             }
-            throw new Error("Failed to update database");
+            throw e;
           }
           await databasePlugin.onUnmount?.();
           await fs.promises.rm(bundlePath);

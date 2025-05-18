@@ -119,7 +119,9 @@ Deno.serve(async (req) => {
     const bundleId = req.headers.get("x-bundle-id") as string;
     const appPlatform = req.headers.get("x-app-platform") as "ios" | "android";
     const appVersion = req.headers.get("x-app-version") as string | null;
-    const fingerprintHash = req.headers.get("x-app-version") as string | null;
+    const fingerprintHash = req.headers.get("x-fingerprint-hash") as
+      | string
+      | null;
     const minBundleId = req.headers.get("x-min-bundle-id") as
       | string
       | undefined;
