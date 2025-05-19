@@ -7,14 +7,14 @@ import HotUpdaterNative, {
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
-declare const __HOT_UPDATER_CHANNEL: string | undefined;
+declare const __HOT_UPDATER_CHANNEL: string;
 declare const __HOT_UPDATER_FINGERPRINT_HASH_IOS: string | null;
 declare const __HOT_UPDATER_FINGERPRINT_HASH_ANDROID: string | null;
 declare const __HOT_UPDATER_UPDATE_STRATEGY: UpdateStrategy;
 
 export const HotUpdaterConstants = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
-  CHANNEL: __HOT_UPDATER_CHANNEL || (!__DEV__ ? "production" : null),
+  CHANNEL: __HOT_UPDATER_CHANNEL,
   FINGERPRINT_HASH: Platform.select({
     ios: __HOT_UPDATER_FINGERPRINT_HASH_IOS,
     android: __HOT_UPDATER_FINGERPRINT_HASH_ANDROID,
@@ -142,9 +142,9 @@ export const setChannel = async (channel: string) => {
   return HotUpdaterNative.setChannel(channel);
 };
 
-export const getChannel = (): string | null => {
+export const getChannel = (): string => {
   const constants = HotUpdaterNative.getConstants();
-  return constants?.CHANNEL ?? HotUpdaterConstants.CHANNEL ?? null;
+  return constants?.CHANNEL ?? HotUpdaterConstants.CHANNEL;
 };
 
 /**

@@ -69,9 +69,8 @@ export const HotUpdater = {
    * Fetches the current release channel of the app.
    *
    * By default, if no channel is specified, the app is assigned to the 'production' channel.
-   * If the app is running in development mode, the channel will be `null`.
    *
-   * @returns {string | null} The current release channel of the app
+   * @returns {string} The current release channel of the app
    *
    * @example
    * ```ts
