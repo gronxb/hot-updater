@@ -30,7 +30,7 @@ export const withJwtSignedUrl = async <
   }
 
   const storageUrl = new URL(data.storageUri);
-  const key = storageUrl.pathname;
+  const key = `${storageUrl.host}${storageUrl.pathname}`;
   const token = await signToken(key, jwtSecret);
 
   const url = new URL(reqUrl);
