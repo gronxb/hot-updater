@@ -37,11 +37,6 @@ const getBundleId = () => {
 const memoizeLoadConfig = memoize(loadConfigSync);
 
 export const getChannel = () => {
-  const currentEnv = process.env["BABEL_ENV"] || process.env["NODE_ENV"];
-  if (currentEnv === "development") {
-    return null;
-  }
-
   const envChannel = process.env["HOT_UPDATER_CHANNEL"];
   if (envChannel) {
     return envChannel;
@@ -101,9 +96,7 @@ export default function ({
           path.replaceWith(t.stringLiteral(bundleId));
         }
         if (path.node.name === "__HOT_UPDATER_CHANNEL") {
-          path.replaceWith(
-            channel ? t.stringLiteral(channel) : t.nullLiteral(),
-          );
+          path.replaceWith(t.stringLiteral(channel));
         }
         if (path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_IOS") {
           fingerprint?.iosHash
