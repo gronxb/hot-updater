@@ -542,14 +542,29 @@ class BundleFileStorageService: BundleStorageService {
                     try self.fileSystem.moveItem(atPath: extractedDir, toPath: finalBundleDir)
                     NSLog("[BundleStorage] Successfully moved entire bundle directory to: \(finalBundleDir)")
                     
-                    let setResult = self.setBundleURL(localPath: bundlePath)
-                    switch setResult {
-                        case .success:
-                            // 10. Cleanup
+                    let findResult = self.findBundleFile(in: finalBundleDir)
+                    switch findResult {
+                    case .success(let finalBundlePath):
+                        if let finalBundlePath = finalBundlePath {
+                            let setResult = self.setBundleURL(localPath: finalBundlePath)
+                            switch setResult {
+                            case .success:
+                                // 10. Cleanup
+                                self.cleanupTemporaryFiles([tempDirectory])
+                                completion(.success(true))
+                            case .failure(let error):
+                                self.cleanupTemporaryFiles([tempDirectory])
+                                completion(.failure(error))
+                            }
+                        } else {
+                            NSLog("[BundleStorage] No bundle file found in final directory")
                             self.cleanupTemporaryFiles([tempDirectory])
-                            completion(.success(true))
-                        case .failure(let error):
-                            completion(.failure(error))
+                            completion(.failure(BundleStorageError.invalidBundle))
+                        }
+                    case .failure(let error):
+                        NSLog("[BundleStorage] Error finding bundle file: \(error.localizedDescription)")
+                        self.cleanupTemporaryFiles([tempDirectory])
+                        completion(.failure(error))
                     }
                 } else {
                     NSLog("[BundleStorage] No bundle file found in extracted directory")
