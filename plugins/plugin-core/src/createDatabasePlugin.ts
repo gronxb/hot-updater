@@ -11,7 +11,7 @@ export interface BaseDatabaseUtils {
 }
 
 export interface AbstractDatabasePlugin<TContext = object> {
-  getContext: () => TContext;
+  getContext?: () => TContext;
   getBundleById: (
     context: TContext,
     bundleId: string,
@@ -92,7 +92,9 @@ export function createDatabasePlugin<TContext = object>(
     changedMap.set(data.id, { operation, data });
   };
 
-  const memoizedContext = memoize(abstractPlugin.getContext);
+  const memoizedContext = memoize(
+    abstractPlugin?.getContext ?? ((() => {}) as () => TContext),
+  );
   return (_: BasePluginArgs) => ({
     name,
 
