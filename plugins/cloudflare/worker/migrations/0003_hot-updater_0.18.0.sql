@@ -5,7 +5,7 @@ ALTER TABLE bundles ADD COLUMN fingerprint_hash TEXT;
 ALTER TABLE bundles ADD COLUMN storage_uri TEXT;
 
 UPDATE bundles
-SET storage_uri = 'supabase-storage://%%BUCKET_NAME%%/' || id || '/bundle.zip'
+SET storage_uri = 'r2://%%BUCKET_NAME%%/' || id || '/bundle.zip'
 WHERE storage_uri IS NULL;
 
 CREATE TABLE bundles_temp (

@@ -107,6 +107,22 @@ const deployWorker = async (
       cwd: tmpDir,
       accountId: accountId,
     });
+
+    const migrationPath = await path.join(tmpDir, "migrations");
+    const migrationFiles = await fs.readdir(migrationPath);
+    for (const file of migrationFiles) {
+      if (file.endsWith(".sql")) {
+        const filePath = path.join(migrationPath, file);
+        const content = await fs.readFile(filePath, "utf-8");
+        await fs.writeFile(
+          filePath,
+          transformTemplate(content, {
+            BUCKET_NAME: r2BucketName,
+          }),
+        );
+      }
+    }
+
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
     const workerName = await p.text({
@@ -285,6 +301,8 @@ export const runInit = async ({
     selectedBucketName = newR2.name;
   }
   p.log.info(`Selected R2: ${selectedBucketName}`);
+
+  //
 
   const domains = await cf.r2.buckets.domains.managed.list(selectedBucketName, {
     account_id: accountId,
