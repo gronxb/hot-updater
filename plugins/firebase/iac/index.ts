@@ -312,7 +312,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
           process.exit(1);
         }
 
-        const code = await transformEnv(
+        const code = transformEnv(
           await fs.promises.readFile(functionsIndexPath, "utf-8"),
           {
             REGION: currentRegion,

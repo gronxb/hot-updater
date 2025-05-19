@@ -13,10 +13,12 @@ export class Migration0001HotUpdater0_18_0 extends S3Migration {
     const updateKeys = keys.filter((key) => key.endsWith("update.json"));
 
     for (const key of updateKeys) {
-      const data = await this.readJson<{ fileUrl: string }[]>(key);
+      const data = await this.readJson<{ id: string }[]>(key);
       if (data && Array.isArray(data)) {
         const updatedData = data.map((item) =>
-          merge(item, { storageUri: item.fileUrl }),
+          merge(item, {
+            storageUri: `s3://${this.bucketName}/${item.id}/bundle.zip`,
+          }),
         );
         await this.updateFile(key, JSON.stringify(updatedData));
       }

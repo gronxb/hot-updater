@@ -36,7 +36,7 @@ export class LambdaEdgeDeployer {
     // Transform Lambda code with CloudFront key pair details
     const indexPath = path.join(tmpDir, "index.cjs");
     const originalCode = await fs.readFile(indexPath, "utf-8");
-    const code = await transformEnv(originalCode, {
+    const code = transformEnv(originalCode, {
       CLOUDFRONT_KEY_PAIR_ID: keyPair.publicKey,
       CLOUDFRONT_PRIVATE_KEY_BASE64: Buffer.from(keyPair.privateKey).toString(
         "base64",

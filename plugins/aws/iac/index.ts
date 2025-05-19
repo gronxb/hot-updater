@@ -13,6 +13,7 @@ import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
 import { Migration0001HotUpdater0_13_0 } from "./migrations/Migration0001HotUpdater0_13_0";
+import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpdater0_18_0";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
@@ -184,7 +185,10 @@ export const runInit = async ({
   await s3Manager.runMigrations({
     bucketName,
     region: bucketRegion,
-    migrations: [new Migration0001HotUpdater0_13_0()],
+    migrations: [
+      new Migration0001HotUpdater0_13_0(),
+      new Migration0001HotUpdater0_18_0(),
+    ],
   });
 
   // Create IAM role: Using IAMManager

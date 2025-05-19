@@ -145,6 +145,9 @@ importers:
       '@expo/fingerprint':
         specifier: ^0.11.6
         version: 0.11.11
+      '@hot-updater/aws':
+        specifier: workspace:*
+        version: link:../../plugins/aws
       '@hot-updater/cloudflare':
         specifier: workspace:*
         version: link:../../plugins/cloudflare
@@ -392,13 +395,13 @@ importers:
         version: 0.74.83
       '@react-native/metro-config':
         specifier: 0.74.83
-        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
       '@react-native/typescript-config':
         specifier: 0.74.83
         version: 0.74.83
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
+        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
@@ -913,7 +916,7 @@ importers:
         version: 0.79.1(@babel/core@7.27.1)(@react-native-community/cli@18.0.0(typescript@5.8.3))(@types/react@19.1.3)(react@19.1.0)
       react-native-builder-bob:
         specifier: ^0.40.10
-        version: 0.40.10(encoding@0.1.13)
+        version: 0.40.10
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -1182,34 +1185,13 @@ importers:
       cosmiconfig-typescript-loader:
         specifier: 5.0.0
         version: 5.0.0(@types/node@22.13.5)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
+      oxc-transform:
+        specifier: ^0.70.0
+        version: 0.70.0
       ts-morph:
         specifier: 25.0.1
         version: 25.0.1
     devDependencies:
-      '@babel/core':
-        specifier: 7.26.0
-        version: 7.26.0
-      '@babel/generator':
-        specifier: 7.26.9
-        version: 7.26.9
-      '@babel/parser':
-        specifier: 7.26.9
-        version: 7.26.9
-      '@babel/traverse':
-        specifier: 7.25.9
-        version: 7.25.9
-      '@babel/types':
-        specifier: 7.26.0
-        version: 7.26.0
-      '@types/babel__core':
-        specifier: 7.20.5
-        version: 7.20.5
-      '@types/babel__generator':
-        specifier: 7.6.8
-        version: 7.6.8
-      '@types/babel__traverse':
-        specifier: 7.20.6
-        version: 7.20.6
       '@types/node':
         specifier: ^22.7.5
         version: 22.13.5
@@ -3402,7 +3384,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {node: '>=0.10.0'}
+    engines: {'0': node >=0.10.0}
 
   '@expo/cli@0.17.13':
     resolution: {integrity: sha512-n13yxOmI3I0JidzMdFCH68tYKGDtK4XlDFk1vysZX7AIRKeDVRsSbHhma5jCla2bDt25RKmJBHA9KtzielwzAA==}
@@ -4420,6 +4402,89 @@ packages:
 
   '@oxc-resolver/binding-win32-x64-msvc@1.12.0':
     resolution: {integrity: sha512-Z3llHH0jfJP4mlWq3DT7bK6qV+/vYe0+xzCgfc67+Tc/U3eYndujl880bexeGdGNPh87JeYznpZAOJ44N7QVVQ==}
+    cpu: [x64]
+    os: [win32]
+
+  '@oxc-transform/binding-darwin-arm64@0.70.0':
+    resolution: {integrity: sha512-h5DHbP2JqhI7o+hgVwiUn1OFTuKY2r1S6mO2wYPHS1LRWZM2GLNVo/cuCVJx5nRLHIfWBYtIIgbrG8ZrlrG2Cg==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@oxc-transform/binding-darwin-x64@0.70.0':
+    resolution: {integrity: sha512-1l0C5VOlfirfSzyL/fPtmxnZwoUJZI25leFQTCa3I2neOoFvcV4tncg5NYBpF18DbrHcEzTtTbhVRwCjO1RQ8A==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@oxc-transform/binding-freebsd-x64@0.70.0':
+    resolution: {integrity: sha512-bSkX/vXW9TGqm6LS56mCzM2dkeiAsS/OWvOS94NTBIZQHd5vLn6jtt8KYmGoO/7iOGP+UT2L7p7Da+y/LNB7cg==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@oxc-transform/binding-linux-arm-gnueabihf@0.70.0':
+    resolution: {integrity: sha512-Ru35tW9h+0fC/h/NpbBOuxW9xBYHrVTvk/rHZXg860QDC17W/ORPY7DJ4sBN+JPcm69UNssRELEydvy62p5hnQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-arm-musleabihf@0.70.0':
+    resolution: {integrity: sha512-NUpJ2hFE8R29zvL4YN/JvyfaT2Vpcw4NyEVdBICEN6DLJvM2fYUrtN3c7q/5RSMPERWGDdkX4oebHy3gOReb5A==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-arm64-gnu@0.70.0':
+    resolution: {integrity: sha512-ijMtGrOgXgEzyHJoaieDBfBe2IaW53RlaDPVKLu6SRaqzbYSzjkBocMCWPnlhHAlsXXot4iXqUz/mIvi9iySgQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-arm64-musl@0.70.0':
+    resolution: {integrity: sha512-VUK5p1ooBC8zObwIAoo4et3x9h0kuBeas4UehbNN4HfnhwkM8yRCt5owHypslIi1vytfPpkexRpZcw68lAiThw==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-riscv64-gnu@0.70.0':
+    resolution: {integrity: sha512-IqOHDigJosjwgWSWv7WBJHiVzQdYj3uvFDOndHTsZuQdx3UHBvejcJPTVFZocMVH/JPr4QCnmzEXfNVlscoRAQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [riscv64]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-s390x-gnu@0.70.0':
+    resolution: {integrity: sha512-p9u5bmQkzwzMMVqaPDZwwJCJIzm5MqK6n5VyPYNVCpSWJmI9YtxRpL7A+Szbjrv1I8RAQ3Lfvd7vLcQbybzZbg==}
+    engines: {node: '>=14.0.0'}
+    cpu: [s390x]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-x64-gnu@0.70.0':
+    resolution: {integrity: sha512-CtKvuyXNAheW2WBrR6RyyksStT84UfZLh+EjhYbNzQUMMBmUni5xfcJJiDPLhV2fmZ+iCMaHv36IIPS4gkP3wQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-x64-musl@0.70.0':
+    resolution: {integrity: sha512-KM68LeDbF7HM3SeRC8ljJ2fISEmTGyjw70VP4xnAJy9FotneYmDqD7UDbtdcl956m2zePFUNdmdlLEwmP211Ag==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [linux]
+
+  '@oxc-transform/binding-wasm32-wasi@0.70.0':
+    resolution: {integrity: sha512-jT8y6XnATCbArIZqVE8BgFSJLASSPXcsCPHo1dk5GDJHxls8SuWo0VecE4v4OAphOVPhX1Jdyj1lie6oK6xEnQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [wasm32]
+
+  '@oxc-transform/binding-win32-arm64-msvc@0.70.0':
+    resolution: {integrity: sha512-OFmHVkWeIG6PqouPzVULCuD8PfLA0ASHSfKvMM6/l3Soowz38nkfi8y2OpH8StDyXK3kgn+PkMpS03NAITeGlQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@oxc-transform/binding-win32-x64-msvc@0.70.0':
+    resolution: {integrity: sha512-o59kbIXgY2HXUlHepZHD/Zz4k0it80yZHL+QIbsYs1/K/i6iydrhdUKIabRkFcPg9qvxXXJ/xxDAggC8KdBoPA==}
+    engines: {node: '>=14.0.0'}
     cpu: [x64]
     os: [win32]
 
@@ -12614,6 +12679,10 @@ packages:
 
   oxc-resolver@1.12.0:
     resolution: {integrity: sha512-YlaCIArvWNKCWZFRrMjhh2l5jK80eXnpYP+bhRc1J/7cW3TiyEY0ngJo73o/5n8hA3+4yLdTmXLNTQ3Ncz50LQ==}
+
+  oxc-transform@0.70.0:
+    resolution: {integrity: sha512-cPaTMNm7ciuDYhypBk7P8srrNU1aPT+yNYU3818odl8aygThFZZ2kXGpvkxtP1XXgVeMpe/nopVJnjQndkO2Uw==}
+    engines: {node: '>=14.0.0'}
 
   p-defer@3.0.0:
     resolution: {integrity: sha512-ugZxsxmtTln604yeYd29EGrNhazN2lywetzpKhfmQjW/VJmhpDmWbiX+h0zL8V91R0UXkhb3KtPmyq9PZw3aYw==}
@@ -21369,6 +21438,50 @@ snapshots:
   '@oxc-resolver/binding-win32-x64-msvc@1.12.0':
     optional: true
 
+  '@oxc-transform/binding-darwin-arm64@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-darwin-x64@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-freebsd-x64@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm-gnueabihf@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm-musleabihf@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm64-gnu@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm64-musl@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-riscv64-gnu@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-s390x-gnu@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-x64-gnu@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-x64-musl@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-wasm32-wasi@0.70.0':
+    dependencies:
+      '@napi-rs/wasm-runtime': 0.2.9
+    optional: true
+
+  '@oxc-transform/binding-win32-arm64-msvc@0.70.0':
+    optional: true
+
+  '@oxc-transform/binding-win32-x64-msvc@0.70.0':
+    optional: true
+
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
@@ -23401,7 +23514,7 @@ snapshots:
       - supports-color
     optional: true
 
-  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
+  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)':
     dependencies:
       '@react-native/js-polyfills': 0.74.83
       '@react-native/metro-babel-transformer': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
@@ -23410,7 +23523,10 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
+      - encoding
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -23646,7 +23762,7 @@ snapshots:
 
   '@rnx-kit/console@2.0.0': {}
 
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@rnx-kit/tools-node': 3.0.0
       '@rnx-kit/tools-react-native': 2.0.0
@@ -23654,7 +23770,7 @@ snapshots:
       react: 18.2.0
       react-native: 0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0)
     optionalDependencies:
-      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
 
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@19.0.0)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -34164,6 +34280,23 @@ snapshots:
       '@oxc-resolver/binding-win32-x64-msvc': 1.12.0
     optional: true
 
+  oxc-transform@0.70.0:
+    optionalDependencies:
+      '@oxc-transform/binding-darwin-arm64': 0.70.0
+      '@oxc-transform/binding-darwin-x64': 0.70.0
+      '@oxc-transform/binding-freebsd-x64': 0.70.0
+      '@oxc-transform/binding-linux-arm-gnueabihf': 0.70.0
+      '@oxc-transform/binding-linux-arm-musleabihf': 0.70.0
+      '@oxc-transform/binding-linux-arm64-gnu': 0.70.0
+      '@oxc-transform/binding-linux-arm64-musl': 0.70.0
+      '@oxc-transform/binding-linux-riscv64-gnu': 0.70.0
+      '@oxc-transform/binding-linux-s390x-gnu': 0.70.0
+      '@oxc-transform/binding-linux-x64-gnu': 0.70.0
+      '@oxc-transform/binding-linux-x64-musl': 0.70.0
+      '@oxc-transform/binding-wasm32-wasi': 0.70.0
+      '@oxc-transform/binding-win32-arm64-msvc': 0.70.0
+      '@oxc-transform/binding-win32-x64-msvc': 0.70.0
+
   p-defer@3.0.0: {}
 
   p-filter@2.1.0:
@@ -34860,7 +34993,7 @@ snapshots:
 
   react-lazy-with-preload@2.2.1: {}
 
-  react-native-builder-bob@0.40.10(encoding@0.1.13):
+  react-native-builder-bob@0.40.10:
     dependencies:
       '@babel/core': 7.27.1
       '@babel/plugin-transform-flow-strip-types': 7.27.1(@babel/core@7.27.1)
@@ -34886,10 +35019,7 @@ snapshots:
       which: 2.0.2
       yargs: 17.7.2
     transitivePeerDependencies:
-      - bufferutil
-      - encoding
       - supports-color
-      - utf-8-validate
 
   react-native-codegen@0.71.6(@babel/preset-env@7.26.0(@babel/core@7.26.0)):
     dependencies:
