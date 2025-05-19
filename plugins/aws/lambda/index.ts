@@ -39,7 +39,7 @@ app.get("/api/check-update", async (c) => {
     const channel = headers["x-channel"]?.[0]?.value ?? "production";
     const fingerprintHash = headers["x-fingerprint-hash"]?.[0]?.value;
 
-    if (!bundleId || !appPlatform || !appVersion) {
+    if (!bundleId || !appPlatform) {
       return c.json({ error: "Missing required headers." }, 400);
     }
 

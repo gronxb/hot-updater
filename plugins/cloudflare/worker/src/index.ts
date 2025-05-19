@@ -20,7 +20,7 @@ app.get("/api/check-update", async (c) => {
   const fingerprintHash =
     c.req.header("x-fingerprint-hash") ?? (null as string | null);
 
-  if (!bundleId || !appPlatform || !appVersion) {
+  if (!bundleId || !appPlatform) {
     return c.json(
       { error: "Missing bundleId, appPlatform, or appVersion" },
       400,
