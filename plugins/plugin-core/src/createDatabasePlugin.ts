@@ -28,7 +28,7 @@ export interface AbstractDatabasePlugin<TContext = object> {
     },
   ) => Promise<Bundle[]>;
   getChannels: (context: TContext) => Promise<string[]>;
-  onUnmount?: () => void;
+  onUnmount?: (context: TContext) => void;
   commitBundle: (
     context: TContext,
     {
@@ -149,7 +149,8 @@ export function createDatabasePlugin<TContext = object>(
 
     onUnmount: abstractPlugin.onUnmount
       ? async () => {
-          await abstractPlugin.onUnmount?.();
+          const context = memoizedContext();
+          await abstractPlugin.onUnmount?.(context);
         }
       : undefined,
   });
