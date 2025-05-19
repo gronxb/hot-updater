@@ -10,20 +10,27 @@ WHERE storage_uri IS NULL;
 
 CREATE TABLE bundles_temp (
     id TEXT PRIMARY KEY,
-    app_id TEXT NOT NULL,
-    target_app_version TEXT,
-    created_at TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    should_force_update INTEGER NOT NULL,
+    enabled INTEGER NOT NULL,
+    file_hash TEXT NOT NULL,
+    git_commit_hash TEXT,
+    message TEXT,
+    channel TEXT NOT NULL DEFAULT 'production',
     storage_uri TEXT NOT NULL,
+    target_app_version TEXT,
     fingerprint_hash TEXT,
-    FOREIGN KEY (app_id) REFERENCES apps(id)
+    CHECK ((target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL))
 );
 
 INSERT INTO bundles_temp 
-SELECT id, app_id, target_app_version, created_at, storage_uri, fingerprint_hash
+SELECT id, platform, should_force_update, enabled, file_hash, git_commit_hash, message, channel, storage_uri, target_app_version, fingerprint_hash
 FROM bundles;
 
 DROP TABLE bundles;
 
 ALTER TABLE bundles_temp RENAME TO bundles;
 
+CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
+CREATE INDEX bundles_channel_idx ON bundles(channel);
