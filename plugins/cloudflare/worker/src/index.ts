@@ -68,8 +68,8 @@ app.get("*", async (c) => {
     token: c.req.query("token"),
     jwtSecret: c.env.JWT_SECRET,
     handler: async (storageUri) => {
-      const [, key] = storageUri.split("/");
-      const object = await c.env.BUCKET.get(key);
+      const [, ...key] = storageUri.split("/");
+      const object = await c.env.BUCKET.get(key.join("/"));
       if (!object) {
         return null;
       }
