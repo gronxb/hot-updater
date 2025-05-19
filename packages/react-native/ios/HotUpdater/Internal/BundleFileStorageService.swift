@@ -443,7 +443,7 @@ class BundleFileStorageService: BundleStorageService {
             }
             
             // Dispatch the processing of the downloaded file to the file operation queue
-            self.fileOperationQueue.async {
+            let workItem = DispatchWorkItem {
                 switch result {
                 case .success(let location):
                     self.processDownloadedFile(
@@ -462,6 +462,7 @@ class BundleFileStorageService: BundleStorageService {
                     completion(.failure(BundleStorageError.downloadFailed(error)))
                 }
             }
+            self.fileOperationQueue.async(execute: workItem)
         })
         
         if let task = task {
@@ -541,9 +542,15 @@ class BundleFileStorageService: BundleStorageService {
                     try self.fileSystem.moveItem(atPath: extractedDir, toPath: finalBundleDir)
                     NSLog("[BundleStorage] Successfully moved entire bundle directory to: \(finalBundleDir)")
                     
-                    // 10. Cleanup
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.success(true))
+                    let setResult = self.setBundleURL(localPath: bundlePath)
+                    switch setResult {
+                        case .success:
+                            // 10. Cleanup
+                            self.cleanupTemporaryFiles([tempDirectory])
+                            completion(.success(true))
+                        case .failure(let error):
+                            completion(.failure(error))
+                    }
                 } else {
                     NSLog("[BundleStorage] No bundle file found in extracted directory")
                     self.cleanupTemporaryFiles([tempDirectory])
