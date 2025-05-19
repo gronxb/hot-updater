@@ -45,7 +45,7 @@ app.get("/api/check-update", async (c) => {
         _updateStrategy: "fingerprint",
       })
     : await getUpdateInfo(c.env.DB, {
-        appVersion,
+        appVersion: appVersion!,
         bundleId,
         platform: appPlatform,
         minBundleId: minBundleId || NIL_UUID,
