@@ -3,48 +3,55 @@ import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 
+type FirestoreData = admin.firestore.DocumentData;
+
+const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
+  channel: firestoreData.channel,
+  enabled: Boolean(firestoreData.enabled),
+  shouldForceUpdate: Boolean(firestoreData.should_force_update),
+  fileHash: firestoreData.file_hash,
+  gitCommitHash: firestoreData.git_commit_hash,
+  id: firestoreData.id,
+  message: firestoreData.message,
+  platform: firestoreData.platform,
+  targetAppVersion: firestoreData.target_app_version,
+  storageUri: firestoreData.storage_uri,
+  fingerprintHash: firestoreData.fingerprint_hash,
+});
+
 export const firebaseDatabase = (
   config: admin.AppOptions,
   hooks?: DatabasePluginHooks,
 ) => {
-  let app: admin.app.App;
-  try {
-    app = admin.app();
-  } catch (e) {
-    app = admin.initializeApp(config);
-  }
-
-  const db = admin.firestore(app);
-  const bundlesCollection = db.collection("bundles");
-
-  type FirestoreData = admin.firestore.DocumentData;
-
-  const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
-    channel: firestoreData.channel,
-    enabled: Boolean(firestoreData.enabled),
-    shouldForceUpdate: Boolean(firestoreData.should_force_update),
-    fileHash: firestoreData.file_hash,
-    gitCommitHash: firestoreData.git_commit_hash,
-    id: firestoreData.id,
-    message: firestoreData.message,
-    platform: firestoreData.platform,
-    targetAppVersion: firestoreData.target_app_version,
-    storageUri: firestoreData.storage_uri,
-    fingerprintHash: firestoreData.fingerprint_hash,
-  });
-
   let bundles: Bundle[] = [];
 
   return createDatabasePlugin(
     "firebaseDatabase",
     {
-      async getBundleById(bundleId: string) {
+      getContext: () => {
+        let app: admin.app.App;
+        try {
+          app = admin.app();
+        } catch (e) {
+          app = admin.initializeApp(config);
+        }
+
+        const db = admin.firestore(app);
+        const bundlesCollection = db.collection("bundles");
+
+        return {
+          db,
+          bundlesCollection,
+        };
+      },
+
+      async getBundleById(context, bundleId) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
           return found;
         }
 
-        const bundleRef = bundlesCollection.doc(bundleId);
+        const bundleRef = context.bundlesCollection.doc(bundleId);
         const bundleSnap = await bundleRef.get();
 
         if (!bundleSnap.exists) {
@@ -55,10 +62,11 @@ export const firebaseDatabase = (
         return convertToBundle(firestoreData);
       },
 
-      async getBundles(options) {
+      async getBundles(context, options) {
         const { where, limit, offset = 0 } = options ?? {};
 
-        let query: admin.firestore.Query<FirestoreData> = bundlesCollection;
+        let query: admin.firestore.Query<FirestoreData> =
+          context.bundlesCollection;
 
         if (where?.channel) {
           query = query.where("channel", "==", where.channel);
@@ -92,8 +100,8 @@ export const firebaseDatabase = (
         return bundles;
       },
 
-      async getChannels() {
-        const targetAppVersionsCollection = db.collection(
+      async getChannels(context) {
+        const targetAppVersionsCollection = context.db.collection(
           "target_app_versions",
         );
         const query: admin.firestore.Query<FirestoreData> =
@@ -115,15 +123,17 @@ export const firebaseDatabase = (
         return Array.from(channels);
       },
 
-      async commitBundle({ changedSets }) {
+      async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
 
-        await db.runTransaction(async (transaction) => {
-          const bundlesSnapshot = await transaction.get(bundlesCollection);
+        await context.db.runTransaction(async (transaction) => {
+          const bundlesSnapshot = await transaction.get(
+            context.bundlesCollection,
+          );
           const targetVersionsSnapshot = await transaction.get(
-            db.collection("target_app_versions"),
+            context.db.collection("target_app_versions"),
           );
 
           const bundlesMap: { [id: string]: any } = {};
@@ -158,7 +168,7 @@ export const firebaseDatabase = (
           }
 
           for (const { operation, data } of changedSets) {
-            const bundleRef = bundlesCollection.doc(data.id);
+            const bundleRef = context.bundlesCollection.doc(data.id);
             if (operation === "insert" || operation === "update") {
               if (data.targetAppVersion) {
                 transaction.set(
@@ -180,7 +190,7 @@ export const firebaseDatabase = (
                 );
 
                 const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
-                const targetAppVersionsRef = db
+                const targetAppVersionsRef = context.db
                   .collection("target_app_versions")
                   .doc(versionDocId);
                 transaction.set(

@@ -11,17 +11,18 @@ export interface SupabaseDatabaseConfig {
 export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
   hooks?: DatabasePluginHooks,
-) => {
-  const supabase = createClient<Database>(
-    config.supabaseUrl,
-    config.supabaseAnonKey,
-  );
-
-  return createDatabasePlugin(
+) =>
+  createDatabasePlugin(
     "supabaseDatabase",
     {
-      async getBundleById(bundleId) {
-        const { data, error } = await supabase
+      getContext: () => ({
+        supabase: createClient<Database>(
+          config.supabaseUrl,
+          config.supabaseAnonKey,
+        ),
+      }),
+      async getBundleById(context, bundleId) {
+        const { data, error } = await context.supabase
           .from("bundles")
           .select("*")
           .eq("id", bundleId)
@@ -45,9 +46,9 @@ export const supabaseDatabase = (
         } as Bundle;
       },
 
-      async getBundles(options) {
+      async getBundles(context, options) {
         const { where, limit, offset = 0 } = options ?? {};
-        let query = supabase
+        let query = context.supabase
           .from("bundles")
           .select("*")
           .order("id", { ascending: false });
@@ -89,22 +90,22 @@ export const supabaseDatabase = (
         })) as Bundle[];
       },
 
-      async getChannels() {
-        const { data, error } = await supabase.rpc("get_channels");
+      async getChannels(context) {
+        const { data, error } = await context.supabase.rpc("get_channels");
         if (error) {
           throw error;
         }
         return data.map((bundle: { channel: string }) => bundle.channel);
       },
 
-      async commitBundle({ changedSets }) {
+      async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
 
         const bundles = changedSets.map((op) => op.data);
 
-        const { error } = await supabase.from("bundles").upsert(
+        const { error } = await context.supabase.from("bundles").upsert(
           bundles.map((bundle) => ({
             id: bundle.id,
             channel: bundle.channel,
@@ -128,4 +129,3 @@ export const supabaseDatabase = (
     },
     hooks,
   );
-};

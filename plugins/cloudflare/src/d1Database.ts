@@ -23,16 +23,18 @@ export const d1Database = (
   config: D1DatabaseConfig,
   hooks?: DatabasePluginHooks,
 ) => {
-  const cf = new Cloudflare({
-    apiToken: config.cloudflareApiToken,
-  });
-
   let bundles: Bundle[] = [];
 
   return createDatabasePlugin(
     "d1Database",
     {
-      async getBundleById(bundleId: string) {
+      getContext: () => ({
+        cf: new Cloudflare({
+          apiToken: config.cloudflareApiToken,
+        }),
+      }),
+
+      async getBundleById(context, bundleId) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
           return found;
@@ -42,11 +44,14 @@ export const d1Database = (
           /* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`,
         );
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [bundleId],
-        });
+        const singlePage = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql,
+            params: [bundleId],
+          },
+        );
 
         const rows = await resolvePage<SnakeCaseBundle>(singlePage);
 
@@ -70,7 +75,7 @@ export const d1Database = (
         } as Bundle;
       },
 
-      async getBundles(options) {
+      async getBundles(context, options) {
         const { where, limit, offset = 0 } = options ?? {};
 
         let sql = "SELECT * FROM bundles";
@@ -103,11 +108,14 @@ export const d1Database = (
           params.push(offset);
         }
 
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql: minify(sql),
-          params,
-        });
+        const singlePage = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql: minify(sql),
+            params,
+          },
+        );
 
         const rows = await resolvePage<SnakeCaseBundle>(singlePage);
 
@@ -131,23 +139,26 @@ export const d1Database = (
         return bundles;
       },
 
-      async getChannels() {
+      async getChannels(context) {
         const sql = minify(
           /* sql */ `
           SELECT channel FROM bundles GROUP BY channel
         `,
         );
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [],
-        });
+        const singlePage = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql,
+            params: [],
+          },
+        );
 
         const rows = await resolvePage<{ channel: string }>(singlePage);
         return rows.map((row) => row.channel);
       },
 
-      async commitBundle({ changedSets }) {
+      async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
@@ -191,7 +202,7 @@ export const d1Database = (
           VALUES
           ${valuesSql};`);
 
-        await cf.d1.database.query(config.databaseId, {
+        await context.cf.d1.database.query(config.databaseId, {
           account_id: config.accountId,
           sql,
           params: params as string[],
