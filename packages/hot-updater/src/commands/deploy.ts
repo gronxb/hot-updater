@@ -84,6 +84,12 @@ export const deploy = async (options: DeployOptions) => {
   if (config.updateStrategy === "fingerprint") {
     const s = p.spinner();
     s.start(`Fingerprinting (${platform})`);
+    if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
+      p.log.error(
+        "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+      );
+      process.exit(1);
+    }
     const fingerprint = await nativeFingerprint(cwd, {
       platform,
       ...config.fingerprint,

@@ -1,0 +1,148 @@
+{
+  "ios": {
+    "hash": "1ebb341aa2c4997bc8a03149bca5254f18742f21",
+    "sources": [
+      {
+        "type": "file",
+        "filePath": ".gitignore",
+        "reasons": [
+          "bareGitIgnore"
+        ],
+        "hash": "83df031d738ba3f28a58e1e9900a933f96218446"
+      },
+      {
+        "type": "dir",
+        "filePath": "ios",
+        "reasons": [
+          "bareNativeDir"
+        ],
+        "hash": "d0a92d685dd5fcdf9949ab8eba3c87d62beabfbb"
+      },
+      {
+        "type": "dir",
+        "filePath": "node_modules/@callstack/repack",
+        "reasons": [
+          "rncoreAutolinkingIos"
+        ],
+        "hash": null
+      },
+      {
+        "type": "dir",
+        "filePath": "node_modules/@hot-updater/react-native",
+        "reasons": [
+          "rncoreAutolinkingIos"
+        ],
+        "hash": null
+      },
+      {
+        "type": "contents",
+        "id": "expoConfig",
+        "contents": "{\"name\":\"rnef-repack\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"rnef-repack\",\"version\":\"0.17.0\"}",
+        "reasons": [
+          "expoConfig"
+        ],
+        "hash": "3b8f46b4a8eacf3112268d03ec238bc75fb11e7b"
+      },
+      {
+        "type": "contents",
+        "id": "package:react-native",
+        "contents": "{\"name\":\"react-native\",\"version\":\"0.78.2\",\"description\":\"A framework for building native apps using React\",\"license\":\"MIT\",\"repository\":{\"type\":\"git\",\"url\":\"git+https://github.com/facebook/react-native.git\",\"directory\":\"packages/react-native\"},\"homepage\":\"https://reactnative.dev/\",\"keywords\":[\"react\",\"react-native\",\"android\",\"ios\",\"mobile\",\"cross-platform\",\"app-framework\",\"mobile-development\"],\"bugs\":\"https://github.com/facebook/react-native/issues\",\"engines\":{\"node\":\">=18\"},\"bin\":{\"react-native\":\"cli.js\"},\"types\":\"types\",\"jest-junit\":{\"outputDirectory\":\"reports/junit\",\"outputName\":\"js-test-results.xml\"},\"files\":[\"android\",\"build.gradle.kts\",\"cli.js\",\"flow\",\"gradle.properties\",\"gradle/libs.versions.toml\",\"index.js\",\"interface.js\",\"jest-preset.js\",\"jest\",\"Libraries\",\"LICENSE\",\"React-Core.podspec\",\"react-native.config.js\",\"React.podspec\",\"React\",\"!React/Fabric/RCTThirdPartyFabricComponentsProvider.*\",\"ReactAndroid\",\"ReactApple\",\"ReactCommon\",\"README.md\",\"rn-get-polyfills.js\",\"scripts/compose-source-maps.js\",\"scripts/find-node-for-xcode.sh\",\"scripts/bundle.js\",\"scripts/generate-codegen-artifacts.js\",\"scripts/generate-provider-cli.js\",\"scripts/generate-specs-cli.js\",\"scripts/codegen\",\"!scripts/codegen/__tests__\",\"!scripts/codegen/__test_fixtures__\",\"scripts/hermes/hermes-utils.js\",\"scripts/hermes/prepare-hermes-for-build.js\",\"scripts/ios-configure-glog.sh\",\"scripts/xcode/ccache-clang++.sh\",\"scripts/xcode/ccache-clang.sh\",\"scripts/xcode/ccache.conf\",\"scripts/xcode/with-environment.sh\",\"scripts/native_modules.rb\",\"scripts/node-binary.sh\",\"scripts/packager.sh\",\"scripts/packager-reporter.js\",\"scripts/react_native_pods_utils/script_phases.rb\",\"scripts/react_native_pods_utils/script_phases.sh\",\"scripts/react_native_pods.rb\",\"scripts/cocoapods\",\"!scripts/cocoapods/__tests__\",\"scripts/react-native-xcode.sh\",\"sdks/.hermesversion\",\"sdks/hermes-engine\",\"sdks/hermesc\",\"settings.gradle.kts\",\"src\",\"template.config.js\",\"template\",\"!template/node_modules\",\"!template/package-lock.json\",\"!template/yarn.lock\",\"third-party-podspecs\",\"types\"],\"scripts\":{\"prepack\":\"node ./scripts/prepack.js\",\"featureflags\":\"node ./scripts/featureflags/index.js\"},\"peerDependencies\":{\"@types/react\":\"^19.0.0\",\"react\":\"^19.0.0\"},\"peerDependenciesMeta\":{\"@types/react\":{\"optional\":true}},\"dependencies\":{\"@jest/create-cache-key-function\":\"^29.6.3\",\"@react-native/assets-registry\":\"0.78.2\",\"@react-native/codegen\":\"0.78.2\",\"@react-native/community-cli-plugin\":\"0.78.2\",\"@react-native/gradle-plugin\":\"0.78.2\",\"@react-native/js-polyfills\":\"0.78.2\",\"@react-native/normalize-colors\":\"0.78.2\",\"@react-native/virtualized-lists\":\"0.78.2\",\"abort-controller\":\"^3.0.0\",\"anser\":\"^1.4.9\",\"ansi-regex\":\"^5.0.0\",\"babel-jest\":\"^29.7.0\",\"babel-plugin-syntax-hermes-parser\":\"0.25.1\",\"base64-js\":\"^1.5.1\",\"chalk\":\"^4.0.0\",\"commander\":\"^12.0.0\",\"event-target-shim\":\"^5.0.1\",\"flow-enums-runtime\":\"^0.0.6\",\"glob\":\"^7.1.1\",\"invariant\":\"^2.2.4\",\"jest-environment-node\":\"^29.6.3\",\"memoize-one\":\"^5.0.0\",\"metro-runtime\":\"^0.81.3\",\"metro-source-map\":\"^0.81.3\",\"nullthrows\":\"^1.1.1\",\"pretty-format\":\"^29.7.0\",\"promise\":\"^8.3.0\",\"react-devtools-core\":\"^6.0.1\",\"react-refresh\":\"^0.14.0\",\"regenerator-runtime\":\"^0.13.2\",\"scheduler\":\"0.25.0\",\"semver\":\"^7.1.3\",\"stacktrace-parser\":\"^0.1.10\",\"whatwg-fetch\":\"^3.0.0\",\"ws\":\"^6.2.3\",\"yargs\":\"^17.6.2\"},\"codegenConfig\":{\"libraries\":[{\"name\":\"FBReactNativeSpec\",\"type\":\"modules\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"},{\"name\":\"rncore\",\"type\":\"components\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"}]}}",
+        "reasons": [
+          "package:react-native"
+        ],
+        "hash": "4d621365a215f0a414aa86b658972894ec4770b8"
+      },
+      {
+        "type": "contents",
+        "id": "packageJson:scripts",
+        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\"}",
+        "reasons": [
+          "packageJson:scripts"
+        ],
+        "hash": "8509c6ff5c50159bc020f4b7c9bfcb87ec405de6"
+      },
+      {
+        "type": "contents",
+        "id": "rncoreAutolinkingConfig:ios",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.17.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.0.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "reasons": [
+          "rncoreAutolinkingIos"
+        ],
+        "hash": "137a973e3b03f64238aa791111d0f81c03f0f916"
+      }
+    ]
+  },
+  "android": {
+    "hash": "dd8d76ca947d9bcc7be7f824b9d006b0850ae025",
+    "sources": [
+      {
+        "type": "file",
+        "filePath": ".gitignore",
+        "reasons": [
+          "bareGitIgnore"
+        ],
+        "hash": "83df031d738ba3f28a58e1e9900a933f96218446"
+      },
+      {
+        "type": "dir",
+        "filePath": "android",
+        "reasons": [
+          "bareNativeDir"
+        ],
+        "hash": "511e23f8712942f7291fec9bbdae6a64c1060fa3"
+      },
+      {
+        "type": "dir",
+        "filePath": "node_modules/@callstack/repack",
+        "reasons": [
+          "rncoreAutolinkingAndroid"
+        ],
+        "hash": null
+      },
+      {
+        "type": "dir",
+        "filePath": "node_modules/@hot-updater/react-native",
+        "reasons": [
+          "rncoreAutolinkingAndroid"
+        ],
+        "hash": null
+      },
+      {
+        "type": "contents",
+        "id": "expoConfig",
+        "contents": "{\"name\":\"rnef-repack\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"rnef-repack\",\"version\":\"0.17.0\"}",
+        "reasons": [
+          "expoConfig"
+        ],
+        "hash": "3b8f46b4a8eacf3112268d03ec238bc75fb11e7b"
+      },
+      {
+        "type": "contents",
+        "id": "package:react-native",
+        "contents": "{\"name\":\"react-native\",\"version\":\"0.78.2\",\"description\":\"A framework for building native apps using React\",\"license\":\"MIT\",\"repository\":{\"type\":\"git\",\"url\":\"git+https://github.com/facebook/react-native.git\",\"directory\":\"packages/react-native\"},\"homepage\":\"https://reactnative.dev/\",\"keywords\":[\"react\",\"react-native\",\"android\",\"ios\",\"mobile\",\"cross-platform\",\"app-framework\",\"mobile-development\"],\"bugs\":\"https://github.com/facebook/react-native/issues\",\"engines\":{\"node\":\">=18\"},\"bin\":{\"react-native\":\"cli.js\"},\"types\":\"types\",\"jest-junit\":{\"outputDirectory\":\"reports/junit\",\"outputName\":\"js-test-results.xml\"},\"files\":[\"android\",\"build.gradle.kts\",\"cli.js\",\"flow\",\"gradle.properties\",\"gradle/libs.versions.toml\",\"index.js\",\"interface.js\",\"jest-preset.js\",\"jest\",\"Libraries\",\"LICENSE\",\"React-Core.podspec\",\"react-native.config.js\",\"React.podspec\",\"React\",\"!React/Fabric/RCTThirdPartyFabricComponentsProvider.*\",\"ReactAndroid\",\"ReactApple\",\"ReactCommon\",\"README.md\",\"rn-get-polyfills.js\",\"scripts/compose-source-maps.js\",\"scripts/find-node-for-xcode.sh\",\"scripts/bundle.js\",\"scripts/generate-codegen-artifacts.js\",\"scripts/generate-provider-cli.js\",\"scripts/generate-specs-cli.js\",\"scripts/codegen\",\"!scripts/codegen/__tests__\",\"!scripts/codegen/__test_fixtures__\",\"scripts/hermes/hermes-utils.js\",\"scripts/hermes/prepare-hermes-for-build.js\",\"scripts/ios-configure-glog.sh\",\"scripts/xcode/ccache-clang++.sh\",\"scripts/xcode/ccache-clang.sh\",\"scripts/xcode/ccache.conf\",\"scripts/xcode/with-environment.sh\",\"scripts/native_modules.rb\",\"scripts/node-binary.sh\",\"scripts/packager.sh\",\"scripts/packager-reporter.js\",\"scripts/react_native_pods_utils/script_phases.rb\",\"scripts/react_native_pods_utils/script_phases.sh\",\"scripts/react_native_pods.rb\",\"scripts/cocoapods\",\"!scripts/cocoapods/__tests__\",\"scripts/react-native-xcode.sh\",\"sdks/.hermesversion\",\"sdks/hermes-engine\",\"sdks/hermesc\",\"settings.gradle.kts\",\"src\",\"template.config.js\",\"template\",\"!template/node_modules\",\"!template/package-lock.json\",\"!template/yarn.lock\",\"third-party-podspecs\",\"types\"],\"scripts\":{\"prepack\":\"node ./scripts/prepack.js\",\"featureflags\":\"node ./scripts/featureflags/index.js\"},\"peerDependencies\":{\"@types/react\":\"^19.0.0\",\"react\":\"^19.0.0\"},\"peerDependenciesMeta\":{\"@types/react\":{\"optional\":true}},\"dependencies\":{\"@jest/create-cache-key-function\":\"^29.6.3\",\"@react-native/assets-registry\":\"0.78.2\",\"@react-native/codegen\":\"0.78.2\",\"@react-native/community-cli-plugin\":\"0.78.2\",\"@react-native/gradle-plugin\":\"0.78.2\",\"@react-native/js-polyfills\":\"0.78.2\",\"@react-native/normalize-colors\":\"0.78.2\",\"@react-native/virtualized-lists\":\"0.78.2\",\"abort-controller\":\"^3.0.0\",\"anser\":\"^1.4.9\",\"ansi-regex\":\"^5.0.0\",\"babel-jest\":\"^29.7.0\",\"babel-plugin-syntax-hermes-parser\":\"0.25.1\",\"base64-js\":\"^1.5.1\",\"chalk\":\"^4.0.0\",\"commander\":\"^12.0.0\",\"event-target-shim\":\"^5.0.1\",\"flow-enums-runtime\":\"^0.0.6\",\"glob\":\"^7.1.1\",\"invariant\":\"^2.2.4\",\"jest-environment-node\":\"^29.6.3\",\"memoize-one\":\"^5.0.0\",\"metro-runtime\":\"^0.81.3\",\"metro-source-map\":\"^0.81.3\",\"nullthrows\":\"^1.1.1\",\"pretty-format\":\"^29.7.0\",\"promise\":\"^8.3.0\",\"react-devtools-core\":\"^6.0.1\",\"react-refresh\":\"^0.14.0\",\"regenerator-runtime\":\"^0.13.2\",\"scheduler\":\"0.25.0\",\"semver\":\"^7.1.3\",\"stacktrace-parser\":\"^0.1.10\",\"whatwg-fetch\":\"^3.0.0\",\"ws\":\"^6.2.3\",\"yargs\":\"^17.6.2\"},\"codegenConfig\":{\"libraries\":[{\"name\":\"FBReactNativeSpec\",\"type\":\"modules\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"},{\"name\":\"rncore\",\"type\":\"components\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"}]}}",
+        "reasons": [
+          "package:react-native"
+        ],
+        "hash": "4d621365a215f0a414aa86b658972894ec4770b8"
+      },
+      {
+        "type": "contents",
+        "id": "packageJson:scripts",
+        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\"}",
+        "reasons": [
+          "packageJson:scripts"
+        ],
+        "hash": "8509c6ff5c50159bc020f4b7c9bfcb87ec405de6"
+      },
+      {
+        "type": "contents",
+        "id": "rncoreAutolinkingConfig:android",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@callstack/repack/android\",\"packageImportPath\":\"import com.callstack.repack.ScriptManagerPackage;\",\"packageInstance\":\"new ScriptManagerPackage()\",\"buildTypes\":[],\"libraryName\":\"RNScriptManagerSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@callstack/repack/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
+        "reasons": [
+          "rncoreAutolinkingAndroid"
+        ],
+        "hash": "c309b7a84647ac24550a96bfdd1b84fc92be4013"
+      }
+    ]
+  }
+}
