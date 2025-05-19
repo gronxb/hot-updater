@@ -20,16 +20,16 @@ export const withJwtSignedUrl = async <
   data: T | null;
   reqUrl: string;
   jwtSecret: string;
-}): Promise<(T & { fileUrl: string | null }) | null> => {
+}): Promise<(Omit<T, "storageUri"> & { fileUrl: string | null }) | null> => {
   if (!data) {
     return null;
   }
 
-  if (data.id === NIL_UUID || !data.storageUri) {
-    return { ...data, fileUrl: null };
+  const { storageUri, ...rest } = data;
+  if (data.id === NIL_UUID || !storageUri) {
+    return { ...rest, fileUrl: null };
   }
-
-  const storageUrl = new URL(data.storageUri);
+  const storageUrl = new URL(storageUri);
   const key = `${storageUrl.host}${storageUrl.pathname}`;
   const token = await signToken(key, jwtSecret);
 
@@ -37,7 +37,7 @@ export const withJwtSignedUrl = async <
   url.pathname = key;
   url.searchParams.set("token", token);
 
-  return { ...data, fileUrl: url.toString() };
+  return { ...rest, fileUrl: url.toString() };
 };
 
 export const signToken = async (key: string, jwtSecret: string) => {

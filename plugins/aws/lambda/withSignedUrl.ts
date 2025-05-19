@@ -11,7 +11,9 @@ import { NIL_UUID } from "@hot-updater/core";
  * @param {string} options.privateKey - CloudFront private key
  * @returns {Promise<T|null>} - Update response object with fileUrl or null
  */
-export const withSignedUrl = async <T extends { id: string }>({
+export const withSignedUrl = async <
+  T extends { id: string; storageUri: string | null },
+>({
   data,
   reqUrl,
   keyPairId,
@@ -26,14 +28,15 @@ export const withSignedUrl = async <T extends { id: string }>({
     return null;
   }
 
-  if (data.id === NIL_UUID) {
+  if (data.id === NIL_UUID || !data.storageUri) {
     return { ...data, fileUrl: null };
   }
 
-  const key = `${data.id}/bundle.zip`;
+  const storageUrl = new URL(data.storageUri);
+  const key = storageUrl.pathname;
 
   const url = new URL(reqUrl);
-  url.pathname = `/${key}`;
+  url.pathname = key;
 
   // Create CloudFront signed URL
   const signedUrl = getSignedUrl({
