@@ -5,7 +5,7 @@ import { firebaseDatabase } from "./firebaseDatabase";
 
 const PROJECT_ID = "firebase-database-test";
 
-const { firestore, bundlesCollection, clearCollections } =
+const { firestore, bundlesCollection, channelsCollection, clearCollections } =
   createFirestoreMock(PROJECT_ID);
 
 describe("firebaseDatabase plugin", () => {
@@ -424,7 +424,7 @@ describe("firebaseDatabase plugin", () => {
       gitCommitHash: "commitNoVer",
       message: "Bundle with no target version",
       platform: "ios",
-      targetAppVersion: "",
+      targetAppVersion: null,
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
@@ -433,7 +433,7 @@ describe("firebaseDatabase plugin", () => {
     const bundleDoc = await bundlesCollection.doc("bundleNoVersion").get();
     expect(bundleDoc.exists).toBeTruthy();
     const data = bundleDoc.data();
-    expect(data).not.toHaveProperty("target_app_version");
+    expect(data?.target_app_version).toBeNull();
   });
 
   it("should fetch the latest bundle data from Firestore via getBundleById", async () => {
@@ -622,7 +622,7 @@ describe("firebaseDatabase plugin", () => {
       gitCommitHash: "commitTV4",
       message: "Test bundle TV4 removed version",
       platform: "android",
-      targetAppVersion: "",
+      targetAppVersion: "2.0.1",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
@@ -633,5 +633,52 @@ describe("firebaseDatabase plugin", () => {
       .doc("android_beta_2.0.0")
       .get();
     expect(tvDocAfter.exists).toBeFalsy();
+  });
+
+  it("should add channel to channels collection when bundle is added and remove old channel when updated", async () => {
+    // Add initial bundle
+    await plugin.appendBundle({
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "Test bundle 1",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    });
+    await plugin.commitBundle();
+
+    // Verify channel was added
+    const channelDoc = await channelsCollection.doc("production").get();
+    expect(channelDoc.exists).toBeTruthy();
+    expect(channelDoc.data()?.name).toBe("production");
+
+    // Update bundle with new channel
+    await plugin.updateBundle("bundle1", {
+      id: "bundle1",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "Test bundle 1 updated",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    });
+    await plugin.commitBundle();
+
+    // Verify old channel was removed and new channel was added
+    const oldChannelDoc = await channelsCollection.doc("production").get();
+    expect(oldChannelDoc.exists).toBeFalsy();
+
+    const newChannelDoc = await channelsCollection.doc("staging").get();
+    expect(newChannelDoc.exists).toBeTruthy();
+    expect(newChannelDoc.data()?.name).toBe("staging");
   });
 });

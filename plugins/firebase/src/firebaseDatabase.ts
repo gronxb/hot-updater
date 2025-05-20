@@ -101,12 +101,8 @@ export const firebaseDatabase = (
       },
 
       async getChannels(context) {
-        const targetAppVersionsCollection = context.db.collection(
-          "target_app_versions",
-        );
-        const query: admin.firestore.Query<FirestoreData> =
-          targetAppVersionsCollection.select("channel");
-        const querySnapshot = await query.get();
+        const channelsCollection = context.db.collection("channels");
+        const querySnapshot = await channelsCollection.get();
 
         if (querySnapshot.empty) {
           return [];
@@ -115,8 +111,8 @@ export const firebaseDatabase = (
         const channels = new Set<string>();
         for (const doc of querySnapshot.docs) {
           const data = doc.data();
-          if (data.channel) {
-            channels.add(data.channel as string);
+          if (data.name) {
+            channels.add(data.name as string);
           }
         }
 
@@ -128,6 +124,8 @@ export const firebaseDatabase = (
           return;
         }
 
+        let isTargetAppVersionChanged = false;
+
         await context.db.runTransaction(async (transaction) => {
           const bundlesSnapshot = await transaction.get(
             context.bundlesCollection,
@@ -135,13 +133,25 @@ export const firebaseDatabase = (
           const targetVersionsSnapshot = await transaction.get(
             context.db.collection("target_app_versions"),
           );
+          const channelsSnapshot = await transaction.get(
+            context.db.collection("channels"),
+          );
 
           const bundlesMap: { [id: string]: any } = {};
           for (const doc of bundlesSnapshot.docs) {
             bundlesMap[doc.id] = doc.data();
           }
 
+          const channelsMap: { [name: string]: boolean } = {};
+          for (const doc of channelsSnapshot.docs) {
+            channelsMap[doc.id] = true;
+          }
+
           for (const { operation, data } of changedSets) {
+            if (data.targetAppVersion) {
+              isTargetAppVersionChanged = true;
+            }
+
             if (operation === "insert" || operation === "update") {
               bundlesMap[data.id] = {
                 id: data.id,
@@ -156,39 +166,53 @@ export const firebaseDatabase = (
                 storage_uri: data.storageUri,
                 fingerprint_hash: data.fingerprintHash,
               };
+
+              // Add channel to channels collection
+              const channelRef = context.db
+                .collection("channels")
+                .doc(data.channel);
+              transaction.set(
+                channelRef,
+                {
+                  name: data.channel,
+                },
+                { merge: true },
+              );
             }
           }
 
           const requiredTargetVersionKeys = new Set<string>();
+          const requiredChannels = new Set<string>();
           for (const bundle of Object.values(bundlesMap)) {
             if (bundle.target_app_version) {
               const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
               requiredTargetVersionKeys.add(key);
             }
+            requiredChannels.add(bundle.channel);
           }
 
           for (const { operation, data } of changedSets) {
             const bundleRef = context.bundlesCollection.doc(data.id);
             if (operation === "insert" || operation === "update") {
-              if (data.targetAppVersion) {
-                transaction.set(
-                  bundleRef,
-                  {
-                    id: data.id,
-                    channel: data.channel,
-                    enabled: data.enabled,
-                    should_force_update: data.shouldForceUpdate,
-                    file_hash: data.fileHash,
-                    git_commit_hash: data.gitCommitHash || null,
-                    message: data.message || null,
-                    platform: data.platform,
-                    target_app_version: data.targetAppVersion,
-                    storage_uri: data.storageUri,
-                    fingerprint_hash: data.fingerprintHash,
-                  },
-                  { merge: true },
-                );
+              transaction.set(
+                bundleRef,
+                {
+                  id: data.id,
+                  channel: data.channel,
+                  enabled: data.enabled,
+                  should_force_update: data.shouldForceUpdate,
+                  file_hash: data.fileHash,
+                  git_commit_hash: data.gitCommitHash || null,
+                  message: data.message || null,
+                  platform: data.platform,
+                  target_app_version: data.targetAppVersion || null,
+                  storage_uri: data.storageUri,
+                  fingerprint_hash: data.fingerprintHash,
+                },
+                { merge: true },
+              );
 
+              if (data.targetAppVersion) {
                 const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
                 const targetAppVersionsRef = context.db
                   .collection("target_app_versions")
@@ -202,31 +226,22 @@ export const firebaseDatabase = (
                   },
                   { merge: true },
                 );
-              } else {
-                transaction.set(
-                  bundleRef,
-                  {
-                    id: data.id,
-                    channel: data.channel,
-                    enabled: data.enabled,
-                    should_force_update: data.shouldForceUpdate,
-                    file_hash: data.fileHash,
-                    git_commit_hash: data.gitCommitHash || null,
-                    message: data.message || null,
-                    platform: data.platform,
-                    target_app_version: admin.firestore.FieldValue.delete(),
-                    storage_uri: data.storageUri,
-                    fingerprint_hash: data.fingerprintHash,
-                  },
-                  { merge: true },
-                );
               }
             }
           }
 
-          for (const targetDoc of targetVersionsSnapshot.docs) {
-            if (!requiredTargetVersionKeys.has(targetDoc.id)) {
-              transaction.delete(targetDoc.ref);
+          if (isTargetAppVersionChanged) {
+            for (const targetDoc of targetVersionsSnapshot.docs) {
+              if (!requiredTargetVersionKeys.has(targetDoc.id)) {
+                transaction.delete(targetDoc.ref);
+              }
+            }
+          }
+
+          // Remove unused channels
+          for (const channelDoc of channelsSnapshot.docs) {
+            if (!requiredChannels.has(channelDoc.id)) {
+              transaction.delete(channelDoc.ref);
             }
           }
         });
