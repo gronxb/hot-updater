@@ -229,6 +229,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   const functionsDir = path.join(tmpDir, "functions");
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
+
+  if (!fs.existsSync(functionsDir)) {
+    await fs.promises.mkdir(functionsDir, { recursive: true });
+  }
+
   await fs.promises.rename(path.join(tmpDir, "index.cjs"), functionsIndexPath);
   await fs.promises.rename(
     path.join(functionsDir, "_package.json"),
