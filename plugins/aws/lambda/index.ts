@@ -40,7 +40,19 @@ app.get("/api/check-update", async (c) => {
     const fingerprintHash = headers["x-fingerprint-hash"]?.[0]?.value;
 
     if (!bundleId || !appPlatform) {
-      return c.json({ error: "Missing required headers." }, 400);
+      return c.json(
+        { error: "Missing required headers (x-app-platform, x-bundle-id)." },
+        400,
+      );
+    }
+    if (!appVersion && !fingerprintHash) {
+      return c.json(
+        {
+          error:
+            "Missing required headers (x-app-version or x-fingerprint-hash).",
+        },
+        400,
+      );
     }
 
     const cdnHost = headers["host"]?.[0]?.value;

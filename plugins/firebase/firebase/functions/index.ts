@@ -31,15 +31,22 @@ app.get("/api/check-update", async (c) => {
     const channel = c.req.header("x-channel");
     const fingerprintHash = c.req.header("x-fingerprint-hash");
 
-    if (!platform || !bundleId) {
+    if (!bundleId || !platform) {
+      return c.json(
+        { error: "Missing required headers (x-app-platform, x-bundle-id)." },
+        400,
+      );
+    }
+    if (!appVersion && !fingerprintHash) {
       return c.json(
         {
           error:
-            "Missing required headers (x-app-platform, x-app-version, x-bundle-id)",
+            "Missing required headers (x-app-version or x-fingerprint-hash).",
         },
         400,
       );
     }
+
     const db = admin.firestore();
 
     const updateInfo = fingerprintHash

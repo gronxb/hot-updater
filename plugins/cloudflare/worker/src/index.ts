@@ -22,17 +22,18 @@ app.get("/api/check-update", async (c) => {
 
   if (!bundleId || !appPlatform) {
     return c.json(
-      { error: "Missing bundleId, appPlatform, or appVersion" },
+      { error: "Missing required headers (x-app-platform, x-bundle-id)." },
       400,
     );
   }
-
   if (!appVersion && !fingerprintHash) {
-    return c.json({ error: "Missing appVersion or fingerprintHash" }, 400);
-  }
-
-  if (!bundleId || !appPlatform) {
-    return c.json({ error: "Missing bundleId and appPlatform" }, 400);
+    return c.json(
+      {
+        error:
+          "Missing required headers (x-app-version or x-fingerprint-hash).",
+      },
+      400,
+    );
   }
 
   const updateInfo = fingerprintHash

@@ -128,11 +128,17 @@ Deno.serve(async (req) => {
     const channel = req.headers.get("x-channel") as string | undefined;
 
     if (!appVersion && !fingerprintHash) {
-      return createErrorResponse("Missing appVersion or fingerprintHash", 400);
+      return createErrorResponse(
+        "Missing required headers (x-app-version or x-fingerprint-hash).",
+        400,
+      );
     }
 
     if (!bundleId || !appPlatform) {
-      return createErrorResponse("Missing bundleId and appPlatform", 400);
+      return createErrorResponse(
+        "Missing required headers (x-app-platform, x-bundle-id).",
+        400,
+      );
     }
 
     const { data, error } = fingerprintHash
