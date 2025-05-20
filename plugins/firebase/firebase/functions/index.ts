@@ -7,8 +7,6 @@ import { getUpdateInfo } from "./getUpdateInfo";
 declare global {
   var HotUpdater: {
     REGION: string;
-    STORAGE_BUCKET: string;
-    PROJECT_ID: string;
   };
 }
 
@@ -78,14 +76,29 @@ app.get("/api/check-update", async (c) => {
       });
     }
 
-    const [signedUrl] = await admin
-      .storage()
-      .bucket(admin.app().options.storageBucket)
-      .file([updateInfo.id, "bundle.zip"].join("/"))
-      .getSignedUrl({
-        action: "read",
-        expires: Date.now() + 60 * 1000,
-      });
+    let signedUrl: string | null = null;
+    if (!updateInfo.storageUri) {
+      const [_signedUrl] = await admin
+        .storage()
+        .bucket(admin.app().options.storageBucket)
+        .file([updateInfo.id, "bundle.zip"].join("/"))
+        .getSignedUrl({
+          action: "read",
+          expires: Date.now() + 60 * 1000,
+        });
+      signedUrl = _signedUrl;
+    } else {
+      const storageUrl = new URL(updateInfo.storageUri);
+      const [_signedUrl] = await admin
+        .storage()
+        .bucket(storageUrl.host)
+        .file(storageUrl.pathname)
+        .getSignedUrl({
+          action: "read",
+          expires: Date.now() + 60 * 1000,
+        });
+      signedUrl = _signedUrl;
+    }
 
     return c.json(
       {
