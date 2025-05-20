@@ -223,10 +223,19 @@ export const createBlobDatabasePlugin = <TContext = object>({
         const removalsByKey: Record<string, string[]> = {};
         const pathsToInvalidate: Set<string> = new Set();
 
+        let isTargetAppVersionChanged = false;
+
         for (const { operation, data } of changedSets) {
+          if (data.targetAppVersion !== undefined) {
+            isTargetAppVersionChanged = true;
+          }
           // Insert operation.
           if (operation === "insert") {
-            const key = `${data.channel}/${data.platform}/${data.targetAppVersion}/update.json`;
+            const target = data.targetAppVersion ?? data.fingerprintHash;
+            if (!target) {
+              throw new Error("target not found");
+            }
+            const key = `${data.channel}/${data.platform}/${target}/update.json`;
             const bundleWithKey: BundleWithUpdateJsonKey = {
               ...data,
               _updateJsonKey: key,
@@ -260,11 +269,16 @@ export const createBlobDatabasePlugin = <TContext = object>({
               data.channel !== undefined ? data.channel : bundle.channel;
             const newPlatform =
               data.platform !== undefined ? data.platform : bundle.platform;
-            const newTargetAppVersion =
-              data.targetAppVersion !== undefined
-                ? data.targetAppVersion
-                : bundle.targetAppVersion;
-            const newKey = `${newChannel}/${newPlatform}/${newTargetAppVersion}/update.json`;
+            const target =
+              data.fingerprintHash ??
+              bundle.fingerprintHash ??
+              data.targetAppVersion ??
+              bundle.targetAppVersion;
+            if (!target) {
+              throw new Error("target not found");
+            }
+
+            const newKey = `${newChannel}/${newPlatform}/${target}/update.json`;
 
             if (newKey !== bundle._updateJsonKey) {
               // If the key has changed (e.g., channel or targetAppVersion update), remove from old location.
@@ -349,13 +363,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
 
         // Update target-app-versions.json for each platform and collect paths that were actually updated
         const updatedTargetFilePaths = new Set<string>();
-        for (const platform of PLATFORMS) {
-          const updatedPaths = await updateTargetVersionsForPlatform(
-            context,
-            platform,
-          );
-          for (const path of updatedPaths) {
-            updatedTargetFilePaths.add(path);
+        if (isTargetAppVersionChanged) {
+          for (const platform of PLATFORMS) {
+            const updatedPaths = await updateTargetVersionsForPlatform(
+              context,
+              platform,
+            );
+            for (const path of updatedPaths) {
+              updatedTargetFilePaths.add(path);
+            }
           }
         }
 

@@ -203,7 +203,7 @@ export class CloudFrontManager {
               QueryString: true,
               Cookies: { Forward: "none" },
               Headers: {
-                Quantity: 5,
+                Quantity: 6,
                 Items: [
                   "x-bundle-id",
                   "x-app-version",
@@ -310,7 +310,7 @@ export class CloudFrontManager {
               QueryString: true,
               Cookies: { Forward: "none" },
               Headers: {
-                Quantity: 5,
+                Quantity: 6,
                 Items: [
                   "x-bundle-id",
                   "x-app-version",
