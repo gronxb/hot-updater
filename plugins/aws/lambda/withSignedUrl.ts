@@ -23,13 +23,14 @@ export const withSignedUrl = async <
   reqUrl: string;
   keyPairId: string;
   privateKey: string;
-}): Promise<(T & { fileUrl: string | null }) | null> => {
+}): Promise<(Omit<T, "storageUri"> & { fileUrl: string | null }) | null> => {
   if (!data) {
     return null;
   }
 
+  const { storageUri, ...rest } = data;
   if (data.id === NIL_UUID || !data.storageUri) {
-    return { ...data, fileUrl: null };
+    return { ...rest, fileUrl: null };
   }
 
   const storageUrl = new URL(data.storageUri);
@@ -46,5 +47,5 @@ export const withSignedUrl = async <
     dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(), // Valid for 60 seconds
   });
 
-  return { ...data, fileUrl: signedUrl };
+  return { ...rest, fileUrl: signedUrl };
 };
