@@ -222,19 +222,13 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
 
   const firebaseDir = path.dirname(
-    require.resolve("@hot-updater/firebase/functions"),
+    path.dirname(require.resolve("@hot-updater/firebase/functions")),
   );
 
   const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
 
   const functionsDir = path.join(tmpDir, "functions");
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
-
-  if (!fs.existsSync(functionsDir)) {
-    await fs.promises.mkdir(functionsDir, { recursive: true });
-  }
-
-  await fs.promises.rename(path.join(tmpDir, "index.cjs"), functionsIndexPath);
   await fs.promises.rename(
     path.join(functionsDir, "_package.json"),
     path.join(functionsDir, "package.json"),
