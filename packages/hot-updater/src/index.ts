@@ -12,6 +12,7 @@ import { type FingerprintResult, nativeFingerprint } from "@rnef/tools";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
+import { getNativeAppVersion } from "./utils/getNativeAppVersion";
 import { printBanner } from "./utils/printBanner";
 
 const DEFAULT_CHANNEL = "production";
@@ -38,6 +39,8 @@ fingerprintCommand.action(async () => {
     process.exit(1);
   }
 
+  const nativeAppVersion = getNativeAppVersion("ios");
+  console.log(nativeAppVersion);
   const fingerPrintRef = {
     ios: null as FingerprintResult | null,
     android: null as FingerprintResult | null,
