@@ -8,7 +8,7 @@ import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
 import { banner, getCwd, loadConfig, log } from "@hot-updater/plugin-core";
-import { nativeFingerprint } from "@rnef/tools";
+import { type FingerprintResult, nativeFingerprint } from "@rnef/tools";
 import { Command, Option } from "commander";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
@@ -30,15 +30,27 @@ const fingerprintCommand = program
   .description("Generate fingerprint");
 
 fingerprintCommand.action(async () => {
+  const config = await loadConfig(null);
+  if (config.updateStrategy === "appVersion") {
+    p.log.error(
+      "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
+    );
+    process.exit(1);
+  }
+
+  const fingerPrintRef = {
+    ios: null as FingerprintResult | null,
+    android: null as FingerprintResult | null,
+  };
   await p.tasks([
     {
       title: "Generating fingerprint (iOS)",
       task: async () => {
         const fingerprint = await nativeFingerprint(getCwd(), {
           platform: "ios",
-          extraSources: [],
-          ignorePaths: [],
+          ...config.fingerprint,
         });
+        fingerPrintRef.ios = fingerprint;
         return `Fingerprint(iOS): ${fingerprint.hash}`;
       },
     },
@@ -47,13 +59,39 @@ fingerprintCommand.action(async () => {
       task: async () => {
         const fingerprint = await nativeFingerprint(getCwd(), {
           platform: "android",
-          extraSources: [],
-          ignorePaths: [],
+          ...config.fingerprint,
         });
+        fingerPrintRef.android = fingerprint;
         return `Fingerprint(Android): ${fingerprint.hash}`;
       },
     },
   ]);
+
+  const localFingerprintPath = path.join(getCwd(), "fingerprint.json");
+  if (!fs.existsSync(localFingerprintPath)) {
+    return;
+  }
+
+  const readFingerprint = await fs.promises.readFile(
+    localFingerprintPath,
+    "utf-8",
+  );
+  const localFingerprint = JSON.parse(readFingerprint);
+  if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
+    p.log.error(
+      "iOS fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
+    );
+    process.exit(1);
+  }
+
+  if (localFingerprint.android.hash !== fingerPrintRef.android?.hash) {
+    p.log.error(
+      "Android fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
+    );
+    process.exit(1);
+  }
+
+  p.log.success("Fingerprint matched");
 });
 
 fingerprintCommand
@@ -65,6 +103,13 @@ fingerprintCommand
         title: "Creating fingerprint.json",
         task: async () => {
           const config = await loadConfig(null);
+          if (config.updateStrategy === "appVersion") {
+            p.log.error(
+              "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
+            );
+            process.exit(1);
+          }
+
           const [ios, android] = await Promise.all([
             nativeFingerprint(getCwd(), {
               platform: "ios",
@@ -72,7 +117,6 @@ fingerprintCommand
             }),
             nativeFingerprint(getCwd(), {
               platform: "android",
-
               ...config.fingerprint,
             }),
           ]);
@@ -84,6 +128,7 @@ fingerprintCommand
             path.join(getCwd(), "fingerprint.json"),
             JSON.stringify(fingerprint, null, 2),
           );
+          return "Created fingerprint.json";
         },
       },
     ]);

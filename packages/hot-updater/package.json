@@ -56,7 +56,7 @@
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@rnef/tools": "0.7.6",
+    "@rnef/tools": "0.7.12",
     "commander": "^11.1.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",

@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0",
+    "hash": "0b37280668f1e892c866988e70df52a074ec547e",
     "sources": [
       {
         "type": "file",
@@ -16,7 +16,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "b676fd64895352e652d3496817daaa49a380487a"
+        "hash": "6569dc7e271ce44f93ccf98fdfd51e45a09f1466"
       },
       {
         "type": "dir",
