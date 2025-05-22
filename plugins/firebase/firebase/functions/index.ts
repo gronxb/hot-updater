@@ -92,7 +92,7 @@ app.get("/api/check-update", async (c) => {
       const [_signedUrl] = await admin
         .storage()
         .bucket(storageUrl.host)
-        .file(storageUrl.pathname)
+        .file(storageUrl.pathname.slice(1))
         .getSignedUrl({
           action: "read",
           expires: Date.now() + 60 * 1000,
