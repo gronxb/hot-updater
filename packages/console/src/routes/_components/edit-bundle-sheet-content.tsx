@@ -26,6 +26,7 @@ import { createForm } from "@tanstack/solid-form";
 import { useQueryClient } from "@tanstack/solid-query";
 import { LoaderCircle } from "lucide-solid";
 import semverValid from "semver/ranges/valid";
+import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { Show, createMemo, createSignal } from "solid-js";
 
 export interface EditBundleSheetContentProps {
@@ -199,6 +200,22 @@ const EditBundleSheetForm = ({
         </div>
       </Show>
 
+      <Show when={bundle.fingerprintHash}>
+        <div>
+          <TextField class="grid w-full max-w-sm items-center gap-1.5">
+            <TextFieldLabel for="fingerprintHash">
+              Fingerprint Hash
+            </TextFieldLabel>
+            <TextFieldInput
+              type="text"
+              id="fingerprintHash"
+              value={bundle.fingerprintHash ?? ""}
+              disabled
+            />
+          </TextField>
+        </div>
+      </Show>
+
       <div>
         <div class="flex items-center space-x-2">
           <form.Field name="enabled">
@@ -259,7 +276,32 @@ const EditBundleSheetForm = ({
         </Button>
       </Show>
 
-      <div class="flex justify-end">
+      <div class="mt-2 space-y-1">
+        <h3 class="text-md text-bold font-medium">Metadata</h3>
+        <Show when={bundle.platform === "ios"}>
+          <div class="text-sm text-muted-foreground flex flex-row items-center">
+            Platform:{" "}
+            <p class="ml-2 flex flex-row items-center">
+              <AiFillApple class="inline-block" /> iOS
+            </p>
+          </div>
+        </Show>
+        <Show when={bundle.platform === "android"}>
+          <div class="text-sm text-muted-foreground flex flex-row items-center">
+            Platform:{" "}
+            <p class="flex flex-row items-center">
+              <AiFillAndroid class="inline-block" /> Android
+            </p>
+          </div>
+        </Show>
+        <Show when={bundle.metadata?.app_version}>
+          {(appVersion) => (
+            <p class="text-sm text-muted-foreground">
+              App Version: {appVersion()}
+            </p>
+          )}
+        </Show>
+
         <Show when={gitCommitHash()}>
           {(gitCommitHash) =>
             gitUrl() ? (
@@ -267,12 +309,12 @@ const EditBundleSheetForm = ({
                 href={`${gitUrl()}/commit/${gitCommitHash}`}
                 target="_blank"
                 rel="noreferrer"
-                class="text-xs text-muted-foreground"
+                class="text-sm text-muted-foreground"
               >
                 Commit Hash: {gitCommitHash().slice(0, 8)}
               </a>
             ) : (
-              <p class="text-xs text-muted-foreground">
+              <p class="text-sm text-muted-foreground">
                 Commit Hash: {gitCommitHash().slice(0, 8)}
               </p>
             )

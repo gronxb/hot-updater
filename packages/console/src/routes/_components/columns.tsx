@@ -5,6 +5,7 @@ import type { Bundle } from "@hot-updater/core";
 import type { ColumnDef } from "@tanstack/solid-table";
 import dayjs from "dayjs";
 import { Check, Fingerprint, Package, X } from "lucide-solid";
+import { Show } from "solid-js";
 
 export const columns: ColumnDef<Bundle>[] = [
   {
@@ -55,6 +56,12 @@ export const columns: ColumnDef<Bundle>[] = [
           <div class="flex flex-row items-center">
             <Fingerprint class="mr-2" size={16} />
             {info.row.original.fingerprintHash}
+
+            <Show when={info.row.original.metadata?.app_version}>
+              <span class="ml-2 text-muted-foreground">
+                ({info.row.original.metadata?.app_version})
+              </span>
+            </Show>
           </div>
         );
       }
