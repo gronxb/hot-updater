@@ -72,6 +72,7 @@ export const d1Database = (
           targetAppVersion: row.target_app_version,
           storageUri: row.storage_uri,
           fingerprintHash: row.fingerprint_hash,
+          metadata: row?.metadata ?? {},
         } as Bundle;
       },
 
@@ -134,6 +135,7 @@ export const d1Database = (
             targetAppVersion: row.target_app_version,
             storageUri: row.storage_uri,
             fingerprintHash: row.fingerprint_hash,
+            metadata: row?.metadata ?? {},
           }));
         }
         return bundles;
@@ -180,8 +182,9 @@ export const d1Database = (
               b.targetAppVersion,
               b.storageUri,
               b.fingerprintHash,
+              b.metadata ? JSON.stringify(b.metadata) : JSON.stringify({}),
             );
-            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
           })
           .join(",\n");
 
@@ -197,7 +200,8 @@ export const d1Database = (
             platform,
             target_app_version,
             storage_uri,
-            fingerprint_hash
+            fingerprint_hash,
+            metadata
           )
           VALUES
           ${valuesSql};`);

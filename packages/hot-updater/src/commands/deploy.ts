@@ -23,6 +23,7 @@ import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
+import { getNativeAppVersion } from "@/utils/getNativeAppVersion";
 import { printBanner } from "@/utils/printBanner";
 import { nativeFingerprint } from "@rnef/tools";
 
@@ -270,6 +271,7 @@ export const deploy = async (options: DeployOptions) => {
           if (!taskRef.storageUri) {
             throw new Error("Storage URI not found");
           }
+          const appVersion = await getNativeAppVersion(platform);
 
           try {
             await databasePlugin.appendBundle({
@@ -284,6 +286,13 @@ export const deploy = async (options: DeployOptions) => {
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
               storageUri: taskRef.storageUri,
+              metadata: {
+                ...(appVersion
+                  ? {
+                      app_version: appVersion,
+                    }
+                  : {}),
+              },
             });
             await databasePlugin.commitBundle();
           } catch (e) {

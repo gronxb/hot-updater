@@ -1,5 +1,9 @@
 export type Platform = "ios" | "android";
 
+export type BundleMetadata = {
+  app_version?: string;
+};
+
 export interface Bundle {
   /**
    * The unique identifier for the bundle. uuidv7
@@ -57,6 +61,10 @@ export interface Bundle {
    * The fingerprint hash of the bundle.
    */
   fingerprintHash: string | null;
+  /**
+   * The metadata of the bundle.
+   */
+  metadata?: BundleMetadata;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`

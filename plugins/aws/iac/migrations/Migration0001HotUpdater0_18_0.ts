@@ -18,6 +18,7 @@ export class Migration0001HotUpdater0_18_0 extends S3Migration {
         const updatedData = data.map((item) =>
           merge(item, {
             storageUri: `s3://${this.bucketName}/${item.id}/bundle.zip`,
+            metadata: {},
           }),
         );
         await this.updateFile(key, JSON.stringify(updatedData));

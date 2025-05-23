@@ -1,5 +1,6 @@
 
 ALTER TABLE bundles ADD COLUMN IF NOT EXISTS fingerprint_hash text;
+ALTER TABLE bundles ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
 
 ALTER TABLE bundles ADD COLUMN IF NOT EXISTS storage_uri TEXT;
 

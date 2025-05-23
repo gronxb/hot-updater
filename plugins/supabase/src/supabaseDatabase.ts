@@ -43,6 +43,7 @@ export const supabaseDatabase = (
           targetAppVersion: data.target_app_version,
           fingerprintHash: data.fingerprint_hash,
           storageUri: data.storage_uri,
+          metadata: data.metadata ?? {},
         } as Bundle;
       },
 
@@ -87,6 +88,7 @@ export const supabaseDatabase = (
           targetAppVersion: bundle.target_app_version,
           fingerprintHash: bundle.fingerprint_hash,
           storageUri: bundle.storage_uri,
+          metadata: bundle.metadata ?? {},
         })) as Bundle[];
       },
 
@@ -118,6 +120,7 @@ export const supabaseDatabase = (
             target_app_version: bundle.targetAppVersion,
             fingerprint_hash: bundle.fingerprintHash,
             storage_uri: bundle.storageUri,
+            metadata: bundle.metadata,
           })),
           { onConflict: "id" },
         );

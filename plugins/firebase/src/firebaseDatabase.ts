@@ -17,6 +17,7 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   targetAppVersion: firestoreData.target_app_version,
   storageUri: firestoreData.storage_uri,
   fingerprintHash: firestoreData.fingerprint_hash,
+  metadata: firestoreData?.metadata ?? {},
 });
 
 export const firebaseDatabase = (
@@ -165,7 +166,8 @@ export const firebaseDatabase = (
                 target_app_version: data.targetAppVersion,
                 storage_uri: data.storageUri,
                 fingerprint_hash: data.fingerprintHash,
-              };
+                metadata: data.metadata ?? {},
+              } as SnakeCaseBundle;
 
               // Add channel to channels collection
               const channelRef = context.db
@@ -208,7 +210,8 @@ export const firebaseDatabase = (
                   target_app_version: data.targetAppVersion || null,
                   storage_uri: data.storageUri,
                   fingerprint_hash: data.fingerprintHash,
-                },
+                  metadata: data.metadata ?? {},
+                } as SnakeCaseBundle,
                 { merge: true },
               );
 
