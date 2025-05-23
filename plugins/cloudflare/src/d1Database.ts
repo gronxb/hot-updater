@@ -72,7 +72,7 @@ export const d1Database = (
           targetAppVersion: row.target_app_version,
           storageUri: row.storage_uri,
           fingerprintHash: row.fingerprint_hash,
-          metadata: row?.metadata ?? {},
+          metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
         } as Bundle;
       },
 
@@ -135,7 +135,7 @@ export const d1Database = (
             targetAppVersion: row.target_app_version,
             storageUri: row.storage_uri,
             fingerprintHash: row.fingerprint_hash,
-            metadata: row?.metadata ?? {},
+            metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
           }));
         }
         return bundles;

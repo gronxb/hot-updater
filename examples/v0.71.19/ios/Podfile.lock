@@ -493,7 +493,7 @@ SPEC CHECKSUMS:
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
   glog: 791fe035093b84822da7f0870421a25839ca7870
   hermes-engine: 1b2623da987a23d7d3122d883e22b716948ee6f1
-  HotUpdater: 0e1e51215b0e7ce7ccf1852436f27da2b20cde2b
+  HotUpdater: 733ae9b15fbf94f76aed53e635dd62bb1ecdf2da
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
   RCT-Folly: 85766c3226c7ec638f05ad7cb3cf6a268d6c4241
   RCTRequired: 79b5f823c2b4b865451ba9ddb33c676786760ea8
