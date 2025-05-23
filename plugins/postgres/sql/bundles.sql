@@ -16,7 +16,8 @@ CREATE TABLE bundles (
     fingerprint_hash text,
     CONSTRAINT check_version_or_fingerprint CHECK (
         (target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL)
-    )
+    ),
+    metadata jsonb DEFAULT '{}'::jsonb
 );
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);

@@ -11,7 +11,8 @@ CREATE TABLE bundles (
     message TEXT,
     channel TEXT NOT NULL,
     storage_uri TEXT,
-    fingerprint_hash TEXT
+    fingerprint_hash TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb
 );
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
