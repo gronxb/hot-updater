@@ -1,23 +1,31 @@
-import path from "path";
-import { XcodeProject } from "@bacons/xcode";
-import { getCwd } from "@hot-updater/plugin-core";
-import { globbySync } from "globby";
 // __tests__/getNativeAppVersion.test.ts
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import { getNativeAppVersion } from "./getNativeAppVersion";
 
-// 모킹
-vi.mock("fs");
+import path from "path";
+import { XcodeProject } from "@bacons/xcode";
+import { getCwd } from "@hot-updater/plugin-core";
+import { findUp } from "find-up-simple";
+import fs from "fs/promises";
+import { globbySync } from "globby";
+import plist from "plist";
+
+vi.mock("fs/promises");
 vi.mock("path");
 vi.mock("@bacons/xcode");
 vi.mock("@hot-updater/plugin-core");
 vi.mock("globby");
+vi.mock("find-up-simple");
+vi.mock("plist");
 
 describe("getNativeAppVersion", () => {
   const mockGetCwd = getCwd as Mock;
   const mockGlobbySync = globbySync as Mock;
   const mockXcodeProjectOpen = XcodeProject.open as Mock;
   const mockPathJoin = path.join as Mock;
+  const mockFsReadFile = fs.readFile as Mock;
+  const mockFindUp = findUp as Mock;
+  const mockPlistParse = plist.parse as Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -28,7 +36,7 @@ describe("getNativeAppVersion", () => {
   });
 
   describe("iOS platform", () => {
-    it("should return app version when xcodeproj file exists and has MARKETING_VERSION", () => {
+    it("should return app version when xcodeproj file exists and has MARKETING_VERSION", async () => {
       // Arrange
       const mockXcodeprojPath =
         "/mock/project/root/ios/HotUpdaterExample.xcodeproj/project.pbxproj";
@@ -36,509 +44,15 @@ describe("getNativeAppVersion", () => {
       mockGlobbySync.mockReturnValue([mockXcodeprojPath]);
 
       const mockProject = {
-        archiveVersion: 1,
-        objectVersion: 54,
-        classes: {},
         objects: {
-          "83CBB9F71A601CBA00E9B192": {
-            isa: "PBXProject",
-            attributes: {
-              LastUpgradeCheck: "1210",
-              TargetAttributes: {
-                "13B07F861A680F5B00A75B9A": {
-                  LastSwiftMigration: "1120",
-                },
-              },
-            },
-            buildConfigurationList: "83CBB9FA1A601CBA00E9B192",
-            compatibilityVersion: "Xcode 12.0",
-            developmentRegion: "en",
-            hasScannedForEncodings: "0",
-            knownRegions: ["en", "Base"],
-            mainGroup: "83CBB9F61A601CBA00E9B192",
-            productRefGroup: "83CBBA001A601CBA00E9B192",
-            projectDirPath: "",
-            projectRoot: "",
-            targets: ["13B07F861A680F5B00A75B9A"],
-          },
-          "83CBB9FA1A601CBA00E9B192": {
-            isa: "XCConfigurationList",
-            buildConfigurations: [
-              "83CBBA201A601CBA00E9B192",
-              "83CBBA211A601CBA00E9B192",
-            ],
-            defaultConfigurationIsVisible: "0",
-            defaultConfigurationName: "Release",
-          },
-          "83CBBA201A601CBA00E9B192": {
-            isa: "XCBuildConfiguration",
-            buildSettings: {
-              ALWAYS_SEARCH_USER_PATHS: "NO",
-              CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED: "YES",
-              CLANG_CXX_LANGUAGE_STANDARD: "c++20",
-              CLANG_CXX_LIBRARY: "libc++",
-              CLANG_ENABLE_MODULES: "YES",
-              CLANG_ENABLE_OBJC_ARC: "YES",
-              CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING: "YES",
-              CLANG_WARN_BOOL_CONVERSION: "YES",
-              CLANG_WARN_COMMA: "YES",
-              CLANG_WARN_CONSTANT_CONVERSION: "YES",
-              CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS: "YES",
-              CLANG_WARN_DIRECT_OBJC_ISA_USAGE: "YES_ERROR",
-              CLANG_WARN_EMPTY_BODY: "YES",
-              CLANG_WARN_ENUM_CONVERSION: "YES",
-              CLANG_WARN_INFINITE_RECURSION: "YES",
-              CLANG_WARN_INT_CONVERSION: "YES",
-              CLANG_WARN_NON_LITERAL_NULL_CONVERSION: "YES",
-              CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF: "YES",
-              CLANG_WARN_OBJC_LITERAL_CONVERSION: "YES",
-              CLANG_WARN_OBJC_ROOT_CLASS: "YES_ERROR",
-              CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER: "YES",
-              CLANG_WARN_RANGE_LOOP_ANALYSIS: "YES",
-              CLANG_WARN_STRICT_PROTOTYPES: "YES",
-              CLANG_WARN_SUSPICIOUS_MOVE: "YES",
-              CLANG_WARN_UNREACHABLE_CODE: "YES",
-              CLANG_WARN__DUPLICATE_METHOD_MATCH: "YES",
-              "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "iPhone Developer",
-              COPY_PHASE_STRIP: "NO",
-              ENABLE_STRICT_OBJC_MSGSEND: "YES",
-              ENABLE_TESTABILITY: "YES",
-              "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "",
-              GCC_C_LANGUAGE_STANDARD: "gnu99",
-              GCC_DYNAMIC_NO_PIC: "NO",
-              GCC_NO_COMMON_BLOCKS: "YES",
-              GCC_OPTIMIZATION_LEVEL: "0",
-              GCC_PREPROCESSOR_DEFINITIONS: ["DEBUG=1", "$(inherited)"],
-              GCC_SYMBOLS_PRIVATE_EXTERN: "NO",
-              GCC_WARN_64_TO_32_BIT_CONVERSION: "YES",
-              GCC_WARN_ABOUT_RETURN_TYPE: "YES_ERROR",
-              GCC_WARN_UNDECLARED_SELECTOR: "YES",
-              GCC_WARN_UNINITIALIZED_AUTOS: "YES_AGGRESSIVE",
-              GCC_WARN_UNUSED_FUNCTION: "YES",
-              GCC_WARN_UNUSED_VARIABLE: "YES",
-              IPHONEOS_DEPLOYMENT_TARGET: 15.1,
-              LD_RUNPATH_SEARCH_PATHS: ["/usr/lib/swift", "$(inherited)"],
-              LIBRARY_SEARCH_PATHS: [
-                '"$(SDKROOT)/usr/lib/swift"',
-                '"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)"',
-                '"$(inherited)"',
-              ],
-              MTL_ENABLE_DEBUG_INFO: "YES",
-              ONLY_ACTIVE_ARCH: "YES",
-              OTHER_CPLUSPLUSFLAGS: [
-                "$(OTHER_CFLAGS)",
-                "-DFOLLY_NO_CONFIG",
-                "-DFOLLY_MOBILE=1",
-                "-DFOLLY_USE_LIBCPP=1",
-                "-DFOLLY_CFG_NO_COROUTINES=1",
-                "-DFOLLY_HAVE_CLOCK_GETTIME=1",
-              ],
-              OTHER_LDFLAGS: ["$(inherited)", " "],
-              REACT_NATIVE_PATH: "${PODS_ROOT}/../../node_modules/react-native",
-              SDKROOT: "iphoneos",
-              SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG",
-              USE_HERMES: "true",
-            },
-            name: "Debug",
-          },
-          "83CBBA211A601CBA00E9B192": {
-            isa: "XCBuildConfiguration",
-            buildSettings: {
-              ALWAYS_SEARCH_USER_PATHS: "NO",
-              CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED: "YES",
-              CLANG_CXX_LANGUAGE_STANDARD: "c++20",
-              CLANG_CXX_LIBRARY: "libc++",
-              CLANG_ENABLE_MODULES: "YES",
-              CLANG_ENABLE_OBJC_ARC: "YES",
-              CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING: "YES",
-              CLANG_WARN_BOOL_CONVERSION: "YES",
-              CLANG_WARN_COMMA: "YES",
-              CLANG_WARN_CONSTANT_CONVERSION: "YES",
-              CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS: "YES",
-              CLANG_WARN_DIRECT_OBJC_ISA_USAGE: "YES_ERROR",
-              CLANG_WARN_EMPTY_BODY: "YES",
-              CLANG_WARN_ENUM_CONVERSION: "YES",
-              CLANG_WARN_INFINITE_RECURSION: "YES",
-              CLANG_WARN_INT_CONVERSION: "YES",
-              CLANG_WARN_NON_LITERAL_NULL_CONVERSION: "YES",
-              CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF: "YES",
-              CLANG_WARN_OBJC_LITERAL_CONVERSION: "YES",
-              CLANG_WARN_OBJC_ROOT_CLASS: "YES_ERROR",
-              CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER: "YES",
-              CLANG_WARN_RANGE_LOOP_ANALYSIS: "YES",
-              CLANG_WARN_STRICT_PROTOTYPES: "YES",
-              CLANG_WARN_SUSPICIOUS_MOVE: "YES",
-              CLANG_WARN_UNREACHABLE_CODE: "YES",
-              CLANG_WARN__DUPLICATE_METHOD_MATCH: "YES",
-              "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "iPhone Developer",
-              COPY_PHASE_STRIP: "YES",
-              ENABLE_NS_ASSERTIONS: "NO",
-              ENABLE_STRICT_OBJC_MSGSEND: "YES",
-              "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "",
-              GCC_C_LANGUAGE_STANDARD: "gnu99",
-              GCC_NO_COMMON_BLOCKS: "YES",
-              GCC_WARN_64_TO_32_BIT_CONVERSION: "YES",
-              GCC_WARN_ABOUT_RETURN_TYPE: "YES_ERROR",
-              GCC_WARN_UNDECLARED_SELECTOR: "YES",
-              GCC_WARN_UNINITIALIZED_AUTOS: "YES_AGGRESSIVE",
-              GCC_WARN_UNUSED_FUNCTION: "YES",
-              GCC_WARN_UNUSED_VARIABLE: "YES",
-              IPHONEOS_DEPLOYMENT_TARGET: 15.1,
-              LD_RUNPATH_SEARCH_PATHS: ["/usr/lib/swift", "$(inherited)"],
-              LIBRARY_SEARCH_PATHS: [
-                '"$(SDKROOT)/usr/lib/swift"',
-                '"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)"',
-                '"$(inherited)"',
-              ],
-              MTL_ENABLE_DEBUG_INFO: "NO",
-              OTHER_CPLUSPLUSFLAGS: [
-                "$(OTHER_CFLAGS)",
-                "-DFOLLY_NO_CONFIG",
-                "-DFOLLY_MOBILE=1",
-                "-DFOLLY_USE_LIBCPP=1",
-                "-DFOLLY_CFG_NO_COROUTINES=1",
-                "-DFOLLY_HAVE_CLOCK_GETTIME=1",
-              ],
-              OTHER_LDFLAGS: ["$(inherited)", " "],
-              REACT_NATIVE_PATH: "${PODS_ROOT}/../../node_modules/react-native",
-              SDKROOT: "iphoneos",
-              USE_HERMES: "true",
-              VALIDATE_PRODUCT: "YES",
-            },
-            name: "Release",
-          },
-          "83CBB9F61A601CBA00E9B192": {
-            isa: "PBXGroup",
-            children: [
-              "13B07FAE1A68108700A75B9A",
-              "832341AE1AAA6A7D00B99B32",
-              "83CBBA001A601CBA00E9B192",
-              "2D16E6871FA4F8E400B85C8A",
-              "BBD78D7AC51CEA395F1C20DB",
-            ],
-            indentWidth: 2,
-            sourceTree: "<group>",
-            tabWidth: 2,
-            usesTabs: "0",
-          },
-          "13B07FAE1A68108700A75B9A": {
-            isa: "PBXGroup",
-            children: [
-              "13B07FB51A68108700A75B9A",
-              "761780EC2CA45674006654EE",
-              "13B07FB61A68108700A75B9A",
-              "81AB9BB72411601600AC10FF",
-              "13B07FB81A68108700A75B9A",
-            ],
-            name: "HotUpdaterExample",
-            sourceTree: "<group>",
-          },
-          "13B07FB51A68108700A75B9A": {
-            isa: "PBXFileReference",
-            lastKnownFileType: "folder.assetcatalog",
-            name: "Images.xcassets",
-            path: "HotUpdaterExample/Images.xcassets",
-            sourceTree: "<group>",
-            fileEncoding: 4,
-            includeInIndex: 0,
-          },
-          "761780EC2CA45674006654EE": {
-            isa: "PBXFileReference",
-            lastKnownFileType: "sourcecode.swift",
-            name: "AppDelegate.swift",
-            path: "HotUpdaterExample/AppDelegate.swift",
-            sourceTree: "<group>",
-            fileEncoding: 4,
-            includeInIndex: 0,
-          },
-          "13B07FB61A68108700A75B9A": {
-            isa: "PBXFileReference",
-            fileEncoding: 4,
-            lastKnownFileType: "text.plist.xml",
-            name: "Info.plist",
-            path: "HotUpdaterExample/Info.plist",
-            sourceTree: "<group>",
-            includeInIndex: 0,
-          },
-          "81AB9BB72411601600AC10FF": {
-            isa: "PBXFileReference",
-            fileEncoding: 4,
-            lastKnownFileType: "file.storyboard",
-            name: "LaunchScreen.storyboard",
-            path: "HotUpdaterExample/LaunchScreen.storyboard",
-            sourceTree: "<group>",
-            includeInIndex: 0,
-          },
-          "13B07FB81A68108700A75B9A": {
-            isa: "PBXFileReference",
-            fileEncoding: 4,
-            lastKnownFileType: "text.plist.xml",
-            name: "PrivacyInfo.xcprivacy",
-            path: "HotUpdaterExample/PrivacyInfo.xcprivacy",
-            sourceTree: "<group>",
-            includeInIndex: 0,
-          },
-          "832341AE1AAA6A7D00B99B32": {
-            isa: "PBXGroup",
-            children: [],
-            name: "Libraries",
-            sourceTree: "<group>",
-          },
-          "83CBBA001A601CBA00E9B192": {
-            isa: "PBXGroup",
-            children: ["13B07F961A680F5B00A75B9A"],
-            name: "Products",
-            sourceTree: "<group>",
-          },
-          "13B07F961A680F5B00A75B9A": {
-            isa: "PBXFileReference",
-            explicitFileType: "wrapper.application",
-            includeInIndex: "0",
-            path: "HotUpdaterExample.app",
-            sourceTree: "BUILT_PRODUCTS_DIR",
-            fileEncoding: 4,
-          },
-          "2D16E6871FA4F8E400B85C8A": {
-            isa: "PBXGroup",
-            children: ["ED297162215061F000B7C4FE", "5DCACB8F33CDC322A6C60F78"],
-            name: "Frameworks",
-            sourceTree: "<group>",
-          },
-          ED297162215061F000B7C4FE: {
-            isa: "PBXFileReference",
-            lastKnownFileType: "wrapper.framework",
-            name: "JavaScriptCore.framework",
-            path: "System/Library/Frameworks/JavaScriptCore.framework",
-            sourceTree: "SDKROOT",
-            fileEncoding: 4,
-          },
-          "5DCACB8F33CDC322A6C60F78": {
-            isa: "PBXFileReference",
-            explicitFileType: "archive.ar",
-            includeInIndex: "0",
-            path: "libPods-HotUpdaterExample.a",
-            sourceTree: "BUILT_PRODUCTS_DIR",
-            fileEncoding: 4,
-          },
-          BBD78D7AC51CEA395F1C20DB: {
-            isa: "PBXGroup",
-            children: ["3B4392A12AC88292D35C810B", "5709B34CF0A7D63546082F79"],
-            path: "Pods",
-            sourceTree: "<group>",
-          },
-          "3B4392A12AC88292D35C810B": {
-            isa: "PBXFileReference",
-            includeInIndex: 1,
-            lastKnownFileType: "text.xcconfig",
-            name: "Pods-HotUpdaterExample.debug.xcconfig",
-            path: "Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample.debug.xcconfig",
-            sourceTree: "<group>",
-            fileEncoding: 4,
-          },
-          "5709B34CF0A7D63546082F79": {
-            isa: "PBXFileReference",
-            includeInIndex: 1,
-            lastKnownFileType: "text.xcconfig",
-            name: "Pods-HotUpdaterExample.release.xcconfig",
-            path: "Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample.release.xcconfig",
-            sourceTree: "<group>",
-            fileEncoding: 4,
-          },
-          "13B07F861A680F5B00A75B9A": {
-            isa: "PBXNativeTarget",
-            buildConfigurationList: "13B07F931A680F5B00A75B9A",
-            buildPhases: [
-              "C38B50BA6285516D6DCD4F65",
-              "13B07F871A680F5B00A75B9A",
-              "13B07F8C1A680F5B00A75B9A",
-              "13B07F8E1A680F5B00A75B9A",
-              "00DD1BFF1BD5951E006B06BC",
-              "00EEFC60759A1932668264C0",
-              "E235C05ADACE081382539298",
-            ],
-            buildRules: [],
-            dependencies: [],
-            name: "HotUpdaterExample",
-            productName: "HotUpdaterExample",
-            productReference: "13B07F961A680F5B00A75B9A",
-            productType: "com.apple.product-type.application",
-          },
-          "13B07F931A680F5B00A75B9A": {
-            isa: "XCConfigurationList",
-            buildConfigurations: [
-              "13B07F941A680F5B00A75B9A",
-              "13B07F951A680F5B00A75B9A",
-            ],
-            defaultConfigurationIsVisible: "0",
-            defaultConfigurationName: "Release",
-          },
           "13B07F941A680F5B00A75B9A": {
             isa: "XCBuildConfiguration",
-            baseConfigurationReference: "3B4392A12AC88292D35C810B",
             buildSettings: {
-              ASSETCATALOG_COMPILER_APPICON_NAME: "AppIcon",
-              CLANG_ENABLE_MODULES: "YES",
-              CURRENT_PROJECT_VERSION: 1,
-              ENABLE_BITCODE: "NO",
-              INFOPLIST_FILE: "HotUpdaterExample/Info.plist",
-              IPHONEOS_DEPLOYMENT_TARGET: 15.1,
-              LD_RUNPATH_SEARCH_PATHS: [
-                "$(inherited)",
-                "@executable_path/Frameworks",
-              ],
               MARKETING_VERSION: "1.0",
-              OTHER_LDFLAGS: ["$(inherited)", "-ObjC", "-lc++"],
-              PRODUCT_BUNDLE_IDENTIFIER:
-                "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)",
-              PRODUCT_NAME: "HotUpdaterExample",
-              SWIFT_OPTIMIZATION_LEVEL: "-Onone",
-              SWIFT_VERSION: "5.0",
-              VERSIONING_SYSTEM: "apple-generic",
-            },
-            name: "Debug",
-          },
-          "13B07F951A680F5B00A75B9A": {
-            isa: "XCBuildConfiguration",
-            baseConfigurationReference: "5709B34CF0A7D63546082F79",
-            buildSettings: {
-              ASSETCATALOG_COMPILER_APPICON_NAME: "AppIcon",
-              CLANG_ENABLE_MODULES: "YES",
-              CURRENT_PROJECT_VERSION: 1,
-              INFOPLIST_FILE: "HotUpdaterExample/Info.plist",
-              IPHONEOS_DEPLOYMENT_TARGET: 15.1,
-              LD_RUNPATH_SEARCH_PATHS: [
-                "$(inherited)",
-                "@executable_path/Frameworks",
-              ],
-              MARKETING_VERSION: "1.0",
-              OTHER_LDFLAGS: ["$(inherited)", "-ObjC", "-lc++"],
-              PRODUCT_BUNDLE_IDENTIFIER:
-                "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)",
-              PRODUCT_NAME: "HotUpdaterExample",
-              SWIFT_VERSION: "5.0",
-              VERSIONING_SYSTEM: "apple-generic",
             },
             name: "Release",
           },
-          C38B50BA6285516D6DCD4F65: {
-            isa: "PBXShellScriptBuildPhase",
-            buildActionMask: 2147483647,
-            files: [],
-            inputFileListPaths: [],
-            inputPaths: [
-              "${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-              "${PODS_ROOT}/Manifest.lock",
-            ],
-            name: "[CP] Check Pods Manifest.lock",
-            outputFileListPaths: [],
-            outputPaths: [
-              "$(DERIVED_FILE_DIR)/Pods-HotUpdaterExample-checkManifestLockResult.txt",
-            ],
-            runOnlyForDeploymentPostprocessing: "0",
-            shellPath: "/bin/sh",
-            shellScript:
-              'diff "${PODS_PODFILE_DIR_PATH}/Podfile.lock" "${PODS_ROOT}/Manifest.lock" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo "error: The sandbox is not in sync with the Podfile.lock. Run \'pod install\' or update your CocoaPods installation." >&2\n    exit 1\nfi\n# This output is used by Xcode \'outputs\' to avoid re-running this script phase.\necho "SUCCESS" > "${SCRIPT_OUTPUT_FILE_0}"\n',
-            showEnvVarsInLog: "0",
-          },
-          "13B07F871A680F5B00A75B9A": {
-            isa: "PBXSourcesBuildPhase",
-            buildActionMask: 2147483647,
-            files: ["761780ED2CA45674006654EE"],
-            runOnlyForDeploymentPostprocessing: "0",
-          },
-          "761780ED2CA45674006654EE": {
-            isa: "PBXBuildFile",
-            fileRef: "761780EC2CA45674006654EE",
-          },
-          "13B07F8C1A680F5B00A75B9A": {
-            isa: "PBXFrameworksBuildPhase",
-            buildActionMask: 2147483647,
-            files: ["0C80B921A6F3F58F76C31292"],
-            runOnlyForDeploymentPostprocessing: "0",
-          },
-          "0C80B921A6F3F58F76C31292": {
-            isa: "PBXBuildFile",
-            fileRef: "5DCACB8F33CDC322A6C60F78",
-          },
-          "13B07F8E1A680F5B00A75B9A": {
-            isa: "PBXResourcesBuildPhase",
-            buildActionMask: 2147483647,
-            files: [
-              "81AB9BB82411601600AC10FF",
-              "13B07FBF1A68108700A75B9A",
-              "CE8B4D579F28940C027A7C82",
-            ],
-            runOnlyForDeploymentPostprocessing: "0",
-          },
-          "81AB9BB82411601600AC10FF": {
-            isa: "PBXBuildFile",
-            fileRef: "81AB9BB72411601600AC10FF",
-          },
-          "13B07FBF1A68108700A75B9A": {
-            isa: "PBXBuildFile",
-            fileRef: "13B07FB51A68108700A75B9A",
-          },
-          CE8B4D579F28940C027A7C82: {
-            isa: "PBXBuildFile",
-            fileRef: "13B07FB81A68108700A75B9A",
-          },
-          "00DD1BFF1BD5951E006B06BC": {
-            isa: "PBXShellScriptBuildPhase",
-            buildActionMask: 2147483647,
-            files: [],
-            inputPaths: [
-              "$(SRCROOT)/.xcode.env.local",
-              "$(SRCROOT)/.xcode.env",
-            ],
-            name: "Bundle React Native code and images",
-            outputPaths: [],
-            runOnlyForDeploymentPostprocessing: "0",
-            shellPath: "/bin/sh",
-            shellScript:
-              'set -e\n\nWITH_ENVIRONMENT="$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh"\nREACT_NATIVE_XCODE="$REACT_NATIVE_PATH/scripts/react-native-xcode.sh"\n\n/bin/sh -c "$WITH_ENVIRONMENT $REACT_NATIVE_XCODE"\n',
-            outputFileListPaths: [],
-            inputFileListPaths: [],
-          },
-          "00EEFC60759A1932668264C0": {
-            isa: "PBXShellScriptBuildPhase",
-            buildActionMask: 2147483647,
-            files: [],
-            inputFileListPaths: [
-              "${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-            ],
-            name: "[CP] Embed Pods Frameworks",
-            outputFileListPaths: [
-              "${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-            ],
-            runOnlyForDeploymentPostprocessing: "0",
-            shellPath: "/bin/sh",
-            shellScript:
-              '"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks.sh"\n',
-            showEnvVarsInLog: "0",
-            outputPaths: [],
-            inputPaths: [],
-          },
-          E235C05ADACE081382539298: {
-            isa: "PBXShellScriptBuildPhase",
-            buildActionMask: 2147483647,
-            files: [],
-            inputFileListPaths: [
-              "${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-resources-${CONFIGURATION}-input-files.xcfilelist",
-            ],
-            name: "[CP] Copy Pods Resources",
-            outputFileListPaths: [
-              "${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-resources-${CONFIGURATION}-output-files.xcfilelist",
-            ],
-            runOnlyForDeploymentPostprocessing: "0",
-            shellPath: "/bin/sh",
-            shellScript:
-              '"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-resources.sh"\n',
-            showEnvVarsInLog: "0",
-            outputPaths: [],
-            inputPaths: [],
-          },
         },
-        rootObject: "83CBB9F71A601CBA00E9B192",
       };
 
       mockXcodeProjectOpen.mockReturnValue({
@@ -546,10 +60,252 @@ describe("getNativeAppVersion", () => {
       });
 
       // Act
-      const result = getNativeAppVersion("ios");
+      const result = await getNativeAppVersion("ios");
 
       // Assert
       expect(result).toBe("1.0");
+      expect(mockGlobbySync).toHaveBeenCalledWith(
+        "*.xcodeproj/project.pbxproj",
+        {
+          cwd: "/mock/project/root/ios",
+          absolute: true,
+          onlyFiles: true,
+        },
+      );
+    });
+
+    it("should fallback to plist when xcodeproj has no MARKETING_VERSION", async () => {
+      // Arrange
+      const mockXcodeprojPath =
+        "/mock/project/root/ios/HotUpdaterExample.xcodeproj/project.pbxproj";
+      const mockPlistPath =
+        "/mock/project/root/ios/HotUpdaterExample/Info.plist";
+
+      mockGlobbySync.mockReturnValue([mockXcodeprojPath]);
+
+      // xcodeproj에 MARKETING_VERSION이 없는 경우
+      const mockProject = {
+        objects: {
+          "13B07F941A680F5B00A75B9A": {
+            isa: "XCBuildConfiguration",
+            buildSettings: {
+              // MARKETING_VERSION이 없음
+            },
+            name: "Release",
+          },
+        },
+      };
+
+      mockXcodeProjectOpen.mockReturnValue({
+        toJSON: () => mockProject,
+      });
+
+      // plist 파일 찾기
+      mockFindUp.mockResolvedValue(mockPlistPath);
+
+      // plist 파일 내용
+      const mockPlistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleShortVersionString</key>
+  <string>2.0</string>
+</dict>
+</plist>`;
+
+      mockFsReadFile.mockResolvedValue(mockPlistContent);
+      mockPlistParse.mockReturnValue({
+        CFBundleShortVersionString: "2.0",
+      });
+
+      // Act
+      const result = await getNativeAppVersion("ios");
+
+      // Assert
+      expect(result).toBe("2.0");
+      expect(mockFindUp).toHaveBeenCalledWith("Info.plist", {
+        cwd: "/mock/project/root/ios",
+        type: "file",
+      });
+      expect(mockFsReadFile).toHaveBeenCalledWith(mockPlistPath, "utf8");
+      expect(mockPlistParse).toHaveBeenCalledWith(mockPlistContent);
+    });
+
+    it("should return null when xcodeproj file does not exist", async () => {
+      // Arrange
+      mockGlobbySync.mockReturnValue([]); // 파일이 없음
+      mockFindUp.mockResolvedValue(null); // plist도 없음
+
+      // Act
+      const result = await getNativeAppVersion("ios");
+
+      // Assert
+      expect(result).toBe(null);
+    });
+
+    it("should return null when plist file does not exist and xcodeproj has no version", async () => {
+      // Arrange
+      const mockXcodeprojPath =
+        "/mock/project/root/ios/HotUpdaterExample.xcodeproj/project.pbxproj";
+
+      mockGlobbySync.mockReturnValue([mockXcodeprojPath]);
+
+      const mockProject = {
+        objects: {
+          "13B07F941A680F5B00A75B9A": {
+            isa: "XCBuildConfiguration",
+            buildSettings: {},
+            name: "Release",
+          },
+        },
+      };
+
+      mockXcodeProjectOpen.mockReturnValue({
+        toJSON: () => mockProject,
+      });
+
+      mockFindUp.mockResolvedValue(null); // plist 파일이 없음
+
+      // Act
+      const result = await getNativeAppVersion("ios");
+
+      // Assert
+      expect(result).toBe(null);
+    });
+
+    it("should handle xcodeproj parsing errors", async () => {
+      // Arrange
+      const mockXcodeprojPath =
+        "/mock/project/root/ios/HotUpdaterExample.xcodeproj/project.pbxproj";
+
+      mockGlobbySync.mockReturnValue([mockXcodeprojPath]);
+      mockXcodeProjectOpen.mockImplementation(() => {
+        throw new Error("Invalid xcodeproj file");
+      });
+
+      // plist도 실패하도록 설정
+      mockFindUp.mockRejectedValue(new Error("File not found"));
+
+      // Act
+      const result = await getNativeAppVersion("ios");
+
+      // Assert
+      expect(result).toBe(null);
+    });
+
+    it("should handle plist parsing errors", async () => {
+      // Arrange
+      const mockXcodeprojPath =
+        "/mock/project/root/ios/HotUpdaterExample.xcodeproj/project.pbxproj";
+      const mockPlistPath =
+        "/mock/project/root/ios/HotUpdaterExample/Info.plist";
+
+      mockGlobbySync.mockReturnValue([mockXcodeprojPath]);
+
+      const mockProject = {
+        objects: {
+          "13B07F941A680F5B00A75B9A": {
+            isa: "XCBuildConfiguration",
+            buildSettings: {},
+            name: "Release",
+          },
+        },
+      };
+
+      mockXcodeProjectOpen.mockReturnValue({
+        toJSON: () => mockProject,
+      });
+
+      mockFindUp.mockResolvedValue(mockPlistPath);
+      mockFsReadFile.mockRejectedValue(new Error("File read error"));
+
+      // Act
+      const result = await getNativeAppVersion("ios");
+
+      // Assert
+      expect(result).toBe(null);
+    });
+  });
+
+  describe("Android platform", () => {
+    it("should return app version from build.gradle", async () => {
+      // Arrange
+      const buildGradleContent = `
+android {
+    compileSdkVersion 33
+    
+    defaultConfig {
+        applicationId "com.example.app"
+        versionCode 1
+        versionName "1.2.3"
+        minSdkVersion 21
+        targetSdkVersion 33
+    }
+}
+      `;
+
+      mockFsReadFile.mockResolvedValue(buildGradleContent);
+
+      // Act
+      const result = await getNativeAppVersion("android");
+
+      // Assert
+      expect(result).toBe("1.2.3");
+      expect(mockFsReadFile).toHaveBeenCalledWith(
+        "/mock/project/root/android/app/build.gradle",
+        "utf8",
+      );
+    });
+
+    it("should handle versionName with different formatting", async () => {
+      // Arrange
+      const buildGradleContent = `
+android {
+    defaultConfig {
+        versionName "2.0.1-beta"
+    }
+}
+      `;
+
+      mockFsReadFile.mockResolvedValue(buildGradleContent);
+
+      // Act
+      const result = await getNativeAppVersion("android");
+
+      // Assert
+      expect(result).toBe("2.0.1-beta");
+    });
+
+    it("should return null when versionName is not found", async () => {
+      // Arrange
+      const buildGradleContent = `
+android {
+    defaultConfig {
+        applicationId "com.example.app"
+        versionCode 1
+        // versionName이 없음
+    }
+}
+      `;
+
+      mockFsReadFile.mockResolvedValue(buildGradleContent);
+
+      // Act
+      const result = await getNativeAppVersion("android");
+
+      // Assert
+      expect(result).toBe(null);
+    });
+
+    it("should return null when build.gradle file does not exist", async () => {
+      // Arrange
+      mockFsReadFile.mockRejectedValue(new Error("File not found"));
+
+      // Act
+      const result = await getNativeAppVersion("android");
+
+      // Assert
+      expect(result).toBe(null);
     });
   });
 });
