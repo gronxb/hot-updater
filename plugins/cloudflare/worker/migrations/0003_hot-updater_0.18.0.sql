@@ -3,6 +3,7 @@
 
 ALTER TABLE bundles ADD COLUMN fingerprint_hash TEXT;
 ALTER TABLE bundles ADD COLUMN storage_uri TEXT;
+ALTER TABLE bundles ADD COLUMN metadata JSONB DEFAULT '{}';
 
 UPDATE bundles
 SET storage_uri = 'r2://%%BUCKET_NAME%%/' || id || '/bundle.zip'
@@ -25,7 +26,7 @@ CREATE TABLE bundles_temp (
 );
 
 INSERT INTO bundles_temp 
-SELECT id, platform, should_force_update, enabled, file_hash, git_commit_hash, message, channel, storage_uri, target_app_version, fingerprint_hash
+SELECT id, platform, should_force_update, enabled, file_hash, git_commit_hash, message, channel, storage_uri, target_app_version, fingerprint_hash, metadata
 FROM bundles;
 
 DROP TABLE bundles;
