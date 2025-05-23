@@ -31,7 +31,7 @@ app.get("/api/check-update", async (c) => {
     const minBundleId = c.req.header("x-min-bundle-id") as string | undefined; // nil
     const channel = c.req.header("x-channel") as string | undefined; // production
 
-    if (!bundleId || !appPlatform || !appVersion) {
+    if (!bundleId || !appPlatform) {
       return c.json(
         { error: "Missing bundleId, appPlatform, or appVersion" },
         400,

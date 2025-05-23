@@ -2,7 +2,7 @@ import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 import { checkForRollback } from "./checkForRollback";
 
-const DEFAULT_BUNDLE = {
+const DEFAULT_BUNDLE_FINGERPRINT_STRATEGY = {
   fileHash: "",
   shouldForceUpdate: false,
   platform: "ios",
@@ -10,6 +10,9 @@ const DEFAULT_BUNDLE = {
   message: null,
   targetAppVersion: "1.0",
   channel: "production",
+  storageUri:
+    "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+  fingerprintHash: null,
 } as const;
 
 describe("checkForRollback", () => {
@@ -18,17 +21,19 @@ describe("checkForRollback", () => {
       {
         id: "00000000-0000-0000-0000-000000000001",
         enabled: true,
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
       {
         id: "00000000-0000-0000-0000-000000000002",
         enabled: false,
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+        storageUri:
+          "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
       },
       {
         id: "00000000-0000-0000-0000-000000000003",
         enabled: true,
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
     ];
     const currentBundleId = "00000000-0000-0000-0000-000000000004";
@@ -41,12 +46,12 @@ describe("checkForRollback", () => {
       {
         id: "00000000-0000-0000-0000-000000000001",
         enabled: true,
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
       {
         id: "00000000-0000-0000-0000-000000000002",
         enabled: false,
-        ...DEFAULT_BUNDLE,
+        ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
     ];
     const currentBundleId = "00000000-0000-0000-0000-000000000003";

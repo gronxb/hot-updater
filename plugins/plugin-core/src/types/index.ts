@@ -53,8 +53,7 @@ export interface StoragePlugin {
     bundleId: string,
     bundlePath: string,
   ) => Promise<{
-    bucketName: string;
-    key: string;
+    storageUri: string;
   }>;
 
   deleteBundle: (bundleId: string) => Promise<string>;
@@ -73,6 +72,22 @@ export type ConfigInput = {
    * @default "production"
    */
   releaseChannel?: string;
+  /**
+   * The strategy used to update the app.
+   *
+   * If `fingerprint`, the bundle will be updated if the fingerprint of the app is changed.
+   * If `app-version`, the bundle will be updated if the target app version is valid.
+   *
+   * @default "fingerprint"
+   */
+  updateStrategy?: "fingerprint" | "appVersion";
+  /**
+   * The fingerprint configuration.
+   */
+  fingerprint?: {
+    extraSources?: string[];
+    ignorePaths?: string[];
+  };
   console?: {
     /**
      * Git repository URL

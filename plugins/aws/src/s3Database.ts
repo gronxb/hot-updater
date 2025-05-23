@@ -140,49 +140,38 @@ export const s3Database = (
   if (!cloudfrontDistributionId) {
     throw new Error("cloudfrontDistributionId is missing in s3Database");
   }
-  const client = new S3Client(s3Config);
-  const cloudfrontClient = new CloudFrontClient({
-    credentials: s3Config.credentials,
-    region: s3Config.region,
-  });
-
-  const listObjects = (prefix: string) =>
-    listObjectsInS3(client, bucketName, prefix);
-
-  function loadObject<T>(key: string) {
-    return loadJsonFromS3<T>(client, bucketName, key);
-  }
-
-  function uploadObject<T>(key: string, data: T) {
-    return uploadJsonToS3(client, bucketName, key, data);
-  }
-
-  function deleteObject(key: string) {
-    return deleteObjectInS3(client, bucketName, key);
-  }
-
-  async function invalidatePaths(pathsToInvalidate: string[]) {
-    // Execute CloudFront invalidation
-    if (
-      cloudfrontClient &&
-      cloudfrontDistributionId &&
-      pathsToInvalidate.length > 0
-    ) {
-      await invalidateCloudFront(
-        cloudfrontClient,
-        cloudfrontDistributionId,
-        pathsToInvalidate,
-      );
-    }
-  }
 
   return createBlobDatabasePlugin({
     name: "s3Database",
-    listObjects,
-    loadObject,
-    uploadObject,
-    deleteObject,
-    invalidatePaths,
+    getContext: () => ({
+      client: new S3Client(s3Config),
+      cloudfrontClient: new CloudFrontClient({
+        credentials: s3Config.credentials,
+        region: s3Config.region,
+      }),
+    }),
+    listObjects: (context, prefix: string) =>
+      listObjectsInS3(context.client, bucketName, prefix),
+    loadObject: (context, key: string) =>
+      loadJsonFromS3(context.client, bucketName, key),
+    uploadObject: (context, key: string, data) =>
+      uploadJsonToS3(context.client, bucketName, key, data),
+    deleteObject: (context, key: string) =>
+      deleteObjectInS3(context.client, bucketName, key),
+    invalidatePaths: (context, pathsToInvalidate: string[]) => {
+      if (
+        context.cloudfrontClient &&
+        cloudfrontDistributionId &&
+        pathsToInvalidate.length > 0
+      ) {
+        return invalidateCloudFront(
+          context.cloudfrontClient,
+          cloudfrontDistributionId,
+          pathsToInvalidate,
+        );
+      }
+      return Promise.resolve();
+    },
     hooks,
   });
 };

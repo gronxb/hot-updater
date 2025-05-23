@@ -4,6 +4,7 @@ import {
   getAppVersion,
   getBundleId,
   getChannel,
+  getFingerprintHash,
   getMinBundleId,
   reload,
   setChannel,
@@ -68,9 +69,8 @@ export const HotUpdater = {
    * Fetches the current release channel of the app.
    *
    * By default, if no channel is specified, the app is assigned to the 'production' channel.
-   * If the app is running in development mode, the channel will be `null`.
    *
-   * @returns {string | null} The current release channel of the app
+   * @returns {string} The current release channel of the app
    *
    * @example
    * ```ts
@@ -198,4 +198,16 @@ export const HotUpdater = {
    * ```
    */
   updateBundle,
+  /**
+   * Fetches the fingerprint of the app.
+   *
+   * @returns {string} The fingerprint of the app
+   *
+   * @example
+   * ```ts
+   * const fingerprint = HotUpdater.getFingerprintHash();
+   * console.log(`Fingerprint: ${fingerprint}`);
+   * ```
+   */
+  getFingerprintHash,
 };

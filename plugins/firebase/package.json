@@ -18,7 +18,7 @@
       "require": "./dist/iac/index.cjs"
     },
     "./functions": {
-      "require": "./dist/firebase/index.cjs"
+      "require": "./dist/firebase/functions/index.cjs"
     }
   },
   "license": "MIT",

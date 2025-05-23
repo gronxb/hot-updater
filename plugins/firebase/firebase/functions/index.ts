@@ -7,8 +7,6 @@ import { getUpdateInfo } from "./getUpdateInfo";
 declare global {
   var HotUpdater: {
     REGION: string;
-    STORAGE_BUCKET: string;
-    PROJECT_ID: string;
   };
 }
 
@@ -29,47 +27,83 @@ app.get("/api/check-update", async (c) => {
     const bundleId = c.req.header("x-bundle-id");
     const minBundleId = c.req.header("x-min-bundle-id");
     const channel = c.req.header("x-channel");
-    if (!platform || !appVersion || !bundleId) {
+    const fingerprintHash = c.req.header("x-fingerprint-hash");
+
+    if (!bundleId || !platform) {
+      return c.json(
+        { error: "Missing required headers (x-app-platform, x-bundle-id)." },
+        400,
+      );
+    }
+    if (!appVersion && !fingerprintHash) {
       return c.json(
         {
           error:
-            "Missing required headers (x-app-platform, x-app-version, x-bundle-id)",
+            "Missing required headers (x-app-version or x-fingerprint-hash).",
         },
         400,
       );
     }
+
     const db = admin.firestore();
 
-    const updateInfo = await getUpdateInfo(db, {
-      platform: platform as Platform,
-      appVersion,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-    });
+    const updateInfo = fingerprintHash
+      ? await getUpdateInfo(db, {
+          platform: platform as Platform,
+          fingerprintHash,
+          bundleId,
+          minBundleId: minBundleId || NIL_UUID,
+          channel: channel || "production",
+          _updateStrategy: "fingerprint",
+        })
+      : await getUpdateInfo(db, {
+          platform: platform as Platform,
+          appVersion: appVersion!,
+          bundleId,
+          minBundleId: minBundleId || NIL_UUID,
+          channel: channel || "production",
+          _updateStrategy: "appVersion",
+        });
+
     if (!updateInfo) {
       return c.json(null, 200);
     }
+    const { storageUri, ...rest } = updateInfo;
 
-    if (updateInfo.id === NIL_UUID) {
+    if (rest.id === NIL_UUID) {
       return c.json({
-        ...updateInfo,
+        ...rest,
         fileUrl: null,
       });
     }
 
-    const [signedUrl] = await admin
-      .storage()
-      .bucket(admin.app().options.storageBucket)
-      .file([updateInfo.id, "bundle.zip"].join("/"))
-      .getSignedUrl({
-        action: "read",
-        expires: Date.now() + 60 * 1000,
-      });
+    let signedUrl: string | null = null;
+    if (!storageUri) {
+      const [_signedUrl] = await admin
+        .storage()
+        .bucket(admin.app().options.storageBucket)
+        .file([rest.id, "bundle.zip"].join("/"))
+        .getSignedUrl({
+          action: "read",
+          expires: Date.now() + 60 * 1000,
+        });
+      signedUrl = _signedUrl;
+    } else {
+      const storageUrl = new URL(storageUri);
+      const [_signedUrl] = await admin
+        .storage()
+        .bucket(storageUrl.host)
+        .file(storageUrl.pathname.slice(1))
+        .getSignedUrl({
+          action: "read",
+          expires: Date.now() + 60 * 1000,
+        });
+      signedUrl = _signedUrl;
+    }
 
     return c.json(
       {
-        ...updateInfo,
+        ...rest,
         fileUrl: signedUrl,
       },
       200,

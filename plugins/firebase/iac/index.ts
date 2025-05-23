@@ -222,14 +222,13 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
 
   const firebaseDir = path.dirname(
-    require.resolve("@hot-updater/firebase/functions"),
+    path.dirname(require.resolve("@hot-updater/firebase/functions")),
   );
 
   const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
 
   const functionsDir = path.join(tmpDir, "functions");
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
-  await fs.promises.rename(path.join(tmpDir, "index.cjs"), functionsIndexPath);
   await fs.promises.rename(
     path.join(functionsDir, "_package.json"),
     path.join(functionsDir, "package.json"),
@@ -312,7 +311,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
           process.exit(1);
         }
 
-        const code = await transformEnv(
+        const code = transformEnv(
           await fs.promises.readFile(functionsIndexPath, "utf-8"),
           {
             REGION: currentRegion,

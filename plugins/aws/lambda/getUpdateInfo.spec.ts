@@ -1,8 +1,8 @@
-import {
-  type Bundle,
-  type GetBundlesArgs,
-  NIL_UUID,
-  type UpdateInfo,
+import type {
+  AppVersionGetBundlesArgs,
+  Bundle,
+  GetBundlesArgs,
+  UpdateInfo,
 } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { beforeEach, describe, vi } from "vitest";
@@ -16,37 +16,61 @@ const createGetUpdateInfo =
   (baseUrl: string) =>
   async (
     bundles: Bundle[],
-    {
-      appVersion,
-      bundleId,
-      platform,
-      minBundleId = NIL_UUID,
-      channel = "production",
-    }: GetBundlesArgs,
+    args: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     const responses: Record<string, any> = {};
 
-    if (bundles.length > 0) {
-      const targetVersions = [
-        ...new Set(bundles.map((b) => b.targetAppVersion)),
-      ];
-      const targetVersionsPath = `${channel}/${platform}/target-app-versions.json`;
-      const targetVersionsUrl = new URL(baseUrl);
-      targetVersionsUrl.pathname = `/${targetVersionsPath}`;
-      responses[targetVersionsUrl.toString()] = targetVersions;
+    if (args._updateStrategy === "appVersion") {
+      const { platform, channel = "production" } =
+        args as AppVersionGetBundlesArgs;
 
-      const bundlesByVersion: Record<string, Bundle[]> = {};
-      for (const bundle of bundles) {
-        if (!bundlesByVersion[bundle.targetAppVersion]) {
-          bundlesByVersion[bundle.targetAppVersion] = [];
+      if (bundles.length > 0) {
+        const targetVersions = [
+          ...new Set(bundles.map((b) => b.targetAppVersion).filter(Boolean)),
+        ];
+        const targetVersionsPath = `${channel}/${platform}/target-app-versions.json`;
+        const targetVersionsUrl = new URL(baseUrl);
+        targetVersionsUrl.pathname = `/${targetVersionsPath}`;
+        responses[targetVersionsUrl.toString()] = targetVersions;
+
+        const bundlesByVersion: Record<string, Bundle[]> = {};
+        for (const bundle of bundles) {
+          if (!bundle.targetAppVersion) {
+            continue;
+          }
+
+          if (!bundlesByVersion[bundle.targetAppVersion]) {
+            bundlesByVersion[bundle.targetAppVersion] = [];
+          }
+          bundlesByVersion[bundle.targetAppVersion].push(bundle);
         }
-        bundlesByVersion[bundle.targetAppVersion].push(bundle);
+        for (const targetVersion of targetVersions) {
+          if (!targetVersion) {
+            continue;
+          }
+
+          const updatePath = `${channel}/${platform}/${targetVersion}/update.json`;
+          const updateUrl = new URL(baseUrl);
+          updateUrl.pathname = `/${updatePath}`;
+          responses[updateUrl.toString()] = bundlesByVersion[targetVersion];
+        }
       }
-      for (const targetVersion of targetVersions) {
-        const updatePath = `${channel}/${platform}/${targetVersion}/update.json`;
+    } else if (args._updateStrategy === "fingerprint") {
+      for (const bundle of bundles) {
+        if (!bundle.fingerprintHash) {
+          continue;
+        }
+
+        const updatePath = `${bundle.channel}/${bundle.platform}/${bundle.fingerprintHash}/update.json`;
         const updateUrl = new URL(baseUrl);
         updateUrl.pathname = `/${updatePath}`;
-        responses[updateUrl.toString()] = bundlesByVersion[targetVersion];
+
+        if (Array.isArray(responses[updateUrl.toString()])) {
+          responses[updateUrl.toString()].push(bundle);
+        } else {
+          responses[updateUrl.toString()] = [bundle];
+        }
+        console.log("responses", responses);
       }
     } else {
       responses["*"] = null;
@@ -75,13 +99,7 @@ const createGetUpdateInfo =
           keyPairId: "test-key-pair-id",
           privateKey: "test-private-key",
         },
-        {
-          minBundleId,
-          channel,
-          appVersion,
-          bundleId,
-          platform,
-        },
+        args,
       );
     } finally {
       global.fetch = originalFetch;

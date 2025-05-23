@@ -5,7 +5,7 @@ import { firebaseDatabase } from "./firebaseDatabase";
 
 const PROJECT_ID = "firebase-database-test";
 
-const { firestore, bundlesCollection, clearCollections } =
+const { firestore, bundlesCollection, channelsCollection, clearCollections } =
   createFirestoreMock(PROJECT_ID);
 
 describe("firebaseDatabase plugin", () => {
@@ -38,6 +38,8 @@ describe("firebaseDatabase plugin", () => {
       message: "test bundle",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     await plugin.appendBundle(snakeBundle);
     await plugin.commitBundle();
@@ -53,6 +55,9 @@ describe("firebaseDatabase plugin", () => {
       message: "test bundle",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+      metadata: {},
     });
   });
 
@@ -67,6 +72,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 1",
       platform: "android",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     const bundle2 = {
@@ -79,6 +86,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 2",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     const bundle3 = {
@@ -91,6 +100,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 3",
       platform: "android",
       targetAppVersion: "1.5.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     await plugin.appendBundle(bundle1);
@@ -117,6 +128,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 1",
       platform: "android",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     const bundle2 = {
       id: "bundle2",
@@ -128,6 +141,8 @@ describe("firebaseDatabase plugin", () => {
       platform: "ios",
       targetAppVersion: "1.0.0",
       shouldForceUpdate: false,
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     await plugin.appendBundle(bundle1);
     await plugin.appendBundle(bundle2);
@@ -148,6 +163,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle 1",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
 
     await plugin.commitBundle();
@@ -175,6 +192,8 @@ describe("firebaseDatabase plugin", () => {
       message: "bundle updated",
       platform: "ios",
       targetAppVersion: "1.0.x",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
 
     await plugin.commitBundle();
@@ -210,6 +229,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Bundle A",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     const bundleB = {
       id: "bundleB",
@@ -221,6 +242,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Bundle B",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     const bundleC = {
       id: "bundleC",
@@ -232,6 +255,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Bundle C",
       platform: "ios",
       targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
 
     await plugin.appendBundle(bundleA);
@@ -258,6 +283,8 @@ describe("firebaseDatabase plugin", () => {
         message: "A",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleB",
@@ -269,6 +296,8 @@ describe("firebaseDatabase plugin", () => {
         message: "B",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleC",
@@ -280,6 +309,8 @@ describe("firebaseDatabase plugin", () => {
         message: "C",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleD",
@@ -291,6 +322,8 @@ describe("firebaseDatabase plugin", () => {
         message: "D",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleE",
@@ -302,6 +335,8 @@ describe("firebaseDatabase plugin", () => {
         message: "E",
         platform: "ios",
         targetAppVersion: "1.0.0",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
     ] as const;
 
@@ -331,6 +366,8 @@ describe("firebaseDatabase plugin", () => {
         message: "Bundle X",
         platform: "ios",
         targetAppVersion: "1.1.1",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleY",
@@ -342,6 +379,8 @@ describe("firebaseDatabase plugin", () => {
         message: "Bundle Y",
         platform: "android",
         targetAppVersion: "1.1.1",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
       {
         id: "bundleZ",
@@ -353,6 +392,8 @@ describe("firebaseDatabase plugin", () => {
         message: "Bundle Z",
         platform: "ios",
         targetAppVersion: "1.1.1",
+        storageUri: "gs://test-bucket/test-key",
+        fingerprintHash: null,
       },
     ] as const;
 
@@ -384,14 +425,16 @@ describe("firebaseDatabase plugin", () => {
       gitCommitHash: "commitNoVer",
       message: "Bundle with no target version",
       platform: "ios",
-      targetAppVersion: "",
+      targetAppVersion: null,
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
     const bundleDoc = await bundlesCollection.doc("bundleNoVersion").get();
     expect(bundleDoc.exists).toBeTruthy();
     const data = bundleDoc.data();
-    expect(data).not.toHaveProperty("target_app_version");
+    expect(data?.target_app_version).toBeNull();
   });
 
   it("should fetch the latest bundle data from Firestore via getBundleById", async () => {
@@ -405,6 +448,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Directly inserted bundle",
       platform: "ios",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     } as const;
     await plugin.appendBundle(bundleDirect);
     await plugin.commitBundle();
@@ -431,6 +476,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV1",
       platform: "android",
       targetAppVersion: "4.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -456,6 +503,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV2",
       platform: "ios",
       targetAppVersion: "5.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.appendBundle({
       id: "bundleTV3",
@@ -467,6 +516,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV3",
       platform: "ios",
       targetAppVersion: "5.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -487,6 +538,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV2 updated",
       platform: "ios",
       targetAppVersion: "5.1.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -514,6 +567,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV3 updated",
       platform: "ios",
       targetAppVersion: "5.2.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -548,6 +603,8 @@ describe("firebaseDatabase plugin", () => {
       message: "Test bundle TV4",
       platform: "android",
       targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
     const tvDoc = await firestore
@@ -566,7 +623,9 @@ describe("firebaseDatabase plugin", () => {
       gitCommitHash: "commitTV4",
       message: "Test bundle TV4 removed version",
       platform: "android",
-      targetAppVersion: "",
+      targetAppVersion: "2.0.1",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     });
     await plugin.commitBundle();
 
@@ -575,5 +634,52 @@ describe("firebaseDatabase plugin", () => {
       .doc("android_beta_2.0.0")
       .get();
     expect(tvDocAfter.exists).toBeFalsy();
+  });
+
+  it("should add channel to channels collection when bundle is added and remove old channel when updated", async () => {
+    // Add initial bundle
+    await plugin.appendBundle({
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "Test bundle 1",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    });
+    await plugin.commitBundle();
+
+    // Verify channel was added
+    const channelDoc = await channelsCollection.doc("production").get();
+    expect(channelDoc.exists).toBeTruthy();
+    expect(channelDoc.data()?.name).toBe("production");
+
+    // Update bundle with new channel
+    await plugin.updateBundle("bundle1", {
+      id: "bundle1",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "Test bundle 1 updated",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    });
+    await plugin.commitBundle();
+
+    // Verify old channel was removed and new channel was added
+    const oldChannelDoc = await channelsCollection.doc("production").get();
+    expect(oldChannelDoc.exists).toBeFalsy();
+
+    const newChannelDoc = await channelsCollection.doc("staging").get();
+    expect(newChannelDoc.exists).toBeTruthy();
+    expect(newChannelDoc.data()?.name).toBe("staging");
   });
 });

@@ -39,6 +39,7 @@ function App(): React.JSX.Element {
       <Text>Babel {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>Fingerprint: {HotUpdater.getFingerprintHash()}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text

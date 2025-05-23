@@ -203,13 +203,14 @@ export class CloudFrontManager {
               QueryString: true,
               Cookies: { Forward: "none" },
               Headers: {
-                Quantity: 5,
+                Quantity: 6,
                 Items: [
                   "x-bundle-id",
                   "x-app-version",
                   "x-app-platform",
                   "x-min-bundle-id",
                   "x-channel",
+                  "x-fingerprint-hash",
                 ],
               },
             },
@@ -309,13 +310,14 @@ export class CloudFrontManager {
               QueryString: true,
               Cookies: { Forward: "none" },
               Headers: {
-                Quantity: 5,
+                Quantity: 6,
                 Items: [
                   "x-bundle-id",
                   "x-app-version",
                   "x-app-platform",
                   "x-min-bundle-id",
                   "x-channel",
+                  "x-fingerprint-hash",
                 ],
               },
             },

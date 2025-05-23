@@ -14,24 +14,45 @@ const app = new Hono<{ Bindings: Env }>();
 app.get("/api/check-update", async (c) => {
   const bundleId = c.req.header("x-bundle-id") as string;
   const appPlatform = c.req.header("x-app-platform") as "ios" | "android";
-  const appVersion = c.req.header("x-app-version") as string;
-  const minBundleId = c.req.header("x-min-bundle-id") as string | undefined;
-  const channel = c.req.header("x-channel") as string | undefined;
+  const minBundleId = c.req.header("x-min-bundle-id") as string;
+  const appVersion = c.req.header("x-app-version") as string | null;
+  const channel = c.req.header("x-channel") as string | null;
+  const fingerprintHash =
+    c.req.header("x-fingerprint-hash") ?? (null as string | null);
 
-  if (!bundleId || !appPlatform || !appVersion) {
+  if (!bundleId || !appPlatform) {
     return c.json(
-      { error: "Missing bundleId, appPlatform, or appVersion" },
+      { error: "Missing required headers (x-app-platform, x-bundle-id)." },
+      400,
+    );
+  }
+  if (!appVersion && !fingerprintHash) {
+    return c.json(
+      {
+        error:
+          "Missing required headers (x-app-version or x-fingerprint-hash).",
+      },
       400,
     );
   }
 
-  const updateInfo = await getUpdateInfo(c.env.DB, {
-    appVersion,
-    bundleId,
-    platform: appPlatform,
-    minBundleId: minBundleId || NIL_UUID,
-    channel: channel || "production",
-  });
+  const updateInfo = fingerprintHash
+    ? await getUpdateInfo(c.env.DB, {
+        fingerprintHash,
+        bundleId,
+        platform: appPlatform,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "fingerprint",
+      })
+    : await getUpdateInfo(c.env.DB, {
+        appVersion: appVersion!,
+        bundleId,
+        platform: appPlatform,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "appVersion",
+      });
 
   const appUpdateInfo = await withJwtSignedUrl({
     data: updateInfo,
@@ -47,8 +68,9 @@ app.get("*", async (c) => {
     path: c.req.path,
     token: c.req.query("token"),
     jwtSecret: c.env.JWT_SECRET,
-    handler: async (key) => {
-      const object = await c.env.BUCKET.get(key);
+    handler: async (storageUri) => {
+      const [, ...key] = storageUri.split("/");
+      const object = await c.env.BUCKET.get(key.join("/"));
       if (!object) {
         return null;
       }

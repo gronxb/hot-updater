@@ -11,7 +11,9 @@ import { NIL_UUID } from "@hot-updater/core";
  * @param {string} options.privateKey - CloudFront private key
  * @returns {Promise<T|null>} - Update response object with fileUrl or null
  */
-export const withSignedUrl = async <T extends { id: string }>({
+export const withSignedUrl = async <
+  T extends { id: string; storageUri: string | null },
+>({
   data,
   reqUrl,
   keyPairId,
@@ -21,19 +23,21 @@ export const withSignedUrl = async <T extends { id: string }>({
   reqUrl: string;
   keyPairId: string;
   privateKey: string;
-}): Promise<(T & { fileUrl: string | null }) | null> => {
+}): Promise<(Omit<T, "storageUri"> & { fileUrl: string | null }) | null> => {
   if (!data) {
     return null;
   }
 
-  if (data.id === NIL_UUID) {
-    return { ...data, fileUrl: null };
+  const { storageUri, ...rest } = data;
+  if (data.id === NIL_UUID || !data.storageUri) {
+    return { ...rest, fileUrl: null };
   }
 
-  const key = `${data.id}/bundle.zip`;
+  const storageUrl = new URL(data.storageUri);
+  const key = storageUrl.pathname;
 
   const url = new URL(reqUrl);
-  url.pathname = `/${key}`;
+  url.pathname = key;
 
   // Create CloudFront signed URL
   const signedUrl = getSignedUrl({
@@ -43,5 +47,5 @@ export const withSignedUrl = async <T extends { id: string }>({
     dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(), // Valid for 60 seconds
   });
 
-  return { ...data, fileUrl: signedUrl };
+  return { ...rest, fileUrl: signedUrl };
 };

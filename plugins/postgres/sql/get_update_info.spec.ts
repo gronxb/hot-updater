@@ -15,7 +15,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel
+      should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileHash}',
@@ -25,7 +25,9 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"},
-      '${bundle.channel}'
+      '${bundle.channel}',
+      '${bundle.storageUri}',
+      '${bundle.fingerprintHash}'
     );
   `;
 };
@@ -34,16 +36,42 @@ const createGetUpdateInfo =
   (db: PGlite) =>
   async (
     bundles: Bundle[],
-    {
-      appVersion,
+    args: GetBundlesArgs,
+  ): Promise<UpdateInfo | null> => {
+    const {
       bundleId,
       platform,
       minBundleId = NIL_UUID,
       channel = "production",
-    }: GetBundlesArgs,
-  ): Promise<UpdateInfo | null> => {
+      _updateStrategy,
+    } = args;
     await db.exec(createInsertBundleQuerys(bundles));
 
+    if (_updateStrategy === "fingerprint") {
+      const fingerprintHash = args.fingerprintHash;
+      const result = await db.query<{
+        id: string;
+        should_force_update: boolean;
+        message: string;
+        status: string;
+      }>(
+        `
+      SELECT * FROM get_update_info_by_fingerprint_hash(
+        '${platform}',
+        '${bundleId}',
+        '${minBundleId}',
+        '${channel}',
+        '${fingerprintHash}'
+      );
+      `,
+      );
+
+      return result.rows[0]
+        ? (camelcaseKeys(result.rows[0]) as UpdateInfo)
+        : null;
+    }
+
+    const appVersion = args.appVersion;
     const { rows: appVersionList } = await db.query<{
       target_app_version: string;
     }>(
@@ -64,7 +92,7 @@ const createGetUpdateInfo =
       status: string;
     }>(
       `
-      SELECT * FROM get_update_info(
+      SELECT * FROM get_update_info_by_app_version(
         '${platform}',
         '${appVersion}',
         '${bundleId}',

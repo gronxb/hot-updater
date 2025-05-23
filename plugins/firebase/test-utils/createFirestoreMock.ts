@@ -12,9 +12,14 @@ export function createFirestoreMock(projectId: string) {
   const targetAppVersionsCollection = firestore.collection(
     "target_app_versions",
   );
+  const channelsCollection = firestore.collection("channels");
 
   async function clearCollections() {
-    const collections = [bundlesCollection, targetAppVersionsCollection];
+    const collections = [
+      bundlesCollection,
+      targetAppVersionsCollection,
+      channelsCollection,
+    ];
     for (const coll of collections) {
       const snapshot = await coll.get();
       const batch = firestore.batch();
@@ -29,6 +34,7 @@ export function createFirestoreMock(projectId: string) {
     firestore,
     bundlesCollection,
     targetAppVersionsCollection,
+    channelsCollection,
     clearCollections,
   };
 }

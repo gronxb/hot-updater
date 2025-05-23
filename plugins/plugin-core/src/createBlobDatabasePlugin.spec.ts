@@ -11,6 +11,9 @@ const DEFAULT_BUNDLE: Omit<
   message: null,
   enabled: true,
   shouldForceUpdate: false,
+  storageUri:
+    "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+  fingerprintHash: null,
 };
 
 const createBundleJson = (
@@ -41,12 +44,12 @@ afterEach(() => {
 });
 
 describe("blobDatabase plugin", () => {
-  async function listObjects(prefix: string): Promise<string[]> {
+  async function listObjects(context: any, prefix: string): Promise<string[]> {
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
     return keys;
   }
 
-  async function loadObject<T>(path: string): Promise<T | null> {
+  async function loadObject<T>(context: any, path: string): Promise<T | null> {
     const data = fakeStore[path];
     if (data) {
       return JSON.parse(data);
@@ -54,20 +57,25 @@ describe("blobDatabase plugin", () => {
     return null;
   }
 
-  async function uploadObject<T>(path: string, data: T): Promise<void> {
+  async function uploadObject<T>(
+    context: any,
+    path: string,
+    data: T,
+  ): Promise<void> {
     fakeStore[path] = JSON.stringify(data);
   }
 
-  async function deleteObject(path: string): Promise<void> {
+  async function deleteObject(context: any, path: string): Promise<void> {
     delete fakeStore[path];
   }
 
-  async function invalidatePaths(paths: string[]) {
+  async function invalidatePaths(context: any, paths: string[]) {
     cloudfrontInvalidations.push({ paths });
   }
 
   let plugin = createBlobDatabasePlugin({
     name: "blobDatabase",
+    getContext: () => ({}),
     listObjects,
     loadObject,
     uploadObject,
@@ -78,6 +86,7 @@ describe("blobDatabase plugin", () => {
   beforeEach(async () => {
     plugin = createBlobDatabasePlugin({
       name: "blobDatabase",
+      getContext: () => ({}),
       listObjects,
       loadObject,
       uploadObject,
@@ -579,6 +588,7 @@ describe("blobDatabase plugin", () => {
 
     const pluginWithHook = createBlobDatabasePlugin({
       name: "blobDatabase",
+      getContext: () => ({}),
       listObjects,
       loadObject,
       uploadObject,

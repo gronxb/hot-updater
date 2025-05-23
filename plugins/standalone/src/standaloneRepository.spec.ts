@@ -32,6 +32,8 @@ const testBundles: Bundle[] = [
     enabled: true,
     id: "00000000-0000-0000-0000-000000000001",
     channel: "production",
+    storageUri: "gs://test-bucket/test-key",
+    fingerprintHash: null,
   },
 ];
 
@@ -202,6 +204,8 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       enabled: true,
       id: "00000000-0000-0000-0000-000000000002",
       channel: "production",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
     };
 
     await repo.appendBundle(newBundle);

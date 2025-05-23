@@ -127,8 +127,6 @@ Replace `<channel>` with your target channel name (e.g., `dev`, `staging`, `prod
 Use the `HotUpdater.getChannel()` function to retrieve the current release channel within your app.
 We recommend displaying this value in your app UI to visually confirm that it’s using the intended update channel.
 
-Returns `null` when running in development mode.
-
 ### Example Usage
 
 ```tsx
@@ -154,7 +152,6 @@ export default HotUpdater.wrap({
 
 - If `releaseChannel` is set in `hot-updater.config.ts`, `HotUpdater.getChannel()` returns that channel name.
 - Defaults to `production` if no channel is specified.
-- Returns `null` when running in development mode.
 - Channels ensure separation of different environments (e.g., `dev`, `staging`, `production`) to apply updates accurately.
 - The initial channel is injected into the native build based on the `releaseChannel` in your configuration.
 - Updates can subsequently be deployed using `hot-updater deploy -c <channel>`.

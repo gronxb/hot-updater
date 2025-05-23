@@ -67,7 +67,7 @@ export const standaloneRepository = (
   return createDatabasePlugin(
     "standalone-repository",
     {
-      async getBundleById(bundleId: string): Promise<Bundle | null> {
+      async getBundleById(_, bundleId: string): Promise<Bundle | null> {
         try {
           const { path, headers: routeHeaders } = routes.retrieve(bundleId);
           const response = await fetch(`${config.baseUrl}${path}`, {
@@ -84,7 +84,7 @@ export const standaloneRepository = (
           return null;
         }
       },
-      async getBundles(options) {
+      async getBundles(_, options) {
         const { where, limit, offset = 0 } = options ?? {};
         const { path, headers: routeHeaders } = routes.list();
         const response = await fetch(`${config.baseUrl}${path}`, {
@@ -115,11 +115,11 @@ export const standaloneRepository = (
         }
         return filteredBundles;
       },
-      async getChannels(): Promise<string[]> {
-        const allBundles = await this.getBundles();
+      async getChannels(_): Promise<string[]> {
+        const allBundles = await this.getBundles(_);
         return [...new Set(allBundles.map((b) => b.channel))];
       },
-      async commitBundle({ changedSets }) {
+      async commitBundle(_, { changedSets }) {
         const changedBundles = changedSets.map((set) => set.data);
         if (changedBundles.length === 0) {
           return;

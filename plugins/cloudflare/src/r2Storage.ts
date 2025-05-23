@@ -9,7 +9,6 @@ import type {
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 
-import Cloudflare from "cloudflare";
 import { ExecaError } from "execa";
 
 export interface R2StorageConfig {
@@ -22,9 +21,6 @@ export const r2Storage =
   (config: R2StorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
     const { bucketName, cloudflareApiToken, accountId } = config;
-    const cf = new Cloudflare({
-      apiToken: cloudflareApiToken,
-    });
     const wrangler = createWrangler({
       accountId,
       cloudflareApiToken: cloudflareApiToken,
@@ -76,8 +72,7 @@ export const r2Storage =
         hooks?.onStorageUploaded?.();
 
         return {
-          bucketName,
-          key: Key,
+          storageUri: `r2://${bucketName}/${Key}`,
         };
       },
     };

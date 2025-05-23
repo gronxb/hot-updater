@@ -37,29 +37,59 @@ app.get("/api/check-update", async (c) => {
     const appVersion = headers["x-app-version"]?.[0]?.value;
     const minBundleId = headers["x-min-bundle-id"]?.[0]?.value ?? NIL_UUID;
     const channel = headers["x-channel"]?.[0]?.value ?? "production";
+    const fingerprintHash = headers["x-fingerprint-hash"]?.[0]?.value;
 
-    if (!bundleId || !appPlatform || !appVersion) {
-      return c.json({ error: "Missing required headers." }, 400);
+    if (!bundleId || !appPlatform) {
+      return c.json(
+        { error: "Missing required headers (x-app-platform, x-bundle-id)." },
+        400,
+      );
+    }
+    if (!appVersion && !fingerprintHash) {
+      return c.json(
+        {
+          error:
+            "Missing required headers (x-app-version or x-fingerprint-hash).",
+        },
+        400,
+      );
     }
 
     const cdnHost = headers["host"]?.[0]?.value;
     if (!cdnHost) {
       return c.json({ error: "Missing host header." }, 500);
     }
-    const updateInfo = await getUpdateInfo(
-      {
-        baseUrl: c.req.url,
-        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-        privateKey: CLOUDFRONT_PRIVATE_KEY,
-      },
-      {
-        platform: appPlatform,
-        bundleId,
-        appVersion,
-        minBundleId,
-        channel,
-      },
-    );
+    const updateInfo = fingerprintHash
+      ? await getUpdateInfo(
+          {
+            baseUrl: c.req.url,
+            keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+            privateKey: CLOUDFRONT_PRIVATE_KEY,
+          },
+          {
+            platform: appPlatform,
+            bundleId,
+            fingerprintHash,
+            minBundleId,
+            channel,
+            _updateStrategy: "fingerprint",
+          },
+        )
+      : await getUpdateInfo(
+          {
+            baseUrl: c.req.url,
+            keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+            privateKey: CLOUDFRONT_PRIVATE_KEY,
+          },
+          {
+            platform: appPlatform,
+            bundleId,
+            appVersion,
+            minBundleId,
+            channel,
+            _updateStrategy: "appVersion",
+          },
+        );
     if (!updateInfo) {
       return c.json(null);
     }

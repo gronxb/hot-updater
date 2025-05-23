@@ -26,6 +26,7 @@ import { createForm } from "@tanstack/solid-form";
 import { useQueryClient } from "@tanstack/solid-query";
 import { LoaderCircle } from "lucide-solid";
 import semverValid from "semver/ranges/valid";
+import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { Show, createMemo, createSignal } from "solid-js";
 
 export interface EditBundleSheetContentProps {
@@ -150,52 +151,70 @@ const EditBundleSheetForm = ({
         </TextField>
       </div>
 
-      <div>
-        <TextField class="grid w-full max-w-sm items-center gap-1.5">
-          <TextFieldLabel for="targetAppVersion">
-            Target App Version
-          </TextFieldLabel>
-          <form.Field
-            name="targetAppVersion"
-            validators={{
-              onChange: ({ value }) => {
-                if (value?.length === 0 || !semverValid(value)) {
-                  return "Invalid target app version";
-                }
+      <Show when={bundle.targetAppVersion}>
+        <div>
+          <TextField class="grid w-full max-w-sm items-center gap-1.5">
+            <TextFieldLabel for="targetAppVersion">
+              Target App Version
+            </TextFieldLabel>
+            <form.Field
+              name="targetAppVersion"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value?.length === 0 || !semverValid(value)) {
+                    return "Invalid target app version";
+                  }
 
-                return undefined;
-              },
-            }}
-          >
-            {(field) => (
-              <>
-                <TextFieldInput
-                  type="text"
-                  id="targetAppVersion"
-                  class={cn(
-                    field().state.meta.errors.length > 0 &&
-                      "border-red-500 focus-visible:ring-red-500",
+                  return undefined;
+                },
+              }}
+            >
+              {(field) => (
+                <>
+                  <TextFieldInput
+                    type="text"
+                    id="targetAppVersion"
+                    class={cn(
+                      field().state.meta.errors.length > 0 &&
+                        "border-red-500 focus-visible:ring-red-500",
+                    )}
+                    placeholder="Target App Version"
+                    name={field().name}
+                    value={field().state.value ?? ""}
+                    onBlur={field().handleBlur}
+                    onInput={(e) => field().handleChange(e.currentTarget.value)}
+                  />
+                  {field().state.meta.errors.length > 0 ? (
+                    <em class="text-xs text-red-500">
+                      {field().state.meta.errors.join(", ")}
+                    </em>
+                  ) : (
+                    <em class="text-xs text-muted-foreground">
+                      {semverValid(field().state.value)}
+                    </em>
                   )}
-                  placeholder="Target App Version"
-                  name={field().name}
-                  value={field().state.value ?? ""}
-                  onBlur={field().handleBlur}
-                  onInput={(e) => field().handleChange(e.currentTarget.value)}
-                />
-                {field().state.meta.errors.length > 0 ? (
-                  <em class="text-xs text-red-500">
-                    {field().state.meta.errors.join(", ")}
-                  </em>
-                ) : (
-                  <em class="text-xs text-muted-foreground">
-                    {semverValid(field().state.value)}
-                  </em>
-                )}
-              </>
-            )}
-          </form.Field>
-        </TextField>
-      </div>
+                </>
+              )}
+            </form.Field>
+          </TextField>
+        </div>
+      </Show>
+
+      <Show when={bundle.fingerprintHash}>
+        <div>
+          <TextField class="grid w-full max-w-sm items-center gap-1.5">
+            <TextFieldLabel for="fingerprintHash">
+              Fingerprint Hash
+            </TextFieldLabel>
+            <TextFieldInput
+              type="text"
+              id="fingerprintHash"
+              value={bundle.fingerprintHash ?? ""}
+              disabled
+            />
+          </TextField>
+        </div>
+      </Show>
 
       <div>
         <div class="flex items-center space-x-2">
@@ -257,24 +276,50 @@ const EditBundleSheetForm = ({
         </Button>
       </Show>
 
-      <div class="flex justify-end">
+      <div class="mt-2 space-y-1">
+        <h3 class="text-md text-bold font-medium">Metadata</h3>
+        <Show when={bundle.platform === "ios"}>
+          <div class="text-sm text-muted-foreground flex flex-row items-center">
+            Platform:{" "}
+            <p class="ml-2 flex flex-row items-center">
+              <AiFillApple class="inline-block" /> iOS
+            </p>
+          </div>
+        </Show>
+        <Show when={bundle.platform === "android"}>
+          <div class="text-sm text-muted-foreground flex flex-row items-center">
+            Platform:{" "}
+            <p class="ml-2 flex flex-row items-center">
+              <AiFillAndroid class="inline-block" /> Android
+            </p>
+          </div>
+        </Show>
+        <Show when={bundle.metadata?.app_version}>
+          {(appVersion) => (
+            <div class="text-sm text-muted-foreground flex flex-row items-center">
+              App Version: <p class="ml-2">{appVersion()}</p>
+            </div>
+          )}
+        </Show>
+
         <Show when={gitCommitHash()}>
-          {(gitCommitHash) =>
-            gitUrl() ? (
-              <a
-                href={`${gitUrl()}/commit/${gitCommitHash}`}
-                target="_blank"
-                rel="noreferrer"
-                class="text-xs text-muted-foreground"
-              >
-                Commit Hash: {gitCommitHash().slice(0, 8)}
-              </a>
-            ) : (
-              <p class="text-xs text-muted-foreground">
-                Commit Hash: {gitCommitHash().slice(0, 8)}
-              </p>
-            )
-          }
+          {(gitCommitHash) => (
+            <div class="text-sm text-muted-foreground flex flex-row items-center">
+              Commit Hash:{" "}
+              {gitUrl() ? (
+                <a
+                  href={`${gitUrl()}/commit/${gitCommitHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  class="ml-2"
+                >
+                  {gitCommitHash().slice(0, 8)}
+                </a>
+              ) : (
+                <p class="ml-2">{gitCommitHash().slice(0, 8)}</p>
+              )}
+            </div>
+          )}
         </Show>
       </div>
     </form>
