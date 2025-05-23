@@ -20,7 +20,7 @@ CREATE TABLE bundles_temp (
     storage_uri TEXT NOT NULL,
     target_app_version TEXT,
     fingerprint_hash TEXT,
-    metadata JSONB DEFAULT '{}'::jsonb,
+    metadata JSONB DEFAULT '{}',
     CHECK ((target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL))
 );
 
