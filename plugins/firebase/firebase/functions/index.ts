@@ -68,27 +68,28 @@ app.get("/api/check-update", async (c) => {
     if (!updateInfo) {
       return c.json(null, 200);
     }
+    const { storageUri, ...rest } = updateInfo;
 
-    if (updateInfo.id === NIL_UUID) {
+    if (rest.id === NIL_UUID) {
       return c.json({
-        ...updateInfo,
+        ...rest,
         fileUrl: null,
       });
     }
 
     let signedUrl: string | null = null;
-    if (!updateInfo.storageUri) {
+    if (!storageUri) {
       const [_signedUrl] = await admin
         .storage()
         .bucket(admin.app().options.storageBucket)
-        .file([updateInfo.id, "bundle.zip"].join("/"))
+        .file([rest.id, "bundle.zip"].join("/"))
         .getSignedUrl({
           action: "read",
           expires: Date.now() + 60 * 1000,
         });
       signedUrl = _signedUrl;
     } else {
-      const storageUrl = new URL(updateInfo.storageUri);
+      const storageUrl = new URL(storageUri);
       const [_signedUrl] = await admin
         .storage()
         .bucket(storageUrl.host)
@@ -102,7 +103,7 @@ app.get("/api/check-update", async (c) => {
 
     return c.json(
       {
-        ...updateInfo,
+        ...rest,
         fileUrl: signedUrl,
       },
       200,

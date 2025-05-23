@@ -289,36 +289,37 @@ const EditBundleSheetForm = ({
         <Show when={bundle.platform === "android"}>
           <div class="text-sm text-muted-foreground flex flex-row items-center">
             Platform:{" "}
-            <p class="flex flex-row items-center">
+            <p class="ml-2 flex flex-row items-center">
               <AiFillAndroid class="inline-block" /> Android
             </p>
           </div>
         </Show>
         <Show when={bundle.metadata?.app_version}>
           {(appVersion) => (
-            <p class="text-sm text-muted-foreground">
-              App Version: {appVersion()}
-            </p>
+            <div class="text-sm text-muted-foreground flex flex-row items-center">
+              App Version: <p class="ml-2">{appVersion()}</p>
+            </div>
           )}
         </Show>
 
         <Show when={gitCommitHash()}>
-          {(gitCommitHash) =>
-            gitUrl() ? (
-              <a
-                href={`${gitUrl()}/commit/${gitCommitHash}`}
-                target="_blank"
-                rel="noreferrer"
-                class="text-sm text-muted-foreground"
-              >
-                Commit Hash: {gitCommitHash().slice(0, 8)}
-              </a>
-            ) : (
-              <p class="text-sm text-muted-foreground">
-                Commit Hash: {gitCommitHash().slice(0, 8)}
-              </p>
-            )
-          }
+          {(gitCommitHash) => (
+            <div class="text-sm text-muted-foreground flex flex-row items-center">
+              Commit Hash:{" "}
+              {gitUrl() ? (
+                <a
+                  href={`${gitUrl()}/commit/${gitCommitHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  class="ml-2"
+                >
+                  {gitCommitHash().slice(0, 8)}
+                </a>
+              ) : (
+                <p class="ml-2">{gitCommitHash().slice(0, 8)}</p>
+              )}
+            </div>
+          )}
         </Show>
       </div>
     </form>
