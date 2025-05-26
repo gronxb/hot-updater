@@ -75,6 +75,7 @@ describe("blobDatabase plugin", () => {
 
   let plugin = createBlobDatabasePlugin({
     name: "blobDatabase",
+    apiBasePath: "/api/check-update",
     getContext: () => ({}),
     listObjects,
     loadObject,
@@ -86,6 +87,7 @@ describe("blobDatabase plugin", () => {
   beforeEach(async () => {
     plugin = createBlobDatabasePlugin({
       name: "blobDatabase",
+      apiBasePath: "/api/check-update",
       getContext: () => ({}),
       listObjects,
       loadObject,
@@ -588,6 +590,7 @@ describe("blobDatabase plugin", () => {
 
     const pluginWithHook = createBlobDatabasePlugin({
       name: "blobDatabase",
+      apiBasePath: "/api/check-update",
       getContext: () => ({}),
       listObjects,
       loadObject,
