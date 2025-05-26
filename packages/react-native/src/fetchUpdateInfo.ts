@@ -1,6 +1,9 @@
 import type { AppUpdateInfo, GetBundlesArgs } from "@hot-updater/core";
 
-export type UpdateSource = string | (() => Promise<AppUpdateInfo | null>);
+export type UpdateSource =
+  | string
+  | ((args: GetBundlesArgs) => Promise<AppUpdateInfo | null>)
+  | ((args: GetBundlesArgs) => string);
 
 export const fetchUpdateInfo = async (
   source: UpdateSource,
@@ -10,7 +13,11 @@ export const fetchUpdateInfo = async (
   requestTimeout = 5000,
 ): Promise<AppUpdateInfo | null> => {
   if (typeof source === "function") {
-    return source();
+    const url = source(args);
+    if (typeof url !== "string") {
+      return null;
+    }
+    source = url;
   }
 
   const controller = new AbortController();

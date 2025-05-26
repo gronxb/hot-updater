@@ -407,13 +407,13 @@ importers:
         version: 0.74.83
       '@react-native/metro-config':
         specifier: 0.74.83
-        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
       '@react-native/typescript-config':
         specifier: 0.74.83
         version: 0.74.83
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
+        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
@@ -934,7 +934,7 @@ importers:
         version: 0.79.1(@babel/core@7.27.1)(@react-native-community/cli@18.0.0(typescript@5.8.3))(@types/react@19.1.3)(react@19.1.0)
       react-native-builder-bob:
         specifier: ^0.40.10
-        version: 0.40.10(encoding@0.1.13)
+        version: 0.40.10
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -1204,11 +1204,8 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@22.13.5)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
       oxc-transform:
-        specifier: ^0.70.0
-        version: 0.70.0
-      ts-morph:
-        specifier: 25.0.1
-        version: 25.0.1
+        specifier: 0.72.0
+        version: 0.72.0
     devDependencies:
       '@types/node':
         specifier: ^22.7.5
@@ -4397,6 +4394,9 @@ packages:
     resolution: {integrity: sha512-wK+5pLK5XFmgtH3aQ2YVvA3HohS3xqV/OxuVOdNx9Wpnz7VE/fnC+e1A7ln6LFYeck7gOJ/dsZV6OLplOtAJ2w==}
     engines: {node: '>=18'}
 
+  '@napi-rs/wasm-runtime@0.2.10':
+    resolution: {integrity: sha512-bCsCyeZEwVErsGmyPNSzwfwFn4OdxBj0mmv6hOFucB/k81Ojdu68RbZdxYsRQUPc9l6SU5F/cG+bXgWs3oUgsQ==}
+
   '@napi-rs/wasm-runtime@0.2.4':
     resolution: {integrity: sha512-9zESzOO5aDByvhIAsOy9TbpZ0Ur2AJbUI7UT73kcUTS2mxAMHOBaa1st/jAymNoCtvrit99kkzT1FZuXVcgfIQ==}
 
@@ -4575,85 +4575,85 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@oxc-transform/binding-darwin-arm64@0.70.0':
-    resolution: {integrity: sha512-h5DHbP2JqhI7o+hgVwiUn1OFTuKY2r1S6mO2wYPHS1LRWZM2GLNVo/cuCVJx5nRLHIfWBYtIIgbrG8ZrlrG2Cg==}
+  '@oxc-transform/binding-darwin-arm64@0.72.0':
+    resolution: {integrity: sha512-0yCY7Cc4uQn+jdVBBvDsMuOww0bP6+TUHQOKqMfIC0QC/1Zb3pK/p8hM0eQelFKrmO/6FP7pjuX+so0hdJVVUQ==}
     engines: {node: '>=14.0.0'}
     cpu: [arm64]
     os: [darwin]
 
-  '@oxc-transform/binding-darwin-x64@0.70.0':
-    resolution: {integrity: sha512-1l0C5VOlfirfSzyL/fPtmxnZwoUJZI25leFQTCa3I2neOoFvcV4tncg5NYBpF18DbrHcEzTtTbhVRwCjO1RQ8A==}
+  '@oxc-transform/binding-darwin-x64@0.72.0':
+    resolution: {integrity: sha512-gFDeq5A2U4cnQ5fAmbuyYT5Amb+DFvOQJV7guah1A3YTfT6livBOZE0wWbn0LrW4tj2SjpAxHjwRoez5t1Lzcg==}
     engines: {node: '>=14.0.0'}
     cpu: [x64]
     os: [darwin]
 
-  '@oxc-transform/binding-freebsd-x64@0.70.0':
-    resolution: {integrity: sha512-bSkX/vXW9TGqm6LS56mCzM2dkeiAsS/OWvOS94NTBIZQHd5vLn6jtt8KYmGoO/7iOGP+UT2L7p7Da+y/LNB7cg==}
+  '@oxc-transform/binding-freebsd-x64@0.72.0':
+    resolution: {integrity: sha512-06CWIiEqaXm4D4FvKPVVPPUhgj0zyMS8NExncGMepe4aBkb9n7TTMv2BMv2OYzoM6OM6Q6m9xSA6wq7Wx8n9JA==}
     engines: {node: '>=14.0.0'}
     cpu: [x64]
     os: [freebsd]
 
-  '@oxc-transform/binding-linux-arm-gnueabihf@0.70.0':
-    resolution: {integrity: sha512-Ru35tW9h+0fC/h/NpbBOuxW9xBYHrVTvk/rHZXg860QDC17W/ORPY7DJ4sBN+JPcm69UNssRELEydvy62p5hnQ==}
+  '@oxc-transform/binding-linux-arm-gnueabihf@0.72.0':
+    resolution: {integrity: sha512-/Jwfrhp9jWDx9bGTojmQ7OeeUfSW4uHikk6x5GmBfQ4eoD3phnoAQ0Ej7pqGzLGP2kXv/m7GJo6bgOUXT06Qvg==}
     engines: {node: '>=14.0.0'}
     cpu: [arm]
     os: [linux]
 
-  '@oxc-transform/binding-linux-arm-musleabihf@0.70.0':
-    resolution: {integrity: sha512-NUpJ2hFE8R29zvL4YN/JvyfaT2Vpcw4NyEVdBICEN6DLJvM2fYUrtN3c7q/5RSMPERWGDdkX4oebHy3gOReb5A==}
+  '@oxc-transform/binding-linux-arm-musleabihf@0.72.0':
+    resolution: {integrity: sha512-ERnuvthMhMkWPnnZxl8qEGeU912TpOdKMHvn/WhHXZW9iSw2JuucR5+QuSvzRKRf4ocwJzCnS+clgRMr3wuz1Q==}
     engines: {node: '>=14.0.0'}
     cpu: [arm]
     os: [linux]
 
-  '@oxc-transform/binding-linux-arm64-gnu@0.70.0':
-    resolution: {integrity: sha512-ijMtGrOgXgEzyHJoaieDBfBe2IaW53RlaDPVKLu6SRaqzbYSzjkBocMCWPnlhHAlsXXot4iXqUz/mIvi9iySgQ==}
+  '@oxc-transform/binding-linux-arm64-gnu@0.72.0':
+    resolution: {integrity: sha512-dNV4gydJxuOZIwuekoMrQTOyuiL3fdmjZgdNuEWvjjRnm+Cl6mdgDzt/suIy8hLdughAG0DZPXyRH93ftRK+zA==}
     engines: {node: '>=14.0.0'}
     cpu: [arm64]
     os: [linux]
 
-  '@oxc-transform/binding-linux-arm64-musl@0.70.0':
-    resolution: {integrity: sha512-VUK5p1ooBC8zObwIAoo4et3x9h0kuBeas4UehbNN4HfnhwkM8yRCt5owHypslIi1vytfPpkexRpZcw68lAiThw==}
+  '@oxc-transform/binding-linux-arm64-musl@0.72.0':
+    resolution: {integrity: sha512-ir2bPafrK9aPco8Pki2I/7MSsdYmAFfns51uvNC+PCw/1KN4AG3Vs/ras91uTGjE3j+jSsui4SM/rnsn1qU4qg==}
     engines: {node: '>=14.0.0'}
     cpu: [arm64]
     os: [linux]
 
-  '@oxc-transform/binding-linux-riscv64-gnu@0.70.0':
-    resolution: {integrity: sha512-IqOHDigJosjwgWSWv7WBJHiVzQdYj3uvFDOndHTsZuQdx3UHBvejcJPTVFZocMVH/JPr4QCnmzEXfNVlscoRAQ==}
+  '@oxc-transform/binding-linux-riscv64-gnu@0.72.0':
+    resolution: {integrity: sha512-2fnzzfejnbsAq182V027Tv9OiZmdK83qG5ktGmspkcRhXAvXhdCHTlpur52sw45pZHeJBDEfc0QDjGo99kmgsQ==}
     engines: {node: '>=14.0.0'}
     cpu: [riscv64]
     os: [linux]
 
-  '@oxc-transform/binding-linux-s390x-gnu@0.70.0':
-    resolution: {integrity: sha512-p9u5bmQkzwzMMVqaPDZwwJCJIzm5MqK6n5VyPYNVCpSWJmI9YtxRpL7A+Szbjrv1I8RAQ3Lfvd7vLcQbybzZbg==}
+  '@oxc-transform/binding-linux-s390x-gnu@0.72.0':
+    resolution: {integrity: sha512-ovL2cHsOqZzBbfrDFg7U5D8rU9kc6Athq0zbyxaoQ0pCW9IV4T4kEGHlWAYinAPQSVmWW8FyXi/dQHSB9fzWjw==}
     engines: {node: '>=14.0.0'}
     cpu: [s390x]
     os: [linux]
 
-  '@oxc-transform/binding-linux-x64-gnu@0.70.0':
-    resolution: {integrity: sha512-CtKvuyXNAheW2WBrR6RyyksStT84UfZLh+EjhYbNzQUMMBmUni5xfcJJiDPLhV2fmZ+iCMaHv36IIPS4gkP3wQ==}
+  '@oxc-transform/binding-linux-x64-gnu@0.72.0':
+    resolution: {integrity: sha512-gb+OuZHRCBk/64zaZQOPje8GUXqyNq/qPbPnVPWHTBGvSeat1+2m19LojTfMa4a9K1btKNItFPnXKiEf6AuPWQ==}
     engines: {node: '>=14.0.0'}
     cpu: [x64]
     os: [linux]
 
-  '@oxc-transform/binding-linux-x64-musl@0.70.0':
-    resolution: {integrity: sha512-KM68LeDbF7HM3SeRC8ljJ2fISEmTGyjw70VP4xnAJy9FotneYmDqD7UDbtdcl956m2zePFUNdmdlLEwmP211Ag==}
+  '@oxc-transform/binding-linux-x64-musl@0.72.0':
+    resolution: {integrity: sha512-Ks3nM1+zl0xHy63a7YxFFNceoymrY/1B0Y5MlAxSkEpyhUSfLlxr9hXlwr3iNTCbHw7Tcnwi7fKLAtEyL8avrQ==}
     engines: {node: '>=14.0.0'}
     cpu: [x64]
     os: [linux]
 
-  '@oxc-transform/binding-wasm32-wasi@0.70.0':
-    resolution: {integrity: sha512-jT8y6XnATCbArIZqVE8BgFSJLASSPXcsCPHo1dk5GDJHxls8SuWo0VecE4v4OAphOVPhX1Jdyj1lie6oK6xEnQ==}
+  '@oxc-transform/binding-wasm32-wasi@0.72.0':
+    resolution: {integrity: sha512-OckBCdQHMLD3KCAWup2f5sT+8psbSBGRXEoJEere95uGscZoeapWlbFQFXYWuOK5Y4b2QXd9MKib/CUAIsrx9g==}
     engines: {node: '>=14.0.0'}
     cpu: [wasm32]
 
-  '@oxc-transform/binding-win32-arm64-msvc@0.70.0':
-    resolution: {integrity: sha512-OFmHVkWeIG6PqouPzVULCuD8PfLA0ASHSfKvMM6/l3Soowz38nkfi8y2OpH8StDyXK3kgn+PkMpS03NAITeGlQ==}
+  '@oxc-transform/binding-win32-arm64-msvc@0.72.0':
+    resolution: {integrity: sha512-DjDLZg305vf/kGKHgKtdyEp9KQVGyBGr98PoKAG2GFSXUhhYzjdYja77/UExlGwpnIOvUqvwvS36xsVTcly6nw==}
     engines: {node: '>=14.0.0'}
     cpu: [arm64]
     os: [win32]
 
-  '@oxc-transform/binding-win32-x64-msvc@0.70.0':
-    resolution: {integrity: sha512-o59kbIXgY2HXUlHepZHD/Zz4k0it80yZHL+QIbsYs1/K/i6iydrhdUKIabRkFcPg9qvxXXJ/xxDAggC8KdBoPA==}
+  '@oxc-transform/binding-win32-x64-msvc@0.72.0':
+    resolution: {integrity: sha512-GetSTZYjJH8gU+pOV651OzUnVbMzn55MoJ5qFFJ6TwDtJWtEFpaLz68nv/2NKK2FGEfrkqd/+uUrbn5IG+QWUg==}
     engines: {node: '>=14.0.0'}
     cpu: [x64]
     os: [win32]
@@ -6703,9 +6703,6 @@ packages:
   '@tootallnate/quickjs-emscripten@0.23.0':
     resolution: {integrity: sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA==}
 
-  '@ts-morph/common@0.26.1':
-    resolution: {integrity: sha512-Sn28TGl/4cFpcM+jwsH1wLncYq3FtN/BIpem+HOygfBWPT5pAeS5dB4VFVzV8FbnOKHpDLZmvAl4AjPEev5idA==}
-
   '@tsconfig/node10@1.0.11':
     resolution: {integrity: sha512-DcRjDCujK/kCk/cUe8Xz8ZSpm8mS3mNNpta+jGCA6USEDfktlNvm1+IuZ9eTcDbNk41BHwpHHeW+N1lKCz4zOw==}
 
@@ -8244,9 +8241,6 @@ packages:
   co@4.6.0:
     resolution: {integrity: sha512-QVb0dM5HvG+uaxitm8wONl7jltx8dqhfU33DcqtOZcLSVIKSDDLDi7+0LbAKiyI8hD9u42m2YxXSkMGWThaecQ==}
     engines: {iojs: '>= 1.0.0', node: '>= 0.12.0'}
-
-  code-block-writer@13.0.3:
-    resolution: {integrity: sha512-Oofo0pq3IKnsFtuHqSF7TqBfr71aeyZDVJ0HpmqB7FBM2qEigL0iPONSCZSO9pE9dZTAxANe5XHG9Uy0YMv8cg==}
 
   collect-v8-coverage@1.0.2:
     resolution: {integrity: sha512-lHl4d5/ONEbLlJvaJNtsF/Lz+WvB07u2ycqTYbdrq7UypDXailES4valYb2eWiJFxZlVmpGekfqoxQhzyFdT4Q==}
@@ -12916,8 +12910,8 @@ packages:
   oxc-resolver@1.12.0:
     resolution: {integrity: sha512-YlaCIArvWNKCWZFRrMjhh2l5jK80eXnpYP+bhRc1J/7cW3TiyEY0ngJo73o/5n8hA3+4yLdTmXLNTQ3Ncz50LQ==}
 
-  oxc-transform@0.70.0:
-    resolution: {integrity: sha512-cPaTMNm7ciuDYhypBk7P8srrNU1aPT+yNYU3818odl8aygThFZZ2kXGpvkxtP1XXgVeMpe/nopVJnjQndkO2Uw==}
+  oxc-transform@0.72.0:
+    resolution: {integrity: sha512-z1Bj/4EVJYuAjujLEgzis7/8s6TqJV6AD760Dar2D5Of372eSTFmhsg8MOvRvbR0DJ8H3xFj0qAHWAwuw2oqTg==}
     engines: {node: '>=14.0.0'}
 
   p-defer@3.0.0:
@@ -13055,9 +13049,6 @@ packages:
   parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
-
-  path-browserify@1.0.1:
-    resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
 
   path-exists@3.0.0:
     resolution: {integrity: sha512-bpC7GYwiDYQ4wYLe+FA8lhRjhQCMcQGuSgGGqDkg/QerRWw9CmGRT0iSOVRSZJ29NMLZgIzqaljJ63oaL4NIJQ==}
@@ -15160,9 +15151,6 @@ packages:
 
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
-
-  ts-morph@25.0.1:
-    resolution: {integrity: sha512-QJEiTdnz1YjrB3JFhd626gX4rKHDLSjSVMvGGG4v7ONc3RBwa0Eei98G9AT9uNFDMtV54JyuXsFeC+OH0n6bXQ==}
 
   ts-node@10.9.2:
     resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
@@ -21711,6 +21699,13 @@ snapshots:
       outvariant: 1.4.3
       strict-event-emitter: 0.5.1
 
+  '@napi-rs/wasm-runtime@0.2.10':
+    dependencies:
+      '@emnapi/core': 1.4.3
+      '@emnapi/runtime': 1.4.3
+      '@tybys/wasm-util': 0.9.0
+    optional: true
+
   '@napi-rs/wasm-runtime@0.2.4':
     dependencies:
       '@emnapi/core': 1.4.3
@@ -21911,48 +21906,48 @@ snapshots:
   '@oxc-resolver/binding-win32-x64-msvc@1.12.0':
     optional: true
 
-  '@oxc-transform/binding-darwin-arm64@0.70.0':
+  '@oxc-transform/binding-darwin-arm64@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-darwin-x64@0.70.0':
+  '@oxc-transform/binding-darwin-x64@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-freebsd-x64@0.70.0':
+  '@oxc-transform/binding-freebsd-x64@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-arm-gnueabihf@0.70.0':
+  '@oxc-transform/binding-linux-arm-gnueabihf@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-arm-musleabihf@0.70.0':
+  '@oxc-transform/binding-linux-arm-musleabihf@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-arm64-gnu@0.70.0':
+  '@oxc-transform/binding-linux-arm64-gnu@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-arm64-musl@0.70.0':
+  '@oxc-transform/binding-linux-arm64-musl@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-riscv64-gnu@0.70.0':
+  '@oxc-transform/binding-linux-riscv64-gnu@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-s390x-gnu@0.70.0':
+  '@oxc-transform/binding-linux-s390x-gnu@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-x64-gnu@0.70.0':
+  '@oxc-transform/binding-linux-x64-gnu@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-linux-x64-musl@0.70.0':
+  '@oxc-transform/binding-linux-x64-musl@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-wasm32-wasi@0.70.0':
+  '@oxc-transform/binding-wasm32-wasi@0.72.0':
     dependencies:
-      '@napi-rs/wasm-runtime': 0.2.9
+      '@napi-rs/wasm-runtime': 0.2.10
     optional: true
 
-  '@oxc-transform/binding-win32-arm64-msvc@0.70.0':
+  '@oxc-transform/binding-win32-arm64-msvc@0.72.0':
     optional: true
 
-  '@oxc-transform/binding-win32-x64-msvc@0.70.0':
+  '@oxc-transform/binding-win32-x64-msvc@0.72.0':
     optional: true
 
   '@pkgjs/parseargs@0.11.0':
@@ -23987,7 +23982,7 @@ snapshots:
       - supports-color
     optional: true
 
-  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
+  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)':
     dependencies:
       '@react-native/js-polyfills': 0.74.83
       '@react-native/metro-babel-transformer': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
@@ -23996,7 +23991,10 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
+      - encoding
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -24249,7 +24247,7 @@ snapshots:
 
   '@rnx-kit/console@2.0.0': {}
 
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@rnx-kit/tools-node': 3.0.0
       '@rnx-kit/tools-react-native': 2.0.0
@@ -24257,7 +24255,7 @@ snapshots:
       react: 18.2.0
       react-native: 0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0)
     optionalDependencies:
-      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
 
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@19.0.0)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -25548,12 +25546,6 @@ snapshots:
   '@tootallnate/once@2.0.0': {}
 
   '@tootallnate/quickjs-emscripten@0.23.0': {}
-
-  '@ts-morph/common@0.26.1':
-    dependencies:
-      fast-glob: 3.3.3
-      minimatch: 9.0.4
-      path-browserify: 1.0.1
 
   '@tsconfig/node10@1.0.11':
     optional: true
@@ -27649,8 +27641,6 @@ snapshots:
   clsx@2.1.1: {}
 
   co@4.6.0: {}
-
-  code-block-writer@13.0.3: {}
 
   collect-v8-coverage@1.0.2: {}
 
@@ -34857,22 +34847,22 @@ snapshots:
       '@oxc-resolver/binding-win32-x64-msvc': 1.12.0
     optional: true
 
-  oxc-transform@0.70.0:
+  oxc-transform@0.72.0:
     optionalDependencies:
-      '@oxc-transform/binding-darwin-arm64': 0.70.0
-      '@oxc-transform/binding-darwin-x64': 0.70.0
-      '@oxc-transform/binding-freebsd-x64': 0.70.0
-      '@oxc-transform/binding-linux-arm-gnueabihf': 0.70.0
-      '@oxc-transform/binding-linux-arm-musleabihf': 0.70.0
-      '@oxc-transform/binding-linux-arm64-gnu': 0.70.0
-      '@oxc-transform/binding-linux-arm64-musl': 0.70.0
-      '@oxc-transform/binding-linux-riscv64-gnu': 0.70.0
-      '@oxc-transform/binding-linux-s390x-gnu': 0.70.0
-      '@oxc-transform/binding-linux-x64-gnu': 0.70.0
-      '@oxc-transform/binding-linux-x64-musl': 0.70.0
-      '@oxc-transform/binding-wasm32-wasi': 0.70.0
-      '@oxc-transform/binding-win32-arm64-msvc': 0.70.0
-      '@oxc-transform/binding-win32-x64-msvc': 0.70.0
+      '@oxc-transform/binding-darwin-arm64': 0.72.0
+      '@oxc-transform/binding-darwin-x64': 0.72.0
+      '@oxc-transform/binding-freebsd-x64': 0.72.0
+      '@oxc-transform/binding-linux-arm-gnueabihf': 0.72.0
+      '@oxc-transform/binding-linux-arm-musleabihf': 0.72.0
+      '@oxc-transform/binding-linux-arm64-gnu': 0.72.0
+      '@oxc-transform/binding-linux-arm64-musl': 0.72.0
+      '@oxc-transform/binding-linux-riscv64-gnu': 0.72.0
+      '@oxc-transform/binding-linux-s390x-gnu': 0.72.0
+      '@oxc-transform/binding-linux-x64-gnu': 0.72.0
+      '@oxc-transform/binding-linux-x64-musl': 0.72.0
+      '@oxc-transform/binding-wasm32-wasi': 0.72.0
+      '@oxc-transform/binding-win32-arm64-msvc': 0.72.0
+      '@oxc-transform/binding-win32-x64-msvc': 0.72.0
 
   p-defer@3.0.0: {}
 
@@ -35028,8 +35018,6 @@ snapshots:
       peberminta: 0.9.0
 
   parseurl@1.3.3: {}
-
-  path-browserify@1.0.1: {}
 
   path-exists@3.0.0: {}
 
@@ -35585,7 +35573,7 @@ snapshots:
 
   react-lazy-with-preload@2.2.1: {}
 
-  react-native-builder-bob@0.40.10(encoding@0.1.13):
+  react-native-builder-bob@0.40.10:
     dependencies:
       '@babel/core': 7.27.1
       '@babel/plugin-transform-flow-strip-types': 7.27.1(@babel/core@7.27.1)
@@ -35611,10 +35599,7 @@ snapshots:
       which: 2.0.2
       yargs: 17.7.2
     transitivePeerDependencies:
-      - bufferutil
-      - encoding
       - supports-color
-      - utf-8-validate
 
   react-native-codegen@0.71.6(@babel/preset-env@7.26.0(@babel/core@7.26.0)):
     dependencies:
@@ -37791,11 +37776,6 @@ snapshots:
   ts-deepmerge@2.0.7: {}
 
   ts-interface-checker@0.1.13: {}
-
-  ts-morph@25.0.1:
-    dependencies:
-      '@ts-morph/common': 0.26.1
-      code-block-writer: 13.0.3
 
   ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@4.8.4):
     dependencies:

@@ -19,6 +19,7 @@ import { streamToString } from "./utils/streamToString";
 export interface S3DatabaseConfig extends S3ClientConfig {
   bucketName: string;
   cloudfrontDistributionId: string;
+  apiBasePath?: string;
 }
 
 /**
@@ -136,13 +137,19 @@ export const s3Database = (
   config: S3DatabaseConfig,
   hooks?: DatabasePluginHooks,
 ) => {
-  const { bucketName, cloudfrontDistributionId, ...s3Config } = config;
+  const {
+    bucketName,
+    cloudfrontDistributionId,
+    apiBasePath = "/api/check-update",
+    ...s3Config
+  } = config;
   if (!cloudfrontDistributionId) {
     throw new Error("cloudfrontDistributionId is missing in s3Database");
   }
 
   return createBlobDatabasePlugin({
     name: "s3Database",
+    apiBasePath,
     getContext: () => ({
       client: new S3Client(s3Config),
       cloudfrontClient: new CloudFrontClient({

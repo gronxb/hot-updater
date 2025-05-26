@@ -211,3 +211,5 @@ export const HotUpdater = {
    */
   getFingerprintHash,
 };
+
+export { getUpdateSource } from "./checkForUpdate";

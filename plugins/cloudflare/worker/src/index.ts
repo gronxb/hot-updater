@@ -1,4 +1,4 @@
-import { NIL_UUID } from "@hot-updater/core";
+import { type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
 import { Hono } from "hono";
 import { getUpdateInfo } from "./getUpdateInfo";
@@ -10,6 +10,25 @@ type Env = {
 };
 
 const app = new Hono<{ Bindings: Env }>();
+
+const handleUpdateRequest = async (
+  db: D1Database,
+  updateConfig: GetBundlesArgs,
+  reqUrl: string,
+  jwtSecret: string,
+) => {
+  const updateInfo = await getUpdateInfo(db, updateConfig);
+
+  if (!updateInfo) {
+    return null;
+  }
+
+  return withJwtSignedUrl({
+    data: updateInfo,
+    reqUrl,
+    jwtSecret,
+  });
+};
 
 app.get("/api/check-update", async (c) => {
   const bundleId = c.req.header("x-bundle-id") as string;
@@ -36,32 +55,104 @@ app.get("/api/check-update", async (c) => {
     );
   }
 
-  const updateInfo = fingerprintHash
-    ? await getUpdateInfo(c.env.DB, {
+  const updateConfig = fingerprintHash
+    ? ({
         fingerprintHash,
         bundleId,
         platform: appPlatform,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
-        _updateStrategy: "fingerprint",
-      })
-    : await getUpdateInfo(c.env.DB, {
+        _updateStrategy: "fingerprint" as const,
+      } satisfies GetBundlesArgs)
+    : ({
         appVersion: appVersion!,
         bundleId,
         platform: appPlatform,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
-        _updateStrategy: "appVersion",
-      });
+        _updateStrategy: "appVersion" as const,
+      } satisfies GetBundlesArgs);
 
-  const appUpdateInfo = await withJwtSignedUrl({
-    data: updateInfo,
-    reqUrl: c.req.url,
-    jwtSecret: c.env.JWT_SECRET,
-  });
+  const result = await handleUpdateRequest(
+    c.env.DB,
+    updateConfig,
+    c.req.url,
+    c.env.JWT_SECRET,
+  );
 
-  return c.json(appUpdateInfo, 200);
+  return c.json(result, 200);
 });
+
+app.get(
+  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    const {
+      platform,
+      "app-version": appVersion,
+      channel,
+      minBundleId,
+      bundleId,
+    } = c.req.param();
+
+    if (!bundleId || !platform) {
+      return c.json(
+        { error: "Missing required parameters (platform, bundleId)." },
+        400,
+      );
+    }
+
+    const updateConfig = {
+      platform: platform as "ios" | "android",
+      appVersion,
+      bundleId,
+      minBundleId: minBundleId || NIL_UUID,
+      channel: channel || "production",
+      _updateStrategy: "appVersion" as const,
+    } satisfies GetBundlesArgs;
+
+    const result = await handleUpdateRequest(
+      c.env.DB,
+      updateConfig,
+      c.req.url,
+      c.env.JWT_SECRET,
+    );
+
+    return c.json(result, 200);
+  },
+);
+
+app.get(
+  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    const { platform, fingerprintHash, channel, minBundleId, bundleId } =
+      c.req.param();
+
+    if (!bundleId || !platform) {
+      return c.json(
+        { error: "Missing required parameters (platform, bundleId)." },
+        400,
+      );
+    }
+
+    const updateConfig = {
+      platform: platform as "ios" | "android",
+      fingerprintHash,
+      bundleId,
+      minBundleId: minBundleId || NIL_UUID,
+      channel: channel || "production",
+      _updateStrategy: "fingerprint" as const,
+    } satisfies GetBundlesArgs;
+
+    const result = await handleUpdateRequest(
+      c.env.DB,
+      updateConfig,
+      c.req.url,
+      c.env.JWT_SECRET,
+    );
+
+    return c.json(result, 200);
+  },
+);
 
 app.get("*", async (c) => {
   const result = await verifyJwtSignedUrl({

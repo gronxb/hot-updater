@@ -5,7 +5,11 @@
  * @format
  */
 
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import {
+  HotUpdater,
+  getUpdateSource,
+  useHotUpdaterStore,
+} from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
 import React from "react";
 import { useEffect, useState } from "react";
@@ -101,7 +105,9 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  source: getUpdateSource(
+    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  ),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

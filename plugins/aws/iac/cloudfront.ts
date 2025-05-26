@@ -177,14 +177,33 @@ export class CloudFrontManager {
           Quantity: 1,
           Items: [options.keyGroupId],
         },
-        ForwardedValues: { QueryString: false, Cookies: { Forward: "none" } },
+        ForwardedValues: {
+          QueryString: true,
+          Cookies: { Forward: "none" },
+          QueryStringCacheKeys: {
+            Quantity: 0,
+            Items: [],
+          },
+        },
         MinTTL: 0,
+        SmoothStreaming: false,
+        Compress: true,
+        FieldLevelEncryptionId: "",
+        AllowedMethods: {
+          Quantity: 2,
+          Items: ["HEAD", "GET"],
+          CachedMethods: {
+            Quantity: 2,
+            Items: ["HEAD", "GET"],
+          },
+        },
       },
       CacheBehaviors: {
-        Quantity: 1,
+        Quantity: 2,
         Items: [
+          // no cache
           {
-            PathPattern: "/api/*",
+            PathPattern: "/api/check-update",
             TargetOriginId: options.bucketName,
             ViewerProtocolPolicy: "redirect-to-https",
             LambdaFunctionAssociations: {
@@ -199,8 +218,19 @@ export class CloudFrontManager {
             MinTTL: 0,
             DefaultTTL: 0,
             MaxTTL: 0,
+            SmoothStreaming: false,
+            Compress: true,
+            FieldLevelEncryptionId: "",
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
             ForwardedValues: {
-              QueryString: true,
+              QueryString: false,
               Cookies: { Forward: "none" },
               Headers: {
                 Quantity: 6,
@@ -212,6 +242,52 @@ export class CloudFrontManager {
                   "x-channel",
                   "x-fingerprint-hash",
                 ],
+              },
+              QueryStringCacheKeys: {
+                Quantity: 0,
+                Items: [],
+              },
+            },
+          },
+          // /api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
+          // /api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
+          {
+            PathPattern: "/api/check-update/*",
+            TargetOriginId: options.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+            LambdaFunctionAssociations: {
+              Quantity: 1,
+              Items: [
+                {
+                  EventType: "origin-request",
+                  LambdaFunctionARN: options.functionArn,
+                },
+              ],
+            },
+            MinTTL: 0,
+            DefaultTTL: 31536000,
+            MaxTTL: 31536000,
+            SmoothStreaming: false,
+            Compress: true,
+            FieldLevelEncryptionId: "",
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
+            ForwardedValues: {
+              QueryString: false,
+              Cookies: { Forward: "none" },
+              Headers: {
+                Quantity: 0,
+                Items: [],
+              },
+              QueryStringCacheKeys: {
+                Quantity: 0,
+                Items: [],
               },
             },
           },
@@ -284,14 +360,33 @@ export class CloudFrontManager {
           Quantity: 1,
           Items: [options.keyGroupId],
         },
-        ForwardedValues: { QueryString: true, Cookies: { Forward: "none" } },
+        ForwardedValues: {
+          QueryString: true,
+          Cookies: { Forward: "none" },
+          QueryStringCacheKeys: {
+            Quantity: 0,
+            Items: [],
+          },
+        },
         MinTTL: 0,
+        SmoothStreaming: false,
+        Compress: true,
+        FieldLevelEncryptionId: "",
+        AllowedMethods: {
+          Quantity: 2,
+          Items: ["HEAD", "GET"],
+          CachedMethods: {
+            Quantity: 2,
+            Items: ["HEAD", "GET"],
+          },
+        },
       },
       CacheBehaviors: {
-        Quantity: 1,
+        Quantity: 2,
         Items: [
+          // no cache
           {
-            PathPattern: "/api/*",
+            PathPattern: "/api/check-update",
             TargetOriginId: options.bucketName,
             ViewerProtocolPolicy: "redirect-to-https",
             LambdaFunctionAssociations: {
@@ -306,8 +401,19 @@ export class CloudFrontManager {
             MinTTL: 0,
             DefaultTTL: 0,
             MaxTTL: 0,
+            SmoothStreaming: false,
+            Compress: true,
+            FieldLevelEncryptionId: "",
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
             ForwardedValues: {
-              QueryString: true,
+              QueryString: false,
               Cookies: { Forward: "none" },
               Headers: {
                 Quantity: 6,
@@ -319,6 +425,52 @@ export class CloudFrontManager {
                   "x-channel",
                   "x-fingerprint-hash",
                 ],
+              },
+              QueryStringCacheKeys: {
+                Quantity: 0,
+                Items: [],
+              },
+            },
+          },
+          // /api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
+          // /api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
+          {
+            PathPattern: "/api/check-update/*",
+            TargetOriginId: options.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+            LambdaFunctionAssociations: {
+              Quantity: 1,
+              Items: [
+                {
+                  EventType: "origin-request",
+                  LambdaFunctionARN: options.functionArn,
+                },
+              ],
+            },
+            MinTTL: 0,
+            DefaultTTL: 31536000,
+            MaxTTL: 31536000,
+            SmoothStreaming: false,
+            Compress: true,
+            FieldLevelEncryptionId: "",
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
+            ForwardedValues: {
+              QueryString: false,
+              Cookies: { Forward: "none" },
+              Headers: {
+                Quantity: 0,
+                Items: [],
+              },
+              QueryStringCacheKeys: {
+                Quantity: 0,
+                Items: [],
               },
             },
           },

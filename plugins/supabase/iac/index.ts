@@ -11,6 +11,7 @@ import {
   copyDirToTmp,
   link,
   makeEnv,
+  transformEnv,
   transformTemplate,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
@@ -40,14 +41,14 @@ const getConfigTemplate = (build: BuildType) => {
 };
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 
 function App() {
   return ...
 }
 
 export default HotUpdater.wrap({
-  source: "%%source%%",
+  source: getUpdateSource("%%source%%"),
 })(App);`;
 
 const SUPABASE_CONFIG_TEMPLATE = `
@@ -279,6 +280,27 @@ const pushDB = async (workdir: string) => {
 };
 
 const deployEdgeFunction = async (workdir: string, projectId: string) => {
+  const functionName = await p.text({
+    message: "Enter a name for the edge function",
+    initialValue: "update-server",
+    placeholder: "update-server",
+  });
+
+  if (p.isCancel(functionName)) {
+    process.exit(0);
+  }
+  const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
+  const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
+  const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
+    FUNCTION_NAME: functionName,
+  });
+
+  const targetDir = path.join(workdir, "supabase", "functions", functionName);
+  await fs.mkdir(targetDir, { recursive: true });
+
+  const targetPath = path.join(targetDir, "index.ts");
+  await fs.writeFile(targetPath, edgeFunctionsCode);
+
   await p.tasks([
     {
       title: "Supabase edge function deploy. This may take a few minutes.",
@@ -290,7 +312,7 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
               "supabase",
               "functions",
               "deploy",
-              "update-server",
+              functionName,
               "--project-ref",
               projectId,
               "--no-verify-jwt",
@@ -355,12 +377,12 @@ export const runInit = async ({
   );
   const bucket = await selectBucket(api);
 
-  const supabaseLibPath = path.dirname(
-    path.resolve(require.resolve("@hot-updater/supabase/edge-functions")),
+  const scaffoldLibPath = path.dirname(
+    path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
   );
 
   const { tmpDir, removeTmpDir } = await copyDirToTmp(
-    supabaseLibPath,
+    scaffoldLibPath,
     "supabase",
   );
 

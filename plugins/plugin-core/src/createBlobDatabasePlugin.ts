@@ -33,6 +33,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
   deleteObject,
   invalidatePaths,
   hooks,
+  apiBasePath,
 }: {
   name: string;
   getContext: () => TContext;
@@ -42,6 +43,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
   deleteObject: (context: TContext, key: string) => Promise<void>;
   invalidatePaths: (context: TContext, paths: string[]) => Promise<void>;
   hooks?: DatabasePluginHooks;
+  apiBasePath: string;
 }) => {
   // Map for O(1) lookup of bundles.
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
@@ -249,8 +251,16 @@ export const createBlobDatabasePlugin = <TContext = object>({
               removeBundleInternalKeys(bundleWithKey),
             );
 
-            // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${key}`);
+            if (data.fingerprintHash) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/fingerprint/${data.platform}/${data.fingerprintHash}/${data.channel}/*`,
+              );
+            } else if (data.targetAppVersion) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/app-version/${data.platform}/${data.targetAppVersion}/${data.channel}/*`,
+              );
+            }
             continue;
           }
 
@@ -302,6 +312,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
               // Add paths for CloudFront invalidation
               pathsToInvalidate.add(`/${oldKey}`);
               pathsToInvalidate.add(`/${newKey}`);
+              if (bundle.fingerprintHash) {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+                );
+              } else if (bundle.targetAppVersion) {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                );
+              }
               continue;
             }
 
@@ -318,6 +337,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
 
             // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${currentKey}`);
+            if (bundle.fingerprintHash) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+              );
+            } else if (bundle.targetAppVersion) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+              );
+            }
           }
         }
 

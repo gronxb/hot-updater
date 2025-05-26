@@ -7,7 +7,6 @@ export * from "./createDatabasePlugin";
 export * from "./banner";
 export * from "./transformTemplate";
 export * from "./transformEnv";
-export * from "./transformTsEnv";
 export * from "./makeEnv";
 export * from "./createZip";
 export * from "./createBlobDatabasePlugin";
