@@ -177,9 +177,25 @@ export class CloudFrontManager {
           Quantity: 1,
           Items: [options.keyGroupId],
         },
-        ForwardedValues: { QueryString: true, Cookies: { Forward: "none" } },
+        ForwardedValues: {
+          QueryString: true,
+          Cookies: { Forward: "none" },
+          QueryStringCacheKeys: {
+            Quantity: 0,
+            Items: [],
+          },
+        },
         MinTTL: 0,
         SmoothStreaming: false,
+        Compress: true,
+        AllowedMethods: {
+          Quantity: 2,
+          Items: ["HEAD", "GET"],
+          CachedMethods: {
+            Quantity: 2,
+            Items: ["HEAD", "GET"],
+          },
+        },
       },
       CacheBehaviors: {
         Quantity: 2,
@@ -202,6 +218,15 @@ export class CloudFrontManager {
             DefaultTTL: 0,
             MaxTTL: 0,
             SmoothStreaming: false,
+            Compress: true,
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
@@ -215,6 +240,10 @@ export class CloudFrontManager {
                   "x-channel",
                   "x-fingerprint-hash",
                 ],
+              },
+              QueryStringCacheKeys: {
+                Quantity: 0,
+                Items: [],
               },
             },
           },
@@ -237,10 +266,23 @@ export class CloudFrontManager {
             DefaultTTL: 0,
             MaxTTL: 31536000,
             SmoothStreaming: false,
+            Compress: true,
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
               Headers: {
+                Quantity: 0,
+                Items: [],
+              },
+              QueryStringCacheKeys: {
                 Quantity: 0,
                 Items: [],
               },
@@ -315,9 +357,25 @@ export class CloudFrontManager {
           Quantity: 1,
           Items: [options.keyGroupId],
         },
-        ForwardedValues: { QueryString: true, Cookies: { Forward: "none" } },
+        ForwardedValues: {
+          QueryString: true,
+          Cookies: { Forward: "none" },
+          QueryStringCacheKeys: {
+            Quantity: 0,
+            Items: [],
+          },
+        },
         MinTTL: 0,
         SmoothStreaming: false,
+        Compress: true,
+        AllowedMethods: {
+          Quantity: 2,
+          Items: ["HEAD", "GET"],
+          CachedMethods: {
+            Quantity: 2,
+            Items: ["HEAD", "GET"],
+          },
+        },
       },
       CacheBehaviors: {
         Quantity: 2,
@@ -340,6 +398,15 @@ export class CloudFrontManager {
             DefaultTTL: 0,
             MaxTTL: 0,
             SmoothStreaming: false,
+            Compress: true,
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
@@ -353,6 +420,10 @@ export class CloudFrontManager {
                   "x-channel",
                   "x-fingerprint-hash",
                 ],
+              },
+              QueryStringCacheKeys: {
+                Quantity: 0,
+                Items: [],
               },
             },
           },
@@ -375,10 +446,23 @@ export class CloudFrontManager {
             DefaultTTL: 0,
             MaxTTL: 31536000,
             SmoothStreaming: false,
+            Compress: true,
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: {
+                Quantity: 2,
+                Items: ["HEAD", "GET"],
+              },
+            },
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
               Headers: {
+                Quantity: 0,
+                Items: [],
+              },
+              QueryStringCacheKeys: {
                 Quantity: 0,
                 Items: [],
               },
