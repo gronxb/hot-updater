@@ -13,14 +13,14 @@ import { ExecaError, execa } from "execa";
 import { initFirebaseUser, setEnv } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 
 function App() {
   return ...
 }
 
 export default HotUpdater.wrap({
-  source: "%%source%%",
+  source: getUpdateSource("%%source%%"),
 })(App);`;
 
 const REGIONS = [
