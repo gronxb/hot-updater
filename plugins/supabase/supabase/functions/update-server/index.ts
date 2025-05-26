@@ -4,7 +4,7 @@ import {
   type SupabaseClient,
   createClient,
 } from "jsr:@supabase/supabase-js@2.49.4";
-import type { UpdateInfo } from "@hot-updater/core";
+import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -106,6 +106,66 @@ const fingerprintHashStrategy = async (
   });
 };
 
+const handleUpdateRequest = async (
+  supabase: SupabaseClient<any, "public", any>,
+  updateConfig: GetBundlesArgs,
+) => {
+  const { data, error } =
+    updateConfig._updateStrategy === "fingerprint"
+      ? await fingerprintHashStrategy(supabase, {
+          appPlatform: updateConfig.platform,
+          minBundleId: updateConfig.minBundleId!,
+          bundleId: updateConfig.bundleId,
+          channel: updateConfig.channel!,
+          fingerprintHash: updateConfig.fingerprintHash!,
+        })
+      : await appVersionStrategy(supabase, {
+          appPlatform: updateConfig.platform,
+          minBundleId: updateConfig.minBundleId!,
+          bundleId: updateConfig.bundleId,
+          appVersion: updateConfig.appVersion!,
+          channel: updateConfig.channel!,
+        });
+
+  if (error) {
+    throw error;
+  }
+
+  const storageUri = data[0]?.storage_uri;
+  const response = data[0]
+    ? ({
+        id: data[0].id,
+        shouldForceUpdate: data[0].should_force_update,
+        message: data[0].message,
+        status: data[0].status,
+      } as UpdateInfo)
+    : null;
+
+  if (!response) {
+    return null;
+  }
+
+  if (response.id === NIL_UUID) {
+    return {
+      ...response,
+      fileUrl: null,
+    };
+  }
+
+  const storageURL = new URL(storageUri);
+  const storageBucket = storageURL.host;
+  const storagePath = storageURL.pathname;
+
+  const { data: signedUrlData } = await supabase.storage
+    .from(storageBucket)
+    .createSignedUrl(storagePath, 60);
+
+  return {
+    ...response,
+    fileUrl: signedUrlData?.signedUrl ?? null,
+  };
+};
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(
@@ -116,98 +176,120 @@ Deno.serve(async (req) => {
       },
     );
 
-    const bundleId = req.headers.get("x-bundle-id") as string;
-    const appPlatform = req.headers.get("x-app-platform") as "ios" | "android";
-    const appVersion = req.headers.get("x-app-version") as string | null;
-    const fingerprintHash = req.headers.get("x-fingerprint-hash") as
-      | string
-      | null;
-    const minBundleId = req.headers.get("x-min-bundle-id") as
-      | string
-      | undefined;
-    const channel = req.headers.get("x-channel") as string | undefined;
+    const url = new URL(req.url);
+    const path = url.pathname;
 
-    if (!appVersion && !fingerprintHash) {
-      return createErrorResponse(
-        "Missing required headers (x-app-version or x-fingerprint-hash).",
-        400,
-      );
-    }
+    if (path === "/api/check-update") {
+      const bundleId = req.headers.get("x-bundle-id") as string;
+      const appPlatform = req.headers.get("x-app-platform") as
+        | "ios"
+        | "android";
+      const appVersion = req.headers.get("x-app-version") as string | null;
+      const fingerprintHash = req.headers.get("x-fingerprint-hash") as
+        | string
+        | null;
+      const minBundleId = req.headers.get("x-min-bundle-id") as
+        | string
+        | undefined;
+      const channel = req.headers.get("x-channel") as string | undefined;
 
-    if (!bundleId || !appPlatform) {
-      return createErrorResponse(
-        "Missing required headers (x-app-platform, x-bundle-id).",
-        400,
-      );
-    }
+      if (!appVersion && !fingerprintHash) {
+        return createErrorResponse(
+          "Missing required headers (x-app-version or x-fingerprint-hash).",
+          400,
+        );
+      }
 
-    const { data, error } = fingerprintHash
-      ? await fingerprintHashStrategy(supabase, {
-          appPlatform,
-          minBundleId: minBundleId || NIL_UUID,
-          bundleId,
-          channel: channel || "production",
-          fingerprintHash,
-        })
-      : await appVersionStrategy(supabase, {
-          appPlatform,
-          minBundleId: minBundleId || NIL_UUID,
-          bundleId,
-          appVersion: appVersion!,
-          channel: channel || "production",
-        });
+      if (!bundleId || !appPlatform) {
+        return createErrorResponse(
+          "Missing required headers (x-app-platform, x-bundle-id).",
+          400,
+        );
+      }
 
-    if (error) {
-      throw error;
-    }
+      const updateConfig = fingerprintHash
+        ? ({
+            platform: appPlatform,
+            fingerprintHash,
+            bundleId,
+            minBundleId: minBundleId || NIL_UUID,
+            channel: channel || "production",
+            _updateStrategy: "fingerprint" as const,
+          } satisfies GetBundlesArgs)
+        : ({
+            platform: appPlatform,
+            appVersion: appVersion!,
+            bundleId,
+            minBundleId: minBundleId || NIL_UUID,
+            channel: channel || "production",
+            _updateStrategy: "appVersion" as const,
+          } satisfies GetBundlesArgs);
 
-    const storageUri = data[0]?.storage_uri;
-    const response = data[0]
-      ? ({
-          id: data[0].id,
-          shouldForceUpdate: data[0].should_force_update,
-          message: data[0].message,
-          status: data[0].status,
-        } as UpdateInfo)
-      : null;
-    if (!response) {
-      return new Response(JSON.stringify(null), {
+      const result = await handleUpdateRequest(supabase, updateConfig);
+
+      return new Response(JSON.stringify(result), {
         headers: { "Content-Type": "application/json" },
         status: 200,
       });
     }
 
-    if (response.id === NIL_UUID) {
-      return new Response(
-        JSON.stringify({
-          ...response,
-          fileUrl: null,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        },
-      );
-    }
+    if (path.startsWith("/api/check-update/app-version/")) {
+      const [, , platform, appVersion, channel, minBundleId, bundleId] =
+        path.split("/");
 
-    const storageURL = new URL(storageUri);
-    const storageBucket = storageURL.host;
-    const storagePath = storageURL.pathname;
+      if (!bundleId || !platform) {
+        return createErrorResponse(
+          "Missing required parameters (platform, bundleId).",
+          400,
+        );
+      }
 
-    const { data: signedUrlData } = await supabase.storage
-      .from(storageBucket)
-      .createSignedUrl(storagePath, 60);
+      const updateConfig = {
+        platform: platform as "ios" | "android",
+        appVersion,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "appVersion" as const,
+      } satisfies GetBundlesArgs;
 
-    return new Response(
-      JSON.stringify({
-        ...response,
-        fileUrl: signedUrlData?.signedUrl ?? null,
-      }),
-      {
+      const result = await handleUpdateRequest(supabase, updateConfig);
+
+      return new Response(JSON.stringify(result), {
         headers: { "Content-Type": "application/json" },
         status: 200,
-      },
-    );
+      });
+    }
+
+    if (path.startsWith("/api/check-update/fingerprint/")) {
+      const [, , platform, fingerprintHash, channel, minBundleId, bundleId] =
+        path.split("/");
+
+      if (!bundleId || !platform) {
+        return createErrorResponse(
+          "Missing required parameters (platform, bundleId).",
+          400,
+        );
+      }
+
+      const updateConfig = {
+        platform: platform as "ios" | "android",
+        fingerprintHash,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "fingerprint" as const,
+      } satisfies GetBundlesArgs;
+
+      const result = await handleUpdateRequest(supabase, updateConfig);
+
+      return new Response(JSON.stringify(result), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    return createErrorResponse("Not found", 404);
   } catch (err: unknown) {
     return createErrorResponse(
       err instanceof Error ? err.message : "Unknown error",
