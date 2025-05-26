@@ -279,6 +279,15 @@ const pushDB = async (workdir: string) => {
 };
 
 const deployEdgeFunction = async (workdir: string, projectId: string) => {
+  const functionName = await p.text({
+    message: "Enter a name for the edge function",
+    initialValue: "update-server",
+    placeholder: "update-server",
+  });
+  if (p.isCancel(functionName)) {
+    process.exit(0);
+  }
+
   await p.tasks([
     {
       title: "Supabase edge function deploy. This may take a few minutes.",
@@ -290,7 +299,7 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
               "supabase",
               "functions",
               "deploy",
-              "update-server",
+              functionName,
               "--project-ref",
               projectId,
               "--no-verify-jwt",
