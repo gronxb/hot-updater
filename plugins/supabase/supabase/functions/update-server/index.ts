@@ -37,13 +37,6 @@ export const filterCompatibleAppVersions = (
   return compatibleAppVersionList.sort((a, b) => b.localeCompare(a));
 };
 
-const createErrorResponse = (message: string, statusCode: number) => {
-  return new Response(JSON.stringify({ code: statusCode, message }), {
-    headers: { "Content-Type": "application/json" },
-    status: statusCode,
-  });
-};
-
 const appVersionStrategy = async (
   supabase: SupabaseClient<any, "public", any>,
   {
@@ -167,12 +160,19 @@ const handleUpdateRequest = async (
   };
 };
 
-const functionName = "update-server";
+declare global {
+  var HotUpdater: {
+    FUNCTION_NAME: string;
+  };
+}
+
+// TODO: Make this configurable
+const functionName = HotUpdater.FUNCTION_NAME;
 const app = new Hono().basePath(`/${functionName}`);
 
 app.get("/ping", (c) => c.text("pong"));
 
-app.get("/check-update", async (c) => {
+app.get("/", async (c) => {
   try {
     const bundleId = c.req.header("x-bundle-id");
     const appPlatform = c.req.header("x-app-platform") as "ios" | "android";
@@ -237,7 +237,7 @@ app.get("/check-update", async (c) => {
 });
 
 app.get(
-  "/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+  "/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
   async (c) => {
     try {
       const {
@@ -286,7 +286,7 @@ app.get(
 );
 
 app.get(
-  "/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
   async (c) => {
     try {
       const { platform, fingerprintHash, channel, minBundleId, bundleId } =

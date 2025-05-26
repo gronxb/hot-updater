@@ -284,6 +284,7 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
     initialValue: "update-server",
     placeholder: "update-server",
   });
+
   if (p.isCancel(functionName)) {
     process.exit(0);
   }
