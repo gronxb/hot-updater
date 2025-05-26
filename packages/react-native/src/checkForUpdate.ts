@@ -1,4 +1,4 @@
-import type { AppUpdateInfo } from "@hot-updater/core";
+import type { AppUpdateInfo, GetBundlesArgs } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
@@ -95,3 +95,14 @@ export async function checkForUpdate(
     };
   });
 }
+
+export const getUpdateSource = (baseUrl: string) => (args: GetBundlesArgs) => {
+  switch (args._updateStrategy) {
+    case "appVersion":
+      return `${baseUrl}/app-version/${args.platform}/${args.appVersion}/${args.channel}/${args.minBundleId}/${args.bundleId}`;
+    case "fingerprint":
+      return `${baseUrl}/fingerprint/${args.platform}/${args.fingerprintHash}/${args.channel}/${args.minBundleId}/${args.bundleId}`;
+    default:
+      return baseUrl;
+  }
+};

@@ -5,7 +5,11 @@
  * @format
  */
 
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import {
+  HotUpdater,
+  getUpdateSource,
+  useHotUpdaterStore,
+} from "@hot-updater/react-native";
 import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
@@ -87,7 +91,9 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `${process.env.EXPO_PUBLIC_HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  source: getUpdateSource(
+    `${process.env.EXPO_PUBLIC_HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  ),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View
