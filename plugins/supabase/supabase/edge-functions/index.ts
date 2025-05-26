@@ -166,7 +166,6 @@ declare global {
   };
 }
 
-// TODO: Make this configurable
 const functionName = HotUpdater.FUNCTION_NAME;
 const app = new Hono().basePath(`/${functionName}`);
 

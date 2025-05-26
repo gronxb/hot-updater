@@ -11,6 +11,7 @@ import {
   copyDirToTmp,
   link,
   makeEnv,
+  transformEnv,
   transformTemplate,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
@@ -288,6 +289,17 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
   if (p.isCancel(functionName)) {
     process.exit(0);
   }
+  const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
+  const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
+  const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
+    FUNCTION_NAME: functionName,
+  });
+
+  const targetDir = path.join(workdir, "supabase", "functions", functionName);
+  await fs.mkdir(targetDir, { recursive: true });
+
+  const targetPath = path.join(targetDir, "index.ts");
+  await fs.writeFile(targetPath, edgeFunctionsCode);
 
   await p.tasks([
     {
@@ -365,12 +377,12 @@ export const runInit = async ({
   );
   const bucket = await selectBucket(api);
 
-  const supabaseLibPath = path.dirname(
-    path.resolve(require.resolve("@hot-updater/supabase/edge-functions")),
+  const scaffoldLibPath = path.dirname(
+    path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
   );
 
   const { tmpDir, removeTmpDir } = await copyDirToTmp(
-    supabaseLibPath,
+    scaffoldLibPath,
     "supabase",
   );
 

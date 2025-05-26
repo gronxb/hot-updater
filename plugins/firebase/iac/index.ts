@@ -311,12 +311,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
           process.exit(1);
         }
 
-        const code = transformEnv(
-          await fs.promises.readFile(functionsIndexPath, "utf-8"),
-          {
-            REGION: currentRegion,
-          },
-        );
+        const code = transformEnv(functionsIndexPath, {
+          REGION: currentRegion,
+        });
         await fs.promises.writeFile(functionsIndexPath, code);
         return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${currentRegion}`;
       },

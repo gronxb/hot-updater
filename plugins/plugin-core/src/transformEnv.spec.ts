@@ -1,12 +1,19 @@
-import { describe, expect, it } from "vitest";
+import fs from "fs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { transformEnv } from "./transformEnv";
 
 describe("transformEnv", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("should replace HotUpdater.S3_REGION with 'hello'", async () => {
     const code = "const s3 = new S3Client({ region: HotUpdater.S3_REGION });";
+    const readFileSyncSpy = vi.spyOn(fs, "readFileSync").mockReturnValue(code);
 
-    const result = await transformEnv(code, { S3_REGION: "us-east-1" });
+    const result = await transformEnv("dummy.ts", { S3_REGION: "us-east-1" });
     expect(result).toContain('region: "us-east-1"');
+    expect(readFileSyncSpy).toHaveBeenCalledWith("dummy.ts", "utf-8");
   });
 
   it("should not modify other code", async () => {
@@ -14,10 +21,12 @@ describe("transformEnv", () => {
       const otherCode = "test";
       const region = "us-east-1";
     `;
+    const readFileSyncSpy = vi.spyOn(fs, "readFileSync").mockReturnValue(code);
 
-    const result = await transformEnv(code, { S3_REGION: "hello" });
+    const result = await transformEnv("dummy.ts", { S3_REGION: "hello" });
     expect(result).toContain(`"test"`);
     expect(result).toContain(`"us-east-1"`);
+    expect(readFileSyncSpy).toHaveBeenCalledWith("dummy.ts", "utf-8");
   });
 
   it("should replace all occurrences of HotUpdater.S3_REGION", async () => {
@@ -29,13 +38,15 @@ describe("transformEnv", () => {
         region: HotUpdater.S3_REGION,
       });
     `;
+    const readFileSyncSpy = vi.spyOn(fs, "readFileSync").mockReturnValue(code);
 
-    const result = await transformEnv(code, { S3_REGION: "hello" });
+    const result = await transformEnv("dummy.ts", { S3_REGION: "hello" });
     const matches = result.match(/"hello"/g);
     expect(matches?.length).toBe(2);
+    expect(readFileSyncSpy).toHaveBeenCalledWith("dummy.ts", "utf-8");
   });
 
-  it("should replace all occurrences of HotUpdater.S3_REGION", async () => {
+  it("should replace all occurrences of HotUpdater.S3_REGION and HotUpdater.S3_BUCKET_NAME", async () => {
     const code = `
       const s3_1 = new S3Client({
         region: HotUpdater.S3_REGION,
@@ -46,8 +57,9 @@ describe("transformEnv", () => {
 
       console.log(HotUpdater.S3_BUCKET_NAME);
     `;
+    const readFileSyncSpy = vi.spyOn(fs, "readFileSync").mockReturnValue(code);
 
-    const result = await transformEnv(code, {
+    const result = await transformEnv("dummy.ts", {
       S3_REGION: "ap-northeast-1",
       S3_BUCKET_NAME: "bundles",
     });
@@ -55,5 +67,6 @@ describe("transformEnv", () => {
     expect(matches?.length).toBe(2);
     const matches2 = result.match(/"bundles"/g);
     expect(matches2?.length).toBe(1);
+    expect(readFileSyncSpy).toHaveBeenCalledWith("dummy.ts", "utf-8");
   });
 });
