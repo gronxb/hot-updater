@@ -179,6 +179,7 @@ export class CloudFrontManager {
         },
         ForwardedValues: { QueryString: true, Cookies: { Forward: "none" } },
         MinTTL: 0,
+        SmoothStreaming: false,
       },
       CacheBehaviors: {
         Quantity: 2,
@@ -200,6 +201,7 @@ export class CloudFrontManager {
             MinTTL: 0,
             DefaultTTL: 0,
             MaxTTL: 0,
+            SmoothStreaming: false,
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
@@ -234,6 +236,7 @@ export class CloudFrontManager {
             MinTTL: 0,
             DefaultTTL: 0,
             MaxTTL: 31536000,
+            SmoothStreaming: false,
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
@@ -314,6 +317,7 @@ export class CloudFrontManager {
         },
         ForwardedValues: { QueryString: true, Cookies: { Forward: "none" } },
         MinTTL: 0,
+        SmoothStreaming: false,
       },
       CacheBehaviors: {
         Quantity: 2,
@@ -335,6 +339,7 @@ export class CloudFrontManager {
             MinTTL: 0,
             DefaultTTL: 0,
             MaxTTL: 0,
+            SmoothStreaming: false,
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
@@ -369,6 +374,7 @@ export class CloudFrontManager {
             MinTTL: 0,
             DefaultTTL: 0,
             MaxTTL: 31536000,
+            SmoothStreaming: false,
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
