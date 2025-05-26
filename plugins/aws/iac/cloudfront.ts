@@ -188,6 +188,7 @@ export class CloudFrontManager {
         MinTTL: 0,
         SmoothStreaming: false,
         Compress: true,
+        FieldLevelEncryptionId: "",
         AllowedMethods: {
           Quantity: 2,
           Items: ["HEAD", "GET"],
@@ -219,6 +220,7 @@ export class CloudFrontManager {
             MaxTTL: 0,
             SmoothStreaming: false,
             Compress: true,
+            FieldLevelEncryptionId: "",
             AllowedMethods: {
               Quantity: 2,
               Items: ["HEAD", "GET"],
@@ -267,6 +269,7 @@ export class CloudFrontManager {
             MaxTTL: 31536000,
             SmoothStreaming: false,
             Compress: true,
+            FieldLevelEncryptionId: "",
             AllowedMethods: {
               Quantity: 2,
               Items: ["HEAD", "GET"],
@@ -368,6 +371,7 @@ export class CloudFrontManager {
         MinTTL: 0,
         SmoothStreaming: false,
         Compress: true,
+        FieldLevelEncryptionId: "",
         AllowedMethods: {
           Quantity: 2,
           Items: ["HEAD", "GET"],
@@ -399,6 +403,7 @@ export class CloudFrontManager {
             MaxTTL: 0,
             SmoothStreaming: false,
             Compress: true,
+            FieldLevelEncryptionId: "",
             AllowedMethods: {
               Quantity: 2,
               Items: ["HEAD", "GET"],
@@ -447,6 +452,7 @@ export class CloudFrontManager {
             MaxTTL: 31536000,
             SmoothStreaming: false,
             Compress: true,
+            FieldLevelEncryptionId: "",
             AllowedMethods: {
               Quantity: 2,
               Items: ["HEAD", "GET"],
