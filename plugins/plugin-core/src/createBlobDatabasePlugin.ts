@@ -254,7 +254,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
             pathsToInvalidate.add(`/${key}`);
             if (data.fingerprintHash) {
               pathsToInvalidate.add(
-                `${apiBasePath}/fingerprint/${data.platform}/${data.fingerprintHash}/${data.channel}/*/*`,
+                `${apiBasePath}/fingerprint/${data.platform}/${data.fingerprintHash}/${data.channel}/*`,
               );
             } else if (data.targetAppVersion) {
               pathsToInvalidate.add(
@@ -314,7 +314,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
               pathsToInvalidate.add(`/${newKey}`);
               if (bundle.fingerprintHash) {
                 pathsToInvalidate.add(
-                  `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*/*`,
+                  `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
                 );
               } else if (bundle.targetAppVersion) {
                 pathsToInvalidate.add(
@@ -339,7 +339,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
             pathsToInvalidate.add(`/${currentKey}`);
             if (bundle.fingerprintHash) {
               pathsToInvalidate.add(
-                `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*/*`,
+                `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
               );
             } else if (bundle.targetAppVersion) {
               pathsToInvalidate.add(
