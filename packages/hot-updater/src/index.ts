@@ -7,12 +7,14 @@ import { init } from "@/commands/init";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
+import { Command, Option } from "@commander-js/extra-typings";
 import { banner, getCwd, loadConfig, log } from "@hot-updater/plugin-core";
 import { type FingerprintResult, nativeFingerprint } from "@rnef/tools";
-import { Command, Option } from "commander";
+
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import { printBanner } from "./utils/printBanner";
+import { getChannel, setChannel } from "./utils/setChannel";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -129,6 +131,43 @@ fingerprintCommand
             JSON.stringify(fingerprint, null, 2),
           );
           return "Created fingerprint.json";
+        },
+      },
+    ]);
+  });
+const channelCommand = program
+  .command("channel")
+  .description("Manage channels");
+
+channelCommand.action(async () => {
+  const androidChannel = await getChannel("android");
+  const iosChannel = await getChannel("ios");
+  p.log.info(`Android channel: ${picocolors.green(androidChannel)}`);
+  p.log.info(`iOS channel: ${picocolors.green(iosChannel)}`);
+});
+
+channelCommand
+  .command("set")
+  .argument("<channel>", "the channel to set")
+  .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
+  .action(async (channel) => {
+    await p.tasks([
+      {
+        title: "Setting Android channel",
+        task: async () => {
+          const { path } = await setChannel("android", channel);
+          return `Android channel has been set to ${picocolors.green(
+            channel,
+          )} at ${picocolors.blue(path)}`;
+        },
+      },
+      {
+        title: "Setting iOS channel",
+        task: async () => {
+          const { path } = await setChannel("ios", channel);
+          return `iOS channel has been set to ${picocolors.green(
+            channel,
+          )} at ${picocolors.blue(path)}`;
         },
       },
     ]);

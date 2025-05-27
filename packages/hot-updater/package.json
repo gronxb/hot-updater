@@ -54,6 +54,7 @@
   "dependencies": {
     "@bacons/xcode": "1.0.0-alpha.24",
     "@clack/prompts": "^0.10.0",
+    "@commander-js/extra-typings": "^14.0.0",
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
