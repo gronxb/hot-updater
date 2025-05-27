@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import { getCwd } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AndroidConfigParser } from "./androidParser";
 
@@ -19,26 +22,11 @@ vi.mock("path", () => ({
   },
 }));
 
-vi.mock("globby", () => ({
-  globby: vi.fn(),
-}));
-
-vi.mock("plist", () => ({
-  default: {
-    parse: vi.fn(),
-    build: vi.fn(),
-  },
-}));
-
 vi.mock("@hot-updater/plugin-core", () => ({
   getCwd: vi.fn(),
 }));
 
 // Import mock functions
-import fs from "fs";
-import path from "path";
-import { getCwd } from "@hot-updater/plugin-core";
-
 describe("AndroidConfigParser", () => {
   let androidParser: AndroidConfigParser;
   const mockBuildGradlePath = "/mock/project/android/app/build.gradle";
