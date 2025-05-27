@@ -57,14 +57,12 @@ import React
      * Gets the current update channel.
      * @return The channel name or nil if not set
      */
-    public func getChannel() -> String? {
-        do {
-            return try preferences.getItem(forKey: "HotUpdaterChannel")
-        } catch let error {
-            NSLog("[HotUpdaterImpl] Error getting channel: \(error.localizedDescription)")
-            return nil
-        }
+    private static let DEFAULT_CHANNEL = "production"
+    
+    public func getChannel() -> String {
+        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
     }
+
     
     // MARK: - Bundle URL Management
     
