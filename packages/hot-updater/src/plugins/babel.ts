@@ -36,16 +36,6 @@ const getBundleId = () => {
 
 const memoizeLoadConfig = memoize(loadConfigSync);
 
-export const getChannel = () => {
-  const envChannel = process.env["HOT_UPDATER_CHANNEL"];
-  if (envChannel) {
-    return envChannel;
-  }
-
-  const { releaseChannel } = memoizeLoadConfig(null);
-  return releaseChannel;
-};
-
 export const getFingerprintJson = () => {
   const { updateStrategy } = memoizeLoadConfig(null);
   if (updateStrategy === "appVersion") {
@@ -84,7 +74,6 @@ export default function ({
   types: t,
 }: { types: typeof babelTypes }): PluginObj {
   const bundleId = getBundleId();
-  const channel = getChannel();
   const fingerprint = getFingerprintJson();
 
   const { updateStrategy } = memoizeLoadConfig(null);
@@ -94,9 +83,6 @@ export default function ({
       Identifier(path: NodePath<babelTypes.Identifier>) {
         if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
           path.replaceWith(t.stringLiteral(bundleId));
-        }
-        if (path.node.name === "__HOT_UPDATER_CHANNEL") {
-          path.replaceWith(t.stringLiteral(channel));
         }
         if (path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_IOS") {
           fingerprint?.iosHash

@@ -19,7 +19,7 @@ export interface Spec extends TurboModule {
   readonly getConstants: () => {
     MIN_BUNDLE_ID: string;
     APP_VERSION: string | null;
-    CHANNEL: string | null;
+    CHANNEL: string;
   };
 }
 
