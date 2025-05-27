@@ -54,20 +54,6 @@ import React
     // MARK: - Channel Management
     
     /**
-     * Sets the update channel.
-     * @param channel The channel to set, or nil to clear
-     */
-    public func setChannel(_ channel: String?) {
-            do {
-                try preferences.setItem(channel, forKey: "HotUpdaterChannel")
-                NSLog("[HotUpdaterImpl] Channel set to: \(channel ?? "nil")")
-            } catch let error {
-                NSLog("[HotUpdaterImpl] Error setting channel: \(error.localizedDescription)")
-                // Error is ignored as there's no reject handler for this operation
-        }
-    }
-    
-    /**
      * Gets the current update channel.
      * @return The channel name or nil if not set
      */

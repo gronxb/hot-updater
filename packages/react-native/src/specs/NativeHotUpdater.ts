@@ -11,8 +11,6 @@ export interface Spec extends TurboModule {
   reload(): void;
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
-  setChannel(channel: string): Promise<void>;
-
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

@@ -107,14 +107,6 @@ class HotUpdaterImpl(
         }
 
     /**
-     * Sets the update channel
-     * @param channel The channel name to set
-     */
-    fun setChannel(channel: String) {
-        preferences.setItem("HotUpdaterChannel", channel)
-    }
-
-    /**
      * Gets the current update channel
      * @return The channel name or null if not set
      */

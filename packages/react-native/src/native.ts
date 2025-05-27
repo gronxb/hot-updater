@@ -133,13 +133,6 @@ export const getBundleId = (): string => {
     : HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID;
 };
 
-/**
- * Sets the channel for the app.
- */
-export const setChannel = async (channel: string) => {
-  return HotUpdaterNative.setChannel(channel);
-};
-
 export const getChannel = (): string => {
   const constants = HotUpdaterNative.getConstants();
   return constants.CHANNEL;

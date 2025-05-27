@@ -178,14 +178,6 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - React Native Exports (Slimmed Down)
 
-RCT_EXPORT_METHOD(setChannel:(NSString *)channel
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
-    // Use static instance
-    [_hotUpdaterImpl setChannel:channel];
-    resolve(nil);
-}
-
 // Keep reload logic here as it interacts with RN Bridge
 RCT_EXPORT_METHOD(reload) {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");

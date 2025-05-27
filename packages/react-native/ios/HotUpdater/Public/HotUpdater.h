@@ -21,7 +21,7 @@
  */
 @property (nonatomic, assign) NSTimeInterval lastUpdateTime;
 
-// No need to declare the exported methods (setChannel, reload, etc.) here
+// No need to declare the exported methods (reload, etc.) here
 // as RCT_EXPORT_METHOD handles their exposure to JavaScript.
 // We also don't need to declare supportedEvents or requiresMainQueueSetup here
 // as they are implemented in the .mm file (calling Swift).
