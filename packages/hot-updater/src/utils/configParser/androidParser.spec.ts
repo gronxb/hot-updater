@@ -456,28 +456,39 @@ android {
       expect(writtenContent).not.toContain("old_dev_value");
     });
 
-    it("should throw error when trying to set flavor that doesn't exist", async () => {
+    it("should create new flavor when it doesn't exist in existing productFlavors", async () => {
       const buildGradleContent = `
 android {
     defaultConfig {
         applicationId "com.example.app"
     }
     productFlavors {
-        dev {
-            applicationId "com.example.app.dev"
+        prod {
+            applicationId "com.example.app"
         }
     }
 }`;
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await expect(
-        androidParser.set("TEST_KEY", "value", { flavor: "nonexistent" }),
-      ).rejects.toThrow("Flavor 'nonexistent' not found in productFlavors");
+      await androidParser.set("TEST_KEY", "dev_value", { flavor: "dev" });
+
+      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
+      const writtenContent = writeCall?.[1] as string;
+
+      // Should keep existing prod flavor
+      expect(writtenContent).toContain("prod {");
+      // Should create new dev flavor
+      expect(writtenContent).toContain("dev {");
+      // Should add buildConfigField to dev flavor
+      expect(writtenContent).toContain(
+        'buildConfigField "String", "TEST_KEY", "\\"dev_value\\""',
+      );
     });
 
-    it("should throw error when productFlavors block not found but trying to set flavor", async () => {
+    it("should create productFlavors and flavor blocks when they don't exist", async () => {
       const buildGradleContent = `
 android {
     defaultConfig {
@@ -487,11 +498,47 @@ android {
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await expect(
-        androidParser.set("TEST_KEY", "value", { flavor: "dev" }),
-      ).rejects.toThrow(
-        "productFlavors block not found but trying to set flavor value",
+      await androidParser.set("TEST_KEY", "test_value", { flavor: "dev" });
+
+      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
+      const writtenContent = writeCall?.[1] as string;
+
+      // Should create productFlavors block
+      expect(writtenContent).toContain("productFlavors {");
+      // Should create dev flavor block
+      expect(writtenContent).toContain("dev {");
+      // Should add buildConfigField
+      expect(writtenContent).toContain(
+        'buildConfigField "String", "TEST_KEY", "\\"test_value\\""',
+      );
+    });
+
+    it("should create new flavor in empty productFlavors block", async () => {
+      const buildGradleContent = `
+android {
+    defaultConfig {
+        applicationId "com.example.app"
+    }
+    productFlavors {
+        // Empty block
+    }
+}`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      await androidParser.set("TEST_KEY", "dev_value", { flavor: "dev" });
+
+      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
+      const writtenContent = writeCall?.[1] as string;
+
+      // Should create dev flavor in existing productFlavors block
+      expect(writtenContent).toContain("dev {");
+      expect(writtenContent).toContain(
+        'buildConfigField "String", "TEST_KEY", "\\"dev_value\\""',
       );
     });
 
@@ -558,11 +605,11 @@ describe("Error Handling", () => {
     it("should propagate error when file writing fails", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue(`
-  android {
-      defaultConfig {
-          applicationId "com.example.app"
-      }
-  }`);
+android {
+    defaultConfig {
+        applicationId "com.example.app"
+    }
+}`);
       vi.mocked(fs.promises.writeFile).mockRejectedValue(
         new Error("Disk full"),
       );
@@ -574,18 +621,18 @@ describe("Error Handling", () => {
 
     it("should handle malformed productFlavors block gracefully", async () => {
       const malformedContent = `
-  android {
-      defaultConfig {
-          applicationId "com.example.app"
-      }
-      productFlavors {
-          dev {
-              // Missing closing brace
-          prod {
-              applicationId "com.example.app"
-          }
-      }
-  }`;
+android {
+    defaultConfig {
+        applicationId "com.example.app"
+    }
+    productFlavors {
+        dev {
+            // Missing closing brace
+        prod {
+            applicationId "com.example.app"
+        }
+    }
+}`;
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue(malformedContent);
@@ -593,26 +640,6 @@ describe("Error Handling", () => {
       // Should not throw error, but may return unexpected results
       const result = await androidParser.get("TEST_KEY");
       expect(result).toBeDefined();
-    });
-
-    it("should handle setting flavors when productFlavors block exists but is empty", async () => {
-      const buildGradleContent = `
-  android {
-      defaultConfig {
-          applicationId "com.example.app"
-      }
-      productFlavors {
-          // Empty block
-      }
-  }`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      // Should not add anything since dev flavor doesn't exist
-      await expect(
-        androidParser.set("TEST_KEY", "dev_value", { flavor: "dev" }),
-      ).rejects.toThrow("Flavor 'dev' not found in productFlavors");
     });
   });
 });
@@ -633,29 +660,29 @@ describe("BuildFlavor Edge Cases", () => {
 
   it("should handle nested flavor configurations", async () => {
     const buildGradleContent = `
-  android {
-      defaultConfig {
-          buildConfigField "String", "BASE_URL", "\\"https://api.example.com\\""
-      }
-      productFlavors {
-          free {
-              dimension "version"
-              buildConfigField "String", "FEATURE_FLAG", "\\"basic\\""
-          }
-          premium {
-              dimension "version"
-              buildConfigField "String", "FEATURE_FLAG", "\\"advanced\\""
-          }
-          dev {
-              dimension "environment"
-              buildConfigField "String", "BASE_URL", "\\"https://dev.api.example.com\\""
-          }
-          prod {
-              dimension "environment"
-              buildConfigField "String", "BASE_URL", "\\"https://api.example.com\\""
-          }
-      }
-  }`;
+android {
+    defaultConfig {
+        buildConfigField "String", "BASE_URL", "\\"https://api.example.com\\""
+    }
+    productFlavors {
+        free {
+            dimension "version"
+            buildConfigField "String", "FEATURE_FLAG", "\\"basic\\""
+        }
+        premium {
+            dimension "version"
+            buildConfigField "String", "FEATURE_FLAG", "\\"advanced\\""
+        }
+        dev {
+            dimension "environment"
+            buildConfigField "String", "BASE_URL", "\\"https://dev.api.example.com\\""
+        }
+        prod {
+            dimension "environment"
+            buildConfigField "String", "BASE_URL", "\\"https://api.example.com\\""
+        }
+    }
+}`;
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
@@ -677,25 +704,25 @@ describe("BuildFlavor Edge Cases", () => {
 
   it("should handle flavors with complex syntax", async () => {
     const buildGradleContent = `
-  android {
-      defaultConfig {
-          buildConfigField "String", "APP_NAME", "\\"MyApp\\""
-      }
-      productFlavors {
-          demo {
-              applicationIdSuffix ".demo"
-              versionNameSuffix "-demo"
-              buildConfigField "String", "APP_NAME", "\\"MyApp Demo\\""
-              buildConfigField "String", "SERVER_URL", "\\"https://demo.server.com\\""
-              resValue "string", "app_name", "MyApp Demo"
-          }
-          full {
-              buildConfigField "String", "APP_NAME", "\\"MyApp Full\\""
-              buildConfigField "String", "SERVER_URL", "\\"https://full.server.com\\""
-              proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-          }
-      }
-  }`;
+android {
+    defaultConfig {
+        buildConfigField "String", "APP_NAME", "\\"MyApp\\""
+    }
+    productFlavors {
+        demo {
+            applicationIdSuffix ".demo"
+            versionNameSuffix "-demo"
+            buildConfigField "String", "APP_NAME", "\\"MyApp Demo\\""
+            buildConfigField "String", "SERVER_URL", "\\"https://demo.server.com\\""
+            resValue "string", "app_name", "MyApp Demo"
+        }
+        full {
+            buildConfigField "String", "APP_NAME", "\\"MyApp Full\\""
+            buildConfigField "String", "SERVER_URL", "\\"https://full.server.com\\""
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}`;
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
@@ -717,19 +744,19 @@ describe("BuildFlavor Edge Cases", () => {
 
   it("should handle updating specific field in complex flavor", async () => {
     const buildGradleContent = `
-  android {
-      defaultConfig {
-          applicationId "com.example.app"
-      }
-      productFlavors {
-          dev {
-              applicationIdSuffix ".dev"
-              buildConfigField "String", "API_KEY", "\\"dev_key_123\\""
-              buildConfigField "String", "DEBUG_MODE", "\\"true\\""
-              resValue "string", "app_name", "App Dev"
-          }
-      }
-  }`;
+android {
+    defaultConfig {
+        applicationId "com.example.app"
+    }
+    productFlavors {
+        dev {
+            applicationIdSuffix ".dev"
+            buildConfigField "String", "API_KEY", "\\"dev_key_123\\""
+            buildConfigField "String", "DEBUG_MODE", "\\"true\\""
+            resValue "string", "app_name", "App Dev"
+        }
+    }
+}`;
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
@@ -750,6 +777,33 @@ describe("BuildFlavor Edge Cases", () => {
     );
     expect(writtenContent).toContain(
       'resValue "string", "app_name", "App Dev"',
+    );
+  });
+
+  it("should handle creating multiple new flavors sequentially", async () => {
+    const buildGradleContent = `
+android {
+    defaultConfig {
+        applicationId "com.example.app"
+    }
+}`;
+
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+    await androidParser.set("API_URL", "https://dev.api.com", {
+      flavor: "dev",
+    });
+
+    const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
+    const writtenContent = writeCall?.[1] as string;
+
+    // Should create productFlavors block and dev flavor
+    expect(writtenContent).toContain("productFlavors {");
+    expect(writtenContent).toContain("dev {");
+    expect(writtenContent).toContain(
+      'buildConfigField "String", "API_URL", "\\"https://dev.api.com\\""',
     );
   });
 });

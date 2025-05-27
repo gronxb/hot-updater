@@ -155,23 +155,27 @@ export class AndroidConfigParser implements ConfigParser {
       throw new Error("android block not found in build.gradle");
     }
 
-    const productFlavorsBlock = this.findBlock(
+    let productFlavorsBlock = this.findBlock(
       lines,
       "productFlavors",
       androidBlock,
     );
 
+    // Create productFlavors block if it doesn't exist
     if (!productFlavorsBlock) {
-      throw new Error(
-        "productFlavors block not found but trying to set flavor value",
-      );
+      productFlavorsBlock = this.createProductFlavorsBlock(lines, androidBlock);
     }
 
     const flavorBlocks = this.findFlavorBlocks(lines, productFlavorsBlock);
-    const flavorBlock = flavorBlocks.find((fb) => fb.name === flavorName);
+    let flavorBlock = flavorBlocks.find((fb) => fb.name === flavorName);
 
+    // Create flavor block if it doesn't exist
     if (!flavorBlock) {
-      throw new Error(`Flavor '${flavorName}' not found in productFlavors`);
+      flavorBlock = this.createFlavorBlock(
+        lines,
+        productFlavorsBlock,
+        flavorName,
+      );
     }
 
     // Find existing buildConfigField in this flavor
@@ -194,6 +198,49 @@ export class AndroidConfigParser implements ConfigParser {
     }
 
     return lines;
+  }
+
+  private createProductFlavorsBlock(
+    lines: string[],
+    androidBlock: GradleBlock,
+  ): GradleBlock {
+    const insertIndex = androidBlock.endLine;
+    const indent = `${androidBlock.indent}    `;
+
+    const productFlavorsLines = [`${indent}productFlavors {`, `${indent}}`];
+
+    lines.splice(insertIndex, 0, ...productFlavorsLines);
+
+    // Return the newly created productFlavors block
+    return {
+      startLine: insertIndex,
+      endLine: insertIndex + 1,
+      indent: indent,
+    };
+  }
+
+  private createFlavorBlock(
+    lines: string[],
+    productFlavorsBlock: GradleBlock,
+    flavorName: string,
+  ): FlavorBlock {
+    const insertIndex = productFlavorsBlock.endLine;
+    const indent = `${productFlavorsBlock.indent}    `;
+
+    const flavorLines = [`${indent}${flavorName} {`, `${indent}}`];
+
+    lines.splice(insertIndex, 0, ...flavorLines);
+
+    // Update productFlavorsBlock endLine since we inserted lines
+    productFlavorsBlock.endLine += flavorLines.length;
+
+    // Return the newly created flavor block
+    return {
+      startLine: insertIndex,
+      endLine: insertIndex + 1,
+      indent: indent,
+      name: flavorName,
+    };
   }
 
   private parseAndUpdateGradleWithFlavors(

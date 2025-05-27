@@ -138,39 +138,115 @@ fingerprintCommand
 const channelCommand = program
   .command("channel")
   .description("Manage channels");
-
 channelCommand.action(async () => {
   const androidChannel = await getChannel("android");
   const iosChannel = await getChannel("ios");
-  p.log.info(`Android channel: ${picocolors.green(androidChannel)}`);
-  p.log.info(`iOS channel: ${picocolors.green(iosChannel)}`);
+
+  const displayChannels = (
+    channels: Record<string, string | undefined>,
+    platform: string,
+  ) => {
+    const entries = Object.entries(channels)
+      .filter(([_, value]) => value !== undefined)
+      .sort(([keyA], [keyB]) => {
+        if (keyA === "default") {
+          return -1;
+        }
+        if (keyB === "default") {
+          return 1;
+        }
+        return keyA.localeCompare(keyB);
+      });
+
+    p.log.info(`${picocolors.bold(platform)}:`);
+
+    if (entries.length === 0) {
+      p.log.info(`  ${picocolors.gray("No channels configured")}`);
+      return;
+    }
+
+    for (const [flavor, value] of entries) {
+      if (flavor === "default") {
+        p.log.info(
+          `  ${picocolors.blue("default")}: ${picocolors.green(value)}`,
+        );
+      } else {
+        p.log.info(
+          `  ${picocolors.cyan(`${flavor} flavor`)}: ${picocolors.green(value)}`,
+        );
+      }
+    }
+  };
+
+  p.log.info("");
+  displayChannels(androidChannel, "Android");
+  p.log.info("");
+  displayChannels(iosChannel, "iOS");
+  p.log.info("");
 });
 
 channelCommand
   .command("set")
   .argument("<channel>", "the channel to set")
   .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
-  .action(async (channel) => {
-    await p.tasks([
-      {
-        title: "Setting Android channel",
-        task: async () => {
-          const { path } = await setChannel("android", channel);
-          return `Android channel has been set to ${picocolors.green(
-            channel,
-          )} at ${picocolors.blue(path)}`;
-        },
-      },
-      {
-        title: "Setting iOS channel",
-        task: async () => {
-          const { path } = await setChannel("ios", channel);
-          return `iOS channel has been set to ${picocolors.green(
-            channel,
-          )} at ${picocolors.blue(path)}`;
-        },
-      },
-    ]);
+  .addOption(
+    new Option(
+      "-f, --flavor <flavor>",
+      "specify the flavor to set channel for",
+    ),
+  )
+  .action(async (channel, options) => {
+    try {
+      const androidResult = await setChannel("android", channel, {
+        flavor: options.flavor,
+      });
+
+      const iosResult = await setChannel("ios", channel, {
+        flavor: options.flavor,
+      });
+
+      p.log.info("");
+      p.log.info(
+        `${picocolors.green("✓")} ${picocolors.bold("Channels updated successfully!")}`,
+      );
+      p.log.info("");
+
+      p.log.info(`${picocolors.bold("Android")}:`);
+      p.log.info(
+        `  ${picocolors.blue("channel")}: ${picocolors.green(channel)}`,
+      );
+      if (options.flavor) {
+        p.log.info(
+          `  ${picocolors.blue("flavor")}: ${picocolors.yellow(options.flavor)}`,
+        );
+      }
+      p.log.info(
+        `  ${picocolors.blue("path")}: ${picocolors.gray(androidResult.path)}`,
+      );
+
+      p.log.info("");
+
+      p.log.info(`${picocolors.bold("iOS")}:`);
+      p.log.info(
+        `  ${picocolors.blue("channel")}: ${picocolors.green(channel)}`,
+      );
+      if (options.flavor) {
+        p.log.info(
+          `  ${picocolors.blue("flavor")}: ${picocolors.yellow(options.flavor)}`,
+        );
+      }
+      p.log.info(
+        `  ${picocolors.blue("path")}: ${picocolors.gray(iosResult.path)}`,
+      );
+
+      p.log.info("");
+    } catch (error) {
+      if (error instanceof Error) {
+        p.log.error(error.message);
+      } else {
+        throw error;
+      }
+    }
   });
 
 program
