@@ -243,59 +243,6 @@ export class AndroidConfigParser implements ConfigParser {
     };
   }
 
-  private parseAndUpdateGradleWithFlavors(
-    lines: string[],
-    key: string,
-    flavorValues: Record<string, string>,
-  ): string[] {
-    const androidBlock = this.findBlock(lines, "android");
-    if (!androidBlock) {
-      throw new Error("android block not found in build.gradle");
-    }
-
-    const productFlavorsBlock = this.findBlock(
-      lines,
-      "productFlavors",
-      androidBlock,
-    );
-
-    if (!productFlavorsBlock) {
-      throw new Error(
-        "productFlavors block not found but trying to set flavor values",
-      );
-    }
-
-    const flavorBlocks = this.findFlavorBlocks(lines, productFlavorsBlock);
-
-    for (const [flavorName, flavorValue] of Object.entries(flavorValues)) {
-      const flavorBlock = flavorBlocks.find((fb) => fb.name === flavorName);
-      if (!flavorBlock) {
-        continue; // Skip if flavor doesn't exist
-      }
-
-      // Find existing buildConfigField in this flavor
-      const fieldIndex = this.findBuildConfigField(lines, key, flavorBlock);
-
-      if (fieldIndex !== -1 && lines[fieldIndex]) {
-        // Update existing field
-        const indent = this.getLineIndent(lines[fieldIndex]);
-        lines[fieldIndex] =
-          `${indent}buildConfigField "String", "${key}", "\\"${flavorValue}\\""`;
-      } else {
-        // Add new field to flavor block
-        const insertIndex = flavorBlock.endLine;
-        const indent = `${flavorBlock.indent}    `;
-        lines.splice(
-          insertIndex,
-          0,
-          `${indent}buildConfigField "String", "${key}", "\\"${flavorValue}\\""`,
-        );
-      }
-    }
-
-    return lines;
-  }
-
   private findFlavorBlocks(
     lines: string[],
     productFlavorsBlock: GradleBlock,
