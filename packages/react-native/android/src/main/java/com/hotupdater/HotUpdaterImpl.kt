@@ -14,34 +14,6 @@ class HotUpdaterImpl(
     private val bundleStorage: BundleStorageService,
     private val preferences: PreferencesService,
 ) {
-    /**
-     * Gets the app version
-     * @param context Application context
-     * @return App version name or null if not available
-     */
-    fun getAppVersion(): String? =
-        try {
-            val packageInfo =
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getPackageInfo(
-                        context.packageName,
-                        android.content.pm.PackageManager.PackageInfoFlags
-                            .of(0),
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    context.packageManager.getPackageInfo(context.packageName, 0)
-                }
-            packageInfo.versionName
-        } catch (e: Exception) {
-            null
-        }
-
-    /**
-     * Gets the app version
-     * @param context Application context
-     * @return App version name or null if not available
-     */
     companion object {
         fun getAppVersion(context: Context): String? =
             try {
@@ -123,7 +95,7 @@ class HotUpdaterImpl(
      * Gets the current update channel
      * @return The channel name or null if not set
      */
-    fun getChannel(): String? = preferences.getItem("HotUpdaterChannel")
+    fun getChannel(): String = BuildConfig.HOT_UPDATER_CHANNEL
 
     /**
      * Gets the path to the bundle file

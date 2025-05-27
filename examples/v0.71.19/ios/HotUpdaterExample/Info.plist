@@ -51,7 +51,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>HOT_UPDATER_CHANNEL</key>
-	<string>production</string>
 </dict>
 </plist>
