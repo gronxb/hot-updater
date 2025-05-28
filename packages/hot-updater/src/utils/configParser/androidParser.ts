@@ -49,7 +49,6 @@ export class AndroidConfigParser implements ConfigParser {
       indentBy: "    ",
       suppressBooleanAttributes: false,
       processEntities: true,
-      ignoreDeclaration: false, // This ensures XML declaration is included
     });
   }
 

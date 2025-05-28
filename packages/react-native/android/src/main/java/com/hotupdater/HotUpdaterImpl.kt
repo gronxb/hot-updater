@@ -14,7 +14,6 @@ class HotUpdaterImpl(
     private val bundleStorage: BundleStorageService,
     private val preferences: PreferencesService,
 ) {
-
     /**
      * Gets the app version
      * @param context Application context
