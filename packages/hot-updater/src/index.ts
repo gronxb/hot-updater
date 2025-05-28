@@ -138,52 +138,64 @@ fingerprintCommand
 const channelCommand = program
   .command("channel")
   .description("Manage channels");
-channelCommand.action(async () => {
-  const androidChannel = await getChannel("android");
-  const iosChannel = await getChannel("ios");
 
-  const displayChannels = (
-    channels: Record<string, string | undefined>,
-    platform: string,
-  ) => {
-    const entries = Object.entries(channels)
-      .filter(([_, value]) => value !== undefined)
-      .sort(([keyA], [keyB]) => {
-        if (keyA === "default") {
-          return -1;
-        }
-        if (keyB === "default") {
-          return 1;
-        }
-        return keyA.localeCompare(keyB);
-      });
+channelCommand
+  .addOption(
+    new Option("-p, --platform <platform>", "specify the platform").choices([
+      "ios",
+      "android",
+    ]),
+  )
+  .action(async (options) => {
+    const platforms = options.platform
+      ? ([options.platform] as const)
+      : (["android", "ios"] as const);
 
-    p.log.info(`${picocolors.bold(platform)}:`);
-
-    if (entries.length === 0) {
-      p.log.info(`  ${picocolors.gray("No channels configured")}`);
-      return;
+    for (const platform of platforms) {
+      const channel = await getChannel(platform);
+      displayChannels(channel, platform === "ios" ? "iOS" : "Android");
+      p.log.info("");
     }
+  });
 
-    for (const [flavor, value] of entries) {
-      if (flavor === "default") {
-        p.log.info(
-          `  ${picocolors.blue("default")}: ${picocolors.green(value)}`,
-        );
-      } else {
-        p.log.info(
-          `  ${picocolors.cyan(`${flavor} flavor`)}: ${picocolors.green(value)}`,
-        );
+const displayChannels = (
+  channels: Record<string, string | undefined>,
+  platform: string,
+) => {
+  const entries = Object.entries(channels)
+    .filter(([_, value]) => value !== undefined)
+    .sort(([keyA], [keyB]) => {
+      if (keyA === "default") {
+        return -1;
       }
-    }
-  };
+      if (keyB === "default") {
+        return 1;
+      }
+      return keyA.localeCompare(keyB);
+    });
 
-  p.log.info("");
-  displayChannels(androidChannel, "Android");
-  p.log.info("");
-  displayChannels(iosChannel, "iOS");
-  p.log.info("");
-});
+  p.log.info(`${picocolors.bold(platform)}:`);
+
+  if (entries.length === 0) {
+    p.log.info(`  ${picocolors.gray("No channels configured")}`);
+    return;
+  }
+
+  const filteredEntries =
+    platform === "iOS" && entries.some(([key]) => key !== "default")
+      ? entries.filter(([key]) => key !== "default")
+      : entries;
+
+  for (const [flavor, value] of filteredEntries) {
+    if (flavor === "default") {
+      p.log.info(`  ${picocolors.blue("default")}: ${picocolors.green(value)}`);
+    } else {
+      p.log.info(
+        `  ${picocolors.cyan(`${flavor} flavor`)}: ${picocolors.green(value)}`,
+      );
+    }
+  }
+};
 
 channelCommand
   .command("set")
@@ -195,15 +207,24 @@ channelCommand
       "specify the flavor to set channel for",
     ),
   )
+  .addOption(
+    new Option("-p, --platform <platform>", "specify the platform").choices([
+      "ios",
+      "android",
+    ]),
+  )
   .action(async (channel, options) => {
     try {
-      const androidResult = await setChannel("android", channel, {
-        flavor: options.flavor,
-      });
+      const platforms = options.platform
+        ? ([options.platform] as const)
+        : (["android", "ios"] as const);
+      const results: Record<string, any> = {};
 
-      const iosResult = await setChannel("ios", channel, {
-        flavor: options.flavor,
-      });
+      for (const platform of platforms) {
+        results[platform] = await setChannel(platform, channel, {
+          flavor: options.flavor,
+        });
+      }
 
       p.log.info("");
       p.log.info(
@@ -211,35 +232,24 @@ channelCommand
       );
       p.log.info("");
 
-      p.log.info(`${picocolors.bold("Android")}:`);
-      p.log.info(
-        `  ${picocolors.blue("channel")}: ${picocolors.green(channel)}`,
-      );
-      if (options.flavor) {
+      for (const platform of platforms) {
+        const result = results[platform];
+        const platformName = platform === "ios" ? "iOS" : "Android";
+
+        p.log.info(`${picocolors.bold(platformName)}:`);
         p.log.info(
-          `  ${picocolors.blue("flavor")}: ${picocolors.yellow(options.flavor)}`,
+          `  ${picocolors.blue("channel")}: ${picocolors.green(channel)}`,
         );
-      }
-      p.log.info(
-        `  ${picocolors.blue("path")}: ${picocolors.gray(androidResult.path)}`,
-      );
-
-      p.log.info("");
-
-      p.log.info(`${picocolors.bold("iOS")}:`);
-      p.log.info(
-        `  ${picocolors.blue("channel")}: ${picocolors.green(channel)}`,
-      );
-      if (options.flavor) {
+        if (options.flavor) {
+          p.log.info(
+            `  ${picocolors.blue("flavor")}: ${picocolors.yellow(options.flavor)}`,
+          );
+        }
         p.log.info(
-          `  ${picocolors.blue("flavor")}: ${picocolors.yellow(options.flavor)}`,
+          `  ${picocolors.blue("path")}: ${picocolors.gray(result.path)}`,
         );
+        p.log.info("");
       }
-      p.log.info(
-        `  ${picocolors.blue("path")}: ${picocolors.gray(iosResult.path)}`,
-      );
-
-      p.log.info("");
     } catch (error) {
       if (error instanceof Error) {
         p.log.error(error.message);
