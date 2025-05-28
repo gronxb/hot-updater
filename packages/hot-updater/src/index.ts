@@ -146,9 +146,9 @@ channelCommand.action(async () => {
   p.log.info(
     `Current Android channel: ${picocolors.green(androidChannel.value)}`,
   );
-  p.log.info(`  Android path: ${picocolors.blue(androidChannel.path)}`);
+  p.log.info(`  from: ${picocolors.blue(androidChannel.path)}`);
   p.log.info(`Current iOS channel: ${picocolors.green(iosChannel.value)}`);
-  p.log.info(`  iOS path: ${picocolors.blue(iosChannel.path)}`);
+  p.log.info(`  from: ${picocolors.blue(iosChannel.path)}`);
 });
 
 channelCommand
@@ -158,11 +158,11 @@ channelCommand
   .action(async (channel) => {
     const { path: androidPath } = await setChannel("android", channel);
     p.log.success(`Set Android channel to: ${picocolors.green(channel)}`);
-    p.log.info(`  Android path: ${picocolors.blue(androidPath)}`);
+    p.log.info(`  from: ${picocolors.blue(androidPath)}`);
 
     const { path: iosPath } = await setChannel("ios", channel);
     p.log.success(`Set iOS channel to: ${picocolors.green(channel)}`);
-    p.log.info(`  iOS path: ${picocolors.blue(iosPath)}`);
+    p.log.info(`  from: ${picocolors.blue(iosPath)}`);
   });
 
 program
