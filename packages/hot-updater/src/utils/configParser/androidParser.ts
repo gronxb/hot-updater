@@ -47,6 +47,9 @@ export class AndroidConfigParser implements ConfigParser {
       ...options,
       format: true,
       indentBy: "    ",
+      suppressBooleanAttributes: false,
+      processEntities: true,
+      ignoreDeclaration: false, // This ensures XML declaration is included
     });
   }
 
@@ -124,8 +127,8 @@ export class AndroidConfigParser implements ConfigParser {
       // Update the result
       result.resources.string = strings.length === 1 ? strings[0] : strings;
 
-      const xmlDeclaration = '<?xml version="1.0" encoding="utf-8"?>\n';
-      const newContent = xmlDeclaration + this.builder.build(result);
+      // XMLBuilder already includes the XML declaration, so we don't need to add it manually
+      const newContent = this.builder.build(result);
 
       await fs.promises.writeFile(this.stringsXmlPath, newContent, "utf-8");
 

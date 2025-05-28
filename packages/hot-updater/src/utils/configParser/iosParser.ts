@@ -32,30 +32,44 @@ export class IosConfigParser implements ConfigParser {
     try {
       const plistFile = await this.getPlistPath();
       const plistXml = await fs.promises.readFile(plistFile, "utf-8");
-      const plistObject = plist.parse(plistXml) as { [key: string]: any };
 
-      const plistValue = plistObject[key];
-      if (plistValue !== undefined) {
-        return String(plistValue);
+      // Parse the plist file
+      const plistObject = plist.parse(plistXml) as Record<string, any>;
+
+      // Check if the key exists in the plist
+      if (key in plistObject) {
+        const value = plistObject[key];
+
+        // Handle different value types
+        if (value === null || value === undefined) {
+          return undefined;
+        }
+
+        // Convert to string if it's not already
+        if (typeof value === "string") {
+          return value;
+        }
+        return String(value);
       }
-    } catch (error) {
-      // Info.plist not found or can't be read
-    }
 
-    return undefined;
+      return undefined;
+    } catch (error) {
+      return undefined;
+    }
   }
 
   async set(key: string, value: string): Promise<{ path: string }> {
     const plistFile = await this.getPlistPath();
     const plistXml = await fs.promises.readFile(plistFile, "utf-8");
-    const plistObject = plist.parse(plistXml) as { [key: string]: any };
+    const plistObject = plist.parse(plistXml) as Record<string, any>;
 
     plistObject[key] = value;
 
     const newPlistXml = plist.build(plistObject, {
       indent: "\t",
-      offset: -1,
+      pretty: true,
     });
+
     await fs.promises.writeFile(plistFile, newPlistXml);
 
     return { path: path.relative(getCwd(), plistFile) };

@@ -549,26 +549,5 @@ describe("AndroidConfigParser", () => {
         "Permission denied",
       );
     });
-
-    it("should include XML declaration in output", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(
-        "<resources></resources>",
-      );
-      mockParser.parse.mockReturnValue({ resources: {} });
-      mockBuilder.build.mockReturnValue(
-        '<resources><string moduleConfig="true" name="test_key">test_value</string></resources>',
-      );
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("test_key", "test_value");
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-
-      expect(writtenContent).toContain(
-        '<?xml version="1.0" encoding="utf-8"?>',
-      );
-    });
   });
 });

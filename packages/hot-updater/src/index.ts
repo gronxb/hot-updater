@@ -152,11 +152,13 @@ channelCommand
   .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
   .argument("<channel>", "the channel to set")
   .action(async (channel) => {
-    await setChannel("android", channel);
+    const { path: androidPath } = await setChannel("android", channel);
     p.log.success(`Set Android channel to: ${picocolors.green(channel)}`);
+    p.log.info(`  Android path: ${picocolors.blue(androidPath)}`);
 
-    await setChannel("ios", channel);
+    const { path: iosPath } = await setChannel("ios", channel);
     p.log.success(`Set iOS channel to: ${picocolors.green(channel)}`);
+    p.log.info(`  iOS path: ${picocolors.blue(iosPath)}`);
   });
 
 program

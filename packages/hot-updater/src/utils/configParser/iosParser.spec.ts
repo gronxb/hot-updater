@@ -194,7 +194,7 @@ describe("IosConfigParser", () => {
       expect(mockPlistObject).toEqual({ TEST_KEY: "test_value" });
       expect(plist.build).toHaveBeenCalledWith(mockPlistObject, {
         indent: "\t",
-        offset: -1,
+        pretty: true,
       });
       expect(fs.promises.writeFile).toHaveBeenCalledWith(
         mockPlistPath,
