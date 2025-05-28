@@ -56,9 +56,15 @@ export class AndroidConfigParser implements ConfigParser {
     return fs.existsSync(this.stringsXmlPath);
   }
 
-  async get(key: string): Promise<string | undefined> {
+  async get(key: string): Promise<{
+    value: string | null;
+    path: string;
+  }> {
     if (!(await this.exists())) {
-      return undefined;
+      return {
+        value: null,
+        path: path.relative(getCwd(), this.stringsXmlPath),
+      };
     }
 
     try {
@@ -66,7 +72,10 @@ export class AndroidConfigParser implements ConfigParser {
       const result = this.parser.parse(content) as ResourcesXml;
 
       if (!result.resources.string) {
-        return undefined;
+        return {
+          value: null,
+          path: path.relative(getCwd(), this.stringsXmlPath),
+        };
       }
 
       // Handle both single string and array of strings
@@ -78,9 +87,15 @@ export class AndroidConfigParser implements ConfigParser {
         (str) => str["@_name"] === key && str["@_moduleConfig"] === "true",
       );
 
-      return stringElement?.["#text"]?.trim();
+      return {
+        value: stringElement?.["#text"]?.trim() ?? null,
+        path: path.relative(getCwd(), this.stringsXmlPath),
+      };
     } catch (error) {
-      return undefined;
+      return {
+        value: null,
+        path: path.relative(getCwd(), this.stringsXmlPath),
+      };
     }
   }
 

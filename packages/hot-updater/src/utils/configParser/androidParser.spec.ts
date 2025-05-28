@@ -83,15 +83,18 @@ describe("AndroidConfigParser", () => {
   });
 
   describe("get", () => {
-    it("should return undefined when file does not exist", async () => {
+    it("should return null value and path when file does not exist", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const result = await androidParser.get("test_key");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
-    it("should return undefined when no string elements exist", async () => {
+    it("should return null value when no string elements exist", async () => {
       const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
 </resources>`;
@@ -104,10 +107,13 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("test_key");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
-    it("should return value for existing moduleConfig string (single element)", async () => {
+    it("should return object with value and path for existing moduleConfig string (single element)", async () => {
       const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string moduleConfig="true" name="hot_updater_channel">dev</string>
@@ -127,10 +133,13 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("hot_updater_channel");
 
-      expect(result).toBe("dev");
+      expect(result).toEqual({
+        value: "dev",
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
-    it("should return value for existing moduleConfig string (multiple elements)", async () => {
+    it("should return object with value and path for existing moduleConfig string (multiple elements)", async () => {
       const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MyApp</string>
@@ -163,10 +172,13 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("hot_updater_channel");
 
-      expect(result).toBe("dev");
+      expect(result).toEqual({
+        value: "dev",
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
-    it("should return undefined for non-existent key", async () => {
+    it("should return null value for non-existent key", async () => {
       const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string moduleConfig="true" name="other_key">other_value</string>
@@ -186,7 +198,10 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("nonexistent_key");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
     it("should ignore strings without moduleConfig attribute", async () => {
@@ -221,7 +236,10 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("hot_updater_channel");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
     it("should ignore strings with moduleConfig=false", async () => {
@@ -252,7 +270,10 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("hot_updater_channel");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
     it("should handle XML parsing errors gracefully", async () => {
@@ -264,7 +285,10 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("test_key");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
     it("should handle file read errors gracefully", async () => {
@@ -275,7 +299,10 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("test_key");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
     it("should trim whitespace from text content", async () => {
@@ -293,7 +320,31 @@ describe("AndroidConfigParser", () => {
 
       const result = await androidParser.get("test_key");
 
-      expect(result).toBe("value with spaces");
+      expect(result).toEqual({
+        value: "value with spaces",
+        path: "android/app/src/main/res/values/strings.xml",
+      });
+    });
+
+    it("should handle missing text content", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: {
+            "@_name": "test_key",
+            "@_moduleConfig": "true",
+            // no #text property
+          },
+        },
+      });
+
+      const result = await androidParser.get("test_key");
+
+      expect(result).toEqual({
+        value: null,
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
   });
 
@@ -324,7 +375,7 @@ describe("AndroidConfigParser", () => {
         },
       });
       mockBuilder.build.mockReturnValue(
-        '<resources><string moduleConfig="true" name="hot_updater_channel">new_value</string></resources>',
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string moduleConfig="true" name="hot_updater_channel">new_value</string>\n</resources>',
       );
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
@@ -347,7 +398,9 @@ describe("AndroidConfigParser", () => {
         expect.stringContaining("new_value"),
         "utf-8",
       );
-      expect(result.path).toBe("android/app/src/main/res/values/strings.xml");
+      expect(result).toEqual({
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
     it("should add new moduleConfig string to existing resources", async () => {
@@ -366,10 +419,12 @@ describe("AndroidConfigParser", () => {
           },
         },
       });
-      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      mockBuilder.build.mockReturnValue(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">MyApp</string>\n    <string moduleConfig="true" name="hot_updater_channel">dev</string>\n</resources>',
+      );
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await androidParser.set("hot_updater_channel", "dev");
+      const result = await androidParser.set("hot_updater_channel", "dev");
 
       expect(mockBuilder.build).toHaveBeenCalledWith({
         resources: {
@@ -386,6 +441,9 @@ describe("AndroidConfigParser", () => {
           ],
         },
       });
+      expect(result).toEqual({
+        path: "android/app/src/main/res/values/strings.xml",
+      });
     });
 
     it("should handle empty resources (no string elements)", async () => {
@@ -398,10 +456,12 @@ describe("AndroidConfigParser", () => {
       mockParser.parse.mockReturnValue({
         resources: {},
       });
-      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      mockBuilder.build.mockReturnValue(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string moduleConfig="true" name="hot_updater_channel">dev</string>\n</resources>',
+      );
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await androidParser.set("hot_updater_channel", "dev");
+      const result = await androidParser.set("hot_updater_channel", "dev");
 
       expect(mockBuilder.build).toHaveBeenCalledWith({
         resources: {
@@ -411,6 +471,9 @@ describe("AndroidConfigParser", () => {
             "#text": "dev",
           },
         },
+      });
+      expect(result).toEqual({
+        path: "android/app/src/main/res/values/strings.xml",
       });
     });
 
@@ -445,10 +508,15 @@ describe("AndroidConfigParser", () => {
           ],
         },
       });
-      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      mockBuilder.build.mockReturnValue(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
+      );
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await androidParser.set("hot_updater_channel", "new_value");
+      const result = await androidParser.set(
+        "hot_updater_channel",
+        "new_value",
+      );
 
       expect(mockBuilder.build).toHaveBeenCalledWith({
         resources: {
@@ -470,6 +538,9 @@ describe("AndroidConfigParser", () => {
             },
           ],
         },
+      });
+      expect(result).toEqual({
+        path: "android/app/src/main/res/values/strings.xml",
       });
     });
 
@@ -496,10 +567,12 @@ describe("AndroidConfigParser", () => {
           ],
         },
       });
-      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      mockBuilder.build.mockReturnValue(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
+      );
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await androidParser.set("hot_updater_channel", "dev");
+      const result = await androidParser.set("hot_updater_channel", "dev");
 
       expect(mockBuilder.build).toHaveBeenCalledWith({
         resources: {
@@ -519,6 +592,9 @@ describe("AndroidConfigParser", () => {
             },
           ],
         },
+      });
+      expect(result).toEqual({
+        path: "android/app/src/main/res/values/strings.xml",
       });
     });
 
@@ -540,7 +616,9 @@ describe("AndroidConfigParser", () => {
         "<resources></resources>",
       );
       mockParser.parse.mockReturnValue({ resources: {} });
-      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      mockBuilder.build.mockReturnValue(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
+      );
       vi.mocked(fs.promises.writeFile).mockRejectedValue(
         new Error("Permission denied"),
       );
@@ -548,6 +626,57 @@ describe("AndroidConfigParser", () => {
       await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
         "Permission denied",
       );
+    });
+
+    it("should handle array to single object conversion correctly", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string moduleConfig="true" name="hot_updater_channel">old_value</string>
+    <string moduleConfig="true" name="api_url">https://api.com</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "old_value",
+            },
+            {
+              "@_name": "api_url",
+              "@_moduleConfig": "true",
+              "#text": "https://api.com",
+            },
+          ],
+        },
+      });
+      mockBuilder.build.mockReturnValue(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
+      );
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      await androidParser.set("hot_updater_channel", "new_value");
+
+      // Should keep as array since length > 1
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        resources: {
+          string: [
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "new_value",
+            },
+            {
+              "@_name": "api_url",
+              "@_moduleConfig": "true",
+              "#text": "https://api.com",
+            },
+          ],
+        },
+      });
     });
   });
 });

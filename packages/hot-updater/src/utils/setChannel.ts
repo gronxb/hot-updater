@@ -1,3 +1,4 @@
+import { merge } from "es-toolkit";
 import { AndroidConfigParser } from "./configParser/androidParser";
 import { IosConfigParser } from "./configParser/iosParser";
 
@@ -10,12 +11,18 @@ const setAndroidChannel = async (
   return await androidParser.set("hot_updater_channel", channel);
 };
 
-const getAndroidChannel = async (): Promise<string> => {
+const getAndroidChannel = async (): Promise<{
+  value: string;
+  path: string;
+}> => {
   const androidParser = new AndroidConfigParser();
   if (!androidParser.exists()) {
     throw new Error("android/app/src/main/res/values/strings.xml not found");
   }
-  return (await androidParser.get("hot_updater_channel")) ?? DEFAULT_CHANNEL;
+  return merge(
+    { value: DEFAULT_CHANNEL },
+    await androidParser.get("hot_updater_channel"),
+  );
 };
 
 const setIosChannel = async (channel: string): Promise<{ path: string }> => {
@@ -23,12 +30,18 @@ const setIosChannel = async (channel: string): Promise<{ path: string }> => {
   return await iosParser.set("HOT_UPDATER_CHANNEL", channel);
 };
 
-const getIosChannel = async (): Promise<string> => {
+const getIosChannel = async (): Promise<{
+  value: string;
+  path: string;
+}> => {
   const iosParser = new IosConfigParser();
   if (!iosParser.exists()) {
     throw new Error("Info.plist not found");
   }
-  return (await iosParser.get("HOT_UPDATER_CHANNEL")) ?? DEFAULT_CHANNEL;
+  return merge(
+    { value: DEFAULT_CHANNEL },
+    await iosParser.get("HOT_UPDATER_CHANNEL"),
+  );
 };
 
 export const setChannel = async (
@@ -44,7 +57,10 @@ export const setChannel = async (
 };
 export const getChannel = async (
   platform: "android" | "ios",
-): Promise<string> => {
+): Promise<{
+  value: string;
+  path: string;
+}> => {
   switch (platform) {
     case "android":
       return await getAndroidChannel();

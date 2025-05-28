@@ -87,12 +87,12 @@ describe("IosConfigParser", () => {
   });
 
   describe("get", () => {
-    it("should return undefined when plist file not found", async () => {
+    it("should throw error when plist file not found", async () => {
       vi.mocked(globby).mockResolvedValue([]);
 
-      const result = await iosParser.get("TEST_KEY");
-
-      expect(result).toBeUndefined();
+      await expect(iosParser.get("TEST_KEY")).rejects.toThrow(
+        "Info.plist not found",
+      );
     });
 
     it("should return value for existing key in Info.plist", async () => {
@@ -113,11 +113,14 @@ describe("IosConfigParser", () => {
 
       const result = await iosParser.get("TEST_KEY");
 
-      expect(result).toBe("test_value");
+      expect(result).toEqual({
+        value: "test_value",
+        path: "ios/TestApp/Info.plist",
+      });
       expect(plist.parse).toHaveBeenCalledWith(mockPlistContent);
     });
 
-    it("should return undefined for non-existent key", async () => {
+    it("should return null value for non-existent key", async () => {
       const mockPlistContent =
         '<?xml version="1.0"?><plist><dict></dict></plist>';
       const mockPlistObject = {};
@@ -128,7 +131,10 @@ describe("IosConfigParser", () => {
 
       const result = await iosParser.get("NONEXISTENT_KEY");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: "ios/TestApp/Info.plist",
+      });
     });
 
     it("should handle numeric values from plist", async () => {
@@ -140,7 +146,10 @@ describe("IosConfigParser", () => {
 
       const result = await iosParser.get("PORT");
 
-      expect(result).toBe("3000");
+      expect(result).toEqual({
+        value: "3000",
+        path: "ios/TestApp/Info.plist",
+      });
     });
 
     it("should handle boolean values from plist", async () => {
@@ -152,7 +161,30 @@ describe("IosConfigParser", () => {
 
       const result = await iosParser.get("DEBUG_MODE");
 
-      expect(result).toBe("true");
+      expect(result).toEqual({
+        value: "true",
+        path: "ios/TestApp/Info.plist",
+      });
+    });
+
+    it("should handle null and undefined values from plist", async () => {
+      const mockPlistObject = { NULL_KEY: null, UNDEFINED_KEY: undefined };
+
+      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+      vi.mocked(plist.parse).mockReturnValue(mockPlistObject as any);
+
+      const nullResult = await iosParser.get("NULL_KEY");
+      expect(nullResult).toEqual({
+        value: null,
+        path: "ios/TestApp/Info.plist",
+      });
+
+      const undefinedResult = await iosParser.get("UNDEFINED_KEY");
+      expect(undefinedResult).toEqual({
+        value: null,
+        path: "ios/TestApp/Info.plist",
+      });
     });
 
     it("should handle Info.plist read errors gracefully", async () => {
@@ -163,7 +195,25 @@ describe("IosConfigParser", () => {
 
       const result = await iosParser.get("TEST_KEY");
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        value: null,
+        path: expect.any(String), // Path handling might vary due to error
+      });
+    });
+
+    it("should handle plist parse errors gracefully", async () => {
+      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
+      vi.mocked(plist.parse).mockImplementation(() => {
+        throw new Error("Invalid plist format");
+      });
+
+      const result = await iosParser.get("TEST_KEY");
+
+      expect(result).toEqual({
+        value: null,
+        path: expect.any(String),
+      });
     });
   });
 
@@ -200,7 +250,9 @@ describe("IosConfigParser", () => {
         mockPlistPath,
         newPlistXml,
       );
-      expect(result.path).toBe("ios/TestApp/Info.plist");
+      expect(result).toEqual({
+        path: "ios/TestApp/Info.plist",
+      });
     });
 
     it("should update existing value in Info.plist", async () => {
@@ -219,7 +271,9 @@ describe("IosConfigParser", () => {
       const result = await iosParser.set("TEST_KEY", "new_value");
 
       expect(mockPlistObject).toEqual({ TEST_KEY: "new_value" });
-      expect(result.path).toBe("ios/TestApp/Info.plist");
+      expect(result).toEqual({
+        path: "ios/TestApp/Info.plist",
+      });
     });
 
     it("should preserve existing keys when setting new value", async () => {
@@ -234,12 +288,15 @@ describe("IosConfigParser", () => {
       vi.mocked(plist.build).mockReturnValue("");
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await iosParser.set("NEW_KEY", "new_value");
+      const result = await iosParser.set("NEW_KEY", "new_value");
 
       expect(mockPlistObject).toEqual({
         EXISTING_KEY: "existing_value",
         ANOTHER_KEY: "another_value",
         NEW_KEY: "new_value",
+      });
+      expect(result).toEqual({
+        path: "ios/TestApp/Info.plist",
       });
     });
 
@@ -263,6 +320,17 @@ describe("IosConfigParser", () => {
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("");
       vi.mocked(fs.promises.writeFile).mockRejectedValue(
+        new Error("Permission denied"),
+      );
+
+      await expect(iosParser.set("TEST_KEY", "test_value")).rejects.toThrow(
+        "Permission denied",
+      );
+    });
+
+    it("should handle file read errors during set operation", async () => {
+      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fs.promises.readFile).mockRejectedValue(
         new Error("Permission denied"),
       );
 

@@ -28,7 +28,7 @@ export class IosConfigParser implements ConfigParser {
     }
   }
 
-  async get(key: string): Promise<string | undefined> {
+  async get(key: string): Promise<{ value: string | null; path: string }> {
     try {
       const plistFile = await this.getPlistPath();
       const plistXml = await fs.promises.readFile(plistFile, "utf-8");
@@ -42,19 +42,34 @@ export class IosConfigParser implements ConfigParser {
 
         // Handle different value types
         if (value === null || value === undefined) {
-          return undefined;
+          return {
+            value: null,
+            path: path.relative(getCwd(), plistFile),
+          };
         }
 
         // Convert to string if it's not already
         if (typeof value === "string") {
-          return value;
+          return {
+            value,
+            path: path.relative(getCwd(), plistFile),
+          };
         }
-        return String(value);
+        return {
+          value: String(value),
+          path: path.relative(getCwd(), plistFile),
+        };
       }
 
-      return undefined;
+      return {
+        value: null,
+        path: path.relative(getCwd(), plistFile),
+      };
     } catch (error) {
-      return undefined;
+      return {
+        value: null,
+        path: path.relative(getCwd(), await this.getPlistPath()),
+      };
     }
   }
 

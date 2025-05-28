@@ -143,8 +143,12 @@ const channelCommand = program
 channelCommand.action(async () => {
   const androidChannel = await getChannel("android");
   const iosChannel = await getChannel("ios");
-  p.log.info(`Current Android channel: ${picocolors.green(androidChannel)}`);
-  p.log.info(`Current iOS channel: ${picocolors.green(iosChannel)}`);
+  p.log.info(
+    `Current Android channel: ${picocolors.green(androidChannel.value)}`,
+  );
+  p.log.info(`  Android path: ${picocolors.blue(androidChannel.path)}`);
+  p.log.info(`Current iOS channel: ${picocolors.green(iosChannel.value)}`);
+  p.log.info(`  iOS path: ${picocolors.blue(iosChannel.path)}`);
 });
 
 channelCommand
