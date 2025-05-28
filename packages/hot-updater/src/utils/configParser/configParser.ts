@@ -1,11 +1,5 @@
 export interface ConfigParser {
-  get(
-    key: string,
-  ): Promise<{ default?: string; [flavor: string]: string | undefined }>;
-  set(
-    key: string,
-    value: string,
-    options?: { flavor?: string },
-  ): Promise<{ path: string }>;
+  get(key: string): Promise<string | undefined>;
+  set(key: string, value: string): Promise<{ path: string }>;
   exists(): Promise<boolean>;
 }

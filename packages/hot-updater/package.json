@@ -59,10 +59,11 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@rnef/tools": "0.7.12",
-    "commander": "^11.1.0",
+    "commander": "^14.0.0",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
     "es-git": "^0.2.0",
+    "fast-xml-parser": "^5.2.3",
     "globby": "^14.1.0"
   },
   "devDependencies": {

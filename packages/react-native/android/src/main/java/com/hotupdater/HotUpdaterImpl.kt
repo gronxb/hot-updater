@@ -14,6 +14,7 @@ class HotUpdaterImpl(
     private val bundleStorage: BundleStorageService,
     private val preferences: PreferencesService,
 ) {
+
     /**
      * Gets the app version
      * @param context Application context
@@ -38,6 +39,8 @@ class HotUpdaterImpl(
         }
 
     companion object {
+        private const val DEFAULT_CHANNEL = "production"
+
         fun getAppVersion(context: Context): String? =
             try {
                 val packageInfo =
@@ -110,7 +113,14 @@ class HotUpdaterImpl(
      * Gets the current update channel
      * @return The channel name or null if not set
      */
-    fun getChannel(): String = BuildConfig.HOT_UPDATER_CHANNEL
+    fun getChannel(): String {
+        val id = context.resources.getIdentifier("hot_updater_channel", "string", context.packageName)
+        return if (id != 0) {
+            context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
+        } else {
+            DEFAULT_CHANNEL
+        }
+    }
 
     /**
      * Gets the path to the bundle file

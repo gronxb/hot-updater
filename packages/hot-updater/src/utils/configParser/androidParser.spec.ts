@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
+import { XMLBuilder, XMLParser } from "fast-xml-parser";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AndroidConfigParser } from "./androidParser";
 
@@ -26,13 +27,31 @@ vi.mock("@hot-updater/plugin-core", () => ({
   getCwd: vi.fn(),
 }));
 
-// Import mock functions
+vi.mock("fast-xml-parser", () => ({
+  XMLParser: vi.fn(),
+  XMLBuilder: vi.fn(),
+}));
+
 describe("AndroidConfigParser", () => {
   let androidParser: AndroidConfigParser;
-  const mockBuildGradlePath = "/mock/project/android/app/build.gradle";
+  let mockParser: any;
+  let mockBuilder: any;
+  const mockStringsXmlPath =
+    "/mock/project/android/app/src/main/res/values/strings.xml";
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Mock XMLParser and XMLBuilder
+    mockParser = {
+      parse: vi.fn(),
+    };
+    mockBuilder = {
+      build: vi.fn(),
+    };
+
+    vi.mocked(XMLParser).mockImplementation(() => mockParser);
+    vi.mocked(XMLBuilder).mockImplementation(() => mockBuilder);
 
     // Basic mock setup
     vi.mocked(getCwd).mockReturnValue("/mock/project");
@@ -45,16 +64,16 @@ describe("AndroidConfigParser", () => {
   });
 
   describe("exists", () => {
-    it("should return true when file exists", async () => {
+    it("should return true when strings.xml exists", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
       const result = await androidParser.exists();
 
       expect(result).toBe(true);
-      expect(fs.existsSync).toHaveBeenCalledWith(mockBuildGradlePath);
+      expect(fs.existsSync).toHaveBeenCalledWith(mockStringsXmlPath);
     });
 
-    it("should return false when file does not exist", async () => {
+    it("should return false when strings.xml does not exist", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const result = await androidParser.exists();
@@ -64,218 +83,217 @@ describe("AndroidConfigParser", () => {
   });
 
   describe("get", () => {
-    it("should throw error when file does not exist", async () => {
+    it("should return undefined when file does not exist", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      await expect(androidParser.get("TEST_KEY")).rejects.toThrow(
-        "build.gradle not found",
+      const result = await androidParser.get("test_key");
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should return undefined when no string elements exist", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {},
+      });
+
+      const result = await androidParser.get("test_key");
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should return value for existing moduleConfig string (single element)", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string moduleConfig="true" name="hot_updater_channel">dev</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: {
+            "@_name": "hot_updater_channel",
+            "@_moduleConfig": "true",
+            "#text": "dev",
+          },
+        },
+      });
+
+      const result = await androidParser.get("hot_updater_channel");
+
+      expect(result).toBe("dev");
+    });
+
+    it("should return value for existing moduleConfig string (multiple elements)", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyApp</string>
+    <string moduleConfig="true" name="hot_updater_channel">dev</string>
+    <string moduleConfig="true" name="api_url">https://dev.api.com</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [
+            {
+              "@_name": "app_name",
+              "#text": "MyApp",
+            },
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "dev",
+            },
+            {
+              "@_name": "api_url",
+              "@_moduleConfig": "true",
+              "#text": "https://dev.api.com",
+            },
+          ],
+        },
+      });
+
+      const result = await androidParser.get("hot_updater_channel");
+
+      expect(result).toBe("dev");
+    });
+
+    it("should return undefined for non-existent key", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string moduleConfig="true" name="other_key">other_value</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: {
+            "@_name": "other_key",
+            "@_moduleConfig": "true",
+            "#text": "other_value",
+          },
+        },
+      });
+
+      const result = await androidParser.get("nonexistent_key");
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should ignore strings without moduleConfig attribute", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyApp</string>
+    <string name="hot_updater_channel">dev</string>
+    <string moduleConfig="true" name="api_url">https://api.com</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [
+            {
+              "@_name": "app_name",
+              "#text": "MyApp",
+            },
+            {
+              "@_name": "hot_updater_channel",
+              "#text": "dev",
+            },
+            {
+              "@_name": "api_url",
+              "@_moduleConfig": "true",
+              "#text": "https://api.com",
+            },
+          ],
+        },
+      });
+
+      const result = await androidParser.get("hot_updater_channel");
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should ignore strings with moduleConfig=false", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string moduleConfig="false" name="hot_updater_channel">dev</string>
+    <string moduleConfig="true" name="api_url">https://api.com</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "false",
+              "#text": "dev",
+            },
+            {
+              "@_name": "api_url",
+              "@_moduleConfig": "true",
+              "#text": "https://api.com",
+            },
+          ],
+        },
+      });
+
+      const result = await androidParser.get("hot_updater_channel");
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should handle XML parsing errors gracefully", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
+      mockParser.parse.mockImplementation(() => {
+        throw new Error("Invalid XML");
+      });
+
+      const result = await androidParser.get("test_key");
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should handle file read errors gracefully", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockRejectedValue(
+        new Error("Permission denied"),
       );
+
+      const result = await androidParser.get("test_key");
+
+      expect(result).toBeUndefined();
     });
 
-    it("should return empty object when android block is not found", async () => {
+    it("should trim whitespace from text content", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(
-        'apply plugin: "com.android.application"',
-      );
-
-      const result = await androidParser.get("TEST_KEY");
-
-      expect(result).toEqual({});
-    });
-
-    it("should correctly extract existing buildConfigField value", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "TEST_KEY", "\\"test_value\\""
-        applicationId "com.example.app"
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const result = await androidParser.get("TEST_KEY");
-
-      expect(result).toEqual({ default: "test_value" });
-    });
-
-    it("should return empty object for non-existent key", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const result = await androidParser.get("NONEXISTENT_KEY");
-
-      expect(result).toEqual({});
-    });
-
-    it("should handle various quote formats", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField 'String', 'TEST_KEY', '\\"test_value\\"'
-        applicationId "com.example.app"
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const result = await androidParser.get("TEST_KEY");
-
-      expect(result).toEqual({ default: "test_value" });
-    });
-
-    // BuildFlavor related tests
-    it("should return flavor-specific values when productFlavors exist", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "TEST_KEY", "\\"default_value\\""
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            buildConfigField "String", "TEST_KEY", "\\"dev_value\\""
-        }
-        prod {
-            buildConfigField "String", "TEST_KEY", "\\"prod_value\\""
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const result = await androidParser.get("TEST_KEY");
-
-      expect(result).toEqual({
-        default: "default_value",
-        dev: "dev_value",
-        prod: "prod_value",
-      });
-    });
-
-    it("should include default value and flavor overrides", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "TEST_KEY", "\\"default_value\\""
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            buildConfigField "String", "TEST_KEY", "\\"dev_value\\""
-        }
-        prod {
-            // No override for TEST_KEY
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const result = await androidParser.get("TEST_KEY");
-
-      expect(result).toEqual({
-        default: "default_value",
-        dev: "dev_value",
-      });
-    });
-
-    it("should return empty object when no flavor has the key and no default", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            applicationId "com.example.app.dev"
-        }
-        prod {
-            applicationId "com.example.app"
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const result = await androidParser.get("NONEXISTENT_KEY");
-
-      expect(result).toEqual({});
-    });
-
-    it("should handle empty productFlavors block", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "TEST_KEY", "\\"default_value\\""
-        applicationId "com.example.app"
-    }
-    productFlavors {
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const result = await androidParser.get("TEST_KEY");
-
-      expect(result).toEqual({ default: "default_value" });
-    });
-
-    it("should handle complex flavor configurations", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "API_URL", "\\"https://default.api.com\\""
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            applicationId "com.example.app.dev"
-            buildConfigField "String", "API_URL", "\\"https://dev.api.com\\""
-            buildConfigField "String", "DEBUG_MODE", "\\"true\\""
-        }
-        staging {
-            applicationId "com.example.app.staging"
-            buildConfigField "String", "API_URL", "\\"https://staging.api.com\\""
-        }
-        prod {
-            applicationId "com.example.app"
-            buildConfigField "String", "API_URL", "\\"https://api.com\\""
-            buildConfigField "String", "DEBUG_MODE", "\\"false\\""
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      const apiUrlResult = await androidParser.get("API_URL");
-      const debugModeResult = await androidParser.get("DEBUG_MODE");
-
-      expect(apiUrlResult).toEqual({
-        default: "https://default.api.com",
-        dev: "https://dev.api.com",
-        staging: "https://staging.api.com",
-        prod: "https://api.com",
+      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: {
+            "@_name": "test_key",
+            "@_moduleConfig": "true",
+            "#text": "  value with spaces  ",
+          },
+        },
       });
 
-      expect(debugModeResult).toEqual({
-        dev: "true",
-        prod: "false",
-      });
+      const result = await androidParser.get("test_key");
+
+      expect(result).toBe("value with spaces");
     });
   });
 
@@ -283,527 +301,274 @@ android {
     it("should throw error when file does not exist", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      await expect(androidParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "build.gradle not found",
+      await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
+        "strings.xml not found",
       );
     });
 
-    it("should throw error when android block is not found", async () => {
+    it("should update existing moduleConfig string", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string moduleConfig="true" name="hot_updater_channel">old_value</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: {
+            "@_name": "hot_updater_channel",
+            "@_moduleConfig": "true",
+            "#text": "old_value",
+          },
+        },
+      });
+      mockBuilder.build.mockReturnValue(
+        '<resources><string moduleConfig="true" name="hot_updater_channel">new_value</string></resources>',
+      );
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      const result = await androidParser.set(
+        "hot_updater_channel",
+        "new_value",
+      );
+
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        resources: {
+          string: {
+            "@_name": "hot_updater_channel",
+            "@_moduleConfig": "true",
+            "#text": "new_value",
+          },
+        },
+      });
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        mockStringsXmlPath,
+        expect.stringContaining("new_value"),
+        "utf-8",
+      );
+      expect(result.path).toBe("android/app/src/main/res/values/strings.xml");
+    });
+
+    it("should add new moduleConfig string to existing resources", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyApp</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: {
+            "@_name": "app_name",
+            "#text": "MyApp",
+          },
+        },
+      });
+      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      await androidParser.set("hot_updater_channel", "dev");
+
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        resources: {
+          string: [
+            {
+              "@_name": "app_name",
+              "#text": "MyApp",
+            },
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "dev",
+            },
+          ],
+        },
+      });
+    });
+
+    it("should handle empty resources (no string elements)", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {},
+      });
+      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      await androidParser.set("hot_updater_channel", "dev");
+
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        resources: {
+          string: {
+            "@_name": "hot_updater_channel",
+            "@_moduleConfig": "true",
+            "#text": "dev",
+          },
+        },
+      });
+    });
+
+    it("should update correct string when multiple moduleConfig strings exist", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string moduleConfig="true" name="api_url">https://api.com</string>
+    <string moduleConfig="true" name="hot_updater_channel">old_value</string>
+    <string moduleConfig="true" name="debug_mode">true</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [
+            {
+              "@_name": "api_url",
+              "@_moduleConfig": "true",
+              "#text": "https://api.com",
+            },
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "old_value",
+            },
+            {
+              "@_name": "debug_mode",
+              "@_moduleConfig": "true",
+              "#text": "true",
+            },
+          ],
+        },
+      });
+      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      await androidParser.set("hot_updater_channel", "new_value");
+
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        resources: {
+          string: [
+            {
+              "@_name": "api_url",
+              "@_moduleConfig": "true",
+              "#text": "https://api.com",
+            },
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "new_value",
+            },
+            {
+              "@_name": "debug_mode",
+              "@_moduleConfig": "true",
+              "#text": "true",
+            },
+          ],
+        },
+      });
+    });
+
+    it("should preserve non-moduleConfig strings when adding new moduleConfig string", async () => {
+      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyApp</string>
+    <string name="normal_string">Normal Value</string>
+</resources>`;
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [
+            {
+              "@_name": "app_name",
+              "#text": "MyApp",
+            },
+            {
+              "@_name": "normal_string",
+              "#text": "Normal Value",
+            },
+          ],
+        },
+      });
+      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      await androidParser.set("hot_updater_channel", "dev");
+
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        resources: {
+          string: [
+            {
+              "@_name": "app_name",
+              "#text": "MyApp",
+            },
+            {
+              "@_name": "normal_string",
+              "#text": "Normal Value",
+            },
+            {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "dev",
+            },
+          ],
+        },
+      });
+    });
+
+    it("should handle XML parsing errors", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
+      mockParser.parse.mockImplementation(() => {
+        throw new Error("Invalid XML format");
+      });
+
+      await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
+        "Failed to parse or update strings.xml: Error: Invalid XML format",
+      );
+    });
+
+    it("should handle file write errors", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue(
-        'apply plugin: "com.android.application"',
+        "<resources></resources>",
       );
-
-      await expect(androidParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "android block not found",
-      );
-    });
-
-    it("should throw error when defaultConfig block is not found", async () => {
-      const buildGradleContent = `
-android {
-    compileSdkVersion 30
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-      await expect(androidParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "defaultConfig block not found",
-      );
-    });
-
-    it("should update existing buildConfigField in defaultConfig", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "TEST_KEY", "\\"old_value\\""
-        applicationId "com.example.app"
-    }
-}`;
-
-      const expectedContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "TEST_KEY", "\\"new_value\\""
-        applicationId "com.example.app"
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await androidParser.set("TEST_KEY", "new_value");
-
-      expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        mockBuildGradlePath,
-        expectedContent,
-      );
-      expect(result.path).toBe("android/app/build.gradle");
-    });
-
-    it("should add new buildConfigField to defaultConfig", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("NEW_KEY", "new_value");
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-
-      expect(writtenContent).toContain(
-        'buildConfigField "String", "NEW_KEY", "\\"new_value\\""',
-      );
-    });
-
-    it("should handle complex indentation correctly", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-        versionCode 1
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("NEW_KEY", "new_value");
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-      const lines = writtenContent.split("\n");
-
-      // Check if newly added line has correct indentation
-      const newFieldLine = lines.find((line) => line.includes("NEW_KEY"));
-      expect(newFieldLine).toMatch(/^\s+buildConfigField/);
-    });
-
-    // BuildFlavor related set tests with options
-    it("should set buildConfigField in specific flavor using options", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            applicationId "com.example.app.dev"
-        }
-        prod {
-            applicationId "com.example.app"
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("TEST_KEY", "dev_value", { flavor: "dev" });
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-
-      expect(writtenContent).toContain(
-        'buildConfigField "String", "TEST_KEY", "\\"dev_value\\""',
-      );
-    });
-
-    it("should update existing buildConfigField in specific flavor", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            applicationId "com.example.app.dev"
-            buildConfigField "String", "TEST_KEY", "\\"old_dev_value\\""
-        }
-        prod {
-            applicationId "com.example.app"
-            buildConfigField "String", "TEST_KEY", "\\"old_prod_value\\""
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("TEST_KEY", "new_dev_value", { flavor: "dev" });
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-
-      expect(writtenContent).toContain(
-        'buildConfigField "String", "TEST_KEY", "\\"new_dev_value\\""',
-      );
-      expect(writtenContent).toContain(
-        'buildConfigField "String", "TEST_KEY", "\\"old_prod_value\\""',
-      );
-      expect(writtenContent).not.toContain("old_dev_value");
-    });
-
-    it("should create new flavor when it doesn't exist in existing productFlavors", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        prod {
-            applicationId "com.example.app"
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("TEST_KEY", "dev_value", { flavor: "dev" });
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-
-      // Should keep existing prod flavor
-      expect(writtenContent).toContain("prod {");
-      // Should create new dev flavor
-      expect(writtenContent).toContain("dev {");
-      // Should add buildConfigField to dev flavor
-      expect(writtenContent).toContain(
-        'buildConfigField "String", "TEST_KEY", "\\"dev_value\\""',
-      );
-    });
-
-    it("should create productFlavors and flavor blocks when they don't exist", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("TEST_KEY", "test_value", { flavor: "dev" });
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-
-      // Should create productFlavors block
-      expect(writtenContent).toContain("productFlavors {");
-      // Should create dev flavor block
-      expect(writtenContent).toContain("dev {");
-      // Should add buildConfigField
-      expect(writtenContent).toContain(
-        'buildConfigField "String", "TEST_KEY", "\\"test_value\\""',
-      );
-    });
-
-    it("should create new flavor in empty productFlavors block", async () => {
-      const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        // Empty block
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("TEST_KEY", "dev_value", { flavor: "dev" });
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-
-      // Should create dev flavor in existing productFlavors block
-      expect(writtenContent).toContain("dev {");
-      expect(writtenContent).toContain(
-        'buildConfigField "String", "TEST_KEY", "\\"dev_value\\""',
-      );
-    });
-
-    it("should preserve indentation when adding fields to flavors", async () => {
-      const buildGradleContent = `
-android {
-    productFlavors {
-        dev {
-            applicationId "com.example.app.dev"
-            versionNameSuffix "-dev"
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("TEST_KEY", "dev_value", { flavor: "dev" });
-
-      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-      const writtenContent = writeCall?.[1] as string;
-      const lines = writtenContent.split("\n");
-
-      const newFieldLine = lines.find((line) => line.includes("TEST_KEY"));
-      const existingFieldLine = lines.find((line) =>
-        line.includes("versionNameSuffix"),
-      );
-
-      // Both lines should have the same indentation
-      expect(newFieldLine?.match(/^(\s*)/)?.[1]).toBe(
-        existingFieldLine?.match(/^(\s*)/)?.[1],
-      );
-    });
-  });
-});
-
-// Error handling tests
-describe("Error Handling", () => {
-  describe("AndroidConfigParser Error Cases", () => {
-    let androidParser: AndroidConfigParser;
-
-    beforeEach(() => {
-      vi.clearAllMocks();
-      vi.mocked(getCwd).mockReturnValue("/mock/project");
-      vi.mocked(path.join).mockImplementation((...args) => args.join("/"));
-      vi.mocked(path.relative).mockImplementation((from, to) =>
-        to.replace(`${from}/`, ""),
-      );
-      androidParser = new AndroidConfigParser();
-    });
-
-    it("should propagate error when file reading fails", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockRejectedValue(
+      mockParser.parse.mockReturnValue({ resources: {} });
+      mockBuilder.build.mockReturnValue("<resources>...</resources>");
+      vi.mocked(fs.promises.writeFile).mockRejectedValue(
         new Error("Permission denied"),
       );
 
-      await expect(androidParser.get("TEST_KEY")).rejects.toThrow(
+      await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
         "Permission denied",
       );
     });
 
-    it("should propagate error when file writing fails", async () => {
+    it("should include XML declaration in output", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(`
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-}`);
-      vi.mocked(fs.promises.writeFile).mockRejectedValue(
-        new Error("Disk full"),
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        "<resources></resources>",
       );
+      mockParser.parse.mockReturnValue({ resources: {} });
+      mockBuilder.build.mockReturnValue(
+        '<resources><string moduleConfig="true" name="test_key">test_value</string></resources>',
+      );
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      await expect(androidParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Disk full",
+      await androidParser.set("test_key", "test_value");
+
+      const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
+      const writtenContent = writeCall?.[1] as string;
+
+      expect(writtenContent).toContain(
+        '<?xml version="1.0" encoding="utf-8"?>',
       );
     });
-
-    it("should handle malformed productFlavors block gracefully", async () => {
-      const malformedContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            // Missing closing brace
-        prod {
-            applicationId "com.example.app"
-        }
-    }
-}`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(malformedContent);
-
-      // Should not throw error, but may return unexpected results
-      const result = await androidParser.get("TEST_KEY");
-      expect(result).toBeDefined();
-    });
-  });
-});
-
-// BuildFlavor specific edge cases
-describe("BuildFlavor Edge Cases", () => {
-  let androidParser: AndroidConfigParser;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(getCwd).mockReturnValue("/mock/project");
-    vi.mocked(path.join).mockImplementation((...args) => args.join("/"));
-    vi.mocked(path.relative).mockImplementation((from, to) =>
-      to.replace(`${from}/`, ""),
-    );
-    androidParser = new AndroidConfigParser();
-  });
-
-  it("should handle nested flavor configurations", async () => {
-    const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "BASE_URL", "\\"https://api.example.com\\""
-    }
-    productFlavors {
-        free {
-            dimension "version"
-            buildConfigField "String", "FEATURE_FLAG", "\\"basic\\""
-        }
-        premium {
-            dimension "version"
-            buildConfigField "String", "FEATURE_FLAG", "\\"advanced\\""
-        }
-        dev {
-            dimension "environment"
-            buildConfigField "String", "BASE_URL", "\\"https://dev.api.example.com\\""
-        }
-        prod {
-            dimension "environment"
-            buildConfigField "String", "BASE_URL", "\\"https://api.example.com\\""
-        }
-    }
-}`;
-
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-    const baseUrlResult = await androidParser.get("BASE_URL");
-    const featureFlagResult = await androidParser.get("FEATURE_FLAG");
-
-    expect(baseUrlResult).toEqual({
-      default: "https://api.example.com",
-      dev: "https://dev.api.example.com",
-      prod: "https://api.example.com",
-    });
-
-    expect(featureFlagResult).toEqual({
-      free: "basic",
-      premium: "advanced",
-    });
-  });
-
-  it("should handle flavors with complex syntax", async () => {
-    const buildGradleContent = `
-android {
-    defaultConfig {
-        buildConfigField "String", "APP_NAME", "\\"MyApp\\""
-    }
-    productFlavors {
-        demo {
-            applicationIdSuffix ".demo"
-            versionNameSuffix "-demo"
-            buildConfigField "String", "APP_NAME", "\\"MyApp Demo\\""
-            buildConfigField "String", "SERVER_URL", "\\"https://demo.server.com\\""
-            resValue "string", "app_name", "MyApp Demo"
-        }
-        full {
-            buildConfigField "String", "APP_NAME", "\\"MyApp Full\\""
-            buildConfigField "String", "SERVER_URL", "\\"https://full.server.com\\""
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
-    }
-}`;
-
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-
-    const appNameResult = await androidParser.get("APP_NAME");
-    const serverUrlResult = await androidParser.get("SERVER_URL");
-
-    expect(appNameResult).toEqual({
-      default: "MyApp",
-      demo: "MyApp Demo",
-      full: "MyApp Full",
-    });
-
-    expect(serverUrlResult).toEqual({
-      demo: "https://demo.server.com",
-      full: "https://full.server.com",
-    });
-  });
-
-  it("should handle updating specific field in complex flavor", async () => {
-    const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-    productFlavors {
-        dev {
-            applicationIdSuffix ".dev"
-            buildConfigField "String", "API_KEY", "\\"dev_key_123\\""
-            buildConfigField "String", "DEBUG_MODE", "\\"true\\""
-            resValue "string", "app_name", "App Dev"
-        }
-    }
-}`;
-
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-    await androidParser.set("API_KEY", "new_dev_key_456", { flavor: "dev" });
-
-    const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-    const writtenContent = writeCall?.[1] as string;
-
-    expect(writtenContent).toContain(
-      'buildConfigField "String", "API_KEY", "\\"new_dev_key_456\\""',
-    );
-    expect(writtenContent).not.toContain("dev_key_123");
-    // Other fields should remain unchanged
-    expect(writtenContent).toContain(
-      'buildConfigField "String", "DEBUG_MODE", "\\"true\\""',
-    );
-    expect(writtenContent).toContain(
-      'resValue "string", "app_name", "App Dev"',
-    );
-  });
-
-  it("should handle creating multiple new flavors sequentially", async () => {
-    const buildGradleContent = `
-android {
-    defaultConfig {
-        applicationId "com.example.app"
-    }
-}`;
-
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.promises.readFile).mockResolvedValue(buildGradleContent);
-    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-    await androidParser.set("API_URL", "https://dev.api.com", {
-      flavor: "dev",
-    });
-
-    const writeCall = vi.mocked(fs.promises.writeFile).mock.calls[0];
-    const writtenContent = writeCall?.[1] as string;
-
-    // Should create productFlavors block and dev flavor
-    expect(writtenContent).toContain("productFlavors {");
-    expect(writtenContent).toContain("dev {");
-    expect(writtenContent).toContain(
-      'buildConfigField "String", "API_URL", "\\"https://dev.api.com\\""',
-    );
   });
 });

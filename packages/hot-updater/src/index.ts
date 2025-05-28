@@ -135,128 +135,28 @@ fingerprintCommand
       },
     ]);
   });
+
 const channelCommand = program
   .command("channel")
   .description("Manage channels");
 
-channelCommand
-  .addOption(
-    new Option("-p, --platform <platform>", "specify the platform").choices([
-      "ios",
-      "android",
-    ]),
-  )
-  .action(async (options) => {
-    const platforms = options.platform
-      ? ([options.platform] as const)
-      : (["android", "ios"] as const);
-
-    for (const platform of platforms) {
-      const channel = await getChannel(platform);
-      displayChannels(channel, platform === "ios" ? "iOS" : "Android");
-      p.log.info("");
-    }
-  });
-
-const displayChannels = (
-  channels: Record<string, string | undefined>,
-  platform: string,
-) => {
-  const entries = Object.entries(channels)
-    .filter(([_, value]) => value !== undefined)
-    .sort(([keyA], [keyB]) => {
-      if (keyA === "default") {
-        return -1;
-      }
-      if (keyB === "default") {
-        return 1;
-      }
-      return keyA.localeCompare(keyB);
-    });
-
-  p.log.info(`${picocolors.bold(platform)}:`);
-
-  if (entries.length === 0) {
-    p.log.info(`  ${picocolors.gray("No channels configured")}`);
-    return;
-  }
-
-  const filteredEntries =
-    platform === "iOS" && entries.some(([key]) => key !== "default")
-      ? entries.filter(([key]) => key !== "default")
-      : entries;
-
-  for (const [flavor, value] of filteredEntries) {
-    if (flavor === "default") {
-      p.log.info(`  ${picocolors.blue("default")}: ${picocolors.green(value)}`);
-    } else {
-      p.log.info(
-        `  ${picocolors.cyan(`${flavor} flavor`)}: ${picocolors.green(value)}`,
-      );
-    }
-  }
-};
+channelCommand.action(async () => {
+  const androidChannel = await getChannel("android");
+  const iosChannel = await getChannel("ios");
+  p.log.info(`Current Android channel: ${picocolors.green(androidChannel)}`);
+  p.log.info(`Current iOS channel: ${picocolors.green(iosChannel)}`);
+});
 
 channelCommand
   .command("set")
-  .argument("<channel>", "the channel to set")
   .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
-  .addOption(
-    new Option(
-      "-f, --flavor <flavor>",
-      "specify the flavor to set channel for",
-    ),
-  )
-  .addOption(
-    new Option("-p, --platform <platform>", "specify the platform").choices([
-      "ios",
-      "android",
-    ]),
-  )
-  .action(async (channel, options) => {
-    try {
-      const platforms = options.platform
-        ? ([options.platform] as const)
-        : (["android", "ios"] as const);
-      const results: Record<string, any> = {};
+  .argument("<channel>", "the channel to set")
+  .action(async (channel) => {
+    await setChannel("android", channel);
+    p.log.success(`Set Android channel to: ${picocolors.green(channel)}`);
 
-      for (const platform of platforms) {
-        results[platform] = await setChannel(platform, channel, {
-          flavor: options.flavor,
-        });
-      }
-
-      p.log.info("");
-      p.log.info(
-        `${picocolors.green("✓")} ${picocolors.bold("Channels updated successfully!")}`,
-      );
-      p.log.info("");
-
-      for (const platform of platforms) {
-        const result = results[platform];
-        const platformName = platform === "ios" ? "iOS" : "Android";
-
-        p.log.info(`${picocolors.bold(platformName)}:`);
-        p.log.info(
-          `  ${picocolors.blue("channel")}: ${picocolors.green(channel)}`,
-        );
-        if (options.flavor) {
-          p.log.info(
-            `  ${picocolors.blue("flavor")}: ${picocolors.yellow(options.flavor)}`,
-          );
-        }
-        p.log.info(
-          `  ${picocolors.blue("path")}: ${picocolors.gray(result.path)}`,
-        );
-        p.log.info("");
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        p.log.error(error.message);
-      } else {
-        throw error;
-      }
-    }
+    await setChannel("ios", channel);
+    p.log.success(`Set iOS channel to: ${picocolors.green(channel)}`);
   });
 
 program

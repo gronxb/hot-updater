@@ -1,4 +1,3 @@
-import { merge } from "es-toolkit";
 import { AndroidConfigParser } from "./configParser/androidParser";
 import { IosConfigParser } from "./configParser/iosParser";
 
@@ -6,70 +5,51 @@ const DEFAULT_CHANNEL = "production";
 
 const setAndroidChannel = async (
   channel: string,
-  options?: { flavor?: string },
 ): Promise<{ path: string }> => {
   const androidParser = new AndroidConfigParser();
-  return await androidParser.set("HOT_UPDATER_CHANNEL", channel, options);
+  return await androidParser.set("hot_updater_channel", channel);
 };
 
-const setIosChannel = async (
-  channel: string,
-  options?: { flavor?: string },
-): Promise<{ path: string }> => {
+const setIosChannel = async (channel: string): Promise<{ path: string }> => {
   const iosParser = new IosConfigParser();
-  return await iosParser.set("HOT_UPDATER_CHANNEL", channel, options);
+  return await iosParser.set("HOT_UPDATER_CHANNEL", channel);
 };
 
 export const setChannel = async (
   platform: "android" | "ios",
   channel: string,
-  options?: { flavor?: string },
 ): Promise<{ path: string }> => {
   switch (platform) {
     case "android":
-      return await setAndroidChannel(channel, options);
+      return await setAndroidChannel(channel);
     case "ios":
-      return await setIosChannel(channel, options);
+      return await setIosChannel(channel);
   }
 };
 
-const getAndroidChannel = async (): Promise<{
-  default: string;
-  [flavor: string]: string | undefined;
-}> => {
+const getAndroidChannel = async (): Promise<string> => {
   const androidParser = new AndroidConfigParser();
-  return merge(
-    {
-      default: DEFAULT_CHANNEL,
-    },
-    await androidParser.get("HOT_UPDATER_CHANNEL"),
-  );
+  if (!androidParser.exists()) {
+    throw new Error("android/app/src/main/res/values/strings.xml not found");
+  }
+  return (await androidParser.get("hot_updater_channel")) ?? DEFAULT_CHANNEL;
 };
 
-const getIosChannel = async (): Promise<{
-  default: string;
-  [flavor: string]: string | undefined;
-}> => {
+const getIosChannel = async (): Promise<string> => {
   const iosParser = new IosConfigParser();
-  return merge(
-    {
-      default: DEFAULT_CHANNEL,
-    },
-    await iosParser.get("HOT_UPDATER_CHANNEL"),
-  );
+  if (!iosParser.exists()) {
+    throw new Error("Info.plist not found");
+  }
+  return (await iosParser.get("hot_updater_channel")) ?? DEFAULT_CHANNEL;
 };
 
 export const getChannel = async (
   platform: "android" | "ios",
-): Promise<{
-  default: string;
-  [flavor: string]: string | undefined;
-}> => {
+): Promise<string> => {
   switch (platform) {
     case "android":
       return await getAndroidChannel();
     case "ios":
       return await getIosChannel();
   }
-  return { default: DEFAULT_CHANNEL };
 };
