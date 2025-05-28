@@ -11,15 +11,13 @@ export interface Spec extends TurboModule {
   reload(): void;
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
-  setChannel(channel: string): Promise<void>;
-
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;
   readonly getConstants: () => {
     MIN_BUNDLE_ID: string;
     APP_VERSION: string | null;
-    CHANNEL: string | null;
+    CHANNEL: string;
   };
 }
 

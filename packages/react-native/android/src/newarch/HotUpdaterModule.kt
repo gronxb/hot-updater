@@ -28,19 +28,6 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
-    override fun setChannel(
-        channel: String,
-        promise: Promise,
-    ) {
-        try {
-            HotUpdater.setChannel(mReactApplicationContext, channel)
-            promise.resolve(null)
-        } catch (e: Exception) {
-            promise.reject("setChannel", e)
-        }
-    }
-
-    @ReactMethod
     override fun updateBundle(
         params: ReadableMap,
         promise: Promise,

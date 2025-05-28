@@ -37,12 +37,9 @@ class HotUpdaterImpl(
             null
         }
 
-    /**
-     * Gets the app version
-     * @param context Application context
-     * @return App version name or null if not available
-     */
     companion object {
+        private const val DEFAULT_CHANNEL = "production"
+
         fun getAppVersion(context: Context): String? =
             try {
                 val packageInfo =
@@ -112,18 +109,17 @@ class HotUpdaterImpl(
         }
 
     /**
-     * Sets the update channel
-     * @param channel The channel name to set
-     */
-    fun setChannel(channel: String) {
-        preferences.setItem("HotUpdaterChannel", channel)
-    }
-
-    /**
      * Gets the current update channel
      * @return The channel name or null if not set
      */
-    fun getChannel(): String? = preferences.getItem("HotUpdaterChannel")
+    fun getChannel(): String {
+        val id = context.resources.getIdentifier("hot_updater_channel", "string", context.packageName)
+        return if (id != 0) {
+            context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
+        } else {
+            DEFAULT_CHANNEL
+        }
+    }
 
     /**
      * Gets the path to the bundle file

@@ -7,12 +7,14 @@ import { init } from "@/commands/init";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
+import { Command, Option } from "@commander-js/extra-typings";
 import { banner, getCwd, loadConfig, log } from "@hot-updater/plugin-core";
 import { type FingerprintResult, nativeFingerprint } from "@rnef/tools";
-import { Command, Option } from "commander";
+
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import { printBanner } from "./utils/printBanner";
+import { getChannel, setChannel } from "./utils/setChannel";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -132,6 +134,35 @@ fingerprintCommand
         },
       },
     ]);
+  });
+
+const channelCommand = program
+  .command("channel")
+  .description("Manage channels");
+
+channelCommand.action(async () => {
+  const androidChannel = await getChannel("android");
+  const iosChannel = await getChannel("ios");
+  p.log.info(
+    `Current Android channel: ${picocolors.green(androidChannel.value)}`,
+  );
+  p.log.info(`  from: ${picocolors.blue(androidChannel.path)}`);
+  p.log.info(`Current iOS channel: ${picocolors.green(iosChannel.value)}`);
+  p.log.info(`  from: ${picocolors.blue(iosChannel.path)}`);
+});
+
+channelCommand
+  .command("set")
+  .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
+  .argument("<channel>", "the channel to set")
+  .action(async (channel) => {
+    const { path: androidPath } = await setChannel("android", channel);
+    p.log.success(`Set Android channel to: ${picocolors.green(channel)}`);
+    p.log.info(`  from: ${picocolors.blue(androidPath)}`);
+
+    const { path: iosPath } = await setChannel("ios", channel);
+    p.log.success(`Set iOS channel to: ${picocolors.green(channel)}`);
+    p.log.info(`  from: ${picocolors.blue(iosPath)}`);
   });
 
 program

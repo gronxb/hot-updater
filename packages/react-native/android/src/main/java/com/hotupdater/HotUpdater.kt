@@ -34,18 +34,6 @@ class HotUpdater : ReactPackage {
         fun getMinBundleId(context: Context): String = HotUpdaterFactory.getInstance(context).getMinBundleId()
 
         /**
-         * Sets the update channel
-         * @param context Application context
-         * @param channel The channel name to set
-         */
-        fun setChannel(
-            context: Context,
-            channel: String,
-        ) {
-            HotUpdaterFactory.getInstance(context).setChannel(channel)
-        }
-
-        /**
          * Gets the current update channel
          * @param context Application context
          * @return The channel name or null if not set

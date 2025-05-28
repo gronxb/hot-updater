@@ -69,7 +69,7 @@ export type ConfigInput = {
    * The channel used when building the native app.
    * Used to replace __HOT_UPDATER_CHANNEL at build time.
    *
-   * @default "production"
+   * @deprecated Use the `hot-updater channel create` command to create a channel.
    */
   releaseChannel?: string;
   /**

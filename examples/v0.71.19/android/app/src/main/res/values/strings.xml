@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">HotUpdaterExample</string>
+    <string name="hot_updater_channel" moduleConfig="true">production</string>
 </resources>

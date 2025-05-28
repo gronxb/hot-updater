@@ -14,9 +14,4 @@ abstract class HotUpdaterSpec internal constructor(
     )
 
     abstract fun reload()
-
-    abstract fun setChannel(
-        channel: String,
-        promise: Promise,
-    )
 }
