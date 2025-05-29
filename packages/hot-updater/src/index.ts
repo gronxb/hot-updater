@@ -100,6 +100,7 @@ fingerprintCommand
   .command("create")
   .description("Create fingerprint")
   .action(async () => {
+    let diffChanged = false;
     await p.tasks([
       {
         title: "Creating fingerprint.json",
@@ -126,6 +127,19 @@ fingerprintCommand
             ios: ios,
             android: android,
           };
+          const readFingerprint = await fs.promises.readFile(
+            path.join(getCwd(), "fingerprint.json"),
+            "utf-8",
+          );
+          const localFingerprint = JSON.parse(readFingerprint);
+          if (localFingerprint.ios.hash !== fingerprint.ios.hash) {
+            diffChanged = true;
+          }
+
+          if (localFingerprint.android.hash !== fingerprint.android.hash) {
+            diffChanged = true;
+          }
+
           await fs.promises.writeFile(
             path.join(getCwd(), "fingerprint.json"),
             JSON.stringify(fingerprint, null, 2),
@@ -134,6 +148,14 @@ fingerprintCommand
         },
       },
     ]);
+
+    if (diffChanged) {
+      p.log.success(
+        picocolors.bold(
+          `${picocolors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
+        ),
+      );
+    }
   });
 
 const channelCommand = program
@@ -163,6 +185,10 @@ channelCommand
     const { path: iosPath } = await setChannel("ios", channel);
     p.log.success(`Set iOS channel to: ${picocolors.green(channel)}`);
     p.log.info(`  from: ${picocolors.blue(iosPath)}`);
+
+    p.log.success(
+      "You need to rebuild the native app if the channel has changed.",
+    );
   });
 
 program

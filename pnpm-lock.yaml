@@ -24057,7 +24057,9 @@ snapshots:
       metro-runtime: 0.82.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
     optional: true
 
   '@react-native/normalize-color@2.1.0': {}
