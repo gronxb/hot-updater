@@ -1,17 +1,13 @@
 import * as path from "node:path";
+import { pluginLlms } from "@rspress/plugin-llms";
 import {
-  createTransformerDiff,
-  createTransformerHighlight,
-  pluginShiki,
-} from "@rspress/plugin-shiki";
+  transformerNotationDiff,
+  transformerNotationHighlight,
+} from "@shikijs/transformers";
 import { defineConfig } from "rspress/config";
 
 export default defineConfig({
-  plugins: [
-    pluginShiki({
-      transformers: [createTransformerHighlight(), createTransformerDiff()],
-    }),
-  ],
+  plugins: [pluginLlms()],
   root: path.join(__dirname, "docs"),
   title: "Hot Updater",
   icon: "/logo.png",
@@ -22,9 +18,12 @@ export default defineConfig({
   },
   base: "/hot-updater/",
   markdown: {
+    showLineNumbers: true,
     defaultWrapCode: true,
+    shiki: {
+      transformers: [transformerNotationDiff(), transformerNotationHighlight()],
+    },
   },
-  globalStyles: path.join(__dirname, "styles/index.css"),
   themeConfig: {
     socialLinks: [
       {
