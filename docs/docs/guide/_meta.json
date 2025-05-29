@@ -9,6 +9,13 @@
     "collapsed": false
   },
   "deploy",
+  {
+    "type": "dir",
+    "name": "update-strategy",
+    "label": "Update Strategy",
+    "collapsible": true,
+    "collapsed": false
+  },
   "console",
   "simulator-test",
   "channel",

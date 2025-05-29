@@ -13,25 +13,40 @@ Channels are not limited to environment management alone—they also support man
 
 - **Default Channel**: Apps default to the `production` channel if no channel is specified.
 - **Environment Management**: Clearly separates different environments (`dev`, `staging`, `production`) to ensure accurate application of updates.
-- **Initial Channel Setup**: Defined by the `releaseChannel` property in your configuration file (`hot-updater.config.ts`).
 
 ## Setting Up Channels
 
 ### 1. Specify Channel in Configuration File
 
-Set the initial channel explicitly using the `releaseChannel` property within your `hot-updater.config.ts` file:
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater channel set <channel>",
+    pnpm: "pnpm hot-updater channel set <channel>",
+    yarn: "yarn hot-updater channel set <channel>",
+  }
+} />
 
-```tsx
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
+The values that change when you run the command above.
 
-export default defineConfig({
-  releaseChannel: "dev", // Specify your desired channel (e.g., "dev", "staging", "production")
-  build: ...,            // Additional configuration
-  storage: ...,
-  database: ...,
-});
-```
+<Tabs>
+  <Tab label="iOS">
+  ```tsx title=ios/HotUpdaterExample/Info.plist
+  <key>HOT_UPDATER_CHANNEL</key> // [!code ++]
+  <string>your_set_channel</string> // [!code ++]
+  ```
+  </Tab>
+
+  <Tab label="Android">
+  ```tsx title=android/app/src/main/res/values/strings.xml
+  <resources>
+      <string name="app_name">HotUpdaterExample</string>
+       // [!code ++]
+      <string name="hot_updater_channel" moduleConfig="true">your_set_channel</string>
+  </resources>
+  ```
+  </Tab>
+</Tabs>
+
 
 ### 2. Rebuild App with New Channel
 
@@ -115,9 +130,9 @@ After specifying the new channel, rebuild your native app:
 You can also specify the target channel directly during deployment:
 
 <PackageManagerTabs command={{
-  npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
-  pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
-  yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+  npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -c \"<channel>\"",
+  pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -c \"<channel>\"",
+  yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -c \"<channel>\"",
 }} />
 
 Replace `<channel>` with your target channel name (e.g., `dev`, `staging`, `production`).
@@ -150,9 +165,7 @@ export default HotUpdater.wrap({
 
 ## Channel Behavior
 
-- If `releaseChannel` is set in `hot-updater.config.ts`, `HotUpdater.getChannel()` returns that channel name.
 - Defaults to `production` if no channel is specified.
 - Channels ensure separation of different environments (e.g., `dev`, `staging`, `production`) to apply updates accurately.
-- The initial channel is injected into the native build based on the `releaseChannel` in your configuration.
 - Updates can subsequently be deployed using `hot-updater deploy -c <channel>`.
 - **Important**: Changing the channel requires rebuilding the native app; simply altering the configuration file or deployment commands will not affect an already built app.
