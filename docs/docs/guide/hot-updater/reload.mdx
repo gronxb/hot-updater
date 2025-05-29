@@ -16,7 +16,7 @@ Refer to [useHotUpdaterStore()](./useHotUpdaterStore.mdx) for more information.
 
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 import { Button, Text, View } from "react-native";
 
 function App() {
@@ -35,7 +35,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: "<your-update-server-url>",
+  source: getUpdateSource("<your-update-server-url>"),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",

@@ -18,10 +18,10 @@ Here's an example of how to use `HotUpdater.runUpdateProcess` to check for updat
 When a force update exists, the app will automatically reload.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 
 const result = await HotUpdater.runUpdateProcess({
-  source: "<your-update-server-url>",
+  source: getUpdateSource("<your-update-server-url>"),
   requestHeaders: {
     // Add any necessary request headers here
   },
@@ -35,7 +35,7 @@ When a force update exists, the app will not reload. `shouldForceUpdate` will be
 
 ```tsx
 const result = await HotUpdater.runUpdateProcess({
-  source: "<your-update-server-url>",
+  source: getUpdateSource("<your-update-server-url>"),
   requestHeaders: {
     // Add any necessary request headers here
   },
@@ -67,7 +67,15 @@ You can pass an async function to the source option for full control over how up
 
 ```tsx
 const result = await HotUpdater.runUpdateProcess({
-  source: async () => {
+  source: async ({
+    platform,
+    appVersion,
+    channel,
+    minBundleId,
+    bundleId,
+    fingerprintHash,
+    _updateStrategy,
+  }) => {
     const res = await fetch("https://your.api/update-info");
     return (await res.json()) as AppUpdateInfo | null;
   },

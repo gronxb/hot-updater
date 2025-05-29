@@ -9,12 +9,12 @@ This method is particularly useful when you need a custom update strategy withou
 Use `updateBundle` to download and apply an available update by providing the bundle's unique identifier and the URL to the bundle file.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 
 async function applyAppUpdate(updateInfo: UpdateInfo) {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
-      source: "<your-update-server-url>",
+      source: getUpdateSource("<your-update-server-url>"),
       requestHeaders: {
         Authorization: "Bearer <your-access-token>",
       },
@@ -57,6 +57,21 @@ async function applyAppUpdate(updateInfo: UpdateInfo) {
 }
 ```
 
+
+## Understanding `getUpdateSource`
+
+The `getUpdateSource` function is used to construct the final URL for checking updates. The specific URL is determined by the update strategy being used internally by Hot Updater.
+
+**Example Final Endpoint Structures:**
+
+Depending on the strategy, `getUpdateSource` helps form URLs similar to these:
+
+*   `GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+*   `GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+
+If you provide a `baseUrl` (e.g., `https://your-update-server.com/api/update-check`), `getUpdateSource` ensures that the correct path and parameters are appended based on whether the update check is by app version or fingerprint.
+
+
 ## Parameters
 
 The `updateBundle` function accepts the following parameters:
@@ -71,3 +86,4 @@ The `updateBundle` function accepts the following parameters:
 - Downloads the specified bundle from the provided `fileUrl`.
 - Applies the downloaded bundle as the active bundle for the application.
 - Requires an explicit call to `HotUpdater.reload()` if you want to immediately reload the application after updating, particularly when `shouldForceUpdate` is true.
+

@@ -145,7 +145,7 @@ We recommend displaying this value in your app UI to visually confirm that it’
 ### Example Usage
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 import { Text, View } from "react-native";
 
 function App() {
@@ -159,7 +159,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: "<your-update-server-url>",
+  source: getUpdateSource("<your-update-server-url>"),
 })(App);
 ```
 
