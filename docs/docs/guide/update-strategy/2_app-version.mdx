@@ -1,7 +1,7 @@
 import { PackageManagerTabs } from '@theme';
 import { normalizeImagePath } from 'rspress/runtime';
 
-# Understanding the App Version Update Strategy in `hot-updater`
+# App Version Update Strategy
 
 The "App Version" update strategy in `hot-updater` allows you to target specific native app versions when deploying updates. Unlike the `fingerprint` strategy, which compares hash values to check for native code changes, this strategy applies updates only to the app version specified with the `-t` (or `--target-app-version`) option during the `hot-updater deploy` command.
 
