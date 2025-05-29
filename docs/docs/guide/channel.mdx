@@ -130,9 +130,9 @@ After specifying the new channel, rebuild your native app:
 You can also specify the target channel directly during deployment:
 
 <PackageManagerTabs command={{
-  npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
-  pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
-  yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -t \"1.x.x\" -c \"<channel>\"",
+  npm: "npx hot-updater deploy -p <\"ios\" | \"android\"> -c \"<channel>\"",
+  pnpm: "pnpm hot-updater deploy -p <\"ios\" | \"android\"> -c \"<channel>\"",
+  yarn: "yarn hot-updater deploy -p <\"ios\" | \"android\"> -c \"<channel>\"",
 }} />
 
 Replace `<channel>` with your target channel name (e.g., `dev`, `staging`, `production`).

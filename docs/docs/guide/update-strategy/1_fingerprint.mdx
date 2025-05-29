@@ -1,0 +1,86 @@
+import { Tab, Tabs } from 'rspress/theme';
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
+# Fingerprint
+
+The "Fingerprint" update strategy in `hot-updater` leverages Expo's [`@expo/fingerprint`](https://docs.expo.dev/versions/latest/sdk/fingerprint/) library to track and manage changes in your project's native code. This mechanism significantly enhances the stability of app updates by preventing the delivery of JavaScript bundles incompatible with the native code.
+
+## Core Concepts
+
+*   **Fingerprint**: This is a hash value representing the current state of your project's native code. It changes whenever there are modifications to native dependencies, direct native code edits, or Expo SDK updates.
+*   **Role**: When you run the `hot-updater deploy` command, `hot-updater` compares the stored fingerprint hash. It then ensures that updates are only sent to clients whose native version is compatible with the JavaScript bundle being deployed.
+*   **Automatic Injection**: Each time `hot-updater` builds and deploys a JavaScript bundle, it automatically injects the current project's fingerprint hash into that bundle. The client application uses this injected fingerprint to verify compatibility with its own native code.
+
+## Configuration
+
+You can enable this feature by setting the `updateStrategy` option to `fingerprint` in your `hot-updater.config.ts` file. If this option is not explicitly set, `fingerprint` is used by default.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... other configurations
+  updateStrategy: "fingerprint", // Or omit this line to use "fingerprint" by default
+});
+```
+
+## Managing and Updating Fingerprints
+
+It's crucial to check and, if necessary, update the fingerprint whenever changes are made to the native code.
+
+1.  **Check Current Fingerprint**:
+    ```bash
+    hot-updater fingerprint
+    ```
+    This command calculates the current project's fingerprint and shows whether it matches the stored value.
+
+2.  **Create a New Fingerprint**:
+    If the command above indicates a mismatch, you must generate a new fingerprint using:
+    ```bash
+    hot-updater fingerprint create
+    ```
+    <PackageManagerTabs command={{
+      npm: "npx hot-updater fingerprint create",
+      pnpm: "pnpm hot-updater fingerprint create",
+      yarn: "yarn hot-updater fingerprint create",
+    }} />
+
+    **Important**: After creating a new fingerprint, you **must rebuild your app**. This ensures that the updated native environment and the new fingerprint are correctly incorporated into the app binary, preventing compatibility issues with apps built using the previous fingerprint.
+
+## Fingerprint File Example (`fingerprint.json`)
+
+```json
+{
+  "ios": {
+    "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0",
+    // ... other details
+  },
+  "android": {
+    "hash": "c763ed5729a0bcccf23248ee0183ddf9016c2e6e",
+    // ... other details
+  }
+}
+```
+
+## Endpoint Testing
+
+You can test if the update check endpoint, configured via the `hot-updater init` command, is working correctly. When using the `fingerprint` strategy, the endpoint format is typically:
+
+*   `GET /check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+
+Example of testing with `curl`:
+
+```bash
+curl "https://your-update-endpoint.com/check-update/fingerprint/ios/11142b9062165fa48665f5efa095dd94e9e45eb0/default/0/0"
+```
+
+**Request Parameter Descriptions:**
+
+*   `:platform`: The platform, such as `ios` or `android`.
+*   `:fingerprintHash`: The current fingerprint hash of the client app.
+*   `:channel`: The channel name you want to check for updates (e.g., `default`, `staging`).
+*   `:minBundleId`: The minimum bundle ID supported by the client (this value is updated when the native app is rebuilt. If unknown for testing, you can use `00000000-0000-0000-0000-000000000000`).
+*   `:bundleId`: The client's current bundle ID.
+
+This request allows you to verify if an update is available for a specific fingerprint hash and channel.
