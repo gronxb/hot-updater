@@ -10,7 +10,9 @@
       "**/dist/**",
       "**/build/**",
       "node_modules/**",
-      "**/*.js"
+      "**/*.js",
+      "**/ios/**",
+      "**/android/**"
     ]
   },
   "formatter": {
