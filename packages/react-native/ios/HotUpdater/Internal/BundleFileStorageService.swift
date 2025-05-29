@@ -443,7 +443,7 @@ class BundleFileStorageService: BundleStorageService {
             }
             
             // Dispatch the processing of the downloaded file to the file operation queue
-            self.fileOperationQueue.async {
+            let workItem = DispatchWorkItem {
                 switch result {
                 case .success(let location):
                     self.processDownloadedFile(
@@ -462,6 +462,7 @@ class BundleFileStorageService: BundleStorageService {
                     completion(.failure(BundleStorageError.downloadFailed(error)))
                 }
             }
+            self.fileOperationQueue.async(execute: workItem)
         })
         
         if let task = task {
@@ -541,9 +542,30 @@ class BundleFileStorageService: BundleStorageService {
                     try self.fileSystem.moveItem(atPath: extractedDir, toPath: finalBundleDir)
                     NSLog("[BundleStorage] Successfully moved entire bundle directory to: \(finalBundleDir)")
                     
-                    // 10. Cleanup
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.success(true))
+                    let findResult = self.findBundleFile(in: finalBundleDir)
+                    switch findResult {
+                    case .success(let finalBundlePath):
+                        if let finalBundlePath = finalBundlePath {
+                            let setResult = self.setBundleURL(localPath: finalBundlePath)
+                            switch setResult {
+                            case .success:
+                                // 10. Cleanup
+                                self.cleanupTemporaryFiles([tempDirectory])
+                                completion(.success(true))
+                            case .failure(let error):
+                                self.cleanupTemporaryFiles([tempDirectory])
+                                completion(.failure(error))
+                            }
+                        } else {
+                            NSLog("[BundleStorage] No bundle file found in final directory")
+                            self.cleanupTemporaryFiles([tempDirectory])
+                            completion(.failure(BundleStorageError.invalidBundle))
+                        }
+                    case .failure(let error):
+                        NSLog("[BundleStorage] Error finding bundle file: \(error.localizedDescription)")
+                        self.cleanupTemporaryFiles([tempDirectory])
+                        completion(.failure(error))
+                    }
                 } else {
                     NSLog("[BundleStorage] No bundle file found in extracted directory")
                     self.cleanupTemporaryFiles([tempDirectory])

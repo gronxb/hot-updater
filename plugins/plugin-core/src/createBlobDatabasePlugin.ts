@@ -14,32 +14,6 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
 }
 
 /**
- * @prefix {string} - The prefix to filter the objects in the storage.
- */
-export type ListObjectsFn = (prefix: string) => Promise<string[]>;
-
-/**
- * @key {string} - The key of the object to load.
- */
-export type LoadObjectFn = <T>(key: string) => Promise<T | null>;
-
-/**
- * @key {string} - The key of the object to upload.
- * @data {any} - The data to upload as a Javascript Object.
- */
-export type UploadObjectFn = (key: string, data: any) => Promise<void>;
-
-/**
- * @key {string} - The key of the object to delete.
- */
-export type DeleteObjectFn = (key: string) => Promise<void>;
-
-/**
- * @paths {string[]} - The paths to invalidate in the CDN.
- */
-export type InvalidatePathsFn = (paths: string[]) => Promise<void>;
-
-/**
  *
  * @param name - The name of the database plugin
  * @param listObjects - Function to list objects in the storage
@@ -50,22 +24,26 @@ export type InvalidatePathsFn = (paths: string[]) => Promise<void>;
  * @param hooks - Optional hooks for additional functionality - see createDatabasePlugin
  * @returns
  */
-export const createBlobDatabasePlugin = ({
+export const createBlobDatabasePlugin = <TContext = object>({
   name,
+  getContext,
   listObjects,
   loadObject,
   uploadObject,
   deleteObject,
   invalidatePaths,
   hooks,
+  apiBasePath,
 }: {
   name: string;
-  listObjects: ListObjectsFn;
-  loadObject: LoadObjectFn;
-  uploadObject: UploadObjectFn;
-  deleteObject: DeleteObjectFn;
-  invalidatePaths: InvalidatePathsFn;
+  getContext: () => TContext;
+  listObjects: (context: TContext, prefix: string) => Promise<string[]>;
+  loadObject: <T>(context: TContext, key: string) => Promise<T | null>;
+  uploadObject: <T>(context: TContext, key: string, data: T) => Promise<void>;
+  deleteObject: (context: TContext, key: string) => Promise<void>;
+  invalidatePaths: (context: TContext, paths: string[]) => Promise<void>;
   hooks?: DatabasePluginHooks;
+  apiBasePath: string;
 }) => {
   // Map for O(1) lookup of bundles.
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
@@ -75,14 +53,14 @@ export const createBlobDatabasePlugin = ({
   const PLATFORMS = ["ios", "android"] as const;
 
   // Reload all bundle data from S3.
-  async function reloadBundles() {
+  async function reloadBundles(context: TContext) {
     bundlesMap.clear();
 
     const platformPromises = PLATFORMS.map(async (platform) => {
       // Retrieve update.json files for the platform across all channels.
-      const keys = await listUpdateJsonKeys(platform);
+      const keys = await listUpdateJsonKeys(context, platform);
       const filePromises = keys.map(async (key) => {
-        const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
+        const bundlesData = (await loadObject<Bundle[]>(context, key)) ?? [];
         return bundlesData.map((bundle) => ({
           ...bundle,
           _updateJsonKey: key,
@@ -111,12 +89,15 @@ export const createBlobDatabasePlugin = ({
    * Returns true if the file was updated, false if no changes were made.
    */
   async function updateTargetVersionsForPlatform(
+    context: TContext,
     platform: string,
   ): Promise<Set<string>> {
     // Retrieve all update.json files for the platform across channels.
     const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
 
-    const keys = (await listObjects("")).filter((key) => pattern.test(key));
+    const keys = (await listObjects(context, "")).filter((key) =>
+      pattern.test(key),
+    );
 
     // Group keys by channel (channel is the first part of the key)
     const keysByChannel = keys.reduce(
@@ -137,7 +118,8 @@ export const createBlobDatabasePlugin = ({
       const targetKey = `${channel}/${platform}/target-app-versions.json`;
       // Extract targetAppVersion from each update.json file key.
       const currentVersions = updateKeys.map((key) => key.split("/")[2]);
-      const oldTargetVersions = (await loadObject<string[]>(targetKey)) ?? [];
+      const oldTargetVersions =
+        (await loadObject<string[]>(context, targetKey)) ?? [];
       const newTargetVersions = oldTargetVersions.filter((v) =>
         currentVersions.includes(v),
       );
@@ -148,7 +130,7 @@ export const createBlobDatabasePlugin = ({
       if (
         JSON.stringify(oldTargetVersions) !== JSON.stringify(newTargetVersions)
       ) {
-        await uploadObject(targetKey, newTargetVersions);
+        await uploadObject(context, targetKey, newTargetVersions);
         updatedTargetFiles.add(`/${targetKey}`);
       }
     }
@@ -163,6 +145,7 @@ export const createBlobDatabasePlugin = ({
    * - Otherwise, all channels for the given platform are returned.
    */
   async function listUpdateJsonKeys(
+    context: TContext,
     platform?: string,
     channel?: string,
   ): Promise<string[]> {
@@ -180,7 +163,7 @@ export const createBlobDatabasePlugin = ({
         ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
         : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
 
-    return listObjects(prefix).then((keys) =>
+    return listObjects(context, prefix).then((keys) =>
       keys.filter((key) => pattern.test(key)),
     );
   }
@@ -188,7 +171,8 @@ export const createBlobDatabasePlugin = ({
   return createDatabasePlugin(
     name,
     {
-      async getBundleById(bundleId: string) {
+      getContext,
+      async getBundleById(context, bundleId: string) {
         const pendingBundle = pendingBundlesMap.get(bundleId);
         if (pendingBundle) {
           return removeBundleInternalKeys(pendingBundle);
@@ -197,13 +181,13 @@ export const createBlobDatabasePlugin = ({
         if (bundle) {
           return removeBundleInternalKeys(bundle);
         }
-        const bundles = await reloadBundles();
+        const bundles = await reloadBundles(context);
         return bundles.find((bundle) => bundle.id === bundleId) ?? null;
       },
 
-      async getBundles(options) {
+      async getBundles(context, options) {
         // Always load the latest data from S3.
-        let bundles = await reloadBundles();
+        let bundles = await reloadBundles(context);
         const { where, limit, offset = 0 } = options ?? {};
         // Sort bundles in descending order by id.
 
@@ -229,22 +213,31 @@ export const createBlobDatabasePlugin = ({
         return bundles.map(removeBundleInternalKeys);
       },
 
-      async getChannels() {
-        const allBundles = await this.getBundles();
+      async getChannels(context) {
+        const allBundles = await this.getBundles(context);
         return [...new Set(allBundles.map((bundle) => bundle.channel))];
       },
 
-      async commitBundle({ changedSets }) {
+      async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) return;
 
         const changedBundlesByKey: Record<string, Bundle[]> = {};
         const removalsByKey: Record<string, string[]> = {};
         const pathsToInvalidate: Set<string> = new Set();
 
+        let isTargetAppVersionChanged = false;
+
         for (const { operation, data } of changedSets) {
+          if (data.targetAppVersion !== undefined) {
+            isTargetAppVersionChanged = true;
+          }
           // Insert operation.
           if (operation === "insert") {
-            const key = `${data.channel}/${data.platform}/${data.targetAppVersion}/update.json`;
+            const target = data.targetAppVersion ?? data.fingerprintHash;
+            if (!target) {
+              throw new Error("target not found");
+            }
+            const key = `${data.channel}/${data.platform}/${target}/update.json`;
             const bundleWithKey: BundleWithUpdateJsonKey = {
               ...data,
               _updateJsonKey: key,
@@ -258,8 +251,16 @@ export const createBlobDatabasePlugin = ({
               removeBundleInternalKeys(bundleWithKey),
             );
 
-            // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${key}`);
+            if (data.fingerprintHash) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/fingerprint/${data.platform}/${data.fingerprintHash}/${data.channel}/*`,
+              );
+            } else if (data.targetAppVersion) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/app-version/${data.platform}/${data.targetAppVersion}/${data.channel}/*`,
+              );
+            }
             continue;
           }
 
@@ -278,11 +279,16 @@ export const createBlobDatabasePlugin = ({
               data.channel !== undefined ? data.channel : bundle.channel;
             const newPlatform =
               data.platform !== undefined ? data.platform : bundle.platform;
-            const newTargetAppVersion =
-              data.targetAppVersion !== undefined
-                ? data.targetAppVersion
-                : bundle.targetAppVersion;
-            const newKey = `${newChannel}/${newPlatform}/${newTargetAppVersion}/update.json`;
+            const target =
+              data.fingerprintHash ??
+              bundle.fingerprintHash ??
+              data.targetAppVersion ??
+              bundle.targetAppVersion;
+            if (!target) {
+              throw new Error("target not found");
+            }
+
+            const newKey = `${newChannel}/${newPlatform}/${target}/update.json`;
 
             if (newKey !== bundle._updateJsonKey) {
               // If the key has changed (e.g., channel or targetAppVersion update), remove from old location.
@@ -306,6 +312,15 @@ export const createBlobDatabasePlugin = ({
               // Add paths for CloudFront invalidation
               pathsToInvalidate.add(`/${oldKey}`);
               pathsToInvalidate.add(`/${newKey}`);
+              if (bundle.fingerprintHash) {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+                );
+              } else if (bundle.targetAppVersion) {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                );
+              }
               continue;
             }
 
@@ -322,21 +337,31 @@ export const createBlobDatabasePlugin = ({
 
             // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${currentKey}`);
+            if (bundle.fingerprintHash) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+              );
+            } else if (bundle.targetAppVersion) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+              );
+            }
           }
         }
 
         // Remove bundles from their old keys.
         for (const oldKey of Object.keys(removalsByKey)) {
           await (async () => {
-            const currentBundles = (await loadObject<Bundle[]>(oldKey)) ?? [];
+            const currentBundles =
+              (await loadObject<Bundle[]>(context, oldKey)) ?? [];
             const updatedBundles = currentBundles.filter(
               (b) => !removalsByKey[oldKey].includes(b.id),
             );
             updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
             if (updatedBundles.length === 0) {
-              await deleteObject(oldKey);
+              await deleteObject(context, oldKey);
             } else {
-              await uploadObject(oldKey, updatedBundles);
+              await uploadObject(context, oldKey, updatedBundles);
             }
           })();
         }
@@ -344,7 +369,8 @@ export const createBlobDatabasePlugin = ({
         // Add or update bundles in their new keys.
         for (const key of Object.keys(changedBundlesByKey)) {
           await (async () => {
-            const currentBundles = (await loadObject<Bundle[]>(key)) ?? [];
+            const currentBundles =
+              (await loadObject<Bundle[]>(context, key)) ?? [];
             const pureBundles = changedBundlesByKey[key].map(
               (bundle) => bundle,
             );
@@ -359,16 +385,21 @@ export const createBlobDatabasePlugin = ({
               }
             }
             currentBundles.sort((a, b) => b.id.localeCompare(a.id));
-            await uploadObject(key, currentBundles);
+            await uploadObject(context, key, currentBundles);
           })();
         }
 
         // Update target-app-versions.json for each platform and collect paths that were actually updated
         const updatedTargetFilePaths = new Set<string>();
-        for (const platform of PLATFORMS) {
-          const updatedPaths = await updateTargetVersionsForPlatform(platform);
-          for (const path of updatedPaths) {
-            updatedTargetFilePaths.add(path);
+        if (isTargetAppVersionChanged) {
+          for (const platform of PLATFORMS) {
+            const updatedPaths = await updateTargetVersionsForPlatform(
+              context,
+              platform,
+            );
+            for (const path of updatedPaths) {
+              updatedTargetFilePaths.add(path);
+            }
           }
         }
 
@@ -377,7 +408,7 @@ export const createBlobDatabasePlugin = ({
           pathsToInvalidate.add(path);
         }
 
-        await invalidatePaths(Array.from(pathsToInvalidate));
+        await invalidatePaths(context, Array.from(pathsToInvalidate));
 
         pendingBundlesMap.clear();
         hooks?.onDatabaseUpdated?.();

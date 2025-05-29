@@ -1,14 +1,31 @@
+import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { extractTimestampFromUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
 import type { Bundle } from "@hot-updater/core";
 import type { ColumnDef } from "@tanstack/solid-table";
 import dayjs from "dayjs";
-import { Check, X } from "lucide-solid";
+import { Check, Fingerprint, Package, X } from "lucide-solid";
+import { Show } from "solid-js";
 
 export const columns: ColumnDef<Bundle>[] = [
   {
     accessorKey: "id",
     header: "ID",
-    cell: (info) => info.getValue(),
+    cell: (info) => {
+      return (
+        <Tooltip openDelay={0} closeDelay={0}>
+          <TooltipTrigger>{info.row.original.id.slice(-12)}</TooltipTrigger>
+          <TooltipContent>
+            <p>{info.row.original.id}</p>
+          </TooltipContent>
+        </Tooltip>
+      );
+    },
   },
   {
     accessorKey: "channel",
@@ -21,16 +38,54 @@ export const columns: ColumnDef<Bundle>[] = [
     cell: (info) => {
       switch (info.getValue()) {
         case "ios":
-          return "iOS";
+          return (
+            <div class="flex flex-row items-center">
+              <AiFillApple class="mr-2" size={16} />
+              iOS
+            </div>
+          );
         case "android":
-          return "Android";
+          return (
+            <div class="flex flex-row items-center">
+              <AiFillAndroid class="mr-2" size={16} color="#3DDC84" />
+              Android
+            </div>
+          );
       }
     },
   },
   {
-    accessorKey: "targetAppVersion",
-    header: "Target App Version",
-    cell: (info) => info.getValue(),
+    header: "Target",
+    cell: (info) => {
+      if (info.row.original.targetAppVersion) {
+        return (
+          <div class="flex flex-row items-center">
+            <Package class="mr-2" size={16} />
+            {info.row.original.targetAppVersion}
+          </div>
+        );
+      }
+      if (info.row.original.fingerprintHash) {
+        return (
+          <Tooltip openDelay={0} closeDelay={0}>
+            <TooltipTrigger class="flex flex-row items-center">
+              <Fingerprint class="mr-2" size={16} />
+              {info.row.original.fingerprintHash.slice(0, 8)}
+
+              <Show when={info.row.original.metadata?.app_version}>
+                <span class="ml-2 text-muted-foreground">
+                  ({info.row.original.metadata?.app_version})
+                </span>
+              </Show>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{info.row.original.fingerprintHash}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      }
+      return "N/A";
+    },
   },
   {
     accessorKey: "enabled",

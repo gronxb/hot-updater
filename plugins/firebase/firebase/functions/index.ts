@@ -1,4 +1,8 @@
-import { NIL_UUID, type Platform } from "@hot-updater/core";
+import {
+  type GetBundlesArgs,
+  NIL_UUID,
+  type Platform,
+} from "@hot-updater/core";
 import * as admin from "firebase-admin";
 import { Hono } from "hono";
 import { createFirebaseApp } from "./createFirebaseApp";
@@ -7,8 +11,6 @@ import { getUpdateInfo } from "./getUpdateInfo";
 declare global {
   var HotUpdater: {
     REGION: string;
-    STORAGE_BUCKET: string;
-    PROJECT_ID: string;
   };
 }
 
@@ -22,6 +24,55 @@ app.get("/ping", (c) => {
   return c.text("pong");
 });
 
+const handleUpdateRequest = async (
+  db: FirebaseFirestore.Firestore,
+  updateConfig: GetBundlesArgs,
+) => {
+  const updateInfo = await getUpdateInfo(db, updateConfig);
+
+  if (!updateInfo) {
+    return null;
+  }
+
+  const { storageUri, ...rest } = updateInfo;
+
+  if (rest.id === NIL_UUID) {
+    return {
+      ...rest,
+      fileUrl: null,
+    };
+  }
+
+  let signedUrl: string | null = null;
+  if (!storageUri) {
+    const [_signedUrl] = await admin
+      .storage()
+      .bucket(admin.app().options.storageBucket)
+      .file([rest.id, "bundle.zip"].join("/"))
+      .getSignedUrl({
+        action: "read",
+        expires: Date.now() + 60 * 1000,
+      });
+    signedUrl = _signedUrl;
+  } else {
+    const storageUrl = new URL(storageUri);
+    const [_signedUrl] = await admin
+      .storage()
+      .bucket(storageUrl.host)
+      .file(storageUrl.pathname.slice(1))
+      .getSignedUrl({
+        action: "read",
+        expires: Date.now() + 60 * 1000,
+      });
+    signedUrl = _signedUrl;
+  }
+
+  return {
+    ...rest,
+    fileUrl: signedUrl,
+  };
+};
+
 app.get("/api/check-update", async (c) => {
   try {
     const platform = c.req.header("x-app-platform");
@@ -29,51 +80,46 @@ app.get("/api/check-update", async (c) => {
     const bundleId = c.req.header("x-bundle-id");
     const minBundleId = c.req.header("x-min-bundle-id");
     const channel = c.req.header("x-channel");
-    if (!platform || !appVersion || !bundleId) {
+    const fingerprintHash = c.req.header("x-fingerprint-hash");
+
+    if (!bundleId || !platform) {
+      return c.json(
+        { error: "Missing required headers (x-app-platform, x-bundle-id)." },
+        400,
+      );
+    }
+    if (!appVersion && !fingerprintHash) {
       return c.json(
         {
           error:
-            "Missing required headers (x-app-platform, x-app-version, x-bundle-id)",
+            "Missing required headers (x-app-version or x-fingerprint-hash).",
         },
         400,
       );
     }
+
     const db = admin.firestore();
 
-    const updateInfo = await getUpdateInfo(db, {
-      platform: platform as Platform,
-      appVersion,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-    });
-    if (!updateInfo) {
-      return c.json(null, 200);
-    }
+    const updateConfig = fingerprintHash
+      ? ({
+          platform: platform as Platform,
+          fingerprintHash,
+          bundleId,
+          minBundleId: minBundleId || NIL_UUID,
+          channel: channel || "production",
+          _updateStrategy: "fingerprint" as const,
+        } satisfies GetBundlesArgs)
+      : ({
+          platform: platform as Platform,
+          appVersion: appVersion!,
+          bundleId,
+          minBundleId: minBundleId || NIL_UUID,
+          channel: channel || "production",
+          _updateStrategy: "appVersion" as const,
+        } satisfies GetBundlesArgs);
 
-    if (updateInfo.id === NIL_UUID) {
-      return c.json({
-        ...updateInfo,
-        fileUrl: null,
-      });
-    }
-
-    const [signedUrl] = await admin
-      .storage()
-      .bucket(admin.app().options.storageBucket)
-      .file([updateInfo.id, "bundle.zip"].join("/"))
-      .getSignedUrl({
-        action: "read",
-        expires: Date.now() + 60 * 1000,
-      });
-
-    return c.json(
-      {
-        ...updateInfo,
-        fileUrl: signedUrl,
-      },
-      200,
-    );
+    const result = await handleUpdateRequest(db, updateConfig);
+    return c.json(result, result ? 200 : 200);
   } catch (error) {
     if (error instanceof Error) {
       return c.json(
@@ -86,6 +132,93 @@ app.get("/api/check-update", async (c) => {
     return c.json({ error: "Internal server error" }, 500);
   }
 });
+
+app.get(
+  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    try {
+      const {
+        platform,
+        "app-version": appVersion,
+        channel,
+        minBundleId,
+        bundleId,
+      } = c.req.param();
+
+      if (!bundleId || !platform) {
+        return c.json(
+          { error: "Missing required parameters (platform, bundleId)." },
+          400,
+        );
+      }
+
+      const db = admin.firestore();
+
+      const updateConfig = {
+        platform: platform as Platform,
+        appVersion,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "appVersion" as const,
+      } satisfies GetBundlesArgs;
+
+      const result = await handleUpdateRequest(db, updateConfig);
+      return c.json(result, result ? 200 : 200);
+    } catch (error) {
+      if (error instanceof Error) {
+        return c.json(
+          {
+            error: error.message,
+          },
+          500,
+        );
+      }
+      return c.json({ error: "Internal server error" }, 500);
+    }
+  },
+);
+
+app.get(
+  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    try {
+      const { platform, fingerprintHash, channel, minBundleId, bundleId } =
+        c.req.param();
+
+      if (!bundleId || !platform) {
+        return c.json(
+          { error: "Missing required parameters (platform, bundleId)." },
+          400,
+        );
+      }
+
+      const db = admin.firestore();
+
+      const updateConfig = {
+        platform: platform as Platform,
+        fingerprintHash,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "fingerprint" as const,
+      } satisfies GetBundlesArgs;
+
+      const result = await handleUpdateRequest(db, updateConfig);
+      return c.json(result, result ? 200 : 200);
+    } catch (error) {
+      if (error instanceof Error) {
+        return c.json(
+          {
+            error: error.message,
+          },
+          500,
+        );
+      }
+      return c.json({ error: "Internal server error" }, 500);
+    }
+  },
+);
 
 const hotUpdaterFunction = createFirebaseApp({
   region: HotUpdater.REGION,

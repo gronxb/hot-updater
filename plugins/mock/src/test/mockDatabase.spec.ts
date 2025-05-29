@@ -13,6 +13,9 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
     platform: "ios",
     targetAppVersion: "1.0.x",
     message: null,
+    storageUri:
+      "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+    fingerprintHash: null,
   },
   {
     id: "0194ed78-d791-753c-ba37-abb7259edcc8",
@@ -24,6 +27,9 @@ const DEFAULT_BUNDLES_MOCK: Bundle[] = [
     platform: "ios",
     targetAppVersion: "1.0.x",
     message: null,
+    storageUri:
+      "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
+    fingerprintHash: null,
   },
 ];
 

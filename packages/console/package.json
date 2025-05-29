@@ -60,6 +60,7 @@
   },
   "dependencies": {
     "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "solid-icons": "^1.1.0"
   }
 }

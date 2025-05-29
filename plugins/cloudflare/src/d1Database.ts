@@ -23,16 +23,18 @@ export const d1Database = (
   config: D1DatabaseConfig,
   hooks?: DatabasePluginHooks,
 ) => {
-  const cf = new Cloudflare({
-    apiToken: config.cloudflareApiToken,
-  });
-
   let bundles: Bundle[] = [];
 
   return createDatabasePlugin(
     "d1Database",
     {
-      async getBundleById(bundleId: string) {
+      getContext: () => ({
+        cf: new Cloudflare({
+          apiToken: config.cloudflareApiToken,
+        }),
+      }),
+
+      async getBundleById(context, bundleId) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
           return found;
@@ -42,11 +44,14 @@ export const d1Database = (
           /* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`,
         );
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [bundleId],
-        });
+        const singlePage = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql,
+            params: [bundleId],
+          },
+        );
 
         const rows = await resolvePage<SnakeCaseBundle>(singlePage);
 
@@ -65,10 +70,13 @@ export const d1Database = (
           message: row.message,
           platform: row.platform,
           targetAppVersion: row.target_app_version,
+          storageUri: row.storage_uri,
+          fingerprintHash: row.fingerprint_hash,
+          metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
         } as Bundle;
       },
 
-      async getBundles(options) {
+      async getBundles(context, options) {
         const { where, limit, offset = 0 } = options ?? {};
 
         let sql = "SELECT * FROM bundles";
@@ -101,11 +109,14 @@ export const d1Database = (
           params.push(offset);
         }
 
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql: minify(sql),
-          params,
-        });
+        const singlePage = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql: minify(sql),
+            params,
+          },
+        );
 
         const rows = await resolvePage<SnakeCaseBundle>(singlePage);
 
@@ -122,28 +133,34 @@ export const d1Database = (
             message: row.message,
             platform: row.platform,
             targetAppVersion: row.target_app_version,
+            storageUri: row.storage_uri,
+            fingerprintHash: row.fingerprint_hash,
+            metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
           }));
         }
         return bundles;
       },
 
-      async getChannels() {
+      async getChannels(context) {
         const sql = minify(
           /* sql */ `
           SELECT channel FROM bundles GROUP BY channel
         `,
         );
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [],
-        });
+        const singlePage = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql,
+            params: [],
+          },
+        );
 
         const rows = await resolvePage<{ channel: string }>(singlePage);
         return rows.map((row) => row.channel);
       },
 
-      async commitBundle({ changedSets }) {
+      async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
@@ -163,8 +180,11 @@ export const d1Database = (
               b.message || null,
               b.platform,
               b.targetAppVersion,
+              b.storageUri,
+              b.fingerprintHash,
+              b.metadata ? JSON.stringify(b.metadata) : JSON.stringify({}),
             );
-            return "(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
           })
           .join(",\n");
 
@@ -178,12 +198,15 @@ export const d1Database = (
             git_commit_hash,
             message,
             platform,
-            target_app_version
+            target_app_version,
+            storage_uri,
+            fingerprint_hash,
+            metadata
           )
           VALUES
           ${valuesSql};`);
 
-        await cf.d1.database.query(config.databaseId, {
+        await context.cf.d1.database.query(config.databaseId, {
           account_id: config.accountId,
           sql,
           params: params as string[],

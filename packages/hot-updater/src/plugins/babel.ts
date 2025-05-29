@@ -1,9 +1,12 @@
+import { memoize } from "es-toolkit/function";
+
 import fs from "fs";
 import path from "path";
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
-import * as t from "@babel/types";
-import { loadConfigSync } from "@hot-updater/plugin-core";
+
+import type * as babelTypes from "@babel/types";
+import { getCwd, loadConfigSync } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 
@@ -31,29 +34,57 @@ const getBundleId = () => {
   return bundleId;
 };
 
-export const getChannel = () => {
-  const currentEnv = process.env["BABEL_ENV"] || process.env["NODE_ENV"];
-  if (currentEnv === "development") {
+const memoizeLoadConfig = memoize(loadConfigSync);
+
+const getFingerprintJson = () => {
+  const { updateStrategy } = memoizeLoadConfig(null);
+  if (updateStrategy === "appVersion") {
     return null;
   }
-
-  const envChannel = process.env["HOT_UPDATER_CHANNEL"];
-  if (envChannel) {
-    return envChannel;
+  const fingerprintPath = path.join(getCwd(), "fingerprint.json");
+  if (!fs.existsSync(fingerprintPath)) {
+    throw new Error(
+      "Missing fingerprint.json. Since updateStrategy is set to 'fingerprint' in hot-updater.config, please run `hot-updater fingerprint create`.",
+    );
   }
+  try {
+    const fingerprint = JSON.parse(
+      fs.readFileSync(fingerprintPath, "utf-8"),
+    ) as {
+      ios: {
+        hash: string;
+      };
+      android: {
+        hash: string;
+      };
+    };
 
-  const { releaseChannel } = loadConfigSync(null);
-  return releaseChannel;
+    return {
+      iosHash: fingerprint.ios.hash,
+      androidHash: fingerprint.android.hash,
+    };
+  } catch {
+    throw new Error(
+      "Invalid fingerprint.json. Since updateStrategy is set to 'fingerprint' in hot-updater.config, please run `hot-updater fingerprint create`.",
+    );
+  }
 };
 
-export default function replaceHotUpdaterBundleId(): PluginObj {
-  const bundleId = getBundleId();
-  const channel = getChannel();
+const getOverTheAirChannel = () => {
+  return process.env["HOT_UPDATER_CHANNEL"];
+};
 
+export default function ({
+  types: t,
+}: { types: typeof babelTypes }): PluginObj {
+  const bundleId = getBundleId();
+  const fingerprint = getFingerprintJson();
+  const channel = getOverTheAirChannel();
+  const { updateStrategy } = memoizeLoadConfig(null);
   return {
-    name: "replace-hot-updater-bundle-id",
+    name: "hot-updater-babel-plugin",
     visitor: {
-      Identifier(path: NodePath<t.Identifier>) {
+      Identifier(path: NodePath<babelTypes.Identifier>) {
         if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
           path.replaceWith(t.stringLiteral(bundleId));
         }
@@ -61,6 +92,19 @@ export default function replaceHotUpdaterBundleId(): PluginObj {
           path.replaceWith(
             channel ? t.stringLiteral(channel) : t.nullLiteral(),
           );
+        }
+        if (path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_IOS") {
+          fingerprint?.iosHash
+            ? path.replaceWith(t.stringLiteral(fingerprint.iosHash))
+            : path.replaceWith(t.nullLiteral());
+        }
+        if (path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_ANDROID") {
+          fingerprint?.androidHash
+            ? path.replaceWith(t.stringLiteral(fingerprint.androidHash))
+            : path.replaceWith(t.nullLiteral());
+        }
+        if (path.node.name === "__HOT_UPDATER_UPDATE_STRATEGY") {
+          path.replaceWith(t.stringLiteral(updateStrategy));
         }
       },
     },

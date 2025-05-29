@@ -1,3 +1,4 @@
+import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";

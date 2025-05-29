@@ -5,7 +5,11 @@
  * @format
  */
 
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import {
+  HotUpdater,
+  getUpdateSource,
+  useHotUpdaterStore,
+} from "@hot-updater/react-native";
 import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
@@ -37,8 +41,10 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>Release Channel "{HotUpdater.getReleaseChannel()}"</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>Fingerprint: {HotUpdater.getFingerprintHash()}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
@@ -88,7 +94,9 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: `${process.env.HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  source: getUpdateSource(
+    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  ),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

@@ -1,4 +1,5 @@
 import {
+  type AppVersionGetBundlesArgs,
   type GetBundlesArgs,
   NIL_UUID,
   type UpdateInfo,
@@ -8,7 +9,7 @@ import camelcaseKeys from "camelcase-keys";
 import type pg from "pg";
 import minify from "pg-minify";
 
-export const getUpdateInfo = async (
+export const appVersionStrategy = async (
   pool: pg.Pool,
   {
     platform,
@@ -16,7 +17,7 @@ export const getUpdateInfo = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-  }: GetBundlesArgs,
+  }: AppVersionGetBundlesArgs,
 ) => {
   const sqlGetTargetAppVersionList = minify(`
     SELECT target_app_version 
@@ -59,4 +60,14 @@ export const getUpdateInfo = async (
   ]);
 
   return result.rows[0] ? (camelcaseKeys(result.rows[0]) as UpdateInfo) : null;
+};
+
+export const getUpdateInfo = (pool: pg.Pool, args: GetBundlesArgs) => {
+  if (args._updateStrategy === "appVersion") {
+    return appVersionStrategy(pool, args);
+  }
+
+  // TODO:
+  // return fingerprintStrategy(bundles, args);
+  return null;
 };

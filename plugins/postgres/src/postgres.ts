@@ -1,4 +1,8 @@
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePluginHooks,
+  Platform,
+} from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
@@ -10,25 +14,30 @@ export const postgres = (
   config: PostgresConfig,
   hooks?: DatabasePluginHooks,
 ) => {
-  const pool = new Pool(config);
-
-  const dialect = new PostgresDialect({
-    pool,
-  });
-
-  const db = new Kysely<Database>({
-    dialect,
-  });
-
   return createDatabasePlugin(
     "postgres",
     {
-      async onUnmount() {
-        await db.destroy();
-        await pool.end();
+      getContext: () => {
+        const pool = new Pool(config);
+
+        const dialect = new PostgresDialect({
+          pool,
+        });
+
+        const db = new Kysely<Database>({
+          dialect,
+        });
+        return {
+          db,
+          pool,
+        };
       },
-      async getBundleById(bundleId) {
-        const data = await db
+      async onUnmount(context) {
+        await context.db.destroy();
+        await context.pool.end();
+      },
+      async getBundleById(context, bundleId) {
+        const data = await context.db
           .selectFrom("bundles")
           .selectAll()
           .where("id", "=", bundleId)
@@ -47,20 +56,22 @@ export const postgres = (
           platform: data.platform,
           targetAppVersion: data.target_app_version,
           channel: data.channel,
+          storageUri: data.storage_uri,
+          fingerprintHash: data.fingerprint_hash,
         } as Bundle;
       },
 
-      async getBundles(options) {
+      async getBundles(context, options) {
         const { where, limit, offset = 0 } = options ?? {};
 
-        let query = db.selectFrom("bundles").orderBy("id", "desc");
+        let query = context.db.selectFrom("bundles").orderBy("id", "desc");
 
         if (where?.channel) {
           query = query.where("channel", "=", where.channel);
         }
 
         if (where?.platform) {
-          query = query.where("platform", "=", where.platform);
+          query = query.where("platform", "=", where.platform as Platform);
         }
 
         if (limit) {
@@ -83,11 +94,13 @@ export const postgres = (
           platform: bundle.platform,
           targetAppVersion: bundle.target_app_version,
           channel: bundle.channel,
+          storageUri: bundle.storage_uri,
+          fingerprintHash: bundle.fingerprint_hash,
         })) as Bundle[];
       },
 
-      async getChannels() {
-        const data = await db
+      async getChannels(context) {
+        const data = await context.db
           .selectFrom("bundles")
           .select("channel")
           .groupBy("channel")
@@ -95,14 +108,14 @@ export const postgres = (
         return data.map((bundle) => bundle.channel);
       },
 
-      async commitBundle({ changedSets }) {
+      async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
 
         const bundles = changedSets.map((op) => op.data);
 
-        await db.transaction().execute(async (tx) => {
+        await context.db.transaction().execute(async (tx) => {
           for (const bundle of bundles) {
             await tx
               .insertInto("bundles")
@@ -116,6 +129,8 @@ export const postgres = (
                 platform: bundle.platform,
                 target_app_version: bundle.targetAppVersion,
                 channel: bundle.channel,
+                storage_uri: bundle.storageUri,
+                fingerprint_hash: bundle.fingerprintHash,
               })
               .onConflict((oc) =>
                 oc.column("id").doUpdateSet({
@@ -127,6 +142,8 @@ export const postgres = (
                   platform: bundle.platform,
                   target_app_version: bundle.targetAppVersion,
                   channel: bundle.channel,
+                  storage_uri: bundle.storageUri,
+                  fingerprint_hash: bundle.fingerprintHash,
                 }),
               )
               .execute();

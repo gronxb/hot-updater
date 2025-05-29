@@ -38,7 +38,6 @@ export default HotUpdater.wrap({
 
 - If `releaseChannel` is set in `hot-updater.config.ts`, `HotUpdater.getChannel()` returns that value.
 - If no channel is set, the default is `production`.
-- Returns `null` when the app is running in development mode.
 - Channels help separate environments such as `dev`, `staging`, and `production`, ensuring that updates are applied correctly.
 - The initial channel is injected into the native app during the build process based on the `releaseChannel` specified in `hot-updater.config.ts`.
 - After the app is built, updates can be deployed to the correct channel using `hot-updater deploy -c <channel>`, such as `hot-updater deploy -c production` or `hot-updater deploy -c dev`.

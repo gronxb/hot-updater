@@ -1,16 +1,23 @@
 import type { AppUpdateInfo, GetBundlesArgs } from "@hot-updater/core";
 
-export type UpdateSource = string | (() => Promise<AppUpdateInfo | null>);
+export type UpdateSource =
+  | string
+  | ((args: GetBundlesArgs) => Promise<AppUpdateInfo | null>)
+  | ((args: GetBundlesArgs) => string);
 
 export const fetchUpdateInfo = async (
   source: UpdateSource,
-  { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
+  args: GetBundlesArgs,
   requestHeaders?: Record<string, string>,
   onError?: (error: Error) => void,
   requestTimeout = 5000,
 ): Promise<AppUpdateInfo | null> => {
   if (typeof source === "function") {
-    return source();
+    const url = source(args);
+    if (typeof url !== "string") {
+      return null;
+    }
+    source = url;
   }
 
   const controller = new AbortController();
@@ -19,17 +26,38 @@ export const fetchUpdateInfo = async (
   }, requestTimeout);
 
   try {
+    let headers: Record<string, string> = {};
+
+    switch (args._updateStrategy) {
+      case "fingerprint":
+        headers = {
+          "Content-Type": "application/json",
+          "x-app-platform": args.platform,
+          "x-bundle-id": args.bundleId,
+          "x-fingerprint-hash": args.fingerprintHash,
+          ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
+          ...(args.channel ? { "x-channel": args.channel } : {}),
+          ...requestHeaders,
+        };
+        break;
+      case "appVersion":
+        headers = {
+          "Content-Type": "application/json",
+          "x-app-platform": args.platform,
+          "x-bundle-id": args.bundleId,
+          "x-app-version": args.appVersion,
+          ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
+          ...(args.channel ? { "x-channel": args.channel } : {}),
+          ...requestHeaders,
+        };
+        break;
+      default:
+        throw new Error("Invalid update strategy");
+    }
+
     const response = await fetch(source, {
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "x-app-platform": platform,
-        "x-app-version": appVersion,
-        "x-bundle-id": bundleId,
-        ...(minBundleId ? { "x-min-bundle-id": minBundleId } : {}),
-        ...(channel ? { "x-channel": channel } : {}),
-        ...requestHeaders,
-      },
+      headers,
     });
 
     clearTimeout(timeoutId);

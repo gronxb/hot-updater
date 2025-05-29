@@ -23,7 +23,9 @@ import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
+import { getNativeAppVersion } from "@/utils/getNativeAppVersion";
 import { printBanner } from "@/utils/printBanner";
+import { nativeFingerprint } from "@rnef/tools";
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -71,38 +73,92 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   }
 
-  const defaultTargetAppVersion =
-    (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
+  const target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  } = {
+    appVersion: null,
+    fingerprintHash: null,
+  };
+  p.log.step(`Channel: ${channel}`);
 
-  const targetAppVersion =
-    options.targetAppVersion ??
-    (options.interactive
-      ? await p.text({
-          message: "Target app version",
-          placeholder: defaultTargetAppVersion,
-          initialValue: defaultTargetAppVersion,
-          validate: (value) => {
-            if (!semverValid(value)) {
-              return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
-            }
-            return;
-          },
-        })
-      : null);
+  if (config.updateStrategy === "fingerprint") {
+    const s = p.spinner();
+    s.start(`Fingerprinting (${platform})`);
+    if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
+      p.log.error(
+        "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+      );
+      process.exit(1);
+    }
+    const fingerprint = await nativeFingerprint(cwd, {
+      platform,
+      ...config.fingerprint,
+    });
+    const projectFingerprintJsonFile = fs.readFileSync(
+      path.join(cwd, "fingerprint.json"),
+      "utf-8",
+    );
+
+    const projectFingerprint = JSON.parse(projectFingerprintJsonFile);
+    if (fingerprint.hash !== projectFingerprint[platform].hash) {
+      p.log.error(
+        "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
+      );
+      process.exit(1);
+    }
+
+    target.fingerprintHash = fingerprint.hash;
+    s.stop(`Fingerprint(${platform}): ${fingerprint.hash}`);
+  } else {
+    const defaultTargetAppVersion =
+      (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
+
+    const targetAppVersion =
+      options.targetAppVersion ??
+      (options.interactive
+        ? await p.text({
+            message: "Target app version",
+            placeholder: defaultTargetAppVersion,
+            initialValue: defaultTargetAppVersion,
+            validate: (value) => {
+              if (!semverValid(value)) {
+                return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
+              }
+              return;
+            },
+          })
+        : null);
+
+    if (p.isCancel(targetAppVersion)) {
+      return;
+    }
+
+    if (!targetAppVersion) {
+      p.log.error(
+        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
+      );
+      return;
+    }
+    p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
+
+    target.appVersion = targetAppVersion;
+  }
+
+  if (!target.fingerprintHash && !target.appVersion) {
+    if (config.updateStrategy === "fingerprint") {
+      p.log.error(
+        "Fingerprint hash not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+      );
+    } else {
+      p.log.error(
+        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
+      );
+    }
+    process.exit(1);
+  }
 
   const outputPath = options.bundleOutputPath ?? cwd;
-
-  if (p.isCancel(targetAppVersion)) {
-    return;
-  }
-
-  if (!targetAppVersion) {
-    p.log.error(
-      "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
-    );
-    return;
-  }
-  p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
 
   let bundleId: string | null = null;
   let fileHash: string;
@@ -132,11 +188,11 @@ export const deploy = async (options: DeployOptions) => {
         bundleId: string;
         stdout: string | null;
       } | null;
+      storageUri: string | null;
     } = {
       buildResult: null,
+      storageUri: null,
     };
-
-    p.log.info(`Channel: ${channel}`);
 
     await p.tasks([
       {
@@ -192,7 +248,11 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            await storagePlugin.uploadBundle(bundleId, bundlePath);
+            const { storageUri } = await storagePlugin.uploadBundle(
+              bundleId,
+              bundlePath,
+            );
+            taskRef.storageUri = storageUri;
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -208,6 +268,10 @@ export const deploy = async (options: DeployOptions) => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
           }
+          if (!taskRef.storageUri) {
+            throw new Error("Storage URI not found");
+          }
+          const appVersion = await getNativeAppVersion(platform);
 
           try {
             await databasePlugin.appendBundle({
@@ -216,17 +280,26 @@ export const deploy = async (options: DeployOptions) => {
               fileHash,
               gitCommitHash,
               message: options?.message ?? gitMessage,
-              targetAppVersion,
               id: bundleId,
               enabled: true,
               channel,
+              targetAppVersion: target.appVersion,
+              fingerprintHash: target.fingerprintHash,
+              storageUri: taskRef.storageUri,
+              metadata: {
+                ...(appVersion
+                  ? {
+                      app_version: appVersion,
+                    }
+                  : {}),
+              },
             });
             await databasePlugin.commitBundle();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
             }
-            throw new Error("Failed to update database");
+            throw e;
           }
           await databasePlugin.onUnmount?.();
           await fs.promises.rm(bundlePath);

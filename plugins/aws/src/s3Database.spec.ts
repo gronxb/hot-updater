@@ -23,6 +23,8 @@ const DEFAULT_BUNDLE: Omit<
   message: null,
   enabled: true,
   shouldForceUpdate: false,
+  storageUri: "s3://test-bucket/test-key",
+  fingerprintHash: null,
 };
 
 const createBundleJson = (
@@ -36,6 +38,20 @@ const createBundleJson = (
   id,
   platform,
   targetAppVersion,
+});
+
+const createBundleJsonFingerprint = (
+  channel: string,
+  platform: "ios" | "android",
+  fingerprintHash: string,
+  id: string,
+): Bundle => ({
+  ...DEFAULT_BUNDLE,
+  channel,
+  id,
+  platform,
+  fingerprintHash,
+  targetAppVersion: null,
 });
 
 // fakeStore simulates files stored in S3
@@ -844,6 +860,9 @@ describe("s3Database plugin", () => {
     );
     expect(invalidatedPaths).toContain(`/${bundleKey}`);
     expect(invalidatedPaths).toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1.0.0/production/*",
+    );
   });
 
   it("should trigger CloudFront invalidation when a bundle is updated without key change", async () => {
@@ -868,6 +887,9 @@ describe("s3Database plugin", () => {
     );
     expect(invalidatedPaths).toContain(`/${bundleKey}`);
     expect(invalidatedPaths).not.toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1.0.0/production/*",
+    );
   });
 
   it("should not trigger CloudFront invalidation when commitBundle is called with no pending changes", async () => {
@@ -876,5 +898,35 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
 
     expect(cloudfrontInvalidations.length).toBe(0);
+  });
+
+  it("should trigger CloudFront invalidation for fingerprint path when bundle is updated", async () => {
+    const bundleKey = "production/ios/abcdef000/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
+    const bundle = createBundleJsonFingerprint(
+      "production",
+      "ios",
+      "abcdef000",
+      "fingerprint-test",
+    );
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    cloudfrontInvalidations = [];
+
+    await plugin.updateBundle("fingerprint-test", { enabled: false });
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(`/${bundleKey}`);
+    expect(invalidatedPaths).not.toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/fingerprint/ios/abcdef000/production/*",
+    );
+    expect(invalidatedPaths).not.toContain(
+      "/api/check-update/app-version/ios/1.0.0/production/*",
+    );
   });
 });

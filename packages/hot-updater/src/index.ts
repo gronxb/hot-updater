@@ -1,15 +1,20 @@
 #!/usr/bin/env node
+import fs from "fs";
+import path from "path";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
 import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
-import { banner, getCwd, log } from "@hot-updater/plugin-core";
-import { Command, Option } from "commander";
+import { Command, Option } from "@commander-js/extra-typings";
+import { banner, getCwd, loadConfig, log } from "@hot-updater/plugin-core";
+import { type FingerprintResult, nativeFingerprint } from "@rnef/tools";
+
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import { printBanner } from "./utils/printBanner";
+import { getChannel, setChannel } from "./utils/setChannel";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -21,6 +26,170 @@ program
   .version(version as string);
 
 program.command("init").description("Initialize Hot Updater").action(init);
+
+const fingerprintCommand = program
+  .command("fingerprint")
+  .description("Generate fingerprint");
+
+fingerprintCommand.action(async () => {
+  const config = await loadConfig(null);
+  if (config.updateStrategy === "appVersion") {
+    p.log.error(
+      "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
+    );
+    process.exit(1);
+  }
+
+  const fingerPrintRef = {
+    ios: null as FingerprintResult | null,
+    android: null as FingerprintResult | null,
+  };
+  await p.tasks([
+    {
+      title: "Generating fingerprint (iOS)",
+      task: async () => {
+        const fingerprint = await nativeFingerprint(getCwd(), {
+          platform: "ios",
+          ...config.fingerprint,
+        });
+        fingerPrintRef.ios = fingerprint;
+        return `Fingerprint(iOS): ${fingerprint.hash}`;
+      },
+    },
+    {
+      title: "Generating fingerprint (Android)",
+      task: async () => {
+        const fingerprint = await nativeFingerprint(getCwd(), {
+          platform: "android",
+          ...config.fingerprint,
+        });
+        fingerPrintRef.android = fingerprint;
+        return `Fingerprint(Android): ${fingerprint.hash}`;
+      },
+    },
+  ]);
+
+  const localFingerprintPath = path.join(getCwd(), "fingerprint.json");
+  if (!fs.existsSync(localFingerprintPath)) {
+    return;
+  }
+
+  const readFingerprint = await fs.promises.readFile(
+    localFingerprintPath,
+    "utf-8",
+  );
+  const localFingerprint = JSON.parse(readFingerprint);
+  if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
+    p.log.error(
+      "iOS fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
+    );
+    process.exit(1);
+  }
+
+  if (localFingerprint.android.hash !== fingerPrintRef.android?.hash) {
+    p.log.error(
+      "Android fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
+    );
+    process.exit(1);
+  }
+
+  p.log.success("Fingerprint matched");
+});
+
+fingerprintCommand
+  .command("create")
+  .description("Create fingerprint")
+  .action(async () => {
+    let diffChanged = false;
+    await p.tasks([
+      {
+        title: "Creating fingerprint.json",
+        task: async () => {
+          const config = await loadConfig(null);
+          if (config.updateStrategy === "appVersion") {
+            p.log.error(
+              "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
+            );
+            process.exit(1);
+          }
+
+          const [ios, android] = await Promise.all([
+            nativeFingerprint(getCwd(), {
+              platform: "ios",
+              ...config.fingerprint,
+            }),
+            nativeFingerprint(getCwd(), {
+              platform: "android",
+              ...config.fingerprint,
+            }),
+          ]);
+          const fingerprint = {
+            ios: ios,
+            android: android,
+          };
+          const readFingerprint = await fs.promises.readFile(
+            path.join(getCwd(), "fingerprint.json"),
+            "utf-8",
+          );
+          const localFingerprint = JSON.parse(readFingerprint);
+          if (localFingerprint.ios.hash !== fingerprint.ios.hash) {
+            diffChanged = true;
+          }
+
+          if (localFingerprint.android.hash !== fingerprint.android.hash) {
+            diffChanged = true;
+          }
+
+          await fs.promises.writeFile(
+            path.join(getCwd(), "fingerprint.json"),
+            JSON.stringify(fingerprint, null, 2),
+          );
+          return "Created fingerprint.json";
+        },
+      },
+    ]);
+
+    if (diffChanged) {
+      p.log.success(
+        picocolors.bold(
+          `${picocolors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
+        ),
+      );
+    }
+  });
+
+const channelCommand = program
+  .command("channel")
+  .description("Manage channels");
+
+channelCommand.action(async () => {
+  const androidChannel = await getChannel("android");
+  const iosChannel = await getChannel("ios");
+  p.log.info(
+    `Current Android channel: ${picocolors.green(androidChannel.value)}`,
+  );
+  p.log.info(`  from: ${picocolors.blue(androidChannel.path)}`);
+  p.log.info(`Current iOS channel: ${picocolors.green(iosChannel.value)}`);
+  p.log.info(`  from: ${picocolors.blue(iosChannel.path)}`);
+});
+
+channelCommand
+  .command("set")
+  .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
+  .argument("<channel>", "the channel to set")
+  .action(async (channel) => {
+    const { path: androidPath } = await setChannel("android", channel);
+    p.log.success(`Set Android channel to: ${picocolors.green(channel)}`);
+    p.log.info(`  from: ${picocolors.blue(androidPath)}`);
+
+    const { path: iosPath } = await setChannel("ios", channel);
+    p.log.success(`Set iOS channel to: ${picocolors.green(channel)}`);
+    p.log.info(`  from: ${picocolors.blue(iosPath)}`);
+
+    p.log.success(
+      "You need to rebuild the native app if the channel has changed.",
+    );
+  });
 
 program
   .command("deploy")

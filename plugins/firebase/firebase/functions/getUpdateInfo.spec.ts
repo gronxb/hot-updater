@@ -18,7 +18,7 @@ const createGetUpdateInfo =
   (db: Firestore) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
+    args: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     const collections = [bundlesCollection, targetAppVersionsCollection];
     for (const coll of collections) {
@@ -45,6 +45,8 @@ const createGetUpdateInfo =
           git_commit_hash: bundle.gitCommitHash || null,
           message: bundle.message || null,
           channel: bundle.channel || "production",
+          storage_uri: bundle.storageUri || null,
+          fingerprint_hash: bundle.fingerprintHash || null,
         });
 
         if (bundle.targetAppVersion) {
@@ -64,13 +66,7 @@ const createGetUpdateInfo =
       await writeBatch.commit();
     }
 
-    return await getUpdateInfoFromIndex(db, {
-      appVersion,
-      bundleId,
-      platform,
-      minBundleId,
-      channel,
-    });
+    return await getUpdateInfoFromIndex(db, args);
   };
 
 describe("getUpdateInfo", () => {

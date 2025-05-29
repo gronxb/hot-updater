@@ -1,5 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
-import { merge } from "es-toolkit";
+import { memoize, merge } from "es-toolkit";
 import type {
   BasePluginArgs,
   DatabasePlugin,
@@ -10,19 +10,36 @@ export interface BaseDatabaseUtils {
   cwd: string;
 }
 
-export interface AbstractDatabasePlugin
-  extends Pick<
-    DatabasePlugin,
-    "getBundleById" | "getBundles" | "getChannels" | "onUnmount"
-  > {
-  commitBundle: ({
-    changedSets,
-  }: {
-    changedSets: {
-      operation: "insert" | "update" | "delete";
-      data: Bundle;
-    }[];
-  }) => Promise<void>;
+export interface AbstractDatabasePlugin<TContext = object> {
+  getContext?: () => TContext;
+  getBundleById: (
+    context: TContext,
+    bundleId: string,
+  ) => Promise<Bundle | null>;
+  getBundles: (
+    context: TContext,
+    options?: {
+      where?: {
+        channel?: string;
+        platform?: string;
+      };
+      limit?: number;
+      offset?: number;
+    },
+  ) => Promise<Bundle[]>;
+  getChannels: (context: TContext) => Promise<string[]>;
+  onUnmount?: (context: TContext) => void;
+  commitBundle: (
+    context: TContext,
+    {
+      changedSets,
+    }: {
+      changedSets: {
+        operation: "insert" | "update" | "delete";
+        data: Bundle;
+      }[];
+    },
+  ) => Promise<void>;
 }
 
 /**
@@ -30,34 +47,37 @@ export interface AbstractDatabasePlugin
  *
  * @example
  * ```ts
- * const myDatabasePlugin = createDatabasePlugin("myDatabase", (utils) => {
- *   return {
- *     async getBundleById(bundleId) {
- *       // Implementation to get a bundle by ID
- *       return bundle;
- *     },
- *     async getBundles(options) {
- *       // Implementation to get bundles with options
- *       return bundles;
- *     },
- *     async getChannels() {
- *       // Implementation to get available channels
- *       return channels;
- *     },
- *     async commitBundle({ changedMap }) {
- *       // Implementation to commit changed bundles
- *     }
- *   };
+ * const myDatabasePlugin = createDatabasePlugin("myDatabase", {
+ *   getContext: () => ({
+ *     // Your database client or connection
+ *     dbClient: createDbClient()
+ *   }),
+ *   async getBundleById(context, bundleId) {
+ *     // Implementation to get a bundle by ID using context.dbClient
+ *     return bundle;
+ *   },
+ *   async getBundles(context, options) {
+ *     // Implementation to get bundles with options using context.dbClient
+ *     return bundles;
+ *   },
+ *   async getChannels(context) {
+ *     // Implementation to get available channels using context.dbClient
+ *     return channels;
+ *   },
+ *   async commitBundle(context, { changedSets }) {
+ *     // Implementation to commit changed bundles using context.dbClient
+ *   }
  * });
  * ```
  *
  * @param name - The name of the database plugin
- * @param initializer - A function that initializes the database plugin implementation
+ * @param abstractPlugin - A plugin implementation with context support
+ * @param hooks - Optional hooks for plugin lifecycle events
  * @returns A function that creates a database plugin instance
  */
-export function createDatabasePlugin(
+export function createDatabasePlugin<TContext = object>(
   name: string,
-  abstractPlugin: AbstractDatabasePlugin,
+  abstractPlugin: AbstractDatabasePlugin<TContext>,
   hooks?: DatabasePluginHooks,
 ): (options: BasePluginArgs) => DatabasePlugin {
   const changedMap = new Map<
@@ -72,19 +92,39 @@ export function createDatabasePlugin(
     changedMap.set(data.id, { operation, data });
   };
 
+  const memoizedContext = memoize(
+    abstractPlugin?.getContext ?? ((() => {}) as () => TContext),
+  );
   return (_: BasePluginArgs) => ({
     name,
-    ...abstractPlugin,
+
+    async getBundleById(bundleId: string) {
+      const context = memoizedContext();
+      return abstractPlugin.getBundleById(context, bundleId);
+    },
+
+    async getBundles(options) {
+      const context = memoizedContext();
+      return abstractPlugin.getBundles(context, options);
+    },
+
+    async getChannels() {
+      const context = memoizedContext();
+      return abstractPlugin.getChannels(context);
+    },
+
     async commitBundle() {
       if (!abstractPlugin.commitBundle) {
         throw new Error("commitBundle is not implemented");
       }
-      await abstractPlugin.commitBundle({
+      const context = memoizedContext();
+      await abstractPlugin.commitBundle(context, {
         changedSets: Array.from(changedMap.values()),
       });
       changedMap.clear();
       hooks?.onDatabaseUpdated?.();
     },
+
     async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
       const pendingChange = changedMap.get(targetBundleId);
       if (pendingChange) {
@@ -96,7 +136,7 @@ export function createDatabasePlugin(
         return;
       }
 
-      const currentBundle = await abstractPlugin.getBundleById(targetBundleId);
+      const currentBundle = await this.getBundleById(targetBundleId);
       if (!currentBundle) {
         throw new Error("targetBundleId not found");
       }
@@ -104,8 +144,16 @@ export function createDatabasePlugin(
       const updatedBundle = merge(currentBundle, newBundle);
       markChanged("update", updatedBundle);
     },
+
     async appendBundle(inputBundle: Bundle) {
       markChanged("insert", inputBundle);
     },
+
+    onUnmount: abstractPlugin.onUnmount
+      ? async () => {
+          const context = memoizedContext();
+          await abstractPlugin.onUnmount?.(context);
+        }
+      : undefined,
   });
 }

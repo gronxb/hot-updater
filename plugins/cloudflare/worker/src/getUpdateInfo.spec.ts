@@ -1,9 +1,4 @@
-import {
-  type Bundle,
-  type GetBundlesArgs,
-  NIL_UUID,
-  type UpdateInfo,
-} from "@hot-updater/core";
+import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { beforeAll, beforeEach, describe, inject } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromWorker } from "./getUpdateInfo";
@@ -26,17 +21,20 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel
+      should_force_update, enabled, git_commit_hash, message, channel,
+      storage_uri, fingerprint_hash
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileHash}',
       '${bundle.platform}',
-      '${bundle.targetAppVersion}',
+      ${bundle.targetAppVersion ? `'${bundle.targetAppVersion}'` : "null"},
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"},
-      '${bundle.channel}'
+      '${bundle.channel}',
+      ${bundle.storageUri ? `'${bundle.storageUri}'` : "null"},
+      ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"}
     );
   `;
 };
@@ -45,18 +43,12 @@ const createGetUpdateInfo =
   (db: D1Database) =>
   async (
     bundles: Bundle[],
-    { appVersion, bundleId, platform, minBundleId, channel }: GetBundlesArgs,
+    args: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     if (bundles.length > 0) {
       await db.prepare(createInsertBundleQuerys(bundles)).run();
     }
-    return (await getUpdateInfoFromWorker(db, {
-      appVersion,
-      bundleId,
-      platform,
-      minBundleId: minBundleId || NIL_UUID,
-      channel,
-    })) as UpdateInfo | null;
+    return (await getUpdateInfoFromWorker(db, args)) as UpdateInfo | null;
   };
 
 const createInsertBundleQuerys = (bundles: Bundle[]) => {
