@@ -6,6 +6,7 @@ import {
   getChannel,
   getFingerprintHash,
   getMinBundleId,
+  getReleaseChannel,
   reload,
   updateBundle,
 } from "./native";
@@ -65,12 +66,12 @@ export const HotUpdater = {
    */
   getMinBundleId,
   /**
-   * Fetches the current release channel of the app.
+   * Fetches the current channel of the app.
    *
-   * By default, if no channel is specified, the app is assigned to the 'production' channel.
+   * If no channel is specified, the app is assigned to the 'production' channel.
    *
    * @returns {string} The current release channel of the app
-   *
+   * @default "production"
    * @example
    * ```ts
    * const channel = HotUpdater.getChannel();
@@ -78,6 +79,18 @@ export const HotUpdater = {
    * ```
    */
   getChannel,
+  /**
+   * The initial channel of the native app.
+   *
+   * @returns {string} The current release channel of the app
+   * @default "production"
+   * @example
+   * ```ts
+   * const channel = HotUpdater.getReleaseChannel();
+   * console.log(`Current release channel: ${channel}`);
+   * ```
+   */
+  getReleaseChannel,
   /**
    * Adds a listener to HotUpdater events.
    *

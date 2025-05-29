@@ -41,6 +41,7 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>Release Channel "{HotUpdater.getReleaseChannel()}"</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
       <Text>Fingerprint: {HotUpdater.getFingerprintHash()}</Text>

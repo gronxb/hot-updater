@@ -32,7 +32,7 @@ const getBundleId = () => {
   return bundleId;
 };
 
-export const getFingerprintJson = () => {
+const getFingerprintJson = () => {
   const { updateStrategy } = memoizeLoadConfig(null);
   if (updateStrategy === "appVersion") {
     return null;
@@ -66,6 +66,10 @@ export const getFingerprintJson = () => {
   }
 };
 
+const getOverTheAirChannel = () => {
+  return process.env?.["HOT_UPDATER_CHANNEL"] ?? null;
+};
+
 export class HotUpdaterPlugin implements RspackPluginInstance {
   apply(compiler: Compiler) {
     const fingerprint = getFingerprintJson();
@@ -73,6 +77,7 @@ export class HotUpdaterPlugin implements RspackPluginInstance {
 
     new compiler.webpack.DefinePlugin({
       __HOT_UPDATER_BUNDLE_ID: JSON.stringify(getBundleId()),
+      __HOT_UPDATER_CHANNEL: JSON.stringify(getOverTheAirChannel()),
       __HOT_UPDATER_FINGERPRINT_HASH_IOS: JSON.stringify(
         fingerprint?.iosHash ?? null,
       ),
