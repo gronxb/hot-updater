@@ -8,7 +8,13 @@ import { version } from "@/packageJson";
 import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
-import { banner, getCwd, loadConfig, log } from "@hot-updater/plugin-core";
+import {
+  type ConfigResponse,
+  banner,
+  getCwd,
+  loadConfig,
+  log,
+} from "@hot-updater/plugin-core";
 import { type FingerprintResult, nativeFingerprint } from "@rnef/tools";
 
 import picocolors from "picocolors";
@@ -100,6 +106,37 @@ fingerprintCommand
   .command("create")
   .description("Create fingerprint")
   .action(async () => {
+    const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
+
+    const createFingerprintData = async (config: ConfigResponse) => {
+      const [ios, android] = await Promise.all([
+        nativeFingerprint(getCwd(), {
+          platform: "ios",
+          ...config.fingerprint,
+        }),
+        nativeFingerprint(getCwd(), {
+          platform: "android",
+          ...config.fingerprint,
+        }),
+      ]);
+      return { ios, android };
+    };
+
+    const readLocalFingerprint = async (): Promise<{
+      ios: FingerprintResult | null;
+      android: FingerprintResult | null;
+    } | null> => {
+      try {
+        const content = await fs.promises.readFile(
+          FINGERPRINT_FILE_PATH,
+          "utf-8",
+        );
+        return JSON.parse(content);
+      } catch {
+        return null;
+      }
+    };
+
     let diffChanged = false;
     await p.tasks([
       {
@@ -113,36 +150,20 @@ fingerprintCommand
             process.exit(1);
           }
 
-          const [ios, android] = await Promise.all([
-            nativeFingerprint(getCwd(), {
-              platform: "ios",
-              ...config.fingerprint,
-            }),
-            nativeFingerprint(getCwd(), {
-              platform: "android",
-              ...config.fingerprint,
-            }),
-          ]);
-          const fingerprint = {
-            ios: ios,
-            android: android,
-          };
-          const readFingerprint = await fs.promises.readFile(
-            path.join(getCwd(), "fingerprint.json"),
-            "utf-8",
-          );
-          const localFingerprint = JSON.parse(readFingerprint);
-          if (localFingerprint.ios.hash !== fingerprint.ios.hash) {
-            diffChanged = true;
-          }
+          const newFingerprint = await createFingerprintData(config);
+          const localFingerprint = await readLocalFingerprint();
 
-          if (localFingerprint.android.hash !== fingerprint.android.hash) {
+          if (
+            !localFingerprint ||
+            localFingerprint?.ios?.hash !== newFingerprint.ios.hash ||
+            localFingerprint?.android?.hash !== newFingerprint.android.hash
+          ) {
             diffChanged = true;
           }
 
           await fs.promises.writeFile(
-            path.join(getCwd(), "fingerprint.json"),
-            JSON.stringify(fingerprint, null, 2),
+            FINGERPRINT_FILE_PATH,
+            JSON.stringify(newFingerprint, null, 2),
           );
           return "Created fingerprint.json";
         },
