@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0",
+    "hash": "8b47da71b3b7cf7fa7fd0ad4938207d01d584430",
     "sources": [
       {
         "type": "file",
@@ -16,7 +16,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "b676fd64895352e652d3496817daaa49a380487a"
+        "hash": "ea31a624c8ad27970254880a5298e8860e5dacbf"
       },
       {
         "type": "dir",
@@ -64,16 +64,16 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.17.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "8332cd7e01a1ab52b8725f28fd188a262958fe59"
+        "hash": "7d2331eebff81a81bc936dfbe1fa5fc969972acc"
       }
     ]
   },
   "android": {
-    "hash": "c763ed5729a0bcccf23248ee0183ddf9016c2e6e",
+    "hash": "f7c2b8cf3e5a6ca4c77e3cee38a805e715974328",
     "sources": [
       {
         "type": "file",
@@ -89,7 +89,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "cbf3846cf681b72229bc77c779d893313dcff0df"
+        "hash": "2d19f916224a07cb61d2ae3f034a0c0b982a1ebe"
       },
       {
         "type": "dir",
