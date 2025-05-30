@@ -1,5 +1,13 @@
 # @hot-updater/console
 
+## 0.18.1
+
+### Patch Changes
+
+- 8bf8f8f: rspress 2.0.0 and llms.txt
+  - @hot-updater/core@0.18.1
+  - @hot-updater/plugin-core@0.18.1
+
 ## 0.18.0
 
 ### Minor Changes
