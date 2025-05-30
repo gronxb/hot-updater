@@ -128,14 +128,7 @@ fingerprintCommand
           FINGERPRINT_FILE_PATH,
           "utf-8",
         );
-        try {
-          return JSON.parse(content);
-        } catch (parseError) {
-          p.log.error(
-            `Error parsing ${FINGERPRINT_FILE_PATH}. Please ensure it is a valid JSON file or delete it to regenerate.`,
-          );
-          process.exit(1);
-        }
+        return JSON.parse(content);
       } catch {
         return null;
       }
@@ -159,8 +152,8 @@ fingerprintCommand
 
           if (
             !localFingerprint ||
-            localFingerprint.ios.hash !== newFingerprint.ios.hash ||
-            localFingerprint.android.hash !== newFingerprint.android.hash
+            localFingerprint?.ios?.hash !== newFingerprint.ios.hash ||
+            localFingerprint?.android?.hash !== newFingerprint.android.hash
           ) {
             diffChanged = true;
           }
