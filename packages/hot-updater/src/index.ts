@@ -122,7 +122,10 @@ fingerprintCommand
       return { ios, android };
     };
 
-    const readLocalFingerprint = async () => {
+    const readLocalFingerprint = async (): Promise<{
+      ios: FingerprintResult | null;
+      android: FingerprintResult | null;
+    } | null> => {
       try {
         const content = await fs.promises.readFile(
           FINGERPRINT_FILE_PATH,
