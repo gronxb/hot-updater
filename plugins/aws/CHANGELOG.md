@@ -1,5 +1,11 @@
 # @hot-updater/aws
 
+## 0.18.1
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.18.1
+
 ## 0.18.0
 
 ### Minor Changes
