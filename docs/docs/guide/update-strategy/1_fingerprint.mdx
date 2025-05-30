@@ -8,7 +8,7 @@ The "Fingerprint" update strategy in `hot-updater` leverages Expo's [`@expo/fing
 
 ## Core Concepts
 
-*   **Fingerprint**: This is a hash value representing the current state of your project's native code. It changes whenever there are modifications to native dependencies, direct native code edits, or Expo SDK updates.
+*   **Fingerprint**: This is a hash value (e.g., `8b47da71b3b7cf7fa7fd0ad4938207d01d584430`) representing the current state of your project's native code. It's calculated every time the CLI is run. It changes whenever there are modifications to native dependencies, direct native code edits, or Expo SDK updates.
 *   **Role**: When you run the `hot-updater deploy` command, `hot-updater` compares the stored fingerprint hash. It then ensures that updates are only sent to clients whose native version is compatible with the JavaScript bundle being deployed.
 *   **Automatic Injection**: Each time `hot-updater` builds and deploys a JavaScript bundle, it automatically injects the current project's fingerprint hash into that bundle. The client application uses this injected fingerprint to verify compatibility with its own native code.
 
@@ -25,21 +25,38 @@ export default defineConfig({
 });
 ```
 
+The fingerprint configuration also helps determine when builds should be cached and invalidated in non-standard settings, such as when you have git submodules in your project:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... other configurations
+  updateStrategy: "fingerprint",
+  fingerprint: {
+    extraSources: ["./git-submodule"], // Add extra sources to include in fingerprint calculation
+    ignorePaths: ["./temp"], // Ignore paths during fingerprint calculation
+  },
+});
+```
+
 ## Managing and Updating Fingerprints
 
 It's crucial to check and, if necessary, update the fingerprint whenever changes are made to the native code.
 
 1.  **Check Current Fingerprint**:
-    ```bash
-    hot-updater fingerprint
-    ```
+
+    <PackageManagerTabs command={{
+      npm: "npx hot-updater fingerprint",
+      pnpm: "pnpm hot-updater fingerprint",
+      yarn: "yarn hot-updater fingerprint",
+    }} />
+
     This command calculates the current project's fingerprint and shows whether it matches the stored value.
 
 2.  **Create a New Fingerprint**:
     If the command above indicates a mismatch, you must generate a new fingerprint using:
-    ```bash
-    hot-updater fingerprint create
-    ```
+
     <PackageManagerTabs command={{
       npm: "npx hot-updater fingerprint create",
       pnpm: "pnpm hot-updater fingerprint create",
@@ -72,7 +89,7 @@ You can test if the update check endpoint, configured via the `hot-updater init`
 Example of testing with `curl`:
 
 ```bash
-curl "https://your-update-endpoint.com/check-update/fingerprint/ios/11142b9062165fa48665f5efa095dd94e9e45eb0/default/0/0"
+curl "https://your-update-endpoint.com/check-update/fingerprint/ios/11142b9062165fa48665f5efa095dd94e9e45eb0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000"
 ```
 
 **Request Parameter Descriptions:**
