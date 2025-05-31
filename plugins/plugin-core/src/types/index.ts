@@ -1,4 +1,5 @@
 import type { Bundle, Platform } from "@hot-updater/core";
+import type { PaginationInfo } from "../createDatabasePlugin";
 
 export type { Platform, Bundle } from "@hot-updater/core";
 
@@ -14,13 +15,13 @@ export interface DatabasePlugin {
   getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
   getBundles: (options?: {
-    where?: {
-      channel?: string;
-      platform?: Platform;
-    };
+    where?: { channel?: string; platform?: string };
     limit?: number;
     offset?: number;
-  }) => Promise<Bundle[]>;
+  }) => Promise<{
+    data: Bundle[];
+    pagination: PaginationInfo;
+  }>;
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,
@@ -36,10 +37,7 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  build: (args: {
-    platform: Platform;
-    channel: string;
-  }) => Promise<{
+  build: (args: { platform: Platform; channel: string }) => Promise<{
     buildPath: string;
     bundleId: string;
     channel: string;
