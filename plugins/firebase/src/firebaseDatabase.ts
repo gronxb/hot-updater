@@ -1,9 +1,21 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePluginHooks,
+  PaginationInfo,
+} from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 
 type FirestoreData = admin.firestore.DocumentData;
+
+const DEFAULT_PAGINATION: PaginationInfo = {
+  total: 0,
+  hasNextPage: false,
+  hasPreviousPage: false,
+  currentPage: 1,
+  totalPages: 1,
+};
 
 const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   channel: firestoreData.channel,
@@ -65,24 +77,25 @@ export const firebaseDatabase = (
 
       async getBundles(context, options) {
         const { where, limit, offset = 0 } = options ?? {};
-
         let query: admin.firestore.Query<FirestoreData> =
           context.bundlesCollection;
 
         if (where?.channel) {
           query = query.where("channel", "==", where.channel);
         }
-
         if (where?.platform) {
           query = query.where("platform", "==", where.platform);
         }
 
         query = query.orderBy("id", "desc");
 
+        const totalCountQuery = query;
+        const totalSnapshot = await totalCountQuery.get();
+        const total = totalSnapshot.size;
+
         if (offset) {
           query = query.offset(offset);
         }
-
         if (limit) {
           query = query.limit(limit);
         }
@@ -90,15 +103,37 @@ export const firebaseDatabase = (
         const querySnapshot = await query.get();
 
         if (querySnapshot.empty) {
-          bundles = [];
-          return bundles;
+          return {
+            data: [],
+            pagination: {
+              total: 0,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 0,
+            },
+          };
         }
 
         bundles = querySnapshot.docs.map((doc) =>
           convertToBundle(doc.data() as SnakeCaseBundle),
         );
 
-        return bundles;
+        const currentPage = Math.floor(offset / (limit || 1)) + 1;
+        const totalPages = limit ? Math.ceil(total / limit) : 1;
+        const hasNextPage = offset + (limit || 0) < total;
+        const hasPreviousPage = offset > 0;
+
+        return {
+          data: bundles,
+          pagination: {
+            total,
+            hasNextPage,
+            hasPreviousPage,
+            currentPage,
+            totalPages,
+          },
+        };
       },
 
       async getChannels(context) {
