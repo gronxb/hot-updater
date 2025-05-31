@@ -9,6 +9,13 @@ import type {
 export interface BaseDatabaseUtils {
   cwd: string;
 }
+export interface PagenationInfo {
+  total: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  currentPage: number;
+  totalPages: number;
+}
 
 export interface AbstractDatabasePlugin<TContext = object> {
   getContext?: () => TContext;
@@ -19,14 +26,14 @@ export interface AbstractDatabasePlugin<TContext = object> {
   getBundles: (
     context: TContext,
     options?: {
-      where?: {
-        channel?: string;
-        platform?: string;
-      };
+      where?: { channel?: string; platform?: string };
       limit?: number;
       offset?: number;
     },
-  ) => Promise<Bundle[]>;
+  ) => Promise<{
+    data: Bundle[];
+    pagenation: PagenationInfo;
+  }>;
   getChannels: (context: TContext) => Promise<string[]>;
   onUnmount?: (context: TContext) => void;
   commitBundle: (
