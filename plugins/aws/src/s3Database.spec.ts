@@ -482,8 +482,8 @@ describe("s3Database plugin", () => {
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
     // Assert: Returned bundle list should only include valid bundles
-    expect(bundles).toHaveLength(3);
-    expect(bundles).toEqual(
+    expect(bundles.data).toHaveLength(3);
+    expect(bundles.data).toEqual(
       expect.arrayContaining([iosBundle1, iosBundle2, androidBundle1]),
     );
   });
@@ -551,8 +551,8 @@ describe("s3Database plugin", () => {
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
     // Assert: All bundles from all channels should be loaded
-    expect(bundles).toHaveLength(5);
-    expect(bundles).toEqual(
+    expect(bundles.data).toHaveLength(5);
+    expect(bundles.data).toEqual(
       expect.arrayContaining([
         productionIosBundle,
         betaIosBundle,
@@ -679,7 +679,7 @@ describe("s3Database plugin", () => {
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
     // Descending order: "C" > "B" > "A"
-    expect(bundles).toEqual([bundleC, bundleB, bundleA]);
+    expect(bundles.data).toEqual([bundleC, bundleB, bundleA]);
   });
 
   it("should return a bundle without internal keys from getBundleById", async () => {
@@ -727,7 +727,7 @@ describe("s3Database plugin", () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
-    expect(bundles).toEqual([]);
+    expect(bundles.data).toEqual([]);
   });
 
   it("should append multiple bundles and commit them to the correct update.json files", async () => {
@@ -827,8 +827,8 @@ describe("s3Database plugin", () => {
     });
 
     // Assert: Both bundles should be loaded
-    expect(bundles).toHaveLength(3);
-    expect(bundles).toEqual([iosBundle2, androidBundle, iosBundle]);
+    expect(bundles.data).toHaveLength(3);
+    expect(bundles.data).toEqual([iosBundle2, androidBundle, iosBundle]);
 
     // Sanity check: getBundleById works for both
     const foundIos = await plugin.getBundleById(
