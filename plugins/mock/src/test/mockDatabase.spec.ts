@@ -41,7 +41,7 @@ describe("mockDatabase", () => {
 
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
-    expect(bundles).toEqual([]);
+    expect(bundles.data).toEqual([]);
   });
 
   it("should return a database plugin with initial bundles", async () => {
@@ -52,7 +52,7 @@ describe("mockDatabase", () => {
 
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
-    expect(bundles).toEqual(DEFAULT_BUNDLES_MOCK);
+    expect(bundles.data).toEqual(DEFAULT_BUNDLES_MOCK);
   });
 
   it("should append a bundle", async () => {
@@ -62,7 +62,7 @@ describe("mockDatabase", () => {
 
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
-    expect(bundles).toEqual([DEFAULT_BUNDLES_MOCK[0]]);
+    expect(bundles.data).toEqual([DEFAULT_BUNDLES_MOCK[0]]);
   });
 
   it("should update a bundle", async () => {
@@ -77,7 +77,7 @@ describe("mockDatabase", () => {
 
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
-    expect(bundles).toEqual([
+    expect(bundles.data).toEqual([
       {
         ...DEFAULT_BUNDLES_MOCK[0],
         enabled: false,
@@ -117,6 +117,6 @@ describe("mockDatabase", () => {
 
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
-    expect(bundles).toEqual(DEFAULT_BUNDLES_MOCK);
+    expect(bundles.data).toEqual(DEFAULT_BUNDLES_MOCK);
   });
 });
