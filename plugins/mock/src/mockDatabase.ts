@@ -1,8 +1,9 @@
-import type {
-  BasePluginArgs,
-  Bundle,
-  DatabasePlugin,
-  DatabasePluginHooks,
+import {
+  calculatePagination,
+  type BasePluginArgs,
+  type Bundle,
+  type DatabasePlugin,
+  type DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
 
@@ -40,9 +41,9 @@ export const mockDatabase =
         return bundles.find((b) => b.id === bundleId) ?? null;
       },
       async getBundles(options) {
-        const { where, limit, offset = 0 } = options ?? {};
-
+        const { where, limit, offset } = options ?? {};
         await sleep(minMax(latency.min, latency.max));
+
         const filteredBundles = bundles.filter((b) => {
           if (where?.channel && b.channel !== where.channel) {
             return false;
@@ -52,10 +53,18 @@ export const mockDatabase =
           }
           return true;
         });
-        if (limit) {
-          return filteredBundles.slice(offset, offset + limit);
-        }
-        return filteredBundles;
+
+        const total = filteredBundles.length;
+        const data = limit
+          ? filteredBundles.slice(offset, offset + limit)
+          : filteredBundles;
+
+        const pagination = calculatePagination(total, { limit, offset });
+
+        return {
+          data,
+          pagination,
+        };
       },
       async getChannels() {
         await sleep(minMax(latency.min, latency.max));
