@@ -189,7 +189,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
       async getBundles(context, options) {
         // Always load the latest data from S3.
         let allBundles = await reloadBundles(context);
-        const { where, limit, offset = 0 } = options ?? {};
+        const { where, limit, offset = 0 } = options;
 
         // Apply filtering conditions first to get the total count after filtering
         if (where) {
@@ -215,9 +215,14 @@ export const createBlobDatabasePlugin = <TContext = object>({
           paginatedData = paginatedData.slice(0, limit);
         }
 
+        const paginationOptions = {
+          limit,
+          offset,
+        };
+
         return {
           data: paginatedData,
-          pagination: calculatePagination(total, options),
+          pagination: calculatePagination(total, paginationOptions),
         };
       },
 

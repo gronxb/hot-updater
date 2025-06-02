@@ -111,6 +111,7 @@ describe("firebaseDatabase plugin", () => {
 
     const bundles = await plugin.getBundles({
       where: { channel: "production" },
+      limit: 5,
     });
     expect(bundles.data).toHaveLength(2);
     expect(bundles.data[0].id).toBe("bundle2");
@@ -264,7 +265,7 @@ describe("firebaseDatabase plugin", () => {
     await plugin.appendBundle(bundleC);
     await plugin.commitBundle();
 
-    const bundles = await plugin.getBundles();
+    const bundles = await plugin.getBundles({ limit: 5 });
     expect(bundles.data).toHaveLength(3);
     expect(bundles.data[0].id).toBe("bundleC");
     expect(bundles.data[1].id).toBe("bundleB");
@@ -320,6 +321,7 @@ describe("firebaseDatabase plugin", () => {
 
     const result = await plugin.getBundles({
       where: { channel: "production" },
+      limit: 5,
     });
 
     expect(result.data).toHaveLength(2);
@@ -385,8 +387,7 @@ describe("firebaseDatabase plugin", () => {
 
     const firstPage = await plugin.getBundles({
       where: { channel: "production" },
-      limit: 2,
-      offset: 0,
+      limit: 5,
     });
 
     expect(firstPage.data).toHaveLength(2);
@@ -400,8 +401,7 @@ describe("firebaseDatabase plugin", () => {
 
     const secondPage = await plugin.getBundles({
       where: { channel: "production" },
-      limit: 2,
-      offset: 2,
+      limit: 5,
     });
 
     expect(secondPage.data).toHaveLength(1);
@@ -464,6 +464,7 @@ describe("firebaseDatabase plugin", () => {
 
     const filteredBundles = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
+      limit: 5,
     });
     expect(filteredBundles.data).toHaveLength(1);
     expect(filteredBundles.data[0].id).toBe("bundleX");

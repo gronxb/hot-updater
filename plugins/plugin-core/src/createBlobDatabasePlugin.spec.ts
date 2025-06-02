@@ -142,7 +142,7 @@ describe("blobDatabase plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -214,7 +214,7 @@ describe("blobDatabase plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20 });
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -317,7 +317,7 @@ describe("blobDatabase plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20 });
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -415,7 +415,7 @@ describe("blobDatabase plugin", () => {
       ),
     ]);
 
-    const result = await plugin.getBundles();
+    const result = await plugin.getBundles({ limit: 20 });
     // Assert: Returned bundle list should only include valid bundles
     expect(result.data).toHaveLength(3);
     expect(result.data).toEqual(
@@ -490,7 +490,7 @@ describe("blobDatabase plugin", () => {
     ]);
 
     // Act: Load all bundles from S3
-    const result = await plugin.getBundles();
+    const result = await plugin.getBundles({ limit: 20 });
     // Assert: All bundles from all channels should be loaded
     expect(result.data).toHaveLength(5);
     expect(result.data).toEqual(
@@ -547,7 +547,7 @@ describe("blobDatabase plugin", () => {
     ]);
 
     // Act: Load bundles, update channel, and commit
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("channel-move-test", {
       channel: "production",
     });
@@ -627,7 +627,7 @@ describe("blobDatabase plugin", () => {
       bundleA,
     ]);
     fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
-    const result = await plugin.getBundles();
+    const result = await plugin.getBundles({ limit: 20 });
     // Descending order: "C" > "B" > "A"
     expect(result.data).toEqual([bundleC, bundleB, bundleA]);
     expect(result.pagination).toEqual({
@@ -650,7 +650,7 @@ describe("blobDatabase plugin", () => {
     fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
       bundle,
     ]);
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20 });
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -683,7 +683,7 @@ describe("blobDatabase plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const result = await plugin.getBundles();
+    const result = await plugin.getBundles({ limit: 20 });
     expect(result.data).toEqual([]);
     expect(result.pagination).toEqual({
       total: 0,

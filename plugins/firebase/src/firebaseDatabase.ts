@@ -67,7 +67,7 @@ export const firebaseDatabase = (
       },
 
       async getBundles(context, options) {
-        const { where, limit, offset } = options;
+        const { where, limit, offset = 0 } = options;
 
         let query: admin.firestore.Query<FirestoreData> =
           context.bundlesCollection;
