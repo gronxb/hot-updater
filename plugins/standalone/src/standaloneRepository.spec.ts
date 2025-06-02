@@ -68,7 +68,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const bundles = await repo.getBundles();
+    const bundles = await repo.getBundles({ limit: 20, offset: 0 });
     expect(bundles).toEqual(testBundles);
     expect(callCount).toBe(1);
   });
@@ -82,8 +82,8 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.getBundles();
-    const refreshed = await repo.getBundles();
+    await repo.getBundles({ limit: 20, offset: 0 });
+    const refreshed = await repo.getBundles({ limit: 20, offset: 0 });
     expect(refreshed).toEqual(testBundles);
     expect(callCount).toBe(2);
   });
@@ -140,7 +140,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await expect(repo.getBundles()).rejects.toThrow(
+    await expect(repo.getBundles({ limit: 20, offset: 0 })).rejects.toThrow(
       "API Error: Internal Server Error",
     );
   });
@@ -292,7 +292,7 @@ describe("Standalone Repository Plugin (Custom Routes)", () => {
       }),
     );
 
-    const bundles = await customRepo.getBundles();
+    const bundles = await customRepo.getBundles({ limit: 20, offset: 0 });
     expect(bundles).toEqual(testBundles);
   });
 
