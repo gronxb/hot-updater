@@ -69,7 +69,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
 
     const bundles = await repo.getBundles({ limit: 20, offset: 0 });
-    expect(bundles).toEqual(testBundles);
+    expect(bundles.data).toEqual(testBundles);
     expect(callCount).toBe(1);
   });
 
@@ -293,7 +293,7 @@ describe("Standalone Repository Plugin (Custom Routes)", () => {
     );
 
     const bundles = await customRepo.getBundles({ limit: 20, offset: 0 });
-    expect(bundles).toEqual(testBundles);
+    expect(bundles.data).toEqual(testBundles);
   });
 
   it("getBundleById: uses custom retrieve route and headers", async () => {
