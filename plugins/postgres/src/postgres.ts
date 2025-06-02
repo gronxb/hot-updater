@@ -3,7 +3,10 @@ import type {
   DatabasePluginHooks,
   Platform,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
 import type { Database } from "./types";
@@ -62,10 +65,26 @@ export const postgres = (
       },
 
       async getBundles(context, options) {
-        const { where, limit, offset = 0 } = options ?? {};
+        const { where, limit, offset } = options ?? {};
+
+        let countQuery = context.db.selectFrom("bundles");
+        if (where?.channel) {
+          countQuery = countQuery.where("channel", "=", where.channel);
+        }
+        if (where?.platform) {
+          countQuery = countQuery.where(
+            "platform",
+            "=",
+            where.platform as Platform,
+          );
+        }
+
+        const countResult = await countQuery
+          .select(context.db.fn.count<number>("id").as("total"))
+          .executeTakeFirst();
+        const total = countResult?.total || 0;
 
         let query = context.db.selectFrom("bundles").orderBy("id", "desc");
-
         if (where?.channel) {
           query = query.where("channel", "=", where.channel);
         }
@@ -84,7 +103,7 @@ export const postgres = (
 
         const data = await query.selectAll().execute();
 
-        return data.map((bundle) => ({
+        const bundles = data.map((bundle) => ({
           enabled: bundle.enabled,
           shouldForceUpdate: bundle.should_force_update,
           fileHash: bundle.file_hash,
@@ -97,6 +116,13 @@ export const postgres = (
           storageUri: bundle.storage_uri,
           fingerprintHash: bundle.fingerprint_hash,
         })) as Bundle[];
+
+        const pagination = calculatePagination(total, { limit, offset });
+
+        return {
+          data: bundles,
+          pagination,
+        };
       },
 
       async getChannels(context) {
