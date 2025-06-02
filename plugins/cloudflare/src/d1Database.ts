@@ -1,6 +1,13 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePluginHooks,
+  PaginationOptions,
+} from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 import minify from "pg-minify";
 
@@ -40,10 +47,8 @@ export const d1Database = (
           return found;
         }
 
-        const sql = minify(
-          /* sql */ `
-          SELECT * FROM bundles WHERE id = ? LIMIT 1`,
-        );
+        const sql = minify(/* sql */ `
+          SELECT * FROM bundles WHERE id = ? LIMIT 1`);
         const singlePage = await context.cf.d1.database.query(
           config.databaseId,
           {
@@ -76,38 +81,61 @@ export const d1Database = (
         } as Bundle;
       },
 
-      async getBundles(context, options) {
-        const { where, limit, offset = 0 } = options ?? {};
+      async getBundles(
+        context,
+        options: {
+          where?: { channel?: string; platform?: string };
+          limit: number;
+          offset: number;
+        },
+      ) {
+        const { where, limit, offset } = options;
 
-        let sql = "SELECT * FROM bundles";
-        const params: any[] = [];
-
+        // Count query for total records
+        let countSql = "SELECT COUNT(*) as total FROM bundles";
+        const countParams: any[] = [];
         const conditions: string[] = [];
+
         if (where?.channel) {
           conditions.push("channel = ?");
-          params.push(where.channel);
+          countParams.push(where.channel);
         }
-
         if (where?.platform) {
           conditions.push("platform = ?");
-          params.push(where.platform);
+          countParams.push(where.platform);
         }
 
         if (conditions.length > 0) {
+          countSql += ` WHERE ${conditions.join(" AND ")}`;
+        }
+
+        // Get total count
+        const countResult = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql: minify(countSql),
+            params: countParams,
+          },
+        );
+
+        const totalCount =
+          (await resolvePage<{ total: number }>(countResult))[0]?.total || 0;
+
+        // Data query
+        let sql = "SELECT * FROM bundles";
+        const params: any[] = [];
+
+        if (conditions.length > 0) {
           sql += ` WHERE ${conditions.join(" AND ")}`;
+          params.push(...countParams);
         }
 
         sql += " ORDER BY id DESC";
-
-        if (limit) {
-          sql += " LIMIT ?";
-          params.push(limit);
-        }
-
-        if (offset) {
-          sql += " OFFSET ?";
-          params.push(offset);
-        }
+        sql += " LIMIT ?";
+        params.push(limit);
+        sql += " OFFSET ?";
+        params.push(offset);
 
         const singlePage = await context.cf.d1.database.query(
           config.databaseId,
@@ -120,9 +148,8 @@ export const d1Database = (
 
         const rows = await resolvePage<SnakeCaseBundle>(singlePage);
 
-        if (rows.length === 0) {
-          bundles = [];
-        } else {
+        bundles = [];
+        if (rows.length > 0) {
           bundles = rows.map((row) => ({
             id: row.id,
             channel: row.channel,
@@ -138,15 +165,21 @@ export const d1Database = (
             metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
           }));
         }
-        return bundles;
+
+        // Calculate pagination using utility function
+        const paginationOptions: PaginationOptions = { limit, offset };
+        const pagination = calculatePagination(totalCount, paginationOptions);
+
+        return {
+          data: bundles,
+          pagination,
+        };
       },
 
       async getChannels(context) {
-        const sql = minify(
-          /* sql */ `
+        const sql = minify(/* sql */ `
           SELECT channel FROM bundles GROUP BY channel
-        `,
-        );
+        `);
         const singlePage = await context.cf.d1.database.query(
           config.databaseId,
           {
