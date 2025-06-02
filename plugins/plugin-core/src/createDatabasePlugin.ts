@@ -4,17 +4,11 @@ import type {
   BasePluginArgs,
   DatabasePlugin,
   DatabasePluginHooks,
+  PaginationInfo,
 } from "./types";
 
 export interface BaseDatabaseUtils {
   cwd: string;
-}
-export interface PaginationInfo {
-  total: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  currentPage: number;
-  totalPages: number;
 }
 
 export interface AbstractDatabasePlugin<TContext = object> {

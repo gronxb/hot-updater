@@ -1,18 +1,10 @@
 import { orderBy } from "es-toolkit";
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, DatabasePluginHooks } from "./types";
+import type { Bundle, DatabasePluginHooks, PaginationInfo } from "./types";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
   _oldUpdateJsonKey?: string;
-}
-
-export interface PaginationInfo {
-  total: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  currentPage: number;
-  totalPages: number;
 }
 
 // Helper function to remove internal management keys

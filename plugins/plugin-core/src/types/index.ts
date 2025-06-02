@@ -1,10 +1,17 @@
 import type { Bundle, Platform } from "@hot-updater/core";
-import type { PaginationInfo } from "../createDatabasePlugin";
 
 export type { Platform, Bundle } from "@hot-updater/core";
 
 export interface BasePluginArgs {
   cwd: string;
+}
+
+export interface PaginationInfo {
+  total: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  currentPage: number;
+  totalPages: number;
 }
 
 export interface BuildPluginConfig {
