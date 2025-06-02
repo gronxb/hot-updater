@@ -7,6 +7,14 @@ interface BundleWithUpdateJsonKey extends Bundle {
   _oldUpdateJsonKey?: string;
 }
 
+export interface PaginationInfo {
+  total: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  currentPage: number;
+  totalPages: number;
+}
+
 // Helper function to remove internal management keys
 function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   const { _updateJsonKey, _oldUpdateJsonKey, ...pureBundle } = bundle;
@@ -187,13 +195,12 @@ export const createBlobDatabasePlugin = <TContext = object>({
 
       async getBundles(context, options) {
         // Always load the latest data from S3.
-        let bundles = await reloadBundles(context);
+        let allBundles = await reloadBundles(context);
         const { where, limit, offset = 0 } = options ?? {};
-        // Sort bundles in descending order by id.
 
-        // Apply filtering conditions.
+        // Apply filtering conditions first to get the total count after filtering
         if (where) {
-          bundles = bundles.filter((bundle) => {
+          allBundles = allBundles.filter((bundle) => {
             return Object.entries(where).every(
               ([key, value]) =>
                 value === undefined ||
@@ -203,19 +210,43 @@ export const createBlobDatabasePlugin = <TContext = object>({
           });
         }
 
-        if (offset > 0) {
-          bundles = bundles.slice(offset);
-        }
+        const total = allBundles.length;
+
+        // Calculate pagination info
+        const pageSize = limit || total;
+        const currentPage = offset + 1;
+        const totalPages = limit ? Math.ceil(total / limit) : 1;
+        const hasNextPage = limit ? (offset + 1) * limit < total : false;
+        const hasPreviousPage = offset > 0;
+
+        // Apply pagination
+        let paginatedBundles = allBundles;
         if (limit) {
-          bundles = bundles.slice(0, limit);
+          paginatedBundles = paginatedBundles.slice(
+            offset * limit,
+            offset * limit + limit,
+          );
+        } else {
+          paginatedBundles = paginatedBundles.slice(offset * pageSize);
         }
 
-        return bundles.map(removeBundleInternalKeys);
+        const pagination: PaginationInfo = {
+          total,
+          hasNextPage,
+          hasPreviousPage,
+          currentPage,
+          totalPages,
+        };
+
+        return {
+          data: paginatedBundles.map(removeBundleInternalKeys),
+          pagination,
+        };
       },
 
       async getChannels(context) {
-        const allBundles = await this.getBundles(context);
-        return [...new Set(allBundles.map((bundle) => bundle.channel))];
+        const result = await this.getBundles(context);
+        return [...new Set(result.data.map((bundle) => bundle.channel))];
       },
 
       async commitBundle(context, { changedSets }) {
