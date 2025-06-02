@@ -44,7 +44,7 @@ export const ensureInstallPackages = async (buildPluginPackages: {
             ...dependenciesToInstall.map(ensurePackageVersion),
           ]);
 
-          if (result.stderr) {
+          if (result.exitCode !== 0 && result.stderr) {
             p.log.error(result.stderr);
             process.exit(1);
           }
@@ -72,7 +72,7 @@ export const ensureInstallPackages = async (buildPluginPackages: {
             packageManager === "yarn" ? "--dev" : "--save-dev",
           ]);
 
-          if (result.stderr) {
+          if (result.exitCode !== 0 && result.stderr) {
             p.log.error(result.stderr);
             process.exit(1);
           }

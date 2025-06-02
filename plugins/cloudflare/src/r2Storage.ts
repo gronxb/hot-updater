@@ -46,9 +46,8 @@ export const r2Storage =
         const filename = path.basename(bundlePath);
 
         const Key = [bundleId, filename].join("/");
-
         try {
-          const { stderr } = await wrangler(
+          const { stderr, exitCode } = await wrangler(
             "r2",
             "object",
             "put",
@@ -58,7 +57,7 @@ export const r2Storage =
             ...(contentType ? ["--content-type", contentType] : []),
             "--remote",
           );
-          if (stderr) {
+          if (exitCode !== 0 && stderr) {
             throw new Error(stderr);
           }
         } catch (error) {
