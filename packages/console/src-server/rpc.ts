@@ -9,6 +9,9 @@ import {
 import { Hono } from "hono";
 import typia from "typia";
 
+const DEFAULT_PAGE_LIMIT = 20;
+const DEFAULT_PAGE_OFFSET = 0;
+
 const queryBundlesSchema = typia.createValidate<{
   channel?: string;
   platform?: "ios" | "android";
@@ -78,16 +81,25 @@ export const rpc = new Hono()
   })
   .get("/bundles", typiaValidator("query", queryBundlesSchema), async (c) => {
     try {
-      const query = c.req.valid("query");
+      const rawQuery = c.req.valid("query");
+
+      const query = {
+        channel: rawQuery.channel ?? undefined,
+        platform: rawQuery.platform ?? undefined,
+        limit: rawQuery.limit ?? DEFAULT_PAGE_LIMIT,
+        offset: rawQuery.offset ?? DEFAULT_PAGE_OFFSET,
+      };
+
       const { databasePlugin } = await prepareConfig();
       const bundles = await databasePlugin.getBundles({
         where: {
-          channel: query.channel ?? undefined,
-          platform: query.platform ?? undefined,
+          channel: query.channel,
+          platform: query.platform,
         },
-        limit: query.limit ? Number(query.limit) : 20,
-        offset: query.offset ? Number(query.offset) : 0,
+        limit: Number(query.limit),
+        offset: Number(query.offset),
       });
+
       return c.json(bundles ?? []);
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
