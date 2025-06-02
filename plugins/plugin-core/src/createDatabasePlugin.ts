@@ -19,10 +19,10 @@ export interface AbstractDatabasePlugin<TContext = object> {
   ) => Promise<Bundle | null>;
   getBundles: (
     context: TContext,
-    options?: {
+    options: {
       where?: { channel?: string; platform?: string };
-      limit?: number;
-      offset?: number;
+      limit: number;
+      offset: number;
     },
   ) => Promise<{
     data: Bundle[];

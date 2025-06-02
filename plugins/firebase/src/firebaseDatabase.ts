@@ -1,9 +1,5 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabasePluginHooks,
-  PaginationInfo,
-} from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import {
   createDatabasePlugin,
   calculatePagination,
@@ -11,14 +7,6 @@ import {
 import * as admin from "firebase-admin";
 
 type FirestoreData = admin.firestore.DocumentData;
-
-const DEFAULT_PAGINATION: PaginationInfo = {
-  total: 0,
-  hasNextPage: false,
-  hasPreviousPage: false,
-  currentPage: 1,
-  totalPages: 1,
-};
 
 const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   channel: firestoreData.channel,
@@ -79,7 +67,8 @@ export const firebaseDatabase = (
       },
 
       async getBundles(context, options) {
-        const { where, limit, offset = 0 } = options ?? {};
+        const { where, limit, offset } = options;
+
         let query: admin.firestore.Query<FirestoreData> =
           context.bundlesCollection;
 
@@ -109,9 +98,14 @@ export const firebaseDatabase = (
           convertToBundle(doc.data() as SnakeCaseBundle),
         );
 
+        const paginationOptions = {
+          limit: limit,
+          offset: offset,
+        };
+
         return {
           data: bundles,
-          pagination: calculatePagination(total, options),
+          pagination: calculatePagination(total, paginationOptions),
         };
       },
 

@@ -222,7 +222,12 @@ export const createBlobDatabasePlugin = <TContext = object>({
       },
 
       async getChannels(context) {
-        const result = await this.getBundles(context);
+        const allBundles = await reloadBundles(context);
+        const total = allBundles.length;
+        const result = await this.getBundles(context, {
+          limit: total,
+          offset: 0,
+        });
         return [...new Set(result.data.map((bundle) => bundle.channel))];
       },
 

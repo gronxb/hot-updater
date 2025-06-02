@@ -1,8 +1,8 @@
 import type { Bundle, PaginationInfo } from "./types";
 
 export interface PaginationOptions {
-  limit?: number;
-  offset?: number;
+  limit: number;
+  offset: number;
 }
 
 export interface PaginatedResult {
@@ -15,9 +15,9 @@ export interface PaginatedResult {
  */
 export function calculatePagination(
   total: number,
-  options?: PaginationOptions,
+  options: PaginationOptions,
 ): PaginationInfo {
-  const { limit, offset = 0 } = options ?? {};
+  const { limit, offset } = options;
 
   if (total === 0) {
     return {
@@ -29,9 +29,9 @@ export function calculatePagination(
     };
   }
 
-  const currentPage = Math.floor(offset / (limit || 1)) + 1;
-  const totalPages = limit ? Math.ceil(total / limit) : 1;
-  const hasNextPage = offset + (limit || 0) < total;
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(total / limit);
+  const hasNextPage = offset + limit < total;
   const hasPreviousPage = offset > 0;
 
   return {

@@ -21,10 +21,10 @@ export interface BuildPluginConfig {
 export interface DatabasePlugin {
   getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options?: {
+  getBundles: (options: {
     where?: { channel?: string; platform?: string };
-    limit?: number;
-    offset?: number;
+    limit: number;
+    offset: number;
   }) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
