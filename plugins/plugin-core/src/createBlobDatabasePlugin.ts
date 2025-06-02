@@ -189,7 +189,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
       async getBundles(context, options) {
         // Always load the latest data from S3.
         let allBundles = await reloadBundles(context);
-        const { where, limit, offset = 0 } = options;
+        const { where, limit, offset } = options;
 
         // Apply filtering conditions first to get the total count after filtering
         if (where) {

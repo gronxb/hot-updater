@@ -85,8 +85,8 @@ export const rpc = new Hono()
           channel: query.channel ?? undefined,
           platform: query.platform ?? undefined,
         },
-        limit: query.limit ? Number(query.limit) : undefined,
-        offset: query.offset ? Number(query.offset) : undefined,
+        limit: query.limit ? Number(query.limit) : 20,
+        offset: query.offset ? Number(query.offset) : 0,
       });
       return c.json(bundles ?? []);
     } catch (error) {

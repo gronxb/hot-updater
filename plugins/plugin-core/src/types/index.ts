@@ -24,7 +24,7 @@ export interface DatabasePlugin {
   getBundles: (options: {
     where?: { channel?: string; platform?: string };
     limit: number;
-    offset?: number;
+    offset: number;
   }) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
