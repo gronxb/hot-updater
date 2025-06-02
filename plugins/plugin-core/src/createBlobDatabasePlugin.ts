@@ -1,6 +1,7 @@
 import { orderBy } from "es-toolkit";
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, DatabasePluginHooks, PaginationInfo } from "./types";
+import type { Bundle, DatabasePluginHooks } from "./types";
+import { calculatePagination } from "./calculatePagination";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
@@ -203,36 +204,20 @@ export const createBlobDatabasePlugin = <TContext = object>({
         }
 
         const total = allBundles.length;
+        const cleanBundles = allBundles.map(removeBundleInternalKeys);
 
-        // Calculate pagination info
-        const pageSize = limit || total;
-        const currentPage = offset + 1;
-        const totalPages = limit ? Math.ceil(total / limit) : 1;
-        const hasNextPage = limit ? (offset + 1) * limit < total : false;
-        const hasPreviousPage = offset > 0;
-
-        // Apply pagination
-        let paginatedBundles = allBundles;
+        // Apply pagination to data
+        let paginatedData = cleanBundles;
+        if (offset > 0) {
+          paginatedData = paginatedData.slice(offset);
+        }
         if (limit) {
-          paginatedBundles = paginatedBundles.slice(
-            offset * limit,
-            offset * limit + limit,
-          );
-        } else {
-          paginatedBundles = paginatedBundles.slice(offset * pageSize);
+          paginatedData = paginatedData.slice(0, limit);
         }
 
-        const pagination: PaginationInfo = {
-          total,
-          hasNextPage,
-          hasPreviousPage,
-          currentPage,
-          totalPages,
-        };
-
         return {
-          data: paginatedBundles.map(removeBundleInternalKeys),
-          pagination,
+          data: paginatedData,
+          pagination: calculatePagination(total, options),
         };
       },
 

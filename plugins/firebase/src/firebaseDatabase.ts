@@ -4,7 +4,10 @@ import type {
   DatabasePluginHooks,
   PaginationInfo,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  calculatePagination,
+} from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 
 type FirestoreData = admin.firestore.DocumentData;
@@ -93,7 +96,7 @@ export const firebaseDatabase = (
         const totalSnapshot = await totalCountQuery.get();
         const total = totalSnapshot.size;
 
-        if (offset) {
+        if (offset > 0) {
           query = query.offset(offset);
         }
         if (limit) {
@@ -102,37 +105,13 @@ export const firebaseDatabase = (
 
         const querySnapshot = await query.get();
 
-        if (querySnapshot.empty) {
-          return {
-            data: [],
-            pagination: {
-              total: 0,
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 0,
-            },
-          };
-        }
-
         bundles = querySnapshot.docs.map((doc) =>
           convertToBundle(doc.data() as SnakeCaseBundle),
         );
 
-        const currentPage = Math.floor(offset / (limit || 1)) + 1;
-        const totalPages = limit ? Math.ceil(total / limit) : 1;
-        const hasNextPage = offset + (limit || 0) < total;
-        const hasPreviousPage = offset > 0;
-
         return {
           data: bundles,
-          pagination: {
-            total,
-            hasNextPage,
-            hasPreviousPage,
-            currentPage,
-            totalPages,
-          },
+          pagination: calculatePagination(total, options),
         };
       },
 
