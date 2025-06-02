@@ -1,9 +1,9 @@
 import {
-  calculatePagination,
   type BasePluginArgs,
   type Bundle,
   type DatabasePlugin,
   type DatabasePluginHooks,
+  calculatePagination,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
 

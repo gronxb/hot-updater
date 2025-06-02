@@ -1,8 +1,8 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
 import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
   calculatePagination,
+  createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 

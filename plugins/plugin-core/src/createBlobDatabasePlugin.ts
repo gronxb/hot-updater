@@ -1,7 +1,7 @@
 import { orderBy } from "es-toolkit";
+import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import type { Bundle, DatabasePluginHooks } from "./types";
-import { calculatePagination } from "./calculatePagination";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
