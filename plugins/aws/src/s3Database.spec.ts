@@ -626,6 +626,152 @@ describe("s3Database plugin", () => {
     expect(bundle).toBeNull();
   });
 
+  it("should return correct pagination info for single page", async () => {
+    const bundle1 = {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "android",
+      targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle2 = {
+      id: "bundle2",
+      channel: "production",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hash2",
+      gitCommitHash: "commit2",
+      message: "bundle 2",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle3 = {
+      id: "bundle3",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash3",
+      gitCommitHash: "commit3",
+      message: "bundle 3",
+      platform: "android",
+      targetAppVersion: "1.5.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.appendBundle(bundle3);
+    await plugin.commitBundle();
+
+    const result = await plugin.getBundles({
+      where: { channel: "production" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0].id).toBe("bundle2");
+    expect(result.data[1].id).toBe("bundle1");
+
+    expect(result.pagination).toEqual({
+      total: 2,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 1,
+    });
+  });
+
+  it("should return correct pagination info for multiple pages", async () => {
+    const bundle1 = {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "android",
+      targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle2 = {
+      id: "bundle2",
+      channel: "production",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hash2",
+      gitCommitHash: "commit2",
+      message: "bundle 2",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle3 = {
+      id: "bundle3",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash3",
+      gitCommitHash: "commit3",
+      message: "bundle 3",
+      platform: "android",
+      targetAppVersion: "1.5.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.appendBundle(bundle3);
+    await plugin.commitBundle();
+
+    const firstPage = await plugin.getBundles({
+      where: { channel: "production" },
+      limit: 2,
+      offset: 0,
+    });
+
+    expect(firstPage.data).toHaveLength(2);
+    expect(firstPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: true,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 2,
+    });
+
+    const secondPage = await plugin.getBundles({
+      where: { channel: "production" },
+      limit: 2,
+      offset: 2,
+    });
+
+    expect(secondPage.data).toHaveLength(1);
+    expect(secondPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: false,
+      hasPreviousPage: true,
+      currentPage: 2,
+      totalPages: 2,
+    });
+  });
+
   it("should not modify update.json when no bundles are marked as changed", async () => {
     // Verify existing update.json file is preserved
     const updateKey = "production/ios/1.0.0/update.json";
