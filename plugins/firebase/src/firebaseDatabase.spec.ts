@@ -389,7 +389,7 @@ describe("firebaseDatabase plugin", () => {
 
     const firstPage = await plugin.getBundles({
       where: { channel: "production" },
-      limit: 20,
+      limit: 2,
       offset: 0,
     });
 
@@ -404,8 +404,8 @@ describe("firebaseDatabase plugin", () => {
 
     const secondPage = await plugin.getBundles({
       where: { channel: "production" },
-      limit: 20,
-      offset: 0,
+      limit: 2,
+      offset: 2,
     });
 
     expect(secondPage.data).toHaveLength(1);

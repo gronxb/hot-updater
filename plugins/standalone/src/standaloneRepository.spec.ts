@@ -84,7 +84,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     await repo.getBundles({ limit: 20, offset: 0 });
     const refreshed = await repo.getBundles({ limit: 20, offset: 0 });
-    expect(refreshed).toEqual(testBundles);
+    expect(refreshed.data).toEqual(testBundles);
     expect(callCount).toBe(2);
   });
 
