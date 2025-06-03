@@ -1,5 +1,20 @@
 # hot-updater
 
+## 0.18.2
+
+### Patch Changes
+
+- 70c7f11: fix: no exit deploy in warning state
+- Updated dependencies [437c98e]
+- Updated dependencies [70c7f11]
+  - @hot-updater/plugin-core@0.18.2
+  - @hot-updater/cloudflare@0.18.2
+  - @hot-updater/console@0.18.2
+  - @hot-updater/firebase@0.18.2
+  - @hot-updater/supabase@0.18.2
+  - @hot-updater/aws@0.18.2
+  - @hot-updater/core@0.18.2
+
 ## 0.18.1
 
 ### Patch Changes

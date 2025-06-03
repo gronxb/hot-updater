@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.18.2
+
+### Patch Changes
+
+- 437c98e: fix: pagination doesn't work (edit database spec)
+  - @hot-updater/core@0.18.2
+
 ## 0.18.1
 
 ### Patch Changes

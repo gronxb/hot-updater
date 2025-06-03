@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 0.18.2
+
+### Patch Changes
+
+- d8117b9: Stored bundle path should be separated by channel
+- e6487bf: Attempt to move file to the same location
+  - @hot-updater/core@0.18.2
+  - @hot-updater/js@0.18.2
+
 ## 0.18.1
 
 ### Patch Changes

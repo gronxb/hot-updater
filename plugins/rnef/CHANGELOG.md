@@ -1,5 +1,12 @@
 # @hot-updater/rnef
 
+## 0.18.2
+
+### Patch Changes
+
+- Updated dependencies [437c98e]
+  - @hot-updater/plugin-core@0.18.2
+
 ## 0.18.1
 
 ### Patch Changes

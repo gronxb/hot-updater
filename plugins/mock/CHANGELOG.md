@@ -1,5 +1,14 @@
 # @hot-updater/mock
 
+## 0.18.2
+
+### Patch Changes
+
+- 437c98e: fix: pagination doesn't work (edit database spec)
+- Updated dependencies [437c98e]
+  - @hot-updater/plugin-core@0.18.2
+  - @hot-updater/core@0.18.2
+
 ## 0.18.1
 
 ### Patch Changes
