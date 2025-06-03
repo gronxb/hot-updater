@@ -37,6 +37,48 @@ const testBundles: Bundle[] = [
   },
 ];
 
+const TEST_BUNDLE_1 = {
+  id: "bundle1",
+  channel: "production",
+  enabled: true,
+  shouldForceUpdate: true,
+  fileHash: "hash1",
+  gitCommitHash: "commit1",
+  message: "bundle 1",
+  platform: "android",
+  targetAppVersion: "2.0.0",
+  storageUri: "gs://test-bucket/test-key",
+  fingerprintHash: null,
+} as const;
+
+const TEST_BUNDLE_2 = {
+  id: "bundle2",
+  channel: "production",
+  enabled: false,
+  shouldForceUpdate: false,
+  fileHash: "hash2",
+  gitCommitHash: "commit2",
+  message: "bundle 2",
+  platform: "ios",
+  targetAppVersion: "1.0.0",
+  storageUri: "gs://test-bucket/test-key",
+  fingerprintHash: null,
+} as const;
+
+const TEST_BUNDLE_3 = {
+  id: "bundle3",
+  channel: "staging",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "hash3",
+  gitCommitHash: "commit3",
+  message: "bundle 3",
+  platform: "android",
+  targetAppVersion: "1.5.0",
+  storageUri: "gs://test-bucket/test-key",
+  fingerprintHash: null,
+} as const;
+
 const server = setupServer();
 
 beforeAll(() => server.listen());
@@ -86,6 +128,110 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     const refreshed = await repo.getBundles({ limit: 20, offset: 0 });
     expect(refreshed.data).toEqual(testBundles);
     expect(callCount).toBe(2);
+  });
+
+  it("should return correct pagination info for single page", async () => {
+    // Mock initial bundles fetch
+    server.use(
+      http.get("http://localhost/bundles", () => {
+        return HttpResponse.json([]);
+      }),
+      http.post("http://localhost/bundles", async ({ request }) => {
+        const body = await request.json();
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    await repo.appendBundle(TEST_BUNDLE_1);
+    await repo.appendBundle(TEST_BUNDLE_2);
+    await repo.appendBundle(TEST_BUNDLE_3);
+    await repo.commitBundle();
+
+    // Mock filtered bundles response
+    const productionBundles = [TEST_BUNDLE_2, TEST_BUNDLE_1];
+    server.use(
+      http.get("http://localhost/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        const channel = url.searchParams.get("channel");
+        if (channel === "production") {
+          return HttpResponse.json(productionBundles);
+        }
+        return HttpResponse.json([TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3]);
+      }),
+    );
+
+    const result = await repo.getBundles({
+      where: { channel: "production" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0].id).toBe("bundle1");
+    expect(result.data[1].id).toBe("bundle2");
+
+    expect(result.pagination).toEqual({
+      total: 2,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 1,
+    });
+  });
+
+  it("should return correct pagination info for multiple pages", async () => {
+    // Mock paginated responses
+    const allBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3];
+    server.use(
+      http.get("http://localhost/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        const limit = Number.parseInt(url.searchParams.get("limit") || "20");
+        const offset = Number.parseInt(url.searchParams.get("offset") || "0");
+
+        const paginatedData = allBundles.slice(offset, offset + limit);
+        return HttpResponse.json(paginatedData, {
+          headers: {
+            "X-Total-Count": allBundles.length.toString(),
+          },
+        });
+      }),
+      http.post("http://localhost/bundles", async () => {
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    await repo.appendBundle(TEST_BUNDLE_1);
+    await repo.appendBundle(TEST_BUNDLE_2);
+    await repo.appendBundle(TEST_BUNDLE_3);
+    await repo.commitBundle();
+
+    const firstPage = await repo.getBundles({
+      limit: 2,
+      offset: 0,
+    });
+
+    expect(firstPage.data).toHaveLength(2);
+    expect(firstPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: true,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 2,
+    });
+
+    const secondPage = await repo.getBundles({
+      limit: 2,
+      offset: 2,
+    });
+
+    expect(secondPage.data).toHaveLength(1);
+    expect(secondPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: false,
+      hasPreviousPage: true,
+      currentPage: 2,
+      totalPages: 2,
+    });
   });
 
   it("getBundleById: GET /bundles/:id retrieves a bundle (success case)", async () => {
