@@ -4,7 +4,9 @@ import React
 @objcMembers public class HotUpdaterImpl: NSObject {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
-    
+
+    private static let DEFAULT_CHANNEL = "production"
+
     // MARK: - Initialization
     
     /**
@@ -35,10 +37,13 @@ import React
         self.bundleStorage = bundleStorage
         self.preferences = preferences
         super.init()
-        
+
         // Configure preferences with app version
         if let appVersion = HotUpdaterImpl.appVersion {
-            (preferences as? VersionedPreferencesService)?.configure(appVersion: appVersion)
+            (preferences as? VersionedPreferencesService)?.configure(
+                appVersion: appVersion,
+                appChannel: HotUpdaterImpl.appChannel
+            )
         }
     }
     
@@ -50,15 +55,21 @@ import React
     public static var appVersion: String? {
         return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
-    
+
+    /**
+     * Returns the app version from main bundle info.
+     */
+    public static var appChannel: String {
+        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
+    }
+
     // MARK: - Channel Management
     
     /**
      * Gets the current update channel.
      * @return The channel name or nil if not set
      */
-    private static let DEFAULT_CHANNEL = "production"
-    
+
     public func getChannel() -> String {
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
     }

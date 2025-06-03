@@ -23,8 +23,8 @@ class VersionedPreferencesService: PreferencesService {
      * Configures the service with app version for key prefixing.
      * @param appVersion The app version to use for key prefixing
      */
-    func configure(appVersion: String?) {
-        self.keyPrefix = "hotupdater_\(appVersion ?? "unknown")_"
+    func configure(appVersion: String?, appChannel: String) {
+        self.keyPrefix = "hotupdater_\(appVersion ?? "unknown")_\(appChannel)_"
         NSLog("[PreferencesService] Configured with appVersion: \(appVersion ?? "nil"). Key prefix: \(self.keyPrefix)")
     }
     
