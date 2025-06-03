@@ -15,7 +15,6 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
 } from "@tanstack/solid-table";
 import {
   For,
@@ -69,17 +68,20 @@ export function DataTable(props: DataTableProps) {
     offset: (pagination().pageIndex * pagination().pageSize).toString(),
   }));
 
-  const bundles = createBundlesQuery(query);
+  const bundlesQuery = createBundlesQuery(query);
 
-  const bundlesData = createMemo(() => bundles.data ?? []);
+  const bundlesResponse = createMemo(
+    () => bundlesQuery.data ?? { data: [], pagination: null },
+  );
+  const bundles = createMemo(() => bundlesResponse().data ?? []);
+  const serverPagination = createMemo(() => bundlesResponse().pagination);
 
   const table = createSolidTable({
     get data() {
-      return bundlesData();
+      return bundles();
     },
     columns: local.columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     state: {
       get pagination() {
@@ -94,7 +96,8 @@ export function DataTable(props: DataTableProps) {
       if (!filterValue) return true;
       return (row.original as Bundle).platform.toLowerCase() === filterValue;
     },
-    manualPagination: false,
+    manualPagination: true,
+    pageCount: serverPagination()?.totalPages ?? 0,
   });
 
   const handleRowClick = (row: Row<Bundle>) => () => {
@@ -109,11 +112,18 @@ export function DataTable(props: DataTableProps) {
     }
   });
 
+  const handlePageChange = (newPageIndex: number) => {
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: newPageIndex,
+    }));
+  };
+
   return (
     <div
       class="transition-opacity duration-300"
       classList={{
-        "opacity-50": bundles.isFetching,
+        "opacity-50": bundlesQuery.isFetching,
       }}
     >
       <div class="flex flex-row justify-end p-3">
@@ -141,7 +151,10 @@ export function DataTable(props: DataTableProps) {
                         "bg-primary text-primary-foreground":
                           platform.value === platformFilter(),
                       }}
-                      onClick={() => setPlatformFilter(platform.value)}
+                      onClick={() => {
+                        setPlatformFilter(platform.value);
+                        setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+                      }}
                     >
                       {platform.label}
                     </NavigationMenuLink>
@@ -166,7 +179,10 @@ export function DataTable(props: DataTableProps) {
                         "bg-primary text-primary-foreground":
                           channel === channelFilter(),
                       }}
-                      onClick={() => setChannelFilter(channel)}
+                      onClick={() => {
+                        setChannelFilter(channel);
+                        setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+                      }}
                     >
                       {channel}
                     </NavigationMenuLink>
@@ -181,7 +197,7 @@ export function DataTable(props: DataTableProps) {
       <div
         class="border rounded-md"
         classList={{
-          "min-h-[400px]": bundles.isFetching,
+          "min-h-[400px]": bundlesQuery.isFetching,
         }}
       >
         <Table>
@@ -206,7 +222,7 @@ export function DataTable(props: DataTableProps) {
             </For>
           </TableHeader>
           <TableBody>
-            {bundles.isFetched && table.getRowModel().rows?.length === 0 ? (
+            {bundlesQuery.isFetched && bundles().length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={local.columns.length}
@@ -246,24 +262,35 @@ export function DataTable(props: DataTableProps) {
         itemComponent={(props) => (
           <PaginationItem
             page={props.page}
-            onClick={() => table.setPageIndex(props.page - 1)}
+            onClick={() => handlePageChange(props.page - 1)}
           >
             {props.page}
           </PaginationItem>
         )}
         ellipsisComponent={() => <PaginationEllipsis />}
-        count={Math.ceil((bundlesData()?.length ?? 0) / pagination().pageSize)}
+        count={serverPagination()?.totalPages ?? 1}
       >
         <PaginationPrevious
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
+          onClick={() => handlePageChange(pagination().pageIndex - 1)}
+          disabled={!serverPagination()?.hasPreviousPage}
         />
         <PaginationItems />
         <PaginationNext
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
+          onClick={() => handlePageChange(pagination().pageIndex + 1)}
+          disabled={!serverPagination()?.hasNextPage}
         />
       </Pagination>
+
+      {serverPagination() && (
+        <div class="mt-2 text-sm text-muted-foreground text-center">
+          Showing {pagination().pageIndex * pagination().pageSize + 1} to{" "}
+          {Math.min(
+            (pagination().pageIndex + 1) * pagination().pageSize,
+            serverPagination()!.total,
+          )}{" "}
+          of {serverPagination()!.total} results
+        </div>
+      )}
     </div>
   );
 }

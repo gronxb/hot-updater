@@ -1,5 +1,8 @@
 import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 
@@ -48,7 +51,21 @@ export const supabaseDatabase = (
       },
 
       async getBundles(context, options) {
-        const { where, limit, offset = 0 } = options ?? {};
+        const { where, limit, offset } = options ?? {};
+
+        let countQuery = context.supabase
+          .from("bundles")
+          .select("*", { count: "exact", head: true });
+
+        if (where?.channel) {
+          countQuery = countQuery.eq("channel", where.channel);
+        }
+        if (where?.platform) {
+          countQuery = countQuery.eq("platform", where.platform);
+        }
+
+        const { count: total = 0 } = await countQuery;
+
         let query = context.supabase
           .from("bundles")
           .select("*")
@@ -72,24 +89,29 @@ export const supabaseDatabase = (
 
         const { data } = await query;
 
-        if (!data) {
-          return [];
-        }
+        const bundles = data
+          ? data.map((bundle) => ({
+              channel: bundle.channel,
+              enabled: bundle.enabled,
+              shouldForceUpdate: bundle.should_force_update,
+              fileHash: bundle.file_hash,
+              gitCommitHash: bundle.git_commit_hash,
+              id: bundle.id,
+              message: bundle.message,
+              platform: bundle.platform,
+              targetAppVersion: bundle.target_app_version,
+              fingerprintHash: bundle.fingerprint_hash,
+              storageUri: bundle.storage_uri,
+              metadata: bundle.metadata ?? {},
+            }))
+          : [];
 
-        return data.map((bundle) => ({
-          channel: bundle.channel,
-          enabled: bundle.enabled,
-          shouldForceUpdate: bundle.should_force_update,
-          fileHash: bundle.file_hash,
-          gitCommitHash: bundle.git_commit_hash,
-          id: bundle.id,
-          message: bundle.message,
-          platform: bundle.platform,
-          targetAppVersion: bundle.target_app_version,
-          fingerprintHash: bundle.fingerprint_hash,
-          storageUri: bundle.storage_uri,
-          metadata: bundle.metadata ?? {},
-        })) as Bundle[];
+        const pagination = calculatePagination(total ?? 0, { limit, offset });
+
+        return {
+          data: bundles,
+          pagination,
+        };
       },
 
       async getChannels(context) {

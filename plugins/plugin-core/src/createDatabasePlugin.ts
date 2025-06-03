@@ -4,6 +4,7 @@ import type {
   BasePluginArgs,
   DatabasePlugin,
   DatabasePluginHooks,
+  PaginationInfo,
 } from "./types";
 
 export interface BaseDatabaseUtils {
@@ -18,15 +19,15 @@ export interface AbstractDatabasePlugin<TContext = object> {
   ) => Promise<Bundle | null>;
   getBundles: (
     context: TContext,
-    options?: {
-      where?: {
-        channel?: string;
-        platform?: string;
-      };
-      limit?: number;
-      offset?: number;
+    options: {
+      where?: { channel?: string; platform?: string };
+      limit: number;
+      offset: number;
     },
-  ) => Promise<Bundle[]>;
+  ) => Promise<{
+    data: Bundle[];
+    pagination: PaginationInfo;
+  }>;
   getChannels: (context: TContext) => Promise<string[]>;
   onUnmount?: (context: TContext) => void;
   commitBundle: (

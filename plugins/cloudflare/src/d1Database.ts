@@ -1,6 +1,13 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePluginHooks,
+  PaginationOptions,
+} from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 import minify from "pg-minify";
 
@@ -8,6 +15,17 @@ export interface D1DatabaseConfig {
   databaseId: string;
   accountId: string;
   cloudflareApiToken: string;
+}
+
+// Helper interfaces for clarity
+interface QueryConditions {
+  channel?: string;
+  platform?: string;
+}
+
+interface BuildQueryResult {
+  sql: string;
+  params: any[];
 }
 
 async function resolvePage<T>(singlePage: any): Promise<T[]> {
@@ -19,11 +37,101 @@ async function resolvePage<T>(singlePage: any): Promise<T[]> {
   return results;
 }
 
+// Helper function to build WHERE clause
+function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
+  const clauses: string[] = [];
+  const params: any[] = [];
+
+  if (conditions.channel) {
+    clauses.push("channel = ?");
+    params.push(conditions.channel);
+  }
+
+  if (conditions.platform) {
+    clauses.push("platform = ?");
+    params.push(conditions.platform);
+  }
+
+  const whereClause =
+    clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+
+  return { sql: whereClause, params };
+}
+
+// Helper function to transform snake_case row to Bundle
+function transformRowToBundle(row: SnakeCaseBundle): Bundle {
+  return {
+    id: row.id,
+    channel: row.channel,
+    enabled: Boolean(row.enabled),
+    shouldForceUpdate: Boolean(row.should_force_update),
+    fileHash: row.file_hash,
+    gitCommitHash: row.git_commit_hash,
+    message: row.message,
+    platform: row.platform,
+    targetAppVersion: row.target_app_version,
+    storageUri: row.storage_uri,
+    fingerprintHash: row.fingerprint_hash,
+    metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
+  };
+}
+
 export const d1Database = (
   config: D1DatabaseConfig,
   hooks?: DatabasePluginHooks,
 ) => {
   let bundles: Bundle[] = [];
+
+  // Helper function to get total count
+  async function getTotalCount(
+    context: { cf: Cloudflare },
+    conditions: QueryConditions,
+  ): Promise<number> {
+    const { sql: whereClause, params } = buildWhereClause(conditions);
+    const countSql = minify(
+      `SELECT COUNT(*) as total FROM bundles${whereClause}`,
+    );
+
+    const countResult = await context.cf.d1.database.query(config.databaseId, {
+      account_id: config.accountId,
+      sql: countSql,
+      params,
+    });
+
+    const rows = await resolvePage<{ total: number }>(countResult);
+    return rows[0]?.total || 0;
+  }
+
+  // Helper function to get paginated bundles
+  async function getPaginatedBundles(
+    context: { cf: Cloudflare },
+    conditions: QueryConditions,
+    limit: number,
+    offset: number,
+  ): Promise<Bundle[]> {
+    const { sql: whereClause, params } = buildWhereClause(conditions);
+
+    // Build the complete query
+    const sql = minify(`
+      SELECT * FROM bundles
+      ${whereClause}
+      ORDER BY id DESC
+      LIMIT ?
+      OFFSET ?
+    `);
+
+    // Add pagination params
+    params.push(limit, offset);
+
+    const result = await context.cf.d1.database.query(config.databaseId, {
+      account_id: config.accountId,
+      sql,
+      params,
+    });
+
+    const rows = await resolvePage<SnakeCaseBundle>(result);
+    return rows.map(transformRowToBundle);
+  }
 
   return createDatabasePlugin(
     "d1Database",
@@ -40,10 +148,8 @@ export const d1Database = (
           return found;
         }
 
-        const sql = minify(
-          /* sql */ `
-          SELECT * FROM bundles WHERE id = ? LIMIT 1`,
-        );
+        const sql = minify(/* sql */ `
+          SELECT * FROM bundles WHERE id = ? LIMIT 1`);
         const singlePage = await context.cf.d1.database.query(
           config.databaseId,
           {
@@ -59,94 +165,39 @@ export const d1Database = (
           return null;
         }
 
-        const row = rows[0];
-        return {
-          channel: row.channel,
-          enabled: Boolean(row.enabled),
-          shouldForceUpdate: Boolean(row.should_force_update),
-          fileHash: row.file_hash,
-          gitCommitHash: row.git_commit_hash,
-          id: row.id,
-          message: row.message,
-          platform: row.platform,
-          targetAppVersion: row.target_app_version,
-          storageUri: row.storage_uri,
-          fingerprintHash: row.fingerprint_hash,
-          metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
-        } as Bundle;
+        return transformRowToBundle(rows[0]);
       },
 
-      async getBundles(context, options) {
-        const { where, limit, offset = 0 } = options ?? {};
+      async getBundles(
+        context,
+        options: {
+          where?: QueryConditions;
+          limit: number;
+          offset: number;
+        },
+      ) {
+        const { where = {}, limit, offset } = options;
 
-        let sql = "SELECT * FROM bundles";
-        const params: any[] = [];
+        // 1. Get total count for pagination
+        const totalCount = await getTotalCount(context, where);
 
-        const conditions: string[] = [];
-        if (where?.channel) {
-          conditions.push("channel = ?");
-          params.push(where.channel);
-        }
+        // 2. Get paginated bundles
+        bundles = await getPaginatedBundles(context, where, limit, offset);
 
-        if (where?.platform) {
-          conditions.push("platform = ?");
-          params.push(where.platform);
-        }
+        // 3. Calculate pagination metadata
+        const paginationOptions: PaginationOptions = { limit, offset };
+        const pagination = calculatePagination(totalCount, paginationOptions);
 
-        if (conditions.length > 0) {
-          sql += ` WHERE ${conditions.join(" AND ")}`;
-        }
-
-        sql += " ORDER BY id DESC";
-
-        if (limit) {
-          sql += " LIMIT ?";
-          params.push(limit);
-        }
-
-        if (offset) {
-          sql += " OFFSET ?";
-          params.push(offset);
-        }
-
-        const singlePage = await context.cf.d1.database.query(
-          config.databaseId,
-          {
-            account_id: config.accountId,
-            sql: minify(sql),
-            params,
-          },
-        );
-
-        const rows = await resolvePage<SnakeCaseBundle>(singlePage);
-
-        if (rows.length === 0) {
-          bundles = [];
-        } else {
-          bundles = rows.map((row) => ({
-            id: row.id,
-            channel: row.channel,
-            enabled: Boolean(row.enabled),
-            shouldForceUpdate: Boolean(row.should_force_update),
-            fileHash: row.file_hash,
-            gitCommitHash: row.git_commit_hash,
-            message: row.message,
-            platform: row.platform,
-            targetAppVersion: row.target_app_version,
-            storageUri: row.storage_uri,
-            fingerprintHash: row.fingerprint_hash,
-            metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
-          }));
-        }
-        return bundles;
+        return {
+          data: bundles,
+          pagination,
+        };
       },
 
       async getChannels(context) {
-        const sql = minify(
-          /* sql */ `
+        const sql = minify(/* sql */ `
           SELECT channel FROM bundles GROUP BY channel
-        `,
-        );
+        `);
         const singlePage = await context.cf.d1.database.query(
           config.databaseId,
           {

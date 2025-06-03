@@ -1,5 +1,8 @@
 import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 
 export interface RouteConfig {
   path: string;
@@ -91,11 +94,9 @@ export const standaloneRepository = (
           method: "GET",
           headers: getHeaders(routeHeaders),
         });
-
         if (!response.ok) {
           throw new Error(`API Error: ${response.statusText}`);
         }
-
         const bundles = (await response.json()) as Bundle[];
 
         let filteredBundles = bundles;
@@ -110,14 +111,21 @@ export const standaloneRepository = (
           );
         }
 
-        if (limit) {
-          return filteredBundles.slice(offset, offset + limit);
-        }
-        return filteredBundles;
+        const total = filteredBundles.length;
+        const data = limit
+          ? filteredBundles.slice(offset, offset + limit)
+          : filteredBundles;
+
+        const pagination = calculatePagination(total, { limit, offset });
+
+        return {
+          data,
+          pagination,
+        };
       },
       async getChannels(_): Promise<string[]> {
-        const allBundles = await this.getBundles(_);
-        return [...new Set(allBundles.map((b) => b.channel))];
+        const result = await this.getBundles(_, { limit: 50, offset: 0 });
+        return [...new Set(result.data.map((b) => b.channel))];
       },
       async commitBundle(_, { changedSets }) {
         const changedBundles = changedSets.map((set) => set.data);

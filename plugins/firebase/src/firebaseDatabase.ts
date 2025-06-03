@@ -1,6 +1,9 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
 import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 
 type FirestoreData = admin.firestore.DocumentData;
@@ -64,7 +67,7 @@ export const firebaseDatabase = (
       },
 
       async getBundles(context, options) {
-        const { where, limit, offset = 0 } = options ?? {};
+        const { where, limit, offset } = options;
 
         let query: admin.firestore.Query<FirestoreData> =
           context.bundlesCollection;
@@ -72,33 +75,36 @@ export const firebaseDatabase = (
         if (where?.channel) {
           query = query.where("channel", "==", where.channel);
         }
-
         if (where?.platform) {
           query = query.where("platform", "==", where.platform);
         }
 
         query = query.orderBy("id", "desc");
 
-        if (offset) {
+        const totalCountQuery = query;
+        const totalSnapshot = await totalCountQuery.get();
+        const total = totalSnapshot.size;
+
+        if (offset > 0) {
           query = query.offset(offset);
         }
-
         if (limit) {
           query = query.limit(limit);
         }
 
         const querySnapshot = await query.get();
 
-        if (querySnapshot.empty) {
-          bundles = [];
-          return bundles;
-        }
-
         bundles = querySnapshot.docs.map((doc) =>
           convertToBundle(doc.data() as SnakeCaseBundle),
         );
 
-        return bundles;
+        return {
+          data: bundles,
+          pagination: calculatePagination(total, {
+            limit,
+            offset,
+          }),
+        };
       },
 
       async getChannels(context) {

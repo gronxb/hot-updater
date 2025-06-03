@@ -337,11 +337,7 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
   ]);
 };
 
-export const runInit = async ({
-  build,
-}: {
-  build: BuildType;
-}) => {
+export const runInit = async ({ build }: { build: BuildType }) => {
   const project = await selectProject();
 
   const spinner = p.spinner();
@@ -368,7 +364,7 @@ export const runInit = async ({
 
   const serviceRoleKey = apiKeys.find((key) => key.name === "service_role");
   if (!serviceRoleKey) {
-    throw new Error("Service role key not found");
+    throw new Error("Service role key not found, is your project paused?");
   }
 
   const api = supabaseApi(

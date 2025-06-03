@@ -205,7 +205,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20, offset: 0 });
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -277,7 +277,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20, offset: 0 });
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -380,7 +380,7 @@ describe("s3Database plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20, offset: 0 });
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -479,11 +479,11 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Force reload bundle info from S3
-    const bundles = await plugin.getBundles();
+    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
     // Assert: Returned bundle list should only include valid bundles
-    expect(bundles).toHaveLength(3);
-    expect(bundles).toEqual(
+    expect(bundles.data).toHaveLength(3);
+    expect(bundles.data).toEqual(
       expect.arrayContaining([iosBundle1, iosBundle2, androidBundle1]),
     );
   });
@@ -548,11 +548,11 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Load all bundles from S3
-    const bundles = await plugin.getBundles();
+    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
     // Assert: All bundles from all channels should be loaded
-    expect(bundles).toHaveLength(5);
-    expect(bundles).toEqual(
+    expect(bundles.data).toHaveLength(5);
+    expect(bundles.data).toEqual(
       expect.arrayContaining([
         productionIosBundle,
         betaIosBundle,
@@ -599,7 +599,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Load bundles, update channel, and commit
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20, offset: 0 });
     await plugin.updateBundle("channel-move-test", {
       channel: "production",
     });
@@ -624,6 +624,152 @@ describe("s3Database plugin", () => {
     // Verify null is returned for non-existent bundle ID
     const bundle = await plugin.getBundleById("non-existent-id");
     expect(bundle).toBeNull();
+  });
+
+  it("should return correct pagination info for single page", async () => {
+    const bundle1 = {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "android",
+      targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle2 = {
+      id: "bundle2",
+      channel: "production",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hash2",
+      gitCommitHash: "commit2",
+      message: "bundle 2",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle3 = {
+      id: "bundle3",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash3",
+      gitCommitHash: "commit3",
+      message: "bundle 3",
+      platform: "android",
+      targetAppVersion: "1.5.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.appendBundle(bundle3);
+    await plugin.commitBundle();
+
+    const result = await plugin.getBundles({
+      where: { channel: "production" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0].id).toBe("bundle2");
+    expect(result.data[1].id).toBe("bundle1");
+
+    expect(result.pagination).toEqual({
+      total: 2,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 1,
+    });
+  });
+
+  it("should return correct pagination info for multiple pages", async () => {
+    const bundle1 = {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: true,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "android",
+      targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle2 = {
+      id: "bundle2",
+      channel: "production",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hash2",
+      gitCommitHash: "commit2",
+      message: "bundle 2",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    const bundle3 = {
+      id: "bundle3",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash3",
+      gitCommitHash: "commit3",
+      message: "bundle 3",
+      platform: "android",
+      targetAppVersion: "1.5.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    } as const;
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.appendBundle(bundle3);
+    await plugin.commitBundle();
+
+    const firstPage = await plugin.getBundles({
+      where: { channel: "production" },
+      limit: 2,
+      offset: 0,
+    });
+
+    expect(firstPage.data).toHaveLength(2);
+    expect(firstPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: true,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 2,
+    });
+
+    const secondPage = await plugin.getBundles({
+      where: { channel: "production" },
+      limit: 2,
+      offset: 2,
+    });
+
+    expect(secondPage.data).toHaveLength(1);
+    expect(secondPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: false,
+      hasPreviousPage: true,
+      currentPage: 2,
+      totalPages: 2,
+    });
   });
 
   it("should not modify update.json when no bundles are marked as changed", async () => {
@@ -676,10 +822,10 @@ describe("s3Database plugin", () => {
     ]);
     fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
 
-    const bundles = await plugin.getBundles();
+    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
     // Descending order: "C" > "B" > "A"
-    expect(bundles).toEqual([bundleC, bundleB, bundleA]);
+    expect(bundles.data).toEqual([bundleC, bundleB, bundleA]);
   });
 
   it("should return a bundle without internal keys from getBundleById", async () => {
@@ -693,7 +839,7 @@ describe("s3Database plugin", () => {
     fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
       bundle,
     ]);
-    await plugin.getBundles();
+    await plugin.getBundles({ limit: 20, offset: 0 });
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -726,8 +872,8 @@ describe("s3Database plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const bundles = await plugin.getBundles();
-    expect(bundles).toEqual([]);
+    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    expect(bundles.data).toEqual([]);
   });
 
   it("should append multiple bundles and commit them to the correct update.json files", async () => {
@@ -827,8 +973,8 @@ describe("s3Database plugin", () => {
     });
 
     // Assert: Both bundles should be loaded
-    expect(bundles).toHaveLength(3);
-    expect(bundles).toEqual([iosBundle2, androidBundle, iosBundle]);
+    expect(bundles.data).toHaveLength(3);
+    expect(bundles.data).toEqual([iosBundle2, androidBundle, iosBundle]);
 
     // Sanity check: getBundleById works for both
     const foundIos = await plugin.getBundleById(

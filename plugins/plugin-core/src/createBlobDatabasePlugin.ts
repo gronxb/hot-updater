@@ -1,4 +1,5 @@
 import { orderBy } from "es-toolkit";
+import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import type { Bundle, DatabasePluginHooks } from "./types";
 
@@ -187,13 +188,12 @@ export const createBlobDatabasePlugin = <TContext = object>({
 
       async getBundles(context, options) {
         // Always load the latest data from S3.
-        let bundles = await reloadBundles(context);
-        const { where, limit, offset = 0 } = options ?? {};
-        // Sort bundles in descending order by id.
+        let allBundles = await reloadBundles(context);
+        const { where, limit, offset } = options;
 
-        // Apply filtering conditions.
+        // Apply filtering conditions first to get the total count after filtering
         if (where) {
-          bundles = bundles.filter((bundle) => {
+          allBundles = allBundles.filter((bundle) => {
             return Object.entries(where).every(
               ([key, value]) =>
                 value === undefined ||
@@ -203,19 +203,35 @@ export const createBlobDatabasePlugin = <TContext = object>({
           });
         }
 
+        const total = allBundles.length;
+        const cleanBundles = allBundles.map(removeBundleInternalKeys);
+
+        // Apply pagination to data
+        let paginatedData = cleanBundles;
         if (offset > 0) {
-          bundles = bundles.slice(offset);
+          paginatedData = paginatedData.slice(offset);
         }
         if (limit) {
-          bundles = bundles.slice(0, limit);
+          paginatedData = paginatedData.slice(0, limit);
         }
 
-        return bundles.map(removeBundleInternalKeys);
+        return {
+          data: paginatedData,
+          pagination: calculatePagination(total, {
+            limit,
+            offset,
+          }),
+        };
       },
 
       async getChannels(context) {
-        const allBundles = await this.getBundles(context);
-        return [...new Set(allBundles.map((bundle) => bundle.channel))];
+        const allBundles = await reloadBundles(context);
+        const total = allBundles.length;
+        const result = await this.getBundles(context, {
+          limit: total,
+          offset: 0,
+        });
+        return [...new Set(result.data.map((bundle) => bundle.channel))];
       },
 
       async commitBundle(context, { changedSets }) {

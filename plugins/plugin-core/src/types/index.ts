@@ -6,6 +6,14 @@ export interface BasePluginArgs {
   cwd: string;
 }
 
+export interface PaginationInfo {
+  total: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  currentPage: number;
+  totalPages: number;
+}
+
 export interface BuildPluginConfig {
   outDir?: string;
 }
@@ -13,14 +21,14 @@ export interface BuildPluginConfig {
 export interface DatabasePlugin {
   getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options?: {
-    where?: {
-      channel?: string;
-      platform?: Platform;
-    };
-    limit?: number;
-    offset?: number;
-  }) => Promise<Bundle[]>;
+  getBundles: (options: {
+    where?: { channel?: string; platform?: string };
+    limit: number;
+    offset: number;
+  }) => Promise<{
+    data: Bundle[];
+    pagination: PaginationInfo;
+  }>;
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,
@@ -36,10 +44,7 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  build: (args: {
-    platform: Platform;
-    channel: string;
-  }) => Promise<{
+  build: (args: { platform: Platform; channel: string }) => Promise<{
     buildPath: string;
     bundleId: string;
     channel: string;
