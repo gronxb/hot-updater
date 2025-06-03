@@ -27,10 +27,11 @@ object HotUpdaterFactory {
     private fun createHotUpdaterImpl(context: Context): HotUpdaterImpl {
         val appContext = context.applicationContext
         val appVersion = HotUpdaterImpl.getAppVersion(appContext) ?: "unknown"
+        val appChannel = HotUpdaterImpl.getChannel(appContext)
 
         // Create services
         val fileSystem = FileManagerService(appContext)
-        val preferences = VersionedPreferencesService(appContext, appVersion)
+        val preferences = VersionedPreferencesService(appContext, appVersion, appChannel)
         val downloadService = HttpDownloadService()
         val unzipService = ZipFileUnzipService()
 

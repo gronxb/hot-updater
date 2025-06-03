@@ -33,11 +33,12 @@ interface PreferencesService {
 class VersionedPreferencesService(
     private val context: Context,
     private val appVersion: String,
+    private val appChannel: String,
 ) : PreferencesService {
     private val prefs: SharedPreferences
 
     init {
-        val prefsName = "HotUpdaterPrefs_$appVersion"
+        val prefsName = "HotUpdaterPrefs_${appVersion}_$appChannel"
 
         val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
         if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
