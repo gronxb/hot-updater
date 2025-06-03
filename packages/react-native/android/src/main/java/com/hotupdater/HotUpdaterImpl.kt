@@ -57,6 +57,15 @@ class HotUpdaterImpl(
             } catch (e: Exception) {
                 null
             }
+
+        fun getChannel(context: Context): String {
+            val id = context.resources.getIdentifier("hot_updater_channel", "string", context.packageName)
+            return if (id != 0) {
+                context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
+            } else {
+                DEFAULT_CHANNEL
+            }
+        }
     }
 
     /**
