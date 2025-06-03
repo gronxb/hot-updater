@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "5fc01eb81852251849fb8f279f2c3996c42f3b43",
+    "hash": "4e226c5ada794ef0b427af906522db8003e03732",
     "sources": [
       {
         "type": "file",
@@ -16,7 +16,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "0d5c999f7d12ed165912ecd735cbad31bb31b64e"
+        "hash": "f3fddc6130915de2890ed79916b30ecefdef9748"
       },
       {
         "type": "dir",
@@ -64,11 +64,11 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.17.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.0.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.1\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.0.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "137a973e3b03f64238aa791111d0f81c03f0f916"
+        "hash": "e105f8063143347e48fc7e44b9661369fe710e5e"
       }
     ]
   },

@@ -503,20 +503,19 @@ class BundleFileStorageService: BundleStorageService {
             ))))
             return
         }
-        
+
         // 2. Create target directory
         do {
             let tempZipFileURL = URL(fileURLWithPath: tempZipFile)
             let tempZipFileDirectory = tempZipFileURL.deletingLastPathComponent()
-            
+
             if !self.fileSystem.fileExists(atPath: tempZipFileDirectory.path) {
                 try self.fileSystem.createDirectory(atPath: tempZipFileDirectory.path)
                 NSLog("[BundleStorage] Created directory atPath: \(tempZipFileDirectory.path)")
             }
-            
-            try self.fileSystem.moveItem(atPath: location.path, toPath: tempZipFile)
-            NSLog("[BundleStorage] Successfully moved file to: \(tempZipFile)")
-            
+            NSLog("[BundleStorage] Successfully downloaded file to: \(tempZipFile)")
+
+            // 3. Unzip the file
             try self.unzipService.unzip(file: tempZipFile, to: extractedDir)
             NSLog("[BundleStorage] Successfully extracted to: \(extractedDir)")
             
@@ -549,7 +548,6 @@ class BundleFileStorageService: BundleStorageService {
                             let setResult = self.setBundleURL(localPath: finalBundlePath)
                             switch setResult {
                             case .success:
-                                // 10. Cleanup
                                 self.cleanupTemporaryFiles([tempDirectory])
                                 completion(.success(true))
                             case .failure(let error):
