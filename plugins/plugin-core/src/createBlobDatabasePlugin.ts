@@ -215,14 +215,12 @@ export const createBlobDatabasePlugin = <TContext = object>({
           paginatedData = paginatedData.slice(0, limit);
         }
 
-        const paginationOptions = {
-          limit,
-          offset,
-        };
-
         return {
           data: paginatedData,
-          pagination: calculatePagination(total, paginationOptions),
+          pagination: calculatePagination(total, {
+            limit,
+            offset,
+          }),
         };
       },
 

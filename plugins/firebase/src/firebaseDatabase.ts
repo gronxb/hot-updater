@@ -98,14 +98,12 @@ export const firebaseDatabase = (
           convertToBundle(doc.data() as SnakeCaseBundle),
         );
 
-        const paginationOptions = {
-          limit: limit,
-          offset: offset,
-        };
-
         return {
           data: bundles,
-          pagination: calculatePagination(total, paginationOptions),
+          pagination: calculatePagination(total, {
+            limit,
+            offset,
+          }),
         };
       },
 
