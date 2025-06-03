@@ -492,7 +492,30 @@ class BundleFileStorageService: BundleStorageService {
     ) {
         NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
         
+        // 1. Check if source file exists
+        guard self.fileSystem.fileExists(atPath: location.path) else {
+            NSLog("[BundleStorage] Source file does not exist atPath: \(location.path)")
+            self.cleanupTemporaryFiles([tempDirectory])
+            completion(.failure(BundleStorageError.fileSystemError(NSError(
+                domain: "HotUpdaterError",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Source file does not exist atPath: \(location.path)"]
+            ))))
+            return
+        }
+
+        // 2. Create target directory
         do {
+            let tempZipFileURL = URL(fileURLWithPath: tempZipFile)
+            let tempZipFileDirectory = tempZipFileURL.deletingLastPathComponent()
+
+            if !self.fileSystem.fileExists(atPath: tempZipFileDirectory.path) {
+                try self.fileSystem.createDirectory(atPath: tempZipFileDirectory.path)
+                NSLog("[BundleStorage] Created directory atPath: \(tempZipFileDirectory.path)")
+            }
+            NSLog("[BundleStorage] Successfully downloaded file to: \(tempZipFile)")
+
+            // 3. Unzip the file
             try self.unzipService.unzip(file: tempZipFile, to: extractedDir)
             NSLog("[BundleStorage] Successfully extracted to: \(extractedDir)")
             
