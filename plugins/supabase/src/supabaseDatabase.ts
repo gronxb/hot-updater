@@ -64,7 +64,7 @@ export const supabaseDatabase = (
           countQuery = countQuery.eq("platform", where.platform);
         }
 
-        const { count: total } = await countQuery;
+        const { count: total = 0 } = await countQuery;
 
         let query = context.supabase
           .from("bundles")
@@ -106,7 +106,7 @@ export const supabaseDatabase = (
             }))
           : [];
 
-        const pagination = calculatePagination(total || 0, { limit, offset });
+        const pagination = calculatePagination(total ?? 0, { limit, offset });
 
         return {
           data: bundles,

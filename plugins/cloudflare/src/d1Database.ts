@@ -17,6 +17,17 @@ export interface D1DatabaseConfig {
   cloudflareApiToken: string;
 }
 
+// Helper interfaces for clarity
+interface QueryConditions {
+  channel?: string;
+  platform?: string;
+}
+
+interface BuildQueryResult {
+  sql: string;
+  params: any[];
+}
+
 async function resolvePage<T>(singlePage: any): Promise<T[]> {
   const results: T[] = [];
   for await (const page of singlePage.iterPages()) {
@@ -26,11 +37,101 @@ async function resolvePage<T>(singlePage: any): Promise<T[]> {
   return results;
 }
 
+// Helper function to build WHERE clause
+function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
+  const clauses: string[] = [];
+  const params: any[] = [];
+
+  if (conditions.channel) {
+    clauses.push("channel = ?");
+    params.push(conditions.channel);
+  }
+
+  if (conditions.platform) {
+    clauses.push("platform = ?");
+    params.push(conditions.platform);
+  }
+
+  const whereClause =
+    clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+
+  return { sql: whereClause, params };
+}
+
+// Helper function to transform snake_case row to Bundle
+function transformRowToBundle(row: SnakeCaseBundle): Bundle {
+  return {
+    id: row.id,
+    channel: row.channel,
+    enabled: Boolean(row.enabled),
+    shouldForceUpdate: Boolean(row.should_force_update),
+    fileHash: row.file_hash,
+    gitCommitHash: row.git_commit_hash,
+    message: row.message,
+    platform: row.platform,
+    targetAppVersion: row.target_app_version,
+    storageUri: row.storage_uri,
+    fingerprintHash: row.fingerprint_hash,
+    metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
+  };
+}
+
 export const d1Database = (
   config: D1DatabaseConfig,
   hooks?: DatabasePluginHooks,
 ) => {
   let bundles: Bundle[] = [];
+
+  // Helper function to get total count
+  async function getTotalCount(
+    context: { cf: Cloudflare },
+    conditions: QueryConditions,
+  ): Promise<number> {
+    const { sql: whereClause, params } = buildWhereClause(conditions);
+    const countSql = minify(
+      `SELECT COUNT(*) as total FROM bundles${whereClause}`,
+    );
+
+    const countResult = await context.cf.d1.database.query(config.databaseId, {
+      account_id: config.accountId,
+      sql: countSql,
+      params,
+    });
+
+    const rows = await resolvePage<{ total: number }>(countResult);
+    return rows[0]?.total || 0;
+  }
+
+  // Helper function to get paginated bundles
+  async function getPaginatedBundles(
+    context: { cf: Cloudflare },
+    conditions: QueryConditions,
+    limit: number,
+    offset: number,
+  ): Promise<Bundle[]> {
+    const { sql: whereClause, params } = buildWhereClause(conditions);
+
+    // Build the complete query
+    const sql = minify(`
+      SELECT * FROM bundles
+      ${whereClause}
+      ORDER BY id DESC
+      LIMIT ?
+      OFFSET ?
+    `);
+
+    // Add pagination params
+    params.push(limit, offset);
+
+    const result = await context.cf.d1.database.query(config.databaseId, {
+      account_id: config.accountId,
+      sql,
+      params,
+    });
+
+    const rows = await resolvePage<SnakeCaseBundle>(result);
+    return rows.map(transformRowToBundle);
+  }
 
   return createDatabasePlugin(
     "d1Database",
@@ -64,109 +165,26 @@ export const d1Database = (
           return null;
         }
 
-        const row = rows[0];
-        return {
-          channel: row.channel,
-          enabled: Boolean(row.enabled),
-          shouldForceUpdate: Boolean(row.should_force_update),
-          fileHash: row.file_hash,
-          gitCommitHash: row.git_commit_hash,
-          id: row.id,
-          message: row.message,
-          platform: row.platform,
-          targetAppVersion: row.target_app_version,
-          storageUri: row.storage_uri,
-          fingerprintHash: row.fingerprint_hash,
-          metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
-        } as Bundle;
+        return transformRowToBundle(rows[0]);
       },
 
       async getBundles(
         context,
         options: {
-          where?: { channel?: string; platform?: string };
+          where?: QueryConditions;
           limit: number;
           offset: number;
         },
       ) {
-        const { where, limit, offset } = options;
+        const { where = {}, limit, offset } = options;
 
-        // Count query for total records
-        let countSql = "SELECT COUNT(*) as total FROM bundles";
-        const countParams: any[] = [];
-        const conditions: string[] = [];
+        // 1. Get total count for pagination
+        const totalCount = await getTotalCount(context, where);
 
-        if (where?.channel) {
-          conditions.push("channel = ?");
-          countParams.push(where.channel);
-        }
-        if (where?.platform) {
-          conditions.push("platform = ?");
-          countParams.push(where.platform);
-        }
+        // 2. Get paginated bundles
+        bundles = await getPaginatedBundles(context, where, limit, offset);
 
-        if (conditions.length > 0) {
-          countSql += ` WHERE ${conditions.join(" AND ")}`;
-        }
-
-        // Get total count
-        const countResult = await context.cf.d1.database.query(
-          config.databaseId,
-          {
-            account_id: config.accountId,
-            sql: minify(countSql),
-            params: countParams,
-          },
-        );
-
-        const totalCount =
-          (await resolvePage<{ total: number }>(countResult))[0]?.total || 0;
-
-        // Data query
-        let sql = "SELECT * FROM bundles";
-        const params: any[] = [];
-
-        if (conditions.length > 0) {
-          sql += ` WHERE ${conditions.join(" AND ")}`;
-          params.push(...countParams);
-        }
-
-        sql += " ORDER BY id DESC";
-        sql += " LIMIT ?";
-        params.push(limit);
-        sql += " OFFSET ?";
-        params.push(offset);
-
-        const singlePage = await context.cf.d1.database.query(
-          config.databaseId,
-          {
-            account_id: config.accountId,
-            sql: minify(sql),
-            params,
-          },
-        );
-
-        const rows = await resolvePage<SnakeCaseBundle>(singlePage);
-
-        bundles = [];
-        if (rows.length > 0) {
-          bundles = rows.map((row) => ({
-            id: row.id,
-            channel: row.channel,
-            enabled: Boolean(row.enabled),
-            shouldForceUpdate: Boolean(row.should_force_update),
-            fileHash: row.file_hash,
-            gitCommitHash: row.git_commit_hash,
-            message: row.message,
-            platform: row.platform,
-            targetAppVersion: row.target_app_version,
-            storageUri: row.storage_uri,
-            fingerprintHash: row.fingerprint_hash,
-            metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
-          }));
-        }
-
-        // Calculate pagination using utility function
+        // 3. Calculate pagination metadata
         const paginationOptions: PaginationOptions = { limit, offset };
         const pagination = calculatePagination(totalCount, paginationOptions);
 
