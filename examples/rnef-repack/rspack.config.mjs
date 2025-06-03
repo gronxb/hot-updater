@@ -31,7 +31,7 @@ export default {
     new Repack.RepackPlugin(),
     new HotUpdaterPlugin(),
     new rspack.EnvironmentPlugin({
-      "process.env.HOT_UPDATER_SUPABASE_URL": JSON.stringify(
+      HOT_UPDATER_SUPABASE_URL: JSON.stringify(
         process.env.HOT_UPDATER_SUPABASE_URL,
       ),
     }),
