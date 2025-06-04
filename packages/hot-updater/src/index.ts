@@ -31,6 +31,7 @@ program.command("init").description("Initialize Hot Updater").action(init);
 program
   .command("doctor")
   .description("Check the health of Hot Updater")
+  .option("-f, --fix", "fix the issues", false)
   .action(handleDoctor);
 
 const fingerprintCommand = program
