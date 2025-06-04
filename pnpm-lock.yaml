@@ -802,8 +802,8 @@ importers:
         specifier: workspace:*
         version: link:../../plugins/plugin-core
       '@rnef/tools':
-        specifier: 0.7.18
-        version: 0.7.18
+        specifier: 0.7.12
+        version: 0.7.12
       commander:
         specifier: ^14.0.0
         version: 14.0.0
@@ -5539,8 +5539,8 @@ packages:
       '@rspack/core': ^1.2.8
       '@swc/helpers': ^0.5.15
 
-  '@rnef/tools@0.7.18':
-    resolution: {integrity: sha512-iVTGBImkjJXIY/Ap6+0s9xtuiBYOAuPW7BrJRJlkTl73VhEg1tIn8dLjVrvKMNZzQe9k65KzGCfdr0aZIggyUQ==}
+  '@rnef/tools@0.7.12':
+    resolution: {integrity: sha512-9mM797r78H8BB9c1Ih62zb6NLbbb/Mj902AitlMK+xGX1bmMnWnlYsCJp/kRpZtvOMgKoOo5FO8qmjdqwS509g==}
 
   '@rnef/tools@0.7.6':
     resolution: {integrity: sha512-K7xzc7U1ShDWnj0eOcZmVHNCmRVh5ztIcPsCst5NaLM2U24ScwGjOxnx779c5RIs6X8TK6Rt89evOAbMAqCkcQ==}
@@ -24204,7 +24204,7 @@ snapshots:
   '@rnef/config@0.7.6':
     dependencies:
       '@babel/code-frame': 7.26.2
-      '@rnef/tools': 0.7.18
+      '@rnef/tools': 0.7.12
       joi: 17.13.3
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -24223,7 +24223,7 @@ snapshots:
     dependencies:
       '@react-native-community/cli-config': 18.0.0(typescript@5.0.4)
       '@react-native-community/cli-config-apple': 18.0.0
-      '@rnef/tools': 0.7.18
+      '@rnef/tools': 0.7.12
       '@types/adm-zip': 0.5.7
       adm-zip: 0.5.16
       fast-glob: 3.3.3
@@ -24254,7 +24254,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@rnef/tools@0.7.18':
+  '@rnef/tools@0.7.12':
     dependencies:
       '@clack/prompts': 0.10.0
       '@expo/fingerprint': 0.11.11
