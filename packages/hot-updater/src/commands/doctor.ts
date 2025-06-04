@@ -202,11 +202,9 @@ export const handleDoctor = async ({ fix }: { fix: boolean }) => {
       }
     } else if (!fix) {
       p.log.info("Run with --fix to automatically update versions.");
+      process.exit(1);
     }
   }
-
-  // Future: Handle other issues in details
-  // if (details?.configurationIssues) { ... }
 
   p.outro("Doctor check complete.");
 };
