@@ -145,5 +145,9 @@ export const handleCreateFingerprint = async () => {
         `${picocolors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
       ),
     );
+  } else {
+    p.log.success(
+      picocolors.bold(`${picocolors.blue("fingerprint.json")} is up to date.`),
+    );
   }
 };
