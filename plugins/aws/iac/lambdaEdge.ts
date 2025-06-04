@@ -7,7 +7,6 @@ import {
   getCwd,
   transformEnv,
 } from "@hot-updater/plugin-core";
-import {} from "execa";
 import fs from "fs/promises";
 
 export class LambdaEdgeDeployer {
