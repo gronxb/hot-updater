@@ -1,0 +1,114 @@
+name: Bug Report
+description: File a bug report
+labels: [ 'bug' ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: checkboxes
+    attributes:
+      label: Precheck
+      description: Please check youself all of the following before submitting.
+      options:
+        - label: Infrastructure may have changed. Did you retry `hot-updater init`?
+          required: true
+        - label: Is your Node version v20 or higher?
+          required: true
+        - label: Are you aware that the update will only work properly if you `hot-updater deploy` after building the native app?
+          required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Name, Version of hot-updater
+      description: What name and version of package are you running?
+      placeholder: ex. 0.18.2
+    validations:
+      required: true
+  - type: input
+    id: rn-version
+    attributes:
+      label: Version of react-native
+      description: What version of react-native are you running?
+      placeholder: ex. 0.80.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platforms
+      description: What os are you seeing the problem on? (multiple)
+      multiple: true
+      options:
+        - Android
+        - iOS
+    validations:
+      required: true
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Architecture
+      description: What architecture types of react native are you seeing the problem on? (multiple)
+      multiple: true
+      options:
+        - Old Architecture(Bridge)
+        - New Architecture(Fabric)
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Providers
+      label: What provider are you seeing the problem on? (multiple)
+      multiple: true
+      options:
+        - Supabase
+        - Cloudflare
+        - S3 & Lambda
+        - Firebase
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Expo App
+      description: Are you using Expo?
+      options:
+        - label: I am using Expo
+        - label: Project is managed with Expo [CNG](https://docs.expo.dev/workflow/continuous-native-generation/)(android, ios directories are included in `.gitignore`)
+  - type: input
+    id: bundler
+    attributes:
+      label: Bundler
+      description: Which bundler do you use?
+      placeholder: metro(hermes), repack
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us, what did you expect to happen?
+      placeholder: Tell us what you see!
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output, if any.
+      render: shell
+  - type: input
+    id: sample
+    attributes:
+      label: Reproducible Sample Repository
+      description: Repository url of reproducible sample. It is not mandatory. But it'll help to investigate more details.
+      placeholder: https://github.com/user/repo
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/gronxb/hot-updater/blob/main/CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
