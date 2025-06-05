@@ -365,8 +365,6 @@ class BundleFileStorageService: BundleStorageService {
                     if let bundlePath = existingBundlePath {
                         NSLog("[BundleStorage] Using cached bundle at path: \(bundlePath)")
                         do {
-                            try self.fileSystem.setAttributes([.modificationDate: Date()], ofItemAtPath: finalBundleDir)
-                            
                             let setResult = self.setBundleURL(localPath: bundlePath)
                             switch setResult {
                             case .success:
