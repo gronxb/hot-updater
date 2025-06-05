@@ -25,13 +25,13 @@ const AndroidVersionParsers = {
 type AndroidVersionParser = keyof typeof AndroidVersionParsers;
 
 export const getAndroidVersion = async ({
-  strategy,
+  parser,
   validateWithSemver = false,
 }: {
-  strategy: AndroidVersionParser | AndroidVersionParser[];
+  parser: AndroidVersionParser | AndroidVersionParser[];
   validateWithSemver?: boolean;
 }): Promise<string | null> => {
-  const strategies = Array.isArray(strategy) ? strategy : [strategy];
+  const strategies = Array.isArray(parser) ? parser : [parser];
 
   for (const strategy of strategies) {
     const parsedVersion = await AndroidVersionParsers[strategy]();

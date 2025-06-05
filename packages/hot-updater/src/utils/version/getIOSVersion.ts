@@ -77,13 +77,13 @@ const IOSVersionParsers = {
 type IOSVersionParser = keyof typeof IOSVersionParsers;
 
 export const getIOSVersion = async ({
-  strategy,
+  parser,
   validateWithSemver = false,
 }: {
-  strategy: IOSVersionParser | IOSVersionParser[];
+  parser: IOSVersionParser | IOSVersionParser[];
   validateWithSemver?: boolean;
 }): Promise<string | null> => {
-  const strategies = Array.isArray(strategy) ? strategy : [strategy];
+  const strategies = Array.isArray(parser) ? parser : [parser];
 
   for (const strategy of strategies) {
     const parsedVersion = await IOSVersionParsers[strategy]();

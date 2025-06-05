@@ -10,10 +10,10 @@ export const getDefaultTargetAppVersion = async (
 
   switch (platform) {
     case "ios":
-      version = await getIOSVersion({ strategy: "info-plist" });
+      version = await getIOSVersion({ parser: "info-plist" });
       break;
     case "android":
-      version = await getAndroidVersion({ strategy: "app-build-gradle" });
+      version = await getAndroidVersion({ parser: "app-build-gradle" });
       break;
   }
 

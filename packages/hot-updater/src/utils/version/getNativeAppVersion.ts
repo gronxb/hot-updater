@@ -7,9 +7,9 @@ export const getNativeAppVersion = async (
 ): Promise<string | null> => {
   switch (platform) {
     case "ios":
-      return getIOSVersion({ strategy: ["xcodeproj", "info-plist"] });
+      return getIOSVersion({ parser: ["xcodeproj", "info-plist"] });
     case "android":
-      return getAndroidVersion({ strategy: "app-build-gradle" });
+      return getAndroidVersion({ parser: "app-build-gradle" });
     default:
       return null;
   }
