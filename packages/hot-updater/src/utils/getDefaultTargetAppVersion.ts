@@ -4,7 +4,7 @@ import { findUp } from "find-up-simple";
 import fs from "fs/promises";
 import plist from "plist";
 
-export const getIOSVersion = async (cwd: string): Promise<string | null> => {
+const getIOSVersion = async (cwd: string): Promise<string | null> => {
   try {
     const plistPath = await findUp("Info.plist", { cwd, type: "file" });
     if (!plistPath) return null;
@@ -18,9 +18,7 @@ export const getIOSVersion = async (cwd: string): Promise<string | null> => {
   }
 };
 
-export const getAndroidVersion = async (
-  cwd: string,
-): Promise<string | null> => {
+const getAndroidVersion = async (cwd: string): Promise<string | null> => {
   const buildGradlePath = path.join(cwd, "android", "app", "build.gradle");
   try {
     const buildGradleContent = await fs.readFile(buildGradlePath, "utf8");
