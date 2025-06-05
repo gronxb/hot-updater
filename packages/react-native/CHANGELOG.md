@@ -1,5 +1,13 @@
 # @hot-updater/react-native
 
+## 0.18.3
+
+### Patch Changes
+
+- 34b96c1: fix(native): extracted bundle.zip directly into folder
+  - @hot-updater/core@0.18.3
+  - @hot-updater/js@0.18.3
+
 ## 0.18.2
 
 ### Patch Changes
