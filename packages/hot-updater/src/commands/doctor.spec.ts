@@ -146,6 +146,47 @@ describe("doctor", () => {
     (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
       packageJson: {
         dependencies: {
+          "hot-updater": "^0.18.2",
+          "@hot-updater/core": "0.17.0",
+          "@hot-updater/react-native": "0.17.0",
+        },
+        devDependencies: {
+          "some-other-package": "2.0.0",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+
+    const result = await doctor();
+    expect(result).toEqual({
+      details: {
+        hotUpdaterVersion: "^0.18.2",
+        installedHotUpdaterPackages: [
+          "@hot-updater/core",
+          "@hot-updater/react-native",
+        ],
+        packageJsonPath: "/mock/cwd/package.json",
+        versionMismatches: [
+          {
+            currentVersion: "0.17.0",
+            expectedVersion: "^0.18.2",
+            packageName: "@hot-updater/core",
+          },
+          {
+            currentVersion: "0.17.0",
+            expectedVersion: "^0.18.2",
+            packageName: "@hot-updater/react-native",
+          },
+        ],
+      },
+      success: false,
+    });
+  });
+
+  it("should return true for a healthy setup", async () => {
+    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+      packageJson: {
+        dependencies: {
           "hot-updater": "^1.0.0",
           "@hot-updater/core": "1.0.1",
           "@hot-updater/plugin-react-native": "1.0.5",
