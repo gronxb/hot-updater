@@ -183,21 +183,21 @@ class BundleFileStorageService(
                     }
 
                     // 6) Verify index.android.bundle exists inside finalBundleDir
-                    val finalIndexFile2 = finalBundleDir.walk().find { it.name == "index.android.bundle" }
-                    if (finalIndexFile2 == null) {
+                    val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
+                    if (finalIndexFile == null) {
                         Log.d("BundleStorage", "index.android.bundle not found in realDir.")
                         tempDir.deleteRecursively()
                         finalBundleDir.deleteRecursively()
                         return@withContext false
                     }
 
-                    // 7) Update finalBundleDir’s last modified time
+                    // 7) Update finalBundleDir's last modified time
                     finalBundleDir.setLastModified(System.currentTimeMillis())
 
                     // 8) Save the new bundle path in Preferences
-                    val bundlePath2 = finalIndexFile2.absolutePath
-                    Log.d("BundleStorage", "Setting bundle URL: $bundlePath2")
-                    setBundleURL(bundlePath2)
+                    val bundlePath = finalIndexFile.absolutePath
+                    Log.d("BundleStorage", "Setting bundle URL: $bundlePath")
+                    setBundleURL(bundlePath)
 
                     // 9) Clean up temporary and download folders
                     tempDir.deleteRecursively()
