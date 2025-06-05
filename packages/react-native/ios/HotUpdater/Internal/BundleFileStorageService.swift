@@ -55,6 +55,14 @@ class BundleFileStorageService: BundleStorageService {
                                                attributes: .concurrent)
     }
     
+    // MARK: - Helper Structures
+    
+    private struct FileItem {
+        let relativePath: String
+        let isDirectory: Bool
+        let size: Int64
+    }
+    
     // MARK: - Directory Management
     
     /**
@@ -110,6 +118,225 @@ class BundleFileStorageService: BundleStorageService {
             }
         }
         DispatchQueue.global(qos: .background).async(execute: workItem)
+    }
+    
+    // MARK: - Safe File Operations
+    
+    /**
+     * Scans directory structure and records all files/directories
+     */
+    private func scanDirectoryStructure(_ path: String) throws -> [FileItem] {
+        var items: [FileItem] = []
+        let enumerator = FileManager.default.enumerator(atPath: path)
+        
+        while let relativePath = enumerator?.nextObject() as? String {
+            let fullPath = (path as NSString).appendingPathComponent(relativePath)
+            let attributes = try self.fileSystem.attributesOfItem(atPath: fullPath)
+            
+            let item = FileItem(
+                relativePath: relativePath,
+                isDirectory: (attributes[.type] as? FileAttributeType) == .typeDirectory,
+                size: (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            )
+            items.append(item)
+        }
+        
+        return items
+    }
+    
+    /**
+     * Safely moves directory with verification
+     */
+    private func moveDirectoryWithVerification(from sourcePath: String, to destinationPath: String) throws {
+        NSLog("[BundleStorage] Starting verified directory move from \(sourcePath) to \(destinationPath)")
+        
+        // 1. Scan source directory structure
+        let sourceStructure = try scanDirectoryStructure(sourcePath)
+        NSLog("[BundleStorage] Source contains \(sourceStructure.count) items")
+        
+        // 2. Clean destination safely
+        try cleanupDestinationSafely(destinationPath)
+        
+        // 3. Perform atomic move with retry
+        try performAtomicMoveWithRetry(from: sourcePath, to: destinationPath)
+        
+        // 4. Verify move completion
+        try verifyMoveCompletion(sourceStructure: sourceStructure, destinationPath: destinationPath)
+        
+        NSLog("[BundleStorage] Directory move and verification completed successfully")
+    }
+    
+    /**
+     * Safely cleans up destination path
+     */
+    private func cleanupDestinationSafely(_ destinationPath: String) throws {
+        guard self.fileSystem.fileExists(atPath: destinationPath) else { return }
+        
+        // Move to backup location first, then delete in background
+        let backupPath = destinationPath + ".backup.\(UUID().uuidString)"
+        
+        do {
+            try self.fileSystem.moveItem(atPath: destinationPath, toPath: backupPath)
+            // Delete in background
+            DispatchQueue.global(qos: .background).async {
+                try? self.fileSystem.removeItem(atPath: backupPath)
+            }
+        } catch {
+            // If move fails, try direct removal
+            try self.fileSystem.removeItem(atPath: destinationPath)
+        }
+    }
+    
+    /**
+     * Performs atomic move with retry mechanism
+     */
+    private func performAtomicMoveWithRetry(from sourcePath: String, to destinationPath: String, maxRetries: Int = 3) throws {
+        var lastError: Error?
+        
+        for attempt in 1...maxRetries {
+            do {
+                // Use temporary destination for atomic operation
+                let tempDestination = destinationPath + ".moving.\(UUID().uuidString)"
+                
+                // Move to temporary location first
+                try self.fileSystem.moveItem(atPath: sourcePath, toPath: tempDestination)
+                
+                // Then rename to final location (faster atomic operation)
+                try self.fileSystem.moveItem(atPath: tempDestination, toPath: destinationPath)
+                
+                NSLog("[BundleStorage] Atomic move succeeded on attempt \(attempt)")
+                return
+                
+            } catch {
+                lastError = error
+                NSLog("[BundleStorage] Move attempt \(attempt) failed: \(error.localizedDescription)")
+                
+                // Clean up any partial moves
+                let tempDestination = destinationPath + ".moving.\(UUID().uuidString)"
+                try? self.fileSystem.removeItem(atPath: tempDestination)
+                try? self.fileSystem.removeItem(atPath: destinationPath)
+                
+                if attempt < maxRetries {
+                    // Wait before retry
+                    Thread.sleep(forTimeInterval: TimeInterval(attempt) * 0.5)
+                }
+            }
+        }
+        
+        throw lastError ?? BundleStorageError.moveOperationFailed(
+            NSError(domain: "HotUpdaterError", code: 500,
+                   userInfo: [NSLocalizedDescriptionKey: "Move failed after \(maxRetries) attempts"])
+        )
+    }
+    
+    /**
+     * Verifies that all files were moved correctly
+     */
+    private func verifyMoveCompletion(sourceStructure: [FileItem], destinationPath: String) throws {
+        NSLog("[BundleStorage] Verifying move completion for \(sourceStructure.count) items...")
+        
+        // Check destination directory exists
+        guard self.fileSystem.fileExists(atPath: destinationPath) else {
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 404,
+                       userInfo: [NSLocalizedDescriptionKey: "Destination directory not found after move"])
+            )
+        }
+        
+        var missingItems: [String] = []
+        var sizeMismatchItems: [String] = []
+        
+        // Verify each file/directory
+        for item in sourceStructure {
+            let destinationItemPath = (destinationPath as NSString).appendingPathComponent(item.relativePath)
+            
+            // Check existence
+            guard self.fileSystem.fileExists(atPath: destinationItemPath) else {
+                missingItems.append(item.relativePath)
+                continue
+            }
+            
+            // Check file size for files (not directories)
+            if !item.isDirectory {
+                do {
+                    let attributes = try self.fileSystem.attributesOfItem(atPath: destinationItemPath)
+                    let actualSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                    
+                    if actualSize != item.size {
+                        sizeMismatchItems.append("\(item.relativePath) (expected: \(item.size), actual: \(actualSize))")
+                    }
+                } catch {
+                    missingItems.append(item.relativePath)
+                }
+            }
+        }
+        
+        // Report verification results
+        if !missingItems.isEmpty {
+            NSLog("[BundleStorage] Missing items after move: \(missingItems)")
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 601,
+                       userInfo: [NSLocalizedDescriptionKey: "Missing \(missingItems.count) items after move: \(missingItems.prefix(5).joined(separator: ", "))"])
+            )
+        }
+        
+        if !sizeMismatchItems.isEmpty {
+            NSLog("[BundleStorage] Size mismatch items after move: \(sizeMismatchItems)")
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 602,
+                       userInfo: [NSLocalizedDescriptionKey: "Size mismatch for \(sizeMismatchItems.count) items: \(sizeMismatchItems.prefix(3).joined(separator: ", "))"])
+            )
+        }
+        
+        NSLog("[BundleStorage] All \(sourceStructure.count) items verified successfully")
+    }
+    
+    /**
+     * Verifies bundle integrity after move
+     */
+    private func verifyBundleIntegrity(bundlePath: String) throws -> String {
+        NSLog("[BundleStorage] Verifying bundle integrity at: \(bundlePath)")
+        
+        // 1. Find bundle file
+        let findResult = self.findBundleFile(in: bundlePath)
+        guard case .success(let bundleFilePath) = findResult,
+              let bundleFilePath = bundleFilePath else {
+            throw BundleStorageError.invalidBundle
+        }
+        
+        // 2. Verify bundle file exists and is readable
+        guard self.fileSystem.fileExists(atPath: bundleFilePath) else {
+            throw BundleStorageError.invalidBundle
+        }
+        
+        // 3. Check bundle file size (must be > 100 bytes to be valid)
+        do {
+            let attributes = try self.fileSystem.attributesOfItem(atPath: bundleFilePath)
+            let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            
+            if fileSize < 100 {
+                NSLog("[BundleStorage] Bundle file too small: \(fileSize) bytes")
+                throw BundleStorageError.invalidBundle
+            }
+        } catch {
+            NSLog("[BundleStorage] Could not read bundle file attributes: \(error)")
+            throw BundleStorageError.invalidBundle
+        }
+        
+        // 4. Verify assets directory if it exists
+        let assetsPath = (bundlePath as NSString).appendingPathComponent("assets")
+        if self.fileSystem.fileExists(atPath: assetsPath) {
+            do {
+                let assetsContents = try self.fileSystem.contentsOfDirectory(atPath: assetsPath)
+                NSLog("[BundleStorage] Assets directory verified with \(assetsContents.count) items")
+            } catch {
+                NSLog("[BundleStorage] Warning: Could not verify assets directory: \(error)")
+                // Don't fail for assets issues, just warn
+            }
+        }
+        
+        NSLog("[BundleStorage] Bundle integrity verified successfully")
+        return bundleFilePath
     }
     
     // MARK: - Bundle File Operations
@@ -471,7 +698,7 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     /**
-     * Processes a downloaded bundle file.
+     * Processes a downloaded bundle file with enhanced safety and verification.
      * This method is part of the asynchronous `updateBundle` flow and is expected to run on a background thread.
      * @param location URL of the downloaded file
      * @param tempZipFile Path to store the downloaded zip file
@@ -492,20 +719,18 @@ class BundleFileStorageService: BundleStorageService {
     ) {
         NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
         
-        // 1. Check if source file exists
-        guard self.fileSystem.fileExists(atPath: location.path) else {
-            NSLog("[BundleStorage] Source file does not exist atPath: \(location.path)")
-            self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(BundleStorageError.fileSystemError(NSError(
-                domain: "HotUpdaterError",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Source file does not exist atPath: \(location.path)"]
-            ))))
-            return
-        }
-
-        // 2. Create target directory
         do {
+            // 1. Check if source file exists
+            guard self.fileSystem.fileExists(atPath: location.path) else {
+                NSLog("[BundleStorage] Source file does not exist atPath: \(location.path)")
+                throw BundleStorageError.fileSystemError(NSError(
+                    domain: "HotUpdaterError",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Source file does not exist atPath: \(location.path)"]
+                ))
+            }
+
+            // 2. Create target directory
             let tempZipFileURL = URL(fileURLWithPath: tempZipFile)
             let tempZipFileDirectory = tempZipFileURL.deletingLastPathComponent()
 
@@ -519,64 +744,51 @@ class BundleFileStorageService: BundleStorageService {
             try self.unzipService.unzip(file: tempZipFile, to: extractedDir)
             NSLog("[BundleStorage] Successfully extracted to: \(extractedDir)")
             
-            // 6. Remove temporary zip file
+            // 4. Remove temporary zip file
             try? self.fileSystem.removeItem(atPath: tempZipFile)
             
-            // 7. Search for bundle file
+            // 5. Search for bundle file in extracted directory
             switch self.findBundleFile(in: extractedDir) {
             case .success(let bundlePath):
-                if let bundlePath = bundlePath {
-                    NSLog("[BundleStorage] Found bundle atPath: \(bundlePath)")
-                    
-                    // 8. Create final bundle directory
-                    if !self.fileSystem.fileExists(atPath: finalBundleDir) {
-                        try self.fileSystem.createDirectory(atPath: finalBundleDir)
-                        NSLog("[BundleStorage] Created final bundle directory atPath: \(finalBundleDir)")
-                    }
-                    
-                    // 9. Move entire extracted directory to final location
-                    if self.fileSystem.fileExists(atPath: finalBundleDir) {
-                        try self.fileSystem.removeItem(atPath: finalBundleDir)
-                    }
-                    try self.fileSystem.moveItem(atPath: extractedDir, toPath: finalBundleDir)
-                    NSLog("[BundleStorage] Successfully moved entire bundle directory to: \(finalBundleDir)")
-                    
-                    let findResult = self.findBundleFile(in: finalBundleDir)
-                    switch findResult {
-                    case .success(let finalBundlePath):
-                        if let finalBundlePath = finalBundlePath {
-                            let setResult = self.setBundleURL(localPath: finalBundlePath)
-                            switch setResult {
-                            case .success:
-                                self.cleanupTemporaryFiles([tempDirectory])
-                                completion(.success(true))
-                            case .failure(let error):
-                                self.cleanupTemporaryFiles([tempDirectory])
-                                completion(.failure(error))
-                            }
-                        } else {
-                            NSLog("[BundleStorage] No bundle file found in final directory")
-                            self.cleanupTemporaryFiles([tempDirectory])
-                            completion(.failure(BundleStorageError.invalidBundle))
-                        }
-                    case .failure(let error):
-                        NSLog("[BundleStorage] Error finding bundle file: \(error.localizedDescription)")
-                        self.cleanupTemporaryFiles([tempDirectory])
-                        completion(.failure(error))
-                    }
-                } else {
+                guard let bundlePath = bundlePath else {
                     NSLog("[BundleStorage] No bundle file found in extracted directory")
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.invalidBundle))
+                    throw BundleStorageError.invalidBundle
                 }
+                
+                NSLog("[BundleStorage] Found bundle in extracted directory: \(bundlePath)")
+                
+                // 6. Move directory with verification (THIS IS THE KEY FIX)
+                try self.moveDirectoryWithVerification(from: extractedDir, to: finalBundleDir)
+                
+                NSLog("[BundleStorage] Successfully moved and verified bundle directory to: \(finalBundleDir)")
+                
+                // 7. Verify bundle integrity after move and get final bundle path
+                let finalBundlePath = try self.verifyBundleIntegrity(bundlePath: finalBundleDir)
+                
+                // 8. Only set bundle URL after all verifications pass
+                let setResult = self.setBundleURL(localPath: finalBundlePath)
+                switch setResult {
+                case .success:
+                    NSLog("[BundleStorage] Bundle URL set successfully: \(finalBundlePath)")
+                    self.cleanupTemporaryFiles([tempDirectory])
+                    completion(.success(true))
+                case .failure(let error):
+                    NSLog("[BundleStorage] Failed to set bundle URL: \(error)")
+                    throw error
+                }
+                
             case .failure(let error):
                 NSLog("[BundleStorage] Error finding bundle file: \(error.localizedDescription)")
-                self.cleanupTemporaryFiles([tempDirectory])
-                completion(.failure(error))
+                throw error
             }
-        } catch let error {
+            
+        } catch {
             NSLog("[BundleStorage] Error processing downloaded file: \(error.localizedDescription)")
+            
+            // Clean up on failure
             self.cleanupTemporaryFiles([tempDirectory])
+            try? self.fileSystem.removeItem(atPath: finalBundleDir) // Remove partial bundle
+            
             completion(.failure(BundleStorageError.fileSystemError(error)))
         }
     }
