@@ -19,22 +19,22 @@ const getAndroidVersionFromAppBuildGradle = async (): Promise<
   }
 };
 
-const Strategy = {
+const AndroidVersionParsers = {
   "app-build-gradle": getAndroidVersionFromAppBuildGradle,
 };
-type StrategyKey = keyof typeof Strategy;
+type AndroidVersionParser = keyof typeof AndroidVersionParsers;
 
 export const getAndroidVersion = async ({
   strategy,
   validateWithSemver = false,
 }: {
-  strategy: StrategyKey | StrategyKey[];
+  strategy: AndroidVersionParser | AndroidVersionParser[];
   validateWithSemver?: boolean;
 }): Promise<string | null> => {
   const strategies = Array.isArray(strategy) ? strategy : [strategy];
 
   for (const strategy of strategies) {
-    const parsedVersion = await Strategy[strategy]();
+    const parsedVersion = await AndroidVersionParsers[strategy]();
 
     if (!parsedVersion) continue;
     if (validateWithSemver && !semverValid(parsedVersion)) continue;

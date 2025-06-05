@@ -70,23 +70,23 @@ const getIOSVersionFromXcodeProject = async (): Promise<string | null> => {
   }
 };
 
-const Strategy = {
+const IOSVersionParsers = {
   xcodeproj: getIOSVersionFromXcodeProject,
   "info-plist": getIOSVersionFromInfoPlist,
 };
-type StrategyKey = keyof typeof Strategy;
+type IOSVersionParser = keyof typeof IOSVersionParsers;
 
 export const getIOSVersion = async ({
   strategy,
   validateWithSemver = false,
 }: {
-  strategy: StrategyKey | StrategyKey[];
+  strategy: IOSVersionParser | IOSVersionParser[];
   validateWithSemver?: boolean;
 }): Promise<string | null> => {
   const strategies = Array.isArray(strategy) ? strategy : [strategy];
 
   for (const strategy of strategies) {
-    const parsedVersion = await Strategy[strategy]();
+    const parsedVersion = await IOSVersionParsers[strategy]();
 
     if (!parsedVersion) continue;
     if (validateWithSemver && !semverValid(parsedVersion)) continue;
