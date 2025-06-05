@@ -120,8 +120,6 @@ class BundleFileStorageService(
         tempDir.mkdirs()
 
         val tempZipFile = File(tempDir, "bundle.zip")
-        val extractedDir = File(tempDir, "extracted")
-        extractedDir.mkdirs()
 
         return withContext(Dispatchers.IO) {
             val downloadUrl = URL(fileUrl)
@@ -141,46 +139,70 @@ class BundleFileStorageService(
                     return@withContext false
                 }
                 is DownloadResult.Success -> {
-                    // Extract the zip file
-                    if (!unzipService.extractZipFile(tempZipFile.absolutePath, extractedDir.absolutePath)) {
-                        Log.d("BundleStorage", "Failed to extract zip file.")
+                    // 1) .tmp 디렉토리 생성 (기존 <bundleId> 폴더와 겹치지 않도록 .tmp 붙임)
+                    val tmpDir = File(bundleStoreDir, "$bundleId.tmp")
+                    if (tmpDir.exists()) {
+                        tmpDir.deleteRecursively()
+                    }
+                    tmpDir.mkdirs()
+
+                    // 2) tmpDir에 압축 풀기
+                    Log.d("BundleStorage", "Unzipping $tempZipFile → $tmpDir")
+                    if (!unzipService.extractZipFile(tempZipFile.absolutePath, tmpDir.absolutePath)) {
+                        Log.d("BundleStorage", "Failed to extract zip into tmpDir.")
                         tempDir.deleteRecursively()
+                        tmpDir.deleteRecursively()
                         return@withContext false
                     }
 
-                    // Find the bundle file
-                    val indexFileExtracted = extractedDir.walk().find { it.name == "index.android.bundle" }
-                    if (indexFileExtracted == null) {
-                        Log.d("BundleStorage", "index.android.bundle not found in extracted files.")
+                    // 3) tmpDir 내부에 index.android.bundle 찾기
+                    val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
+                    if (extractedIndex == null) {
+                        Log.d("BundleStorage", "index.android.bundle not found in tmpDir.")
                         tempDir.deleteRecursively()
+                        tmpDir.deleteRecursively()
                         return@withContext false
                     }
 
-                    // Move to final location
+                    // 4) realDir(=bundle-store/<bundleId>)가 있으면 삭제
                     if (finalBundleDir.exists()) {
                         finalBundleDir.deleteRecursively()
                     }
 
-                    if (!fileSystem.moveItem(extractedDir.absolutePath, finalBundleDir.absolutePath)) {
-                        fileSystem.copyItem(extractedDir.absolutePath, finalBundleDir.absolutePath)
-                        extractedDir.deleteRecursively()
+                    // 5) tmpDir → realDir 로 rename 시도 (같은 부모 폴더이므로 원자적 처리)
+                    val renamed = tmpDir.renameTo(finalBundleDir)
+                    if (!renamed) {
+                        // rename 실패 시, moveItem 혹은 copyItem으로 대체
+                        if (!fileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                            fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)
+                            tmpDir.deleteRecursively()
+                        }
                     }
 
-                    val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
-                    if (finalIndexFile == null) {
-                        Log.d("BundleStorage", "index.android.bundle not found in final directory.")
+                    // 6) realDir 내부에 index.android.bundle 존재 확인
+                    val finalIndexFile2 = finalBundleDir.walk().find { it.name == "index.android.bundle" }
+                    if (finalIndexFile2 == null) {
+                        Log.d("BundleStorage", "index.android.bundle not found in realDir.")
                         tempDir.deleteRecursively()
+                        finalBundleDir.deleteRecursively()
                         return@withContext false
                     }
 
+                    // 7) realDir의 수정 시간 갱신
                     finalBundleDir.setLastModified(System.currentTimeMillis())
-                    val bundlePath = finalIndexFile.absolutePath
-                    Log.d("BundleStorage", "Setting bundle URL: $bundlePath")
-                    setBundleURL(bundlePath)
-                    cleanupOldBundles(bundleStoreDir)
+
+                    // 8) Preferences에 새 번들 경로 저장
+                    val bundlePath2 = finalIndexFile2.absolutePath
+                    Log.d("BundleStorage", "Setting bundle URL: $bundlePath2")
+                    setBundleURL(bundlePath2)
+
+                    // 9) 임시 및 다운로드 폴더 정리
                     tempDir.deleteRecursively()
 
-                    Log.d("BundleStorage", "Downloaded and extracted file successfully.")
+                    // 10) 오래된 번들 정리
+                    cleanupOldBundles(bundleStoreDir)
+
+                    Log.d("BundleStorage", "Downloaded and activated bundle successfully.")
                     return@withContext true
                 }
             }
@@ -188,13 +210,19 @@ class BundleFileStorageService(
     }
 
     private fun cleanupOldBundles(bundleStoreDir: File) {
-        val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
+        val bundles = bundleStoreDir.listFiles { file -> file.isDirectory && !file.name.endsWith(".tmp") }?.toList() ?: return
         val sortedBundles = bundles.sortedByDescending { it.lastModified() }
         if (sortedBundles.size > 1) {
             sortedBundles.drop(1).forEach { oldBundle ->
                 Log.d("BundleStorage", "Removing old bundle: ${oldBundle.name}")
                 oldBundle.deleteRecursively()
             }
+        }
+
+        // .tmp 폴더 중 남아있는 것이 있으면 제거
+        bundleStoreDir.listFiles { file -> file.isDirectory && file.name.endsWith(".tmp") }?.forEach { staleTmp ->
+            Log.d("BundleStorage", "Removing stale tmp directory: ${staleTmp.name}")
+            staleTmp.deleteRecursively()
         }
     }
 }
