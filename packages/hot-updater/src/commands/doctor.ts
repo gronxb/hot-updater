@@ -1,5 +1,6 @@
 import fs from "fs";
 import * as p from "@clack/prompts";
+import * as semver from "semver";
 
 import { getCwd } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
@@ -34,6 +35,43 @@ interface DoctorResult {
   success: boolean;
   error?: string;
   details?: DoctorDetails;
+}
+
+/**
+ * Checks if two versions (or version and range) are compatible.
+ * @param versionA - First version or range string.
+ * @param versionB - Second version or range string.
+ * @returns True if compatible, false otherwise.
+ */
+export function areVersionsCompatible(
+  versionA: string,
+  versionB: string,
+): boolean {
+  if (versionA === versionB) {
+    return true;
+  }
+
+  const options = { includePrerelease: true };
+
+  // Check if versionA satisfies versionB (when versionB is a range)
+  if (
+    semver.valid(versionA) &&
+    semver.validRange(versionB) &&
+    semver.satisfies(versionA, versionB, options)
+  ) {
+    return true;
+  }
+
+  // Check if versionB satisfies versionA (when versionA is a range)
+  if (
+    semver.valid(versionB) &&
+    semver.validRange(versionA) &&
+    semver.satisfies(versionB, versionA, options)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -84,7 +122,11 @@ export async function doctor(
 
     for (const packageName of hotUpdaterPackages) {
       const currentVersion = allDependencies[packageName];
-      if (currentVersion && currentVersion !== hotUpdaterVersion) {
+      if (
+        hotUpdaterVersion &&
+        currentVersion &&
+        !areVersionsCompatible(currentVersion, hotUpdaterVersion)
+      ) {
         versionMismatches.push({
           packageName,
           currentVersion,
