@@ -31,10 +31,10 @@ export const getAndroidVersion = async ({
   parser: AndroidVersionParser | AndroidVersionParser[];
   validateWithSemver?: boolean;
 }): Promise<string | null> => {
-  const strategies = Array.isArray(parser) ? parser : [parser];
+  const parsers = Array.isArray(parser) ? parser : [parser];
 
-  for (const strategy of strategies) {
-    const parsedVersion = await AndroidVersionParsers[strategy]();
+  for (const parserKey of parsers) {
+    const parsedVersion = await AndroidVersionParsers[parserKey]();
 
     if (!parsedVersion) continue;
     if (validateWithSemver && !semverValid(parsedVersion)) continue;

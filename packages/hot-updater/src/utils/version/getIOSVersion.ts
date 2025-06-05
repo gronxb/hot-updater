@@ -83,10 +83,10 @@ export const getIOSVersion = async ({
   parser: IOSVersionParser | IOSVersionParser[];
   validateWithSemver?: boolean;
 }): Promise<string | null> => {
-  const strategies = Array.isArray(parser) ? parser : [parser];
+  const parsers = Array.isArray(parser) ? parser : [parser];
 
-  for (const strategy of strategies) {
-    const parsedVersion = await IOSVersionParsers[strategy]();
+  for (const parserKey of parsers) {
+    const parsedVersion = await IOSVersionParsers[parserKey]();
 
     if (!parsedVersion) continue;
     if (validateWithSemver && !semverValid(parsedVersion)) continue;
