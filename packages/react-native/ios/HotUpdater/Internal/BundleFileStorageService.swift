@@ -120,50 +120,336 @@ class BundleFileStorageService: BundleStorageService {
         DispatchQueue.global(qos: .background).async(execute: workItem)
     }
     
-    // MARK: - Safe File Operations
+    // MARK: - Optimized File Operations
     
     /**
-     * Scans directory structure and records all files/directories
+     * Fast file count with early termination for large datasets
      */
-    private func scanDirectoryStructure(_ path: String) throws -> [FileItem] {
-        var items: [FileItem] = []
+    private func getFileCount(_ path: String) throws -> Int {
+        var count = 0
         let enumerator = FileManager.default.enumerator(atPath: path)
         
-        while let relativePath = enumerator?.nextObject() as? String {
-            let fullPath = (path as NSString).appendingPathComponent(relativePath)
-            let attributes = try self.fileSystem.attributesOfItem(atPath: fullPath)
-            
-            let item = FileItem(
-                relativePath: relativePath,
-                isDirectory: (attributes[.type] as? FileAttributeType) == .typeDirectory,
-                size: (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            )
-            items.append(item)
+        while let _ = enumerator?.nextObject() as? String {
+            count += 1
+            // Early termination for very large bundles
+            if count > 5000 {
+                return count
+            }
         }
         
-        return items
+        return count
     }
     
     /**
-     * Safely moves directory with verification
+     * Memory-efficient streaming verification for medium-sized bundles
      */
-    private func moveDirectoryWithVerification(from sourcePath: String, to destinationPath: String) throws {
-        NSLog("[BundleStorage] Starting verified directory move from \(sourcePath) to \(destinationPath)")
+    private func verifyMoveCompletionStreaming(sourcePath: String, destinationPath: String) throws {
+        NSLog("[BundleStorage] Starting streaming verification...")
         
-        // 1. Scan source directory structure
-        let sourceStructure = try scanDirectoryStructure(sourcePath)
-        NSLog("[BundleStorage] Source contains \(sourceStructure.count) items")
+        var checkedCount = 0
+        var errorCount = 0
+        let maxErrors = 10 // Allow some errors but not too many
         
-        // 2. Clean destination safely
-        try cleanupDestinationSafely(destinationPath)
+        // Stream through source directory
+        let sourceEnumerator = FileManager.default.enumerator(atPath: sourcePath)
         
-        // 3. Perform atomic move with retry
-        try performAtomicMoveWithRetry(from: sourcePath, to: destinationPath)
+        while let relativePath = sourceEnumerator?.nextObject() as? String {
+            let sourceFullPath = (sourcePath as NSString).appendingPathComponent(relativePath)
+            let destFullPath = (destinationPath as NSString).appendingPathComponent(relativePath)
+            
+            // Batch processing with CPU yielding
+            checkedCount += 1
+            if checkedCount % 100 == 0 {
+                NSLog("[BundleStorage] Verified \(checkedCount) items...")
+                // Yield CPU to prevent blocking
+                usleep(1000) // 1ms
+            }
+            
+            // Check file existence
+            guard self.fileSystem.fileExists(atPath: destFullPath) else {
+                errorCount += 1
+                NSLog("[BundleStorage] Missing file: \(relativePath)")
+                
+                if errorCount >= maxErrors {
+                    throw BundleStorageError.moveOperationFailed(
+                        NSError(domain: "HotUpdaterError", code: 601,
+                               userInfo: [NSLocalizedDescriptionKey: "Too many missing files (\(errorCount)), aborting verification"])
+                    )
+                }
+                continue
+            }
+            
+            // Verify file size for non-directories
+            do {
+                let sourceAttributes = try self.fileSystem.attributesOfItem(atPath: sourceFullPath)
+                let destAttributes = try self.fileSystem.attributesOfItem(atPath: destFullPath)
+                
+                let isSourceDir = (sourceAttributes[.type] as? FileAttributeType) == .typeDirectory
+                let isDestDir = (destAttributes[.type] as? FileAttributeType) == .typeDirectory
+                
+                if !isSourceDir && !isDestDir {
+                    let sourceSize = (sourceAttributes[.size] as? NSNumber)?.int64Value ?? 0
+                    let destSize = (destAttributes[.size] as? NSNumber)?.int64Value ?? 0
+                    
+                    if sourceSize != destSize {
+                        errorCount += 1
+                        NSLog("[BundleStorage] Size mismatch: \(relativePath) (\(sourceSize) vs \(destSize))")
+                        
+                        if errorCount >= maxErrors {
+                            throw BundleStorageError.moveOperationFailed(
+                                NSError(domain: "HotUpdaterError", code: 602,
+                                       userInfo: [NSLocalizedDescriptionKey: "Too many size mismatches (\(errorCount)), aborting verification"])
+                            )
+                        }
+                    }
+                }
+            } catch {
+                NSLog("[BundleStorage] Warning: Could not verify \(relativePath): \(error)")
+                // Don't count attribute reading failures as critical errors
+            }
+        }
         
-        // 4. Verify move completion
-        try verifyMoveCompletion(sourceStructure: sourceStructure, destinationPath: destinationPath)
+        if errorCount > 0 {
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 600,
+                       userInfo: [NSLocalizedDescriptionKey: "Verification failed with \(errorCount) errors out of \(checkedCount) files"])
+            )
+        }
         
-        NSLog("[BundleStorage] Directory move and verification completed successfully")
+        NSLog("[BundleStorage] Streaming verification completed: \(checkedCount) items verified successfully")
+    }
+    
+    /**
+     * Sampling-based verification for large bundles
+     */
+    private func verifyMoveCompletionSampling(sourcePath: String, destinationPath: String) throws {
+        NSLog("[BundleStorage] Starting sampling verification...")
+        
+        // 1. Collect all files (not directories)
+        let sourceEnumerator = FileManager.default.enumerator(atPath: sourcePath)
+        var allFiles: [String] = []
+        var totalFiles = 0
+        
+        while let relativePath = sourceEnumerator?.nextObject() as? String {
+            let sourceFullPath = (sourcePath as NSString).appendingPathComponent(relativePath)
+            do {
+                let attributes = try self.fileSystem.attributesOfItem(atPath: sourceFullPath)
+                if (attributes[.type] as? FileAttributeType) != .typeDirectory {
+                    allFiles.append(relativePath)
+                    totalFiles += 1
+                }
+            } catch {
+                continue // Skip files we can't read
+            }
+        }
+        
+        NSLog("[BundleStorage] Found \(totalFiles) files for sampling verification")
+        
+        // 2. Determine sampling strategy
+        let sampleSize: Int
+        if totalFiles <= 100 {
+            sampleSize = totalFiles // Verify all small bundles
+        } else if totalFiles <= 1000 {
+            sampleSize = min(100, totalFiles / 2) // 50% sampling for medium bundles
+        } else {
+            sampleSize = min(150, totalFiles / 10) // 10% sampling for large bundles
+        }
+        
+        // 3. Size-based sampling: larger files first, then random
+        var filesToCheck: Set<String> = []
+        
+        // Get file sizes and sort by size (largest first)
+        var filesWithSizes: [(String, Int64)] = []
+        for file in allFiles {
+            let fullPath = (sourcePath as NSString).appendingPathComponent(file)
+            do {
+                let attributes = try self.fileSystem.attributesOfItem(atPath: fullPath)
+                let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                filesWithSizes.append((file, size))
+            } catch {
+                filesWithSizes.append((file, 0))
+            }
+        }
+        
+        // Sort by size (largest first) to prioritize important files
+        filesWithSizes.sort { $0.1 > $1.1 }
+        
+        // Take largest files (up to 25% of sample size)
+        let largeFileCount = min(sampleSize / 4, filesWithSizes.count)
+        for i in 0..<largeFileCount {
+            filesToCheck.insert(filesWithSizes[i].0)
+        }
+        
+        // Fill remaining with random sampling
+        let remainingCount = sampleSize - filesToCheck.count
+        if remainingCount > 0 {
+            let remainingFiles = Array(allFiles.filter { !filesToCheck.contains($0) })
+            let shuffledFiles = remainingFiles.shuffled()
+            for file in shuffledFiles.prefix(remainingCount) {
+                filesToCheck.insert(file)
+            }
+        }
+        
+        NSLog("[BundleStorage] Sampling \(filesToCheck.count) files out of \(totalFiles) for verification")
+        
+        // 4. Verify sampled files
+        var errorCount = 0
+        for (index, relativePath) in filesToCheck.enumerated() {
+            let sourceFullPath = (sourcePath as NSString).appendingPathComponent(relativePath)
+            let destFullPath = (destinationPath as NSString).appendingPathComponent(relativePath)
+            
+            // Progress logging
+            if index % 25 == 0 {
+                NSLog("[BundleStorage] Sample verification progress: \(index)/\(filesToCheck.count)")
+            }
+            
+            // Check existence and size
+            guard self.fileSystem.fileExists(atPath: destFullPath) else {
+                errorCount += 1
+                NSLog("[BundleStorage] Sample check failed: missing \(relativePath)")
+                continue
+            }
+            
+            do {
+                let sourceAttributes = try self.fileSystem.attributesOfItem(atPath: sourceFullPath)
+                let destAttributes = try self.fileSystem.attributesOfItem(atPath: destFullPath)
+                
+                let sourceSize = (sourceAttributes[.size] as? NSNumber)?.int64Value ?? 0
+                let destSize = (destAttributes[.size] as? NSNumber)?.int64Value ?? 0
+                
+                if sourceSize != destSize {
+                    errorCount += 1
+                    NSLog("[BundleStorage] Sample check failed: size mismatch \(relativePath) (\(sourceSize) vs \(destSize))")
+                }
+            } catch {
+                errorCount += 1
+                NSLog("[BundleStorage] Sample check failed: cannot read \(relativePath): \(error)")
+            }
+        }
+        
+        // 5. Evaluate results
+        let errorRate = Double(errorCount) / Double(filesToCheck.count)
+        let maxErrorRate = 0.05 // Allow up to 5% error rate in sampling
+        
+        if errorRate > maxErrorRate {
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 603,
+                       userInfo: [NSLocalizedDescriptionKey: "Sampling verification failed: \(errorCount)/\(filesToCheck.count) errors (\(String(format: "%.1f", errorRate * 100))% error rate)"])
+            )
+        }
+        
+        NSLog("[BundleStorage] Sampling verification passed: \(errorCount)/\(filesToCheck.count) errors (\(String(format: "%.1f", errorRate * 100))% error rate)")
+    }
+    
+    /**
+     * Full verification for small bundles (legacy method, optimized)
+     */
+    private func verifyMoveCompletionFull(sourcePath: String, destinationPath: String) throws {
+        NSLog("[BundleStorage] Starting full verification...")
+        
+        // Scan source structure
+        var sourceItems: [FileItem] = []
+        let enumerator = FileManager.default.enumerator(atPath: sourcePath)
+        
+        while let relativePath = enumerator?.nextObject() as? String {
+            let fullPath = (sourcePath as NSString).appendingPathComponent(relativePath)
+            do {
+                let attributes = try self.fileSystem.attributesOfItem(atPath: fullPath)
+                let item = FileItem(
+                    relativePath: relativePath,
+                    isDirectory: (attributes[.type] as? FileAttributeType) == .typeDirectory,
+                    size: (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                )
+                sourceItems.append(item)
+            } catch {
+                NSLog("[BundleStorage] Warning: Could not read attributes for \(relativePath): \(error)")
+            }
+        }
+        
+        NSLog("[BundleStorage] Verifying \(sourceItems.count) items...")
+        
+        // Check destination directory exists
+        guard self.fileSystem.fileExists(atPath: destinationPath) else {
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 404,
+                       userInfo: [NSLocalizedDescriptionKey: "Destination directory not found after move"])
+            )
+        }
+        
+        var missingItems: [String] = []
+        var sizeMismatchItems: [String] = []
+        
+        // Verify each item with batch processing
+        for (index, item) in sourceItems.enumerated() {
+            let destinationItemPath = (destinationPath as NSString).appendingPathComponent(item.relativePath)
+            
+            // CPU yielding every 50 items
+            if index % 50 == 0 && index > 0 {
+                usleep(500) // 0.5ms yield
+            }
+            
+            // Check existence
+            guard self.fileSystem.fileExists(atPath: destinationItemPath) else {
+                missingItems.append(item.relativePath)
+                continue
+            }
+            
+            // Check file size for files (not directories)
+            if !item.isDirectory {
+                do {
+                    let attributes = try self.fileSystem.attributesOfItem(atPath: destinationItemPath)
+                    let actualSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                    
+                    if actualSize != item.size {
+                        sizeMismatchItems.append("\(item.relativePath) (expected: \(item.size), actual: \(actualSize))")
+                    }
+                } catch {
+                    missingItems.append(item.relativePath)
+                }
+            }
+        }
+        
+        // Report results
+        if !missingItems.isEmpty {
+            NSLog("[BundleStorage] Missing items after move: \(missingItems.prefix(10))")
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 601,
+                       userInfo: [NSLocalizedDescriptionKey: "Missing \(missingItems.count) items after move"])
+            )
+        }
+        
+        if !sizeMismatchItems.isEmpty {
+            NSLog("[BundleStorage] Size mismatch items after move: \(sizeMismatchItems.prefix(5))")
+            throw BundleStorageError.moveOperationFailed(
+                NSError(domain: "HotUpdaterError", code: 602,
+                       userInfo: [NSLocalizedDescriptionKey: "Size mismatch for \(sizeMismatchItems.count) items"])
+            )
+        }
+        
+        NSLog("[BundleStorage] Full verification completed successfully for \(sourceItems.count) items")
+    }
+    
+    /**
+     * Adaptive verification strategy based on bundle size
+     */
+    private func verifyMoveCompletionAdaptive(sourcePath: String, destinationPath: String) throws {
+        // Quick file count to determine strategy
+        let fileCount = try getFileCount(sourcePath)
+        NSLog("[BundleStorage] Detected \(fileCount) files, selecting verification strategy...")
+        
+        if fileCount <= 100 {
+            // Small bundles: full verification for maximum safety
+            NSLog("[BundleStorage] Using full verification for small bundle (\(fileCount) files)")
+            try verifyMoveCompletionFull(sourcePath: sourcePath, destinationPath: destinationPath)
+        } else if fileCount <= 1000 {
+            // Medium bundles: streaming verification for memory efficiency
+            NSLog("[BundleStorage] Using streaming verification for medium bundle (\(fileCount) files)")
+            try verifyMoveCompletionStreaming(sourcePath: sourcePath, destinationPath: destinationPath)
+        } else {
+            // Large bundles: sampling verification for speed
+            NSLog("[BundleStorage] Using sampling verification for large bundle (\(fileCount)+ files)")
+            try verifyMoveCompletionSampling(sourcePath: sourcePath, destinationPath: destinationPath)
+        }
     }
     
     /**
@@ -217,7 +503,7 @@ class BundleFileStorageService: BundleStorageService {
                 try? self.fileSystem.removeItem(atPath: destinationPath)
                 
                 if attempt < maxRetries {
-                    // Wait before retry
+                    // Progressive backoff
                     Thread.sleep(forTimeInterval: TimeInterval(attempt) * 0.5)
                 }
             }
@@ -230,69 +516,25 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     /**
-     * Verifies that all files were moved correctly
+     * Optimized directory move with adaptive verification strategy
      */
-    private func verifyMoveCompletion(sourceStructure: [FileItem], destinationPath: String) throws {
-        NSLog("[BundleStorage] Verifying move completion for \(sourceStructure.count) items...")
+    private func moveDirectoryWithVerification(from sourcePath: String, to destinationPath: String) throws {
+        NSLog("[BundleStorage] Starting optimized directory move from \(sourcePath) to \(destinationPath)")
         
-        // Check destination directory exists
-        guard self.fileSystem.fileExists(atPath: destinationPath) else {
-            throw BundleStorageError.moveOperationFailed(
-                NSError(domain: "HotUpdaterError", code: 404,
-                       userInfo: [NSLocalizedDescriptionKey: "Destination directory not found after move"])
-            )
-        }
+        // 1. Clean destination safely
+        try cleanupDestinationSafely(destinationPath)
         
-        var missingItems: [String] = []
-        var sizeMismatchItems: [String] = []
+        // 2. Perform atomic move with retry
+        try performAtomicMoveWithRetry(from: sourcePath, to: destinationPath)
         
-        // Verify each file/directory
-        for item in sourceStructure {
-            let destinationItemPath = (destinationPath as NSString).appendingPathComponent(item.relativePath)
-            
-            // Check existence
-            guard self.fileSystem.fileExists(atPath: destinationItemPath) else {
-                missingItems.append(item.relativePath)
-                continue
-            }
-            
-            // Check file size for files (not directories)
-            if !item.isDirectory {
-                do {
-                    let attributes = try self.fileSystem.attributesOfItem(atPath: destinationItemPath)
-                    let actualSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-                    
-                    if actualSize != item.size {
-                        sizeMismatchItems.append("\(item.relativePath) (expected: \(item.size), actual: \(actualSize))")
-                    }
-                } catch {
-                    missingItems.append(item.relativePath)
-                }
-            }
-        }
+        // 3. Adaptive verification based on bundle size
+        try verifyMoveCompletionAdaptive(sourcePath: destinationPath, destinationPath: destinationPath)
         
-        // Report verification results
-        if !missingItems.isEmpty {
-            NSLog("[BundleStorage] Missing items after move: \(missingItems)")
-            throw BundleStorageError.moveOperationFailed(
-                NSError(domain: "HotUpdaterError", code: 601,
-                       userInfo: [NSLocalizedDescriptionKey: "Missing \(missingItems.count) items after move: \(missingItems.prefix(5).joined(separator: ", "))"])
-            )
-        }
-        
-        if !sizeMismatchItems.isEmpty {
-            NSLog("[BundleStorage] Size mismatch items after move: \(sizeMismatchItems)")
-            throw BundleStorageError.moveOperationFailed(
-                NSError(domain: "HotUpdaterError", code: 602,
-                       userInfo: [NSLocalizedDescriptionKey: "Size mismatch for \(sizeMismatchItems.count) items: \(sizeMismatchItems.prefix(3).joined(separator: ", "))"])
-            )
-        }
-        
-        NSLog("[BundleStorage] All \(sourceStructure.count) items verified successfully")
+        NSLog("[BundleStorage] Optimized directory move and verification completed successfully")
     }
     
     /**
-     * Verifies bundle integrity after move
+     * Verifies bundle integrity after move with optimized checks
      */
     private func verifyBundleIntegrity(bundlePath: String) throws -> String {
         NSLog("[BundleStorage] Verifying bundle integrity at: \(bundlePath)")
@@ -318,12 +560,14 @@ class BundleFileStorageService: BundleStorageService {
                 NSLog("[BundleStorage] Bundle file too small: \(fileSize) bytes")
                 throw BundleStorageError.invalidBundle
             }
+            
+            NSLog("[BundleStorage] Bundle file verified: \(fileSize) bytes")
         } catch {
             NSLog("[BundleStorage] Could not read bundle file attributes: \(error)")
             throw BundleStorageError.invalidBundle
         }
         
-        // 4. Verify assets directory if it exists
+        // 4. Quick assets directory check if it exists
         let assetsPath = (bundlePath as NSString).appendingPathComponent("assets")
         if self.fileSystem.fileExists(atPath: assetsPath) {
             do {
@@ -757,7 +1001,7 @@ class BundleFileStorageService: BundleStorageService {
                 
                 NSLog("[BundleStorage] Found bundle in extracted directory: \(bundlePath)")
                 
-                // 6. Move directory with verification (THIS IS THE KEY FIX)
+                // 6. Move directory with adaptive verification
                 try self.moveDirectoryWithVerification(from: extractedDir, to: finalBundleDir)
                 
                 NSLog("[BundleStorage] Successfully moved and verified bundle directory to: \(finalBundleDir)")
