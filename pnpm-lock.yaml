@@ -883,9 +883,6 @@ importers:
       execa:
         specifier: ^9.5.2
         version: 9.5.2
-      find-up-simple:
-        specifier: ^1.0.1
-        version: 1.0.1
       is-port-reachable:
         specifier: ^4.0.0
         version: 4.0.0

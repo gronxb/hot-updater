@@ -3,11 +3,11 @@ import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
 import { version } from "@/packageJson";
-import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { printBanner } from "@/utils/printBanner";
+import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
-import { banner, getCwd, log } from "@hot-updater/plugin-core";
+import { banner, log } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import { handleChannel, handleSetChannel } from "./commands/channel";
@@ -126,9 +126,8 @@ program
   .description("get the current app version")
 
   .action(async () => {
-    const path = getCwd();
-    const androidVersion = await getDefaultTargetAppVersion(path, "android");
-    const iosVersion = await getDefaultTargetAppVersion(path, "ios");
+    const androidVersion = await getNativeAppVersion("android");
+    const iosVersion = await getNativeAppVersion("ios");
 
     log.info(`Android version: ${androidVersion}`);
     log.info(`iOS version: ${iosVersion}`);
