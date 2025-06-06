@@ -3,7 +3,11 @@ import { hc } from "hono/client";
 
 export const api = hc<RpcType>("/rpc");
 
-import { createQuery } from "@tanstack/solid-query";
+import {
+  createMutation,
+  createQuery,
+  useQueryClient,
+} from "@tanstack/solid-query";
 import type { Accessor } from "solid-js";
 
 const DEFAULT_CHANNEL = "production";
@@ -64,3 +68,22 @@ export const createChannelsQuery = () =>
       return data;
     },
   }));
+
+export const createBundleDeleteMutation = () => {
+  const queryClient = useQueryClient();
+
+  return createMutation<{ success: boolean }, Error, string>(() => ({
+    mutationFn: async (bundleId: string) => {
+      const response = await api.bundles[":bundleId"].$delete({
+        param: { bundleId },
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to delete bundle: ${response.status}`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bundles"] });
+    },
+  }));
+};
