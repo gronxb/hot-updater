@@ -7,9 +7,9 @@ import isPortReachable from "is-port-reachable";
 
 import * as p from "@clack/prompts";
 
-import { getDefaultTargetAppVersion } from "@/utils/getDefaultTargetAppVersion";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
+import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import {
   type Platform,
   createZipTargetFiles,
@@ -23,8 +23,8 @@ import { getConsolePort, openConsole } from "./console";
 
 import path from "path";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
-import { getNativeAppVersion } from "@/utils/getNativeAppVersion";
 import { printBanner } from "@/utils/printBanner";
+import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { nativeFingerprint } from "@rnef/tools";
 
 export interface DeployOptions {
@@ -112,7 +112,7 @@ export const deploy = async (options: DeployOptions) => {
     s.stop(`Fingerprint(${platform}): ${fingerprint.hash}`);
   } else {
     const defaultTargetAppVersion =
-      (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
+      (await getDefaultTargetAppVersion(platform)) ?? "1.0.0";
 
     const targetAppVersion =
       options.targetAppVersion ??
