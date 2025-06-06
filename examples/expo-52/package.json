@@ -26,7 +26,8 @@
     "hot-updater": "workspace:*",
     "metro": "0.81.4",
     "metro-resolver": "0.81.4",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "dotenv": "^16.4.5"
   },
   "private": true
 }
