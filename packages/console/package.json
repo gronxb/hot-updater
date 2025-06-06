@@ -2,10 +2,7 @@
   "name": "@hot-updater/console",
   "type": "module",
   "version": "0.18.3",
-  "files": [
-    "dist",
-    "package.json"
-  ],
+  "files": ["dist", "package.json"],
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/src-server/index.d.ts",
