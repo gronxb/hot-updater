@@ -1,5 +1,23 @@
 # hot-updater
 
+## 0.18.3
+
+### Patch Changes
+
+- 34b96c1: fix(native): extracted bundle.zip directly into folder
+- d56a2b3: hot-updater doctor
+- 72f881c: channel set <channel> after create fingerprint
+- 85fc787: fix doctor command check semver version
+- 894b2bc: `app-version` shows naive native app version with refactored version utilties
+- Updated dependencies [d56a2b3]
+  - @hot-updater/aws@0.18.3
+  - @hot-updater/console@0.18.3
+  - @hot-updater/core@0.18.3
+  - @hot-updater/cloudflare@0.18.3
+  - @hot-updater/firebase@0.18.3
+  - @hot-updater/plugin-core@0.18.3
+  - @hot-updater/supabase@0.18.3
+
 ## 0.18.2
 
 ### Patch Changes
