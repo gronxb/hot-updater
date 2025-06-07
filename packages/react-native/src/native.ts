@@ -10,10 +10,8 @@ declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
 declare const __HOT_UPDATER_FINGERPRINT_HASH_IOS: string | null;
 declare const __HOT_UPDATER_FINGERPRINT_HASH_ANDROID: string | null;
 declare const __HOT_UPDATER_UPDATE_STRATEGY: UpdateStrategy;
-declare const __HOT_UPDATER_CHANNEL: string | null;
 
 export const HotUpdaterConstants = {
-  OVER_THE_AIR_CHANNEL: __HOT_UPDATER_CHANNEL,
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
   FINGERPRINT_HASH: Platform.select({
     ios: __HOT_UPDATER_FINGERPRINT_HASH_IOS,
@@ -141,14 +139,6 @@ export const getBundleId = (): string => {
  * @returns {string} Resolves with the channel or null if not available.
  */
 export const getChannel = (): string => {
-  if (HotUpdaterConstants.OVER_THE_AIR_CHANNEL) {
-    return HotUpdaterConstants.OVER_THE_AIR_CHANNEL;
-  }
-  const constants = HotUpdaterNative.getConstants();
-  return constants.CHANNEL;
-};
-
-export const getReleaseChannel = (): string => {
   const constants = HotUpdaterNative.getConstants();
   return constants.CHANNEL;
 };

@@ -70,16 +70,11 @@ const getFingerprintJson = () => {
   }
 };
 
-const getOverTheAirChannel = () => {
-  return process.env["HOT_UPDATER_CHANNEL"];
-};
-
 export default function ({
   types: t,
 }: { types: typeof babelTypes }): PluginObj {
   const bundleId = getBundleId();
   const fingerprint = getFingerprintJson();
-  const channel = getOverTheAirChannel();
   const { updateStrategy } = memoizeLoadConfig(null);
   return {
     name: "hot-updater-babel-plugin",
@@ -87,11 +82,6 @@ export default function ({
       Identifier(path: NodePath<babelTypes.Identifier>) {
         if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
           path.replaceWith(t.stringLiteral(bundleId));
-        }
-        if (path.node.name === "__HOT_UPDATER_CHANNEL") {
-          path.replaceWith(
-            channel ? t.stringLiteral(channel) : t.nullLiteral(),
-          );
         }
         if (path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_IOS") {
           fingerprint?.iosHash
