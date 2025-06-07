@@ -780,6 +780,9 @@ importers:
       '@commander-js/extra-typings':
         specifier: ^14.0.0
         version: 14.0.0(commander@14.0.0)
+      '@expo/fingerprint':
+        specifier: 0.12.4
+        version: 0.12.4
       '@hot-updater/console':
         specifier: workspace:*
         version: link:../console
@@ -789,9 +792,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      '@rnef/tools':
-        specifier: 0.7.12
-        version: 0.7.12
       commander:
         specifier: ^14.0.0
         version: 14.0.0
@@ -3447,6 +3447,10 @@ packages:
 
   '@expo/fingerprint@0.11.11':
     resolution: {integrity: sha512-gNyn1KnAOpEa8gSNsYqXMTcq0fSwqU/vit6fP5863vLSKxHm/dNt/gm/uZJxrRZxKq71KUJWF6I7d3z8qIfq5g==}
+    hasBin: true
+
+  '@expo/fingerprint@0.12.4':
+    resolution: {integrity: sha512-HOJVvjiQYVHIouCOfFf4JRrQvBDIV/12GVG2iwbw1iGwmpQVkPgEXa9lN0f2yuS4J3QXHs73wr9jvuCjMmJlfw==}
     hasBin: true
 
   '@expo/fingerprint@0.6.1':
@@ -20093,6 +20097,21 @@ snapshots:
       find-up: 5.0.0
       getenv: 1.0.0
       minimatch: 3.1.2
+      p-limit: 3.1.0
+      resolve-from: 5.0.0
+      semver: 7.7.2
+    transitivePeerDependencies:
+      - supports-color
+
+  '@expo/fingerprint@0.12.4':
+    dependencies:
+      '@expo/spawn-async': 1.7.2
+      arg: 5.0.2
+      chalk: 4.1.2
+      debug: 4.4.1
+      find-up: 5.0.0
+      getenv: 1.0.0
+      minimatch: 9.0.4
       p-limit: 3.1.0
       resolve-from: 5.0.0
       semver: 7.7.2
