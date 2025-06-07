@@ -6,7 +6,7 @@ import {
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { merge } from "es-toolkit";
 import { getCwd } from "./cwd.js";
-import type { ConfigInput, Platform } from "./types/index.js";
+import type { ConfigInput, Platform } from "./types";
 import type { RequiredDeep } from "./types/utils.js";
 
 export type HotUpdaterConfigOptions = {
