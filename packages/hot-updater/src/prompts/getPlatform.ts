@@ -11,9 +11,5 @@ export const getPlatform = async (message: string) => {
     ],
   });
 
-  if (typeof platform !== "string") {
-    throw new Error("Invalid platform");
-  }
-
   return platform;
 };
