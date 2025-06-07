@@ -1,5 +1,12 @@
 # @hot-updater/aws
 
+## 0.18.3
+
+### Patch Changes
+
+- d56a2b3: hot-updater doctor
+  - @hot-updater/plugin-core@0.18.3
+
 ## 0.18.2
 
 ### Patch Changes

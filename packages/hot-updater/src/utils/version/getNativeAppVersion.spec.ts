@@ -5,7 +5,6 @@ import { getNativeAppVersion } from "./getNativeAppVersion";
 import path from "path";
 import { XcodeProject } from "@bacons/xcode";
 import { getCwd } from "@hot-updater/plugin-core";
-import { findUp } from "find-up-simple";
 import fs from "fs/promises";
 import { globbySync } from "globby";
 import plist from "plist";
@@ -24,11 +23,21 @@ describe("getNativeAppVersion", () => {
   const mockXcodeProjectOpen = XcodeProject.open as Mock;
   const mockPathJoin = path.join as Mock;
   const mockFsReadFile = fs.readFile as Mock;
-  const mockFindUp = findUp as Mock;
+  const mockFsAccess = fs.access as Mock;
   const mockPlistParse = plist.parse as Mock;
+
+  const mockFileExist = (paths: string[]) => {
+    mockFsAccess.mockImplementation(async (path: string) => {
+      if (paths.includes(path)) return;
+
+      throw new Error();
+    });
+  };
+  const mockFileExistFailure = () => mockFileExist([]);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFsAccess.mockReset();
 
     // 기본 모킹 설정
     mockGetCwd.mockReturnValue("/mock/project/root");
@@ -76,8 +85,7 @@ describe("getNativeAppVersion", () => {
 
     it("should fallback to plist when xcodeproj has no MARKETING_VERSION", async () => {
       // Arrange
-      const mockXcodeprojPath =
-        "/mock/project/root/ios/HotUpdaterExample.xcodeproj/project.pbxproj";
+      const mockXcodeprojPath = "HotUpdaterExample.xcodeproj/project.pbxproj";
       const mockPlistPath =
         "/mock/project/root/ios/HotUpdaterExample/Info.plist";
 
@@ -101,7 +109,7 @@ describe("getNativeAppVersion", () => {
       });
 
       // plist 파일 찾기
-      mockFindUp.mockResolvedValue(mockPlistPath);
+      mockFileExist([mockPlistPath]);
 
       // plist 파일 내용
       const mockPlistContent = `<?xml version="1.0" encoding="UTF-8"?>
@@ -123,10 +131,6 @@ describe("getNativeAppVersion", () => {
 
       // Assert
       expect(result).toBe("2.0");
-      expect(mockFindUp).toHaveBeenCalledWith("Info.plist", {
-        cwd: "/mock/project/root/ios",
-        type: "file",
-      });
       expect(mockFsReadFile).toHaveBeenCalledWith(mockPlistPath, "utf8");
       expect(mockPlistParse).toHaveBeenCalledWith(mockPlistContent);
     });
@@ -134,7 +138,7 @@ describe("getNativeAppVersion", () => {
     it("should return null when xcodeproj file does not exist", async () => {
       // Arrange
       mockGlobbySync.mockReturnValue([]); // 파일이 없음
-      mockFindUp.mockResolvedValue(null); // plist도 없음
+      mockFileExistFailure(); // plist 파일이 없음
 
       // Act
       const result = await getNativeAppVersion("ios");
@@ -164,7 +168,7 @@ describe("getNativeAppVersion", () => {
         toJSON: () => mockProject,
       });
 
-      mockFindUp.mockResolvedValue(null); // plist 파일이 없음
+      mockFileExistFailure(); // plist 파일이 없음
 
       // Act
       const result = await getNativeAppVersion("ios");
@@ -184,7 +188,7 @@ describe("getNativeAppVersion", () => {
       });
 
       // plist도 실패하도록 설정
-      mockFindUp.mockRejectedValue(new Error("File not found"));
+      mockFsReadFile.mockRejectedValueOnce(new Error("File not found"));
 
       // Act
       const result = await getNativeAppVersion("ios");
@@ -216,7 +220,7 @@ describe("getNativeAppVersion", () => {
         toJSON: () => mockProject,
       });
 
-      mockFindUp.mockResolvedValue(mockPlistPath);
+      mockFileExist([mockPlistPath]);
       mockFsReadFile.mockRejectedValue(new Error("File read error"));
 
       // Act

@@ -15,7 +15,6 @@ protocol FileSystemService {
     func moveItem(atPath srcPath: String, toPath dstPath: String) throws
     func copyItem(atPath srcPath: String, toPath dstPath: String) throws
     func contentsOfDirectory(atPath path: String) throws -> [String]
-    func setAttributes(_ attributes: [FileAttributeKey: Any], ofItemAtPath path: String) throws
     func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any]
     func documentsPath() -> String
 }
@@ -69,15 +68,6 @@ class FileManagerService: FileSystemService {
             return try fileManager.contentsOfDirectory(atPath: path)
         } catch let error {
             NSLog("[FileSystemService] Failed to get directory contents at \(path): \(error)")
-            throw FileSystemError.fileOperationFailed(path, error)
-        }
-    }
-    
-    func setAttributes(_ attributes: [FileAttributeKey: Any], ofItemAtPath path: String) throws {
-        do {
-            try fileManager.setAttributes(attributes, ofItemAtPath: path)
-        } catch let error {
-            NSLog("[FileSystemService] Failed to set attributes for \(path): \(error)")
             throw FileSystemError.fileOperationFailed(path, error)
         }
     }
