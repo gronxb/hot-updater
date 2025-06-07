@@ -117,7 +117,6 @@ class HotUpdaterImpl(
             "00000000-0000-0000-0000-000000000000"
         }
 
-
     /**
      * Gets the current fingerprint hash
      * @return The fingerprint hash or null if not set
