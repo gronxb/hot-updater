@@ -106,6 +106,24 @@ export type ConfigInput = {
      */
     port?: number;
   };
+  /**
+   * The native build configuration.
+   */
+  nativeBuild?: {
+    /**
+     * Android specific configuration.
+     */
+    android?: {
+      variant?: string;
+      aab?: boolean;
+    };
+    /**
+     * iOS specific configuration.
+     */
+    ios?: {
+      pod?: boolean;
+    };
+  };
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
   database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;
