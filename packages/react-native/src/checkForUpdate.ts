@@ -3,10 +3,10 @@ import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
 import {
-  HotUpdaterConstants,
   getAppVersion,
   getBundleId,
   getChannel,
+  getFingerprintHash,
   getMinBundleId,
   updateBundle,
 } from "./native";
@@ -62,17 +62,18 @@ export async function checkForUpdate(
     channel: channel ?? undefined,
   };
 
+  const fingerprintHash = getFingerprintHash();
   return fetchUpdateInfo(
     options.source,
-    HotUpdaterConstants.UPDATE_STRATEGY === "appVersion"
+    fingerprintHash
       ? {
-          _updateStrategy: HotUpdaterConstants.UPDATE_STRATEGY,
-          appVersion: currentAppVersion,
+          _updateStrategy: "fingerprint",
+          fingerprintHash: fingerprintHash,
           ...baseArgs,
         }
       : {
-          _updateStrategy: HotUpdaterConstants.UPDATE_STRATEGY,
-          fingerprintHash: HotUpdaterConstants.FINGERPRINT_HASH!,
+          _updateStrategy: "appVersion",
+          appVersion: currentAppVersion,
           ...baseArgs,
         },
     options.requestHeaders,

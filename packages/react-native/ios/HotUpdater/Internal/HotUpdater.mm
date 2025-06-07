@@ -108,7 +108,8 @@ RCT_EXPORT_MODULE();
     return @{
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null], // Local
         @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null], // Swift
-        @"CHANNEL": [_hotUpdaterImpl getChannel] ?: [NSNull null]        // Swift
+        @"CHANNEL": [_hotUpdaterImpl getChannel] ?: [NSNull null], // Swift
+        @"FINGERPRINT_HASH": [_hotUpdaterImpl getFingerprintHash] ?: [NSNull null] // Swift
     };
 }
 
