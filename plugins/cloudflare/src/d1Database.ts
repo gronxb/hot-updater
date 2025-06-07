@@ -211,6 +211,27 @@ export const d1Database = (
         return rows.map((row) => row.channel);
       },
 
+      async deleteBundle(context, bundleId: string) {
+        const existingBundle = await this.getBundleById(context, bundleId);
+        if (!existingBundle) {
+          throw new Error(`Bundle with id ${bundleId} not found`);
+        }
+
+        const deleteSql = minify(/* sql */ `
+          DELETE FROM bundles WHERE id = ?
+        `);
+
+        await context.cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql: deleteSql,
+          params: [bundleId],
+        });
+
+        bundles = bundles.filter((b) => b.id !== bundleId);
+
+        hooks?.onDatabaseUpdated?.();
+      },
+
       async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
