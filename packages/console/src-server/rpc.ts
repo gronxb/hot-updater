@@ -158,7 +158,7 @@ export const rpc = new Hono()
         const { bundleId } = c.req.valid("param");
 
         const { databasePlugin, storagePlugin } = await prepareConfig();
-        // await databasePlugin.deleteBundle(bundleId);
+        await databasePlugin.deleteBundle(bundleId);
         await databasePlugin.commitBundle();
         await storagePlugin.deleteBundle(bundleId);
         return c.json({ success: true });
