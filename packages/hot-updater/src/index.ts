@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { type NativeBuildOptions, nativeBuild } from "@/commands/build:native";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
@@ -132,6 +133,38 @@ program
 
     log.info(`Android version: ${androidVersion}`);
     log.info(`iOS version: ${iosVersion}`);
+  });
+
+program
+  .command("build:native")
+  .description("build a new native artifact and deploy")
+  .addOption(
+    new Option("-p, --platform <platform>", "specify the platform").choices([
+      "ios",
+      "android",
+    ]),
+  )
+  .addOption(
+    new Option(
+      "-o, --bundle-output-path <bundleOutputPath>",
+      "the path where the bundle.zip will be generated",
+    ),
+  )
+  .addOption(new Option("-i, --interactive", "interactive mode").default(false))
+  .addOption(
+    new Option(
+      "-c, --channel <channel>",
+      "specify the channel to deploy",
+    ).default(DEFAULT_CHANNEL),
+  )
+  .addOption(
+    new Option(
+      "-m, --message <message>",
+      "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+    ),
+  )
+  .action(async (options: NativeBuildOptions) => {
+    nativeBuild(options);
   });
 
 program.parse(process.argv);
