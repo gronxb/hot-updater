@@ -151,6 +151,23 @@ export const supabaseDatabase = (
           throw error;
         }
       },
+      async deleteBundle(context, bundleId: string) {
+        const existingBundle = await this.getBundleById(context, bundleId);
+        if (!existingBundle) {
+          throw new Error(`Bundle with id ${bundleId} not found`);
+        }
+
+        const { error } = await context.supabase
+          .from("bundles")
+          .delete()
+          .eq("id", bundleId);
+
+        if (error) {
+          throw new Error(`Failed to delete bundle: ${error.message}`);
+        }
+
+        hooks?.onDatabaseUpdated?.();
+      },
     },
     hooks,
   );
