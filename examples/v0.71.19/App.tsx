@@ -63,7 +63,6 @@ function App(): React.JSX.Element {
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
-      <Text>Release Channel "{HotUpdater.()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
