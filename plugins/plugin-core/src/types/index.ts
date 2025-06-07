@@ -53,6 +53,54 @@ export interface BuildPlugin {
   name: string;
 }
 
+export interface NativeBuildArgs {
+  /**
+   * Android specific configuration.
+   */
+  android?: {
+    /**
+     * Android application module build variant.
+     *
+     * @example Debug, Release
+     * @default Release
+     */
+    variant?: string;
+
+    /**
+     * Artifact type.
+     *
+     * If `true`, the generated artifact type is `.aab`.
+     * If `flase`, the generated artifact type is `apk`.
+     *
+     * @default true
+     */
+    aab?: boolean;
+
+    /**
+     * Android app source directory path.
+     *
+     * @default android
+     */
+    sourceDir?: string;
+
+    /**
+     * Android application module name.
+     *
+     * If not specified, whole gradle tasks which match the task names will be executed
+     */
+    appModuleName?: string;
+  };
+}
+
+export interface NativeBuildPlugin {
+  buildNative: (args: { platform: Platform }) => Promise<{
+    buildPath: string;
+    bundleId: string;
+    stdout: string | null;
+  }>;
+  name: string;
+}
+
 export interface StoragePlugin {
   uploadBundle: (
     bundleId: string,
@@ -106,47 +154,9 @@ export type ConfigInput = {
      */
     port?: number;
   };
-  /**
-   * The native build configuration.
-   */
-  nativeBuild?: {
-    /**
-     * Android specific configuration.
-     */
-    android?: {
-      /**
-       * Android application module build variant.
-       *
-       * @example Debug, Release
-       * @default Release
-       */
-      variant?: string;
-
-      /**
-       * Artifact type.
-       *
-       * If `true`, the generated artifact type is `.aab`.
-       * If `flase`, the generated artifact type is `apk`.
-       *
-       * @default true
-       */
-      aab?: boolean;
-
-      /**
-       * Android app source directory path.
-       *
-       * @default android
-       */
-      sourceDir?: string;
-
-      /**
-       * Android application module name.
-       *
-       * If not specified, whole gradle tasks which match the task names will be executed
-       */
-      appModuleName?: string;
-    };
-  };
+  nativeBuild?: (
+    args: BasePluginArgs,
+  ) => Promise<NativeBuildPlugin> | NativeBuildPlugin;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
   database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;
