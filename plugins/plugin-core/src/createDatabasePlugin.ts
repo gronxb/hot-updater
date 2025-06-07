@@ -41,7 +41,7 @@ export interface AbstractDatabasePlugin<TContext = object> {
       }[];
     },
   ) => Promise<void>;
-  deleteBundleById: (context: TContext, bundleId: string) => Promise<void>;
+  deleteBundle: (context: TContext, bundleId: string) => Promise<void>;
 }
 
 /**
@@ -158,9 +158,9 @@ export function createDatabasePlugin<TContext = object>(
         }
       : undefined,
 
-    async deleteBundleById(bundleId: string): Promise<void> {
+    async deleteBundle(bundleId: string): Promise<void> {
       const context = memoizedContext();
-      await abstractPlugin.deleteBundleById(context, bundleId);
+      await abstractPlugin.deleteBundle(context, bundleId);
     },
   });
 }

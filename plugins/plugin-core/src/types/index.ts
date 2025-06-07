@@ -37,7 +37,7 @@ export interface DatabasePlugin {
   commitBundle: () => Promise<void>;
   onUnmount?: () => Promise<void>;
   name: string;
-  deleteBundleById: (bundleId: string) => Promise<void>;
+  deleteBundle: (bundleId: string) => Promise<void>;
 }
 
 export interface DatabasePluginHooks {

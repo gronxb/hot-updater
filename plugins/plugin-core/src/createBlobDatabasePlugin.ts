@@ -234,7 +234,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
         return [...new Set(result.data.map((bundle) => bundle.channel))];
       },
 
-      async deleteBundleById(context, bundleId: string) {
+      async deleteBundle(context, bundleId: string) {
         // Check if bundle exists in pending or main map
         let bundle = pendingBundlesMap.get(bundleId);
         if (!bundle) {
