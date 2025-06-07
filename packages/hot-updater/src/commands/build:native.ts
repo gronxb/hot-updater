@@ -8,7 +8,6 @@ import { printBanner } from "@/utils/printBanner";
 
 export interface NativeBuildOptions {
   bundleOutputPath?: string;
-  channel: string;
   interactive: boolean;
   message?: string;
   platform?: Platform;
