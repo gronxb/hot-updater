@@ -126,6 +126,72 @@ export const firebaseDatabase = (
         return Array.from(channels);
       },
 
+      async deleteBundle(context, bundleId: string) {
+        await context.db.runTransaction(async (transaction) => {
+          // Check if bundle exists
+          const bundleRef = context.bundlesCollection.doc(bundleId);
+          const bundleSnap = await transaction.get(bundleRef);
+
+          if (!bundleSnap.exists) {
+            throw new Error(`Bundle with id ${bundleId} not found`);
+          }
+
+          // Get all current bundles, channels, and target app versions
+          const bundlesSnapshot = await transaction.get(
+            context.bundlesCollection,
+          );
+          const targetVersionsSnapshot = await transaction.get(
+            context.db.collection("target_app_versions"),
+          );
+          const channelsSnapshot = await transaction.get(
+            context.db.collection("channels"),
+          );
+
+          // Delete the bundle
+          transaction.delete(bundleRef);
+
+          // Build remaining bundles map (excluding the deleted one)
+          const remainingBundlesMap: { [id: string]: SnakeCaseBundle } = {};
+          for (const doc of bundlesSnapshot.docs) {
+            if (doc.id !== bundleId) {
+              remainingBundlesMap[doc.id] = doc.data() as SnakeCaseBundle;
+            }
+          }
+
+          // Calculate required target app versions from remaining bundles
+          const requiredTargetVersionKeys = new Set<string>();
+          const requiredChannels = new Set<string>();
+
+          for (const bundle of Object.values(remainingBundlesMap)) {
+            if (bundle.target_app_version) {
+              const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
+              requiredTargetVersionKeys.add(key);
+            }
+            requiredChannels.add(bundle.channel);
+          }
+
+          // Remove orphaned target app versions
+          for (const targetDoc of targetVersionsSnapshot.docs) {
+            if (!requiredTargetVersionKeys.has(targetDoc.id)) {
+              transaction.delete(targetDoc.ref);
+            }
+          }
+
+          // Remove orphaned channels
+          for (const channelDoc of channelsSnapshot.docs) {
+            if (!requiredChannels.has(channelDoc.id)) {
+              transaction.delete(channelDoc.ref);
+            }
+          }
+        });
+
+        // Remove from local cache
+        bundles = bundles.filter((b) => b.id !== bundleId);
+
+        // Call hook if available
+        hooks?.onDatabaseUpdated?.();
+      },
+
       async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
