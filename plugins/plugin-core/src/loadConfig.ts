@@ -27,10 +27,9 @@ const defaultConfig: ConfigInput = {
   nativeBuild: {
     android: {
       aab: true,
-      variant: "release",
-    },
-    ios: {
-      pod: true,
+      variant: "Release",
+      appModuleName: "",
+      sourceDir: "android",
     },
   },
   build: () => {

@@ -114,14 +114,37 @@ export type ConfigInput = {
      * Android specific configuration.
      */
     android?: {
+      /**
+       * Android application module build variant.
+       *
+       * @example Debug, Release
+       * @default Release
+       */
       variant?: string;
+
+      /**
+       * Artifact type.
+       *
+       * If `true`, the generated artifact type is `.aab`.
+       * If `flase`, the generated artifact type is `apk`.
+       *
+       * @default true
+       */
       aab?: boolean;
-    };
-    /**
-     * iOS specific configuration.
-     */
-    ios?: {
-      pod?: boolean;
+
+      /**
+       * Android app source directory path.
+       *
+       * @default android
+       */
+      sourceDir?: string;
+
+      /**
+       * Android application module name.
+       *
+       * If not specified, whole gradle tasks which match the task names will be executed
+       */
+      appModuleName?: string;
     };
   };
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
