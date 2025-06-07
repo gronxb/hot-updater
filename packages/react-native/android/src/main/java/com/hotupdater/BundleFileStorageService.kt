@@ -88,6 +88,7 @@ class BundleFileStorageService(
     ): Boolean {
         Log.d("BundleStorage", "updateBundle bundleId $bundleId fileUrl $fileUrl")
 
+        // If no URL is provided, reset to fallback
         if (fileUrl.isNullOrEmpty()) {
             setBundleURL(null)
             return true
@@ -104,11 +105,13 @@ class BundleFileStorageService(
             Log.d("BundleStorage", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
             val existingIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
             if (existingIndexFile != null) {
+                // Update last modified time and set the cached bundle URL
                 finalBundleDir.setLastModified(System.currentTimeMillis())
                 setBundleURL(existingIndexFile.absolutePath)
                 cleanupOldBundles(bundleStoreDir)
                 return true
             } else {
+                // If index.android.bundle is missing, delete and re-download
                 finalBundleDir.deleteRecursively()
             }
         }
@@ -120,8 +123,6 @@ class BundleFileStorageService(
         tempDir.mkdirs()
 
         val tempZipFile = File(tempDir, "bundle.zip")
-        val extractedDir = File(tempDir, "extracted")
-        extractedDir.mkdirs()
 
         return withContext(Dispatchers.IO) {
             val downloadUrl = URL(fileUrl)
@@ -141,60 +142,96 @@ class BundleFileStorageService(
                     return@withContext false
                 }
                 is DownloadResult.Success -> {
-                    // Extract the zip file
-                    if (!unzipService.extractZipFile(tempZipFile.absolutePath, extractedDir.absolutePath)) {
-                        Log.d("BundleStorage", "Failed to extract zip file.")
+                    // 1) Create a .tmp directory under bundle-store (to avoid colliding with an existing bundleId folder)
+                    val tmpDir = File(bundleStoreDir, "$bundleId.tmp")
+                    if (tmpDir.exists()) {
+                        tmpDir.deleteRecursively()
+                    }
+                    tmpDir.mkdirs()
+
+                    // 2) Unzip into tmpDir
+                    Log.d("BundleStorage", "Unzipping $tempZipFile → $tmpDir")
+                    if (!unzipService.extractZipFile(tempZipFile.absolutePath, tmpDir.absolutePath)) {
+                        Log.d("BundleStorage", "Failed to extract zip into tmpDir.")
                         tempDir.deleteRecursively()
+                        tmpDir.deleteRecursively()
                         return@withContext false
                     }
 
-                    // Find the bundle file
-                    val indexFileExtracted = extractedDir.walk().find { it.name == "index.android.bundle" }
-                    if (indexFileExtracted == null) {
-                        Log.d("BundleStorage", "index.android.bundle not found in extracted files.")
+                    // 3) Find index.android.bundle inside tmpDir
+                    val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
+                    if (extractedIndex == null) {
+                        Log.d("BundleStorage", "index.android.bundle not found in tmpDir.")
                         tempDir.deleteRecursively()
+                        tmpDir.deleteRecursively()
                         return@withContext false
                     }
 
-                    // Move to final location
+                    // 4) If the realDir (bundle-store/<bundleId>) exists, delete it
                     if (finalBundleDir.exists()) {
                         finalBundleDir.deleteRecursively()
                     }
 
-                    if (!fileSystem.moveItem(extractedDir.absolutePath, finalBundleDir.absolutePath)) {
-                        fileSystem.copyItem(extractedDir.absolutePath, finalBundleDir.absolutePath)
-                        extractedDir.deleteRecursively()
+                    // 5) Attempt to rename tmpDir → finalBundleDir (atomic within the same parent folder)
+                    val renamed = tmpDir.renameTo(finalBundleDir)
+                    if (!renamed) {
+                        // If rename fails, use moveItem or copyItem
+                        if (!fileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                            fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)
+                            tmpDir.deleteRecursively()
+                        }
                     }
 
+                    // 6) Verify index.android.bundle exists inside finalBundleDir
                     val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
                     if (finalIndexFile == null) {
-                        Log.d("BundleStorage", "index.android.bundle not found in final directory.")
+                        Log.d("BundleStorage", "index.android.bundle not found in realDir.")
                         tempDir.deleteRecursively()
+                        finalBundleDir.deleteRecursively()
                         return@withContext false
                     }
 
+                    // 7) Update finalBundleDir's last modified time
                     finalBundleDir.setLastModified(System.currentTimeMillis())
+
+                    // 8) Save the new bundle path in Preferences
                     val bundlePath = finalIndexFile.absolutePath
                     Log.d("BundleStorage", "Setting bundle URL: $bundlePath")
                     setBundleURL(bundlePath)
-                    cleanupOldBundles(bundleStoreDir)
+
+                    // 9) Clean up temporary and download folders
                     tempDir.deleteRecursively()
 
-                    Log.d("BundleStorage", "Downloaded and extracted file successfully.")
+                    // 10) Remove old bundles
+                    cleanupOldBundles(bundleStoreDir)
+
+                    Log.d("BundleStorage", "Downloaded and activated bundle successfully.")
                     return@withContext true
                 }
             }
         }
     }
 
+    /**
+     * Removes older bundles and any leftover .tmp directories
+     */
     private fun cleanupOldBundles(bundleStoreDir: File) {
-        val bundles = bundleStoreDir.listFiles { file -> file.isDirectory }?.toList() ?: return
+        // List only directories that are not .tmp
+        val bundles = bundleStoreDir.listFiles { file -> file.isDirectory && !file.name.endsWith(".tmp") }?.toList() ?: return
+        // Sort bundles by last modified (newest first)
         val sortedBundles = bundles.sortedByDescending { it.lastModified() }
         if (sortedBundles.size > 1) {
+            // Keep the most recent bundle, delete the rest
             sortedBundles.drop(1).forEach { oldBundle ->
                 Log.d("BundleStorage", "Removing old bundle: ${oldBundle.name}")
                 oldBundle.deleteRecursively()
             }
+        }
+
+        // Remove any leftover .tmp directories
+        bundleStoreDir.listFiles { file -> file.isDirectory && file.name.endsWith(".tmp") }?.forEach { staleTmp ->
+            Log.d("BundleStorage", "Removing stale tmp directory: ${staleTmp.name}")
+            staleTmp.deleteRecursively()
         }
     }
 }
