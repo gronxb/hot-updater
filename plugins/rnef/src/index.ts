@@ -15,7 +15,6 @@ interface RunBundleArgs {
   buildPath: string;
   sourcemap: boolean;
   hermes: boolean;
-  channel: string;
 }
 
 const runBundle = async ({
@@ -25,7 +24,6 @@ const runBundle = async ({
   buildPath,
   sourcemap,
   hermes,
-  channel,
 }: RunBundleArgs) => {
   const args = [
     "rnef",
@@ -55,7 +53,6 @@ const runBundle = async ({
       env: {
         ...process.env,
         BUILD_OUT_DIR: buildPath,
-        HOT_UPDATER_CHANNEL: channel,
       },
       reject: true,
     });
@@ -132,7 +129,7 @@ export const rnef =
       hermes = true,
     } = config;
     return {
-      build: async ({ platform, channel }) => {
+      build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 
         await fs.rm(buildPath, { recursive: true, force: true });
@@ -144,12 +141,10 @@ export const rnef =
           platform,
           buildPath,
           sourcemap,
-          channel,
           hermes,
         });
 
         return {
-          channel,
           buildPath,
           bundleId,
           stdout,

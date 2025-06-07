@@ -200,7 +200,6 @@ export const deploy = async (options: DeployOptions) => {
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
-            channel,
           });
 
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
