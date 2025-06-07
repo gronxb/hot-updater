@@ -80,6 +80,7 @@ class HotUpdaterModule internal constructor(
         constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId(mReactApplicationContext)
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
         constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
+        constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)
         return constants
     }
 

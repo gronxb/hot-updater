@@ -6,7 +6,6 @@ import {
   getChannel,
   getFingerprintHash,
   getMinBundleId,
-  getReleaseChannel,
   reload,
   updateBundle,
 } from "./native";
@@ -79,18 +78,6 @@ export const HotUpdater = {
    * ```
    */
   getChannel,
-  /**
-   * The initial channel of the native app.
-   *
-   * @returns {string} The current release channel of the app
-   * @default "production"
-   * @example
-   * ```ts
-   * const channel = HotUpdater.getReleaseChannel();
-   * console.log(`Current release channel: ${channel}`);
-   * ```
-   */
-  getReleaseChannel,
   /**
    * Adds a listener to HotUpdater events.
    *

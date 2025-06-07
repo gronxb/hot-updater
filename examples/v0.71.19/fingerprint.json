@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "0b437701306878b4b1f16287c31e6eb7ac803c1d",
+    "hash": "1d993d0c6a2418c83713a5c29882b8c939651619",
     "sources": [
       {
         "type": "file",
@@ -16,7 +16,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "6e5ca57557700712ae09c8a0697cfc1eb476f1b0"
+        "hash": "4b430cc8268586b68428f092f221cb462e4a3eb3"
       },
       {
         "type": "dir",
@@ -64,16 +64,16 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.1\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "641af4f4e527932ba167cede3dd92e826b376078"
+        "hash": "ca1d3e13d6bf7f503ae44a2c02c8dfcb9c61d8d2"
       }
     ]
   },
   "android": {
-    "hash": "f7c2b8cf3e5a6ca4c77e3cee38a805e715974328",
+    "hash": "986aa3aec8ace710959ed3a5fec963ee6ee7faaf",
     "sources": [
       {
         "type": "file",
@@ -89,7 +89,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "2d19f916224a07cb61d2ae3f034a0c0b982a1ebe"
+        "hash": "68af83f1c12968acad917bf258a78ed36172331f"
       },
       {
         "type": "dir",

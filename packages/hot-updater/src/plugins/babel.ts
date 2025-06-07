@@ -1,12 +1,9 @@
-import { memoize } from "es-toolkit/function";
-
 import fs from "fs";
 import path from "path";
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
 
 import type * as babelTypes from "@babel/types";
-import { getCwd, loadConfigSync } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 
@@ -34,77 +31,16 @@ const getBundleId = () => {
   return bundleId;
 };
 
-const memoizeLoadConfig = memoize(loadConfigSync);
-
-const getFingerprintJson = () => {
-  const { updateStrategy } = memoizeLoadConfig(null);
-  if (updateStrategy === "appVersion") {
-    return null;
-  }
-  const fingerprintPath = path.join(getCwd(), "fingerprint.json");
-  if (!fs.existsSync(fingerprintPath)) {
-    throw new Error(
-      "Missing fingerprint.json. Since updateStrategy is set to 'fingerprint' in hot-updater.config, please run `hot-updater fingerprint create`.",
-    );
-  }
-  try {
-    const fingerprint = JSON.parse(
-      fs.readFileSync(fingerprintPath, "utf-8"),
-    ) as {
-      ios: {
-        hash: string;
-      };
-      android: {
-        hash: string;
-      };
-    };
-
-    return {
-      iosHash: fingerprint.ios.hash,
-      androidHash: fingerprint.android.hash,
-    };
-  } catch {
-    throw new Error(
-      "Invalid fingerprint.json. Since updateStrategy is set to 'fingerprint' in hot-updater.config, please run `hot-updater fingerprint create`.",
-    );
-  }
-};
-
-const getOverTheAirChannel = () => {
-  return process.env["HOT_UPDATER_CHANNEL"];
-};
-
 export default function ({
   types: t,
 }: { types: typeof babelTypes }): PluginObj {
   const bundleId = getBundleId();
-  const fingerprint = getFingerprintJson();
-  const channel = getOverTheAirChannel();
-  const { updateStrategy } = memoizeLoadConfig(null);
   return {
     name: "hot-updater-babel-plugin",
     visitor: {
       Identifier(path: NodePath<babelTypes.Identifier>) {
         if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
           path.replaceWith(t.stringLiteral(bundleId));
-        }
-        if (path.node.name === "__HOT_UPDATER_CHANNEL") {
-          path.replaceWith(
-            channel ? t.stringLiteral(channel) : t.nullLiteral(),
-          );
-        }
-        if (path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_IOS") {
-          fingerprint?.iosHash
-            ? path.replaceWith(t.stringLiteral(fingerprint.iosHash))
-            : path.replaceWith(t.nullLiteral());
-        }
-        if (path.node.name === "__HOT_UPDATER_FINGERPRINT_HASH_ANDROID") {
-          fingerprint?.androidHash
-            ? path.replaceWith(t.stringLiteral(fingerprint.androidHash))
-            : path.replaceWith(t.nullLiteral());
-        }
-        if (path.node.name === "__HOT_UPDATER_UPDATE_STRATEGY") {
-          path.replaceWith(t.stringLiteral(updateStrategy));
         }
       },
     },

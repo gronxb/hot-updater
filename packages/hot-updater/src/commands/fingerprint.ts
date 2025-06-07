@@ -1,12 +1,13 @@
 import fs from "fs";
 import path from "path";
+import { type FingerprintResult, nativeFingerprint } from "@/utils/fingerprint";
+import { setFingerprintHash } from "@/utils/setFingerprintHash";
 import * as p from "@clack/prompts";
 import {
   type ConfigResponse,
   getCwd,
   loadConfig,
 } from "@hot-updater/plugin-core";
-import { type FingerprintResult, nativeFingerprint } from "@rnef/tools";
 import picocolors from "picocolors";
 
 export const handleFingerprint = async () => {
@@ -134,6 +135,8 @@ export const handleCreateFingerprint = async () => {
           FINGERPRINT_FILE_PATH,
           JSON.stringify(newFingerprint, null, 2),
         );
+        await setFingerprintHash("ios", newFingerprint.ios.hash);
+        await setFingerprintHash("android", newFingerprint.android.hash);
         return "Created fingerprint.json";
       },
     },

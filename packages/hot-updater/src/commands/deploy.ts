@@ -1,31 +1,24 @@
 import fs from "fs";
-import semverValid from "semver/ranges/valid";
-
-import open from "open";
-
-import isPortReachable from "is-port-reachable";
-
-import * as p from "@clack/prompts";
-
+import path from "path";
+import { getPlatform } from "@/prompts/getPlatform";
+import { nativeFingerprint } from "@/utils/fingerprint";
+import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
+import { printBanner } from "@/utils/printBanner";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
+import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+import * as p from "@clack/prompts";
 import {
   type Platform,
   createZipTargetFiles,
   getCwd,
   loadConfig,
 } from "@hot-updater/plugin-core";
-
-import { getPlatform } from "@/prompts/getPlatform";
-
+import isPortReachable from "is-port-reachable";
+import open from "open";
+import semverValid from "semver/ranges/valid";
 import { getConsolePort, openConsole } from "./console";
-
-import path from "path";
-import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
-import { printBanner } from "@/utils/printBanner";
-import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { nativeFingerprint } from "@rnef/tools";
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -200,7 +193,6 @@ export const deploy = async (options: DeployOptions) => {
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
-            channel,
           });
 
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });

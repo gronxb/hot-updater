@@ -18,6 +18,7 @@ export interface Spec extends TurboModule {
     MIN_BUNDLE_ID: string;
     APP_VERSION: string | null;
     CHANNEL: string;
+    FINGERPRINT_HASH: string | null;
   };
 }
 
