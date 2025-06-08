@@ -1,6 +1,5 @@
 {
   "ios": {
-    "hash": "1d993d0c6a2418c83713a5c29882b8c939651619",
     "sources": [
       {
         "type": "file",
@@ -16,7 +15,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "4b430cc8268586b68428f092f221cb462e4a3eb3"
+        "hash": "33a45fbc9220818c4dce3066539ceeee0301a4bb"
       },
       {
         "type": "dir",
@@ -24,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
       },
       {
         "type": "dir",
@@ -32,7 +31,16 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "c1dad5d9f5a9eaec76f903bbbeabe6fb442f613f"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:ios",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingIos"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -70,10 +78,10 @@
         ],
         "hash": "ca1d3e13d6bf7f503ae44a2c02c8dfcb9c61d8d2"
       }
-    ]
+    ],
+    "hash": "b5c19133e92923167ceeca2e02278adf39f4fffb"
   },
   "android": {
-    "hash": "986aa3aec8ace710959ed3a5fec963ee6ee7faaf",
     "sources": [
       {
         "type": "file",
@@ -89,7 +97,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "68af83f1c12968acad917bf258a78ed36172331f"
+        "hash": "0d87a7001914f41e71858a4103acc36a503caedb"
       },
       {
         "type": "dir",
@@ -97,7 +105,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
       },
       {
         "type": "dir",
@@ -105,7 +113,16 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "c1dad5d9f5a9eaec76f903bbbeabe6fb442f613f"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:android",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingAndroid"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -143,6 +160,7 @@
         ],
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
-    ]
+    ],
+    "hash": "b276eae9349be37e1f26a674f59be5274a46a523"
   }
 }

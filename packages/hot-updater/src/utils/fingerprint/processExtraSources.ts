@@ -11,7 +11,7 @@ import { globbySync } from "globby";
  */
 export function processExtraSources(
   extraSources: string[],
-  projectRoot: string,
+  cwd: string,
   ignorePaths?: string[],
 ) {
   const processedSources: Array<HashSourceDir | HashSourceContents> = [];
@@ -19,7 +19,7 @@ export function processExtraSources(
   for (const source of extraSources) {
     try {
       const matches = globbySync(source, {
-        cwd: projectRoot,
+        cwd,
         ignore: ignorePaths ?? [],
         absolute: true,
         onlyFiles: false,

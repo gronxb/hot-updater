@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">HotUpdaterExample</string>
     <string name="hot_updater_channel" moduleConfig="true">production</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">b276eae9349be37e1f26a674f59be5274a46a523</string>
 </resources>
