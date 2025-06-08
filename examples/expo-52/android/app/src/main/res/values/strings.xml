@@ -2,5 +2,5 @@
     <string name="app_name">expo-52</string>
     <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
     <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
-    <string name="hot_updater_fingerprint_hash" moduleConfig="true">629f1ebb465001d4327524ae3f183b0329a557ff</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">51d1e934ebceafd5c7c3c6e67a88520fe4e2f3e0</string>
 </resources>

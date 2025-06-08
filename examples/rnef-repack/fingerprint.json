@@ -1,6 +1,5 @@
 {
   "ios": {
-    "hash": "4e226c5ada794ef0b427af906522db8003e03732",
     "sources": [
       {
         "type": "file",
@@ -24,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "26d9ec9d932af2dd76d25b6af5b5c63525643250"
       },
       {
         "type": "dir",
@@ -32,7 +31,16 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "795e4b449a859fdd825fdb00b964a5e88d20a5fd"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:ios",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingIos"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -64,16 +72,16 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.1\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.0.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.0.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "e105f8063143347e48fc7e44b9661369fe710e5e"
+        "hash": "f502283ec0933ecdbfe6ab1053bbc414044aaa11"
       }
-    ]
+    ],
+    "hash": "6f335322d0ffa206356ac03d3a3d9dda4c1d908c"
   },
   "android": {
-    "hash": "dd8d76ca947d9bcc7be7f824b9d006b0850ae025",
     "sources": [
       {
         "type": "file",
@@ -97,7 +105,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "26d9ec9d932af2dd76d25b6af5b5c63525643250"
       },
       {
         "type": "dir",
@@ -105,7 +113,16 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "795e4b449a859fdd825fdb00b964a5e88d20a5fd"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:android",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingAndroid"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -143,6 +160,7 @@
         ],
         "hash": "c309b7a84647ac24550a96bfdd1b84fc92be4013"
       }
-    ]
+    ],
+    "hash": "7450e81e0e7a4af36f7b7a34fa246ca57f103c15"
   }
 }

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">rnef</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">7450e81e0e7a4af36f7b7a34fa246ca57f103c15</string>
 </resources>
