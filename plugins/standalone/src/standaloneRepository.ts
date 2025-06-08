@@ -13,6 +13,7 @@ export interface Routes {
   upsert: () => RouteConfig;
   list: () => RouteConfig;
   retrieve: (bundleId: string) => RouteConfig;
+  delete: (bundleId: string) => RouteConfig;
 }
 
 const defaultRoutes: Routes = {
@@ -26,6 +27,9 @@ const defaultRoutes: Routes = {
   retrieve: (bundleId: string) => ({
     path: `/bundles/${bundleId}`,
     headers: { Accept: "application/json" },
+  }),
+  delete: (bundleId: string) => ({
+    path: `/bundles/${bundleId}`,
   }),
 };
 
@@ -58,6 +62,11 @@ export const standaloneRepository = (
       createRoute(
         defaultRoutes.retrieve(bundleId),
         config.routes?.retrieve?.(bundleId),
+      ),
+    delete: (bundleId) =>
+      createRoute(
+        defaultRoutes.delete(bundleId),
+        config.routes?.delete?.(bundleId),
       ),
   };
 
@@ -127,6 +136,43 @@ export const standaloneRepository = (
         const result = await this.getBundles(_, { limit: 50, offset: 0 });
         return [...new Set(result.data.map((b) => b.channel))];
       },
+      async deleteBundle(_, bundleId: string) {
+        const existingBundle = await this.getBundleById(_, bundleId);
+        if (!existingBundle) {
+          throw new Error(`Bundle with id ${bundleId} not found`);
+        }
+
+        const { path, headers: routeHeaders } = routes.delete(bundleId);
+        const response = await fetch(`${config.baseUrl}${path}`, {
+          method: "DELETE",
+          headers: getHeaders(routeHeaders),
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error(`Bundle with id ${bundleId} not found`);
+          }
+          throw new Error(
+            `API Error: ${response.status} ${response.statusText}`,
+          );
+        }
+
+        const contentType = response.headers.get("content-type");
+        if (contentType?.includes("application/json")) {
+          try {
+            await response.json();
+          } catch (jsonError) {
+            if (response.ok) {
+            } else {
+              throw new Error("Failed to parse response");
+            }
+          }
+        }
+
+        // Call hook if available
+        hooks?.onDatabaseUpdated?.();
+      },
+
       async commitBundle(_, { changedSets }) {
         const changedBundles = changedSets.map((set) => set.data);
         if (changedBundles.length === 0) {
