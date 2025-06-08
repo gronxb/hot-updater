@@ -9,6 +9,7 @@ import path from "path";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { nativeFingerprint } from "@rnef/tools";
+import { ExecaError } from "execa";
 
 export interface NativeBuildOptions {
   outputPath?: string;
@@ -44,9 +45,6 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     );
     return;
   }
-
-  // prevent ts unused variable error
-  console.log(cwd, gitCommitHash, gitMessage);
 
   const config = await loadConfig({ platform, channel: /* todo */ "DUMMY" });
   if (!config) {
@@ -87,7 +85,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
     const appVersion = await getNativeAppVersion(platform);
 
-    s.stop(`Target app version: ${appVersion}`);
+    s.stop(`App Version(${platform}): ${appVersion}`);
 
     target.appVersion = appVersion;
 
@@ -122,9 +120,6 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
   try {
     const taskRef: {
       buildResult: {
-        buildPath: string;
-        fingerprint: string;
-        appVersion: string;
         stdout: string | null;
       } | null;
       storageUri: string | null;
@@ -137,20 +132,17 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
+          await new Promise((r) => setTimeout(r, 3000));
           taskRef.buildResult = await buildPlugin.nativeBuild({
             platform: platform,
             buildNativeArtifact: async () => {
               /* TODO: inject native build runners */
-              p.log.step("Your native build will be done (WIP)");
+              p.log.success("Your native build will be done (WIP)");
             },
           });
 
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
 
-          const buildPath = taskRef.buildResult?.buildPath;
-          if (!buildPath) {
-            throw new Error("Build result not found");
-          }
           // const files = await fs.promises.readdir(buildPath, {
           //   recursive: true,
           // });
@@ -172,11 +164,10 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
           bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(artifactPath);*/
 
-          return `✅ Build Complete (${buildPlugin.name})`;
+          return `Build Complete (${buildPlugin.name})`;
         },
       },
     ]);
-
     if (taskRef.buildResult?.stdout) {
       p.log.success(taskRef.buildResult.stdout);
     }
@@ -287,7 +278,13 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(artifactPath, { force: true });
-    console.error(e);
+    if (e instanceof ExecaError) {
+      console.error(e);
+    } else if (e instanceof Error) {
+      p.log.error(e.stack ?? e.message);
+    } else {
+      console.error(e);
+    }
     process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();

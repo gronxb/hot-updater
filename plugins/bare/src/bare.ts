@@ -147,8 +147,9 @@ export const bare =
     } = config;
     return {
       // TODO not implemented
-      nativeBuild: async () => {
-        return { buildPath: "", stdout: null, fingerprint: "", appVersion: "" };
+      nativeBuild: async ({ buildNativeArtifact }) => {
+        await buildNativeArtifact();
+        return { stdout: null };
       },
       build: async ({ platform, channel }) => {
         const buildPath = path.join(cwd, outDir);

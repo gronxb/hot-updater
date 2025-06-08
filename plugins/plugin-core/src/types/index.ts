@@ -48,9 +48,6 @@ export interface BuildPlugin {
     platform: string;
     buildNativeArtifact: () => Promise<void>;
   }) => Promise<{
-    buildPath: string;
-    fingerprint: string;
-    appVersion: string;
     stdout: string | null;
   }>;
   build: (args: { platform: Platform; channel: string }) => Promise<{
