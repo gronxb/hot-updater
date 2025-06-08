@@ -126,78 +126,13 @@ export const firebaseDatabase = (
         return Array.from(channels);
       },
 
-      async deleteBundle(context, bundleId: string) {
-        await context.db.runTransaction(async (transaction) => {
-          // Check if bundle exists
-          const bundleRef = context.bundlesCollection.doc(bundleId);
-          const bundleSnap = await transaction.get(bundleRef);
-
-          if (!bundleSnap.exists) {
-            throw new Error(`Bundle with id ${bundleId} not found`);
-          }
-
-          // Get all current bundles, channels, and target app versions
-          const bundlesSnapshot = await transaction.get(
-            context.bundlesCollection,
-          );
-          const targetVersionsSnapshot = await transaction.get(
-            context.db.collection("target_app_versions"),
-          );
-          const channelsSnapshot = await transaction.get(
-            context.db.collection("channels"),
-          );
-
-          // Delete the bundle
-          transaction.delete(bundleRef);
-
-          // Build remaining bundles map (excluding the deleted one)
-          const remainingBundlesMap: { [id: string]: SnakeCaseBundle } = {};
-          for (const doc of bundlesSnapshot.docs) {
-            if (doc.id !== bundleId) {
-              remainingBundlesMap[doc.id] = doc.data() as SnakeCaseBundle;
-            }
-          }
-
-          // Calculate required target app versions from remaining bundles
-          const requiredTargetVersionKeys = new Set<string>();
-          const requiredChannels = new Set<string>();
-
-          for (const bundle of Object.values(remainingBundlesMap)) {
-            if (bundle.target_app_version) {
-              const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
-              requiredTargetVersionKeys.add(key);
-            }
-            requiredChannels.add(bundle.channel);
-          }
-
-          // Remove orphaned target app versions
-          for (const targetDoc of targetVersionsSnapshot.docs) {
-            if (!requiredTargetVersionKeys.has(targetDoc.id)) {
-              transaction.delete(targetDoc.ref);
-            }
-          }
-
-          // Remove orphaned channels
-          for (const channelDoc of channelsSnapshot.docs) {
-            if (!requiredChannels.has(channelDoc.id)) {
-              transaction.delete(channelDoc.ref);
-            }
-          }
-        });
-
-        // Remove from local cache
-        bundles = bundles.filter((b) => b.id !== bundleId);
-
-        // Call hook if available
-        hooks?.onDatabaseUpdated?.();
-      },
-
       async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
 
         let isTargetAppVersionChanged = false;
+        const deletedBundleIds = new Set<string>();
 
         await context.db.runTransaction(async (transaction) => {
           const bundlesSnapshot = await transaction.get(
@@ -215,11 +150,7 @@ export const firebaseDatabase = (
             bundlesMap[doc.id] = doc.data();
           }
 
-          const channelsMap: { [name: string]: boolean } = {};
-          for (const doc of channelsSnapshot.docs) {
-            channelsMap[doc.id] = true;
-          }
-
+          // Process all operations
           for (const { operation, data } of changedSets) {
             if (data.targetAppVersion) {
               isTargetAppVersionChanged = true;
@@ -252,9 +183,20 @@ export const firebaseDatabase = (
                 },
                 { merge: true },
               );
+            } else if (operation === "delete") {
+              // Check if bundle exists
+              if (!bundlesMap[data.id]) {
+                throw new Error(`Bundle with id ${data.id} not found`);
+              }
+
+              // Remove from bundlesMap
+              delete bundlesMap[data.id];
+              deletedBundleIds.add(data.id);
+              isTargetAppVersionChanged = true;
             }
           }
 
+          // Calculate required target app versions and channels from remaining bundles
           const requiredTargetVersionKeys = new Set<string>();
           const requiredChannels = new Set<string>();
           for (const bundle of Object.values(bundlesMap)) {
@@ -265,8 +207,10 @@ export const firebaseDatabase = (
             requiredChannels.add(bundle.channel);
           }
 
+          // Execute database operations
           for (const { operation, data } of changedSets) {
             const bundleRef = context.bundlesCollection.doc(data.id);
+
             if (operation === "insert" || operation === "update") {
               transaction.set(
                 bundleRef,
@@ -302,9 +246,13 @@ export const firebaseDatabase = (
                   { merge: true },
                 );
               }
+            } else if (operation === "delete") {
+              // Delete the bundle document
+              transaction.delete(bundleRef);
             }
           }
 
+          // Clean up orphaned target app versions
           if (isTargetAppVersionChanged) {
             for (const targetDoc of targetVersionsSnapshot.docs) {
               if (!requiredTargetVersionKeys.has(targetDoc.id)) {
@@ -313,13 +261,21 @@ export const firebaseDatabase = (
             }
           }
 
-          // Remove unused channels
+          // Clean up orphaned channels
           for (const channelDoc of channelsSnapshot.docs) {
             if (!requiredChannels.has(channelDoc.id)) {
               transaction.delete(channelDoc.ref);
             }
           }
         });
+
+        // Update local cache
+        for (const bundleId of deletedBundleIds) {
+          bundles = bundles.filter((b) => b.id !== bundleId);
+        }
+
+        // Call hook if available
+        hooks?.onDatabaseUpdated?.();
       },
     },
     hooks,

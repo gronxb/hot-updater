@@ -793,12 +793,6 @@ describe("firebaseDatabase plugin", () => {
       metadata: {},
     },
   ];
-  it("should throw error when bundle does not exist", async () => {
-    await expect(plugin.deleteBundle("non-existent-bundle")).rejects.toThrow(
-      "Bundle with id non-existent-bundle not found",
-    );
-  });
-
   it("should delete a single bundle successfully", async () => {
     // Setup: Create bundleX
     await plugin.appendBundle(bundlesData[0]);
@@ -810,7 +804,8 @@ describe("firebaseDatabase plugin", () => {
     expect(bundleBefore?.message).toBe("Bundle X");
 
     // Delete bundle
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Verify bundle is deleted
     const bundleAfter = await plugin.getBundleById("bundleX");
@@ -827,7 +822,8 @@ describe("firebaseDatabase plugin", () => {
     expect(channelsBefore).toContain("staging");
 
     // Delete the only bundle in staging channel
-    await plugin.deleteBundle("bundleZ");
+    await plugin.deleteBundle(bundlesData[2]);
+    await plugin.commitBundle();
 
     // Verify staging channel is deleted
     const channelsAfter = await plugin.getChannels();
@@ -845,7 +841,8 @@ describe("firebaseDatabase plugin", () => {
     expect(channelsBefore).toContain("production");
 
     // Delete bundleX
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Verify production channel still exists (used by bundleY)
     const channelsAfter = await plugin.getChannels();
@@ -870,7 +867,8 @@ describe("firebaseDatabase plugin", () => {
     expect(targetVersionDoc.exists).toBe(true);
 
     // Delete bundle
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Verify target app version document is deleted
     const targetVersionDocAfter = await firestore
@@ -899,7 +897,8 @@ describe("firebaseDatabase plugin", () => {
     expect(stagingTargetDoc.exists).toBe(true);
 
     // Delete bundleX (production)
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Verify production target version is deleted
     const prodTargetDocAfter = await firestore
@@ -922,7 +921,8 @@ describe("firebaseDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Delete bundle should work without errors
-    await expect(plugin.deleteBundle("bundleX")).resolves.not.toThrow();
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Verify bundle is deleted
     const bundle = await plugin.getBundleById("bundleX");
@@ -941,7 +941,8 @@ describe("firebaseDatabase plugin", () => {
     expect(bundlesBefore.data).toHaveLength(3);
 
     // Delete bundleY
-    await plugin.deleteBundle("bundleY");
+    await plugin.deleteBundle(bundlesData[1]);
+    await plugin.commitBundle();
 
     // Verify cache is updated
     const bundlesAfter = await plugin.getBundles({ limit: 10, offset: 0 });
@@ -971,7 +972,8 @@ describe("firebaseDatabase plugin", () => {
     expect(updatedBundle?.targetAppVersion).toBe("1.2.0");
 
     // Delete updated bundle
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Verify bundle is deleted
     const deletedBundle = await plugin.getBundleById("bundleX");
@@ -1004,7 +1006,8 @@ describe("firebaseDatabase plugin", () => {
     expect(androidTargetDoc.exists).toBe(true);
 
     // Delete iOS bundle
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Verify iOS target version is deleted
     const iosTargetDocAfter = await firestore
@@ -1056,7 +1059,8 @@ describe("firebaseDatabase plugin", () => {
     }
 
     // Delete bundleY (android production)
-    await plugin.deleteBundle("bundleY");
+    await plugin.deleteBundle(bundlesData[1]);
+    await plugin.commitBundle();
 
     // Verify selective deletion
     const bundlesAfter = await plugin.getBundles({ limit: 10, offset: 0 });
@@ -1087,20 +1091,6 @@ describe("firebaseDatabase plugin", () => {
     expect(iosStagingDoc.exists).toBe(true);
   });
 
-  it("should handle deletion during pending state (before commit)", async () => {
-    // Setup: Add bundleX but don't commit yet
-    await plugin.appendBundle(bundlesData[0]);
-
-    // Try to delete before commit - should throw error since it's not in DB yet
-    await expect(plugin.deleteBundle("bundleX")).rejects.toThrow(
-      "Bundle with id bundleX not found",
-    );
-
-    // Commit and then delete should work
-    await plugin.commitBundle();
-    await expect(plugin.deleteBundle("bundleX")).resolves.not.toThrow();
-  });
-
   it("should handle deletion of all bundles and cleanup all resources", async () => {
     // Setup: Create all bundles
     for (const bundle of bundlesData) {
@@ -1110,8 +1100,9 @@ describe("firebaseDatabase plugin", () => {
 
     // Delete all bundles one by one
     for (const bundle of bundlesData) {
-      await plugin.deleteBundle(bundle.id);
+      await plugin.deleteBundle(bundle);
     }
+    await plugin.commitBundle();
 
     // Verify all bundles are deleted
     const finalBundles = await plugin.getBundles({ limit: 10, offset: 0 });
