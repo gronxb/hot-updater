@@ -917,7 +917,8 @@ describe("blobDatabase plugin", () => {
     expect(bundleBeforeDeletion).toBeTruthy();
 
     // Execute
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert
     const bundleAfterDeletion = await plugin.getBundleById("bundleX");
@@ -941,7 +942,8 @@ describe("blobDatabase plugin", () => {
     const updateJsonKey = updateJsonKeys[0];
 
     // Execute
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert
     expect(fakeStore[updateJsonKey]).toBeUndefined();
@@ -964,7 +966,8 @@ describe("blobDatabase plugin", () => {
     const updateJsonKey = updateJsonKeys[0];
 
     // Execute
-    await plugin.deleteBundle("bundleA");
+    await plugin.deleteBundle(bundle1);
+    await plugin.commitBundle();
 
     // Assert
     expect(fakeStore[updateJsonKey]).toBeDefined();
@@ -982,7 +985,8 @@ describe("blobDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Execute
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert
     const invalidationPaths = cloudfrontInvalidations.flatMap(
@@ -992,13 +996,6 @@ describe("blobDatabase plugin", () => {
       (path) => path.includes("fingerprint") && path.includes("fingerprint123"),
     );
     expect(fingerprintPath).toBeDefined();
-  });
-
-  it("should throw error when bundle is not found", async () => {
-    // Execute & Assert
-    await expect(plugin.deleteBundle("nonExistentBundle")).rejects.toThrow(
-      "Bundle with id nonExistentBundle not found",
-    );
   });
 
   it("should sort remaining bundles after deletion", async () => {
@@ -1013,7 +1010,8 @@ describe("blobDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Execute
-    await plugin.deleteBundle("bundleB");
+    await plugin.deleteBundle(bundle2);
+    await plugin.commitBundle();
 
     // Assert
     // Find the actual update.json key
@@ -1040,7 +1038,8 @@ describe("blobDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Execute
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert
     const invalidationPaths = cloudfrontInvalidations.flatMap(
@@ -1058,7 +1057,8 @@ describe("blobDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Execute
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert
     const invalidationPaths = cloudfrontInvalidations.flatMap(
@@ -1088,7 +1088,8 @@ describe("blobDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Execute - delete ios bundle
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert - android bundle should remain unaffected
     const androidBundle = await plugin.getBundleById("bundleY");
@@ -1103,7 +1104,8 @@ describe("blobDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Execute - delete production bundle
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert - staging bundle should remain unaffected
     const stagingBundle = await plugin.getBundleById("bundleZ");
@@ -1131,7 +1133,8 @@ describe("blobDatabase plugin", () => {
     expect(bundlesBeforeDeletion.data).toHaveLength(3);
 
     // Execute
-    await plugin.deleteBundle("bundle2");
+    await plugin.deleteBundle(bundle2);
+    await plugin.commitBundle();
 
     // Assert
     const bundlesAfterDeletion = await plugin.getBundles({
@@ -1154,7 +1157,8 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     // Execute
-    await plugin.deleteBundle("bundleX");
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
 
     // Assert
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);

@@ -234,75 +234,6 @@ export const createBlobDatabasePlugin = <TContext = object>({
         return [...new Set(result.data.map((bundle) => bundle.channel))];
       },
 
-      async deleteBundle(context, bundleId: string) {
-        // Check if bundle exists in pending or main map
-        let bundle = pendingBundlesMap.get(bundleId);
-        if (!bundle) {
-          bundle = bundlesMap.get(bundleId);
-        }
-
-        if (!bundle) {
-          // If not found in memory, try to reload and find it
-          await reloadBundles(context);
-          bundle = bundlesMap.get(bundleId);
-        }
-
-        if (!bundle) {
-          throw new Error(`Bundle with id ${bundleId} not found`);
-        }
-
-        const updateJsonKey = bundle._updateJsonKey;
-        const pathsToInvalidate: Set<string> = new Set();
-
-        // Load current bundles from the update.json file
-        const currentBundles =
-          (await loadObject<Bundle[]>(context, updateJsonKey)) ?? [];
-
-        // Remove the bundle from the array
-        const updatedBundles = currentBundles.filter((b) => b.id !== bundleId);
-        updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
-
-        // If no bundles left, delete the file entirely
-        if (updatedBundles.length === 0) {
-          await deleteObject(context, updateJsonKey);
-        } else {
-          // Otherwise, update the file with remaining bundles
-          await uploadObject(context, updateJsonKey, updatedBundles);
-        }
-
-        // Remove from local maps
-        bundlesMap.delete(bundleId);
-        pendingBundlesMap.delete(bundleId);
-
-        // Add paths for invalidation
-        pathsToInvalidate.add(`/${updateJsonKey}`);
-        if (bundle.fingerprintHash) {
-          pathsToInvalidate.add(
-            `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
-          );
-        } else if (bundle.targetAppVersion) {
-          pathsToInvalidate.add(
-            `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
-          );
-        }
-
-        // Update target-app-versions.json if needed
-        const updatedTargetFilePaths = await updateTargetVersionsForPlatform(
-          context,
-          bundle.platform,
-        );
-
-        for (const path of updatedTargetFilePaths) {
-          pathsToInvalidate.add(path);
-        }
-
-        // Invalidate CDN paths
-        await invalidatePaths(context, Array.from(pathsToInvalidate));
-
-        // Call hook if available
-        hooks?.onDatabaseUpdated?.();
-      },
-
       async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) return;
 
@@ -316,6 +247,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
           if (data.targetAppVersion !== undefined) {
             isTargetAppVersionChanged = true;
           }
+
           // Insert operation.
           if (operation === "insert") {
             const target = data.targetAppVersion ?? data.fingerprintHash;
@@ -344,6 +276,39 @@ export const createBlobDatabasePlugin = <TContext = object>({
             } else if (data.targetAppVersion) {
               pathsToInvalidate.add(
                 `${apiBasePath}/app-version/${data.platform}/${data.targetAppVersion}/${data.channel}/*`,
+              );
+            }
+            continue;
+          }
+
+          // Delete operation.
+          if (operation === "delete") {
+            let bundle = pendingBundlesMap.get(data.id);
+            if (!bundle) {
+              bundle = bundlesMap.get(data.id);
+            }
+            if (!bundle) {
+              throw new Error("Bundle to delete not found");
+            }
+
+            // Remove from memory maps
+            bundlesMap.delete(data.id);
+            pendingBundlesMap.delete(data.id);
+
+            // Mark for removal from update.json
+            const key = bundle._updateJsonKey;
+            removalsByKey[key] = removalsByKey[key] || [];
+            removalsByKey[key].push(bundle.id);
+
+            // Add paths for CloudFront invalidation
+            pathsToInvalidate.add(`/${key}`);
+            if (bundle.fingerprintHash) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+              );
+            } else if (bundle.targetAppVersion) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
               );
             }
             continue;
@@ -420,7 +385,6 @@ export const createBlobDatabasePlugin = <TContext = object>({
               removeBundleInternalKeys(updatedBundle),
             );
 
-            // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${currentKey}`);
             if (bundle.fingerprintHash) {
               pathsToInvalidate.add(
