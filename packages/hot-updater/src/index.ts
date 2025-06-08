@@ -145,8 +145,8 @@ if (process.env["NODE_ENV"] === "development") {
     )
     .addOption(
       new Option(
-        "-o, --bundle-output-path <bundleOutputPath>",
-        "the path where the bundle.zip will be generated",
+        "-o, --output-path <outputPath>",
+        "the path where the artifacts will be generated",
       ),
     )
     .addOption(interactiveCommandOption)
