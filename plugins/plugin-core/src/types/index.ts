@@ -33,11 +33,11 @@ export interface DatabasePlugin {
     targetBundleId: string,
     newBundle: Partial<Bundle>,
   ) => Promise<void>;
-  appendBundle: (bundles: Bundle) => Promise<void>;
+  appendBundle: (insertBundle: Bundle) => Promise<void>;
   commitBundle: () => Promise<void>;
   onUnmount?: () => Promise<void>;
   name: string;
-  deleteBundle: (bundleId: string) => Promise<void>;
+  deleteBundle: (deleteBundle: Bundle) => Promise<void>;
 }
 
 export interface DatabasePluginHooks {

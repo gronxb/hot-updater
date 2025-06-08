@@ -41,7 +41,6 @@ export interface AbstractDatabasePlugin<TContext = object> {
       }[];
     },
   ) => Promise<void>;
-  deleteBundle: (context: TContext, bundleId: string) => Promise<void>;
 }
 
 /**
@@ -85,12 +84,15 @@ export function createDatabasePlugin<TContext = object>(
   const changedMap = new Map<
     string,
     {
-      operation: "insert" | "update";
+      operation: "insert" | "update" | "delete";
       data: Bundle;
     }
   >();
 
-  const markChanged = (operation: "insert" | "update", data: Bundle) => {
+  const markChanged = (
+    operation: "insert" | "update" | "delete",
+    data: Bundle,
+  ) => {
     changedMap.set(data.id, { operation, data });
   };
 
@@ -158,9 +160,8 @@ export function createDatabasePlugin<TContext = object>(
         }
       : undefined,
 
-    async deleteBundle(bundleId: string): Promise<void> {
-      const context = memoizedContext();
-      await abstractPlugin.deleteBundle(context, bundleId);
+    async deleteBundle(deleteBundle: Bundle): Promise<void> {
+      markChanged("delete", deleteBundle);
     },
   });
 }
