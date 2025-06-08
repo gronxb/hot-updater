@@ -1,13 +1,17 @@
+import fs from "fs";
 import { getLatestGitCommit } from "@/utils/git";
 import * as p from "@clack/prompts";
-import { type Platform, getCwd } from "@hot-updater/plugin-core";
+import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
+import path from "path";
 import { printBanner } from "@/utils/printBanner";
+import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+import { nativeFingerprint } from "@rnef/tools";
 
 export interface NativeBuildOptions {
-  bundleOutputPath?: string;
+  outputPath?: string;
   interactive: boolean;
   message?: string;
   platform?: Platform;
@@ -44,9 +48,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
   // prevent ts unused variable error
   console.log(cwd, gitCommitHash, gitMessage);
 
-  /* const channel = options.channel;
-
-  const config = await loadConfig({ platform, channel });
+  const config = await loadConfig({ platform, channel: /* todo */ "DUMMY" });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
@@ -59,94 +61,51 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     appVersion: null,
     fingerprintHash: null,
   };
-  p.log.step(`Channel: ${channel}`);
 
-  if (config.updateStrategy === "fingerprint") {
+  // calculate fingerprint of the current file state in the native platform directory
+  {
     const s = p.spinner();
     s.start(`Fingerprinting (${platform})`);
-    if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
-      p.log.error(
-        "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
-      );
-      process.exit(1);
-    }
     const fingerprint = await nativeFingerprint(cwd, {
       platform,
       ...config.fingerprint,
     });
-    const projectFingerprintJsonFile = fs.readFileSync(
-      path.join(cwd, "fingerprint.json"),
-      "utf-8",
-    );
-
-    const projectFingerprint = JSON.parse(projectFingerprintJsonFile);
-    if (fingerprint.hash !== projectFingerprint[platform].hash) {
-      p.log.error(
-        "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
-      );
-      process.exit(1);
-    }
 
     target.fingerprintHash = fingerprint.hash;
     s.stop(`Fingerprint(${platform}): ${fingerprint.hash}`);
-  } else {
-    const defaultTargetAppVersion =
-      (await getDefaultTargetAppVersion(cwd, platform)) ?? "1.0.0";
 
-    const targetAppVersion =
-      options.targetAppVersion ??
-      (options.interactive
-        ? await p.text({
-            message: "Target app version",
-            placeholder: defaultTargetAppVersion,
-            initialValue: defaultTargetAppVersion,
-            validate: (value) => {
-              if (!semverValid(value)) {
-                return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
-              }
-              return;
-            },
-          })
-        : null);
-
-    if (p.isCancel(targetAppVersion)) {
+    if (!target.fingerprintHash) {
+      p.log.error(`Failed to calculate fingerprint of ${platform}`);
       return;
     }
+  }
 
-    if (!targetAppVersion) {
-      p.log.error(
-        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
-      );
+  // get native app version
+  {
+    const s = p.spinner();
+    s.start(`Get native pap version (${platform})`);
+
+    const appVersion = await getNativeAppVersion(platform);
+
+    s.stop(`Target app version: ${appVersion}`);
+
+    target.appVersion = appVersion;
+
+    if (!target.appVersion) {
+      p.log.error(`Failed to retrieve native app version of ${platform}`);
       return;
     }
-    p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
-
-    target.appVersion = targetAppVersion;
   }
 
-  if (!target.fingerprintHash && !target.appVersion) {
-    if (config.updateStrategy === "fingerprint") {
-      p.log.error(
-        "Fingerprint hash not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
-      );
-    } else {
-      p.log.error(
-        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
-      );
-    }
-    process.exit(1);
-  }
+  const nativeBuildConfig = config.nativeBuild;
 
-  const outputPath = options.bundleOutputPath ?? cwd;
-
-  let bundleId: string | null = null;
-  let fileHash: string;
+  const outputPath = options.outputPath ?? path.join(cwd, "nativebuild"); // TODO any suggestion?
 
   const normalizeOutputPath = path.isAbsolute(outputPath)
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const bundlePath = path.join(normalizeOutputPath, "bundle.zip");
+  const artifactPath = path.join(normalizeOutputPath, platform);
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -164,7 +123,8 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     const taskRef: {
       buildResult: {
         buildPath: string;
-        bundleId: string;
+        fingerprint: string;
+        appVersion: string;
         stdout: string | null;
       } | null;
       storageUri: string | null;
@@ -175,11 +135,14 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
     await p.tasks([
       {
-        title: `📦 Building Bundle (${buildPlugin.name})`,
+        title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
-          taskRef.buildResult = await buildPlugin.build({
+          taskRef.buildResult = await buildPlugin.nativeBuild({
             platform: platform,
-            channel,
+            buildNativeArtifact: async () => {
+              /* TODO: inject native build runners */
+              p.log.step("Your native build will be done (WIP)");
+            },
           });
 
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
@@ -188,11 +151,11 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
           if (!buildPath) {
             throw new Error("Build result not found");
           }
-          const files = await fs.promises.readdir(buildPath, {
-            recursive: true,
-          });
+          // const files = await fs.promises.readdir(buildPath, {
+          //   recursive: true,
+          // });
 
-          const targetFiles = await getBundleZipTargets(
+          /*    const targetFiles = await getBundleZipTargets(
             buildPath,
             files
               .filter(
@@ -202,12 +165,12 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
               .map((file) => path.join(buildPath, file)),
           );
           await createZipTargetFiles({
-            outfile: bundlePath,
+            outfile: artifactPath,
             targetFiles: targetFiles,
           });
 
           bundleId = taskRef.buildResult.bundleId;
-          fileHash = await getFileHashFromFile(bundlePath);
+          fileHash = await getFileHashFromFile(artifactPath);*/
 
           return `✅ Build Complete (${buildPlugin.name})`;
         },
@@ -217,116 +180,117 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     if (taskRef.buildResult?.stdout) {
       p.log.success(taskRef.buildResult.stdout);
     }
+    /*
+        await p.tasks([
+          {
+            title: `📦 Uploading to Storage (${storagePlugin.name})`,
+            task: async () => {
+              if (!bundleId) {
+                throw new Error("Bundle ID not found");
+              }
 
-    await p.tasks([
-      {
-        title: `📦 Uploading to Storage (${storagePlugin.name})`,
-        task: async () => {
-          if (!bundleId) {
-            throw new Error("Bundle ID not found");
-          }
+              try {
+                const { storageUri } = await storagePlugin.uploadBundle(
+                  bundleId,
+                  artifactPath,
+                );
+                taskRef.storageUri = storageUri;
+              } catch (e) {
+                if (e instanceof Error) {
+                  p.log.error(e.message);
+                }
+                throw new Error("Failed to upload bundle to storage");
+              }
+              return `✅ Upload Complete (${storagePlugin.name})`;
+            },
+          },
+          {
+            title: `📦 Updating Database (${databasePlugin.name})`,
+            task: async () => {
+              if (!bundleId) {
+                throw new Error("Bundle ID not found");
+              }
+              if (!taskRef.storageUri) {
+                throw new Error("Storage URI not found");
+              }
+              const appVersion = await getNativeAppVersion(platform);
 
-          try {
-            const { storageUri } = await storagePlugin.uploadBundle(
-              bundleId,
-              bundlePath,
-            );
-            taskRef.storageUri = storageUri;
-          } catch (e) {
-            if (e instanceof Error) {
-              p.log.error(e.message);
-            }
-            throw new Error("Failed to upload bundle to storage");
-          }
-          return `✅ Upload Complete (${storagePlugin.name})`;
-        },
-      },
-      {
-        title: `📦 Updating Database (${databasePlugin.name})`,
-        task: async () => {
-          if (!bundleId) {
-            throw new Error("Bundle ID not found");
-          }
-          if (!taskRef.storageUri) {
-            throw new Error("Storage URI not found");
-          }
-          const appVersion = await getNativeAppVersion(platform);
+              try {
+                await databasePlugin.appendBundle({
+                  shouldForceUpdate: options.forceUpdate,
+                  platform,
+                  fileHash,
+                  gitCommitHash,
+                  message: options?.message ?? gitMessage,
+                  id: bundleId,
+                  enabled: true,
+                  channel,
+                  targetAppVersion: target.appVersion,
+                  fingerprintHash: target.fingerprintHash,
+                  storageUri: taskRef.storageUri,
+                  metadata: {
+                    ...(appVersion
+                      ? {
+                          app_version: appVersion,
+                        }
+                      : {}),
+                  },
+                });
+                await databasePlugin.commitBundle();
+              } catch (e) {
+                if (e instanceof Error) {
+                  p.log.error(e.message);
+                }
+                throw e;
+              }
+              await databasePlugin.onUnmount?.();
+              await fs.promises.rm(artifactPath);
 
-          try {
-            await databasePlugin.appendBundle({
-              shouldForceUpdate: options.forceUpdate,
-              platform,
-              fileHash,
-              gitCommitHash,
-              message: options?.message ?? gitMessage,
-              id: bundleId,
-              enabled: true,
-              channel,
-              targetAppVersion: target.appVersion,
-              fingerprintHash: target.fingerprintHash,
-              storageUri: taskRef.storageUri,
-              metadata: {
-                ...(appVersion
-                  ? {
-                      app_version: appVersion,
-                    }
-                  : {}),
-              },
-            });
-            await databasePlugin.commitBundle();
-          } catch (e) {
-            if (e instanceof Error) {
-              p.log.error(e.message);
-            }
-            throw e;
-          }
-          await databasePlugin.onUnmount?.();
-          await fs.promises.rm(bundlePath);
-
-          return `✅ Update Complete (${databasePlugin.name})`;
-        },
-      },
-    ]);
-    if (!bundleId) {
-      throw new Error("Bundle ID not found");
-    }
-
-    if (options.interactive) {
-      const port = await getConsolePort(config);
-      const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
-
-      const openUrl = new URL(`http://localhost:${port}`);
-      openUrl.searchParams.set("channel", channel);
-      openUrl.searchParams.set("platform", platform);
-      openUrl.searchParams.set("bundleId", bundleId);
-
-      const url = openUrl.toString();
-
-      const note = `Console: ${url}`;
-      if (!isConsoleOpen) {
-        const result = await p.confirm({
-          message: "Console server is not running. Would you like to start it?",
-          initialValue: false,
-        });
-        if (!p.isCancel(result) && result) {
-          await openConsole(port, () => {
-            open(url);
-          });
+              return `✅ Update Complete (${databasePlugin.name})`;
+            },
+          },
+        ]);
+        if (!bundleId) {
+          throw new Error("Bundle ID not found");
         }
-      } else {
-        open(url);
-      }
 
-      p.note(note);
-    }
-    p.outro("🚀 Deployment Successful");
+        if (options.interactive) {
+          const port = await getConsolePort(config);
+          const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
+
+          const openUrl = new URL(`http://localhost:${port}`);
+          openUrl.searchParams.set("channel", channel);
+          openUrl.searchParams.set("platform", platform);
+          openUrl.searchParams.set("bundleId", bundleId);
+
+          const url = openUrl.toString();
+
+          const note = `Console: ${url}`;
+          if (!isConsoleOpen) {
+            const result = await p.confirm({
+              message: "Console server is not running. Would you like to start it?",
+              initialValue: false,
+            });
+            if (!p.isCancel(result) && result) {
+              await openConsole(port, () => {
+                open(url);
+              });
+            }
+          } else {
+            open(url);
+          }
+
+          p.note(note);
+        }
+        p.outro("🚀 Deployment Successful");
+     */
   } catch (e) {
     await databasePlugin.onUnmount?.();
-    await fs.promises.rm(bundlePath, { force: true });
+    await fs.promises.rm(artifactPath, { force: true });
     console.error(e);
     process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();
-    await fs.promises.rm(bundlePath, { force: true });
-  }*/
+    await fs.promises.rm(artifactPath, { force: true });
+  }
 };
