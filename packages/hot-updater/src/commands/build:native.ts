@@ -6,6 +6,7 @@ import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { getPlatform } from "@/prompts/getPlatform";
 
 import path from "path";
+import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { nativeFingerprint } from "@rnef/tools";
@@ -135,9 +136,14 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
           await new Promise((r) => setTimeout(r, 3000));
           taskRef.buildResult = await buildPlugin.nativeBuild({
             platform: platform,
+            // inject native build function into plugins
+            // then plugin will run it with pre/post required steps for each framework
             buildNativeArtifact: async () => {
-              /* TODO: inject native build runners */
-              p.log.success("Your native build will be done (WIP)");
+              await runNativeBuild({
+                platform,
+                options,
+                config: config.nativeBuild,
+              });
             },
           });
 
