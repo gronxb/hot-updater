@@ -44,6 +44,12 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
+  nativeBuild: (args: { platform: Platform }) => Promise<{
+    buildPath: string;
+    fingerprint: string;
+    appVersion: string;
+    stdout: string | null;
+  }>;
   build: (args: { platform: Platform; channel: string }) => Promise<{
     buildPath: string;
     bundleId: string;
@@ -93,7 +99,7 @@ export interface NativeBuildArgs {
 }
 
 export interface NativeBuildPlugin {
-  buildNative: (args: { platform: Platform }) => Promise<{
+  buildNative: (args: NativeBuildArgs & { platform: Platform }) => Promise<{
     buildPath: string;
     bundleId: string;
     stdout: string | null;
@@ -154,9 +160,7 @@ export type ConfigInput = {
      */
     port?: number;
   };
-  nativeBuild?: (
-    args: BasePluginArgs,
-  ) => Promise<NativeBuildPlugin> | NativeBuildPlugin;
+  nativeBuild?: NativeBuildArgs;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
   database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;

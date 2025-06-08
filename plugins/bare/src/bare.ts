@@ -146,6 +146,10 @@ export const bare =
       enableHermes,
     } = config;
     return {
+      // TODO not implemented
+      nativeBuild: async () => {
+        return { buildPath: "", stdout: null, fingerprint: "", appVersion: "" };
+      },
       build: async ({ platform, channel }) => {
         const buildPath = path.join(cwd, outDir);
 

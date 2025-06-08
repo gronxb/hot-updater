@@ -133,6 +133,10 @@ export const expo =
   ({ cwd }: BasePluginArgs): BuildPlugin => {
     const { outDir = "dist", sourcemap = false } = config;
     return {
+      // TODO not implemented
+      nativeBuild: async () => {
+        return { buildPath: "", stdout: null, fingerprint: "", appVersion: "" };
+      },
       build: async ({ platform, channel }) => {
         const buildPath = path.join(cwd, outDir);
 
