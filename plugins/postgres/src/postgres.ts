@@ -134,6 +134,28 @@ export const postgres = (
         return data.map((bundle) => bundle.channel);
       },
 
+      async deleteBundle(context, bundleId: string) {
+        // Check if bundle exists first
+        const existingBundle = await this.getBundleById(context, bundleId);
+        if (!existingBundle) {
+          throw new Error(`Bundle with id ${bundleId} not found`);
+        }
+
+        // Delete the bundle
+        const result = await context.db
+          .deleteFrom("bundles")
+          .where("id", "=", bundleId)
+          .executeTakeFirst();
+
+        // Verify deletion was successful
+        if (result.numDeletedRows === 0n) {
+          throw new Error(`Failed to delete bundle with id ${bundleId}`);
+        }
+
+        // Call hook if available
+        hooks?.onDatabaseUpdated?.();
+      },
+
       async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
