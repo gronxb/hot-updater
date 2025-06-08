@@ -98,15 +98,6 @@ export interface NativeBuildArgs {
   };
 }
 
-export interface NativeBuildPlugin {
-  buildNative: (args: NativeBuildArgs & { platform: Platform }) => Promise<{
-    buildPath: string;
-    bundleId: string;
-    stdout: string | null;
-  }>;
-  name: string;
-}
-
 export interface StoragePlugin {
   uploadBundle: (
     bundleId: string,
