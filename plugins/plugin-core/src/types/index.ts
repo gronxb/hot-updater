@@ -44,7 +44,10 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  nativeBuild: (args: { platform: Platform }) => Promise<{
+  nativeBuild: (args: {
+    platform: string;
+    buildNativeArtifact: () => Promise<void>;
+  }) => Promise<{
     buildPath: string;
     fingerprint: string;
     appVersion: string;
@@ -81,13 +84,6 @@ export interface NativeBuildArgs {
      * @default true
      */
     aab?: boolean;
-
-    /**
-     * Android app source directory path.
-     *
-     * @default android
-     */
-    sourceDir?: string;
 
     /**
      * Android application module name.
