@@ -401,6 +401,87 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       new Error("API Error: Internal Server Error"),
     );
   });
+  it("deleteBundle: DELETE /bundles/:id successfully deletes a bundle", async () => {
+    let deleteCalled = false;
+
+    server.use(
+      http.get("http://localhost/bundles/:bundleId", ({ params }) => {
+        const { bundleId } = params;
+        if (bundleId === testBundles[0].id) {
+          return HttpResponse.json(testBundles[0]);
+        }
+        return HttpResponse.error();
+      }),
+      http.delete("http://localhost/bundles/:bundleId", ({ params }) => {
+        deleteCalled = true;
+        const { bundleId } = params;
+        expect(bundleId).toBe(testBundles[0].id);
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    await repo.deleteBundle("00000000-0000-0000-0000-000000000001");
+    expect(deleteCalled).toBe(true);
+    expect(onDatabaseUpdated).toHaveBeenCalled();
+  });
+
+  it("deleteBundle: throws error if bundle does not exist", async () => {
+    server.use(
+      http.get("http://localhost/bundles/:bundleId", () => {
+        return HttpResponse.error();
+      }),
+    );
+
+    await expect(repo.deleteBundle("non-existent-id")).rejects.toThrow(
+      "Bundle with id non-existent-id not found",
+    );
+  });
+
+  it("deleteBundle: throws error when API returns 404", async () => {
+    server.use(
+      http.get("http://localhost/bundles/:bundleId", ({ params }) => {
+        const { bundleId } = params;
+        if (bundleId === testBundles[0].id) {
+          return HttpResponse.json(testBundles[0]);
+        }
+        return HttpResponse.error();
+      }),
+      http.delete("http://localhost/bundles/:bundleId", () => {
+        return new HttpResponse(null, {
+          status: 404,
+          statusText: "Not Found",
+        });
+      }),
+    );
+
+    await expect(
+      repo.deleteBundle("00000000-0000-0000-0000-000000000001"),
+    ).rejects.toThrow(
+      "Bundle with id 00000000-0000-0000-0000-000000000001 not found",
+    );
+  });
+
+  it("deleteBundle: throws error when API returns server error", async () => {
+    server.use(
+      http.get("http://localhost/bundles/:bundleId", ({ params }) => {
+        const { bundleId } = params;
+        if (bundleId === testBundles[0].id) {
+          return HttpResponse.json(testBundles[0]);
+        }
+        return HttpResponse.error();
+      }),
+      http.delete("http://localhost/bundles/:bundleId", () => {
+        return new HttpResponse(null, {
+          status: 500,
+          statusText: "Internal Server Error",
+        });
+      }),
+    );
+
+    await expect(
+      repo.deleteBundle("00000000-0000-0000-0000-000000000001"),
+    ).rejects.toThrow("API Error: 500 Internal Server Error");
+  });
 });
 
 // ─── Custom Routes Tests ────────────────────────────────
@@ -421,6 +502,10 @@ describe("Standalone Repository Plugin (Custom Routes)", () => {
       retrieve: (bundleId: string) => ({
         path: `/custom/bundles/${bundleId}`,
         headers: { Accept: "application/custom+json" },
+      }),
+      delete: (bundleId: string) => ({
+        path: `/custom/bundles/${bundleId}`,
+        headers: { "X-Custom": "delete" },
       }),
     },
   };
@@ -464,5 +549,32 @@ describe("Standalone Repository Plugin (Custom Routes)", () => {
       "00000000-0000-0000-0000-000000000001",
     );
     expect(bundle).toEqual(testBundles[0]);
+  });
+
+  it("deleteBundle: uses custom delete route and headers", async () => {
+    server.use(
+      http.get(
+        "http://localhost/api/custom/bundles/:bundleId",
+        ({ params }) => {
+          const { bundleId } = params;
+          if (bundleId === testBundles[0].id) {
+            return HttpResponse.json(testBundles[0]);
+          }
+          return HttpResponse.error();
+        },
+      ),
+      http.delete(
+        "http://localhost/api/custom/bundles/:bundleId",
+        ({ request, params }) => {
+          expect(request.headers.get("Authorization")).toEqual("Bearer token");
+          expect(request.headers.get("X-Custom")).toEqual("delete");
+          const { bundleId } = params;
+          expect(bundleId).toBe(testBundles[0].id);
+          return HttpResponse.json({ success: true });
+        },
+      ),
+    );
+
+    await customRepo.deleteBundle("00000000-0000-0000-0000-000000000001");
   });
 });
