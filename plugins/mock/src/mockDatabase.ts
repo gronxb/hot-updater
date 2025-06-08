@@ -72,5 +72,17 @@ export const mockDatabase =
           .map((b) => b.channel)
           .filter((c, i, self) => self.indexOf(c) === i);
       },
+      async deleteBundle(bundleId: string) {
+        await sleep(minMax(latency.min, latency.max));
+
+        const targetIndex = bundles.findIndex((b) => b.id === bundleId);
+        if (targetIndex === -1) {
+          throw new Error(`Bundle with id ${bundleId} not found`);
+        }
+
+        bundles.splice(targetIndex, 1);
+
+        await hooks?.onDatabaseUpdated?.();
+      },
     };
   };
