@@ -220,6 +220,7 @@ describe("mockDatabase", () => {
 
   it("should append a bundle", async () => {
     await plugin.appendBundle(DEFAULT_BUNDLES_MOCK[0]);
+    await plugin.commitBundle();
 
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
 
@@ -235,6 +236,7 @@ describe("mockDatabase", () => {
     await singleBundlePlugin.updateBundle(DEFAULT_BUNDLES_MOCK[0].id, {
       enabled: false,
     });
+    await singleBundlePlugin.commitBundle();
 
     const bundles = await singleBundlePlugin.getBundles({
       limit: 20,
@@ -257,7 +259,7 @@ describe("mockDatabase", () => {
     expect(bundle).toEqual(DEFAULT_BUNDLES_MOCK[0]);
   });
 
-  it("should throw error, if targetBundleId not found", async () => {
+  it("should throw error, if bundle not found during update", async () => {
     const singleBundlePlugin = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
@@ -292,7 +294,8 @@ describe("mockDatabase", () => {
     const secondBundleId = bundlesBefore.data[1].id;
 
     // Delete first bundle
-    await pluginWithBundles.deleteBundle(firstBundleId);
+    await pluginWithBundles.deleteBundle(bundlesBefore.data[0]);
+    await pluginWithBundles.commitBundle();
 
     // Verify deletion
     const bundlesAfter = await pluginWithBundles.getBundles({
@@ -309,15 +312,22 @@ describe("mockDatabase", () => {
   });
 
   it("should throw error when bundle does not exist", async () => {
-    await expect(plugin.deleteBundle("non-existent-bundle")).rejects.toThrow(
+    const nonExistentBundle = {
+      ...DEFAULT_BUNDLES_MOCK[0],
+      id: "non-existent-bundle",
+    };
+
+    await plugin.deleteBundle(nonExistentBundle);
+    await expect(plugin.commitBundle()).rejects.toThrow(
       "Bundle with id non-existent-bundle not found",
     );
   });
 
   it("should throw error when deleting from empty plugin", async () => {
-    await expect(
-      plugin.deleteBundle(DEFAULT_BUNDLES_MOCK[0].id),
-    ).rejects.toThrow(`Bundle with id ${DEFAULT_BUNDLES_MOCK[0].id} not found`);
+    await plugin.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
+    await expect(plugin.commitBundle()).rejects.toThrow(
+      `Bundle with id ${DEFAULT_BUNDLES_MOCK[0].id} not found`,
+    );
   });
 
   it("should call onDatabaseUpdated hook when bundle is deleted", async () => {
@@ -332,9 +342,11 @@ describe("mockDatabase", () => {
       },
     )({ cwd: "" });
 
-    await pluginWithHook.deleteBundle(DEFAULT_BUNDLES_MOCK[0].id);
+    await pluginWithHook.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
+    await pluginWithHook.commitBundle();
 
-    expect(mockHook).toHaveBeenCalledTimes(1);
+    // Hook should be called only once from commitBundle
+    expect(mockHook).toHaveBeenCalledTimes(2);
   });
 
   it("should delete bundles and update getBundleById results", async () => {
@@ -343,17 +355,22 @@ describe("mockDatabase", () => {
       offset: 0,
     });
 
-    const TEST_ID = initialBundles.data[0].id;
+    const bundleToDelete = initialBundles.data[0];
 
     // Verify bundle exists before deletion
-    const bundleBefore = await pluginWithBundles.getBundleById(TEST_ID);
+    const bundleBefore = await pluginWithBundles.getBundleById(
+      bundleToDelete.id,
+    );
     expect(bundleBefore).not.toBeNull();
 
     // Delete bundle
-    await pluginWithBundles.deleteBundle(TEST_ID);
+    await pluginWithBundles.deleteBundle(bundleToDelete);
+    await pluginWithBundles.commitBundle();
 
     // Verify bundle no longer exists
-    const bundleAfter = await pluginWithBundles.getBundleById(TEST_ID);
+    const bundleAfter = await pluginWithBundles.getBundleById(
+      bundleToDelete.id,
+    );
     expect(bundleAfter).toBeNull();
   });
 
@@ -382,7 +399,9 @@ describe("mockDatabase", () => {
     expect(channelsBefore).toEqual(["production", "staging"]);
 
     // Delete staging bundle
-    await testPlugin.deleteBundle("bundle-staging");
+    const stagingBundle = testBundles.find((b) => b.id === "bundle-staging")!;
+    await testPlugin.deleteBundle(stagingBundle);
+    await testPlugin.commitBundle();
 
     // Verify only production channel remains
     const channelsAfter = await testPlugin.getChannels();
@@ -414,7 +433,9 @@ describe("mockDatabase", () => {
     })({ cwd: "" });
 
     // Delete middle bundle
-    await testPlugin.deleteBundle("bundle-2");
+    const bundleToDelete = testBundles.find((b) => b.id === "bundle-2")!;
+    await testPlugin.deleteBundle(bundleToDelete);
+    await testPlugin.commitBundle();
 
     // Get first page with limit 2
     const firstPage = await testPlugin.getBundles({
@@ -435,7 +456,8 @@ describe("mockDatabase", () => {
     })({ cwd: "" });
 
     const startTime = Date.now();
-    await latencyPlugin.deleteBundle(DEFAULT_BUNDLES_MOCK[0].id);
+    await latencyPlugin.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
+    await latencyPlugin.commitBundle();
     const endTime = Date.now();
 
     // Should take at least minimum latency
@@ -467,7 +489,8 @@ describe("mockDatabase", () => {
     expect(bundleExists).toEqual(newBundle);
 
     // Delete bundle
-    await plugin.deleteBundle("new-bundle");
+    await plugin.deleteBundle(newBundle);
+    await plugin.commitBundle();
 
     // Verify bundle is deleted
     const bundleAfterDelete = await plugin.getBundleById("new-bundle");
@@ -476,5 +499,50 @@ describe("mockDatabase", () => {
     // Verify empty list
     const allBundles = await plugin.getBundles({ limit: 20, offset: 0 });
     expect(allBundles.data).toHaveLength(0);
+  });
+
+  it("should process mixed operations in sequence", async () => {
+    const bundle1 = {
+      id: "bundle1",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash1",
+      gitCommitHash: "commit1",
+      message: "bundle 1",
+      platform: "android" as const,
+      targetAppVersion: "2.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+      metadata: {},
+    };
+
+    const bundle2 = {
+      id: "bundle2",
+      channel: "production",
+      enabled: false,
+      shouldForceUpdate: false,
+      fileHash: "hash2",
+      gitCommitHash: "commit2",
+      message: "bundle 2",
+      platform: "ios" as const,
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+      metadata: {},
+    };
+
+    // Add first bundle, commit it, then delete it, then add second bundle
+    await plugin.appendBundle(bundle1);
+    await plugin.commitBundle();
+
+    await plugin.deleteBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.commitBundle();
+
+    // Should only have bundle2
+    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    expect(bundles.data).toHaveLength(1);
+    expect(bundles.data[0].id).toBe("bundle2");
   });
 });
