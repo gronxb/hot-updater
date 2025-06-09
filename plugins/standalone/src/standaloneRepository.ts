@@ -136,64 +136,62 @@ export const standaloneRepository = (
         const result = await this.getBundles(_, { limit: 50, offset: 0 });
         return [...new Set(result.data.map((b) => b.channel))];
       },
-      async deleteBundle(_, bundleId: string) {
-        const existingBundle = await this.getBundleById(_, bundleId);
-        if (!existingBundle) {
-          throw new Error(`Bundle with id ${bundleId} not found`);
+      async commitBundle(_, { changedSets }) {
+        if (changedSets.length === 0) {
+          return;
         }
 
-        const { path, headers: routeHeaders } = routes.delete(bundleId);
-        const response = await fetch(`${config.baseUrl}${path}`, {
-          method: "DELETE",
-          headers: getHeaders(routeHeaders),
-        });
+        // Process each operation sequentially
+        for (const op of changedSets) {
+          if (op.operation === "delete") {
+            // Handle delete operation
+            const { path, headers: routeHeaders } = routes.delete(op.data.id);
+            const response = await fetch(`${config.baseUrl}${path}`, {
+              method: "DELETE",
+              headers: getHeaders(routeHeaders),
+            });
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error(`Bundle with id ${bundleId} not found`);
-          }
-          throw new Error(
-            `API Error: ${response.status} ${response.statusText}`,
-          );
-        }
+            if (!response.ok) {
+              if (response.status === 404) {
+                throw new Error(`Bundle with id ${op.data.id} not found`);
+              }
+              throw new Error(
+                `API Error: ${response.status} ${response.statusText}`,
+              );
+            }
 
-        const contentType = response.headers.get("content-type");
-        if (contentType?.includes("application/json")) {
-          try {
-            await response.json();
-          } catch (jsonError) {
-            if (response.ok) {
-            } else {
-              throw new Error("Failed to parse response");
+            const contentType = response.headers.get("content-type");
+            if (contentType?.includes("application/json")) {
+              try {
+                await response.json();
+              } catch (jsonError) {
+                if (!response.ok) {
+                  throw new Error("Failed to parse response");
+                }
+              }
+            }
+          } else if (op.operation === "insert" || op.operation === "update") {
+            // Handle insert and update operations
+            const { path, headers: routeHeaders } = routes.upsert();
+            const response = await fetch(`${config.baseUrl}${path}`, {
+              method: "POST",
+              headers: getHeaders(routeHeaders),
+              body: JSON.stringify([op.data]),
+            });
+
+            if (!response.ok) {
+              throw new Error(`API Error: ${response.statusText}`);
+            }
+
+            const result = (await response.json()) as { success: boolean };
+            if (!result.success) {
+              throw new Error("Failed to commit bundle");
             }
           }
         }
 
-        // Call hook if available
+        // Call hook after all operations
         hooks?.onDatabaseUpdated?.();
-      },
-
-      async commitBundle(_, { changedSets }) {
-        const changedBundles = changedSets.map((set) => set.data);
-        if (changedBundles.length === 0) {
-          return;
-        }
-
-        const { path, headers: routeHeaders } = routes.upsert();
-        const response = await fetch(`${config.baseUrl}${path}`, {
-          method: "POST",
-          headers: getHeaders(routeHeaders),
-          body: JSON.stringify(changedBundles),
-        });
-
-        if (!response.ok) {
-          throw new Error(`API Error: ${response.statusText}`);
-        }
-
-        const result = (await response.json()) as { success: boolean };
-        if (!result.success) {
-          throw new Error("Failed to commit bundles");
-        }
       },
     },
     hooks,
