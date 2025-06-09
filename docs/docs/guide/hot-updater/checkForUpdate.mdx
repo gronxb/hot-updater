@@ -14,7 +14,9 @@ import { HotUpdater } from "@hot-updater/react-native";
 async function checkForAppUpdate() {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
-      source: getUpdateSource("<your-update-server-url>"),
+      source: getUpdateSource("<your-update-server-url>", {
+        updateStrategy: "fingerprint", // or "appVersion"
+      }),
       requestHeaders: {
         Authorization: "Bearer <your-access-token>",
       },

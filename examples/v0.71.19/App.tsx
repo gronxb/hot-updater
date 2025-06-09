@@ -133,6 +133,9 @@ function App(): React.JSX.Element {
 export default HotUpdater.wrap({
   source: getUpdateSource(
     `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+    {
+      updateStrategy: "fingerprint", // or "appVersion"
+    },
   ),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>

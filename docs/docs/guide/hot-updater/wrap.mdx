@@ -18,8 +18,10 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:7]
-  source: getUpdateSource("<your-update-server-url>"),
+export default HotUpdater.wrap({ // [!code hl:10]
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -72,8 +74,10 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:22]
-  source: getUpdateSource("<your-update-server-url>"),
+export default HotUpdater.wrap({ // [!code hl:26]
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   fallbackComponent: ({ progress, status, message }) => (
       <View
         style={{
@@ -126,7 +130,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>"),
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -153,7 +159,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>"),
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -194,7 +202,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>"),
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",

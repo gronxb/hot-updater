@@ -29,7 +29,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>"),
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     Authorization: "Bearer <your-access-token>",
