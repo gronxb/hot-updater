@@ -44,7 +44,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@sentry/cli": "^2.46.0"
+    "@sentry/cli": "2.46.0"
   },
   "devDependencies": {
     "@types/node": "^20.9.4"
