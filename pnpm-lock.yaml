@@ -1304,7 +1304,7 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
       '@sentry/cli':
-        specifier: ^2.46.0
+        specifier: 2.46.0
         version: 2.46.0(encoding@0.1.13)
     devDependencies:
       '@types/node':
@@ -23966,7 +23966,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -23977,9 +23979,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.79.1(@babel/core@7.26.0)':
     dependencies:
