@@ -134,54 +134,32 @@ export const postgres = (
         return data.map((bundle) => bundle.channel);
       },
 
-      async deleteBundle(context, bundleId: string) {
-        // Check if bundle exists first
-        const existingBundle = await this.getBundleById(context, bundleId);
-        if (!existingBundle) {
-          throw new Error(`Bundle with id ${bundleId} not found`);
-        }
-
-        // Delete the bundle
-        const result = await context.db
-          .deleteFrom("bundles")
-          .where("id", "=", bundleId)
-          .executeTakeFirst();
-
-        // Verify deletion was successful
-        if (result.numDeletedRows === 0n) {
-          throw new Error(`Failed to delete bundle with id ${bundleId}`);
-        }
-
-        // Call hook if available
-        hooks?.onDatabaseUpdated?.();
-      },
-
       async commitBundle(context, { changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
 
-        const bundles = changedSets.map((op) => op.data);
-
         await context.db.transaction().execute(async (tx) => {
-          for (const bundle of bundles) {
-            await tx
-              .insertInto("bundles")
-              .values({
-                id: bundle.id,
-                enabled: bundle.enabled,
-                should_force_update: bundle.shouldForceUpdate,
-                file_hash: bundle.fileHash,
-                git_commit_hash: bundle.gitCommitHash,
-                message: bundle.message,
-                platform: bundle.platform,
-                target_app_version: bundle.targetAppVersion,
-                channel: bundle.channel,
-                storage_uri: bundle.storageUri,
-                fingerprint_hash: bundle.fingerprintHash,
-              })
-              .onConflict((oc) =>
-                oc.column("id").doUpdateSet({
+          // Process each operation sequentially
+          for (const op of changedSets) {
+            if (op.operation === "delete") {
+              // Handle delete operation
+              const result = await tx
+                .deleteFrom("bundles")
+                .where("id", "=", op.data.id)
+                .executeTakeFirst();
+
+              // Verify deletion was successful
+              if (result.numDeletedRows === 0n) {
+                throw new Error(`Bundle with id ${op.data.id} not found`);
+              }
+            } else if (op.operation === "insert" || op.operation === "update") {
+              // Handle insert and update operations
+              const bundle = op.data;
+              await tx
+                .insertInto("bundles")
+                .values({
+                  id: bundle.id,
                   enabled: bundle.enabled,
                   should_force_update: bundle.shouldForceUpdate,
                   file_hash: bundle.fileHash,
@@ -192,11 +170,28 @@ export const postgres = (
                   channel: bundle.channel,
                   storage_uri: bundle.storageUri,
                   fingerprint_hash: bundle.fingerprintHash,
-                }),
-              )
-              .execute();
+                })
+                .onConflict((oc) =>
+                  oc.column("id").doUpdateSet({
+                    enabled: bundle.enabled,
+                    should_force_update: bundle.shouldForceUpdate,
+                    file_hash: bundle.fileHash,
+                    git_commit_hash: bundle.gitCommitHash,
+                    message: bundle.message,
+                    platform: bundle.platform,
+                    target_app_version: bundle.targetAppVersion,
+                    channel: bundle.channel,
+                    storage_uri: bundle.storageUri,
+                    fingerprint_hash: bundle.fingerprintHash,
+                  }),
+                )
+                .execute();
+            }
           }
         });
+
+        // Trigger hooks after all operations
+        hooks?.onDatabaseUpdated?.();
       },
     },
     hooks,
