@@ -1,5 +1,12 @@
 # @hot-updater/repack
 
+## 0.18.5
+
+### Patch Changes
+
+- Updated dependencies [494ce31]
+  - @hot-updater/plugin-core@0.18.5
+
 ## 0.18.4
 
 ### Patch Changes

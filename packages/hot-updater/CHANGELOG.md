@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.18.5
+
+### Patch Changes
+
+- Updated dependencies [494ce31]
+  - @hot-updater/plugin-core@0.18.5
+  - @hot-updater/cloudflare@0.18.5
+  - @hot-updater/console@0.18.5
+  - @hot-updater/firebase@0.18.5
+  - @hot-updater/supabase@0.18.5
+  - @hot-updater/aws@0.18.5
+  - @hot-updater/core@0.18.5
+
 ## 0.18.4
 
 ### Patch Changes

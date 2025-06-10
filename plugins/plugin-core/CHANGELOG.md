@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.18.5
+
+### Patch Changes
+
+- 494ce31: feat: delete Bundle
+  - @hot-updater/core@0.18.5
+
 ## 0.18.4
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @hot-updater/sentry-plugin
 
+## 0.18.5
+
+### Patch Changes
+
+- 06814c3: fix: inject debugId of hbc map correctly
+- Updated dependencies [494ce31]
+  - @hot-updater/plugin-core@0.18.5
+  - @hot-updater/core@0.18.5
+
 ## 0.18.4
 
 ### Patch Changes
