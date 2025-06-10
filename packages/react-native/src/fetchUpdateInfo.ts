@@ -49,7 +49,7 @@ export const fetchUpdateInfo = async ({
   params,
   requestHeaders,
   onError,
-  requestTimeout,
+  requestTimeout = 5000,
 }: {
   source: UpdateSource;
   params: UpdateBundleParams;
