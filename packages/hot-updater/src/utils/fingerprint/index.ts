@@ -64,7 +64,7 @@ export async function nativeFingerprint(
   options: FingerprintOptions,
 ): Promise<FingerprintResult> {
   const platform = options.platform;
-  const fingerprint = await createFingerprintAsync(path, {
+  return createFingerprintAsync(path, {
     platforms: [platform],
     ignorePaths: options.ignorePaths,
     fileHookTransform,
@@ -74,6 +74,4 @@ export async function nativeFingerprint(
       options.ignorePaths,
     ),
   });
-
-  return fingerprint;
 }
