@@ -28,10 +28,6 @@ export const mockReactNativeProjectRoot = async ({
   const rootDir = path.resolve(os.tmpdir(), ".hot-updater", randomUUID());
   const workspace = resolveWorkspaceInfoFromExample(example);
 
-  const copiedFiles = fs
-    .readdirSync(workspace.path)
-    .filter((p) => p !== "node_modules");
-
   if (fs.existsSync(rootDir)) {
     fs.rmSync(rootDir, { force: true, recursive: true });
   }
@@ -40,7 +36,7 @@ export const mockReactNativeProjectRoot = async ({
   await fs.promises.cp(workspace.path, rootDir, {
     force: true,
     recursive: true,
-    filter: (src, dest) => {
+    filter: (src) => {
       const filename = path.basename(src);
       if (src.startsWith(path.resolve(workspace.path, "node_modules"))) {
         return false;
