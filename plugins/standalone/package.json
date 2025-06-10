@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/standalone",
-  "version": "0.18.4",
+  "version": "0.18.5",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,

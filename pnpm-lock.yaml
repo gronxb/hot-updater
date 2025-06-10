@@ -1201,6 +1201,9 @@ importers:
         specifier: 0.72.0
         version: 0.72.0
     devDependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: 'link:'
       '@types/node':
         specifier: ^22.7.5
         version: 22.13.5

@@ -748,4 +748,374 @@ describe("firebaseDatabase plugin", () => {
     expect(newChannelDoc.exists).toBeTruthy();
     expect(newChannelDoc.data()?.name).toBe("staging");
   });
+
+  const bundlesData = [
+    {
+      id: "bundleX",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashX",
+      gitCommitHash: "commitX",
+      message: "Bundle X",
+      platform: "ios" as const,
+      targetAppVersion: "1.1.1",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+      metadata: {},
+    },
+    {
+      id: "bundleY",
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashY",
+      gitCommitHash: "commitY",
+      message: "Bundle Y",
+      platform: "android" as const,
+      targetAppVersion: "1.1.1",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+      metadata: {},
+    },
+    {
+      id: "bundleZ",
+      channel: "staging",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hashZ",
+      gitCommitHash: "commitZ",
+      message: "Bundle Z",
+      platform: "ios" as const,
+      targetAppVersion: "1.1.1",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+      metadata: {},
+    },
+  ];
+  it("should delete a single bundle successfully", async () => {
+    // Setup: Create bundleX
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify bundle exists
+    const bundleBefore = await plugin.getBundleById("bundleX");
+    expect(bundleBefore).toBeTruthy();
+    expect(bundleBefore?.message).toBe("Bundle X");
+
+    // Delete bundle
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify bundle is deleted
+    const bundleAfter = await plugin.getBundleById("bundleX");
+    expect(bundleAfter).toBeNull();
+  });
+
+  it("should delete orphaned channels when last bundle in channel is deleted", async () => {
+    // Setup: Create only bundleZ (staging channel)
+    await plugin.appendBundle(bundlesData[2]);
+    await plugin.commitBundle();
+
+    // Verify staging channel exists
+    const channelsBefore = await plugin.getChannels();
+    expect(channelsBefore).toContain("staging");
+
+    // Delete the only bundle in staging channel
+    await plugin.deleteBundle(bundlesData[2]);
+    await plugin.commitBundle();
+
+    // Verify staging channel is deleted
+    const channelsAfter = await plugin.getChannels();
+    expect(channelsAfter).not.toContain("staging");
+  });
+
+  it("should not delete channels when other bundles still use them", async () => {
+    // Setup: Create bundleX and bundleY (both in production channel)
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.appendBundle(bundlesData[1]);
+    await plugin.commitBundle();
+
+    // Verify production channel exists
+    const channelsBefore = await plugin.getChannels();
+    expect(channelsBefore).toContain("production");
+
+    // Delete bundleX
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify production channel still exists (used by bundleY)
+    const channelsAfter = await plugin.getChannels();
+    expect(channelsAfter).toContain("production");
+
+    // Verify bundleY still exists
+    const remainingBundle = await plugin.getBundleById("bundleY");
+    expect(remainingBundle).toBeTruthy();
+    expect(remainingBundle?.message).toBe("Bundle Y");
+  });
+
+  it("should delete orphaned target app versions when no bundles use them", async () => {
+    // Setup: Create bundleX (ios production 1.1.1)
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify target app version document exists
+    const targetVersionDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.1.1")
+      .get();
+    expect(targetVersionDoc.exists).toBe(true);
+
+    // Delete bundle
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify target app version document is deleted
+    const targetVersionDocAfter = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.1.1")
+      .get();
+    expect(targetVersionDocAfter.exists).toBe(false);
+  });
+
+  it("should not delete target app versions when other bundles still use them", async () => {
+    // Setup: Create bundleX and bundleZ (both ios 1.1.1 but different channels)
+    await plugin.appendBundle(bundlesData[0]); // ios production 1.1.1
+    await plugin.appendBundle(bundlesData[2]); // ios staging 1.1.1
+    await plugin.commitBundle();
+
+    // Verify both target app version documents exist
+    const prodTargetDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.1.1")
+      .get();
+    const stagingTargetDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_staging_1.1.1")
+      .get();
+    expect(prodTargetDoc.exists).toBe(true);
+    expect(stagingTargetDoc.exists).toBe(true);
+
+    // Delete bundleX (production)
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify production target version is deleted
+    const prodTargetDocAfter = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.1.1")
+      .get();
+    expect(prodTargetDocAfter.exists).toBe(false);
+
+    // Verify staging target version still exists
+    const stagingTargetDocAfter = await firestore
+      .collection("target_app_versions")
+      .doc("ios_staging_1.1.1")
+      .get();
+    expect(stagingTargetDocAfter.exists).toBe(true);
+  });
+
+  it("should handle bundles with null fingerprintHash", async () => {
+    // Setup: All test bundles have null fingerprintHash
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Delete bundle should work without errors
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify bundle is deleted
+    const bundle = await plugin.getBundleById("bundleX");
+    expect(bundle).toBeNull();
+  });
+
+  it("should update local cache after deletion", async () => {
+    // Setup: Create all bundles
+    for (const bundle of bundlesData) {
+      await plugin.appendBundle(bundle);
+    }
+    await plugin.commitBundle();
+
+    // Get bundles to populate cache
+    const bundlesBefore = await plugin.getBundles({ limit: 10, offset: 0 });
+    expect(bundlesBefore.data).toHaveLength(3);
+
+    // Delete bundleY
+    await plugin.deleteBundle(bundlesData[1]);
+    await plugin.commitBundle();
+
+    // Verify cache is updated
+    const bundlesAfter = await plugin.getBundles({ limit: 10, offset: 0 });
+    expect(bundlesAfter.data).toHaveLength(2);
+
+    const remainingIds = bundlesAfter.data.map((b) => b.id);
+    expect(remainingIds).toContain("bundleX");
+    expect(remainingIds).toContain("bundleZ");
+    expect(remainingIds).not.toContain("bundleY");
+  });
+
+  it("should work with updateBundle workflow", async () => {
+    // Setup: Create bundleX
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Update bundle message and target version
+    await plugin.updateBundle("bundleX", {
+      message: "Updated Bundle X",
+      targetAppVersion: "1.2.0",
+    });
+    await plugin.commitBundle();
+
+    // Verify update worked
+    const updatedBundle = await plugin.getBundleById("bundleX");
+    expect(updatedBundle?.message).toBe("Updated Bundle X");
+    expect(updatedBundle?.targetAppVersion).toBe("1.2.0");
+
+    // Delete updated bundle
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify bundle is deleted
+    const deletedBundle = await plugin.getBundleById("bundleX");
+    expect(deletedBundle).toBeNull();
+
+    // Verify new target version document is also deleted
+    const targetVersionDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.2.0")
+      .get();
+    expect(targetVersionDoc.exists).toBe(false);
+  });
+
+  it("should handle platform-specific deletions correctly", async () => {
+    // Setup: Create bundleX (ios) and bundleY (android), both production 1.1.1
+    await plugin.appendBundle(bundlesData[0]); // ios production
+    await plugin.appendBundle(bundlesData[1]); // android production
+    await plugin.commitBundle();
+
+    // Verify both platform target versions exist
+    const iosTargetDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.1.1")
+      .get();
+    const androidTargetDoc = await firestore
+      .collection("target_app_versions")
+      .doc("android_production_1.1.1")
+      .get();
+    expect(iosTargetDoc.exists).toBe(true);
+    expect(androidTargetDoc.exists).toBe(true);
+
+    // Delete iOS bundle
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Verify iOS target version is deleted
+    const iosTargetDocAfter = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.1.1")
+      .get();
+    expect(iosTargetDocAfter.exists).toBe(false);
+
+    // Verify Android target version still exists
+    const androidTargetDocAfter = await firestore
+      .collection("target_app_versions")
+      .doc("android_production_1.1.1")
+      .get();
+    expect(androidTargetDocAfter.exists).toBe(true);
+
+    // Verify production channel still exists (android bundle remains)
+    const channels = await plugin.getChannels();
+    expect(channels).toContain("production");
+  });
+
+  it("should handle complex scenario with all test bundles", async () => {
+    // Setup: Create all bundles
+    for (const bundle of bundlesData) {
+      await plugin.appendBundle(bundle);
+    }
+    await plugin.commitBundle();
+
+    // Verify initial state
+    const bundlesBefore = await plugin.getBundles({ limit: 10, offset: 0 });
+    expect(bundlesBefore.data).toHaveLength(3);
+
+    const channelsBefore = await plugin.getChannels();
+    expect(channelsBefore).toContain("production");
+    expect(channelsBefore).toContain("staging");
+
+    // Verify all target app versions exist
+    const targetVersions = [
+      "ios_production_1.1.1",
+      "android_production_1.1.1",
+      "ios_staging_1.1.1",
+    ];
+
+    for (const versionId of targetVersions) {
+      const doc = await firestore
+        .collection("target_app_versions")
+        .doc(versionId)
+        .get();
+      expect(doc.exists).toBe(true);
+    }
+
+    // Delete bundleY (android production)
+    await plugin.deleteBundle(bundlesData[1]);
+    await plugin.commitBundle();
+
+    // Verify selective deletion
+    const bundlesAfter = await plugin.getBundles({ limit: 10, offset: 0 });
+    expect(bundlesAfter.data).toHaveLength(2);
+
+    // Verify channels still exist (other bundles use them)
+    const channelsAfter = await plugin.getChannels();
+    expect(channelsAfter).toContain("production"); // bundleX still there
+    expect(channelsAfter).toContain("staging"); // bundleZ still there
+
+    // Verify only android production target version is deleted
+    const androidTargetDoc = await firestore
+      .collection("target_app_versions")
+      .doc("android_production_1.1.1")
+      .get();
+    expect(androidTargetDoc.exists).toBe(false);
+
+    // Verify other target versions still exist
+    const iosProductionDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_production_1.1.1")
+      .get();
+    const iosStagingDoc = await firestore
+      .collection("target_app_versions")
+      .doc("ios_staging_1.1.1")
+      .get();
+    expect(iosProductionDoc.exists).toBe(true);
+    expect(iosStagingDoc.exists).toBe(true);
+  });
+
+  it("should handle deletion of all bundles and cleanup all resources", async () => {
+    // Setup: Create all bundles
+    for (const bundle of bundlesData) {
+      await plugin.appendBundle(bundle);
+    }
+    await plugin.commitBundle();
+
+    // Delete all bundles one by one
+    for (const bundle of bundlesData) {
+      await plugin.deleteBundle(bundle);
+    }
+    await plugin.commitBundle();
+
+    // Verify all bundles are deleted
+    const finalBundles = await plugin.getBundles({ limit: 10, offset: 0 });
+    expect(finalBundles.data).toHaveLength(0);
+
+    // Verify all channels are deleted
+    const finalChannels = await plugin.getChannels();
+    expect(finalChannels).toHaveLength(0);
+
+    // Verify all target app versions are deleted
+    const targetVersionsSnapshot = await firestore
+      .collection("target_app_versions")
+      .get();
+    expect(targetVersionsSnapshot.empty).toBe(true);
+  });
 });

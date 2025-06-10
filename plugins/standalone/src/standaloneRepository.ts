@@ -13,6 +13,7 @@ export interface Routes {
   upsert: () => RouteConfig;
   list: () => RouteConfig;
   retrieve: (bundleId: string) => RouteConfig;
+  delete: (bundleId: string) => RouteConfig;
 }
 
 const defaultRoutes: Routes = {
@@ -26,6 +27,9 @@ const defaultRoutes: Routes = {
   retrieve: (bundleId: string) => ({
     path: `/bundles/${bundleId}`,
     headers: { Accept: "application/json" },
+  }),
+  delete: (bundleId: string) => ({
+    path: `/bundles/${bundleId}`,
   }),
 };
 
@@ -58,6 +62,11 @@ export const standaloneRepository = (
       createRoute(
         defaultRoutes.retrieve(bundleId),
         config.routes?.retrieve?.(bundleId),
+      ),
+    delete: (bundleId) =>
+      createRoute(
+        defaultRoutes.delete(bundleId),
+        config.routes?.delete?.(bundleId),
       ),
   };
 
@@ -128,26 +137,61 @@ export const standaloneRepository = (
         return [...new Set(result.data.map((b) => b.channel))];
       },
       async commitBundle(_, { changedSets }) {
-        const changedBundles = changedSets.map((set) => set.data);
-        if (changedBundles.length === 0) {
+        if (changedSets.length === 0) {
           return;
         }
 
-        const { path, headers: routeHeaders } = routes.upsert();
-        const response = await fetch(`${config.baseUrl}${path}`, {
-          method: "POST",
-          headers: getHeaders(routeHeaders),
-          body: JSON.stringify(changedBundles),
-        });
+        // Process each operation sequentially
+        for (const op of changedSets) {
+          if (op.operation === "delete") {
+            // Handle delete operation
+            const { path, headers: routeHeaders } = routes.delete(op.data.id);
+            const response = await fetch(`${config.baseUrl}${path}`, {
+              method: "DELETE",
+              headers: getHeaders(routeHeaders),
+            });
 
-        if (!response.ok) {
-          throw new Error(`API Error: ${response.statusText}`);
+            if (!response.ok) {
+              if (response.status === 404) {
+                throw new Error(`Bundle with id ${op.data.id} not found`);
+              }
+              throw new Error(
+                `API Error: ${response.status} ${response.statusText}`,
+              );
+            }
+
+            const contentType = response.headers.get("content-type");
+            if (contentType?.includes("application/json")) {
+              try {
+                await response.json();
+              } catch (jsonError) {
+                if (!response.ok) {
+                  throw new Error("Failed to parse response");
+                }
+              }
+            }
+          } else if (op.operation === "insert" || op.operation === "update") {
+            // Handle insert and update operations
+            const { path, headers: routeHeaders } = routes.upsert();
+            const response = await fetch(`${config.baseUrl}${path}`, {
+              method: "POST",
+              headers: getHeaders(routeHeaders),
+              body: JSON.stringify([op.data]),
+            });
+
+            if (!response.ok) {
+              throw new Error(`API Error: ${response.statusText}`);
+            }
+
+            const result = (await response.json()) as { success: boolean };
+            if (!result.success) {
+              throw new Error("Failed to commit bundle");
+            }
+          }
         }
 
-        const result = (await response.json()) as { success: boolean };
-        if (!result.success) {
-          throw new Error("Failed to commit bundles");
-        }
+        // Call hook after all operations
+        hooks?.onDatabaseUpdated?.();
       },
     },
     hooks,

@@ -127,29 +127,47 @@ export const supabaseDatabase = (
           return;
         }
 
-        const bundles = changedSets.map((op) => op.data);
+        // Process each operation sequentially
+        for (const op of changedSets) {
+          if (op.operation === "delete") {
+            // Handle delete operation
+            const { error } = await context.supabase
+              .from("bundles")
+              .delete()
+              .eq("id", op.data.id);
 
-        const { error } = await context.supabase.from("bundles").upsert(
-          bundles.map((bundle) => ({
-            id: bundle.id,
-            channel: bundle.channel,
-            enabled: bundle.enabled,
-            should_force_update: bundle.shouldForceUpdate,
-            file_hash: bundle.fileHash,
-            git_commit_hash: bundle.gitCommitHash,
-            message: bundle.message,
-            platform: bundle.platform,
-            target_app_version: bundle.targetAppVersion,
-            fingerprint_hash: bundle.fingerprintHash,
-            storage_uri: bundle.storageUri,
-            metadata: bundle.metadata,
-          })),
-          { onConflict: "id" },
-        );
+            if (error) {
+              throw new Error(`Failed to delete bundle: ${error.message}`);
+            }
+          } else if (op.operation === "insert" || op.operation === "update") {
+            // Handle insert and update operations
+            const bundle = op.data;
+            const { error } = await context.supabase.from("bundles").upsert(
+              {
+                id: bundle.id,
+                channel: bundle.channel,
+                enabled: bundle.enabled,
+                should_force_update: bundle.shouldForceUpdate,
+                file_hash: bundle.fileHash,
+                git_commit_hash: bundle.gitCommitHash,
+                message: bundle.message,
+                platform: bundle.platform,
+                target_app_version: bundle.targetAppVersion,
+                fingerprint_hash: bundle.fingerprintHash,
+                storage_uri: bundle.storageUri,
+                metadata: bundle.metadata,
+              },
+              { onConflict: "id" },
+            );
 
-        if (error) {
-          throw error;
+            if (error) {
+              throw error;
+            }
+          }
         }
+
+        // Trigger hooks after all operations
+        hooks?.onDatabaseUpdated?.();
       },
     },
     hooks,
