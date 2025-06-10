@@ -132,6 +132,7 @@ export const firebaseDatabase = (
         }
 
         let isTargetAppVersionChanged = false;
+        const deletedBundleIds = new Set<string>();
 
         await context.db.runTransaction(async (transaction) => {
           const bundlesSnapshot = await transaction.get(
@@ -149,11 +150,7 @@ export const firebaseDatabase = (
             bundlesMap[doc.id] = doc.data();
           }
 
-          const channelsMap: { [name: string]: boolean } = {};
-          for (const doc of channelsSnapshot.docs) {
-            channelsMap[doc.id] = true;
-          }
-
+          // Process all operations
           for (const { operation, data } of changedSets) {
             if (data.targetAppVersion) {
               isTargetAppVersionChanged = true;
@@ -186,9 +183,20 @@ export const firebaseDatabase = (
                 },
                 { merge: true },
               );
+            } else if (operation === "delete") {
+              // Check if bundle exists
+              if (!bundlesMap[data.id]) {
+                throw new Error(`Bundle with id ${data.id} not found`);
+              }
+
+              // Remove from bundlesMap
+              delete bundlesMap[data.id];
+              deletedBundleIds.add(data.id);
+              isTargetAppVersionChanged = true;
             }
           }
 
+          // Calculate required target app versions and channels from remaining bundles
           const requiredTargetVersionKeys = new Set<string>();
           const requiredChannels = new Set<string>();
           for (const bundle of Object.values(bundlesMap)) {
@@ -199,8 +207,10 @@ export const firebaseDatabase = (
             requiredChannels.add(bundle.channel);
           }
 
+          // Execute database operations
           for (const { operation, data } of changedSets) {
             const bundleRef = context.bundlesCollection.doc(data.id);
+
             if (operation === "insert" || operation === "update") {
               transaction.set(
                 bundleRef,
@@ -236,9 +246,13 @@ export const firebaseDatabase = (
                   { merge: true },
                 );
               }
+            } else if (operation === "delete") {
+              // Delete the bundle document
+              transaction.delete(bundleRef);
             }
           }
 
+          // Clean up orphaned target app versions
           if (isTargetAppVersionChanged) {
             for (const targetDoc of targetVersionsSnapshot.docs) {
               if (!requiredTargetVersionKeys.has(targetDoc.id)) {
@@ -247,13 +261,21 @@ export const firebaseDatabase = (
             }
           }
 
-          // Remove unused channels
+          // Clean up orphaned channels
           for (const channelDoc of channelsSnapshot.docs) {
             if (!requiredChannels.has(channelDoc.id)) {
               transaction.delete(channelDoc.ref);
             }
           }
         });
+
+        // Update local cache
+        for (const bundleId of deletedBundleIds) {
+          bundles = bundles.filter((b) => b.id !== bundleId);
+        }
+
+        // Call hook if available
+        hooks?.onDatabaseUpdated?.();
       },
     },
     hooks,

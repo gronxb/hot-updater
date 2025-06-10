@@ -84,12 +84,15 @@ export function createDatabasePlugin<TContext = object>(
   const changedMap = new Map<
     string,
     {
-      operation: "insert" | "update";
+      operation: "insert" | "update" | "delete";
       data: Bundle;
     }
   >();
 
-  const markChanged = (operation: "insert" | "update", data: Bundle) => {
+  const markChanged = (
+    operation: "insert" | "update" | "delete",
+    data: Bundle,
+  ) => {
     changedMap.set(data.id, { operation, data });
   };
 
@@ -156,5 +159,9 @@ export function createDatabasePlugin<TContext = object>(
           await abstractPlugin.onUnmount?.(context);
         }
       : undefined,
+
+    async deleteBundle(deleteBundle: Bundle): Promise<void> {
+      markChanged("delete", deleteBundle);
+    },
   });
 }

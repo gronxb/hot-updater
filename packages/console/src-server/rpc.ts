@@ -3,6 +3,7 @@ import {
   type Bundle,
   type ConfigResponse,
   type DatabasePlugin,
+  type StoragePlugin,
   getCwd,
   loadConfig,
 } from "@hot-updater/plugin-core";
@@ -28,6 +29,7 @@ const updateBundleSchema = typia.createValidate<Partial<Bundle>>();
 let configPromise: Promise<{
   config: ConfigResponse;
   databasePlugin: DatabasePlugin;
+  storagePlugin: StoragePlugin;
 }> | null = null;
 
 const prepareConfig = async () => {
@@ -37,10 +39,12 @@ const prepareConfig = async () => {
         const config = await loadConfig(null);
         const databasePlugin =
           (await config?.database({ cwd: getCwd() })) ?? null;
+        const storagePlugin =
+          (await config?.storage({ cwd: getCwd() })) ?? null;
         if (!databasePlugin) {
           throw new Error("Database plugin initialization failed");
         }
-        return { config, databasePlugin };
+        return { config, databasePlugin, storagePlugin };
       } catch (error) {
         console.error("Error during configuration initialization:", error);
         throw error;
@@ -139,6 +143,31 @@ export const rpc = new Hono()
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle update:", error);
+        if (error && typeof error === "object" && "message" in error) {
+          return c.json({ error: error.message }, 500);
+        }
+        return c.json({ error: "Unknown error" }, 500);
+      }
+    },
+  )
+  .delete(
+    "/bundles/:bundleId",
+    typiaValidator("param", paramBundleIdSchema),
+    async (c) => {
+      try {
+        const { bundleId } = c.req.valid("param");
+
+        const { databasePlugin, storagePlugin } = await prepareConfig();
+        const deleteBundle = await databasePlugin.getBundleById(bundleId);
+        if (!deleteBundle) {
+          return c.json({ error: "Bundle not found" }, 404);
+        }
+        await databasePlugin.deleteBundle(deleteBundle);
+        await databasePlugin.commitBundle();
+        await storagePlugin.deleteBundle(bundleId);
+        return c.json({ success: true });
+      } catch (error) {
+        console.error("Error during bundle deletion:", error);
         if (error && typeof error === "object" && "message" in error) {
           return c.json({ error: error.message }, 500);
         }
