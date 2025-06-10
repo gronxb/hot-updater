@@ -124,7 +124,7 @@ class HotUpdaterImpl(
     fun getFingerprintHash(): String? {
         val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
         return if (id != 0) {
-            context.getString(id).takeIf { it.isNotEmpty() } ?: null
+            context.getString(id).takeIf { it.isNotEmpty() }
         } else {
             null
         }
