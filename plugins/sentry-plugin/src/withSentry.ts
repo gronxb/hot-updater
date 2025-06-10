@@ -16,10 +16,17 @@ const injectDebugIdToHbcMap = (
     return jsMapPath;
   }
   const jsMap = JSON.parse(fs.readFileSync(jsMapPath, "utf8"));
-  const debugId = jsMap.debug_id;
+  const debugId = jsMap.debug_id || jsMap.debugId;
+
+  if (!debugId) {
+    throw new Error(
+      "debugId from Source map not found. It seems hot-updater doesn't support Sentry plugin with this bundle framework. Please pile issue on Github.",
+    );
+  }
 
   const hbcMap = JSON.parse(fs.readFileSync(hbcMapPath, "utf8"));
   hbcMap.debug_id = debugId;
+  hbcMap.debugId = debugId;
   fs.writeFileSync(hbcMapPath, JSON.stringify(hbcMap, null, 2));
 
   fs.unlinkSync(jsMapPath);
