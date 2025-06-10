@@ -15,7 +15,6 @@ interface RunBundleArgs {
   platform: string;
   buildPath: string;
   sourcemap: boolean;
-  channel: string;
 }
 
 const isHermesEnabled = (cwd: string, platform: string): boolean => {
@@ -43,7 +42,6 @@ const runBundle = async ({
   platform,
   buildPath,
   sourcemap,
-  channel,
 }: RunBundleArgs) => {
   const filename = `index.${platform}`;
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
@@ -75,7 +73,6 @@ const runBundle = async ({
       env: {
         ...process.env,
         BUILD_OUT_DIR: buildPath,
-        HOT_UPDATER_CHANNEL: channel,
       },
       reject: true,
     });
@@ -133,7 +130,7 @@ export const expo =
   ({ cwd }: BasePluginArgs): BuildPlugin => {
     const { outDir = "dist", sourcemap = false } = config;
     return {
-      build: async ({ platform, channel }) => {
+      build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 
         await fs.promises.rm(buildPath, { recursive: true, force: true });
@@ -144,11 +141,9 @@ export const expo =
           platform,
           buildPath,
           sourcemap,
-          channel,
         });
 
         return {
-          channel,
           buildPath,
           bundleId,
           stdout,

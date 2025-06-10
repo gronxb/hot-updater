@@ -20,7 +20,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("%%source%%"),
+  source: getUpdateSource("%%source%%", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
 })(App);`;
 
 const REGIONS = [

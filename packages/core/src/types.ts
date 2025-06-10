@@ -173,3 +173,12 @@ export type AppVersionGetBundlesArgs = {
 export type GetBundlesArgs =
   | FingerprintGetBundlesArgs
   | AppVersionGetBundlesArgs;
+
+export type UpdateBundleParams = {
+  platform: Platform;
+  bundleId: string;
+  minBundleId: string;
+  channel: string;
+  appVersion: string;
+  fingerprintHash: string | null;
+};

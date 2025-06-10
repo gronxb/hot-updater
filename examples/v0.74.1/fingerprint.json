@@ -1,6 +1,5 @@
 {
   "ios": {
-    "hash": "418dcf25edca1b9adf5835d64ca86bd63690b747",
     "sources": [
       {
         "type": "file",
@@ -16,7 +15,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "f8adfe3755080bd82c611fda4a4050e7ee4dd966"
+        "hash": "0d0809d91c1a313da2779ac2ad5c50cbb9320ff3"
       },
       {
         "type": "dir",
@@ -24,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "7c4a52f227a29a3f633932510927c18636cde61d"
       },
       {
         "type": "dir",
@@ -32,7 +31,16 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:ios",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingIos"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -64,16 +72,16 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.17.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"4.0.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"4.0.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "dfc67ec548cffa64fb96b55e1e402c07856761fb"
+        "hash": "30c056fb660296d63a319817f8fe7677c0f3a48c"
       }
-    ]
+    ],
+    "hash": "87b289587a53c55b83ef0d6f5f2ff7743922fdbd"
   },
   "android": {
-    "hash": "38b0aa42a34e354b7e815f88284818ea48343bf0",
     "sources": [
       {
         "type": "file",
@@ -89,7 +97,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "9a7905783f18c78b6386e7c4c062cb67433024e8"
+        "hash": "4ddf59d2ef105ebbdec27acc6836b09b03c16d76"
       },
       {
         "type": "dir",
@@ -97,7 +105,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "7c4a52f227a29a3f633932510927c18636cde61d"
       },
       {
         "type": "dir",
@@ -105,7 +113,16 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:android",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingAndroid"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -143,6 +160,7 @@
         ],
         "hash": "c309b7a84647ac24550a96bfdd1b84fc92be4013"
       }
-    ]
+    ],
+    "hash": "a6621708a06ab4fc1d04fdfeccedc5f3c4f80315"
   }
 }

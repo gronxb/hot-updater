@@ -11,6 +11,10 @@
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./test-utils": {
+      "import": "./src/test-utils/index.ts",
+      "require": "./src/test-utils/index.ts"
     }
   },
   "files": [

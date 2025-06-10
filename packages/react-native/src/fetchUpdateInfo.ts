@@ -1,65 +1,79 @@
-import type { AppUpdateInfo, GetBundlesArgs } from "@hot-updater/core";
+import type {
+  AppUpdateInfo,
+  UpdateBundleParams,
+  UpdateStrategy,
+} from "@hot-updater/core";
 
 export type UpdateSource =
   | string
-  | ((args: GetBundlesArgs) => Promise<AppUpdateInfo | null>)
-  | ((args: GetBundlesArgs) => string);
+  | ((params: UpdateBundleParams) => Promise<AppUpdateInfo | null>)
+  | ((params: UpdateBundleParams) => string);
 
-export const fetchUpdateInfo = async (
-  source: UpdateSource,
-  args: GetBundlesArgs,
+function buildRequestHeaders(
+  params: UpdateBundleParams,
   requestHeaders?: Record<string, string>,
-  onError?: (error: Error) => void,
-  requestTimeout = 5000,
-): Promise<AppUpdateInfo | null> => {
-  if (typeof source === "function") {
-    const url = source(args);
-    if (typeof url !== "string") {
-      return null;
-    }
-    source = url;
+): Record<string, string> {
+  const updateStrategy: UpdateStrategy = params.fingerprintHash
+    ? "fingerprint"
+    : "appVersion";
+
+  return {
+    "Content-Type": "application/json",
+    "x-app-platform": params.platform,
+    "x-bundle-id": params.bundleId,
+    ...(updateStrategy === "fingerprint"
+      ? { "x-fingerprint-hash": params.fingerprintHash! }
+      : { "x-app-version": params.appVersion }),
+    ...(params.minBundleId && { "x-min-bundle-id": params.minBundleId }),
+    ...(params.channel && { "x-channel": params.channel }),
+    ...(requestHeaders ?? {}),
+  };
+}
+
+async function resolveSource(
+  source: UpdateSource,
+  params: UpdateBundleParams,
+): Promise<{ url: string } | { info: AppUpdateInfo | null }> {
+  if (typeof source !== "function") {
+    return { url: source };
   }
+  const result = source(params);
+  if (typeof result === "string") {
+    return { url: result };
+  }
+  return { info: await result };
+}
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, requestTimeout);
-
+export const fetchUpdateInfo = async ({
+  source,
+  params,
+  requestHeaders,
+  onError,
+  requestTimeout = 5000,
+}: {
+  source: UpdateSource;
+  params: UpdateBundleParams;
+  requestHeaders?: Record<string, string>;
+  onError?: (error: Error) => void;
+  requestTimeout?: number;
+}): Promise<AppUpdateInfo | null> => {
   try {
-    let headers: Record<string, string> = {};
-
-    switch (args._updateStrategy) {
-      case "fingerprint":
-        headers = {
-          "Content-Type": "application/json",
-          "x-app-platform": args.platform,
-          "x-bundle-id": args.bundleId,
-          "x-fingerprint-hash": args.fingerprintHash,
-          ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
-          ...(args.channel ? { "x-channel": args.channel } : {}),
-          ...requestHeaders,
-        };
-        break;
-      case "appVersion":
-        headers = {
-          "Content-Type": "application/json",
-          "x-app-platform": args.platform,
-          "x-bundle-id": args.bundleId,
-          "x-app-version": args.appVersion,
-          ...(args.minBundleId ? { "x-min-bundle-id": args.minBundleId } : {}),
-          ...(args.channel ? { "x-channel": args.channel } : {}),
-          ...requestHeaders,
-        };
-        break;
-      default:
-        throw new Error("Invalid update strategy");
+    const resolvedSource = await resolveSource(source, params);
+    if ("info" in resolvedSource) {
+      return resolvedSource.info;
     }
 
-    const response = await fetch(source, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, requestTimeout);
+
+    const headers = buildRequestHeaders(params, requestHeaders);
+
+    const response = await fetch(resolvedSource.url, {
       signal: controller.signal,
       headers,
     });
-
     clearTimeout(timeoutId);
 
     if (response.status !== 200) {
@@ -69,9 +83,9 @@ export const fetchUpdateInfo = async (
   } catch (error: any) {
     if (error.name === "AbortError") {
       onError?.(new Error("Request timed out"));
-      return null;
+    } else {
+      onError?.(error as Error);
     }
-    onError?.(error as Error);
     return null;
   }
 };

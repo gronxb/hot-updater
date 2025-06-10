@@ -69,12 +69,18 @@ import React
      * Gets the current update channel.
      * @return The channel name or nil if not set
      */
-
     public func getChannel() -> String {
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
     }
 
-    
+    /**
+     * Gets the current fingerprint hash.
+     * @return The fingerprint hash or nil if not set
+     */
+    public func getFingerprintHash() -> String? {
+        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+    }
+
     // MARK: - Bundle URL Management
     
     /**

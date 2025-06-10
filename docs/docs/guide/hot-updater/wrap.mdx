@@ -18,8 +18,10 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:7]
-  source: getUpdateSource("<your-update-server-url>"),
+export default HotUpdater.wrap({ // [!code hl:10]
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -30,17 +32,16 @@ export default HotUpdater.wrap({ // [!code hl:7]
 
 ## Understanding `getUpdateSource`
 
-The `getUpdateSource` function is used to construct the final URL for checking updates. The specific URL is determined by the update strategy being used internally by Hot Updater.
+The `getUpdateSource` function is used to construct the final URL for checking for updates. It takes a `baseUrl` as its first argument and an options object as its second argument. The `updateStrategy` property within the options object determines the final structure of the request URL.
 
 **Example Final Endpoint Structures:**
 
-Depending on the strategy, `getUpdateSource` helps form URLs similar to these:
+Depending on the `updateStrategy` value, `getUpdateSource` generates URLs like the following:
 
-*   `GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-*   `GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+*   For `updateStrategy: 'appVersion'`: `GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+*   For `updateStrategy: 'fingerprint'`: `GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
 
-If you provide a `baseUrl` (e.g., `https://your-update-server.com/api/update-check`), `getUpdateSource` ensures that the correct path and parameters are appended based on whether the update check is by app version or fingerprint.
-
+For example, if you provide `https://your-update-server.com/api/update-check` as the `baseUrl`, `getUpdateSource` will append the correct path and parameters to the URL depending on whether `updateStrategy` is `'appVersion'` or `'fingerprint'`.
 
 
 ## Fallback Component
@@ -72,8 +73,10 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:22]
-  source: getUpdateSource("<your-update-server-url>"),
+export default HotUpdater.wrap({ // [!code hl:26]
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   fallbackComponent: ({ progress, status, message }) => (
       <View
         style={{
@@ -126,7 +129,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>"),
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -153,7 +158,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>"),
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -194,7 +201,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>"),
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",

@@ -1,6 +1,5 @@
 {
   "ios": {
-    "hash": "d9f0df840e64d4283e4769f40dc4615a01dda5e4",
     "sources": [
       {
         "type": "file",
@@ -24,7 +23,16 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:ios",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingIos"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -56,16 +64,16 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.17.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "b26f2a0e2d9a2c226ba03ab60c6c14f8d1380c6b"
+        "hash": "52f29c1dec794b4dc09442dcae04df148a273613"
       }
-    ]
+    ],
+    "hash": "04ab981aa5f6f2a349312518acee8947afaac23a"
   },
   "android": {
-    "hash": "0dd495bd95fc8bc71a2d60a23b84eef0b3e74ce9",
     "sources": [
       {
         "type": "file",
@@ -81,7 +89,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "c8ca4fb5532ce577866bdaa0b355e99b5647048e"
+        "hash": "3a71b5a1b0322a4f7cc02e8cf55c1e464565f6ce"
       },
       {
         "type": "dir",
@@ -89,7 +97,16 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:android",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingAndroid"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -127,6 +144,7 @@
         ],
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
-    ]
+    ],
+    "hash": "33a3205567518666901d7a49ae5f584cc18cd9e1"
   }
 }

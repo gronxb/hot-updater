@@ -63,7 +63,6 @@ function App(): React.JSX.Element {
     <SafeAreaView>
       <Text>Babel {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
-      <Text>Release Channel "{HotUpdater.getReleaseChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
@@ -134,6 +133,9 @@ function App(): React.JSX.Element {
 export default HotUpdater.wrap({
   source: getUpdateSource(
     `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+    {
+      updateStrategy: "fingerprint", // or "appVersion"
+    },
   ),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>

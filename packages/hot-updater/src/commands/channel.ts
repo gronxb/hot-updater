@@ -1,8 +1,6 @@
 import { getChannel, setChannel } from "@/utils/setChannel";
 import * as p from "@clack/prompts";
-import { loadConfig } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
-import { handleCreateFingerprint } from "./fingerprint";
 
 export const handleChannel = async () => {
   const androidChannel = await getChannel("android");
@@ -27,9 +25,4 @@ export const handleSetChannel = async (channel: string) => {
   p.log.success(
     "You need to rebuild the native app if the channel has changed.",
   );
-
-  const config = await loadConfig(null);
-  if (config.updateStrategy === "fingerprint") {
-    await handleCreateFingerprint();
-  }
 };

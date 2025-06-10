@@ -45,10 +45,9 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  build: (args: { platform: Platform; channel: string }) => Promise<{
+  build: (args: { platform: Platform }) => Promise<{
     buildPath: string;
     bundleId: string;
-    channel: string;
     stdout: string | null;
   }>;
   name: string;
