@@ -6,7 +6,6 @@ import "dotenv/config";
 export default defineConfig({
   build: bare({
     enableHermes: true,
-    sourcemap: true, // sentry will upload sourcemaps to sentry
   }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
