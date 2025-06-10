@@ -6,7 +6,7 @@ import { globbySync } from "globby";
 /**
  * Processes extra source files and directories for fingerprinting.
  * @param extraSources Array of file paths, directory paths, or glob patterns
- * @param projectRoot Root directory of the project
+ * @param cwd Current working directory for resolving paths
  * @param ignorePaths Optional array of paths to ignore
  * @returns Array of processed sources with their contents or directory information
  */
