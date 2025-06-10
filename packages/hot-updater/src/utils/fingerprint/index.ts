@@ -22,15 +22,15 @@ export type FingerprintResult = {
 };
 
 function removeFingerprintFromStringsXml(contents: string): string {
-  return contents.replace(
-    /<string name="hot_updater_fingerprint_hash" moduleConfig="true">[^<]+<\/string>/,
+  return contents.replaceAll(
+    /<string name="hot_updater_fingerprint_hash" moduleConfig="true">[^<]+<\/string>/g,
     "",
   );
 }
 
 function removeFingerprintFromInfoPlist(contents: string): string {
-  return contents.replace(
-    /<key>HOT_UPDATER_FINGERPRINT_HASH<\/key>\s*<string>[^<]+<\/string>/,
+  return contents.replaceAll(
+    /<key>HOT_UPDATER_FINGERPRINT_HASH<\/key>\s*<string>[^<]+<\/string>/g,
     "",
   );
 }
