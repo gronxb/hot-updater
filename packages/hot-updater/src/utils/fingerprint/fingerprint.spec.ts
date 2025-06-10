@@ -1,25 +1,117 @@
 import fs from "fs";
-import os from "os";
 import path from "path";
-import { beforeEach, describe } from "vitest";
+import { mockReactNativeProjectRoot } from "@hot-updater/plugin-core/test-utils";
+import { beforeEach, describe, expect, it } from "vitest";
+import { nativeFingerprint } from ".";
 
-const tmpDir = path.resolve(os.tmpdir(), ".hot-updater“, ”test");
-// const iosDir = path.resolve(tmpDir, "ios");
+describe("Fingerprint", () => {
+  let rootDir: string;
 
-describe.skip("Fingerprint", () => {
-  beforeEach(() => {
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true });
+  beforeEach(async () => {
+    const mockedProject = await mockReactNativeProjectRoot({
+      example: "rn-77",
+    });
+    rootDir = mockedProject.rootDir;
+  });
 
-    const exampleExpo52 = path.resolve(process.cwd(), "../../examples/expo-52");
-    for (const file of fs.readdirSync(exampleExpo52)) {
-      if (file !== "node_modules") {
-        console.log(file);
-        const filePath = path.resolve(exampleExpo52, file);
-        const isDir = fs.statSync(filePath).isDirectory();
-        fs.cpSync(filePath, path.resolve(tmpDir), {
-          recursive: isDir,
-        });
-      }
-    }
+  const changePackageJsonVersion = () => {
+    // change content
+    const packageJsonFilePath = path.join(rootDir, "package.json");
+    const packageJsonFileContent = JSON.parse(
+      fs.readFileSync(packageJsonFilePath, { encoding: "utf-8" }),
+    );
+    packageJsonFileContent.version = `${packageJsonFileContent.version}-alpha01`;
+    fs.writeFileSync(
+      packageJsonFilePath,
+      JSON.stringify(packageJsonFileContent),
+    );
+  };
+
+  const changePackageJsonMiscellaneous = () => {
+    // change content
+    const packageJsonFilePath = path.join(rootDir, "package.json");
+    const packageJsonFileContent = JSON.parse(
+      fs.readFileSync(packageJsonFilePath, { encoding: "utf-8" }),
+    );
+    packageJsonFileContent.scripts.hello = "echo 'hello'";
+    fs.writeFileSync(
+      packageJsonFilePath,
+      JSON.stringify(packageJsonFileContent),
+    );
+  };
+
+  it("fingerprint changed if package.json modified", async () => {
+    const fingerprintBefore = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [],
+      ignorePaths: [],
+    });
+
+    // change content
+    changePackageJsonVersion();
+
+    const fingerprintAfter = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [],
+      ignorePaths: [],
+    });
+
+    expect(fingerprintBefore).not.toEqual(fingerprintAfter);
+  });
+
+  it("fingerprint chnaged though package.json is ignored because of expo config hash", async () => {
+    const fingerprintBefore = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [],
+      ignorePaths: ["package.json"],
+    });
+
+    changePackageJsonVersion();
+
+    const fingerprintAfter = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [],
+      ignorePaths: ["package.json"],
+    });
+
+    expect(fingerprintBefore).not.toEqual(fingerprintAfter);
+  });
+
+  it("fingerprint not changed if package.json is ignored and miscellaneous changed", async () => {
+    const fingerprintBefore = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [],
+      ignorePaths: ["package.json"],
+    });
+
+    changePackageJsonMiscellaneous();
+
+    const fingerprintAfter = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [],
+      ignorePaths: ["package.json"],
+    });
+
+    expect(fingerprintBefore).toEqual(fingerprintAfter);
+  });
+
+  it("fingerprint changed if extraSources changed", async () => {
+    const fingerprintBefore = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [".tmp"],
+      ignorePaths: [],
+    });
+
+    fs.writeFileSync(path.resolve(rootDir, ".tmp"), "test", {
+      encoding: "utf-8",
+    });
+
+    const fingerprintAfter = await nativeFingerprint(rootDir, {
+      platform: "ios",
+      extraSources: [".tmp"],
+      ignorePaths: [],
+    });
+
+    expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 });
