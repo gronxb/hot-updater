@@ -62,7 +62,9 @@ export interface StoragePlugin {
     storageUri: string;
   }>;
 
-  deleteBundle: (bundleId: string) => Promise<string>;
+  deleteBundle: (bundleId: string) => Promise<{
+    storageUri: string;
+  }>;
   name: string;
 }
 

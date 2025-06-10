@@ -28,9 +28,9 @@ export const supabaseStorage =
       name: "supabaseStorage",
       async deleteBundle(bundleId) {
         const filename = "bundle.zip";
-        const filePath = `${bundleId}/${filename}`;
+        const Key = `${bundleId}/${filename}`;
 
-        const { error } = await bucket.remove([filePath]);
+        const { error } = await bucket.remove([Key]);
 
         if (error) {
           if (error.message?.includes("not found")) {
@@ -38,7 +38,9 @@ export const supabaseStorage =
           }
           throw new Error(`Failed to delete bundle: ${error.message}`);
         }
-        return `${bundleId}`;
+        return {
+          storageUri: `supabase-storage://${config.bucketName}/${Key}`,
+        };
       },
 
       async uploadBundle(bundleId, bundlePath) {

@@ -30,18 +30,19 @@ export const r2Storage =
     return {
       name: "r2Storage",
       async deleteBundle(bundleId) {
-        const prefix = `${bundleId}/`;
-        const bundleZip = `${bundleId}/bundle.zip `;
+        const Key = `${bundleId}/bundle.zip `;
         try {
           await wrangler(
             "r2",
             "object",
             "delete",
-            [bucketName, bundleZip].join("/"),
+            [bucketName, Key].join("/"),
             "--remote",
           );
 
-          return prefix;
+          return {
+            storageUri: `r2://${bucketName}/${Key}`,
+          };
         } catch (error) {
           throw new Error("Can not delete bundle");
         }

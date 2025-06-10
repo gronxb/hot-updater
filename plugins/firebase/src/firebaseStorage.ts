@@ -26,11 +26,13 @@ export const firebaseStorage =
     return {
       name: "firebaseStorage",
       async deleteBundle(bundleId) {
-        const prefix = `${bundleId}/`;
+        const Key = `${bundleId}/bundle.zip`;
         try {
-          const [files] = await bucket.getFiles({ prefix });
+          const [files] = await bucket.getFiles({ prefix: Key });
           await Promise.all(files.map((file) => file.delete()));
-          return prefix;
+          return {
+            storageUri: `gs://${config.storageBucket}/${Key}`,
+          };
         } catch (e) {
           console.error("Error listing or deleting files:", e);
           throw new Error("Bundle Not Found");
