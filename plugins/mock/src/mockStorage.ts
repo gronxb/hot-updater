@@ -14,6 +14,8 @@ export const mockStorage =
           storageUri: `storage://my-app/${bundleId}/bundle.zip`,
         }),
       deleteBundle: (bundleId: string) =>
-        Promise.resolve(`storage://my-app/${bundleId}/bundle.zip`),
+        Promise.resolve({
+          storageUri: `storage://my-app/${bundleId}/bundle.zip`,
+        }),
     };
   };

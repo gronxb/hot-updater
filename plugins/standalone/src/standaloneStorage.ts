@@ -66,7 +66,7 @@ export const standaloneStorage =
         const { path: routePath, headers: routeHeaders } =
           routes.deleteBundle(bundleId);
         const response = await fetch(`${config.baseUrl}${routePath}`, {
-          method: "POST",
+          method: "DELETE",
           headers: getHeaders(routeHeaders),
           body: JSON.stringify({ bundleId }),
         });
@@ -78,8 +78,12 @@ export const standaloneStorage =
           console.error(error);
           throw error;
         }
-
-        return bundleId;
+        const result = (await response.json()) as {
+          storageUri: string;
+        };
+        return {
+          storageUri: result.storageUri,
+        };
       },
       async uploadBundle(bundleId: string, bundlePath: string) {
         const fileContent = await fs.readFile(bundlePath);
