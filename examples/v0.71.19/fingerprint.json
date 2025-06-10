@@ -15,7 +15,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "33a45fbc9220818c4dce3066539ceeee0301a4bb"
+        "hash": "404c47aafa6e657e6c64743a288f37882f6774dc"
       },
       {
         "type": "dir",
@@ -23,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "dd6275b47ddf1719a3caee0564a1ff7a4c15983f"
+        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
       },
       {
         "type": "dir",
@@ -72,14 +72,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "ca1d3e13d6bf7f503ae44a2c02c8dfcb9c61d8d2"
+        "hash": "db2f4f89079db35854af3e1b030b0dc5e447cf99"
       }
     ],
-    "hash": "970882582f18be8caa21f174ae58870a2faa3871"
+    "hash": "b5ed9c27959dd59af7838aecb76ebe995505cea0"
   },
   "android": {
     "sources": [
@@ -97,7 +97,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "0d87a7001914f41e71858a4103acc36a503caedb"
+        "hash": "f4283d5957caec838ed8968db851c5f197f64a27"
       },
       {
         "type": "dir",
@@ -105,7 +105,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "dd6275b47ddf1719a3caee0564a1ff7a4c15983f"
+        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
       },
       {
         "type": "dir",
@@ -161,6 +161,6 @@
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
     ],
-    "hash": "359cb3ad902e7a5f74e5686477ce95b05395f135"
+    "hash": "3c1ebae8d0d09728e941e35d342cdca02e59810c"
   }
 }
