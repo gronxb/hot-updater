@@ -29,6 +29,48 @@ const createBundleJson = (
   targetAppVersion,
 });
 
+const bundlesData = [
+  {
+    id: "bundleX",
+    channel: "production",
+    enabled: true,
+    shouldForceUpdate: false,
+    fileHash: "hashX",
+    gitCommitHash: "commitX",
+    message: "Bundle X",
+    platform: "ios",
+    targetAppVersion: "1.1.1",
+    storageUri: "gs://test-bucket/test-key",
+    fingerprintHash: null,
+  },
+  {
+    id: "bundleY",
+    channel: "production",
+    enabled: true,
+    shouldForceUpdate: false,
+    fileHash: "hashY",
+    gitCommitHash: "commitY",
+    message: "Bundle Y",
+    platform: "android",
+    targetAppVersion: "1.1.1",
+    storageUri: "gs://test-bucket/test-key",
+    fingerprintHash: null,
+  },
+  {
+    id: "bundleZ",
+    channel: "staging",
+    enabled: true,
+    shouldForceUpdate: false,
+    fileHash: "hashZ",
+    gitCommitHash: "commitZ",
+    message: "Bundle Z",
+    platform: "ios",
+    targetAppVersion: "1.1.1",
+    storageUri: "gs://test-bucket/test-key",
+    fingerprintHash: null,
+  },
+] as const;
+
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
 // 캐시 무효화 요청을 추적하기 위한 배열
@@ -862,5 +904,273 @@ describe("blobDatabase plugin", () => {
     await plugin.commitBundle();
 
     expect(cloudfrontInvalidations.length).toBe(0);
+  });
+
+  it("should delete bundle successfully and remove from storage", async () => {
+    // Setup
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.appendBundle(bundlesData[1]);
+    await plugin.commitBundle();
+
+    // Verify bundle exists
+    const bundleBeforeDeletion = await plugin.getBundleById("bundleX");
+    expect(bundleBeforeDeletion).toBeTruthy();
+
+    // Execute
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert
+    const bundleAfterDeletion = await plugin.getBundleById("bundleX");
+    expect(bundleAfterDeletion).toBeNull();
+
+    // Verify other bundle still exists
+    const otherBundle = await plugin.getBundleById("bundleY");
+    expect(otherBundle).toBeTruthy();
+  });
+
+  it("should delete entire update.json file when no bundles remain", async () => {
+    // Setup
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Find the actual update.json key
+    const updateJsonKeys = Object.keys(fakeStore).filter((key) =>
+      key.includes("update.json"),
+    );
+    expect(updateJsonKeys.length).toBeGreaterThan(0);
+    const updateJsonKey = updateJsonKeys[0];
+
+    // Execute
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert
+    expect(fakeStore[updateJsonKey]).toBeUndefined();
+  });
+
+  it("should keep update.json file when other bundles remain", async () => {
+    // Setup - create bundles in same platform/channel
+    const bundle1 = { ...bundlesData[0], id: "bundleA" };
+    const bundle2 = { ...bundlesData[0], id: "bundleB" };
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.commitBundle();
+
+    // Find the actual update.json key
+    const updateJsonKeys = Object.keys(fakeStore).filter((key) =>
+      key.includes("update.json"),
+    );
+    expect(updateJsonKeys.length).toBeGreaterThan(0);
+    const updateJsonKey = updateJsonKeys[0];
+
+    // Execute
+    await plugin.deleteBundle(bundle1);
+    await plugin.commitBundle();
+
+    // Assert
+    expect(fakeStore[updateJsonKey]).toBeDefined();
+    const remainingBundle = await plugin.getBundleById("bundleB");
+    expect(remainingBundle).toBeTruthy();
+  });
+
+  it("should handle bundle with fingerprintHash for cache invalidation", async () => {
+    // Setup
+    const bundleWithFingerprint = {
+      ...bundlesData[0],
+      fingerprintHash: "fingerprint123",
+    };
+    await plugin.appendBundle(bundleWithFingerprint);
+    await plugin.commitBundle();
+
+    // Execute
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert
+    const invalidationPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    const fingerprintPath = invalidationPaths.find(
+      (path) => path.includes("fingerprint") && path.includes("fingerprint123"),
+    );
+    expect(fingerprintPath).toBeDefined();
+  });
+
+  it("should sort remaining bundles after deletion", async () => {
+    // Setup
+    const bundle1 = { ...bundlesData[0], id: "bundleA" };
+    const bundle2 = { ...bundlesData[0], id: "bundleB" };
+    const bundle3 = { ...bundlesData[0], id: "bundleC" };
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.appendBundle(bundle3);
+    await plugin.commitBundle();
+
+    // Execute
+    await plugin.deleteBundle(bundle2);
+    await plugin.commitBundle();
+
+    // Assert
+    // Find the actual update.json key
+    const updateJsonKeys = Object.keys(fakeStore).filter((key) =>
+      key.includes("update.json"),
+    );
+    expect(updateJsonKeys.length).toBeGreaterThan(0);
+    const updateJsonKey = updateJsonKeys[0];
+
+    const remainingBundles = JSON.parse(fakeStore[updateJsonKey] || "[]");
+    expect(remainingBundles).toHaveLength(2);
+    expect(remainingBundles[0].id).toBe("bundleC"); // sorted desc
+    expect(remainingBundles[1].id).toBe("bundleA");
+  });
+
+  it("should invalidate correct paths for targetAppVersion when fingerprintHash is null", async () => {
+    // Setup
+    const bundleToDelete = {
+      ...bundlesData[0],
+      fingerprintHash: null,
+      targetAppVersion: "2.0.0",
+    };
+    await plugin.appendBundle(bundleToDelete);
+    await plugin.commitBundle();
+
+    // Execute
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert
+    const invalidationPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    const appVersionPath = invalidationPaths.find(
+      (path) => path.includes("app-version") && path.includes("2.0.0"),
+    );
+    expect(appVersionPath).toBeDefined();
+  });
+
+  it("should invalidate multiple path types correctly", async () => {
+    // Setup
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Execute
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert
+    const invalidationPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+
+    // Should have update.json path
+    const updateJsonPath = invalidationPaths.find((path) =>
+      path.includes("update.json"),
+    );
+    expect(updateJsonPath).toBeDefined();
+
+    // Should have app-version path
+    const appVersionPath = invalidationPaths.find(
+      (path) =>
+        path.includes("app-version") &&
+        path.includes("1.1.1") &&
+        path.includes("production"),
+    );
+    expect(appVersionPath).toBeDefined();
+  });
+
+  it("should handle different platforms separately", async () => {
+    // Setup
+    await plugin.appendBundle(bundlesData[0]); // ios
+    await plugin.appendBundle(bundlesData[1]); // android
+    await plugin.commitBundle();
+
+    // Execute - delete ios bundle
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert - android bundle should remain unaffected
+    const androidBundle = await plugin.getBundleById("bundleY");
+    expect(androidBundle).toBeTruthy();
+    expect(androidBundle?.platform).toBe("android");
+  });
+
+  it("should handle different channels separately", async () => {
+    // Setup
+    await plugin.appendBundle(bundlesData[0]); // production
+    await plugin.appendBundle(bundlesData[2]); // staging
+    await plugin.commitBundle();
+
+    // Execute - delete production bundle
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert - staging bundle should remain unaffected
+    const stagingBundle = await plugin.getBundleById("bundleZ");
+    expect(stagingBundle).toBeTruthy();
+    expect(stagingBundle?.channel).toBe("staging");
+  });
+
+  it("should work with getBundles pagination", async () => {
+    // Setup - create multiple bundles
+    const bundle1 = { ...bundlesData[0], id: "bundle1" };
+    const bundle2 = { ...bundlesData[0], id: "bundle2" };
+    const bundle3 = { ...bundlesData[0], id: "bundle3" };
+
+    await plugin.appendBundle(bundle1);
+    await plugin.appendBundle(bundle2);
+    await plugin.appendBundle(bundle3);
+    await plugin.commitBundle();
+
+    // Verify all bundles exist
+    const bundlesBeforeDeletion = await plugin.getBundles({
+      where: { platform: "ios", channel: "production" },
+      limit: 10,
+      offset: 0,
+    });
+    expect(bundlesBeforeDeletion.data).toHaveLength(3);
+
+    // Execute
+    await plugin.deleteBundle(bundle2);
+    await plugin.commitBundle();
+
+    // Assert
+    const bundlesAfterDeletion = await plugin.getBundles({
+      where: { platform: "ios", channel: "production" },
+      limit: 10,
+      offset: 0,
+    });
+    expect(bundlesAfterDeletion.data).toHaveLength(2);
+    expect(bundlesAfterDeletion.data.some((b) => b.id === "bundle2")).toBe(
+      false,
+    );
+  });
+
+  it("should trigger cache invalidation for all relevant paths", async () => {
+    // Setup
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Execute
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    // Assert
+    expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
+    const allPaths = cloudfrontInvalidations.flatMap((inv) => inv.paths);
+
+    // Should invalidate update.json
+    expect(allPaths.some((path) => path.includes("update.json"))).toBe(true);
+
+    // Should invalidate app-version or fingerprint path
+    const hasAppVersionOrFingerprint = allPaths.some(
+      (path) => path.includes("app-version") || path.includes("fingerprint"),
+    );
+    expect(hasAppVersionOrFingerprint).toBe(true);
   });
 });

@@ -1,5 +1,19 @@
 # @hot-updater/react-native
 
+## 0.18.5
+
+### Patch Changes
+
+- @hot-updater/core@0.18.5
+- @hot-updater/js@0.18.5
+
+## 0.18.4
+
+### Patch Changes
+
+- @hot-updater/core@0.18.4
+- @hot-updater/js@0.18.4
+
 ## 0.18.3
 
 ### Patch Changes

@@ -27,7 +27,7 @@ export const s3Storage =
     return {
       name: "s3Storage",
       async deleteBundle(bundleId) {
-        const Key = [bundleId].join("/");
+        const Key = bundleId;
 
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
@@ -50,7 +50,9 @@ export const s3Storage =
 
           const deleteCommand = new DeleteObjectsCommand(deleteParams);
           await client.send(deleteCommand);
-          return Key;
+          return {
+            storageUri: `s3://${bucketName}/${Key}`,
+          };
         }
 
         throw new Error("Bundle Not Found");

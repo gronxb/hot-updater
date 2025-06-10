@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/plugin-core",
-  "version": "0.18.3",
+  "version": "0.18.5",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -54,6 +54,7 @@
     "jszip": "^3.10.1",
     "picocolors": "^1.0.0",
     "typescript": "5.8.2",
-    "workspace-tools": "^0.36.4"
+    "workspace-tools": "^0.36.4",
+    "@hot-updater/plugin-core": "workspace:*"
   }
 }

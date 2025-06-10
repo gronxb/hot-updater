@@ -1,5 +1,21 @@
 # @hot-updater/console
 
+## 0.18.5
+
+### Patch Changes
+
+- 494ce31: feat: delete Bundle
+- Updated dependencies [494ce31]
+  - @hot-updater/plugin-core@0.18.5
+  - @hot-updater/core@0.18.5
+
+## 0.18.4
+
+### Patch Changes
+
+- @hot-updater/core@0.18.4
+- @hot-updater/plugin-core@0.18.4
+
 ## 0.18.3
 
 ### Patch Changes

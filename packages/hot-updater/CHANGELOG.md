@@ -1,5 +1,31 @@
 # hot-updater
 
+## 0.18.5
+
+### Patch Changes
+
+- Updated dependencies [494ce31]
+  - @hot-updater/plugin-core@0.18.5
+  - @hot-updater/cloudflare@0.18.5
+  - @hot-updater/console@0.18.5
+  - @hot-updater/firebase@0.18.5
+  - @hot-updater/supabase@0.18.5
+  - @hot-updater/aws@0.18.5
+  - @hot-updater/core@0.18.5
+
+## 0.18.4
+
+### Patch Changes
+
+- c6c4838: cancellation of platform selection prompt shows log correctly
+  - @hot-updater/console@0.18.4
+  - @hot-updater/core@0.18.4
+  - @hot-updater/aws@0.18.4
+  - @hot-updater/cloudflare@0.18.4
+  - @hot-updater/firebase@0.18.4
+  - @hot-updater/plugin-core@0.18.4
+  - @hot-updater/supabase@0.18.4
+
 ## 0.18.3
 
 ### Patch Changes

@@ -216,52 +216,70 @@ export const d1Database = (
           return;
         }
 
-        const bundles = changedSets.map((op) => op.data);
+        // Process each operation sequentially
+        for (const op of changedSets) {
+          if (op.operation === "delete") {
+            // Handle delete operation
+            const deleteSql = minify(/* sql */ `
+              DELETE FROM bundles WHERE id = ?
+            `);
 
-        const params: (string | number | boolean | null)[] = [];
-        const valuesSql = bundles
-          .map((b) => {
-            params.push(
-              b.id,
-              b.channel,
-              b.enabled ? 1 : 0,
-              b.shouldForceUpdate ? 1 : 0,
-              b.fileHash,
-              b.gitCommitHash || null,
-              b.message || null,
-              b.platform,
-              b.targetAppVersion,
-              b.storageUri,
-              b.fingerprintHash,
-              b.metadata ? JSON.stringify(b.metadata) : JSON.stringify({}),
-            );
-            return "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-          })
-          .join(",\n");
+            await context.cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql: deleteSql,
+              params: [op.data.id],
+            });
 
-        const sql = minify(/* sql */ `
-          INSERT OR REPLACE INTO bundles (
-            id,
-            channel,
-            enabled,
-            should_force_update,
-            file_hash,
-            git_commit_hash,
-            message,
-            platform,
-            target_app_version,
-            storage_uri,
-            fingerprint_hash,
-            metadata
-          )
-          VALUES
-          ${valuesSql};`);
+            // Update local bundles array
+            bundles = bundles.filter((b) => b.id !== op.data.id);
+          } else if (op.operation === "insert" || op.operation === "update") {
+            // Handle insert and update operations
+            const bundle = op.data;
+            const upsertSql = minify(/* sql */ `
+              INSERT OR REPLACE INTO bundles (
+                id,
+                channel,
+                enabled,
+                should_force_update,
+                file_hash,
+                git_commit_hash,
+                message,
+                platform,
+                target_app_version,
+                storage_uri,
+                fingerprint_hash,
+                metadata
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
 
-        await context.cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: params as string[],
-        });
+            const params = [
+              bundle.id,
+              bundle.channel,
+              bundle.enabled ? 1 : 0,
+              bundle.shouldForceUpdate ? 1 : 0,
+              bundle.fileHash,
+              bundle.gitCommitHash || null,
+              bundle.message || null,
+              bundle.platform,
+              bundle.targetAppVersion,
+              bundle.storageUri,
+              bundle.fingerprintHash,
+              bundle.metadata
+                ? JSON.stringify(bundle.metadata)
+                : JSON.stringify({}),
+            ];
+
+            await context.cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql: upsertSql,
+              params: params as string[],
+            });
+          }
+        }
+
+        // Trigger hooks after all operations
+        hooks?.onDatabaseUpdated?.();
       },
     },
     hooks,
