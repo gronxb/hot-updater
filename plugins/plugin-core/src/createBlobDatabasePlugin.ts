@@ -247,6 +247,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
           if (data.targetAppVersion !== undefined) {
             isTargetAppVersionChanged = true;
           }
+
           // Insert operation.
           if (operation === "insert") {
             const target = data.targetAppVersion ?? data.fingerprintHash;
@@ -275,6 +276,39 @@ export const createBlobDatabasePlugin = <TContext = object>({
             } else if (data.targetAppVersion) {
               pathsToInvalidate.add(
                 `${apiBasePath}/app-version/${data.platform}/${data.targetAppVersion}/${data.channel}/*`,
+              );
+            }
+            continue;
+          }
+
+          // Delete operation.
+          if (operation === "delete") {
+            let bundle = pendingBundlesMap.get(data.id);
+            if (!bundle) {
+              bundle = bundlesMap.get(data.id);
+            }
+            if (!bundle) {
+              throw new Error("Bundle to delete not found");
+            }
+
+            // Remove from memory maps
+            bundlesMap.delete(data.id);
+            pendingBundlesMap.delete(data.id);
+
+            // Mark for removal from update.json
+            const key = bundle._updateJsonKey;
+            removalsByKey[key] = removalsByKey[key] || [];
+            removalsByKey[key].push(bundle.id);
+
+            // Add paths for CloudFront invalidation
+            pathsToInvalidate.add(`/${key}`);
+            if (bundle.fingerprintHash) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+              );
+            } else if (bundle.targetAppVersion) {
+              pathsToInvalidate.add(
+                `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
               );
             }
             continue;
@@ -351,7 +385,6 @@ export const createBlobDatabasePlugin = <TContext = object>({
               removeBundleInternalKeys(updatedBundle),
             );
 
-            // CloudFront 무효화를 위한 경로 추가
             pathsToInvalidate.add(`/${currentKey}`);
             if (bundle.fingerprintHash) {
               pathsToInvalidate.add(

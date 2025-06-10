@@ -401,68 +401,166 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       new Error("API Error: Internal Server Error"),
     );
   });
-});
 
-// ─── Custom Routes Tests ────────────────────────────────
-describe("Standalone Repository Plugin (Custom Routes)", () => {
-  let customRepo: ReturnType<ReturnType<typeof standaloneRepository>>;
-  const customConfig: StandaloneRepositoryConfig = {
-    baseUrl: "http://localhost/api",
-    commonHeaders: { Authorization: "Bearer token" },
-    routes: {
-      upsert: () => ({
-        path: "/custom/bundles",
-        headers: { "X-Custom": "upsert" },
-      }),
-      list: () => ({
-        path: "/custom/bundles",
-        headers: { "Cache-Control": "max-age=60" },
-      }),
-      retrieve: (bundleId: string) => ({
-        path: `/custom/bundles/${bundleId}`,
-        headers: { Accept: "application/custom+json" },
-      }),
-    },
-  };
+  it("commitBundle: DELETE operation successfully deletes a bundle", async () => {
+    let deleteCalled = false;
 
-  beforeEach(() => {
-    customRepo = standaloneRepository(customConfig)({} as BasePluginArgs);
-  });
-
-  it("getBundles: uses custom list route and headers", async () => {
     server.use(
-      http.get("http://localhost/api/custom/bundles", ({ request }) => {
-        expect(request.headers.get("Authorization")).toEqual("Bearer token");
-        expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
-        return HttpResponse.json(testBundles);
+      http.delete("http://localhost/bundles/:bundleId", ({ params }) => {
+        deleteCalled = true;
+        const { bundleId } = params;
+        expect(bundleId).toBe(testBundles[0].id);
+        return HttpResponse.json({ success: true });
       }),
     );
 
-    const bundles = await customRepo.getBundles({ limit: 20, offset: 0 });
-    expect(bundles.data).toEqual(testBundles);
+    await repo.deleteBundle(testBundles[0]);
+    await repo.commitBundle();
+
+    expect(deleteCalled).toBe(true);
+    expect(onDatabaseUpdated).toHaveBeenCalled();
   });
 
-  it("getBundleById: uses custom retrieve route and headers", async () => {
+  it("commitBundle: DELETE operation throws error when API returns 404", async () => {
     server.use(
-      http.get(
-        "http://localhost/api/custom/bundles/:bundleId",
-        ({ params, request }) => {
+      http.delete("http://localhost/bundles/:bundleId", () => {
+        return new HttpResponse(null, {
+          status: 404,
+          statusText: "Not Found",
+        });
+      }),
+    );
+
+    await repo.deleteBundle(testBundles[0]);
+    await expect(repo.commitBundle()).rejects.toThrow(
+      `Bundle with id ${testBundles[0].id} not found`,
+    );
+  });
+
+  it("commitBundle: DELETE operation throws error when API returns server error", async () => {
+    server.use(
+      http.delete("http://localhost/bundles/:bundleId", () => {
+        return new HttpResponse(null, {
+          status: 500,
+          statusText: "Internal Server Error",
+        });
+      }),
+    );
+
+    await repo.deleteBundle(testBundles[0]);
+    await expect(repo.commitBundle()).rejects.toThrow(
+      "API Error: 500 Internal Server Error",
+    );
+  });
+
+  // ─── Custom Routes Tests ────────────────────────────────
+  describe("Standalone Repository Plugin (Custom Routes)", () => {
+    let customRepo: ReturnType<ReturnType<typeof standaloneRepository>>;
+    const customConfig: StandaloneRepositoryConfig = {
+      baseUrl: "http://localhost/api",
+      commonHeaders: { Authorization: "Bearer token" },
+      routes: {
+        upsert: () => ({
+          path: "/custom/bundles",
+          headers: { "X-Custom": "upsert" },
+        }),
+        list: () => ({
+          path: "/custom/bundles",
+          headers: { "Cache-Control": "max-age=60" },
+        }),
+        retrieve: (bundleId: string) => ({
+          path: `/custom/bundles/${bundleId}`,
+          headers: { Accept: "application/custom+json" },
+        }),
+        delete: (bundleId: string) => ({
+          path: `/custom/bundles/${bundleId}`,
+          headers: { "X-Custom": "delete" },
+        }),
+      },
+    };
+
+    beforeEach(() => {
+      customRepo = standaloneRepository(customConfig)({} as BasePluginArgs);
+    });
+
+    it("getBundles: uses custom list route and headers", async () => {
+      server.use(
+        http.get("http://localhost/api/custom/bundles", ({ request }) => {
           expect(request.headers.get("Authorization")).toEqual("Bearer token");
-          expect(request.headers.get("Accept")).toEqual(
-            "application/custom+json",
-          );
-          const { bundleId } = params;
-          if (bundleId === testBundles[0].id) {
-            return HttpResponse.json(testBundles[0]);
-          }
-          return HttpResponse.error();
-        },
-      ),
-    );
+          expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
+          return HttpResponse.json(testBundles);
+        }),
+      );
 
-    const bundle = await customRepo.getBundleById(
-      "00000000-0000-0000-0000-000000000001",
-    );
-    expect(bundle).toEqual(testBundles[0]);
+      const bundles = await customRepo.getBundles({ limit: 20, offset: 0 });
+      expect(bundles.data).toEqual(testBundles);
+    });
+
+    it("getBundleById: uses custom retrieve route and headers", async () => {
+      server.use(
+        http.get(
+          "http://localhost/api/custom/bundles/:bundleId",
+          ({ params, request }) => {
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("Accept")).toEqual(
+              "application/custom+json",
+            );
+            const { bundleId } = params;
+            if (bundleId === testBundles[0].id) {
+              return HttpResponse.json(testBundles[0]);
+            }
+            return HttpResponse.error();
+          },
+        ),
+      );
+
+      const bundle = await customRepo.getBundleById(
+        "00000000-0000-0000-0000-000000000001",
+      );
+      expect(bundle).toEqual(testBundles[0]);
+    });
+
+    it("commitBundle: DELETE operation uses custom delete route and headers", async () => {
+      server.use(
+        http.delete(
+          "http://localhost/api/custom/bundles/:bundleId",
+          ({ request, params }) => {
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("X-Custom")).toEqual("delete");
+            const { bundleId } = params;
+            expect(bundleId).toBe(testBundles[0].id);
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
+
+      await customRepo.deleteBundle(testBundles[0]);
+      await customRepo.commitBundle();
+    });
+
+    it("commitBundle: INSERT/UPDATE operations use custom upsert route and headers", async () => {
+      server.use(
+        http.post(
+          "http://localhost/api/custom/bundles",
+          async ({ request }) => {
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("X-Custom")).toEqual("upsert");
+            const body = (await request.json()) as Bundle[];
+            expect(body).toHaveLength(1);
+            expect(body[0]).toEqual(testBundles[0]);
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
+
+      await customRepo.appendBundle(testBundles[0]);
+      await customRepo.commitBundle();
+    });
   });
 });

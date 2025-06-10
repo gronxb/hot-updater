@@ -30,15 +30,22 @@ export const r2Storage =
     return {
       name: "r2Storage",
       async deleteBundle(bundleId) {
-        await wrangler(
-          "r2",
-          "object",
-          "delete",
-          [bucketName, bundleId].join("/"),
-          "--remote",
-        );
+        const Key = `${bundleId}/bundle.zip `;
+        try {
+          await wrangler(
+            "r2",
+            "object",
+            "delete",
+            [bucketName, Key].join("/"),
+            "--remote",
+          );
 
-        throw new Error("Bundle Not Found");
+          return {
+            storageUri: `r2://${bucketName}/${Key}`,
+          };
+        } catch (error) {
+          throw new Error("Can not delete bundle");
+        }
       },
       async uploadBundle(bundleId, bundlePath) {
         const contentType = mime.getType(bundlePath) ?? void 0;

@@ -1,9 +1,8 @@
 import {
-  type BasePluginArgs,
   type Bundle,
-  type DatabasePlugin,
   type DatabasePluginHooks,
   calculatePagination,
+  createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
 
@@ -12,39 +11,28 @@ export interface MockDatabaseConfig {
   initialBundles?: Bundle[];
 }
 
-export const mockDatabase =
-  (config: MockDatabaseConfig, hooks?: DatabasePluginHooks) =>
-  (_: BasePluginArgs): DatabasePlugin => {
-    const bundles: Bundle[] = config.initialBundles ?? [];
-    const latency = config.latency;
+export const mockDatabase = (
+  config: MockDatabaseConfig,
+  hooks?: DatabasePluginHooks,
+) =>
+  createDatabasePlugin(
+    "mockDatabase",
+    {
+      getContext: () => {
+        const bundles: Bundle[] = config.initialBundles ?? [];
+        return { bundles };
+      },
 
-    return {
-      name: "mockDatabase",
-      async commitBundle() {
-        await sleep(minMax(latency.min, latency.max));
-        await hooks?.onDatabaseUpdated?.();
+      async getBundleById(context, bundleId) {
+        await sleep(minMax(config.latency.min, config.latency.max));
+        return context.bundles.find((b) => b.id === bundleId) ?? null;
       },
-      async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
-        await sleep(minMax(latency.min, latency.max));
-        const targetIndex = bundles.findIndex((u) => u.id === targetBundleId);
-        if (targetIndex === -1) {
-          throw new Error("targetBundleId not found");
-        }
-        Object.assign(bundles[targetIndex], newBundle);
-      },
-      async appendBundle(inputBundle: Bundle) {
-        await sleep(minMax(latency.min, latency.max));
-        bundles.unshift(inputBundle);
-      },
-      async getBundleById(bundleId: string) {
-        await sleep(minMax(latency.min, latency.max));
-        return bundles.find((b) => b.id === bundleId) ?? null;
-      },
-      async getBundles(options) {
+
+      async getBundles(context, options) {
         const { where, limit, offset } = options ?? {};
-        await sleep(minMax(latency.min, latency.max));
+        await sleep(minMax(config.latency.min, config.latency.max));
 
-        const filteredBundles = bundles.filter((b) => {
+        const filteredBundles = context.bundles.filter((b) => {
           if (where?.channel && b.channel !== where.channel) {
             return false;
           }
@@ -58,7 +46,6 @@ export const mockDatabase =
         const data = limit
           ? filteredBundles.slice(offset, offset + limit)
           : filteredBundles;
-
         const pagination = calculatePagination(total, { limit, offset });
 
         return {
@@ -66,11 +53,47 @@ export const mockDatabase =
           pagination,
         };
       },
-      async getChannels() {
-        await sleep(minMax(latency.min, latency.max));
-        return bundles
+
+      async getChannels(context) {
+        await sleep(minMax(config.latency.min, config.latency.max));
+        return context.bundles
           .map((b) => b.channel)
           .filter((c, i, self) => self.indexOf(c) === i);
       },
-    };
-  };
+
+      async commitBundle(context, { changedSets }) {
+        if (changedSets.length === 0) {
+          return;
+        }
+
+        await sleep(minMax(config.latency.min, config.latency.max));
+
+        // Process each operation sequentially
+        for (const op of changedSets) {
+          if (op.operation === "delete") {
+            const targetIndex = context.bundles.findIndex(
+              (b) => b.id === op.data.id,
+            );
+            if (targetIndex === -1) {
+              throw new Error(`Bundle with id ${op.data.id} not found`);
+            }
+            context.bundles.splice(targetIndex, 1);
+          } else if (op.operation === "insert") {
+            context.bundles.unshift(op.data);
+          } else if (op.operation === "update") {
+            const targetIndex = context.bundles.findIndex(
+              (b) => b.id === op.data.id,
+            );
+            if (targetIndex === -1) {
+              throw new Error(`Bundle with id ${op.data.id} not found`);
+            }
+            Object.assign(context.bundles[targetIndex], op.data);
+          }
+        }
+
+        // Trigger hooks after all operations
+        hooks?.onDatabaseUpdated?.();
+      },
+    },
+    hooks,
+  );
