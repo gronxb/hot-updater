@@ -21,18 +21,28 @@ export type FingerprintResult = {
   sources: FingerprintSource[];
 };
 
-function removeFingerprintFromStringsXml(contents: string): string {
-  return contents.replaceAll(
-    /<string name="hot_updater_fingerprint_hash" moduleConfig="true">[^<]+<\/string>/g,
-    "",
-  );
+function removeHotUpdaterFieldsFromStringsXml(contents: string): string {
+  return contents
+    .replaceAll(
+      /<string name="hot_updater_fingerprint_hash" moduleConfig="true">[^<]+<\/string>/g,
+      "",
+    )
+    .replaceAll(
+      /<string name="hot_updater_channel" moduleConfig="true">[^<]+<\/string>/g,
+      "",
+    );
 }
 
-function removeFingerprintFromInfoPlist(contents: string): string {
-  return contents.replaceAll(
-    /<key>HOT_UPDATER_FINGERPRINT_HASH<\/key>\s*<string>[^<]+<\/string>/g,
-    "",
-  );
+function removeHotUpdaterFieldsFromInfoPlist(contents: string): string {
+  return contents
+    .replaceAll(
+      /<key>HOT_UPDATER_FINGERPRINT_HASH<\/key>\s*<string>[^<]+<\/string>/g,
+      "",
+    )
+    .replaceAll(
+      /<key>HOT_UPDATER_CHANNEL<\/key>\s*<string>[^<]+<\/string>/g,
+      "",
+    );
 }
 
 function fileHookTransform(
@@ -45,12 +55,12 @@ function fileHookTransform(
 
   const chunkString = chunk.toString("utf-8");
 
-  if (source.filePath.endsWith("strings.xml")) {
-    return Buffer.from(removeFingerprintFromStringsXml(chunkString));
+  if (source.filePath.endsWith(".xml")) {
+    return Buffer.from(removeHotUpdaterFieldsFromStringsXml(chunkString));
   }
 
-  if (source.filePath.endsWith("Info.plist")) {
-    return Buffer.from(removeFingerprintFromInfoPlist(chunkString));
+  if (source.filePath.endsWith(".plist")) {
+    return Buffer.from(removeHotUpdaterFieldsFromInfoPlist(chunkString));
   }
 
   return chunk;
