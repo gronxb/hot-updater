@@ -1,7 +1,7 @@
 import { expo } from "@hot-updater/expo";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import "dotenv/config";
 import { defineConfig } from "hot-updater";
+import "dotenv/config";
 
 export default defineConfig({
   build: expo(),

@@ -1,5 +1,13 @@
 # @hot-updater/sentry-plugin
 
+## 0.18.4
+
+### Patch Changes
+
+- 578ccb0: Sentry plugin includes standalone @sentry/cli version
+  - @hot-updater/core@0.18.4
+  - @hot-updater/plugin-core@0.18.4
+
 ## 0.18.3
 
 ### Patch Changes

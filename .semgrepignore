@@ -1,0 +1,4 @@
+examples
+docs
+node_modules
+**/*.spec.*

@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/sentry-plugin",
-  "version": "0.18.3",
+  "version": "0.18.4",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -43,13 +43,10 @@
   },
   "dependencies": {
     "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "@sentry/cli": "2.46.0"
   },
   "devDependencies": {
-    "@sentry/cli": "^2.43.0",
     "@types/node": "^20.9.4"
-  },
-  "peerDependencies": {
-    "@sentry/cli": ">=1.51.1"
   }
 }

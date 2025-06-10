@@ -16,9 +16,9 @@ This helps you track production crashes with accurate stack traces tied to your 
 
 <PackageManagerTabs command={
   {
-    npm: "npm install @hot-updater/sentry-plugin @sentry/cli --save-dev",
-    pnpm: "pnpm add @hot-updater/sentry-plugin @sentry/cli -D",
-    yarn: "yarn add @hot-updater/sentry-plugin @sentry/cli -D",
+    npm: "npm install @hot-updater/sentry-plugin --save-dev",
+    pnpm: "pnpm add @hot-updater/sentry-plugin -D",
+    yarn: "yarn add @hot-updater/sentry-plugin -D",
   }
 } />
 
@@ -40,7 +40,7 @@ module.exports = withSentryConfig(config);
 
 ## Step 2: Wrap Your Build Plugin
 
-Use `withSentry()` to wrap any compatible build plugin such as metro. 
+Use `withSentry()` to wrap any compatible build plugin such as metro.
 
 Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the `hot-updater deploy` process.
 
