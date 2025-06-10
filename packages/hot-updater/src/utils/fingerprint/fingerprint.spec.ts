@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { beforeEach, describe } from "vitest";
 
-const tmpDir = path.resolve(os.tmpdir(), ".hot-updater/test");
+const tmpDir = path.resolve(os.tmpdir(), ".hot-updater“, ”test");
 // const iosDir = path.resolve(tmpDir, "ios");
 
 describe.skip("Fingerprint", () => {
