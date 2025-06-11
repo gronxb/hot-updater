@@ -30,11 +30,22 @@ import {
   api,
   createBundleDeleteMutation,
   createBundleQuery,
+  createChannelsQuery,
   createConfigQuery,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { CloseButton as AlertDialogCloseButton } from "@kobalte/core/alert-dialog";
 
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxControl,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemIndicator,
+  ComboboxItemLabel,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createForm } from "@tanstack/solid-form";
 import { useQueryClient } from "@tanstack/solid-query";
@@ -42,7 +53,6 @@ import { LoaderCircle, Trash2 } from "lucide-solid";
 import semverValid from "semver/ranges/valid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { Show, createMemo, createSignal } from "solid-js";
-
 export interface EditBundleSheetContentProps {
   bundleId: string;
   onClose: () => void;
@@ -150,6 +160,7 @@ const EditBundleSheetForm = ({
 }: EditBundleSheetFormProps) => {
   const queryClient = useQueryClient();
   const config = createConfigQuery();
+  const channels = createChannelsQuery();
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const gitUrl = createMemo(() => config.data?.console?.gitUrl ?? null);
@@ -161,6 +172,7 @@ const EditBundleSheetForm = ({
       targetAppVersion: bundle.targetAppVersion,
       enabled: bundle.enabled,
       shouldForceUpdate: bundle.shouldForceUpdate,
+      channel: bundle.channel,
     } as Partial<Bundle>,
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
@@ -189,6 +201,7 @@ const EditBundleSheetForm = ({
         setIsSubmitting(false);
         queryClient.invalidateQueries({ queryKey: ["bundle", bundle.id] });
         queryClient.invalidateQueries({ queryKey: ["bundles"] });
+        queryClient.invalidateQueries({ queryKey: ["channels"] });
         onEditSuccess();
       }
     },
@@ -288,6 +301,41 @@ const EditBundleSheetForm = ({
           </TextField>
         </div>
       </Show>
+
+      <div>
+        <TextField class="grid w-full max-w-sm items-center gap-1.5">
+          <TextFieldLabel for="channel">Channel</TextFieldLabel>
+          <form.Field name="channel">
+            {(field) => {
+              return (
+                <Combobox
+                  defaultValue={field().state.value}
+                  options={channels.data ?? []}
+                  onChange={(value) => value && field().handleChange(value)}
+                  onInputChange={(value) => {
+                    field().handleChange(value);
+                  }}
+                  placeholder="Enter or select a channel..."
+                  itemComponent={(props) => (
+                    <ComboboxItem item={props.item}>
+                      <ComboboxItemLabel>
+                        {props.item.rawValue}
+                      </ComboboxItemLabel>
+                      <ComboboxItemIndicator />
+                    </ComboboxItem>
+                  )}
+                >
+                  <ComboboxControl aria-label="Channel">
+                    <ComboboxInput />
+                    <ComboboxTrigger />
+                  </ComboboxControl>
+                  <ComboboxContent />
+                </Combobox>
+              );
+            }}
+          </form.Field>
+        </TextField>
+      </div>
 
       <div>
         <div class="flex items-center space-x-2">
