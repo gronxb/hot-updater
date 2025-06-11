@@ -3,6 +3,30 @@
     "sources": [
       {
         "type": "file",
+        "filePath": "../../packages/hot-updater/dist/chunk-DWy1uDak.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "a52b3706b4c3779cb43a53033ebd65abc2a81ddc"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/hot-updater/dist/config.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
+      },
+      {
+        "type": "file",
         "filePath": "../../packages/react-native/app.plugin.js",
         "reasons": [
           "expoConfigPlugins"
@@ -15,7 +39,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "484f238f25c7104e364598aadb1f80dee7a70e8e"
+        "hash": "bd2be6c925e59863c4919c669f27e14d07e053b0"
       },
       {
         "type": "file",
@@ -23,7 +47,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "32a5c5dec070398f43ecfbb5b04c31a4556b0929"
+        "hash": "49e50be9035a561799d9dfd1baf2a3a3f59294e6"
+      },
+      {
+        "type": "file",
+        "filePath": "../../plugins/plugin-core/dist/index.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "99563f8897b94fc98f520b25f18fa8cc0d6e9b8c"
       },
       {
         "type": "file",
@@ -167,7 +199,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "38fec2c3a45f30c4866049d90c47b9c9fab31043"
+        "hash": "46356f441655cf9451de2eddb2c16d2a841b7a75"
       },
       {
         "type": "dir",
@@ -175,7 +207,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
+        "hash": "9b7da5652340b2d39c929001c9f069d8af00d501"
       },
       {
         "type": "dir",
@@ -197,11 +229,11 @@
       {
         "type": "contents",
         "id": "expoConfig",
-        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"package\":\"com.anonymous.expo52\"},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[\"@hot-updater/react-native\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
+        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"package\":\"com.anonymous.expo52\"},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[[\"@hot-updater/react-native\",{\"channel\":\"production\"}]],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
         "reasons": [
           "expoConfig"
         ],
-        "hash": "bdd935f2f7da461cbb4633d25dcf3a963d9e4adf"
+        "hash": "5ac6b70c31ef0b6b3cc7c3f7bb0d247a25002911"
       },
       {
         "type": "contents",
@@ -231,10 +263,34 @@
         "hash": "4842e5a0a194c6a90c60a00181abbccec3224a0e"
       }
     ],
-    "hash": "78b33bc5b21773ba237fe6fcd42218398f5a1699"
+    "hash": "6c35acfefce48273b45686f67124ed5e2f648fea"
   },
   "android": {
     "sources": [
+      {
+        "type": "file",
+        "filePath": "../../packages/hot-updater/dist/chunk-DWy1uDak.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "a52b3706b4c3779cb43a53033ebd65abc2a81ddc"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/hot-updater/dist/config.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
+      },
       {
         "type": "file",
         "filePath": "../../packages/react-native/app.plugin.js",
@@ -249,7 +305,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "484f238f25c7104e364598aadb1f80dee7a70e8e"
+        "hash": "bd2be6c925e59863c4919c669f27e14d07e053b0"
       },
       {
         "type": "file",
@@ -257,7 +313,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "32a5c5dec070398f43ecfbb5b04c31a4556b0929"
+        "hash": "49e50be9035a561799d9dfd1baf2a3a3f59294e6"
+      },
+      {
+        "type": "file",
+        "filePath": "../../plugins/plugin-core/dist/index.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "99563f8897b94fc98f520b25f18fa8cc0d6e9b8c"
       },
       {
         "type": "file",
@@ -417,7 +481,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "f6c5bd9b95c73c931aa6a79bad3c06407ef74674"
+        "hash": "d6aa93902a471e26f41defb8d6f205c687761a8b"
       },
       {
         "type": "dir",
@@ -425,7 +489,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
+        "hash": "9b7da5652340b2d39c929001c9f069d8af00d501"
       },
       {
         "type": "dir",
@@ -447,11 +511,11 @@
       {
         "type": "contents",
         "id": "expoConfig",
-        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"package\":\"com.anonymous.expo52\"},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[\"@hot-updater/react-native\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
+        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"package\":\"com.anonymous.expo52\"},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[[\"@hot-updater/react-native\",{\"channel\":\"production\"}]],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
         "reasons": [
           "expoConfig"
         ],
-        "hash": "bdd935f2f7da461cbb4633d25dcf3a963d9e4adf"
+        "hash": "5ac6b70c31ef0b6b3cc7c3f7bb0d247a25002911"
       },
       {
         "type": "contents",
@@ -481,6 +545,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "f0ccbbac7f19f08490d8a1acb1ed6fcb30bdd15e"
+    "hash": "899813e6014d76dc139afdc1e3a4d6569e27f70e"
   }
 }
