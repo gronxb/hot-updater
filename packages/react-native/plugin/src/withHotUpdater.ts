@@ -282,7 +282,10 @@ const withHotUpdaterConfigAsync =
         $: {
           name: "hot_updater_channel",
           moduleConfig: "true",
-        } as any,
+        } as {
+          name: string;
+          moduleConfig: string;
+        },
         _: channel,
       });
 
@@ -296,7 +299,10 @@ const withHotUpdaterConfigAsync =
         $: {
           name: "hot_updater_fingerprint_hash",
           moduleConfig: "true",
-        } as any,
+        } as {
+          name: string;
+          moduleConfig: string;
+        },
         _: android.hash,
       });
 
