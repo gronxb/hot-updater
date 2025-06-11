@@ -2,12 +2,17 @@ import {
   type ConfigPlugin,
   createRunOncePlugin,
   withAppDelegate,
+  withInfoPlist,
   withMainApplication,
+  withStringsXml,
 } from "expo/config-plugins";
+import { generateFingerprints } from "hot-updater";
 import pkg from "../../package.json";
 
-// Type definitions (Assuming HotUpdaterConfig might be used later)
-type HotUpdaterConfig = Record<string, unknown>; // Allow no props
+// Type definitions
+type HotUpdaterConfig = {
+  channel?: string;
+};
 
 /**
  * Helper to add lines if they don't exist, anchored by a specific string.
@@ -51,8 +56,26 @@ function replaceContentOnce(
   return contents.replace(searchRegex, replacement);
 }
 
-const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
+const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config, props = {}) => {
+  // We need to wrap the async plugin in a sync function.
+  // The types for createRunOncePlugin do not support async functions directly.
+  return withHotUpdaterAsync(config, props) as any;
+};
+
+const withHotUpdaterAsync = async (
+  config: import("expo/config").ExpoConfig,
+  props: HotUpdaterConfig,
+) => {
+  const channel = props.channel || "production";
+  const { ios, android } = await generateFingerprints();
   let modifiedConfig = config;
+
+  // === iOS: Add channel to Info.plist ===
+  modifiedConfig = withInfoPlist(modifiedConfig, (cfg) => {
+    cfg.modResults.HOT_UPDATER_CHANNEL = channel;
+    cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = ios.hash;
+    return cfg;
+  });
 
   // === iOS: Objective-C & Swift in AppDelegate ===
   modifiedConfig = withAppDelegate(modifiedConfig, (cfg) => {
@@ -100,6 +123,47 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
     }
 
     cfg.modResults.contents = contents;
+    return cfg;
+  });
+
+  // === Android: Add channel to strings.xml ===
+  modifiedConfig = withStringsXml(modifiedConfig, (cfg) => {
+    // Ensure resources object exists
+    if (!cfg.modResults.resources) {
+      cfg.modResults.resources = {};
+    }
+    if (!cfg.modResults.resources.string) {
+      cfg.modResults.resources.string = [];
+    }
+
+    // Remove existing hot_updater_channel entry if it exists
+    cfg.modResults.resources.string = cfg.modResults.resources.string.filter(
+      (item: any) => !(item.$ && item.$.name === "hot_updater_channel"),
+    );
+
+    // Add the new hot_updater_channel entry
+    cfg.modResults.resources.string.push({
+      $: {
+        name: "hot_updater_channel",
+      },
+      _: channel,
+    });
+
+    // Remove existing hot_updater_fingerprint_hash entry if it exists
+    cfg.modResults.resources.string = cfg.modResults.resources.string.filter(
+      (item: any) =>
+        !(item.$ && item.$.name === "hot_updater_fingerprint_hash"),
+    );
+
+    // Add the new hot_updater_fingerprint_hash entry
+    cfg.modResults.resources.string.push({
+      $: {
+        name: "hot_updater_fingerprint_hash",
+        moduleConfig: "true",
+      } as any,
+      _: android.hash,
+    });
+
     return cfg;
   });
 

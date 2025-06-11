@@ -8,3 +8,5 @@ export const defineConfig = (
 ) => {
   return config;
 };
+
+export { generateFingerprints } from "./utils/fingerprint";
