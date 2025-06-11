@@ -114,3 +114,12 @@ export const generateFingerprints = async () => {
   ]);
   return { ios, android };
 };
+
+export const generateFingerprint = async (platform: "ios" | "android") => {
+  const fingerprintConfig = await ensureFingerprintConfig();
+
+  return nativeFingerprint(getCwd(), {
+    platform,
+    ...fingerprintConfig,
+  });
+};
