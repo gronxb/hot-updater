@@ -78,7 +78,7 @@ interface FirebaseFunction {
 type FirebaseIndex = {
   collectionGroup: string;
   queryScope: "COLLECTION" | "COLLECTION_GROUP";
-  fields: Array<{
+  fields: {
     fieldPath: string;
     order?: "ASCENDING" | "DESCENDING";
     arrayConfig?: "CONTAINS";
@@ -86,7 +86,7 @@ type FirebaseIndex = {
       dimension: number;
       flat: Record<string, never>;
     };
-  }>;
+  }[];
 };
 
 type FieldOverride = {
