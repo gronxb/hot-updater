@@ -262,7 +262,7 @@ const withHotUpdaterConfigAsync =
 
     // === Android: Add channel and fingerprint to strings.xml ===
     modifiedConfig = withStringsXml(modifiedConfig, async (cfg) => {
-      const android = await getFingerprint();
+      const { android } = await getFingerprint();
 
       // Ensure resources object exists
       if (!cfg.modResults.resources) {
