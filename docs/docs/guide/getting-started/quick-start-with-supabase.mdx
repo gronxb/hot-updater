@@ -196,7 +196,12 @@ Add the plugin to your `app.json` file as shown below:
 {
   "expo": {
     "plugins": [
-      "@hot-updater/react-native",
+      [
+        "@hot-updater/react-native",
+        {
+          "channel": "production"
+        }
+      ]
     ]
   }
 }
