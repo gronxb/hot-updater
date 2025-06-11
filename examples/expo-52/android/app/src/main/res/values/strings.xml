@@ -1,8 +1,7 @@
 <resources>
-    <string name="app_name">expo-52</string>
-    <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
-    <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
-    <string name="hot_updater_channel">production</string>
-    <string name="hot_updater_fingerprint_hash">a6c6175e7e37f98c30adfad312e930e694af5f3e</string>
-    <string name="hot_updater_fingerprint_hash" moduleConfig="true">899813e6014d76dc139afdc1e3a4d6569e27f70e</string>
+  <string name="app_name">expo-52</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+  <string name="hot_updater_channel" moduleConfig="true">production</string>
+  <string name="hot_updater_fingerprint_hash" moduleConfig="true">46c557db45603a4678b3941a8d5169e6d06a31ae</string>
 </resources>

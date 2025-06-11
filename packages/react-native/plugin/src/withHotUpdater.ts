@@ -281,7 +281,8 @@ const withHotUpdaterConfigAsync =
       cfg.modResults.resources.string.push({
         $: {
           name: "hot_updater_channel",
-        },
+          moduleConfig: "true",
+        } as any,
         _: channel,
       });
 
@@ -294,7 +295,8 @@ const withHotUpdaterConfigAsync =
       cfg.modResults.resources.string.push({
         $: {
           name: "hot_updater_fingerprint_hash",
-        },
+          moduleConfig: "true",
+        } as any,
         _: android.hash,
       });
 
