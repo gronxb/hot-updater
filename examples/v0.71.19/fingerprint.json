@@ -63,11 +63,11 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\"}",
+        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "c861d99ed39a07477bb00093f1607d435a29b7f3"
+        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
       },
       {
         "type": "contents",
@@ -79,7 +79,7 @@
         "hash": "db2f4f89079db35854af3e1b030b0dc5e447cf99"
       }
     ],
-    "hash": "b5ed9c27959dd59af7838aecb76ebe995505cea0"
+    "hash": "cd6733c8d939f62561810bff0d3f224cb59bf9a5"
   },
   "android": {
     "sources": [
@@ -145,11 +145,11 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\"}",
+        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "c861d99ed39a07477bb00093f1607d435a29b7f3"
+        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
       },
       {
         "type": "contents",
@@ -161,6 +161,6 @@
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
     ],
-    "hash": "3c1ebae8d0d09728e941e35d342cdca02e59810c"
+    "hash": "21775717f5c9f72bba3683a151a159498b97e5c5"
   }
 }

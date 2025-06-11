@@ -31,7 +31,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
       },
       {
         "type": "contents",
@@ -63,23 +63,23 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"bundle:ios\":\"react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build\",\"make-apk\":\"react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/ && cd android && ./gradlew assembleDebug && cd ..\",\"bundle:android\":\"react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build\",\"webpack-start\":\"react-native webpack-start\",\"webpack-bundle:ios\":\"react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios\",\"test\":\"jest\"}",
+        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"bundle:ios\":\"react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build\",\"make-apk\":\"react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/ && cd android && ./gradlew assembleDebug && cd ..\",\"bundle:android\":\"react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build\",\"webpack-start\":\"react-native webpack-start\",\"webpack-bundle:ios\":\"react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "155df5f92b2bca5a3c789f4836c2e1fbe528126b"
+        "hash": "6bfddff432ead1339c3736f7c75391a6d658bda0"
       },
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"4.0.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"4.0.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "30c056fb660296d63a319817f8fe7677c0f3a48c"
+        "hash": "c2a85c61786800fbd8f8379ff722dba8cb505c2b"
       }
     ],
-    "hash": "87b289587a53c55b83ef0d6f5f2ff7743922fdbd"
+    "hash": "e7c56ea485cff96f11afb28ce6b95c1949324971"
   },
   "android": {
     "sources": [
@@ -113,7 +113,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
       },
       {
         "type": "contents",
@@ -145,11 +145,11 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"bundle:ios\":\"react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build\",\"make-apk\":\"react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/ && cd android && ./gradlew assembleDebug && cd ..\",\"bundle:android\":\"react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build\",\"webpack-start\":\"react-native webpack-start\",\"webpack-bundle:ios\":\"react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios\",\"test\":\"jest\"}",
+        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"bundle:ios\":\"react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build\",\"make-apk\":\"react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/ && cd android && ./gradlew assembleDebug && cd ..\",\"bundle:android\":\"react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build\",\"webpack-start\":\"react-native webpack-start\",\"webpack-bundle:ios\":\"react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "155df5f92b2bca5a3c789f4836c2e1fbe528126b"
+        "hash": "6bfddff432ead1339c3736f7c75391a6d658bda0"
       },
       {
         "type": "contents",
@@ -161,6 +161,6 @@
         "hash": "c309b7a84647ac24550a96bfdd1b84fc92be4013"
       }
     ],
-    "hash": "a6621708a06ab4fc1d04fdfeccedc5f3c4f80315"
+    "hash": "52737d7dea542b29f21a3e0c353599358f685a03"
   }
 }

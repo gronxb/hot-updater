@@ -15,7 +15,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "0ac305c8a7488677bf8610a0d19385ea17596691"
+        "hash": "484f238f25c7104e364598aadb1f80dee7a70e8e"
       },
       {
         "type": "file",
@@ -23,7 +23,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "db4f543b5fb226e0b7a7c67007f248b1c2d6cac1"
+        "hash": "32a5c5dec070398f43ecfbb5b04c31a4556b0929"
       },
       {
         "type": "file",
@@ -175,7 +175,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
       },
       {
         "type": "dir",
@@ -215,23 +215,23 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"start\":\"expo start\",\"web\":\"expo start --web\"}",
+        "contents": "{\"start\":\"expo start\",\"web\":\"expo start --web\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "f46b716d2e56b50fe5f1ee37ce11bb8c1c0ff23c"
+        "hash": "fa7a71d1d1ccba0c985e2776fc9dc0927e0faa1d"
       },
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "308e89ad37f781cd895035f2430d6973e20693e1"
+        "hash": "4842e5a0a194c6a90c60a00181abbccec3224a0e"
       }
     ],
-    "hash": "1b36b09145fd0a27565b0fe410244f6e5577e1f8"
+    "hash": "78b33bc5b21773ba237fe6fcd42218398f5a1699"
   },
   "android": {
     "sources": [
@@ -249,7 +249,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "0ac305c8a7488677bf8610a0d19385ea17596691"
+        "hash": "484f238f25c7104e364598aadb1f80dee7a70e8e"
       },
       {
         "type": "file",
@@ -257,7 +257,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "db4f543b5fb226e0b7a7c67007f248b1c2d6cac1"
+        "hash": "32a5c5dec070398f43ecfbb5b04c31a4556b0929"
       },
       {
         "type": "file",
@@ -425,7 +425,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "029f509b4d0623ed2a5a1b1530188d715096185c"
+        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
       },
       {
         "type": "dir",
@@ -465,11 +465,11 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"start\":\"expo start\",\"web\":\"expo start --web\"}",
+        "contents": "{\"start\":\"expo start\",\"web\":\"expo start --web\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "f46b716d2e56b50fe5f1ee37ce11bb8c1c0ff23c"
+        "hash": "fa7a71d1d1ccba0c985e2776fc9dc0927e0faa1d"
       },
       {
         "type": "contents",
@@ -481,6 +481,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "51d1e934ebceafd5c7c3c6e67a88520fe4e2f3e0"
+    "hash": "f0ccbbac7f19f08490d8a1acb1ed6fcb30bdd15e"
   }
 }

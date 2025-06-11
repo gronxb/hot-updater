@@ -15,7 +15,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "f3fddc6130915de2890ed79916b30ecefdef9748"
+        "hash": "1597ea7724bda1957a127cb7f555168ecabb097c"
       },
       {
         "type": "dir",
@@ -31,7 +31,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "795e4b449a859fdd825fdb00b964a5e88d20a5fd"
+        "hash": "30bb95d5d25424aead9e790a7e3216ac247199b9"
       },
       {
         "type": "contents",
@@ -63,23 +63,23 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\"}",
+        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "8509c6ff5c50159bc020f4b7c9bfcb87ec405de6"
+        "hash": "ea7a0152589ee904b0a99ade0d582906fcbe072a"
       },
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.3\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.0.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.0.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "f502283ec0933ecdbfe6ab1053bbc414044aaa11"
+        "hash": "8bf9dea14172bec83974e042d1567886da812204"
       }
     ],
-    "hash": "6f335322d0ffa206356ac03d3a3d9dda4c1d908c"
+    "hash": "1b98128f637c8d92ca156b42793d59719c05da87"
   },
   "android": {
     "sources": [
@@ -97,7 +97,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "511e23f8712942f7291fec9bbdae6a64c1060fa3"
+        "hash": "b7bd6c402ccfc12dbfc722fa7def5e48b0e754d9"
       },
       {
         "type": "dir",
@@ -113,7 +113,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "795e4b449a859fdd825fdb00b964a5e88d20a5fd"
+        "hash": "30bb95d5d25424aead9e790a7e3216ac247199b9"
       },
       {
         "type": "contents",
@@ -145,11 +145,11 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\"}",
+        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "8509c6ff5c50159bc020f4b7c9bfcb87ec405de6"
+        "hash": "ea7a0152589ee904b0a99ade0d582906fcbe072a"
       },
       {
         "type": "contents",
@@ -161,6 +161,6 @@
         "hash": "c309b7a84647ac24550a96bfdd1b84fc92be4013"
       }
     ],
-    "hash": "7450e81e0e7a4af36f7b7a34fa246ca57f103c15"
+    "hash": "1d930215e9a6364b057a1944cca6b95bc4c7eec3"
   }
 }
