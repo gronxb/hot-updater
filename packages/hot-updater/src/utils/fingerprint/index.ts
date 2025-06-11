@@ -1,3 +1,4 @@
+import * as p from "@clack/prompts";
 import type {
   FileHookTransformSource,
   FingerprintSource,
