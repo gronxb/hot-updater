@@ -1,8 +1,9 @@
 import fs from "fs";
 import path from "path";
 import {
-  type FingerprintResult,
+  createFingerprintJson,
   generateFingerprints,
+  readLocalFingerprint,
 } from "@/utils/fingerprint";
 import { setFingerprintHash } from "@/utils/setFingerprintHash";
 import * as p from "@clack/prompts";
@@ -47,29 +48,13 @@ export const handleFingerprint = async () => {
 };
 
 export const handleCreateFingerprint = async () => {
-  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
-
-  const readLocalFingerprint = async (): Promise<{
-    ios: FingerprintResult | null;
-    android: FingerprintResult | null;
-  } | null> => {
-    try {
-      const content = await fs.promises.readFile(
-        FINGERPRINT_FILE_PATH,
-        "utf-8",
-      );
-      return JSON.parse(content);
-    } catch {
-      return null;
-    }
-  };
-
   let diffChanged = false;
+
   await p.tasks([
     {
       title: "Creating fingerprint.json",
       task: async () => {
-        const newFingerprint = await generateFingerprints();
+        const newFingerprint = await createFingerprintJson();
         const localFingerprint = await readLocalFingerprint();
 
         if (
@@ -80,10 +65,6 @@ export const handleCreateFingerprint = async () => {
           diffChanged = true;
         }
 
-        await fs.promises.writeFile(
-          FINGERPRINT_FILE_PATH,
-          JSON.stringify(newFingerprint, null, 2),
-        );
         await setFingerprintHash("ios", newFingerprint.ios.hash);
         await setFingerprintHash("android", newFingerprint.android.hash);
         return "Created fingerprint.json";

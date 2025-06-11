@@ -9,4 +9,9 @@ export const defineConfig = (
   return config;
 };
 
-export { generateFingerprints, generateFingerprint } from "./utils/fingerprint";
+export {
+  generateFingerprints,
+  generateFingerprint,
+  createFingerprintJson,
+  readLocalFingerprint,
+} from "./utils/fingerprint";

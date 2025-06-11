@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import * as p from "@clack/prompts";
 import type {
   FileHookTransformSource,
@@ -122,4 +124,29 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
     platform,
     ...fingerprintConfig,
   });
+};
+
+export const createFingerprintJson = async () => {
+  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
+  const newFingerprint = await generateFingerprints();
+
+  await fs.promises.writeFile(
+    FINGERPRINT_FILE_PATH,
+    JSON.stringify(newFingerprint, null, 2),
+  );
+
+  return newFingerprint;
+};
+
+export const readLocalFingerprint = async (): Promise<{
+  ios: FingerprintResult | null;
+  android: FingerprintResult | null;
+} | null> => {
+  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
+  try {
+    const content = await fs.promises.readFile(FINGERPRINT_FILE_PATH, "utf-8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
 };

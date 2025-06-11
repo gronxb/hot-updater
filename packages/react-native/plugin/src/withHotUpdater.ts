@@ -7,8 +7,20 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import { generateFingerprint } from "hot-updater";
+import { createFingerprintJson } from "hot-updater";
 import pkg from "../../package.json";
+
+let fingerprintCache: Awaited<ReturnType<typeof createFingerprintJson>> | null =
+  null;
+
+const getFingerprint = async () => {
+  if (fingerprintCache) {
+    return fingerprintCache;
+  }
+
+  fingerprintCache = await createFingerprintJson();
+  return fingerprintCache;
+};
 
 // Type definitions
 type HotUpdaterConfig = {
@@ -241,7 +253,7 @@ const withHotUpdaterConfigAsync =
     // === iOS: Add channel and fingerprint to Info.plist ===
     modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
       // Generate fingerprints asynchronously
-      const ios = await generateFingerprint("ios");
+      const { ios } = await getFingerprint();
 
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
       cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = ios.hash;
@@ -250,7 +262,7 @@ const withHotUpdaterConfigAsync =
 
     // === Android: Add channel and fingerprint to strings.xml ===
     modifiedConfig = withStringsXml(modifiedConfig, async (cfg) => {
-      const android = await generateFingerprint("android");
+      const android = await getFingerprint();
 
       // Ensure resources object exists
       if (!cfg.modResults.resources) {
