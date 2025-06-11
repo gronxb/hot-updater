@@ -295,20 +295,18 @@ const withHotUpdaterConfigAsync =
 /**
  * Main plugin that combines both native code (run once) and config (run always)
  */
-const withHotUpdater = (props: HotUpdaterConfig = {}) => {
-  return async (config: ExpoConfig) => {
-    // Apply plugins in order
-    return withPlugins(config, [
-      // Native code modifications - wrapped with createRunOncePlugin
-      createRunOncePlugin(
-        withHotUpdaterNativeCode,
-        `${pkg.name}-native`,
-        pkg.version,
-      ),
-      // Configuration updates - runs every time
-      withHotUpdaterConfigAsync(props),
-    ]);
-  };
+const withHotUpdater = (config: ExpoConfig, props: HotUpdaterConfig = {}) => {
+  // Apply plugins in order
+  return withPlugins(config, [
+    // Native code modifications - wrapped with createRunOncePlugin
+    createRunOncePlugin(
+      withHotUpdaterNativeCode,
+      `${pkg.name}-native`,
+      pkg.version,
+    ),
+    // Configuration updates - runs every time
+    withHotUpdaterConfigAsync(props),
+  ]);
 };
 
 // Export the main plugin
