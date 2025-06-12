@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.19.1
+
+### Patch Changes
+
+- 755b9fe: fix(expo): ensure fingerprint when prebuild
+  - @hot-updater/console@0.19.1
+  - @hot-updater/core@0.19.1
+  - @hot-updater/aws@0.19.1
+  - @hot-updater/cloudflare@0.19.1
+  - @hot-updater/firebase@0.19.1
+  - @hot-updater/plugin-core@0.19.1
+  - @hot-updater/supabase@0.19.1
+
 ## 0.19.0
 
 ### Minor Changes
