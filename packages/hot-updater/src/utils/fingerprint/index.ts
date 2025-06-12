@@ -49,6 +49,44 @@ function removeHotUpdaterFieldsFromInfoPlist(contents: string): string {
     );
 }
 
+function removeHotUpdaterChannelFromAppJson(contents: string): string {
+  try {
+    const appConfig = JSON.parse(contents);
+
+    if (appConfig.plugins && Array.isArray(appConfig.plugins)) {
+      appConfig.plugins = appConfig.plugins.map((plugin: any) => {
+        if (
+          Array.isArray(plugin) &&
+          plugin[0] === "@hot-updater/react-native"
+        ) {
+          if (plugin[1] && typeof plugin[1] === "object") {
+            const { channel, ...restConfig } = plugin[1];
+            return [plugin[0], restConfig];
+          }
+        }
+        return plugin;
+      });
+    }
+
+    return JSON.stringify(appConfig, null, 2);
+  } catch (error) {
+    return contents;
+  }
+}
+
+function removeHotUpdaterChannelFromAppConfigJs(contents: string): string {
+  return contents.replace(
+    /(\[\s*["']@hot-updater\/react-native["']\s*,\s*\{\s*)([^}]*?)(\s*\}\s*\])/gs,
+    (_, start, middle, end) => {
+      // channel 속성을 제거
+      const cleanedMiddle = middle
+        .replace(/["']?channel["']?\s*:\s*["'][^"']*["']\s*,?\s*/g, "")
+        .replace(/,\s*$/, ""); // 마지막 쉼표 제거
+      return `${start}${cleanedMiddle}${end}`;
+    },
+  );
+}
+
 function fileHookTransform(
   source: FileHookTransformSource,
   chunk: Buffer<ArrayBufferLike> | string | null,
@@ -58,6 +96,7 @@ function fileHookTransform(
   }
 
   const chunkString = chunk.toString("utf-8");
+  const fileName = path.basename(source.filePath);
 
   if (source.filePath.endsWith(".xml")) {
     return Buffer.from(removeHotUpdaterFieldsFromStringsXml(chunkString));
@@ -65,6 +104,14 @@ function fileHookTransform(
 
   if (source.filePath.endsWith(".plist")) {
     return Buffer.from(removeHotUpdaterFieldsFromInfoPlist(chunkString));
+  }
+
+  if (fileName === "app.json") {
+    return Buffer.from(removeHotUpdaterChannelFromAppJson(chunkString));
+  }
+
+  if (fileName.startsWith("app.config.")) {
+    return Buffer.from(removeHotUpdaterChannelFromAppConfigJs(chunkString));
   }
 
   return chunk;
