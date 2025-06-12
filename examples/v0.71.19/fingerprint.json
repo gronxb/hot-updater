@@ -15,7 +15,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "404c47aafa6e657e6c64743a288f37882f6774dc"
+        "hash": "53a68ed9bc3741ff30e0850ac2a9d430d147419e"
       },
       {
         "type": "dir",
@@ -23,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
+        "hash": "18f493d50fa7fa8734bee4665551441cda547512"
       },
       {
         "type": "dir",
@@ -79,7 +79,7 @@
         "hash": "db2f4f89079db35854af3e1b030b0dc5e447cf99"
       }
     ],
-    "hash": "cd6733c8d939f62561810bff0d3f224cb59bf9a5"
+    "hash": "29745a39da28bd5e3e8ecd0f13d136c62608cbf3"
   },
   "android": {
     "sources": [
@@ -105,7 +105,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "b3c7c0e9bdf6ad2d10d8352102201814dd064d47"
+        "hash": "18f493d50fa7fa8734bee4665551441cda547512"
       },
       {
         "type": "dir",
@@ -161,6 +161,6 @@
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
     ],
-    "hash": "21775717f5c9f72bba3683a151a159498b97e5c5"
+    "hash": "e3f40909e98b629a9a7fff49b42bdfe0606c16ae"
   }
 }
