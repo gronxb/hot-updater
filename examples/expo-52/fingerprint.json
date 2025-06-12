@@ -15,15 +15,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "4b288699c4f9fb65e1f0980cdbd1aad85e6d6b73"
+        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-BnQ8upWn.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "66f1267ac29881983e4dafb44696051f18c2aaf9"
+        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
       },
       {
         "type": "file",
@@ -271,7 +271,7 @@
         "hash": "4842e5a0a194c6a90c60a00181abbccec3224a0e"
       }
     ],
-    "hash": "537901b80870e5390a3b147f3f146ce16ad8deae"
+    "hash": "a57651bf184c26e70eedcf062eecb1ab9adfdd1e"
   },
   "android": {
     "sources": [
@@ -289,15 +289,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "4b288699c4f9fb65e1f0980cdbd1aad85e6d6b73"
+        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-BnQ8upWn.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "66f1267ac29881983e4dafb44696051f18c2aaf9"
+        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
       },
       {
         "type": "file",
@@ -561,6 +561,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "d2dbbe341ea27d38145d9cd8a2e7a8c7e508af23"
+    "hash": "f6edcb10d68373885ea2c78c0c0e5dd08b0fdfee"
   }
 }
