@@ -1,5 +1,17 @@
 # @hot-updater/expo
 
+## 0.19.0
+
+### Minor Changes
+
+- 886809d: fix(babel): make sure the backend can handle channel changes for a bundle and still receive updates correctly
+
+### Patch Changes
+
+- Updated dependencies [886809d]
+  - @hot-updater/plugin-core@0.19.0
+  - @hot-updater/bare@0.19.0
+
 ## 0.18.5
 
 ### Patch Changes

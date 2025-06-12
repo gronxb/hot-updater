@@ -1,5 +1,25 @@
 # hot-updater
 
+## 0.19.0
+
+### Minor Changes
+
+- c408819: feat(expo): channel supports expo cng
+- 886809d: fix(babel): make sure the backend can handle channel changes for a bundle and still receive updates correctly
+
+### Patch Changes
+
+- Updated dependencies [886809d]
+- Updated dependencies [fb846ce]
+- Updated dependencies [75e82a8]
+  - @hot-updater/plugin-core@0.19.0
+  - @hot-updater/firebase@0.19.0
+  - @hot-updater/console@0.19.0
+  - @hot-updater/aws@0.19.0
+  - @hot-updater/cloudflare@0.19.0
+  - @hot-updater/supabase@0.19.0
+  - @hot-updater/core@0.19.0
+
 ## 0.18.5
 
 ### Patch Changes
