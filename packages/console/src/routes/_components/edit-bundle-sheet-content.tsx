@@ -9,7 +9,7 @@ import { createBundleQuery } from "@/lib/api";
 import { Show } from "solid-js";
 import { DeleteBundleDialog } from "./delete-bundle-dialog";
 import { EditBundleSheetForm } from "./edit-bundle-sheet-form";
-import { PromptChannelDialog } from "./prompt-channel-dialog";
+import { PromoteChannelDialog } from "./promote-channel-dialog";
 
 export interface EditBundleSheetContentProps {
   bundleId: string;
@@ -47,7 +47,7 @@ export const EditBundleSheetContent = ({
 
       <div class="mt-auto gap-3 pt-4 flex justify-between">
         <Show when={data.data}>
-          {(bundle) => <PromptChannelDialog bundle={bundle()} />}
+          {(bundle) => <PromoteChannelDialog bundle={bundle()} />}
         </Show>
 
         <DeleteBundleDialog bundleId={bundleId} onDeleteSuccess={onClose} />

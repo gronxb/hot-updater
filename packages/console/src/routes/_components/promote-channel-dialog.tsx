@@ -26,11 +26,11 @@ import { useQueryClient } from "@tanstack/solid-query";
 import { Hash } from "lucide-solid";
 import { Show, createSignal } from "solid-js";
 
-export interface PromptChannelDialogProps {
+export interface PromoteChannelDialogProps {
   bundle: Bundle;
 }
 
-export const PromptChannelDialog = ({ bundle }: PromptChannelDialogProps) => {
+export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
   const queryClient = useQueryClient();
   const channels = createChannelsQuery();
   const [isSubmitting, setIsSubmitting] = createSignal(false);
@@ -84,11 +84,11 @@ export const PromptChannelDialog = ({ bundle }: PromptChannelDialogProps) => {
         class="gap-2 flex-1"
       >
         <Hash class="h-4 w-4" />
-        Prompt Channel
+        Promote Channel
       </AlertDialogTrigger>
       <AlertDialogOverlay />
       <AlertDialogContent>
-        <AlertDialogTitle>Prompt Channel</AlertDialogTitle>
+        <AlertDialogTitle>Promote Channel</AlertDialogTitle>
         <AlertDialogDescription>
           Select or enter a new channel for this bundle.
         </AlertDialogDescription>
