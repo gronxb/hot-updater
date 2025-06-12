@@ -682,8 +682,8 @@ importers:
         specifier: workspace:*
         version: link:../../plugins/mock
       '@kobalte/core':
-        specifier: ^0.13.7
-        version: 0.13.7(solid-js@1.9.3)
+        specifier: ^0.13.10
+        version: 0.13.10(solid-js@1.9.3)
       '@ryoppippi/unplugin-typia':
         specifier: ^2.0.3
         version: 2.0.3(rollup@4.34.9)(typescript@5.8.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.8.3))(vite@6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))
@@ -4309,8 +4309,8 @@ packages:
     peerDependencies:
       tslib: '2'
 
-  '@kobalte/core@0.13.7':
-    resolution: {integrity: sha512-COhjWk1KnCkl3qMJDvdrOsvpTlJ9gMLdemkAn5SWfbPn/lxJYabejnNOk+b/ILGg7apzQycgbuo48qb8ppqsAg==}
+  '@kobalte/core@0.13.10':
+    resolution: {integrity: sha512-lzP64ThxZqZB6O6MnMq6w7DxK38o2ClbW3Ob6afUI6p86cUMz5Hb4rdysvYI6m1TKYlOAlFODKkoRznqybQohw==}
     peerDependencies:
       solid-js: ^1.8.15
 
@@ -21464,7 +21464,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@kobalte/core@0.13.7(solid-js@1.9.3)':
+  '@kobalte/core@0.13.10(solid-js@1.9.3)':
     dependencies:
       '@floating-ui/dom': 1.6.12
       '@internationalized/date': 3.5.6

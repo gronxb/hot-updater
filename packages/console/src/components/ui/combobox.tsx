@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 const Combobox = ComboboxPrimitive.Root;
 const ComboboxItemLabel = ComboboxPrimitive.ItemLabel;
 const ComboboxHiddenSelect = ComboboxPrimitive.HiddenSelect;
-const ComboboxValue = ComboboxPrimitive.Value;
 
 type ComboboxItemProps<T extends ValidComponent = "li"> =
   ComboboxPrimitive.ComboboxItemProps<T> & {
@@ -47,6 +46,7 @@ const ComboboxItemIndicator = <T extends ValidComponent = "div">(
       <Show
         when={local.children}
         fallback={
+          // biome-ignore lint/a11y/noSvgWithoutTitle: <explanation>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -146,6 +146,7 @@ const ComboboxTrigger = <T extends ValidComponent = "button">(
         <Show
           when={local.children}
           fallback={
+            // biome-ignore lint/a11y/noSvgWithoutTitle: <explanation>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -201,5 +202,4 @@ export {
   ComboboxInput,
   ComboboxHiddenSelect,
   ComboboxContent,
-  ComboboxValue,
 };

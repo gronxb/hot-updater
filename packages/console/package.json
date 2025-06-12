@@ -30,7 +30,7 @@
     "@hono/typia-validator": "^0.1.2",
     "@hono/vite-dev-server": "^0.18.1",
     "@hot-updater/mock": "workspace:*",
-    "@kobalte/core": "^0.13.7",
+    "@kobalte/core": "^0.13.10",
     "@ryoppippi/unplugin-typia": "^2.0.3",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.14.10",
