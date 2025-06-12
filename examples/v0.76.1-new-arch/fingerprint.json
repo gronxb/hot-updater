@@ -15,7 +15,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "db3d0418c30828bfe41e51a3f8868e40ce09aadc"
+        "hash": "a20d35e0a9bb19c4f6de67fdb356270bf8a310c6"
       },
       {
         "type": "dir",
@@ -23,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "18f493d50fa7fa8734bee4665551441cda547512"
+        "hash": "b68ae7e60936be2f9527e064d2f8ecb4483aa577"
       },
       {
         "type": "contents",
@@ -64,14 +64,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.5\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "548a68f9ce514c34d7614b4ca3bbb1f126ad3645"
+        "hash": "829b6b58107e46bc9de2987b107e3ff4ead2717d"
       }
     ],
-    "hash": "b9c50b8ee26e27ab933b11cdda97c21514df174a"
+    "hash": "bfd5077dbbfcc0c974350d3e63f4f5380e68aa73"
   },
   "android": {
     "sources": [
@@ -89,7 +89,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "768e3e1f949e1b5e8c279d7d25ceb17afee3b877"
+        "hash": "5368c5f5537136d162d7ade824c1f24d9139099f"
       },
       {
         "type": "dir",
@@ -97,7 +97,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "18f493d50fa7fa8734bee4665551441cda547512"
+        "hash": "b68ae7e60936be2f9527e064d2f8ecb4483aa577"
       },
       {
         "type": "contents",
@@ -145,6 +145,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "0ef4240453aec704dccdabadf76c56de0f15c198"
+    "hash": "801900553656be8cd55d3eeda7c4560d65d0dbf3"
   }
 }

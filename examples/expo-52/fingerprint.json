@@ -15,15 +15,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
+        "hash": "80f041a8a106840d9e536a4b75939fbd7aa93a0a"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-D6SRhiV0.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
+        "hash": "a7bc27688c20f7999d26bcdda923f9502ad5a10f"
       },
       {
         "type": "file",
@@ -39,7 +39,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "bd2be6c925e59863c4919c669f27e14d07e053b0"
+        "hash": "caf08136155bd19ed6568ed600cf37f4f657bb7b"
       },
       {
         "type": "file",
@@ -207,7 +207,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "46356f441655cf9451de2eddb2c16d2a841b7a75"
+        "hash": "7cbb3645c6352137fb4effa1e2e073442ac36022"
       },
       {
         "type": "dir",
@@ -215,7 +215,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "18f493d50fa7fa8734bee4665551441cda547512"
+        "hash": "b68ae7e60936be2f9527e064d2f8ecb4483aa577"
       },
       {
         "type": "dir",
@@ -264,14 +264,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.18.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "4842e5a0a194c6a90c60a00181abbccec3224a0e"
+        "hash": "bb46a3938f7bb29aa00f4aec0cba4c6193b57e55"
       }
     ],
-    "hash": "a57651bf184c26e70eedcf062eecb1ab9adfdd1e"
+    "hash": "fb6ebe0773ec3db3a17ac15e7ea05a221d6d34d1"
   },
   "android": {
     "sources": [
@@ -289,15 +289,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
+        "hash": "80f041a8a106840d9e536a4b75939fbd7aa93a0a"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-D6SRhiV0.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
+        "hash": "a7bc27688c20f7999d26bcdda923f9502ad5a10f"
       },
       {
         "type": "file",
@@ -313,7 +313,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "bd2be6c925e59863c4919c669f27e14d07e053b0"
+        "hash": "caf08136155bd19ed6568ed600cf37f4f657bb7b"
       },
       {
         "type": "file",
@@ -497,7 +497,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "7eed631b2e298c98110c75a9665504d7b77e66cb"
+        "hash": "3f008f23333440571ef452460b69111cb2917f8d"
       },
       {
         "type": "dir",
@@ -505,7 +505,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "18f493d50fa7fa8734bee4665551441cda547512"
+        "hash": "b68ae7e60936be2f9527e064d2f8ecb4483aa577"
       },
       {
         "type": "dir",
@@ -561,6 +561,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "f6edcb10d68373885ea2c78c0c0e5dd08b0fdfee"
+    "hash": "ff6bb5cba9a05a2be6c11ed61429332b36071ad9"
   }
 }

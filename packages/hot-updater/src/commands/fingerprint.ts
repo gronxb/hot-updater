@@ -54,8 +54,8 @@ export const handleCreateFingerprint = async () => {
     {
       title: "Creating fingerprint.json",
       task: async () => {
-        const newFingerprint = await createFingerprintJson();
         const localFingerprint = await readLocalFingerprint();
+        const newFingerprint = await createFingerprintJson();
 
         if (
           !localFingerprint ||
