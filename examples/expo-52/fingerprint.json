@@ -15,15 +15,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
+        "hash": "4b288699c4f9fb65e1f0980cdbd1aad85e6d6b73"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-BnQ8upWn.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
+        "hash": "66f1267ac29881983e4dafb44696051f18c2aaf9"
       },
       {
         "type": "file",
@@ -87,7 +87,7 @@
         "reasons": [
           "easBuild"
         ],
-        "hash": "ccf6efdbeadfd00701c328cf39679a58d98c1cf8"
+        "hash": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
       },
       {
         "type": "dir",
@@ -237,11 +237,11 @@
       {
         "type": "contents",
         "id": "expoConfig",
-        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"buildType\":\"apk\",\"package\":\"com.anonymous.expo52\"},\"extra\":{\"eas\":{\"projectId\":\"f1597cc9-4f61-4425-a23c-43a125b7642c\"}},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[[\"@hot-updater/react-native\",{\"channel\":\"production\"}]],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
+        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"package\":\"com.anonymous.expo52\"},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[[\"@hot-updater/react-native\",{\"channel\":\"production\"}]],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
         "reasons": [
           "expoConfig"
         ],
-        "hash": "09b76730f6ce07c994d6cb7c8aa9645be1f416da"
+        "hash": "5ac6b70c31ef0b6b3cc7c3f7bb0d247a25002911"
       },
       {
         "type": "contents",
@@ -271,7 +271,7 @@
         "hash": "4842e5a0a194c6a90c60a00181abbccec3224a0e"
       }
     ],
-    "hash": "b7b8d880dcb9c862f1edbc0c4823eb688a67049c"
+    "hash": "537901b80870e5390a3b147f3f146ce16ad8deae"
   },
   "android": {
     "sources": [
@@ -289,15 +289,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "ce6b4cbf4ad056cae52d5a382b851891a5f20dc5"
+        "hash": "4b288699c4f9fb65e1f0980cdbd1aad85e6d6b73"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-w8QPkdqq.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-BnQ8upWn.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "c45f8e0221fdb0b7e6cf1e57db01a3a4ce4da7c3"
+        "hash": "66f1267ac29881983e4dafb44696051f18c2aaf9"
       },
       {
         "type": "file",
@@ -369,7 +369,7 @@
         "reasons": [
           "easBuild"
         ],
-        "hash": "ccf6efdbeadfd00701c328cf39679a58d98c1cf8"
+        "hash": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
       },
       {
         "type": "dir",
@@ -527,11 +527,11 @@
       {
         "type": "contents",
         "id": "expoConfig",
-        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"buildType\":\"apk\",\"package\":\"com.anonymous.expo52\"},\"extra\":{\"eas\":{\"projectId\":\"f1597cc9-4f61-4425-a23c-43a125b7642c\"}},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[[\"@hot-updater/react-native\",{\"channel\":\"production\"}]],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
+        "contents": "{\"android\":{\"adaptiveIcon\":{\"backgroundColor\":\"#ffffff\",\"foregroundImage\":\"./assets/adaptive-icon.png\"},\"package\":\"com.anonymous.expo52\"},\"icon\":\"./assets/icon.png\",\"ios\":{\"bundleIdentifier\":\"com.anonymous.expo-52\",\"supportsTablet\":true},\"name\":\"expo-52\",\"newArchEnabled\":true,\"orientation\":\"portrait\",\"platforms\":[\"android\",\"ios\",\"web\"],\"plugins\":[[\"@hot-updater/react-native\",{\"channel\":\"production\"}]],\"sdkVersion\":\"52.0.0\",\"slug\":\"expo-52\",\"splash\":{\"backgroundColor\":\"#ffffff\",\"image\":\"./assets/splash-icon.png\",\"resizeMode\":\"contain\"},\"userInterfaceStyle\":\"light\",\"version\":\"1.0.0\",\"web\":{\"favicon\":\"./assets/favicon.png\"}}",
         "reasons": [
           "expoConfig"
         ],
-        "hash": "09b76730f6ce07c994d6cb7c8aa9645be1f416da"
+        "hash": "5ac6b70c31ef0b6b3cc7c3f7bb0d247a25002911"
       },
       {
         "type": "contents",
@@ -561,6 +561,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "ed58490feb58312dc47b3600b5ac06a0a97234ab"
+    "hash": "d2dbbe341ea27d38145d9cd8a2e7a8c7e508af23"
   }
 }

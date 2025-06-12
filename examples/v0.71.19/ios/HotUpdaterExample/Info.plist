@@ -52,8 +52,8 @@
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
 		<key>HOT_UPDATER_CHANNEL</key>
-		<string>dev</string>
+		<string>production</string>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>18c5b91104b027df4631bdddc4ff8bde06891beb</string>
+		<string>29745a39da28bd5e3e8ecd0f13d136c62608cbf3</string>
 	</dict>
 </plist>
