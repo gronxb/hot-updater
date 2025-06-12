@@ -1,5 +1,20 @@
 # @hot-updater/react-native
 
+## 0.19.0
+
+### Minor Changes
+
+- c408819: feat(expo): channel supports expo cng
+- 886809d: fix(babel): make sure the backend can handle channel changes for a bundle and still receive updates correctly
+
+### Patch Changes
+
+- Updated dependencies [c408819]
+- Updated dependencies [886809d]
+  - hot-updater@0.19.0
+  - @hot-updater/core@0.19.0
+  - @hot-updater/js@0.19.0
+
 ## 0.18.5
 
 ### Patch Changes

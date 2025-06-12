@@ -1,5 +1,17 @@
 # @hot-updater/console
 
+## 0.19.0
+
+### Minor Changes
+
+- 75e82a8: feat(console): prompt channel
+
+### Patch Changes
+
+- Updated dependencies [886809d]
+  - @hot-updater/plugin-core@0.19.0
+  - @hot-updater/core@0.19.0
+
 ## 0.18.5
 
 ### Patch Changes

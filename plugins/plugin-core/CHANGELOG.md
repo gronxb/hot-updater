@@ -1,5 +1,15 @@
 # @hot-updater/plugin-core
 
+## 0.19.0
+
+### Minor Changes
+
+- 886809d: fix(babel): make sure the backend can handle channel changes for a bundle and still receive updates correctly
+
+### Patch Changes
+
+- @hot-updater/core@0.19.0
+
 ## 0.18.5
 
 ### Patch Changes

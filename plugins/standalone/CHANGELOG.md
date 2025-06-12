@@ -1,5 +1,13 @@
 # @hot-updater/standalone
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [886809d]
+  - @hot-updater/plugin-core@0.19.0
+  - @hot-updater/core@0.19.0
+
 ## 0.18.5
 
 ### Patch Changes

@@ -9,7 +9,6 @@
     "start": "react-native start",
     "test": "jest",
     "fingerprint:create": "hot-updater fingerprint create"
-
   },
   "dependencies": {
     "@hot-updater/react-native": "workspace:*",
