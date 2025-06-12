@@ -1,6 +1,7 @@
-import { mockDatabase } from "@hot-updater/mock";
+import { mockDatabase, mockStorage } from "@hot-updater/mock";
 
 export default {
+  storage: mockStorage(),
   database: mockDatabase({
     latency: { min: 500, max: 700 },
     initialBundles: [
@@ -25,6 +26,9 @@ export default {
         targetAppVersion: "1.0.x",
         message: "test2",
         channel: "production",
+        storageUri:
+          "https://storage.googleapis.com/hot-updater-dev/0195c7bf-e8f2-7546-8aba-8bad8243afeb.zip",
+        fingerprintHash: "1234",
       },
       {
         id: "0195c7bf-d48d-7785-9295-15b154d271a3",
@@ -36,6 +40,9 @@ export default {
         targetAppVersion: "1.0.x",
         message: "test",
         channel: "production",
+        storageUri:
+          "https://storage.googleapis.com/hot-updater-dev/0195c7bf-e8f2-7546-8aba-8bad8243afeb.zip",
+        fingerprintHash: "1234",
       },
     ],
   }),
