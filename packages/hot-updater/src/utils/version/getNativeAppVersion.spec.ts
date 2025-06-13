@@ -5,21 +5,27 @@ import { getNativeAppVersion } from "./getNativeAppVersion";
 import path from "path";
 import { XcodeProject } from "@bacons/xcode";
 import { getCwd } from "@hot-updater/plugin-core";
+import fg from "fast-glob";
 import fs from "fs/promises";
-import { globbySync } from "globby";
 import plist from "plist";
 
 vi.mock("fs/promises");
 vi.mock("path");
 vi.mock("@bacons/xcode");
 vi.mock("@hot-updater/plugin-core");
-vi.mock("globby");
+
+vi.mock("fast-glob", () => ({
+  default: {
+    globSync: vi.fn(),
+  },
+}));
+
 vi.mock("find-up-simple");
 vi.mock("plist");
 
 describe("getNativeAppVersion", () => {
   const mockGetCwd = getCwd as Mock;
-  const mockGlobbySync = globbySync as Mock;
+  const mockGlobbySync = fg.globSync as Mock;
   const mockXcodeProjectOpen = XcodeProject.open as Mock;
   const mockPathJoin = path.join as Mock;
   const mockFsReadFile = fs.readFile as Mock;

@@ -15,15 +15,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "80f041a8a106840d9e536a4b75939fbd7aa93a0a"
+        "hash": "9d1f6947d15e380e9e43cb2fa25f43e4ed8407a8"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-D6SRhiV0.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-YdrnRRA4.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "a7bc27688c20f7999d26bcdda923f9502ad5a10f"
+        "hash": "11cc12baa316d967e34442138c81a41a9964288e"
       },
       {
         "type": "file",
@@ -39,7 +39,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "caf08136155bd19ed6568ed600cf37f4f657bb7b"
+        "hash": "c26db27ecf3fead0659861358dc35b3583eafbf6"
       },
       {
         "type": "file",
@@ -55,7 +55,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "99563f8897b94fc98f520b25f18fa8cc0d6e9b8c"
+        "hash": "e5bfe778cf5debc0b130a00d26ac7730bdc24ade"
       },
       {
         "type": "file",
@@ -215,7 +215,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "b68ae7e60936be2f9527e064d2f8ecb4483aa577"
+        "hash": "656b28fc1e95515cbce54c485ebddfc13c542622"
       },
       {
         "type": "dir",
@@ -264,14 +264,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.1\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "bb46a3938f7bb29aa00f4aec0cba4c6193b57e55"
+        "hash": "7d153adc3cc1f6a3f0b341676d59c540c35f9787"
       }
     ],
-    "hash": "fb6ebe0773ec3db3a17ac15e7ea05a221d6d34d1"
+    "hash": "f24d3abf50079325159d3ce5a6b9566b720db674"
   },
   "android": {
     "sources": [
@@ -289,15 +289,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "80f041a8a106840d9e536a4b75939fbd7aa93a0a"
+        "hash": "9d1f6947d15e380e9e43cb2fa25f43e4ed8407a8"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-D6SRhiV0.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-YdrnRRA4.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "a7bc27688c20f7999d26bcdda923f9502ad5a10f"
+        "hash": "11cc12baa316d967e34442138c81a41a9964288e"
       },
       {
         "type": "file",
@@ -313,7 +313,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "caf08136155bd19ed6568ed600cf37f4f657bb7b"
+        "hash": "c26db27ecf3fead0659861358dc35b3583eafbf6"
       },
       {
         "type": "file",
@@ -329,7 +329,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "99563f8897b94fc98f520b25f18fa8cc0d6e9b8c"
+        "hash": "e5bfe778cf5debc0b130a00d26ac7730bdc24ade"
       },
       {
         "type": "file",
@@ -505,7 +505,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "b68ae7e60936be2f9527e064d2f8ecb4483aa577"
+        "hash": "656b28fc1e95515cbce54c485ebddfc13c542622"
       },
       {
         "type": "dir",
@@ -561,6 +561,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "ff6bb5cba9a05a2be6c11ed61429332b36071ad9"
+    "hash": "084689d53e4a9fa2a8003f118f41eda09d45b2ab"
   }
 }

@@ -12,7 +12,7 @@ describe("Fingerprint", () => {
       example: "rn-77",
     });
     rootDir = mockedProject.rootDir;
-  });
+  }, 5000);
 
   const changePackageJsonVersion = () => {
     // change content

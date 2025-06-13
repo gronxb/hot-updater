@@ -1,8 +1,8 @@
 import path from "path";
 import { XcodeProject } from "@bacons/xcode";
 import { getCwd } from "@hot-updater/plugin-core";
+import fg from "fast-glob";
 import fs from "fs/promises";
-import { globbySync } from "globby";
 import plist from "plist";
 import semverValid from "semver/ranges/valid";
 import { getIosAppTargetDirectoryName } from "../getIosAppTargetDirectoryName";
@@ -40,7 +40,7 @@ const getIOSVersionFromInfoPlist = async (): Promise<string | null> => {
 
 const getIOSVersionFromXcodeProject = async (): Promise<string | null> => {
   try {
-    const [xcodeprojPath] = globbySync("*.xcodeproj/project.pbxproj", {
+    const [xcodeprojPath] = fg.globSync("*.xcodeproj/project.pbxproj", {
       cwd: path.join(getCwd(), "ios"),
       absolute: true,
       onlyFiles: true,

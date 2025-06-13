@@ -54,20 +54,28 @@ export const handleCreateFingerprint = async () => {
     {
       title: "Creating fingerprint.json",
       task: async () => {
-        const localFingerprint = await readLocalFingerprint();
-        const newFingerprint = await createFingerprintJson();
+        try {
+          const localFingerprint = await readLocalFingerprint();
+          const newFingerprint = await createFingerprintJson();
 
-        if (
-          !localFingerprint ||
-          localFingerprint?.ios?.hash !== newFingerprint.ios.hash ||
-          localFingerprint?.android?.hash !== newFingerprint.android.hash
-        ) {
-          diffChanged = true;
+          if (
+            !localFingerprint ||
+            localFingerprint?.ios?.hash !== newFingerprint.ios.hash ||
+            localFingerprint?.android?.hash !== newFingerprint.android.hash
+          ) {
+            diffChanged = true;
+          }
+
+          await setFingerprintHash("ios", newFingerprint.ios.hash);
+          await setFingerprintHash("android", newFingerprint.android.hash);
+          return "Created fingerprint.json";
+        } catch (error) {
+          if (error instanceof Error) {
+            p.log.error(error.message);
+          }
+          console.error(error);
+          process.exit(1);
         }
-
-        await setFingerprintHash("ios", newFingerprint.ios.hash);
-        await setFingerprintHash("android", newFingerprint.android.hash);
-        return "Created fingerprint.json";
       },
     },
   ]);
