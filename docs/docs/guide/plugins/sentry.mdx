@@ -24,17 +24,45 @@ This helps you track production crashes with accurate stack traces tied to your 
 
 ## Step 1: Configure Sentry
 
-https://docs.sentry.io/platforms/react-native/manual-setup/metro/
+<Tabs>
+  <Tab label="Metro">
+    
 
-You need to configure Metro. Please refer to the Sentry documentation above for detailed setup instructions.
+    You need to configure Metro. Please refer to the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/) above for detailed setup instructions.
 
-```js title="metro.config.js"
-const { getDefaultConfig } = require("@react-native/metro-config");
-const { withSentryConfig } = require("@sentry/react-native/metro");
+    ```js title="metro.config.js"
+    const { getDefaultConfig } = require("@react-native/metro-config");
+    const { withSentryConfig } = require("@sentry/react-native/metro");
 
-const config = getDefaultConfig(__dirname);
-module.exports = withSentryConfig(config);
+    const config = getDefaultConfig(__dirname);
+    module.exports = withSentryConfig(config);
+    ```
+  </Tab>
+  <Tab label="Re.Pack">
+
+  You need to configure Re.Pack. 
+
+<PackageManagerTabs command={
+  {
+    npm: "npm install repack-plugin-sentry --save-dev",
+    pnpm: "pnpm add repack-plugin-sentry -D",
+    yarn: "yarn add repack-plugin-sentry -D",
+  }
+} />
+
+```js title="rspack.config.mjs"
+import { SentryDebugIdPlugin } from "repack-plugin-sentry";
+
+export default {
+  // ... your other config
+  plugins: [
+    // ... your other plugins
+    new SentryDebugIdPlugin(), // [!code ++]
+  ],
+};
 ```
+  </Tab>
+</Tabs>
 
 
 
@@ -43,6 +71,9 @@ module.exports = withSentryConfig(config);
 Use `withSentry()` to wrap any compatible build plugin such as metro.
 
 Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the `hot-updater deploy` process.
+
+<Tabs>
+  <Tab label="Metro">
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
@@ -65,6 +96,55 @@ export default defineConfig({
   // .. your other config
 });
 ```
+</Tab>
+<Tab label="Expo">
+
+```ts title="hot-updater.config.ts"
+import { withSentry } from "@hot-updater/sentry-plugin";
+import { defineConfig } from "hot-updater";
+import { expo } from "@hot-updater/expo";
+
+export default defineConfig({
+  build: withSentry(
+    expo({
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      org: "your-org-slug",       // [!code ++] Your Sentry organization slug
+      project: "your-project",    // [!code ++] Your Sentry project slug
+      authToken: process.env.SENTRY_AUTH_TOKEN!, // [!code ++]
+    },
+  ),
+  // .. your other config
+});
+```
+</Tab>
+
+<Tab label="RNEF">
+
+```ts title="hot-updater.config.ts"
+import { withSentry } from "@hot-updater/sentry-plugin";
+import { defineConfig } from "hot-updater";
+import { rnef } from "@hot-updater/rnef";
+
+export default defineConfig({
+  build: withSentry(
+    rnef({
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      org: "your-org-slug",       // [!code ++] Your Sentry organization slug
+      project: "your-project",    // [!code ++] Your Sentry project slug
+      authToken: process.env.SENTRY_AUTH_TOKEN!, // [!code ++]
+    },
+  ),
+  // .. your other config
+});
+```
+
+</Tab>
+
+</Tabs>
 
 ::: tip Automatic Upload
 When `withSentry()` wraps your build plugin, all generated sourcemaps are uploaded to Sentry automatically during the `hot-updater deploy` process.
