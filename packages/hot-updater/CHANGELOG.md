@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.19.3
+
+### Patch Changes
+
+- 0c0ab1d: Add debug option while creating fingerprint
+- Updated dependencies [0c0ab1d]
+  - @hot-updater/plugin-core@0.19.3
+  - @hot-updater/console@0.19.3
+  - @hot-updater/aws@0.19.3
+  - @hot-updater/cloudflare@0.19.3
+  - @hot-updater/firebase@0.19.3
+  - @hot-updater/supabase@0.19.3
+  - @hot-updater/core@0.19.3
+
 ## 0.19.2
 
 ### Patch Changes

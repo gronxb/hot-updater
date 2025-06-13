@@ -1,5 +1,13 @@
 # @hot-updater/expo
 
+## 0.19.3
+
+### Patch Changes
+
+- Updated dependencies [0c0ab1d]
+  - @hot-updater/plugin-core@0.19.3
+  - @hot-updater/bare@0.19.3
+
 ## 0.19.2
 
 ### Patch Changes
