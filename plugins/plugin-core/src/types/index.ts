@@ -92,8 +92,17 @@ export type ConfigInput = {
    * The fingerprint configuration.
    */
   fingerprint?: {
+    /**
+     * The extra sources to be included in the fingerprint.
+     */
     extraSources?: string[];
+    /**
+     * The paths to be ignored in the fingerprint.
+     */
     ignorePaths?: string[];
+    /**
+     * When debug mode is enabled, more detailed information will be exposed in fingerprint.json.
+     */
     debug?: boolean;
   };
   console?: {
