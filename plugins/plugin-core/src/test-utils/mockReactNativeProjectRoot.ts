@@ -23,6 +23,8 @@ const resolveWorkspaceInfoFromExample = (example: Example) => {
   }
 };
 
+const REQUIRED_FILES = ["package.json", "ios", "android", ".gitignore"];
+
 export const mockReactNativeProjectRoot = async ({
   example,
 }: { example: Example }): Promise<MockedReactNativeProjectRoot> => {
@@ -34,20 +36,26 @@ export const mockReactNativeProjectRoot = async ({
   }
   await fs.promises.mkdir(rootDir, { recursive: true });
 
-  await fs.promises.cp(workspace.path, rootDir, {
-    force: true,
-    recursive: true,
-    filter: (src) => {
-      const filename = path.basename(src);
-      if (src.startsWith(path.resolve(workspace.path, "node_modules"))) {
-        return false;
+  // 필요한 파일만 복사
+  for (const file of REQUIRED_FILES) {
+    const sourcePath = path.join(workspace.path, file);
+    const targetPath = path.join(rootDir, file);
+
+    if (fs.existsSync(sourcePath)) {
+      if (fs.statSync(sourcePath).isDirectory()) {
+        await fs.promises.cp(sourcePath, targetPath, {
+          force: true,
+          recursive: true,
+          filter: (src) => {
+            const filename = path.basename(src);
+            return !src.includes("node_modules") && !filename.endsWith(".env");
+          },
+        });
+      } else {
+        await fs.promises.copyFile(sourcePath, targetPath);
       }
-      if (filename.endsWith(".env")) {
-        return false;
-      }
-      return true;
-    },
-  });
+    }
+  }
 
   return {
     rootDir,
