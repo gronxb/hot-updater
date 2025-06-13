@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.19.3
+
+### Patch Changes
+
+- 0c0ab1d: Add debug option while creating fingerprint
+  - @hot-updater/core@0.19.3
+
 ## 0.19.2
 
 ### Patch Changes

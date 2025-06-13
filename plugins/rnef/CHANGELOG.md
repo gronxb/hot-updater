@@ -1,5 +1,13 @@
 # @hot-updater/rnef
 
+## 0.19.3
+
+### Patch Changes
+
+- 79d2e52: fix(rnef): supports rnef sourcemap for @hot-updater/sentry-plugin
+- Updated dependencies [0c0ab1d]
+  - @hot-updater/plugin-core@0.19.3
+
 ## 0.19.2
 
 ### Patch Changes
