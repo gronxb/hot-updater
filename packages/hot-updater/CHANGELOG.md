@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.19.2
+
+### Patch Changes
+
+- 6aa6cd7: fix: globby to fast-glob unicorn-magic error
+  - @hot-updater/console@0.19.2
+  - @hot-updater/core@0.19.2
+  - @hot-updater/aws@0.19.2
+  - @hot-updater/cloudflare@0.19.2
+  - @hot-updater/firebase@0.19.2
+  - @hot-updater/plugin-core@0.19.2
+  - @hot-updater/supabase@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes
