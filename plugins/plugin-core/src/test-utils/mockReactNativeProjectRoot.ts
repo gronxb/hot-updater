@@ -8,6 +8,7 @@ import { getCwd } from "../cwd";
 export interface MockedReactNativeProjectRoot {
   rootDir: string;
 }
+
 type Example = "rn-77";
 
 const resolveWorkspaceInfoFromExample = (example: Example) => {
