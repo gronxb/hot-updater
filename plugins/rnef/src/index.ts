@@ -25,6 +25,9 @@ const runBundle = async ({
   sourcemap,
   hermes,
 }: RunBundleArgs) => {
+  const filename = `index.${platform}`;
+  const bundleOutput = path.join(buildPath, `${filename}.bundle`);
+
   const args = [
     "rnef",
     "bundle",
@@ -34,10 +37,8 @@ const runBundle = async ({
     platform,
     ...(hermes ? ["--hermes"] : []),
     "--bundle-output",
-    path.join(buildPath, `index.${platform}.bundle`),
-    ...(sourcemap
-      ? ["--sourcemap-output", path.join(buildPath, `index.${platform}.map`)]
-      : []),
+    bundleOutput,
+    ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
     "--assets-dest",
     buildPath,
     "--dev",

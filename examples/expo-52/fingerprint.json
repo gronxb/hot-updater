@@ -15,15 +15,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "9d1f6947d15e380e9e43cb2fa25f43e4ed8407a8"
+        "hash": "72cf6507d000b59564ee5032ad6f2b615cd18a29"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-YdrnRRA4.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-B0eg9rrR.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "11cc12baa316d967e34442138c81a41a9964288e"
+        "hash": "e2a028adc6c77d66a3b61c525026e8cd6467659d"
       },
       {
         "type": "file",
@@ -39,7 +39,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "c26db27ecf3fead0659861358dc35b3583eafbf6"
+        "hash": "cd082913337e6f11258cd964e8d13bc3b0d5f967"
       },
       {
         "type": "file",
@@ -215,7 +215,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "656b28fc1e95515cbce54c485ebddfc13c542622"
+        "hash": "75747887d28ab1a09d14450aa3056c0cf8a3d316"
       },
       {
         "type": "dir",
@@ -264,14 +264,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.1\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.2\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "7d153adc3cc1f6a3f0b341676d59c540c35f9787"
+        "hash": "92c779b54a26bb099d053d8c672b420de4703184"
       }
     ],
-    "hash": "f24d3abf50079325159d3ce5a6b9566b720db674"
+    "hash": "30bac4727301b6a7065607622a99e58374b9f9ce"
   },
   "android": {
     "sources": [
@@ -289,15 +289,15 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "9d1f6947d15e380e9e43cb2fa25f43e4ed8407a8"
+        "hash": "72cf6507d000b59564ee5032ad6f2b615cd18a29"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-YdrnRRA4.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-B0eg9rrR.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "11cc12baa316d967e34442138c81a41a9964288e"
+        "hash": "e2a028adc6c77d66a3b61c525026e8cd6467659d"
       },
       {
         "type": "file",
@@ -313,7 +313,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "c26db27ecf3fead0659861358dc35b3583eafbf6"
+        "hash": "cd082913337e6f11258cd964e8d13bc3b0d5f967"
       },
       {
         "type": "file",
@@ -505,7 +505,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "656b28fc1e95515cbce54c485ebddfc13c542622"
+        "hash": "75747887d28ab1a09d14450aa3056c0cf8a3d316"
       },
       {
         "type": "dir",
@@ -561,6 +561,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "084689d53e4a9fa2a8003f118f41eda09d45b2ab"
+    "hash": "de4f9bfe62b8311591d79a32f26bb2899ff3c5b5"
   }
 }
