@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
-import * as fg from "fast-glob";
+import fg from "fast-glob";
 import plist from "plist";
 import type { ConfigParser } from "./configParser";
 
