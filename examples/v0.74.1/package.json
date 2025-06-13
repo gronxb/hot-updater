@@ -24,7 +24,6 @@
     "@babel/core": "^7.20.0",
     "@babel/preset-env": "^7.20.0",
     "@babel/runtime": "^7.24.5",
-    "@callstack/repack": "^4.0.0",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/supabase": "workspace:*",

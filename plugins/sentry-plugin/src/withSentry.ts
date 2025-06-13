@@ -9,6 +9,7 @@ import type { SentryCliOptions } from "@sentry/cli";
 import SentryCli from "@sentry/cli";
 
 const injectDebugIdToHbcMap = (
+  jsCodePath: string,
   jsMapPath: string,
   hbcMapPath: string | null,
 ) => {
@@ -16,18 +17,25 @@ const injectDebugIdToHbcMap = (
     return jsMapPath;
   }
   const jsMap = JSON.parse(fs.readFileSync(jsMapPath, "utf8"));
-  const debugId = jsMap.debug_id || jsMap.debugId;
+  let debugId: string | undefined = jsMap.debug_id || jsMap.debugId;
 
   if (!debugId) {
-    throw new Error(
-      "debugId from Source map not found. It seems hot-updater doesn't support Sentry plugin with this bundle framework. Please pile issue on Github.",
-    );
+    // Fallback to debugId from jsCode
+    const jsCode = fs.readFileSync(jsCodePath, "utf8");
+    const debugIdMatch = jsCode.match(/\/\/# debugId=([a-f0-9-]+)/);
+    debugId = debugIdMatch ? debugIdMatch[1] : undefined;
+
+    if (!debugId) {
+      throw new Error(
+        "debugId from Source map not found. It seems hot-updater doesn't support Sentry plugin with this bundle framework. Please pile issue on Github.",
+      );
+    }
   }
 
   const hbcMap = JSON.parse(fs.readFileSync(hbcMapPath, "utf8"));
   hbcMap.debug_id = debugId;
   hbcMap.debugId = debugId;
-  fs.writeFileSync(hbcMapPath, JSON.stringify(hbcMap, null, 2));
+  fs.writeFileSync(hbcMapPath, JSON.stringify(hbcMap, null, 0));
 
   fs.unlinkSync(jsMapPath);
   fs.renameSync(hbcMapPath, jsMapPath);
@@ -70,7 +78,11 @@ export const withSentry =
           );
         }
 
-        const sourcemapFile = injectDebugIdToHbcMap(bundleMapFile, hbcMapFile);
+        const sourcemapFile = injectDebugIdToHbcMap(
+          bundleFile,
+          bundleMapFile,
+          hbcMapFile,
+        );
 
         await sentry.execute(
           [
