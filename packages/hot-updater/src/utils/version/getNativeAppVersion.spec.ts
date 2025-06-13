@@ -13,7 +13,13 @@ vi.mock("fs/promises");
 vi.mock("path");
 vi.mock("@bacons/xcode");
 vi.mock("@hot-updater/plugin-core");
-vi.mock("fast-glob");
+
+vi.mock("fast-glob", () => ({
+  default: {
+    globSync: vi.fn(),
+  },
+}));
+
 vi.mock("find-up-simple");
 vi.mock("plist");
 

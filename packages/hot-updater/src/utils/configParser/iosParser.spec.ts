@@ -24,7 +24,9 @@ vi.mock("path", () => ({
 }));
 
 vi.mock("fast-glob", () => ({
-  glob: vi.fn(),
+  default: {
+    glob: vi.fn(),
+  },
 }));
 
 vi.mock("plist", () => ({
