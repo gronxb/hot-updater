@@ -15,6 +15,7 @@ export type FingerprintOptions = {
   platform: "ios" | "android";
   extraSources: string[];
   ignorePaths: string[];
+  debug?: boolean
 };
 
 export type FingerprintResult = {
@@ -42,6 +43,7 @@ export async function nativeFingerprint(
       path,
       options.ignorePaths,
     ),
+    debug: options.debug,
   });
 }
 

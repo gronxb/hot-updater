@@ -94,6 +94,7 @@ export type ConfigInput = {
   fingerprint?: {
     extraSources?: string[];
     ignorePaths?: string[];
+    debug?: boolean;
   };
   console?: {
     /**
