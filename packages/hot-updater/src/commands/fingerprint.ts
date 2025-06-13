@@ -12,46 +12,39 @@ import picocolors from "picocolors";
 
 export const handleFingerprint = async () => {
   const s = p.spinner();
-  try {
-    s.start("Generating fingerprints");
+  s.start("Generating fingerprints");
 
-    const fingerPrintRef = await generateFingerprints();
+  const fingerPrintRef = await generateFingerprints();
 
-    s.stop(
-      `Fingerprint generated. iOS: ${fingerPrintRef.ios.hash}, Android: ${fingerPrintRef.android.hash}`,
-    );
+  s.stop(
+    `Fingerprint generated. iOS: ${fingerPrintRef.ios.hash}, Android: ${fingerPrintRef.android.hash}`,
+  );
 
-    const localFingerprintPath = path.join(getCwd(), "fingerprint.json");
-    if (!fs.existsSync(localFingerprintPath)) {
-      return;
-    }
-
-    const readFingerprint = await fs.promises.readFile(
-      localFingerprintPath,
-      "utf-8",
-    );
-    const localFingerprint = JSON.parse(readFingerprint);
-    if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
-      p.log.error(
-        "iOS fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
-      );
-      process.exit(1);
-    }
-
-    if (localFingerprint.android.hash !== fingerPrintRef.android?.hash) {
-      p.log.error(
-        "Android fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
-      );
-      process.exit(1);
-    }
-
-    p.log.success("Fingerprint matched");
-  } catch (e) {
-    if (e instanceof Error) {
-      p.log.error(e.message);
-    }
-    throw e;
+  const localFingerprintPath = path.join(getCwd(), "fingerprint.json");
+  if (!fs.existsSync(localFingerprintPath)) {
+    return;
   }
+
+  const readFingerprint = await fs.promises.readFile(
+    localFingerprintPath,
+    "utf-8",
+  );
+  const localFingerprint = JSON.parse(readFingerprint);
+  if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
+    p.log.error(
+      "iOS fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
+    );
+    process.exit(1);
+  }
+
+  if (localFingerprint.android.hash !== fingerPrintRef.android?.hash) {
+    p.log.error(
+      "Android fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
+    );
+    process.exit(1);
+  }
+
+  p.log.success("Fingerprint matched");
 };
 
 export const handleCreateFingerprint = async () => {
