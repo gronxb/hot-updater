@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
-import { globby } from "globby";
+import * as fg from "fast-glob";
 import plist from "plist";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IosConfigParser } from "./iosParser";
@@ -23,8 +23,8 @@ vi.mock("path", () => ({
   },
 }));
 
-vi.mock("globby", () => ({
-  globby: vi.fn(),
+vi.mock("fast-glob", () => ({
+  glob: vi.fn(),
 }));
 
 vi.mock("plist", () => ({
@@ -57,12 +57,12 @@ describe("IosConfigParser", () => {
 
   describe("exists", () => {
     it("should return true when plist file exists", async () => {
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
 
       const result = await iosParser.exists();
 
       expect(result).toBe(true);
-      expect(globby).toHaveBeenCalledWith("*/Info.plist", {
+      expect(fg.glob).toHaveBeenCalledWith("*/Info.plist", {
         cwd: "/mock/project/ios",
         absolute: true,
         onlyFiles: true,
@@ -70,7 +70,7 @@ describe("IosConfigParser", () => {
     });
 
     it("should return false when plist file does not exist", async () => {
-      vi.mocked(globby).mockResolvedValue([]);
+      vi.mocked(fg.glob).mockResolvedValue([]);
 
       const result = await iosParser.exists();
 
@@ -78,7 +78,7 @@ describe("IosConfigParser", () => {
     });
 
     it("should return false when globby throws error", async () => {
-      vi.mocked(globby).mockRejectedValue(new Error("Permission denied"));
+      vi.mocked(fg.glob).mockRejectedValue(new Error("Permission denied"));
 
       const result = await iosParser.exists();
 
@@ -88,7 +88,7 @@ describe("IosConfigParser", () => {
 
   describe("get", () => {
     it("should throw error when plist file not found", async () => {
-      vi.mocked(globby).mockResolvedValue([]);
+      vi.mocked(fg.glob).mockResolvedValue([]);
 
       await expect(iosParser.get("TEST_KEY")).rejects.toThrow(
         "Info.plist not found",
@@ -107,7 +107,7 @@ describe("IosConfigParser", () => {
 
       const mockPlistObject = { TEST_KEY: "test_value" };
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
 
@@ -125,7 +125,7 @@ describe("IosConfigParser", () => {
         '<?xml version="1.0"?><plist><dict></dict></plist>';
       const mockPlistObject = {};
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
 
@@ -140,7 +140,7 @@ describe("IosConfigParser", () => {
     it("should handle numeric values from plist", async () => {
       const mockPlistObject = { PORT: 3000 };
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue("");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
 
@@ -155,7 +155,7 @@ describe("IosConfigParser", () => {
     it("should handle boolean values from plist", async () => {
       const mockPlistObject = { DEBUG_MODE: true };
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue("");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
 
@@ -170,7 +170,7 @@ describe("IosConfigParser", () => {
     it("should handle null and undefined values from plist", async () => {
       const mockPlistObject = { NULL_KEY: null, UNDEFINED_KEY: undefined };
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue("");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject as any);
 
@@ -188,7 +188,7 @@ describe("IosConfigParser", () => {
     });
 
     it("should handle Info.plist read errors gracefully", async () => {
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockRejectedValue(
         new Error("Permission denied"),
       );
@@ -202,7 +202,7 @@ describe("IosConfigParser", () => {
     });
 
     it("should handle plist parse errors gracefully", async () => {
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
       vi.mocked(plist.parse).mockImplementation(() => {
         throw new Error("Invalid plist format");
@@ -219,7 +219,7 @@ describe("IosConfigParser", () => {
 
   describe("set", () => {
     it("should throw error when plist file not found", async () => {
-      vi.mocked(globby).mockResolvedValue([]);
+      vi.mocked(fg.glob).mockResolvedValue([]);
 
       await expect(iosParser.set("TEST_KEY", "test_value")).rejects.toThrow(
         "Info.plist not found",
@@ -233,7 +233,7 @@ describe("IosConfigParser", () => {
       const newPlistXml =
         '<?xml version="1.0"?><plist><dict><key>TEST_KEY</key><string>test_value</string></dict></plist>';
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue(newPlistXml);
@@ -262,7 +262,7 @@ describe("IosConfigParser", () => {
       const newPlistXml =
         '<?xml version="1.0"?><plist><dict><key>TEST_KEY</key><string>new_value</string></dict></plist>';
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue(newPlistXml);
@@ -282,7 +282,7 @@ describe("IosConfigParser", () => {
         ANOTHER_KEY: "another_value",
       };
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue("");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("");
@@ -301,7 +301,7 @@ describe("IosConfigParser", () => {
     });
 
     it("should handle plist parse errors", async () => {
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
       vi.mocked(plist.parse).mockImplementation(() => {
         throw new Error("Invalid plist format");
@@ -315,7 +315,7 @@ describe("IosConfigParser", () => {
     it("should handle file write errors", async () => {
       const mockPlistObject = {};
 
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockResolvedValue("");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("");
@@ -329,7 +329,7 @@ describe("IosConfigParser", () => {
     });
 
     it("should handle file read errors during set operation", async () => {
-      vi.mocked(globby).mockResolvedValue([mockPlistPath]);
+      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
       vi.mocked(fs.promises.readFile).mockRejectedValue(
         new Error("Permission denied"),
       );

@@ -52,10 +52,10 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@expo/fingerprint": "0.12.4",
     "@bacons/xcode": "1.0.0-alpha.24",
     "@clack/prompts": "^0.10.0",
     "@commander-js/extra-typings": "^14.0.0",
+    "@expo/fingerprint": "0.12.4",
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
@@ -63,8 +63,8 @@
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^5.0.0",
     "es-git": "^0.2.0",
-    "fast-xml-parser": "^5.2.3",
-    "globby": "^14.1.0"
+    "fast-glob": "^3.3.3",
+    "fast-xml-parser": "^5.2.3"
   },
   "devDependencies": {
     "@babel/core": "7.26.0",
