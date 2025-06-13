@@ -23,7 +23,12 @@ const resolveWorkspaceInfoFromExample = (example: Example) => {
   }
 };
 
-const REQUIRED_FILES = ["package.json", "ios", "android", ".gitignore"];
+// 테스트에 필요한 최소한의 파일만 정의
+const REQUIRED_FILES = [
+  "package.json",
+  "ios/Info.plist",
+  "android/app/build.gradle",
+];
 
 export const mockReactNativeProjectRoot = async ({
   example,
@@ -42,18 +47,10 @@ export const mockReactNativeProjectRoot = async ({
     const targetPath = path.join(rootDir, file);
 
     if (fs.existsSync(sourcePath)) {
-      if (fs.statSync(sourcePath).isDirectory()) {
-        await fs.promises.cp(sourcePath, targetPath, {
-          force: true,
-          recursive: true,
-          filter: (src) => {
-            const filename = path.basename(src);
-            return !src.includes("node_modules") && !filename.endsWith(".env");
-          },
-        });
-      } else {
-        await fs.promises.copyFile(sourcePath, targetPath);
-      }
+      // 디렉토리 생성
+      await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+      // 파일 복사
+      await fs.promises.copyFile(sourcePath, targetPath);
     }
   }
 
