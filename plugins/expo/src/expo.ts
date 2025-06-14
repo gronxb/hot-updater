@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { resolveMain } from "./resolveMain";
+import { runExpoPrebuild } from "./util/prebuild";
 
 interface RunBundleArgs {
   cwd: string;
@@ -130,8 +131,8 @@ export const expo =
   ({ cwd }: BasePluginArgs): BuildPlugin => {
     const { outDir = "dist", sourcemap = false } = config;
     return {
-      // TODO not implemented
-      nativeBuild: async ({ buildNativeArtifact }) => {
+      nativeBuild: async ({ buildNativeArtifact, platform }) => {
+        await runExpoPrebuild({ platform });
         await buildNativeArtifact();
         return { stdout: null };
       },
