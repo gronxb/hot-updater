@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/core";
 
 export const getPlatform = async (message: string) => {
-  const platform = await p.select({
+  return await p.select({
     message: message,
     initialValue: "ios" as Platform,
     options: [
@@ -10,6 +10,4 @@ export const getPlatform = async (message: string) => {
       { label: "android", value: "android" },
     ],
   });
-
-  return platform;
 };

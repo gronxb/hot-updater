@@ -12,3 +12,6 @@ onlyBuiltDependencies:
   - sharp
   - typia
   - workerd
+
+catalog:
+  '@clack/prompts': 0.10.0
