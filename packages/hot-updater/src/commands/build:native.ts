@@ -6,10 +6,10 @@ import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { getPlatform } from "@/prompts/getPlatform";
 
 import path from "path";
+import { nativeFingerprint } from "@/utils/fingerprint";
 import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { nativeFingerprint } from "@rnef/tools";
 import { ExecaError } from "execa";
 
 export interface NativeBuildOptions {
@@ -141,7 +141,6 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
             buildNativeArtifact: async () => {
               await runNativeBuild({
                 platform,
-                options,
                 config: config.nativeBuild,
               });
             },
