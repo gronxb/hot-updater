@@ -12,7 +12,8 @@
     "bundle:android": "react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build",
     "webpack-start": "react-native webpack-start",
     "webpack-bundle:ios": "react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios",
-    "test": "jest"
+    "test": "jest",
+    "fingerprint:create": "hot-updater fingerprint create"
   },
   "dependencies": {
     "@hot-updater/react-native": "workspace:*",
@@ -23,7 +24,6 @@
     "@babel/core": "^7.20.0",
     "@babel/preset-env": "^7.20.0",
     "@babel/runtime": "^7.24.5",
-    "@callstack/repack": "^4.0.0",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/supabase": "workspace:*",

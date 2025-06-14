@@ -1,14 +1,14 @@
 import fs from "fs";
 import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
-import { globby } from "globby";
+import fg from "fast-glob";
 import plist from "plist";
 import type { ConfigParser } from "./configParser";
 
 // iOS Info.plist parser
 export class IosConfigParser implements ConfigParser {
   private async getPlistPath(): Promise<string> {
-    const [plistFile] = await globby("*/Info.plist", {
+    const [plistFile] = await fg.glob("*/Info.plist", {
       cwd: path.join(getCwd(), "ios"),
       absolute: true,
       onlyFiles: true,

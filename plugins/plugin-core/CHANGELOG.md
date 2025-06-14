@@ -1,5 +1,34 @@
 # @hot-updater/plugin-core
 
+## 0.19.3
+
+### Patch Changes
+
+- 0c0ab1d: Add debug option while creating fingerprint
+  - @hot-updater/core@0.19.3
+
+## 0.19.2
+
+### Patch Changes
+
+- @hot-updater/core@0.19.2
+
+## 0.19.1
+
+### Patch Changes
+
+- @hot-updater/core@0.19.1
+
+## 0.19.0
+
+### Minor Changes
+
+- 886809d: fix(babel): make sure the backend can handle channel changes for a bundle and still receive updates correctly
+
+### Patch Changes
+
+- @hot-updater/core@0.19.0
+
 ## 0.18.5
 
 ### Patch Changes

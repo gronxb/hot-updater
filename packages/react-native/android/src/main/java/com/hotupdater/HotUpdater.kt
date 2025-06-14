@@ -34,6 +34,13 @@ class HotUpdater : ReactPackage {
         fun getMinBundleId(context: Context): String = HotUpdaterFactory.getInstance(context).getMinBundleId()
 
         /**
+         * Gets the current fingerprint hash
+         * @param context Application context
+         * @return The fingerprint hash or null if not set
+         */
+        fun getFingerprintHash(context: Context): String? = HotUpdaterFactory.getInstance(context).getFingerprintHash()
+
+        /**
          * Gets the current update channel
          * @param context Application context
          * @return The channel name or null if not set

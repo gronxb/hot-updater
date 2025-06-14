@@ -116,7 +116,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({ 
-  source: getUpdateSource("https://<project-id>.supabase.co/functions/v1/update-server"), // [!code ++]
+  source: getUpdateSource("https://<project-id>.supabase.co/functions/v1/update-server", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }), // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
   },
@@ -196,7 +198,12 @@ Add the plugin to your `app.json` file as shown below:
 {
   "expo": {
     "plugins": [
-      "@hot-updater/react-native",
+      [
+        "@hot-updater/react-native",
+        {
+          "channel": "production"
+        }
+      ]
     ]
   }
 }

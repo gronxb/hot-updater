@@ -14,7 +14,9 @@ import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 async function applyAppUpdate(updateInfo: UpdateInfo) {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
-      source: getUpdateSource("<your-update-server-url>"),
+      source: getUpdateSource("<your-update-server-url>", {
+        updateStrategy: "fingerprint", // or "appVersion"
+      }),
       requestHeaders: {
         Authorization: "Bearer <your-access-token>",
       },
@@ -57,19 +59,18 @@ async function applyAppUpdate(updateInfo: UpdateInfo) {
 }
 ```
 
-
 ## Understanding `getUpdateSource`
 
-The `getUpdateSource` function is used to construct the final URL for checking updates. The specific URL is determined by the update strategy being used internally by Hot Updater.
+The `getUpdateSource` function is used to construct the final URL for checking for updates. It takes a `baseUrl` as its first argument and an options object as its second argument. The `updateStrategy` property within the options object determines the final structure of the request URL.
 
 **Example Final Endpoint Structures:**
 
-Depending on the strategy, `getUpdateSource` helps form URLs similar to these:
+Depending on the `updateStrategy` value, `getUpdateSource` generates URLs like the following:
 
-*   `GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-*   `GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+*   For `updateStrategy: 'appVersion'`: `GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+*   For `updateStrategy: 'fingerprint'`: `GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
 
-If you provide a `baseUrl` (e.g., `https://your-update-server.com/api/update-check`), `getUpdateSource` ensures that the correct path and parameters are appended based on whether the update check is by app version or fingerprint.
+For example, if you provide `https://your-update-server.com/api/update-check` as the `baseUrl`, `getUpdateSource` will append the correct path and parameters to the URL depending on whether `updateStrategy` is `'appVersion'` or `'fingerprint'`.
 
 
 ## Parameters

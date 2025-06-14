@@ -1,6 +1,5 @@
 {
   "ios": {
-    "hash": "d9f0df840e64d4283e4769f40dc4615a01dda5e4",
     "sources": [
       {
         "type": "file",
@@ -16,7 +15,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "efe3477dbd402df1decd8198ea51110db719ec81"
+        "hash": "a20d35e0a9bb19c4f6de67fdb356270bf8a310c6"
       },
       {
         "type": "dir",
@@ -24,7 +23,16 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": null
+        "hash": "75747887d28ab1a09d14450aa3056c0cf8a3d316"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:ios",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingIos"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -47,25 +55,25 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\"}",
+        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "c861d99ed39a07477bb00093f1607d435a29b7f3"
+        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
       },
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.17.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.2\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "b26f2a0e2d9a2c226ba03ab60c6c14f8d1380c6b"
+        "hash": "44fa6f2eb88558cb8bca4aac7b76d00b9518a69d"
       }
-    ]
+    ],
+    "hash": "7512d24da3054256ee8b15e098946e23aea5a897"
   },
   "android": {
-    "hash": "0dd495bd95fc8bc71a2d60a23b84eef0b3e74ce9",
     "sources": [
       {
         "type": "file",
@@ -81,7 +89,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "c8ca4fb5532ce577866bdaa0b355e99b5647048e"
+        "hash": "5368c5f5537136d162d7ade824c1f24d9139099f"
       },
       {
         "type": "dir",
@@ -89,7 +97,16 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": null
+        "hash": "75747887d28ab1a09d14450aa3056c0cf8a3d316"
+      },
+      {
+        "type": "contents",
+        "id": "expoAutolinkingConfig:android",
+        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "reasons": [
+          "expoAutolinkingAndroid"
+        ],
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
       },
       {
         "type": "contents",
@@ -112,11 +129,11 @@
       {
         "type": "contents",
         "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\"}",
+        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
         "reasons": [
           "packageJson:scripts"
         ],
-        "hash": "c861d99ed39a07477bb00093f1607d435a29b7f3"
+        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
       },
       {
         "type": "contents",
@@ -127,6 +144,7 @@
         ],
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
-    ]
+    ],
+    "hash": "a8c658e47b42f51d9b4d57c36d0343a2f63cbc6c"
   }
 }

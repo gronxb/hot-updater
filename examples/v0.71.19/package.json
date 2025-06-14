@@ -7,11 +7,12 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "fingerprint:create": "hot-updater fingerprint create"
   },
   "dependencies": {
     "@hot-updater/react-native": "workspace:*",
-    "@sentry/react-native": "^6.10.0",
+    "@sentry/react-native": "6.10.0",
     "react": "18.2.0",
     "react-native": "0.71.19"
   },

@@ -11,6 +11,7 @@
     "test": "vitest",
     "build": "nx run-many --target=build --projects=packages/*,plugins/*",
     "build:dev": "nx run-many --target=build --projects=packages/*,plugins/* --watch",
+    "fingerprint:create": "nx run-many --target='fingerprint:create' --projects=examples/*",
     "test:type": "nx run-many --target=test:type --all",
     "release:test": "nx release --dry-run",
     "release": "pnpm clear && pnpm build && nx release --skip-publish",

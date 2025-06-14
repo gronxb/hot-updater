@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Repack from "@callstack/repack";
 import { HotUpdaterPlugin } from "@hot-updater/repack";
+import { SentryDebugIdPlugin } from "repack-plugin-sentry";
 import "dotenv/config";
 import rspack from "@rspack/core";
 
@@ -35,5 +36,6 @@ export default {
         process.env.HOT_UPDATER_SUPABASE_URL,
       ),
     }),
+    new SentryDebugIdPlugin(),
   ],
 };

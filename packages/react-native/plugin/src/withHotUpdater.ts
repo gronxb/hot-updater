@@ -1,13 +1,31 @@
+import type { ExpoConfig } from "expo/config";
 import {
-  type ConfigPlugin,
   createRunOncePlugin,
   withAppDelegate,
+  withInfoPlist,
   withMainApplication,
+  withPlugins,
+  withStringsXml,
 } from "expo/config-plugins";
+import { createFingerprintJson } from "hot-updater";
 import pkg from "../../package.json";
 
-// Type definitions (Assuming HotUpdaterConfig might be used later)
-type HotUpdaterConfig = Record<string, unknown>; // Allow no props
+let fingerprintCache: Awaited<ReturnType<typeof createFingerprintJson>> | null =
+  null;
+
+const getFingerprint = async () => {
+  if (fingerprintCache) {
+    return fingerprintCache;
+  }
+
+  fingerprintCache = await createFingerprintJson();
+  return fingerprintCache;
+};
+
+// Type definitions
+type HotUpdaterConfig = {
+  channel?: string;
+};
 
 /**
  * Helper to add lines if they don't exist, anchored by a specific string.
@@ -51,7 +69,10 @@ function replaceContentOnce(
   return contents.replace(searchRegex, replacement);
 }
 
-const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
+/**
+ * Native code modifications - should only run once
+ */
+const withHotUpdaterNativeCode = (config: ExpoConfig) => {
   let modifiedConfig = config;
 
   // === iOS: Objective-C & Swift in AppDelegate ===
@@ -165,13 +186,11 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
               rnHostEndRegex,
               `$1${kotlinNewMethod}\n$2`,
             );
+          } else {
             throw new Error(
-              "[withHotUpdater] Kotlin: Could not find Hermes anchor. Added getJSBundleFile before closing brace.",
+              "[withHotUpdater] Kotlin: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
             );
           }
-          throw new Error(
-            "[withHotUpdater] Kotlin: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
-          );
         }
       }
     }
@@ -206,13 +225,11 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
               rnHostEndRegex,
               `$1${javaNewMethod}\n$2`,
             );
+          } else {
             throw new Error(
-              "[withHotUpdater] Java: Could not find Hermes anchor. Added getJSBundleFile before closing brace.",
+              "[withHotUpdater] Java: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
             );
           }
-          throw new Error(
-            "[withHotUpdater] Java: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
-          );
         }
       }
     }
@@ -224,5 +241,93 @@ const withHotUpdater: ConfigPlugin<HotUpdaterConfig> = (config) => {
   return modifiedConfig;
 };
 
-// Export the plugin using createRunOncePlugin for idempotency at the plugin level
-export default createRunOncePlugin(withHotUpdater, pkg.name, pkg.version);
+/**
+ * Configuration updates - should run every time
+ */
+const withHotUpdaterConfigAsync =
+  (props: HotUpdaterConfig) => (config: ExpoConfig) => {
+    const channel = props.channel || "production";
+
+    let modifiedConfig = config;
+
+    // === iOS: Add channel and fingerprint to Info.plist ===
+    modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
+      // Generate fingerprints asynchronously
+      const { ios } = await getFingerprint();
+
+      cfg.modResults.HOT_UPDATER_CHANNEL = channel;
+      cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = ios.hash;
+      return cfg;
+    });
+
+    // === Android: Add channel and fingerprint to strings.xml ===
+    modifiedConfig = withStringsXml(modifiedConfig, async (cfg) => {
+      const { android } = await getFingerprint();
+
+      // Ensure resources object exists
+      if (!cfg.modResults.resources) {
+        cfg.modResults.resources = {};
+      }
+      if (!cfg.modResults.resources.string) {
+        cfg.modResults.resources.string = [];
+      }
+
+      // Remove existing hot_updater_channel entry if it exists
+      cfg.modResults.resources.string = cfg.modResults.resources.string.filter(
+        (item) => !(item.$ && item.$.name === "hot_updater_channel"),
+      );
+
+      // Add the new hot_updater_channel entry
+      cfg.modResults.resources.string.push({
+        $: {
+          name: "hot_updater_channel",
+          moduleConfig: "true",
+        } as {
+          name: string;
+          moduleConfig: string;
+        },
+        _: channel,
+      });
+
+      // Remove existing hot_updater_fingerprint_hash entry if it exists
+      cfg.modResults.resources.string = cfg.modResults.resources.string.filter(
+        (item) => !(item.$ && item.$.name === "hot_updater_fingerprint_hash"),
+      );
+
+      // Add the new hot_updater_fingerprint_hash entry
+      cfg.modResults.resources.string.push({
+        $: {
+          name: "hot_updater_fingerprint_hash",
+          moduleConfig: "true",
+        } as {
+          name: string;
+          moduleConfig: string;
+        },
+        _: android.hash,
+      });
+
+      return cfg;
+    });
+
+    return modifiedConfig;
+  };
+
+/**
+ * Main plugin that combines both native code (run once) and config (run always)
+ */
+const withHotUpdater = (config: ExpoConfig, props: HotUpdaterConfig = {}) => {
+  // Apply plugins in order
+  return withPlugins(config, [
+    // Native code modifications - wrapped with createRunOncePlugin
+    createRunOncePlugin(
+      withHotUpdaterNativeCode,
+      `${pkg.name}-native`,
+      pkg.version,
+    ),
+    // Configuration updates - runs every time
+    withHotUpdaterConfigAsync(props),
+  ]);
+};
+
+// Export the main plugin
+export default withHotUpdater;

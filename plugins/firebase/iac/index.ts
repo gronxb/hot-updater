@@ -20,7 +20,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("%%source%%"),
+  source: getUpdateSource("%%source%%", {
+    updateStrategy: "fingerprint", // or "appVersion"
+  }),
 })(App);`;
 
 const REGIONS = [
@@ -75,8 +77,27 @@ interface FirebaseFunction {
 
 type FirebaseIndex = {
   collectionGroup: string;
-  queryScope: string;
-  fields: { fieldPath: string; order: string }[];
+  queryScope: "COLLECTION" | "COLLECTION_GROUP";
+  fields: {
+    fieldPath: string;
+    order?: "ASCENDING" | "DESCENDING";
+    arrayConfig?: "CONTAINS";
+    vectorConfig?: {
+      dimension: number;
+      flat: Record<string, never>;
+    };
+  }[];
+};
+
+type FieldOverride = {
+  collectionGroup: string;
+  fieldPath: string;
+  indexes: Array<{
+    queryScope: "COLLECTION" | "COLLECTION_GROUP";
+    order?: "ASCENDING" | "DESCENDING";
+    arrayConfig?: "CONTAINS";
+  }>;
+  ttl?: boolean;
 };
 
 function normalizeIndex(index: FirebaseIndex) {
@@ -88,8 +109,11 @@ function normalizeIndex(index: FirebaseIndex) {
 }
 
 const mergeIndexes = (
-  originalIndexes: { indexes: FirebaseIndex[]; fieldOverrides: any[] },
-  newIndexes: { indexes: FirebaseIndex[]; fieldOverrides: any[] },
+  originalIndexes: {
+    indexes: FirebaseIndex[];
+    fieldOverrides: FieldOverride[];
+  },
+  newIndexes: { indexes: FirebaseIndex[]; fieldOverrides: FieldOverride[] },
 ) => {
   const mergedIndexes = originalIndexes.indexes.concat(newIndexes.indexes);
   const uniqueIndexes = uniqWith(mergedIndexes, (a, b) =>
@@ -110,10 +134,16 @@ const deployFirestore = async (cwd: string) => {
     shell: true,
   });
 
-  let originalIndexes = [];
+  let originalIndexes: {
+    indexes: FirebaseIndex[];
+    fieldOverrides: FieldOverride[];
+  } = {
+    indexes: [],
+    fieldOverrides: [],
+  };
   try {
     const originalStdout = JSON.parse(original.stdout);
-    originalIndexes = originalStdout ?? [];
+    originalIndexes = originalStdout ?? { indexes: [], fieldOverrides: [] };
   } catch {}
 
   const newIndexes = JSON.parse(

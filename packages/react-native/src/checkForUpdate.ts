@@ -1,12 +1,12 @@
-import type { AppUpdateInfo, GetBundlesArgs } from "@hot-updater/core";
+import type { AppUpdateInfo, UpdateBundleParams } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
 import {
-  HotUpdaterConstants,
   getAppVersion,
   getBundleId,
   getChannel,
+  getFingerprintHash,
   getMinBundleId,
   updateBundle,
 } from "./native";
@@ -55,30 +55,22 @@ export async function checkForUpdate(
     return null;
   }
 
-  const baseArgs = {
-    bundleId: currentBundleId,
-    platform,
-    minBundleId,
-    channel: channel ?? undefined,
-  };
+  const fingerprintHash = getFingerprintHash();
 
-  return fetchUpdateInfo(
-    options.source,
-    HotUpdaterConstants.UPDATE_STRATEGY === "appVersion"
-      ? {
-          _updateStrategy: HotUpdaterConstants.UPDATE_STRATEGY,
-          appVersion: currentAppVersion,
-          ...baseArgs,
-        }
-      : {
-          _updateStrategy: HotUpdaterConstants.UPDATE_STRATEGY,
-          fingerprintHash: HotUpdaterConstants.FINGERPRINT_HASH!,
-          ...baseArgs,
-        },
-    options.requestHeaders,
-    options.onError,
-    options.requestTimeout,
-  ).then((updateInfo) => {
+  return fetchUpdateInfo({
+    source: options.source,
+    params: {
+      bundleId: currentBundleId,
+      appVersion: currentAppVersion,
+      platform,
+      minBundleId,
+      channel,
+      fingerprintHash,
+    },
+    requestHeaders: options.requestHeaders,
+    onError: options.onError,
+    requestTimeout: options.requestTimeout,
+  }).then((updateInfo) => {
     if (!updateInfo) {
       return null;
     }
@@ -96,13 +88,30 @@ export async function checkForUpdate(
   });
 }
 
-export const getUpdateSource = (baseUrl: string) => (args: GetBundlesArgs) => {
-  switch (args._updateStrategy) {
-    case "appVersion":
-      return `${baseUrl}/app-version/${args.platform}/${args.appVersion}/${args.channel}/${args.minBundleId}/${args.bundleId}`;
-    case "fingerprint":
-      return `${baseUrl}/fingerprint/${args.platform}/${args.fingerprintHash}/${args.channel}/${args.minBundleId}/${args.bundleId}`;
-    default:
-      return baseUrl;
-  }
-};
+export interface GetUpdateSourceOptions {
+  /**
+   * The update strategy to use.
+   * @description
+   * - "fingerprint": Use the fingerprint hash to check for updates.
+   * - "appVersion": Use the target app version to check for updates.
+   */
+  updateStrategy: "appVersion" | "fingerprint";
+}
+
+export const getUpdateSource =
+  (baseUrl: string, options: GetUpdateSourceOptions) =>
+  (params: UpdateBundleParams) => {
+    switch (options.updateStrategy) {
+      case "fingerprint": {
+        if (!params.fingerprintHash) {
+          throw new HotUpdaterError("Fingerprint hash is required");
+        }
+        return `${baseUrl}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
+      }
+      case "appVersion": {
+        return `${baseUrl}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
+      }
+      default:
+        return baseUrl;
+    }
+  };

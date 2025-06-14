@@ -53,5 +53,7 @@
 		<false/>
 		<key>HOT_UPDATER_CHANNEL</key>
 		<string>production</string>
+		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
+		<string>847fed697df7147d27815960b323ab6a342faa5e</string>
 	</dict>
 </plist>
