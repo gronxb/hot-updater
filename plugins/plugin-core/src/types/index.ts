@@ -2,6 +2,8 @@ import type { Bundle, Platform } from "@hot-updater/core";
 
 export type { Platform, Bundle } from "@hot-updater/core";
 
+export * from "./utils";
+
 export interface BasePluginArgs {
   cwd: string;
 }
@@ -85,7 +87,7 @@ export interface NativeBuildArgs {
     /**
      * Android application module name.
      *
-     * If not specified, whole gradle tasks which match the task names will be executed
+     * @default app
      */
     appModuleName?: string;
   };

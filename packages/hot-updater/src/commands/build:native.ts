@@ -133,7 +133,6 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
-          await new Promise((r) => setTimeout(r, 3000));
           taskRef.buildResult = await buildPlugin.nativeBuild({
             platform: platform,
             // inject native build function into plugins

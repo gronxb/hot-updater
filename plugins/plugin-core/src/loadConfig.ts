@@ -28,7 +28,7 @@ const defaultConfig: ConfigInput = {
     android: {
       aab: true,
       variant: "Release",
-      appModuleName: "",
+      appModuleName: "app",
     },
   },
   build: () => {
