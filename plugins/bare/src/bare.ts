@@ -143,7 +143,6 @@ export const bare =
       enableHermes,
     } = config;
     return {
-      // TODO not implemented
       nativeBuild: async ({ buildNativeArtifact }) => {
         await buildNativeArtifact();
         return { stdout: null };

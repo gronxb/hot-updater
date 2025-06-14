@@ -130,7 +130,6 @@ export const rnef =
       hermes = true,
     } = config;
     return {
-      // TODO not implemented
       nativeBuild: async ({ buildNativeArtifact }) => {
         await buildNativeArtifact();
         return { stdout: null };
