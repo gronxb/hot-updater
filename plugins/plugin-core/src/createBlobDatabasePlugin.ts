@@ -373,6 +373,26 @@ export const createBlobDatabasePlugin = <TContext = object>({
                 pathsToInvalidate.add(
                   `/${newChannel}/${bundle.platform}/target-app-versions.json`,
                 );
+
+                // Invalidate fingerprint paths for both old and new channels
+                if (bundle.fingerprintHash) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${oldChannel}/*`,
+                  );
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${newChannel}/*`,
+                  );
+                }
+
+                // Invalidate app-version paths for both old and new channels
+                if (bundle.targetAppVersion) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${oldChannel}/*`,
+                  );
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${newChannel}/*`,
+                  );
+                }
               }
 
               if (bundle.fingerprintHash) {
