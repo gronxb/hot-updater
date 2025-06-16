@@ -1173,4 +1173,120 @@ describe("blobDatabase plugin", () => {
     );
     expect(hasAppVersionOrFingerprint).toBe(true);
   });
+
+  it("should invalidate both old and new channel paths when channel is updated", async () => {
+    // Setup
+    const bundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "channel-update-test",
+    );
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Execute - update channel from beta to production
+    await plugin.updateBundle("channel-update-test", {
+      channel: "production",
+    });
+    await plugin.commitBundle();
+
+    // Assert
+    expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
+    const allPaths = cloudfrontInvalidations.flatMap((inv) => inv.paths);
+
+    // Should invalidate both old and new channel paths
+    const oldChannelPath = allPaths.find(
+      (path) => path.includes("beta") && path.includes("update.json"),
+    );
+    const newChannelPath = allPaths.find(
+      (path) => path.includes("production") && path.includes("update.json"),
+    );
+
+    expect(oldChannelPath).toBeDefined();
+    expect(newChannelPath).toBeDefined();
+
+    // Should invalidate both old and new channel target-app-versions paths
+    const oldChannelVersionsPath = allPaths.find(
+      (path) =>
+        path.includes("beta") && path.includes("target-app-versions.json"),
+    );
+    const newChannelVersionsPath = allPaths.find(
+      (path) =>
+        path.includes("production") &&
+        path.includes("target-app-versions.json"),
+    );
+
+    expect(oldChannelVersionsPath).toBeDefined();
+    expect(newChannelVersionsPath).toBeDefined();
+  });
+
+  it("should invalidate both old and new channel fingerprint paths when channel is updated", async () => {
+    // Setup
+    const bundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "fingerprint-channel-update-test",
+    );
+    bundle.fingerprintHash = "fingerprint-hash-123";
+    bundle.targetAppVersion = null;
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Execute - update channel from beta to production
+    await plugin.updateBundle("fingerprint-channel-update-test", {
+      channel: "production",
+    });
+    await plugin.commitBundle();
+
+    // Assert
+    expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
+    const allPaths = cloudfrontInvalidations.flatMap((inv) => inv.paths);
+
+    const expectedOldFingerprintPath = `/api/check-update/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/beta/*`;
+    const expectedNewFingerprintPath = `/api/check-update/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/production/*`;
+
+    expect(allPaths).toContain(expectedOldFingerprintPath);
+    expect(allPaths).toContain(expectedNewFingerprintPath);
+  });
+
+  it("should invalidate both old and new channel app-version paths when channel is updated", async () => {
+    // Setup
+    const bundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "app-version-channel-update-test",
+    );
+    bundle.fingerprintHash = null;
+    bundle.targetAppVersion = "1.0.0";
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Execute - update channel from beta to production
+    await plugin.updateBundle("app-version-channel-update-test", {
+      channel: "production",
+    });
+    await plugin.commitBundle();
+
+    // Assert
+    expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
+    const allPaths = cloudfrontInvalidations.flatMap((inv) => inv.paths);
+
+    const expectedOldAppVersionPath = `/api/check-update/app-version/${bundle.platform}/${bundle.targetAppVersion}/beta/*`;
+    const expectedNewAppVersionPath = `/api/check-update/app-version/${bundle.platform}/${bundle.targetAppVersion}/production/*`;
+
+    expect(allPaths).toContain(expectedOldAppVersionPath);
+    expect(allPaths).toContain(expectedNewAppVersionPath);
+  });
 });
