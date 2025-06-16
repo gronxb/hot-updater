@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.19.4
+
+### Patch Changes
+
+- 0ddc955: fix(aws): cloudfront invalidate when update channel
+  - @hot-updater/core@0.19.4
+
 ## 0.19.3
 
 ### Patch Changes
