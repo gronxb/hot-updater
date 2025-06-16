@@ -1,5 +1,13 @@
 # @hot-updater/mock
 
+## 0.19.4
+
+### Patch Changes
+
+- Updated dependencies [0ddc955]
+  - @hot-updater/plugin-core@0.19.4
+  - @hot-updater/core@0.19.4
+
 ## 0.19.3
 
 ### Patch Changes
