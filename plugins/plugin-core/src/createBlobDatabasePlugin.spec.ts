@@ -1173,4 +1173,54 @@ describe("blobDatabase plugin", () => {
     );
     expect(hasAppVersionOrFingerprint).toBe(true);
   });
+
+  it("should invalidate both old and new channel paths when channel is updated", async () => {
+    // Setup
+    const bundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "channel-update-test",
+    );
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Execute - update channel from beta to production
+    await plugin.updateBundle("channel-update-test", {
+      channel: "production",
+    });
+    await plugin.commitBundle();
+
+    // Assert
+    expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
+    const allPaths = cloudfrontInvalidations.flatMap((inv) => inv.paths);
+
+    // Should invalidate both old and new channel paths
+    const oldChannelPath = allPaths.find(
+      (path) => path.includes("beta") && path.includes("update.json"),
+    );
+    const newChannelPath = allPaths.find(
+      (path) => path.includes("production") && path.includes("update.json"),
+    );
+
+    expect(oldChannelPath).toBeDefined();
+    expect(newChannelPath).toBeDefined();
+
+    // Should invalidate both old and new channel target-app-versions paths
+    const oldChannelVersionsPath = allPaths.find(
+      (path) =>
+        path.includes("beta") && path.includes("target-app-versions.json"),
+    );
+    const newChannelVersionsPath = allPaths.find(
+      (path) =>
+        path.includes("production") &&
+        path.includes("target-app-versions.json"),
+    );
+
+    expect(oldChannelVersionsPath).toBeDefined();
+    expect(newChannelVersionsPath).toBeDefined();
+  });
 });

@@ -362,6 +362,19 @@ export const createBlobDatabasePlugin = <TContext = object>({
               // Add paths for CloudFront invalidation
               pathsToInvalidate.add(`/${oldKey}`);
               pathsToInvalidate.add(`/${newKey}`);
+
+              // Add paths for old and new channel target-app-versions.json
+              const oldChannel = bundle.channel;
+              const newChannel = data.channel;
+              if (oldChannel !== newChannel) {
+                pathsToInvalidate.add(
+                  `/${oldChannel}/${bundle.platform}/target-app-versions.json`,
+                );
+                pathsToInvalidate.add(
+                  `/${newChannel}/${bundle.platform}/target-app-versions.json`,
+                );
+              }
+
               if (bundle.fingerprintHash) {
                 pathsToInvalidate.add(
                   `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
