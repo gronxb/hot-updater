@@ -110,12 +110,12 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     config.build({
       cwd,
     }),
-    config.storage({
-      cwd,
-    }),
-    config.database({
-      cwd,
-    }),
+    // config.storage({
+    //   cwd,
+    // }),
+    // config.database({
+    //   cwd,
+    // }),
   ]);
 
   try {
@@ -280,7 +280,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
         p.outro("🚀 Deployment Successful");
      */
   } catch (e) {
-    await databasePlugin.onUnmount?.();
+    // await databasePlugin.onUnmount?.();
     await fs.promises.rm(artifactPath, { force: true });
     if (e instanceof ExecaError) {
       console.error(e);
@@ -291,7 +291,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     }
     process.exit(1);
   } finally {
-    await databasePlugin.onUnmount?.();
+    // await databasePlugin.onUnmount?.();
     await fs.promises.rm(artifactPath, { force: true });
   }
 };

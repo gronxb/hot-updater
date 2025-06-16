@@ -1,39 +1,58 @@
+import path from "path";
+import * as p from "@clack/prompts";
+import { getCwd } from "@hot-updater/plugin-core";
+import { ExecaError, execa } from "execa";
+
 export type RunGradleArgs = {
   tasks: string[];
-  androidProject: AndroidProject;
-  args: BuildFlags | Flags;
+  moduleName: string;
+  args: { extraParams?: string[]; port?: string | number };
   artifactName: string;
 };
 
-const getCleanedErrorMessage = (error: SubprocessError) => {
-  return error.stderr
+const getCleanedErrorMessage = (error: ExecaError) => {
+  const gradleLinesToRemove = [
+    "FAILURE: Build failed with an exception.",
+    "* Try:",
+    "> Run with --stacktrace option to get the stack trace.",
+    "> Run with --info or --debug option to get more log output.",
+    "> Run with --scan to get full insights.",
+    "> Get more help at [undefined](https://help.gradle.org).",
+    "> Get more help at https://help.gradle.org.",
+    "BUILD FAILED",
+  ];
+  return error.message
     .split("\n")
-    .filter((line) => !gradleLinesToRemove.some((l) => line.includes(l)))
+    .filter(
+      (line: string) => !gradleLinesToRemove.some((l) => line.includes(l)),
+    )
     .join("\n")
     .trim();
 };
 
-const GRADLE_WRAPPER = process.platform.startsWith("win")
-  ? "gradlew.bat"
-  : "./gradlew";
+function getTaskNames(moduleName: string, tasks: string[]): Array<string> {
+  return tasks.map((task) => `${moduleName}:${task}`);
+}
+
+const getGradleWrapper = () =>
+  process.platform.startsWith("win") ? "gradlew.bat" : "./gradlew";
 
 export async function runGradle({
   tasks,
-  androidProject,
   args,
+  moduleName,
   artifactName,
 }: RunGradleArgs) {
-  const humanReadableTasks = tasks.join(", ");
+  p.log.info(`Run Gradle Settings: 
+App Moudle ${moduleName}
+Tasks      ${tasks.join(", ")}
+`);
 
-  logger.log(`Build Settings:
-Variant   ${color.bold(args.variant)}
-Tasks     ${color.bold(humanReadableTasks)}`);
-
-  const loader = spinner({ indicator: "timer" });
-  const message = `Building the app`;
+  const loader = p.spinner({ indicator: "timer" });
+  const message = "Building the app";
 
   loader.start(message);
-  const gradleArgs = getTaskNames(androidProject.appName, tasks);
+  const gradleArgs = getTaskNames(moduleName, tasks);
 
   gradleArgs.push("-x", "lint");
 
@@ -42,57 +61,29 @@ Tasks     ${color.bold(humanReadableTasks)}`);
   }
 
   if ("port" in args && args.port != null) {
-    gradleArgs.push("-PreactNativeDevServerPort=" + args.port);
+    gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
   }
-
-  const gradleWrapper = getGradleWrapper();
 
   try {
-    await execa(gradleWrapper, gradleArgs, { cwd: androidProject.sourceDir });
-    loader.stop(`Built the app`);
-  } catch (error) {
+    await execa(getGradleWrapper(), gradleArgs, {
+      cwd: path.join(getCwd(), "android"),
+    });
+    loader.stop("Built the app");
+  } catch (e) {
     loader.stop("Failed to build the app");
-    const cleanedErrorMessage = getCleanedErrorMessage(
-      error as SubprocessError,
-    );
-
-    if (cleanedErrorMessage) {
-      logger.error(cleanedErrorMessage);
+    if (e instanceof ExecaError) {
+      p.log.error(getCleanedErrorMessage(e));
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
     }
 
-    const hints = getErrorHints((error as SubprocessError).stdout ?? "");
-    throw new RnefError(
-      hints ||
-        "Failed to build the app. See the error above for details from Gradle.",
+    throw new Error(
+      "Faild to build the app. See the error above for details from Gradle.",
     );
   }
 
-  const outputFilePath = await findOutputFile(androidProject, tasks);
-  if (outputFilePath) {
-    saveLocalBuildCache(artifactName, outputFilePath);
-  }
-}
-
-function getErrorHints(output: string) {
-  const signingMessage = output.includes("validateSigningRelease FAILED")
-    ? `Hint: You can run "${color.bold(
-        "rnef create-keystore:android",
-      )}" to create a keystore file.`
-    : "";
-  return signingMessage;
-}
-
-const gradleLinesToRemove = [
-  "FAILURE: Build failed with an exception.",
-  "* Try:",
-  "> Run with --stacktrace option to get the stack trace.",
-  "> Run with --info or --debug option to get more log output.",
-  "> Run with --scan to get full insights.",
-  "> Get more help at [undefined](https://help.gradle.org).",
-  "> Get more help at https://help.gradle.org.",
-  "BUILD FAILED",
-];
-
-function getTaskNames(appName: string, tasks: string[]): Array<string> {
-  return tasks.map((task) => `${appName}:${task}`);
+  // const outputFilePath = await findOutputFile(androidProject, tasks);
+  // if (outputFilePath) {
+  //   saveLocalBuildCache(artifactName, outputFilePath);
+  // }
 }
