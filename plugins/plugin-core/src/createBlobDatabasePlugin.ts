@@ -362,6 +362,39 @@ export const createBlobDatabasePlugin = <TContext = object>({
               // Add paths for CloudFront invalidation
               pathsToInvalidate.add(`/${oldKey}`);
               pathsToInvalidate.add(`/${newKey}`);
+
+              // Add paths for old and new channel target-app-versions.json
+              const oldChannel = bundle.channel;
+              const newChannel = data.channel;
+              if (oldChannel !== newChannel) {
+                pathsToInvalidate.add(
+                  `/${oldChannel}/${bundle.platform}/target-app-versions.json`,
+                );
+                pathsToInvalidate.add(
+                  `/${newChannel}/${bundle.platform}/target-app-versions.json`,
+                );
+
+                // Invalidate fingerprint paths for both old and new channels
+                if (bundle.fingerprintHash) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${oldChannel}/*`,
+                  );
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${newChannel}/*`,
+                  );
+                }
+
+                // Invalidate app-version paths for both old and new channels
+                if (bundle.targetAppVersion) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${oldChannel}/*`,
+                  );
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${newChannel}/*`,
+                  );
+                }
+              }
+
               if (bundle.fingerprintHash) {
                 pathsToInvalidate.add(
                   `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
