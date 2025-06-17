@@ -1,6 +1,4 @@
-import path from "path";
 import * as p from "@clack/prompts";
-import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 
 export type RunGradleArgs = {
@@ -8,6 +6,7 @@ export type RunGradleArgs = {
   moduleName: string;
   args: { extraParams?: string[]; port?: string | number };
   artifactName: string;
+  cwd: string;
 };
 
 const getCleanedErrorMessage = (error: ExecaError) => {
@@ -42,8 +41,10 @@ export async function runGradle({
   args,
   moduleName,
   artifactName,
+  cwd: androidProjectRootPath,
 }: RunGradleArgs) {
   p.log.info(`Run Gradle Settings: 
+Project    ${androidProjectRootPath}
 App Moudle ${moduleName}
 Tasks      ${tasks.join(", ")}
 `);
@@ -66,7 +67,7 @@ Tasks      ${tasks.join(", ")}
 
   try {
     await execa(getGradleWrapper(), gradleArgs, {
-      cwd: path.join(getCwd(), "android"),
+      cwd: androidProjectRootPath,
     });
     loader.stop("Built the app");
   } catch (e) {
