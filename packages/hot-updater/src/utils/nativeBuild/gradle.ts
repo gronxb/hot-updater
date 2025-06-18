@@ -8,7 +8,6 @@ export type RunGradleArgs = {
   tasks: string[];
   appModuleName: string;
   args: { extraParams?: string[]; port?: string | number };
-  artifactName: string;
   androidProjectPath: string;
 };
 
@@ -84,9 +83,8 @@ Tasks      ${tasks.join(", ")}
     moduleName: appModuleName,
     tasks,
   });
-  // if (outputFilePath) {
-  //   saveLocalBuildCache(artifactName, outputFilePath);
-  // }
+
+  p.log.success(`Output file: ${outputFilePath}`);
 }
 
 async function findOutputFile({
@@ -123,7 +121,6 @@ async function findOutputFile({
     buildDirectory,
     variant,
   });
-  p.log.info(`Output file: ${outputPath}`);
   return outputPath ?? null;
 }
 

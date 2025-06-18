@@ -1,5 +1,4 @@
 import fs from "fs";
-import { getLatestGitCommit } from "@/utils/git";
 import * as p from "@clack/prompts";
 import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 
@@ -24,11 +23,11 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
   const cwd = getCwd();
 
-  const gitCommit = await getLatestGitCommit();
-  const [gitCommitHash, gitMessage] = [
-    gitCommit?.id() ?? null,
-    gitCommit?.summary() ?? null,
-  ];
+  // const gitCommit = await getLatestGitCommit();
+  // const [gitCommitHash, gitMessage] = [
+  //   gitCommit?.id() ?? null,
+  //   gitCommit?.summary() ?? null,
+  // ];
 
   const platform =
     options.platform ??
@@ -96,7 +95,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     }
   }
 
-  const nativeBuildConfig = config.nativeBuild;
+  // const nativeBuildConfig = config.nativeBuild;
 
   const outputPath = options.outputPath ?? path.join(cwd, "nativebuild"); // TODO any suggestion?
 
@@ -106,7 +105,8 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
   const artifactPath = path.join(normalizeOutputPath, platform);
 
-  const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
+  // TODO: store and upload in your mind
+  const [buildPlugin /* storagePlugin, databasePlugin */] = await Promise.all([
     config.build({
       cwd,
     }),
