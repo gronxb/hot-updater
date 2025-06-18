@@ -182,17 +182,17 @@ importers:
         specifier: 0.78.2
         version: 0.78.2
       '@rnef/cli':
-        specifier: ^0.7.6
-        version: 0.7.24(typescript@5.0.4)
+        specifier: ^0.7.25
+        version: 0.7.25(typescript@5.0.4)
       '@rnef/platform-android':
-        specifier: ^0.7.6
-        version: 0.7.24
+        specifier: ^0.7.25
+        version: 0.7.25
       '@rnef/platform-ios':
-        specifier: ^0.7.6
-        version: 0.7.24(typescript@5.0.4)
+        specifier: ^0.7.25
+        version: 0.7.25(typescript@5.0.4)
       '@rnef/plugin-repack':
-        specifier: ^0.7.6
-        version: 0.7.24(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))))(@rspack/core@1.3.7(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)
+        specifier: ^0.7.25
+        version: 0.7.25(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))))(@rspack/core@1.3.7(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)
       '@rspack/core':
         specifier: ^1.2.8
         version: 1.3.7(@swc/helpers@0.5.17)
@@ -236,8 +236,8 @@ importers:
         specifier: 19.0.0
         version: 19.0.0(react@19.0.0)
       repack-plugin-sentry:
-        specifier: ^0.1.3
-        version: 0.1.3(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))))
+        specifier: ^0.1.4
+        version: 0.1.4(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))))(@rspack/core@1.3.7(@swc/helpers@0.5.17))
       typescript:
         specifier: 5.0.4
         version: 5.0.4
@@ -5445,34 +5445,34 @@ packages:
     resolution: {integrity: sha512-O3rHJzAQKamUz1fvE0Qaw0xSFqsA/yafi2iqeE0pvdFtCO1viYx8QL6f3Ln/aCCTLxs68SLf0KPM9eSeM8yBnA==}
     engines: {node: '>=14.0.0'}
 
-  '@rnef/cli@0.7.24':
-    resolution: {integrity: sha512-sNtzy+h6tBz9SY1E0ITvH9GU+HvG2kLtn8fAdB6p1HMO4Ks0uNX1pJCUgqiC+tXA5+aDMvscaduB4ek7BVH2Kg==}
+  '@rnef/cli@0.7.25':
+    resolution: {integrity: sha512-0Nn/3Nph9Jftths10yYzD1JUKC1yZhBWmDHiArPYwMuwhaN23j07gbe/4UWHfBHeC4aavcR5PVISJvyx+kwVqg==}
     hasBin: true
 
-  '@rnef/config@0.7.24':
-    resolution: {integrity: sha512-pqqLRH9ZTou6AQRdvjmqoQk9dNO8JpYXm5u82tUH61lApfsAufw0022q/1jjcZW/b2GNLZzCsqpZkMmw2yFQRg==}
+  '@rnef/config@0.7.25':
+    resolution: {integrity: sha512-d+urW6aGoqofYVCBuiUSJaAi1nchnXMNPA5xI9R3w6KMgYB3PdTO5jIPhJ5PsFqgo7GQ++d1W2Oit1yVn8/VrA==}
 
-  '@rnef/platform-android@0.7.24':
-    resolution: {integrity: sha512-bxUI1y9tNDx0SsJjo9eP8SyyRO1pK/2bpq4FtUK6kVYVentb3KkByImyj/e354MX2ie75O3vou5XsQJxKm6k/w==}
+  '@rnef/platform-android@0.7.25':
+    resolution: {integrity: sha512-Pj1+HJZkGO/RAjTYpo0acNYInSLia4xM2ip3AQoA0SbCH0yncCffKeVADXH9y3BvaaZJVFE6KUo/nAmfikxChw==}
 
-  '@rnef/platform-apple-helpers@0.7.24':
-    resolution: {integrity: sha512-FruXV2dBwb+MPLXYC4YVZeVGq88Lqa1Trn6pZxhVE1ZEmD3FvzH8KUmwUyrDc3wHbjKnACvlOM1gdR4KtSm4kQ==}
+  '@rnef/platform-apple-helpers@0.7.25':
+    resolution: {integrity: sha512-NzK6o6og3XMZ1Lz/0p6AeLh4AhCPm2R4lwpm4qZJ1zPoMjJTaNLcXsnJb9/nyiFCU0Q2BbQQSINp5lvANrlOsw==}
 
-  '@rnef/platform-ios@0.7.24':
-    resolution: {integrity: sha512-C3QNvqqczAUSOrhx2rOHGK0uCHWLZjEFWWNWZjwMZmo55Nb8lSaOoqLdt9tzS2p0eAsbmAs0/qn6rw0oAPA6lw==}
+  '@rnef/platform-ios@0.7.25':
+    resolution: {integrity: sha512-MJ966+YVLWJHeKP7qeBbq5Hzx6Smy8o055rPMf4IbRQ07yo6LLd05Lwtml5mpcCEEnE3TMmk+L4IrvPKE5pRPQ==}
 
-  '@rnef/plugin-repack@0.7.24':
-    resolution: {integrity: sha512-x8RxrYGCT0ioHJG829DywPEzows0YLG5UuuhyMetRWL9wOG0/9LlyusVd9KFP1zWcfn5uefuIJlD5154STxV6w==}
+  '@rnef/plugin-repack@0.7.25':
+    resolution: {integrity: sha512-r9uqYvX8GuBV9JxsfU4y/hciGGLYkGM/LVkPjdcJOso3BuG1IpyI5O/uL8c8SPIUmhcCucD9NJ8soHlxS25BTg==}
     peerDependencies:
       '@callstack/repack': ^5.0.3
       '@rspack/core': ^1.2.8
       '@swc/helpers': ^0.5.15
 
-  '@rnef/provider-github@0.7.24':
-    resolution: {integrity: sha512-xOxVA5k6VXpct2aOrALAH51d3iTW4V/VPyEixJ4UF5EzseXkG70H0gLMpjg4xLKzWBU4RqmwrTDwzfe40++mag==}
+  '@rnef/provider-github@0.7.25':
+    resolution: {integrity: sha512-iLJ2W5ToT7ja2vxV70H89WbQCWlDd5RCLOjG9bSWDquo7/XZR+SQTcloN2uQ5qBN9cTMUwy1RTTiMzdF6MM2Sg==}
 
-  '@rnef/tools@0.7.24':
-    resolution: {integrity: sha512-WcgI/iELQCHphOEaWJ8ndN+xdTLdsvXJOpfL1xidWfqOaATsO/OxyejZEezPyogAm3zSB95dCyxFq5+TLsPdBQ==}
+  '@rnef/tools@0.7.25':
+    resolution: {integrity: sha512-eRjq4A/wWjmRXv0JvNp1GfnkWLVetfttI2yzEL3vdeRdamH2dOfXk1LSMobd3iV5uv7WlUig9Yd40/UWoj6O5A==}
 
   '@rnx-kit/chromium-edge-launcher@1.0.0':
     resolution: {integrity: sha512-lzD84av1ZQhYUS+jsGqJiCMaJO2dn9u+RTT9n9q6D3SaKVwWqv+7AoRKqBu19bkwyE+iFRl1ymr40QS90jVFYg==}
@@ -13758,10 +13758,11 @@ packages:
   remove-trailing-slash@0.1.1:
     resolution: {integrity: sha512-o4S4Qh6L2jpnCy83ysZDau+VORNvnFw07CKSAymkd6ICNVEPisMyzlc00KlvvicsxKck94SEwhDnMNdICzO+tA==}
 
-  repack-plugin-sentry@0.1.3:
-    resolution: {integrity: sha512-QDNKozWTppCNd1tdvOgsxrsr3TRumW3bKWUvwT15brb+GKsF3r0kWXpJeohwQGGsLprVXvEDsFP69assDs/hdg==}
+  repack-plugin-sentry@0.1.4:
+    resolution: {integrity: sha512-LqUTspp9VVuOWXTUv23J1eZ2waVFHaSIuV8IHS3acSr8aY0joJVQ30jl512kE8TsJiqHZeoHnm+EaoLaP64rrg==}
     peerDependencies:
       '@callstack/repack': '*'
+      '@rspack/core': '*'
 
   repeat-string@1.6.1:
     resolution: {integrity: sha512-PV0dzCYDNfRi1jCDbJzpW7jNNDRuCOG/jI5ctQcGKt/clZD+YcPS3yIlWuTJMmESC8aevCFmWJy5wjAFgNqN6w==}
@@ -23781,11 +23782,11 @@ snapshots:
 
   '@remix-run/router@1.23.0': {}
 
-  '@rnef/cli@0.7.24(typescript@5.0.4)':
+  '@rnef/cli@0.7.25(typescript@5.0.4)':
     dependencies:
       '@react-native-community/cli-config': 18.0.0(typescript@5.0.4)
-      '@rnef/config': 0.7.24
-      '@rnef/tools': 0.7.24
+      '@rnef/config': 0.7.25
+      '@rnef/tools': 0.7.25
       adm-zip: 0.5.16
       commander: 12.1.0
       tar: 7.4.3
@@ -23794,30 +23795,30 @@ snapshots:
       - supports-color
       - typescript
 
-  '@rnef/config@0.7.24':
+  '@rnef/config@0.7.25':
     dependencies:
       '@babel/code-frame': 7.27.1
-      '@rnef/provider-github': 0.7.24
-      '@rnef/tools': 0.7.24
+      '@rnef/provider-github': 0.7.25
+      '@rnef/tools': 0.7.25
       joi: 17.13.3
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
 
-  '@rnef/platform-android@0.7.24':
+  '@rnef/platform-android@0.7.25':
     dependencies:
       '@react-native-community/cli-config-android': 18.0.0
-      '@rnef/tools': 0.7.24
+      '@rnef/tools': 0.7.25
       adm-zip: 0.5.16
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
 
-  '@rnef/platform-apple-helpers@0.7.24(typescript@5.0.4)':
+  '@rnef/platform-apple-helpers@0.7.25(typescript@5.0.4)':
     dependencies:
       '@react-native-community/cli-config': 18.0.0(typescript@5.0.4)
       '@react-native-community/cli-config-apple': 18.0.0
-      '@rnef/tools': 0.7.24
+      '@rnef/tools': 0.7.25
       '@types/adm-zip': 0.5.7
       adm-zip: 0.5.16
       fast-glob: 3.3.3
@@ -23827,36 +23828,36 @@ snapshots:
       - supports-color
       - typescript
 
-  '@rnef/platform-ios@0.7.24(typescript@5.0.4)':
+  '@rnef/platform-ios@0.7.25(typescript@5.0.4)':
     dependencies:
       '@react-native-community/cli-config-apple': 18.0.0
       '@react-native-community/cli-types': 18.0.0
-      '@rnef/platform-apple-helpers': 0.7.24(typescript@5.0.4)
-      '@rnef/tools': 0.7.24
+      '@rnef/platform-apple-helpers': 0.7.25(typescript@5.0.4)
+      '@rnef/tools': 0.7.25
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  '@rnef/plugin-repack@0.7.24(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))))(@rspack/core@1.3.7(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)':
+  '@rnef/plugin-repack@0.7.25(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))))(@rspack/core@1.3.7(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)':
     dependencies:
       '@callstack/repack': 5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17)))
-      '@rnef/tools': 0.7.24
+      '@rnef/tools': 0.7.25
       '@rspack/core': 1.3.7(@swc/helpers@0.5.17)
       '@swc/helpers': 0.5.17
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
 
-  '@rnef/provider-github@0.7.24':
+  '@rnef/provider-github@0.7.25':
     dependencies:
-      '@rnef/tools': 0.7.24
+      '@rnef/tools': 0.7.25
       ts-regex-builder: 1.8.2
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
 
-  '@rnef/tools@0.7.24':
+  '@rnef/tools@0.7.25':
     dependencies:
       '@clack/prompts': 0.10.0
       '@expo/fingerprint': 0.11.11
@@ -35918,9 +35919,10 @@ snapshots:
 
   remove-trailing-slash@0.1.1: {}
 
-  repack-plugin-sentry@0.1.3(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17)))):
+  repack-plugin-sentry@0.1.4(@callstack/repack@5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17))))(@rspack/core@1.3.7(@swc/helpers@0.5.17)):
     dependencies:
       '@callstack/repack': 5.1.2(@babel/core@7.26.0)(@rspack/core@1.3.7(@swc/helpers@0.5.17))(react-native@0.78.2(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.0.0))(webpack@5.91.0(@swc/core@1.7.42(@swc/helpers@0.5.17)))
+      '@rspack/core': 1.3.7(@swc/helpers@0.5.17)
       uuid: 11.1.0
 
   repeat-string@1.6.1: {}
