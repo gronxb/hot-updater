@@ -96,9 +96,6 @@ importers:
       expo-font:
         specifier: ^13.0.4
         version: 13.0.4(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      expo-modules-autolinking:
-        specifier: '*'
-        version: 2.0.8
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
@@ -25885,14 +25882,14 @@ snapshots:
       msw: 2.7.0(@types/node@22.13.5)(typescript@5.8.3)
       vite: 5.4.8(@types/node@22.13.5)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)
 
-  '@vitest/mocker@3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))':
+  '@vitest/mocker@3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@20.16.10)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))':
     dependencies:
       '@vitest/spy': 3.1.4
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
       msw: 2.7.0(@types/node@20.16.10)(typescript@5.8.3)
-      vite: 6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1)
+      vite: 6.1.1(@types/node@20.16.10)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1)
 
   '@vitest/mocker@3.1.4(msw@2.7.0(@types/node@22.13.5)(typescript@5.8.3))(vite@6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))':
     dependencies:
@@ -38018,7 +38015,7 @@ snapshots:
   vitest@3.1.4(@types/debug@4.1.12)(@types/node@20.16.10)(jiti@2.4.2)(jsdom@25.0.1)(lightningcss@1.27.0)(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1):
     dependencies:
       '@vitest/expect': 3.1.4
-      '@vitest/mocker': 3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))
+      '@vitest/mocker': 3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@20.16.10)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))
       '@vitest/pretty-format': 3.1.4
       '@vitest/runner': 3.1.4
       '@vitest/snapshot': 3.1.4
