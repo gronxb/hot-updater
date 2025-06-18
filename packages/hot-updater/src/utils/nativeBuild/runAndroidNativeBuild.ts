@@ -5,26 +5,20 @@ import {
   getCwd,
 } from "@hot-updater/plugin-core";
 import { runGradle } from "./gradle";
-
 export const runAndroidNativeBuild = async ({
   config,
 }: {
   config: RequiredDeep<NativeBuildArgs["android"]>;
 }) => {
-  if(/release/i.test(config.variant)){
-    printWarnIfSingingConfigIsSetToDebug()
-  }
+  const androidProjectPath = path.join(getCwd(), "android");
+
   return runGradle({
     args: {},
     artifactName: "output",
-    moduleName: config.appModuleName,
+    appModuleName: config.appModuleName,
     tasks: config.aab
       ? [`bundle${config.variant}`]
       : [`assemble${config.variant}`],
-    cwd: path.join(getCwd(), "android"),
+    androidProjectPath: androidProjectPath,
   });
 };
-const printWarnIfSingingConfigIsSetToDebug = (variant: string) => {
-  const buildGradlePath = path.join(getCwd(), "android", "app" 
-};
-

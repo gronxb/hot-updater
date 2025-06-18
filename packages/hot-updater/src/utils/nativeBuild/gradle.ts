@@ -1,12 +1,14 @@
+/* highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android/src/lib/commands/runGradle.ts */
+import fs from "fs";
 import * as p from "@clack/prompts";
 import { ExecaError, execa } from "execa";
 
 export type RunGradleArgs = {
   tasks: string[];
-  moduleName: string;
+  appModuleName: string;
   args: { extraParams?: string[]; port?: string | number };
   artifactName: string;
-  cwd: string;
+  androidProjectPath: string;
 };
 
 const getCleanedErrorMessage = (error: ExecaError) => {
@@ -39,17 +41,17 @@ const getGradleWrapper = () =>
 export async function runGradle({
   tasks,
   args,
-  moduleName,
   artifactName,
-  cwd: androidProjectRootPath,
+  androidProjectPath,
+  appModuleName,
 }: RunGradleArgs) {
   p.log.info(`Run Gradle Settings: 
-Project    ${androidProjectRootPath}
-App Moudle ${moduleName}
+Project    ${androidProjectPath}
+App Moudle ${appModuleName}
 Tasks      ${tasks.join(", ")}
 `);
 
-  const gradleArgs = getTaskNames(moduleName, tasks);
+  const gradleArgs = getTaskNames(appModuleName, tasks);
 
   gradleArgs.push("-x", "lint");
 
@@ -63,7 +65,7 @@ Tasks      ${tasks.join(", ")}
 
   try {
     await execa(getGradleWrapper(), gradleArgs, {
-      cwd: androidProjectRootPath,
+      cwd: androidProjectPath,
     });
   } catch (e) {
     if (e instanceof ExecaError) {
@@ -77,8 +79,51 @@ Tasks      ${tasks.join(", ")}
     );
   }
 
-  // const outputFilePath = await findOutputFile(androidProject, tasks);
+  const outputFilePath = await findOutputFile({
+    androidProjectPath,
+    moduleName: appModuleName,
+    tasks,
+  });
   // if (outputFilePath) {
   //   saveLocalBuildCache(artifactName, outputFilePath);
   // }
+}
+
+async function findOutputFile({
+  moduleName,
+  tasks,
+  androidProjectPath,
+}: { moduleName: string; tasks: string[]; androidProjectPath: string }) {
+  const selectedTask = tasks.find(
+    (t) =>
+      t.startsWith("install") ||
+      t.startsWith("assemble") ||
+      t.startsWith("bundle"),
+  );
+  if (!selectedTask) {
+    return false;
+  }
+  // handle if selected task includes build flavour as well, eg. installProductionDebug should create ['production','debug'] array
+  const variantFromSelectedTask = selectedTask
+    ?.replace("install", "")
+    ?.replace("assemble", "")
+    ?.replace("bundle", "")
+    .split(/(?=[A-Z])/);
+
+  // create path to output file, eg. `production/debug`
+  const variantPath = variantFromSelectedTask?.join("/")?.toLowerCase();
+  // create output file name, eg. `production-debug`
+  const variantAppName = variantFromSelectedTask?.join("-")?.toLowerCase();
+  const apkOrBundle = selectedTask?.includes("bundle") ? "bundle" : "apk";
+  const buildDirectory = `${androidProjectPath}/${moduleName}/build/outputs/${apkOrBundle}/${variantPath}`;
+
+  p.log.info(fs.readdirSync(buildDirectory).join(", "));
+  // const outputFile = await getInstallOutputFileName(
+  //   appName,
+  //   variantAppName,
+  //   buildDirectory,
+  //   apkOrBundle === "apk" ? "apk" : "aab",
+  //   device,
+  // );
+  // return outputFile ? `${buildDirectory}/${outputFile}` : undefined;
 }
