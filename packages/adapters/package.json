@@ -1,0 +1,41 @@
+{
+  "name": "@hot-updater/adapters",
+  "version": "0.0.1",
+  "description": "Database and storage adapters for hot-updater",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsdown",
+    "build:dev": "tsdown --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/js": "workspace:*",
+    "@supabase/supabase-js": "^2.49.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "tsdown": "^0.2.0",
+    "vitest": "^1.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "hot-updater",
+    "adapters",
+    "database",
+    "storage"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gronxb/hot-updater"
+  },
+  "license": "MIT"
+}
