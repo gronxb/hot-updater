@@ -14,7 +14,6 @@ export const runAndroidNativeBuild = async ({
 
   return runGradle({
     args: {},
-    artifactName: "output",
     appModuleName: config.appModuleName,
     tasks: config.aab
       ? [`bundle${config.variant}`]

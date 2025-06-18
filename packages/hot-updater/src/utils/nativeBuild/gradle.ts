@@ -1,5 +1,6 @@
 /* highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android/src/lib/commands/runGradle.ts */
 import fs from "fs";
+import path from "path";
 import * as p from "@clack/prompts";
 import { ExecaError, execa } from "execa";
 
@@ -41,7 +42,6 @@ const getGradleWrapper = () =>
 export async function runGradle({
   tasks,
   args,
-  artifactName,
   androidProjectPath,
   appModuleName,
 }: RunGradleArgs) {
@@ -113,17 +113,47 @@ async function findOutputFile({
   // create path to output file, eg. `production/debug`
   const variantPath = variantFromSelectedTask?.join("/")?.toLowerCase();
   // create output file name, eg. `production-debug`
-  const variantAppName = variantFromSelectedTask?.join("-")?.toLowerCase();
-  const apkOrBundle = selectedTask?.includes("bundle") ? "bundle" : "apk";
-  const buildDirectory = `${androidProjectPath}/${moduleName}/build/outputs/${apkOrBundle}/${variantPath}`;
+  const variant = variantFromSelectedTask?.join("-")?.toLowerCase();
+  const isAabOutput = selectedTask?.includes("bundle") === true;
+  const buildDirectory = `${androidProjectPath}/${moduleName}/build/outputs/${isAabOutput ? "bundle" : "apk"}/${variantPath}`;
 
-  p.log.info(fs.readdirSync(buildDirectory).join(", "));
-  // const outputFile = await getInstallOutputFileName(
-  //   appName,
-  //   variantAppName,
-  //   buildDirectory,
-  //   apkOrBundle === "apk" ? "apk" : "aab",
-  //   device,
-  // );
-  // return outputFile ? `${buildDirectory}/${outputFile}` : undefined;
+  const outputPath = await getOutputFilePath({
+    aab: isAabOutput,
+    appModuleName: moduleName,
+    buildDirectory,
+    variant,
+  });
+  p.log.info(`Output file: ${outputPath}`);
+  return outputPath ?? null;
+}
+
+async function getOutputFilePath({
+  aab,
+  appModuleName,
+  buildDirectory,
+  variant,
+}: {
+  appModuleName: string;
+  variant: string;
+  buildDirectory: string;
+  aab: boolean;
+}) {
+  // we don't check abi specific output file yet
+  // check if there is an apk file like app-armeabi-v7a-debug.apk
+  // for (const availableCPU of availableCPUs.concat("universal")) {
+  //   const outputFile = `${appModuleName}-${availableCPU}-${variant}.${apkOrAab}`;
+  //   if (existsSync(`${buildDirectory}/${outputFile}`)) {
+  //     return outputFile;
+  //   }
+  // }
+
+  // check if there is a default file like app-debug.apk
+  const outputFile = `${appModuleName}-${variant}.${aab ? "aab" : "apk"}`;
+  const outputFilePath = path.join(buildDirectory, outputFile);
+  if (fs.existsSync(outputFilePath)) {
+    return outputFilePath;
+  }
+
+  p.log.error(`Failed to find the output file for ${outputFilePath}`);
+  process.exit(1);
 }
