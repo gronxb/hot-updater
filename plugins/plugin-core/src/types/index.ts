@@ -48,7 +48,7 @@ export interface DatabasePluginHooks {
 
 export interface BuildPlugin {
   nativeBuild: (args: {
-    platform: string;
+    platform: Platform;
     buildNativeArtifact: () => Promise<void>;
   }) => Promise<{
     stdout: string | null;

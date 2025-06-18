@@ -49,10 +49,6 @@ App Moudle ${moduleName}
 Tasks      ${tasks.join(", ")}
 `);
 
-  const loader = p.spinner({ indicator: "timer" });
-  const message = "Building the app";
-
-  loader.start(message);
   const gradleArgs = getTaskNames(moduleName, tasks);
 
   gradleArgs.push("-x", "lint");
@@ -69,9 +65,7 @@ Tasks      ${tasks.join(", ")}
     await execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectRootPath,
     });
-    loader.stop("Built the app");
   } catch (e) {
-    loader.stop("Failed to build the app");
     if (e instanceof ExecaError) {
       p.log.error(getCleanedErrorMessage(e));
     } else if (e instanceof Error) {

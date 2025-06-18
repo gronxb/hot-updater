@@ -7,18 +7,14 @@ import { ExecaError, execa } from "execa";
  */
 export const runExpoPrebuild = async ({ platform }: { platform: Platform }) => {
   // Don't install or clean at not
+  const spinner = p.spinner();
   try {
-    const args = [
-      "expo",
-      "prebuild",
-      "--platform",
-      platform,
-      "--no-install",
-      "--clean",
-      String(false),
-    ];
+    spinner.start("Run expo prebuild");
+    const args = ["expo", "prebuild", "--platform", platform, "--no-install"];
+    spinner.stop("Expo prebuild done");
     await execa("npx", args);
   } catch (e) {
+    spinner.stop("Expo prebuild failed");
     if (e instanceof ExecaError) {
       p.log.error(e.stderr || e.stdout || e.message);
     } else if (e instanceof Error) {

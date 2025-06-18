@@ -11,6 +11,9 @@ export const runAndroidNativeBuild = async ({
 }: {
   config: RequiredDeep<NativeBuildArgs["android"]>;
 }) => {
+  if(/release/i.test(config.variant)){
+    printWarnIfSingingConfigIsSetToDebug()
+  }
   return runGradle({
     args: {},
     artifactName: "output",
@@ -21,3 +24,7 @@ export const runAndroidNativeBuild = async ({
     cwd: path.join(getCwd(), "android"),
   });
 };
+const printWarnIfSingingConfigIsSetToDebug = (variant: string) => {
+  const buildGradlePath = path.join(getCwd(), "android", "app" 
+};
+
