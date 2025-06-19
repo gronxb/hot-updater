@@ -3,7 +3,8 @@ import path from "path";
 import * as p from "@clack/prompts";
 import type { FingerprintSource } from "@expo/fingerprint";
 import { createFingerprintAsync } from "@expo/fingerprint";
-import { getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { setFingerprintHash } from "../setFingerprintHash";
 import { processExtraSources } from "./processExtraSources";
 
 export type FingerprintSources = {
@@ -22,6 +23,48 @@ export type FingerprintResult = {
   hash: string;
   sources: FingerprintSource[];
 };
+
+export function isFingerprintEquals(
+  lhs?: FingerprintResult | null,
+  rhs?: FingerprintResult | null,
+): boolean;
+export function isFingerprintEquals(
+  lhs?: {
+    android: FingerprintResult | null;
+    ios: FingerprintResult | null;
+  } | null,
+  rhs?: {
+    android: FingerprintResult | null;
+    ios: FingerprintResult | null;
+  } | null,
+): boolean;
+export function isFingerprintEquals(
+  lhs?: Record<string, any> | null,
+  rhs?: Record<string, any> | null,
+): boolean {
+  if (!lhs || !rhs) return false;
+  if (isFingerprintResultsObject(lhs) && isFingerprintResultsObject(rhs)) {
+    return (
+      lhs.android.hash === rhs.android.hash && lhs.ios.hash === rhs.ios.hash
+    );
+  }
+  if (!isFingerprintResultsObject(lhs) && !isFingerprintResultsObject(rhs)) {
+    return lhs["hash"] === rhs["hash"];
+  }
+
+  return false;
+
+  function isFingerprintResultsObject(
+    result: Record<string, any>,
+  ): result is { android: FingerprintResult; ios: FingerprintResult } {
+    return (
+      typeof result["android"] === "object" &&
+      typeof result["ios"] === "object" &&
+      !!result["android"]?.hash &&
+      !!result["ios"]?.hash
+    );
+  }
+}
 
 /**
  * Calculates the fingerprint of the native parts project of the project.
@@ -83,14 +126,35 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
   });
 };
 
-export const createFingerprintJson = async () => {
+export const createAndInjectFingerprintFiles = async ({
+  platform,
+}: { platform?: Platform } = {}) => {
+  const localFingerprint = await readLocalFingerprint();
   const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
   const newFingerprint = await generateFingerprints();
 
-  await fs.promises.writeFile(
-    FINGERPRINT_FILE_PATH,
-    JSON.stringify(newFingerprint, null, 2),
-  );
+  // replace whole file if and only if platform argument is none or fingerprint file doesn't exist
+  if (!localFingerprint || !platform) {
+    await fs.promises.writeFile(
+      FINGERPRINT_FILE_PATH,
+      JSON.stringify(newFingerprint, null, 2),
+    );
+    await setFingerprintHash("android", newFingerprint.android.hash);
+    await setFingerprintHash("ios", newFingerprint.ios.hash);
+  } else {
+    // respect previous local fingerprint content first and replace the fingerprint of target platform.
+    const nextFingerprints = {
+      android: localFingerprint.android || newFingerprint.android,
+      ios: localFingerprint.ios || newFingerprint.ios,
+      [platform]: newFingerprint[platform],
+    } satisfies Record<Platform, FingerprintResult>;
+
+    await fs.promises.writeFile(
+      FINGERPRINT_FILE_PATH,
+      JSON.stringify(nextFingerprints, null, 2),
+    );
+    await setFingerprintHash(platform, newFingerprint[platform].hash);
+  }
 
   return newFingerprint;
 };

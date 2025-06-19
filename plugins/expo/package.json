@@ -26,7 +26,8 @@
   },
   "dependencies": {
     "@hot-updater/bare": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "@clack/prompts": "catalog:"
   },
   "devDependencies": {
     "@types/node": "^22.8.7",

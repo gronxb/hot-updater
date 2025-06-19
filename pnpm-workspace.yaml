@@ -4,11 +4,14 @@ packages:
   - docs
   - examples/*
 onlyBuiltDependencies:
-  - '@sentry/cli'
-  - '@swc/core'
+  - "@sentry/cli"
+  - "@swc/core"
   - core-js-pure
   - esbuild
   - nx
   - sharp
   - typia
   - workerd
+
+catalog:
+  "@clack/prompts": 0.10.0

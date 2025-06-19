@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@clack/prompts':
+      specifier: 0.10.0
+      version: 0.10.0
+
 importers:
 
   .:
@@ -96,9 +102,6 @@ importers:
       expo-font:
         specifier: ^13.0.4
         version: 13.0.4(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli@19.0.0(typescript@5.8.3))(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      expo-modules-autolinking:
-        specifier: '*'
-        version: 2.0.8
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
@@ -784,7 +787,7 @@ importers:
         specifier: 1.0.0-alpha.24
         version: 1.0.0-alpha.24
       '@clack/prompts':
-        specifier: ^0.10.0
+        specifier: 'catalog:'
         version: 0.10.0
       '@commander-js/extra-typings':
         specifier: ^14.0.0
@@ -979,7 +982,7 @@ importers:
         specifier: 3.772.0
         version: 3.772.0
       '@clack/prompts':
-        specifier: 0.10.0
+        specifier: 'catalog:'
         version: 0.10.0
       '@hot-updater/core':
         specifier: workspace:*
@@ -1044,7 +1047,7 @@ importers:
         version: 4.2.0(encoding@0.1.13)
     devDependencies:
       '@clack/prompts':
-        specifier: 0.10.0
+        specifier: 'catalog:'
         version: 0.10.0
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.8.26
@@ -1097,6 +1100,9 @@ importers:
 
   plugins/expo:
     dependencies:
+      '@clack/prompts':
+        specifier: 'catalog:'
+        version: 0.10.0
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../bare
@@ -1127,7 +1133,7 @@ importers:
         version: 11.6.0
     devDependencies:
       '@clack/prompts':
-        specifier: ^0.10.0
+        specifier: 'catalog:'
         version: 0.10.0
       '@hot-updater/js':
         specifier: workspace:*
@@ -1370,7 +1376,7 @@ importers:
         version: 2.47.10
     devDependencies:
       '@clack/prompts':
-        specifier: 0.10.0
+        specifier: 'catalog:'
         version: 0.10.0
       '@hot-updater/postgres':
         specifier: workspace:*

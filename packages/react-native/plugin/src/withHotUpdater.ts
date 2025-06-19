@@ -7,18 +7,19 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import { createFingerprintJson } from "hot-updater";
+import { createAndInjectFingerprintFiles } from "hot-updater";
 import pkg from "../../package.json";
 
-let fingerprintCache: Awaited<ReturnType<typeof createFingerprintJson>> | null =
-  null;
+let fingerprintCache: Awaited<
+  ReturnType<typeof createAndInjectFingerprintFiles>
+> | null = null;
 
 const getFingerprint = async () => {
   if (fingerprintCache) {
     return fingerprintCache;
   }
 
-  fingerprintCache = await createFingerprintJson();
+  fingerprintCache = await createAndInjectFingerprintFiles();
   return fingerprintCache;
 };
 
