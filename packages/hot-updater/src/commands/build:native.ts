@@ -5,11 +5,16 @@ import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { getPlatform } from "@/prompts/getPlatform";
 
 import path from "path";
-import { nativeFingerprint } from "@/utils/fingerprint";
+import {
+  createFingerprintJson,
+  isFingerprintEquals,
+  readLocalFingerprint,
+} from "@/utils/fingerprint";
 import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { ExecaError } from "execa";
+import picocolors from "picocolors";
 
 export interface NativeBuildOptions {
   outputPath?: string;
@@ -61,27 +66,35 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
   };
 
   // calculate fingerprint of the current file state in the native platform directory
-  {
+
+  if (config.updateStrategy === "fingerprint") {
     const s = p.spinner();
-    s.start(`Fingerprinting (${platform})`);
-    const fingerprint = await nativeFingerprint(cwd, {
-      platform,
-      ...config.fingerprint,
-    });
-
-    target.fingerprintHash = fingerprint.hash;
-    s.stop(`Fingerprint(${platform}): ${fingerprint.hash}`);
-
-    if (!target.fingerprintHash) {
-      p.log.error(`Failed to calculate fingerprint of ${platform}`);
-      return;
+    const localFingerprint = await readLocalFingerprint();
+    if (!localFingerprint) {
+      p.log.warn(
+        "fingerprint.json not found. Building native will generate it.",
+      );
     }
-  }
+    s.start(`Fingerprinting (${platform})`);
 
-  // get native app version
-  {
+    // generate fingerprint.json automatically
+    const generatedFingerprint = await createFingerprintJson();
+
+    s.stop(`Fingerprint(${platform}): ${generatedFingerprint[platform].hash}`);
+
+    if (
+      localFingerprint &&
+      !isFingerprintEquals(
+        localFingerprint[platform],
+        generatedFingerprint[platform],
+      )
+    ) {
+      p.log.info(`${picocolors.blue("fingerprint.json")} has changed.`);
+    }
+    target.fingerprintHash = generatedFingerprint[platform].hash;
+  } else if (config.updateStrategy === "appVersion") {
     const s = p.spinner();
-    s.start(`Get native pap version (${platform})`);
+    s.start(`Get native app version (${platform})`);
 
     const appVersion = await getNativeAppVersion(platform);
 
