@@ -12,6 +12,7 @@ import {
 } from "@/utils/fingerprint";
 import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
 import { printBanner } from "@/utils/printBanner";
+import { setFingerprintHash } from "@/utils/setFingerprintHash";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { ExecaError } from "execa";
 import picocolors from "picocolors";
@@ -69,29 +70,26 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
   if (config.updateStrategy === "fingerprint") {
     const s = p.spinner();
-    const localFingerprint = await readLocalFingerprint();
+    const localFingerprint = (await readLocalFingerprint())?.[platform];
     if (!localFingerprint) {
       p.log.warn(
-        "fingerprint.json not found. Building native will generate it.",
+        `Resolving fingerprint for ${platform} failed. Building native will generate it.`,
       );
     }
     s.start(`Fingerprinting (${platform})`);
 
     // generate fingerprint.json automatically
-    const generatedFingerprint = await createFingerprintJson();
+    const generatedFingerprint = (await createFingerprintJson())[platform];
+    await setFingerprintHash(platform, generatedFingerprint.hash);
 
-    s.stop(`Fingerprint(${platform}): ${generatedFingerprint[platform].hash}`);
+    s.stop(`Fingerprint(${platform}): ${generatedFingerprint}`);
 
-    if (
-      localFingerprint &&
-      !isFingerprintEquals(
-        localFingerprint[platform],
-        generatedFingerprint[platform],
-      )
-    ) {
-      p.log.info(`${picocolors.blue("fingerprint.json")} has changed.`);
+    if (!isFingerprintEquals(localFingerprint, generatedFingerprint)) {
+      p.log.info(
+        `${picocolors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
+      );
     }
-    target.fingerprintHash = generatedFingerprint[platform].hash;
+    target.fingerprintHash = generatedFingerprint.hash;
   } else if (config.updateStrategy === "appVersion") {
     const s = p.spinner();
     s.start(`Get native app version (${platform})`);
