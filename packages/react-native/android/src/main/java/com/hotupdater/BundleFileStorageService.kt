@@ -100,6 +100,7 @@ class BundleFileStorageService(
             bundleStoreDir.mkdirs()
         }
 
+        val previousBundleId = getBundleURL()?.let { File(it).parentFile?.name }        
         val finalBundleDir = File(bundleStoreDir, bundleId)
         if (finalBundleDir.exists()) {
             Log.d("BundleStorage", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
@@ -108,7 +109,7 @@ class BundleFileStorageService(
                 // Update last modified time and set the cached bundle URL
                 finalBundleDir.setLastModified(System.currentTimeMillis())
                 setBundleURL(existingIndexFile.absolutePath)
-                cleanupOldBundles(bundleStoreDir)
+                cleanupOldBundles(bundleStoreDir, Pair(previousBundleId, bundleId))
                 return true
             } else {
                 // If index.android.bundle is missing, delete and re-download
@@ -203,7 +204,7 @@ class BundleFileStorageService(
                     tempDir.deleteRecursively()
 
                     // 10) Remove old bundles
-                    cleanupOldBundles(bundleStoreDir)
+                    cleanupOldBundles(bundleStoreDir, Pair(previousBundleId, bundleId))
 
                     Log.d("BundleStorage", "Downloaded and activated bundle successfully.")
                     return@withContext true
@@ -213,18 +214,21 @@ class BundleFileStorageService(
     }
 
     /**
-     * Removes older bundles and any leftover .tmp directories
+     * Removes old bundles except for the specified bundle IDs, and any leftover .tmp directories
      */
-    private fun cleanupOldBundles(bundleStoreDir: File) {
+    private fun cleanupOldBundles(bundleStoreDir: File, bundlesToKeep: Pair<String?, String>) {
         // List only directories that are not .tmp
         val bundles = bundleStoreDir.listFiles { file -> file.isDirectory && !file.name.endsWith(".tmp") }?.toList() ?: return
-        // Sort bundles by last modified (newest first)
-        val sortedBundles = bundles.sortedByDescending { it.lastModified() }
-        if (sortedBundles.size > 1) {
-            // Keep the most recent bundle, delete the rest
-            sortedBundles.drop(1).forEach { oldBundle ->
-                Log.d("BundleStorage", "Removing old bundle: ${oldBundle.name}")
-                oldBundle.deleteRecursively()
+        
+        // Keep only the specified bundle IDs
+        val bundleIdsToKeep = setOfNotNull(bundlesToKeep.first, bundlesToKeep.second)
+        
+        bundles.forEach { bundle ->
+            if (bundle.name !in bundleIdsToKeep) {
+                Log.d("BundleStorage", "Removing old bundle: ${bundle.name}")
+                bundle.deleteRecursively()
+            } else {
+                Log.d("BundleStorage", "Keeping bundle: ${bundle.name}")
             }
         }
 
