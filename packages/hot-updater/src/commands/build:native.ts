@@ -6,13 +6,12 @@ import { getPlatform } from "@/prompts/getPlatform";
 
 import path from "path";
 import {
-  createFingerprintJson,
+  createAndInjectFingerprintFiles,
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
 import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
 import { printBanner } from "@/utils/printBanner";
-import { setFingerprintHash } from "@/utils/setFingerprintHash";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { ExecaError } from "execa";
 import picocolors from "picocolors";
@@ -79,8 +78,9 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     s.start(`Fingerprinting (${platform})`);
 
     // generate fingerprint.json automatically
-    const generatedFingerprint = (await createFingerprintJson())[platform];
-    await setFingerprintHash(platform, generatedFingerprint.hash);
+    const generatedFingerprint = (await createAndInjectFingerprintFiles())[
+      platform
+    ];
 
     s.stop(`Fingerprint(${platform}): ${generatedFingerprint}`);
 
