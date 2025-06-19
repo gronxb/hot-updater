@@ -46,7 +46,10 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@supabase/supabase-js": "^2.47.10"
+    "@hot-updater/js": "workspace:*",
+    "@hot-updater/node": "workspace:*",
+    "@supabase/supabase-js": "^2.47.10",
+    "hono": "^4.0.0"
   },
   "devDependencies": {
     "@clack/prompts": "0.10.0",

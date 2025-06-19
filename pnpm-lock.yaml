@@ -660,34 +660,6 @@ importers:
         specifier: ^4.5.0
         version: 4.14.3(@cloudflare/workers-types@4.20250507.0)
 
-  packages/adapters:
-    dependencies:
-      '@hot-updater/core':
-        specifier: workspace:*
-        version: link:../core
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../../plugins/js
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
-      '@supabase/supabase-js':
-        specifier: ^2.49.4
-        version: 2.50.0
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.16.10
-      tsdown:
-        specifier: ^0.2.0
-        version: 0.2.17(@swc/core@1.7.42(@swc/helpers@0.5.17))(oxc-transform@0.72.0)(rollup@4.34.9)(typescript@5.8.3)
-      typescript:
-        specifier: ^5.0.0
-        version: 5.8.3
-      vitest:
-        specifier: ^1.0.0
-        version: 1.6.1(@types/node@20.16.10)(jsdom@25.0.1)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)
-
   packages/console:
     dependencies:
       '@hot-updater/core':
@@ -927,6 +899,34 @@ importers:
         specifier: ^1.0.2
         version: 1.0.2
 
+  packages/node:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
+      '@hot-updater/js':
+        specifier: workspace:*
+        version: link:../../plugins/js
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
+      hono:
+        specifier: ^4.0.0
+        version: 4.6.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.16.10
+      tsdown:
+        specifier: ^0.2.0
+        version: 0.2.17(@swc/core@1.7.42(@swc/helpers@0.5.17))(oxc-transform@0.72.0)(rollup@4.34.9)(typescript@5.8.3)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.8.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@20.16.10)(jsdom@25.0.1)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)
+
   packages/react-native:
     dependencies:
       '@hot-updater/core':
@@ -1061,6 +1061,9 @@ importers:
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
+      '@hot-updater/node':
+        specifier: workspace:*
+        version: link:../../packages/node
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -1196,6 +1199,9 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
     devDependencies:
       '@types/node':
         specifier: ^20.9.4
@@ -1387,12 +1393,21 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@hot-updater/js':
+        specifier: workspace:*
+        version: link:../js
+      '@hot-updater/node':
+        specifier: workspace:*
+        version: link:../../packages/node
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
       '@supabase/supabase-js':
         specifier: ^2.47.10
         version: 2.47.10
+      hono:
+        specifier: ^4.0.0
+        version: 4.6.3
     devDependencies:
       '@clack/prompts':
         specifier: 0.10.0
@@ -6582,9 +6597,6 @@ packages:
   '@supabase/auth-js@2.67.3':
     resolution: {integrity: sha512-NJDaW8yXs49xMvWVOkSIr8j46jf+tYHV0wHhrwOaLLMZSFO4g6kKAf+MfzQ2RaD06OCUkUHIzctLAxjTgEVpzw==}
 
-  '@supabase/auth-js@2.70.0':
-    resolution: {integrity: sha512-BaAK/tOAZFJtzF1sE3gJ2FwTjLf4ky3PSvcvLGEgEmO4BSBkwWKu8l67rLLIBZPDnCyV7Owk2uPyKHa0kj5QGg==}
-
   '@supabase/functions-js@2.4.4':
     resolution: {integrity: sha512-WL2p6r4AXNGwop7iwvul2BvOtuJ1YQy8EbOd0dhG1oN1q8el/BIRSFCFnWAMM/vJJlHWLi4ad22sKbKr9mvjoA==}
 
@@ -6595,12 +6607,6 @@ packages:
   '@supabase/postgrest-js@1.17.7':
     resolution: {integrity: sha512-aOzOYaTADm/dVTNksyqv9KsbhVa1gHz1Hoxb2ZEF2Ed9H7qlWOfptECQWmkEmrrFjtNaiPrgiSaPECvzI/seDA==}
 
-  '@supabase/postgrest-js@1.19.4':
-    resolution: {integrity: sha512-O4soKqKtZIW3olqmbXXbKugUtByD2jPa8kL2m2c1oozAO11uCcGrRhkZL0kVxjBLrXHE0mdSkFsMj7jDSfyNpw==}
-
-  '@supabase/realtime-js@2.11.10':
-    resolution: {integrity: sha512-SJKVa7EejnuyfImrbzx+HaD9i6T784khuw1zP+MBD7BmJYChegGxYigPzkKX8CK8nGuDntmeSD3fvriaH0EGZA==}
-
   '@supabase/realtime-js@2.11.2':
     resolution: {integrity: sha512-u/XeuL2Y0QEhXSoIPZZwR6wMXgB+RQbJzG9VErA3VghVt7uRfSVsjeqd7m5GhX3JR6dM/WRmLbVR8URpDWG4+w==}
 
@@ -6609,9 +6615,6 @@ packages:
 
   '@supabase/supabase-js@2.47.10':
     resolution: {integrity: sha512-vJfPF820Ho5WILYHfKiBykDQ1SB9odTHrRZ0JxHfuLMC8GRvv21YLkUZQK7/rSVCkLvD6/ZwMWaOAfdUd//guw==}
-
-  '@supabase/supabase-js@2.50.0':
-    resolution: {integrity: sha512-M1Gd5tPaaghYZ9OjeO1iORRqbTWFEz/cF3pPubRnMPzA+A8SiUsXXWDP+DWsASZcjEcVEcVQIAF38i5wrijYOg==}
 
   '@swc-node/core@1.13.3':
     resolution: {integrity: sha512-OGsvXIid2Go21kiNqeTIn79jcaX4l0G93X2rAnas4LFoDyA9wAwVK7xZdm+QsKoMn5Mus2yFLCc4OtX2dD/PWA==}
@@ -6973,9 +6976,6 @@ packages:
 
   '@types/uuid@9.0.8':
     resolution: {integrity: sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA==}
-
-  '@types/ws@8.18.1':
-    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@types/ws@8.5.12':
     resolution: {integrity: sha512-3tPRkv1EtkDpzlgyKyI8pGsGZAGPEaXeu0DOj5DI25Ja91bdAYddYHbADRYVrZMRbfW+1l5YwXVDKohDJNQxkQ==}
@@ -25315,10 +25315,6 @@ snapshots:
     dependencies:
       '@supabase/node-fetch': 2.6.15
 
-  '@supabase/auth-js@2.70.0':
-    dependencies:
-      '@supabase/node-fetch': 2.6.15
-
   '@supabase/functions-js@2.4.4':
     dependencies:
       '@supabase/node-fetch': 2.6.15
@@ -25330,20 +25326,6 @@ snapshots:
   '@supabase/postgrest-js@1.17.7':
     dependencies:
       '@supabase/node-fetch': 2.6.15
-
-  '@supabase/postgrest-js@1.19.4':
-    dependencies:
-      '@supabase/node-fetch': 2.6.15
-
-  '@supabase/realtime-js@2.11.10':
-    dependencies:
-      '@supabase/node-fetch': 2.6.15
-      '@types/phoenix': 1.6.6
-      '@types/ws': 8.18.1
-      ws: 8.18.2
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   '@supabase/realtime-js@2.11.2':
     dependencies:
@@ -25366,18 +25348,6 @@ snapshots:
       '@supabase/node-fetch': 2.6.15
       '@supabase/postgrest-js': 1.17.7
       '@supabase/realtime-js': 2.11.2
-      '@supabase/storage-js': 2.7.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@supabase/supabase-js@2.50.0':
-    dependencies:
-      '@supabase/auth-js': 2.70.0
-      '@supabase/functions-js': 2.4.4
-      '@supabase/node-fetch': 2.6.15
-      '@supabase/postgrest-js': 1.19.4
-      '@supabase/realtime-js': 2.11.10
       '@supabase/storage-js': 2.7.1
     transitivePeerDependencies:
       - bufferutil
@@ -25766,10 +25736,6 @@ snapshots:
   '@types/use-sync-external-store@0.0.6': {}
 
   '@types/uuid@9.0.8': {}
-
-  '@types/ws@8.18.1':
-    dependencies:
-      '@types/node': 22.13.5
 
   '@types/ws@8.5.12':
     dependencies:
@@ -31984,7 +31950,7 @@ snapshots:
       whatwg-encoding: 3.1.1
       whatwg-mimetype: 4.0.0
       whatwg-url: 14.0.0
-      ws: 8.18.1
+      ws: 8.18.2
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - bufferutil
@@ -38948,7 +38914,8 @@ snapshots:
 
   ws@8.18.1: {}
 
-  ws@8.18.2: {}
+  ws@8.18.2:
+    optional: true
 
   xcode@3.0.1:
     dependencies:

@@ -5,14 +5,19 @@ import {
   type UpdateStatus,
   NIL_UUID 
 } from "@hot-updater/core";
-import { filterCompatibleAppVersions } from "@hot-updater/js";
-import type { DatabaseAdapter } from "@hot-updater/plugin-core";
+import { filterCompatibleAppVersions, withJwtSignedUrl } from "@hot-updater/js";
+import type { DatabaseAdapter, StorageAdapter, StorageUri } from "@hot-updater/plugin-core";
 
-export interface D1DatabaseConfig {
+export interface D1NodeDatabaseConfig {
   database: D1Database;
 }
 
-export function d1Database(config: D1DatabaseConfig): DatabaseAdapter {
+export interface R2NodeStorageConfig {
+  bucket: R2Bucket;
+  jwtSecret: string;
+}
+
+export function d1NodeDatabase(config: D1NodeDatabaseConfig): DatabaseAdapter {
   return {
     name: 'd1',
     dependencies: ['r2', 'cloudfront'],
@@ -36,6 +41,25 @@ export function d1Database(config: D1DatabaseConfig): DatabaseAdapter {
       .all<{ target_app_version: string }>();
       
       return result.results.map(row => row.target_app_version);
+    }
+  };
+}
+
+export function r2NodeStorage(config: R2NodeStorageConfig): StorageAdapter {
+  return {
+    name: 'r2',
+    supportedSchemas: ['r2'],
+    
+    async getSignedUrl(storageUri: StorageUri, expiresIn: number): Promise<string> {
+      // For R2, we use JWT signed URLs
+      // Parse the R2 URI to get the key
+      const url = new URL(storageUri);
+      const key = url.pathname.substring(1); // Remove leading slash
+      
+      // Create a temporary URL for JWT signing
+      const baseUrl = `https://${url.host}/${key}`;
+      
+      return withJwtSignedUrl(baseUrl, config.jwtSecret, expiresIn);
     }
   };
 }

@@ -1,7 +1,7 @@
 {
-  "name": "@hot-updater/adapters",
+  "name": "@hot-updater/node",
   "version": "0.0.1",
-  "description": "Database and storage adapters for hot-updater",
+  "description": "Node.js runtime for hot-updater self-hosted solutions",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,8 +15,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/js": "workspace:*",
-    "@supabase/supabase-js": "^2.49.4"
+    "@hot-updater/js": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -29,9 +28,8 @@
   ],
   "keywords": [
     "hot-updater",
-    "adapters",
-    "database",
-    "storage"
+    "node",
+    "self-hosted"
   ],
   "repository": {
     "type": "git",
