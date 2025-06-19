@@ -100,14 +100,15 @@ class BundleFileStorageService(
             bundleStoreDir.mkdirs()
         }
 
-        val currentBundleId = getCachedBundleURL()?.let { cachedUrl ->
-            // Only consider cached bundles, not fallback bundles
-            if (!cachedUrl.startsWith("assets://")) {
-                File(cachedUrl).parentFile?.name
-            } else {
-                null
+        val currentBundleId =
+            getCachedBundleURL()?.let { cachedUrl ->
+                // Only consider cached bundles, not fallback bundles
+                if (!cachedUrl.startsWith("assets://")) {
+                    File(cachedUrl).parentFile?.name
+                } else {
+                    null
+                }
             }
-        }
         val finalBundleDir = File(bundleStoreDir, bundleId)
         if (finalBundleDir.exists()) {
             Log.d("BundleStorage", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
@@ -230,9 +231,11 @@ class BundleFileStorageService(
     ) {
         try {
             // List only directories that are not .tmp
-            val bundles = bundleStoreDir.listFiles { file -> 
-                file.isDirectory && !file.name.endsWith(".tmp") 
-            }?.toList() ?: return
+            val bundles =
+                bundleStoreDir
+                    .listFiles { file ->
+                        file.isDirectory && !file.name.endsWith(".tmp")
+                    }?.toList() ?: return
 
             // Keep only the specified bundle IDs (filter out null values)
             val bundleIdsToKeep = setOfNotNull(currentBundleId, bundleId).filter { it.isNotBlank() }
@@ -255,20 +258,21 @@ class BundleFileStorageService(
             }
 
             // Remove any leftover .tmp directories
-            bundleStoreDir.listFiles { file -> 
-                file.isDirectory && file.name.endsWith(".tmp") 
-            }?.forEach { staleTmp ->
-                try {
-                    Log.d("BundleStorage", "Removing stale tmp directory: ${staleTmp.name}")
-                    if (staleTmp.deleteRecursively()) {
-                        Log.d("BundleStorage", "Successfully removed tmp directory: ${staleTmp.name}")
-                    } else {
-                        Log.w("BundleStorage", "Failed to remove tmp directory: ${staleTmp.name}")
+            bundleStoreDir
+                .listFiles { file ->
+                    file.isDirectory && file.name.endsWith(".tmp")
+                }?.forEach { staleTmp ->
+                    try {
+                        Log.d("BundleStorage", "Removing stale tmp directory: ${staleTmp.name}")
+                        if (staleTmp.deleteRecursively()) {
+                            Log.d("BundleStorage", "Successfully removed tmp directory: ${staleTmp.name}")
+                        } else {
+                            Log.w("BundleStorage", "Failed to remove tmp directory: ${staleTmp.name}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("BundleStorage", "Error removing tmp directory ${staleTmp.name}: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.e("BundleStorage", "Error removing tmp directory ${staleTmp.name}: ${e.message}")
                 }
-            }
         } catch (e: Exception) {
             Log.e("BundleStorage", "Error during cleanup: ${e.message}")
         }
