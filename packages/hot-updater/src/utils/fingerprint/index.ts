@@ -94,7 +94,7 @@ const ensureFingerprintConfig = async () => {
   const config = await loadConfig(null);
   if (config.updateStrategy === "appVersion") {
     p.log.error(
-      "The updateStrategy in hot-updater.config.ts is set to 'uappVersionu'. This command only works with 'fingerprint' strategy.",
+      "The updateStrategy in hot-updater.config.ts is set to 'appVersionu'. This command only works with 'fingerprint' strategy.",
     );
     process.exit(1);
   }
