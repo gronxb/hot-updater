@@ -144,12 +144,12 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
-          await buildPlugin.nativeBuild.prebuild?.({ platform });
+          await buildPlugin.nativeBuild?.prebuild?.({ platform });
           await runNativeBuild({
             platform,
             config: config.nativeBuild,
           });
-          await buildPlugin.nativeBuild.postbuild?.({ platform });
+          await buildPlugin.nativeBuild?.postbuild?.({ platform });
 
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
 
