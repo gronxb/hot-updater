@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.19.5
+
+### Patch Changes
+
+- 40d28c2: bump rnef
+- Updated dependencies [40d28c2]
+  - @hot-updater/console@0.19.5
+  - @hot-updater/core@0.19.5
+  - @hot-updater/aws@0.19.5
+  - @hot-updater/cloudflare@0.19.5
+  - @hot-updater/firebase@0.19.5
+  - @hot-updater/plugin-core@0.19.5
+  - @hot-updater/supabase@0.19.5
+
 ## 0.19.4
 
 ### Patch Changes

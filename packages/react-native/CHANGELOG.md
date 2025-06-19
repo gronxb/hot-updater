@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.19.5
+
+### Patch Changes
+
+- 40d28c2: bump rnef
+- d3ac760: fix: delete previous bundle when previous bundle access is needed
+- Updated dependencies [40d28c2]
+  - @hot-updater/core@0.19.5
+  - hot-updater@0.19.5
+  - @hot-updater/js@0.19.5
+
 ## 0.19.4
 
 ### Patch Changes
