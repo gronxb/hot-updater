@@ -1,5 +1,11 @@
 # @hot-updater/core
 
+## 0.19.5
+
+### Patch Changes
+
+- 40d28c2: bump rnef
+
 ## 0.19.4
 
 ## 0.19.3

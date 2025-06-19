@@ -159,115 +159,67 @@ class BundleFileStorageService: BundleStorageService {
             return .failure(error)
         }
     }
-    
+        
     /**
-     * Cleans up old bundles, keeping only the current and latest bundles.
-     * Executes synchronously on the calling thread.
-     * @param currentBundleId ID of the current active bundle (optional)
-     * @return Result of operation
-     */
-    func cleanupOldBundles(currentBundleId: String?) -> Result<Void, Error> {
+    * Cleans up old bundles, keeping only the current and new bundles.
+    * Executes synchronously on the calling thread.
+    * @param currentBundleId ID of the current active bundle (optional)
+    * @param bundleId ID of the new bundle to keep (optional)
+    * @return Result of operation
+    */
+    func cleanupOldBundles(currentBundleId: String?, bundleId: String?) -> Result<Void, Error> {
         let storeDirResult = bundleStoreDir()
         
         guard case .success(let storeDir) = storeDirResult else {
             return .failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil))
         }
         
+        // List only directories that are not .tmp
+        let contents: [String]
         do {
-            var contents: [String]
-            do {
-                contents = try self.fileSystem.contentsOfDirectory(atPath: storeDir)
-            } catch let error {
-                NSLog("[BundleStorage] Failed to list contents of bundle store directory: \(storeDir)")
-                return .failure(BundleStorageError.fileSystemError(error))
-            }
-            
-            if contents.isEmpty {
-                NSLog("[BundleStorage] No bundles to clean up.")
-                return .success(())
-            }
-            
-            let currentBundlePath = currentBundleId != nil ?
-            (storeDir as NSString).appendingPathComponent(currentBundleId!) : nil
-            
-            var latestBundlePath: String? = nil
-            var latestModDate: Date = .distantPast
-            
-            for item in contents {
-                let fullPath = (storeDir as NSString).appendingPathComponent(item)
-                
-                // Skip .tmp directories
-                if item.hasSuffix(".tmp") {
-                    continue
-                }
-                
-                if let currentPath = currentBundlePath, fullPath == currentPath {
-                    continue
-                }
-                
-                if self.fileSystem.fileExists(atPath: fullPath) {
-                    do {
-                        let attributes = try self.fileSystem.attributesOfItem(atPath: fullPath)
-                        if let modDate = attributes[FileAttributeKey.modificationDate] as? Date {
-                            if modDate > latestModDate {
-                                latestModDate = modDate
-                                latestBundlePath = fullPath
-                            }
-                        }
-                    } catch {
-                        NSLog("[BundleStorage] Warning: Could not get attributes for \(fullPath): \(error)")
-                    }
-                }
-            }
-            
-            var bundlesToKeep = Set<String>()
-            
-            if let currentPath = currentBundlePath, self.fileSystem.fileExists(atPath: currentPath) {
-                bundlesToKeep.insert(currentPath)
-                NSLog("[BundleStorage] Keeping current bundle: \(currentBundleId!)")
-            }
-            
-            if let latestPath = latestBundlePath {
-                bundlesToKeep.insert(latestPath)
-                NSLog("[BundleStorage] Keeping latest bundle: \((latestPath as NSString).lastPathComponent)")
-            }
-            
-            var removedCount = 0
-            for item in contents {
-                let fullPath = (storeDir as NSString).appendingPathComponent(item)
-                // Skip .tmp directories as well
-                if item.hasSuffix(".tmp") {
-                    // Clean up any stale .tmp directories
-                    do {
-                        try self.fileSystem.removeItem(atPath: fullPath)
-                        NSLog("[BundleStorage] Removed stale tmp directory: \(fullPath)")
-                    } catch {
-                        NSLog("[BundleStorage] Failed to remove stale tmp directory \(fullPath): \(error)")
-                    }
-                    continue
-                }
-                
-                if !bundlesToKeep.contains(fullPath) {
-                    do {
-                        try self.fileSystem.removeItem(atPath: fullPath)
-                        removedCount += 1
-                        NSLog("[BundleStorage] Removed old bundle: \(item)")
-                    } catch {
-                        NSLog("[BundleStorage] Failed to remove old bundle at \(fullPath): \(error)")
-                    }
-                }
-            }
-            
-            if removedCount == 0 {
-                NSLog("[BundleStorage] No old bundles to remove.")
-            } else {
-                NSLog("[BundleStorage] Removed \(removedCount) old bundle(s).")
-            }
-            
-            return .success(())
+            contents = try self.fileSystem.contentsOfDirectory(atPath: storeDir)
         } catch let error {
-            return .failure(error)
+            NSLog("[BundleStorage] Failed to list contents of bundle store directory: \(storeDir)")
+            return .failure(BundleStorageError.fileSystemError(error))
         }
+        
+        let bundles = contents.compactMap { item -> String? in
+            let fullPath = (storeDir as NSString).appendingPathComponent(item)
+            return (!item.hasSuffix(".tmp") && self.fileSystem.fileExists(atPath: fullPath)) ? fullPath : nil
+        }
+        
+        // Keep only the specified bundle IDs
+        let bundleIdsToKeep = Set([currentBundleId, bundleId].compactMap { $0 })
+        
+        bundles.forEach { bundlePath in
+            let bundleName = (bundlePath as NSString).lastPathComponent
+            
+            if !bundleIdsToKeep.contains(bundleName) {
+                do {
+                    try self.fileSystem.removeItem(atPath: bundlePath)
+                    NSLog("[BundleStorage] Removing old bundle: \(bundleName)")
+                } catch {
+                    NSLog("[BundleStorage] Failed to remove old bundle at \(bundlePath): \(error)")
+                }
+            } else {
+                NSLog("[BundleStorage] Keeping bundle: \(bundleName)")
+            }
+        }
+        
+        // Remove any leftover .tmp directories
+        contents.forEach { item in
+            if item.hasSuffix(".tmp") {
+                let fullPath = (storeDir as NSString).appendingPathComponent(item)
+                do {
+                    try self.fileSystem.removeItem(atPath: fullPath)
+                    NSLog("[BundleStorage] Removing stale tmp directory: \(item)")
+                } catch {
+                    NSLog("[BundleStorage] Failed to remove stale tmp directory \(fullPath): \(error)")
+                }
+            }
+        }
+        
+        return .success(())
     }
     
     /**
@@ -324,6 +276,9 @@ class BundleFileStorageService: BundleStorageService {
      * @param completion Callback with result of the operation
      */
     func updateBundle(bundleId: String, fileUrl: URL?, completion: @escaping (Result<Bool, Error>) -> Void) {
+        // Get the current bundle ID from the cached bundle URL (exclude fallback bundles)
+        let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+        
         guard let validFileUrl = fileUrl else {
             NSLog("[BundleStorage] fileUrl is nil, resetting bundle URL.")
             // Dispatch the sequence to the file operation queue to ensure completion is called asynchronously
@@ -332,7 +287,7 @@ class BundleFileStorageService: BundleStorageService {
                 let setResult = self.setBundleURL(localPath: nil)
                 switch setResult {
                 case .success:
-                    let cleanupResult = self.cleanupOldBundles(currentBundleId: nil)
+                    let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
                     switch cleanupResult {
                     case .success:
                         completion(.success(true))
@@ -350,6 +305,7 @@ class BundleFileStorageService: BundleStorageService {
         
         // Start the bundle update process on a background queue
         fileOperationQueue.async {
+            
             let storeDirResult = self.bundleStoreDir()
             guard case .success(let storeDir) = storeDirResult else {
                 completion(.failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil)))
@@ -368,7 +324,7 @@ class BundleFileStorageService: BundleStorageService {
                             let setResult = self.setBundleURL(localPath: bundlePath)
                             switch setResult {
                             case .success:
-                                let cleanupResult = self.cleanupOldBundles(currentBundleId: bundleId)
+                                let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
                                 switch cleanupResult {
                                 case .success:
                                     completion(.success(true))
@@ -478,7 +434,7 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     /**
-     * Processes a downloaded bundle file using the “.tmp” rename approach.
+     * Processes a downloaded bundle file using the "tmp" rename approach.
      * This method is part of the asynchronous `updateBundle` flow and is expected to run on a background thread.
      * @param location URL of the downloaded file
      * @param tempZipFile Path to store the downloaded zip file
@@ -495,6 +451,7 @@ class BundleFileStorageService: BundleStorageService {
         tempDirectory: String,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
+        let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
         
         // 1) Ensure the ZIP file exists
@@ -556,7 +513,7 @@ class BundleFileStorageService: BundleStorageService {
                         self.cleanupTemporaryFiles([tempDirectory])
                         
                         // 13) Clean up old bundles, preserving current and latest
-                        let _ = self.cleanupOldBundles(currentBundleId: bundleId)
+                        let _ = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
                         
                         // 14) Complete with success
                         completion(.success(true))
