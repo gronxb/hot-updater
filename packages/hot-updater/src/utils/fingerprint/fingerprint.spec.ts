@@ -2,7 +2,11 @@ import fs from "fs";
 import path from "path";
 import { mockReactNativeProjectRoot } from "@hot-updater/plugin-core/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
-import { nativeFingerprint } from ".";
+import {
+  type FingerprintResult,
+  isFingerprintEquals,
+  nativeFingerprint,
+} from ".";
 
 describe("Fingerprint", () => {
   let rootDir: string;
@@ -113,5 +117,40 @@ describe("Fingerprint", () => {
     });
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
+  });
+});
+
+describe("Fingerprint equality check", () => {
+  const platformResult1: FingerprintResult = { hash: "1", sources: [] };
+  const platformResult2: FingerprintResult = { hash: "2", sources: [] };
+  const platformsResult1: {
+    android: FingerprintResult;
+    ios: FingerprintResult;
+  } = { android: platformResult1, ios: platformResult2 };
+  const platformsResult2: {
+    android: FingerprintResult;
+    ios: FingerprintResult;
+  } = { android: platformResult2, ios: platformResult1 };
+  it("return false if platform specific fingerprint result type is passed and another is type of the result of both platforms", () => {
+    expect(
+      // @ts-ignore
+      isFingerprintEquals(platformResult1, platformsResult1),
+    ).toBe(false);
+  });
+
+  it("return true if platform specific fingerprint hashes are the same", () => {
+    expect(isFingerprintEquals(platformResult1, platformResult1)).toBe(true);
+  });
+
+  it("return false if platform specific fingerprint hashes are not the same", () => {
+    expect(isFingerprintEquals(platformResult1, platformResult2)).toBe(false);
+  });
+
+  it("return true if platforms fingerprint hashes are the same", () => {
+    expect(isFingerprintEquals(platformsResult1, platformsResult1)).toBe(true);
+  });
+
+  it("return false if platforms  fingerprint hashes are not the same", () => {
+    expect(isFingerprintEquals(platformsResult1, platformsResult2)).toBe(false);
   });
 });
