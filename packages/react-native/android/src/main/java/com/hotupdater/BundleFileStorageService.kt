@@ -218,14 +218,14 @@ class BundleFileStorageService(
      */
     private fun cleanupOldBundles(
         bundleStoreDir: File,
-        currentBundleId: String,
-        newBundleId: String,
+        previousBundleId: String,
+        bundleId: String,
     ) {
         // List only directories that are not .tmp
         val bundles = bundleStoreDir.listFiles { file -> file.isDirectory && !file.name.endsWith(".tmp") }?.toList() ?: return
 
         // Keep only the specified bundle IDs
-        val bundleIdsToKeep = setOfNotNull(currentBundleId, newBundleId)
+        val bundleIdsToKeep = setOfNotNull(previousBundleId, bundleId)
 
         bundles.forEach { bundle ->
             if (bundle.name !in bundleIdsToKeep) {
