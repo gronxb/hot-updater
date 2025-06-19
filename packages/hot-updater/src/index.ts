@@ -132,7 +132,7 @@ program
     log.info(`iOS version: ${iosVersion}`);
   });
 
-// developing command gorups
+// developing command groups
 if (process.env["NODE_ENV"] === "development") {
   program
     .command("build:native")
