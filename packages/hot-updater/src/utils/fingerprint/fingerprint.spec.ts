@@ -8,7 +8,7 @@ import {
   nativeFingerprint,
 } from ".";
 
-describe("Fingerprint", () => {
+describe("nativeFingerprint", () => {
   let rootDir: string;
 
   beforeEach(async () => {
@@ -120,7 +120,7 @@ describe("Fingerprint", () => {
   });
 });
 
-describe("Fingerprint equality check", () => {
+describe("isFingerprintEquals", () => {
   const platformResult1: FingerprintResult = { hash: "1", sources: [] };
   const platformResult2: FingerprintResult = { hash: "2", sources: [] };
   const platformsResult1: {
