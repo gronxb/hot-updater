@@ -47,12 +47,10 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  nativeBuild: (args: {
-    platform: Platform;
-    buildNativeArtifact: () => Promise<void>;
-  }) => Promise<{
-    stdout: string | null;
-  }>;
+  nativeBuild: {
+    prebuild?: (args: { platform: Platform }) => Promise<void>;
+    postbuild?: (args: { platform: Platform }) => Promise<void>;
+  };
   build: (args: { platform: Platform }) => Promise<{
     buildPath: string;
     bundleId: string;

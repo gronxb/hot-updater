@@ -130,10 +130,7 @@ export const rnef =
       hermes = true,
     } = config;
     return {
-      nativeBuild: async ({ buildNativeArtifact }) => {
-        await buildNativeArtifact();
-        return { stdout: null };
-      },
+      nativeBuild: {},
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 

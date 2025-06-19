@@ -144,17 +144,12 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
-          taskRef.buildResult = await buildPlugin.nativeBuild({
-            platform: platform,
-            // inject native build function into plugins
-            // then plugin will run it with pre/post required steps for each framework
-            buildNativeArtifact: async () => {
-              await runNativeBuild({
-                platform,
-                config: config.nativeBuild,
-              });
-            },
+          await buildPlugin.nativeBuild.prebuild?.({ platform });
+          await runNativeBuild({
+            platform,
+            config: config.nativeBuild,
           });
+          await buildPlugin.nativeBuild.postbuild?.({ platform });
 
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
 
