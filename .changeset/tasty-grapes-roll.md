@@ -6,8 +6,6 @@
 "@hot-updater/expo": patch
 "@hot-updater/firebase": patch
 "@hot-updater/plugin-core": patch
-"expo-52": patch
-"@hot-updater/example-react-native-v77": patch
 ---
 
 Android Native Build - Gradle Build
