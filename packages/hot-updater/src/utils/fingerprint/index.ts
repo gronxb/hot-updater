@@ -24,22 +24,22 @@ export type FingerprintResult = {
 };
 
 export function isFingerprintEquals(
-  lhs: FingerprintResult | null,
-  rhs: FingerprintResult | null,
+  lhs?: FingerprintResult | null,
+  rhs?: FingerprintResult | null,
 ): boolean;
 export function isFingerprintEquals(
-  lhs: {
+  lhs?: {
     android: FingerprintResult | null;
     ios: FingerprintResult | null;
   } | null,
-  rhs: {
+  rhs?: {
     android: FingerprintResult | null;
     ios: FingerprintResult | null;
   } | null,
 ): boolean;
 export function isFingerprintEquals(
-  lhs: Record<string, any> | null,
-  rhs: Record<string, any> | null,
+  lhs?: Record<string, any> | null,
+  rhs?: Record<string, any> | null,
 ): boolean {
   if (!lhs || !rhs) return false;
   if (isFingerprintResultsObject(lhs) && isFingerprintResultsObject(rhs)) {
