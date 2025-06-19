@@ -47,7 +47,7 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
-  nativeBuild: {
+  nativeBuild?: {
     prebuild?: (args: { platform: Platform }) => Promise<void>;
     postbuild?: (args: { platform: Platform }) => Promise<void>;
   };

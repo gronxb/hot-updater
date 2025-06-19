@@ -143,7 +143,6 @@ export const bare =
       enableHermes,
     } = config;
     return {
-      nativeBuild: {},
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 
