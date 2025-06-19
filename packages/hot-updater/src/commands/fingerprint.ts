@@ -3,6 +3,7 @@ import path from "path";
 import {
   createFingerprintJson,
   generateFingerprints,
+  isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
 import { setFingerprintHash } from "@/utils/setFingerprintHash";
@@ -58,11 +59,7 @@ export const handleCreateFingerprint = async () => {
           const localFingerprint = await readLocalFingerprint();
           const newFingerprint = await createFingerprintJson();
 
-          if (
-            !localFingerprint ||
-            localFingerprint?.ios?.hash !== newFingerprint.ios.hash ||
-            localFingerprint?.android?.hash !== newFingerprint.android.hash
-          ) {
+          if (!isFingerprintEquals(localFingerprint, newFingerprint)) {
             diffChanged = true;
           }
 
