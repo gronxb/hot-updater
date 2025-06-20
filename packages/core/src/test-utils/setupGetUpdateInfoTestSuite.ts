@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "../types";
+import type { Bundle, GetBundlesArgs, UpdateInfo, Platform } from "../types";
 import { NIL_UUID } from "../uuid";
+import type { DatabaseAdapter, StorageAdapter, StorageUri } from "@hot-updater/plugin-core";
+import { getUpdateInfo as coreGetUpdateInfo } from "@hot-updater/js";
 
 const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   message: "hello",
@@ -30,14 +32,70 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
   storageUri: null,
 } as const;
 
-export const setupGetUpdateInfoTestSuite = ({
+function createMockDatabaseAdapter(bundles: Bundle[]): DatabaseAdapter {
+  return {
+    name: 'mock',
+    async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
+      return coreGetUpdateInfo(bundles, args);
+    },
+    async getTargetAppVersions(platform: Platform, minBundleId: string): Promise<string[]> {
+      return bundles
+        .filter(b => b.platform === platform && (!minBundleId || b.id.localeCompare(minBundleId) >= 0))
+        .map(b => b.targetAppVersion)
+        .filter((version): version is string => version !== null && version !== undefined)
+        .filter((version, index, self) => self.indexOf(version) === index);
+    }
+  };
+}
+
+function createMockStorageAdapter(): StorageAdapter {
+  return {
+    name: 'mock-storage',
+    supportedSchemas: ['storage'],
+    async getSignedUrl(storageUri: StorageUri, expiresIn: number): Promise<string> {
+      // For testing purposes, keep the original URI to maintain test expectations
+      return storageUri;
+    }
+  };
+}
+
+// Function overloads to support both patterns
+export function setupGetUpdateInfoTestSuite({
+  createHotUpdater,
+}: {
+  createHotUpdater: (bundles: Bundle[]) => {
+    getUpdateInfo: (
+      args: GetBundlesArgs,
+    ) => Promise<UpdateInfo | null>;
+  };
+}): void;
+
+export function setupGetUpdateInfoTestSuite({
   getUpdateInfo,
 }: {
   getUpdateInfo: (
     bundles: Bundle[],
-    options: GetBundlesArgs,
+    args: GetBundlesArgs,
   ) => Promise<UpdateInfo | null>;
-}) => {
+}): void;
+
+export function setupGetUpdateInfoTestSuite({
+  createHotUpdater,
+  getUpdateInfo,
+}: {
+  createHotUpdater?: (bundles: Bundle[]) => {
+    getUpdateInfo: (
+      args: GetBundlesArgs,
+    ) => Promise<UpdateInfo | null>;
+  };
+  getUpdateInfo?: (
+    bundles: Bundle[],
+    args: GetBundlesArgs,
+  ) => Promise<UpdateInfo | null>;
+}) {
+  const createHotUpdaterInstance = createHotUpdater || ((bundles: Bundle[]) => ({
+    getUpdateInfo: (args: GetBundlesArgs) => getUpdateInfo!(bundles, args)
+  }));
   describe("app version strategy", () => {
     it("applies an update when a '*' bundle is available", async () => {
       const bundles: Bundle[] = [
@@ -50,7 +108,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -69,7 +128,8 @@ export const setupGetUpdateInfoTestSuite = ({
     it("returns null when no bundles are provided", async () => {
       const bundles: Bundle[] = [];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -89,7 +149,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -116,7 +177,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0.0",
         bundleId: "01963024-c131-7971-8725-ab47e232df41",
         platform: "ios",
@@ -143,7 +205,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -168,7 +231,8 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: true,
         },
       ];
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -195,7 +259,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -221,7 +286,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -254,7 +320,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -287,7 +354,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -314,7 +382,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -337,7 +406,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -355,7 +425,8 @@ export const setupGetUpdateInfoTestSuite = ({
     it("forces a rollback if no matching bundle exists for the provided bundleId", async () => {
       const bundles: Bundle[] = [];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -382,7 +453,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -402,7 +474,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -442,7 +515,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -497,7 +571,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -537,7 +612,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -564,7 +640,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -598,7 +675,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -618,7 +696,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
@@ -646,7 +725,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
@@ -680,7 +760,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
@@ -701,7 +782,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
@@ -729,7 +811,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
@@ -764,7 +847,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
         bundleId: "01957167-0389-7064-8d86-f8af7950daed", // 2025-03-07T16:18:51.401Z
@@ -813,7 +897,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
         bundleId: "0195716c-d426-7308-9924-c3f8cb2eaaad", // 2025-03-07T16:25:12.486Z
@@ -840,7 +925,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         minBundleId: "0195715b-9591-7000-8000-000000000000",
         bundleId: "01957179-d99d-7fbb-bc1e-feff6b3236f0",
@@ -862,7 +948,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -885,7 +972,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -913,7 +1001,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "01957b63-7d11-7281-b8e7-1120ccfdb8ab",
         platform: "ios",
@@ -928,7 +1017,8 @@ export const setupGetUpdateInfoTestSuite = ({
     it("returns null when there are no bundles and minBundleId equals bundleId", async () => {
       const bundles: Bundle[] = [];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "0195d325-767a-7000-8000-000000000000",
         platform: "ios",
@@ -952,7 +1042,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000000",
         platform: "ios",
@@ -975,7 +1066,8 @@ export const setupGetUpdateInfoTestSuite = ({
     it("returns null when no bundles are provided", async () => {
       const bundles: Bundle[] = [];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -995,7 +1087,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1022,7 +1115,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "01963024-c131-7971-8725-ab47e232df41",
         platform: "ios",
@@ -1049,7 +1143,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1074,7 +1169,8 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: true,
         },
       ];
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1101,7 +1197,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1127,7 +1224,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1160,7 +1258,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1193,7 +1292,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1220,7 +1320,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1243,7 +1344,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1261,7 +1363,8 @@ export const setupGetUpdateInfoTestSuite = ({
     it("forces a rollback if no matching bundle exists for the provided bundleId", async () => {
       const bundles: Bundle[] = [];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         appVersion: "1.0",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1288,7 +1391,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1308,7 +1412,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1348,7 +1453,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1402,7 +1508,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1442,7 +1549,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1469,7 +1577,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1503,7 +1612,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000002",
         platform: "ios",
@@ -1523,7 +1633,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
@@ -1551,7 +1662,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715b-9591-7000-8000-000000000000", // Build-time generated BUNDLE_ID
@@ -1585,7 +1697,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
@@ -1606,7 +1719,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
@@ -1634,7 +1748,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "0195715b-9591-7000-8000-000000000000", //2025-03-07T16:06:22.353Z
         bundleId: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
@@ -1669,7 +1784,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
         bundleId: "01957167-0389-7064-8d86-f8af7950daed", // 2025-03-07T16:18:51.401Z
@@ -1718,7 +1834,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "01957166-6e63-7000-8000-000000000000", // 2025-03-07T16:18:13.219Z
         bundleId: "0195716c-d426-7308-9924-c3f8cb2eaaad", // 2025-03-07T16:25:12.486Z
@@ -1745,7 +1862,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         minBundleId: "0195715b-9591-7000-8000-000000000000",
         bundleId: "01957179-d99d-7fbb-bc1e-feff6b3236f0",
@@ -1767,7 +1885,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1790,7 +1909,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -1818,7 +1938,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "01957b63-7d11-7281-b8e7-1120ccfdb8ab",
         platform: "ios",
@@ -1833,7 +1954,8 @@ export const setupGetUpdateInfoTestSuite = ({
     it("returns null when there are no bundles and minBundleId equals bundleId", async () => {
       const bundles: Bundle[] = [];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "0195d325-767a-7000-8000-000000000000",
         platform: "ios",
@@ -1857,7 +1979,8 @@ export const setupGetUpdateInfoTestSuite = ({
         },
       ];
 
-      const update = await getUpdateInfo(bundles, {
+      const hotUpdater = createHotUpdaterInstance(bundles);
+      const update = await hotUpdater.getUpdateInfo({
         fingerprintHash: "hash1",
         bundleId: "00000000-0000-0000-0000-000000000000",
         platform: "ios",
@@ -1875,4 +1998,27 @@ export const setupGetUpdateInfoTestSuite = ({
       });
     });
   });
+};
+
+export const createDefaultHotUpdaterTestInstance = (bundles: Bundle[]) => {
+  const database = createMockDatabaseAdapter(bundles);
+  const storage = createMockStorageAdapter();
+  
+  return {
+    getUpdateInfo: async (args: GetBundlesArgs): Promise<UpdateInfo | null> => {
+      const updateInfo = await database.getUpdateInfo(args);
+      
+      if (!updateInfo || !updateInfo.storageUri) {
+        return updateInfo;
+      }
+
+      // Convert storage URI to signed URL
+      const signedUrl = await storage.getSignedUrl(updateInfo.storageUri as StorageUri, 3600);
+      
+      return {
+        ...updateInfo,
+        storageUri: signedUrl
+      };
+    }
+  };
 };
