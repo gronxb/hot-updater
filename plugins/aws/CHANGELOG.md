@@ -1,5 +1,13 @@
 # @hot-updater/aws
 
+## 0.19.6
+
+### Patch Changes
+
+- 657a10e: Android Native Build - Gradle Build
+- Updated dependencies [657a10e]
+  - @hot-updater/plugin-core@0.19.6
+
 ## 0.19.5
 
 ### Patch Changes

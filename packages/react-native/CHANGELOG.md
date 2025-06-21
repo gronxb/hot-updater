@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.19.6
+
+### Patch Changes
+
+- 657a10e: Android Native Build - Gradle Build
+- Updated dependencies [657a10e]
+  - hot-updater@0.19.6
+  - @hot-updater/core@0.19.6
+  - @hot-updater/js@0.19.6
+
 ## 0.19.5
 
 ### Patch Changes
