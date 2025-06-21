@@ -78,7 +78,7 @@ export async function nativeFingerprint(
     platforms: [platform],
     ignorePaths: [
       "**/android/**/strings.xml",
-      "**/ios/**/Info.plist",
+      "**/ios/**/*.plist",
       ...options.ignorePaths,
     ],
     extraSources: processExtraSources(
