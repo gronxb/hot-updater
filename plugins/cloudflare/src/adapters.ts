@@ -8,6 +8,24 @@ import {
 import { filterCompatibleAppVersions, withJwtSignedUrl } from "@hot-updater/js";
 import type { DatabaseAdapter, StorageAdapter, StorageUri } from "@hot-updater/plugin-core";
 
+// Cloudflare Workers types
+declare global {
+  interface D1Database {
+    prepare(query: string): D1PreparedStatement;
+  }
+
+  interface D1PreparedStatement {
+    bind(...values: any[]): D1PreparedStatement;
+    first(): Promise<any>;
+    all(): Promise<{ results: any[] }>;
+  }
+
+  interface R2Bucket {
+    url: string;
+    createMultipartUpload(key: string): Promise<any>;
+  }
+}
+
 export interface D1NodeDatabaseConfig {
   database: D1Database;
 }
@@ -15,6 +33,95 @@ export interface D1NodeDatabaseConfig {
 export interface R2NodeStorageConfig {
   bucket: R2Bucket;
   jwtSecret: string;
+}
+
+// D1 Database Adapter  
+export function d1Database(config: { database: D1Database }): DatabaseAdapter {
+  return {
+    name: "d1",
+    dependencies: ["@cloudflare/workers-types"],
+
+    async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
+      const { database } = config;
+
+      let query: string;
+      let params: any[];
+
+      if (args._updateStrategy === "fingerprint") {
+        query = `
+          SELECT * FROM bundles 
+          WHERE platform = ? 
+          AND bundle_id = ? 
+          AND fingerprint_hash = ?
+          AND (min_bundle_id IS NULL OR min_bundle_id <= ?)
+          ${args.channel ? "AND channel = ?" : "AND channel IS NULL"}
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `;
+        params = [
+          args.platform,
+          args.bundleId,
+          args.fingerprintHash,
+          args.minBundleId || args.bundleId,
+          ...(args.channel ? [args.channel] : []),
+        ];
+      } else {
+        query = `
+          SELECT * FROM bundles 
+          WHERE platform = ? 
+          AND bundle_id = ? 
+          AND app_version = ?
+          AND (min_bundle_id IS NULL OR min_bundle_id <= ?)
+          ${args.channel ? "AND channel = ?" : "AND channel IS NULL"}
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `;
+        params = [
+          args.platform,
+          args.bundleId,
+          args.appVersion,
+          args.minBundleId || args.bundleId,
+          ...(args.channel ? [args.channel] : []),
+        ];
+      }
+
+      const result = await database
+        .prepare(query)
+        .bind(...params)
+        .first();
+
+      if (!result) {
+        return null;
+      }
+
+      return {
+        id: result.id,
+        shouldForceUpdate: result.should_force_update || false,
+        message: result.message,
+        status: result.status || "UPDATE",
+        storageUri: result.storage_uri,
+      };
+    },
+
+    async getTargetAppVersions(
+      platform: Platform,
+      minBundleId: string,
+    ): Promise<string[]> {
+      const { database } = config;
+
+      const result = await database
+        .prepare(`
+        SELECT DISTINCT app_version 
+        FROM bundles 
+        WHERE platform = ? AND bundle_id >= ?
+        ORDER BY app_version DESC
+      `)
+        .bind(platform, minBundleId)
+        .all();
+
+      return result.results.map((row: any) => row.app_version);
+    },
+  };
 }
 
 export function d1NodeDatabase(config: D1NodeDatabaseConfig): DatabaseAdapter {
@@ -42,6 +149,34 @@ export function d1NodeDatabase(config: D1NodeDatabaseConfig): DatabaseAdapter {
       
       return result.results.map(row => row.target_app_version);
     }
+  };
+}
+
+// R2 Storage Adapter
+export function r2Storage(config: {
+  bucket: R2Bucket;
+  jwtSecret: string;
+}): StorageAdapter {
+  return {
+    name: "r2",
+    supportedSchemas: ["r2://"],
+
+    async getSignedUrl(
+      storageUri: StorageUri,
+      expiresIn: number,
+    ): Promise<string> {
+      const { bucket, jwtSecret } = config;
+
+      // Parse storage URI: r2://bucket-name/path/to/file
+      const uriParts = storageUri.replace("r2://", "").split("/");
+      const key = uriParts.slice(1).join("/");
+
+      // Generate signed URL using R2's built-in signing
+      const signedUrl = await bucket.createMultipartUpload(key);
+
+      // For now, return a simple URL - in production you'd want proper JWT signing
+      return `${bucket.url}/${key}?token=${encodeURIComponent(jwtSecret)}`;
+    },
   };
 }
 

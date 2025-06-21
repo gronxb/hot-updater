@@ -1,6 +1,6 @@
 // Examples of integrating HotUpdater with different frameworks
 import { HotUpdater } from '@hot-updater/plugin-core';
-import { supabaseDatabase, supabaseStorage } from '@hot-updater/adapters';
+import { supabaseDatabase, supabaseStorage } from '@hot-updater/plugin-supabase/adapters';
 
 const hotUpdater = new HotUpdater({
   database: supabaseDatabase({

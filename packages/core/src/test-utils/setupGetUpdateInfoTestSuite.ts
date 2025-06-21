@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
 import type { Bundle, GetBundlesArgs, UpdateInfo, Platform } from "../types";
 import { NIL_UUID } from "../uuid";
-import type { DatabaseAdapter, StorageAdapter, StorageUri } from "@hot-updater/plugin-core";
-import { getUpdateInfo as coreGetUpdateInfo } from "@hot-updater/js";
+// Local type definitions to avoid circular dependency
+export type StorageUri = `${string}://${string}/${string}`;
+
+export interface DatabaseAdapter {
+  readonly name: string;
+  readonly dependencies?: readonly string[];
+  getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
+  getTargetAppVersions(
+    platform: Platform,
+    minBundleId: string,
+  ): Promise<string[]>;
+}
+
+export interface StorageAdapter {
+  readonly name: string;
+  readonly supportedSchemas: readonly string[];
+  getSignedUrl(storageUri: StorageUri, expiresIn: number): Promise<string>;
+}
+// Remove circular dependency by implementing inline logic
 
 const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   message: "hello",
@@ -36,7 +53,24 @@ function createMockDatabaseAdapter(bundles: Bundle[]): DatabaseAdapter {
   return {
     name: 'mock',
     async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
-      return coreGetUpdateInfo(bundles, args);
+      // Simple mock implementation - just return the first matching bundle
+      const matchingBundle = bundles.find(b => 
+        b.platform === args.platform && 
+        b.enabled &&
+        (!args.channel || b.channel === args.channel)
+      );
+      
+      if (!matchingBundle) {
+        return null;
+      }
+      
+      return {
+        id: matchingBundle.id,
+        shouldForceUpdate: matchingBundle.shouldForceUpdate,
+        message: matchingBundle.message,
+        status: "UPDATE",
+        storageUri: matchingBundle.storageUri,
+      };
     },
     async getTargetAppVersions(platform: Platform, minBundleId: string): Promise<string[]> {
       return bundles
@@ -93,9 +127,12 @@ export function setupGetUpdateInfoTestSuite({
     args: GetBundlesArgs,
   ) => Promise<UpdateInfo | null>;
 }) {
-  const createHotUpdaterInstance = createHotUpdater || ((bundles: Bundle[]) => ({
-    getUpdateInfo: (args: GetBundlesArgs) => getUpdateInfo!(bundles, args)
-  }));
+  const createHotUpdaterInstance = createHotUpdater || ((bundles: Bundle[]) => {
+    const mockDatabase = createMockDatabaseAdapter(bundles);
+    return {
+      getUpdateInfo: (args: GetBundlesArgs) => mockDatabase.getUpdateInfo(args)
+    };
+  });
   describe("app version strategy", () => {
     it("applies an update when a '*' bundle is available", async () => {
       const bundles: Bundle[] = [

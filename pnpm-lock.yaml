@@ -910,9 +910,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      hono:
-        specifier: ^4.0.0
-        version: 4.6.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

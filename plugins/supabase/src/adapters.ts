@@ -18,6 +18,42 @@ export interface SupabaseNodeStorageConfig {
   serviceRoleKey: string;
 }
 
+// Supabase Database Adapter
+export function supabaseDatabase(config: { url: string; serviceRoleKey: string }): DatabaseAdapter {
+  const supabase = createClient(
+    config.url,
+    config.serviceRoleKey,
+    {
+      auth: { autoRefreshToken: false, persistSession: false }
+    }
+  );
+
+  return {
+    name: 'supabase',
+    dependencies: ['@supabase/supabase-js'],
+    
+    async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
+      switch (args._updateStrategy) {
+        case "appVersion":
+          return appVersionStrategy(supabase, args);
+        case "fingerprint":
+          return fingerprintStrategy(supabase, args);
+        default:
+          return null;
+      }
+    },
+    
+    async getTargetAppVersions(platform: Platform, minBundleId: string): Promise<string[]> {
+      const { data } = await supabase.rpc('get_target_app_version_list', {
+        app_platform: platform,
+        min_bundle_id: minBundleId || NIL_UUID,
+      });
+      
+      return data?.map((group: any) => group.target_app_version) ?? [];
+    }
+  };
+}
+
 export function supabaseNodeDatabase(config: SupabaseNodeDatabaseConfig): DatabaseAdapter {
   const supabase = createClient(
     config.url,
@@ -49,6 +85,43 @@ export function supabaseNodeDatabase(config: SupabaseNodeDatabaseConfig): Databa
       });
       
       return data?.map((group: any) => group.target_app_version) ?? [];
+    }
+  };
+}
+
+// Supabase Storage Adapter
+export function supabaseStorage(config: { url: string; serviceRoleKey: string }): StorageAdapter {
+  const supabase = createClient(
+    config.url,
+    config.serviceRoleKey,
+    {
+      auth: { autoRefreshToken: false, persistSession: false }
+    }
+  );
+
+  return {
+    name: 'supabase-storage',
+    supportedSchemas: ['supabase-storage://'],
+    
+    async getSignedUrl(storageUri: StorageUri, expiresIn: number): Promise<string> {
+      // Parse storage URI: supabase-storage://bucket/path/to/file
+      const url = new URL(storageUri);
+      const bucket = url.host;
+      const path = url.pathname.substring(1); // Remove leading slash
+      
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, expiresIn);
+      
+      if (error) {
+        throw new Error(`Failed to create signed URL: ${error.message}`);
+      }
+      
+      if (!data?.signedUrl) {
+        throw new Error('No signed URL returned from Supabase');
+      }
+      
+      return data.signedUrl;
     }
   };
 }

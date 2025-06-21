@@ -1,6 +1,6 @@
 // Example: Supabase + Supabase Storage (optimal combination)
 import { HotUpdater } from '@hot-updater/plugin-core';
-import { supabaseDatabase, supabaseStorage } from '@hot-updater/adapters';
+import { supabaseDatabase, supabaseStorage } from '@hot-updater/plugin-supabase/adapters';
 
 // Core instance - framework independent
 export const hotUpdater = new HotUpdater({

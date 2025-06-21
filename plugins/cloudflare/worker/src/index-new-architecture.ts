@@ -1,6 +1,6 @@
 // New architecture example for Cloudflare Workers
 import { HotUpdater } from "@hot-updater/plugin-core";
-import { d1Database, r2Storage } from "@hot-updater/adapters";
+import { d1Database, r2Storage } from "../../src/adapters";
 
 type Env = {
   DB: D1Database;

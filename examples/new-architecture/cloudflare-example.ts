@@ -1,6 +1,6 @@
 // Example: Cloudflare D1 + R2 (optimal combination)
 import { HotUpdater } from '@hot-updater/plugin-core';
-import { d1Database, r2Storage } from '@hot-updater/adapters';
+import { d1Database, r2Storage } from '@hot-updater/plugin-cloudflare/adapters';
 
 type Env = {
   DB: D1Database;

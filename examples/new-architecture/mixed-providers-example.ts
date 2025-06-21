@@ -1,6 +1,10 @@
 // Example: Mixed providers (Firestore + Supabase Storage)
 import { HotUpdater } from '@hot-updater/plugin-core';
-import { firestoreDatabase, supabaseStorage } from '@hot-updater/adapters';
+import { firestoreDatabase } from '@hot-updater/plugin-firebase/adapters';
+import { supabaseDatabase, supabaseStorage } from '@hot-updater/plugin-supabase/adapters';
+import { d1Database, r2Storage } from '@hot-updater/plugin-cloudflare/adapters';
+import { firebaseStorage } from '@hot-updater/plugin-firebase/adapters';
+import { cloudfrontDatabase, cloudfrontStorage } from '@hot-updater/plugin-aws/adapters';
 
 // This combination works because Firestore has no dependencies constraint
 export const hotUpdater = new HotUpdater({
