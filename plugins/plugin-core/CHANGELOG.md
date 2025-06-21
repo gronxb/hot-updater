@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.19.6
+
+### Patch Changes
+
+- 657a10e: Android Native Build - Gradle Build
+  - @hot-updater/core@0.19.6
+
 ## 0.19.5
 
 ### Patch Changes

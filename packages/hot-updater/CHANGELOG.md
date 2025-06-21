@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.19.6
+
+### Patch Changes
+
+- 657a10e: Android Native Build - Gradle Build
+- Updated dependencies [657a10e]
+  - @hot-updater/aws@0.19.6
+  - @hot-updater/cloudflare@0.19.6
+  - @hot-updater/firebase@0.19.6
+  - @hot-updater/plugin-core@0.19.6
+  - @hot-updater/console@0.19.6
+  - @hot-updater/supabase@0.19.6
+  - @hot-updater/core@0.19.6
+
 ## 0.19.5
 
 ### Patch Changes
