@@ -101,7 +101,10 @@ export class AndroidConfigParser implements ConfigParser {
 
   async set(key: string, value: string): Promise<{ path: string }> {
     if (!(await this.exists())) {
-      throw new Error("strings.xml not found");
+      console.warn(
+        "hot-updater: strings.xml not found. Skipping Android-specific config modifications.",
+      );
+      return { path: "" };
     }
 
     const content = await fs.promises.readFile(this.stringsXmlPath, "utf-8");
