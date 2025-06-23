@@ -349,12 +349,12 @@ describe("AndroidConfigParser", () => {
   });
 
   describe("set", () => {
-    it("should throw error when file does not exist", async () => {
+    it("should return empty path when file does not exist", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
-        "strings.xml not found",
-      );
+      const result = await androidParser.set("test_key", "test_value");
+
+      expect(result).toEqual({ path: null });
     });
 
     it("should update existing moduleConfig string", async () => {

@@ -71,12 +71,12 @@ describe("IosConfigParser", () => {
       });
     });
 
-    it("should return false when plist file does not exist", async () => {
+    it("should return true when plist file does not exist", async () => {
       vi.mocked(fg.glob).mockResolvedValue([]);
 
       const result = await iosParser.exists();
 
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
     it("should return false when globby throws error", async () => {
@@ -89,12 +89,15 @@ describe("IosConfigParser", () => {
   });
 
   describe("get", () => {
-    it("should throw error when plist file not found", async () => {
+    it("should return null value and path when plist file not found", async () => {
       vi.mocked(fg.glob).mockResolvedValue([]);
 
-      await expect(iosParser.get("TEST_KEY")).rejects.toThrow(
-        "Info.plist not found",
-      );
+      const result = await iosParser.get("TEST_KEY");
+
+      expect(result).toEqual({
+        value: null,
+        path: null,
+      });
     });
 
     it("should return value for existing key in Info.plist", async () => {
@@ -220,12 +223,12 @@ describe("IosConfigParser", () => {
   });
 
   describe("set", () => {
-    it("should throw error when plist file not found", async () => {
+    it("should return empty path when plist file not found", async () => {
       vi.mocked(fg.glob).mockResolvedValue([]);
 
-      await expect(iosParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Info.plist not found",
-      );
+      const result = await iosParser.set("TEST_KEY", "test_value");
+
+      expect(result).toEqual({ path: null });
     });
 
     it("should set value directly in Info.plist", async () => {

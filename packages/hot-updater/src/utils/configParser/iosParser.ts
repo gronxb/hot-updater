@@ -7,14 +7,14 @@ import type { ConfigParser } from "./configParser";
 
 // iOS Info.plist parser
 export class IosConfigParser implements ConfigParser {
-  private async getPlistPath(): Promise<string> {
+  private async getPlistPath(): Promise<string | null> {
     const [plistFile] = await fg.glob("*/Info.plist", {
       cwd: path.join(getCwd(), "ios"),
       absolute: true,
       onlyFiles: true,
     });
     if (!plistFile) {
-      throw new Error("Info.plist not found");
+      return null;
     }
     return plistFile;
   }
@@ -28,9 +28,18 @@ export class IosConfigParser implements ConfigParser {
     }
   }
 
-  async get(key: string): Promise<{ value: string | null; path: string }> {
+  async get(
+    key: string,
+  ): Promise<{ value: string | null; path: string | null }> {
     try {
       const plistFile = await this.getPlistPath();
+      if (!plistFile) {
+        return {
+          value: null,
+          path: null,
+        };
+      }
+
       const plistXml = await fs.promises.readFile(plistFile, "utf-8");
 
       // Parse the plist file
@@ -68,13 +77,20 @@ export class IosConfigParser implements ConfigParser {
     } catch (error) {
       return {
         value: null,
-        path: path.relative(getCwd(), await this.getPlistPath()),
+        path: "",
       };
     }
   }
 
-  async set(key: string, value: string): Promise<{ path: string }> {
+  async set(key: string, value: string): Promise<{ path: string | null }> {
     const plistFile = await this.getPlistPath();
+    if (!plistFile) {
+      console.warn(
+        "hot-updater: Info.plist not found. Skipping iOS-specific config modifications.",
+      );
+      return { path: null };
+    }
+
     const plistXml = await fs.promises.readFile(plistFile, "utf-8");
     const plistObject = plist.parse(plistXml) as Record<string, any>;
 

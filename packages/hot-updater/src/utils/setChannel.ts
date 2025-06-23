@@ -6,7 +6,7 @@ const DEFAULT_CHANNEL = "production";
 
 const setAndroidChannel = async (
   channel: string,
-): Promise<{ path: string }> => {
+): Promise<{ path: string | null }> => {
   const androidParser = new AndroidConfigParser();
   return await androidParser.set("hot_updater_channel", channel);
 };
@@ -25,14 +25,16 @@ const getAndroidChannel = async (): Promise<{
   );
 };
 
-const setIosChannel = async (channel: string): Promise<{ path: string }> => {
+const setIosChannel = async (
+  channel: string,
+): Promise<{ path: string | null }> => {
   const iosParser = new IosConfigParser();
   return await iosParser.set("HOT_UPDATER_CHANNEL", channel);
 };
 
 const getIosChannel = async (): Promise<{
   value: string;
-  path: string;
+  path: string | null;
 }> => {
   const iosParser = new IosConfigParser();
   if (!iosParser.exists()) {
@@ -47,7 +49,7 @@ const getIosChannel = async (): Promise<{
 export const setChannel = async (
   platform: "android" | "ios",
   channel: string,
-): Promise<{ path: string }> => {
+): Promise<{ path: string | null }> => {
   switch (platform) {
     case "android":
       return await setAndroidChannel(channel);
@@ -59,7 +61,7 @@ export const getChannel = async (
   platform: "android" | "ios",
 ): Promise<{
   value: string;
-  path: string;
+  path: string | null;
 }> => {
   switch (platform) {
     case "android":
