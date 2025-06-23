@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { type NativeBuildOptions, nativeBuild } from "@/commands/build:native";
+import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
 import {
   interactiveCommandOption,
   platformCommandOption,
