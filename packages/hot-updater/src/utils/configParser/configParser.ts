@@ -1,5 +1,5 @@
 export interface ConfigParser {
-  get(key: string): Promise<{ value: string | null; path: string }>;
-  set(key: string, value: string): Promise<{ path: string }>;
+  get(key: string): Promise<{ value: string | null; path: string | null }>;
+  set(key: string, value: string): Promise<{ path: string | null }>;
   exists(): Promise<boolean>;
 }

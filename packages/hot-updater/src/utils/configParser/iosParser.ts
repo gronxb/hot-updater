@@ -28,13 +28,15 @@ export class IosConfigParser implements ConfigParser {
     }
   }
 
-  async get(key: string): Promise<{ value: string | null; path: string }> {
+  async get(
+    key: string,
+  ): Promise<{ value: string | null; path: string | null }> {
     try {
       const plistFile = await this.getPlistPath();
       if (!plistFile) {
         return {
           value: null,
-          path: "",
+          path: null,
         };
       }
 
@@ -80,13 +82,13 @@ export class IosConfigParser implements ConfigParser {
     }
   }
 
-  async set(key: string, value: string): Promise<{ path: string }> {
+  async set(key: string, value: string): Promise<{ path: string | null }> {
     const plistFile = await this.getPlistPath();
     if (!plistFile) {
       console.warn(
         "hot-updater: Info.plist not found. Skipping iOS-specific config modifications.",
       );
-      return { path: "" };
+      return { path: null };
     }
 
     const plistXml = await fs.promises.readFile(plistFile, "utf-8");
