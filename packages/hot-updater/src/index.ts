@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
 import {
   interactiveCommandOption,
   platformCommandOption,
 } from "@/commandOptions";
+import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
