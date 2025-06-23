@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.19.7
+
+### Patch Changes
+
+- e28313d: chore(cli): move commander to devDependencies and bundle it
+- bcc641e: fix(cli): skipping set config `expo prebuild --platform android`
+  - @hot-updater/console@0.19.7
+  - @hot-updater/core@0.19.7
+  - @hot-updater/aws@0.19.7
+  - @hot-updater/cloudflare@0.19.7
+  - @hot-updater/firebase@0.19.7
+  - @hot-updater/plugin-core@0.19.7
+  - @hot-updater/supabase@0.19.7
+
 ## 0.19.6
 
 ### Patch Changes

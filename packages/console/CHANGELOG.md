@@ -1,5 +1,12 @@
 # @hot-updater/console
 
+## 0.19.7
+
+### Patch Changes
+
+- @hot-updater/core@0.19.7
+- @hot-updater/plugin-core@0.19.7
+
 ## 0.19.6
 
 ### Patch Changes
