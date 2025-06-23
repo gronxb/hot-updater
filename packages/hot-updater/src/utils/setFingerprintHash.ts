@@ -28,7 +28,7 @@ const setIosFingerprintHash = async (
 
 const getIosFingerprintHash = async (): Promise<{
   value: string | null;
-  path: string;
+  path: string | null;
 }> => {
   const iosParser = new IosConfigParser();
   if (!iosParser.exists()) {
@@ -52,7 +52,7 @@ export const getFingerprintHash = async (
   platform: "android" | "ios",
 ): Promise<{
   value: string | null;
-  path: string;
+  path: string | null;
 }> => {
   switch (platform) {
     case "android":
