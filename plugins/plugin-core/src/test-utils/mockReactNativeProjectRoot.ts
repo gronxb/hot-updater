@@ -28,6 +28,7 @@ const REQUIRED_FILES = [
   "package.json",
   "ios/Info.plist",
   "android/app/build.gradle",
+  ".gitignore",
 ];
 
 export const mockReactNativeProjectRoot = async ({
