@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
 import { type Commit, openRepository } from "es-git";
 
@@ -12,5 +14,42 @@ export const getLatestGitCommit = async (): Promise<Commit | null> => {
     return null;
   } catch (error) {
     return null;
+  }
+};
+
+export const appendToProjectRootGitignore = ({
+  cwd,
+  globLines,
+}: { cwd?: string; globLines: string[] }) => {
+  if (!globLines.length) {
+    return;
+  }
+  const comment = "# hot-updater";
+
+  const projectDir = cwd ?? getCwd();
+  const gitIgnorePath = path.join(projectDir, ".gitignore");
+
+  if (fs.existsSync(gitIgnorePath)) {
+    const content = fs.readFileSync(gitIgnorePath, { encoding: "utf8" });
+
+    const allLines = content.split(/\r?\n/);
+    const willAppendedLines: string[] = [];
+    for (const line of globLines) {
+      if (!allLines.includes(line)) {
+        willAppendedLines.push(line);
+      }
+    }
+
+    fs.appendFileSync(
+      gitIgnorePath,
+      [comment, ...willAppendedLines].join("\n"),
+      {
+        encoding: "utf8",
+      },
+    );
+  } else {
+    fs.writeFileSync(gitIgnorePath, [comment, ...globLines].join("\n"), {
+      encoding: "utf8",
+    });
   }
 };
