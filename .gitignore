@@ -94,3 +94,5 @@ generated/
 .wrangler/
 
 .hot-updater/
+
+examples/dev
