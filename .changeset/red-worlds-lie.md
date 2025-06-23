@@ -2,4 +2,4 @@
 "hot-updater": patch
 ---
 
-chore(cli): bundle commander
+chore(cli): move commander to devDependencies and bundle it
