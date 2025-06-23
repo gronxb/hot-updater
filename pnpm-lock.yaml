@@ -783,15 +783,9 @@ importers:
 
   packages/hot-updater:
     dependencies:
-      '@bacons/xcode':
-        specifier: 1.0.0-alpha.24
-        version: 1.0.0-alpha.24
       '@clack/prompts':
         specifier: 'catalog:'
         version: 0.10.0
-      '@commander-js/extra-typings':
-        specifier: ^14.0.0
-        version: 14.0.0(commander@14.0.0)
       '@expo/fingerprint':
         specifier: 0.12.4
         version: 0.12.4
@@ -804,9 +798,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      commander:
-        specifier: ^14.0.0
-        version: 14.0.0
       cosmiconfig:
         specifier: ^9.0.0
         version: 9.0.0(typescript@5.8.3)
@@ -816,12 +807,6 @@ importers:
       es-git:
         specifier: ^0.2.0
         version: 0.2.0
-      fast-glob:
-        specifier: ^3.3.3
-        version: 3.3.3
-      fast-xml-parser:
-        specifier: ^5.2.3
-        version: 5.2.3
     devDependencies:
       '@babel/core':
         specifier: 7.26.0
@@ -838,6 +823,12 @@ importers:
       '@babel/types':
         specifier: 7.26.0
         version: 7.26.0
+      '@bacons/xcode':
+        specifier: 1.0.0-alpha.24
+        version: 1.0.0-alpha.24
+      '@commander-js/extra-typings':
+        specifier: ^14.0.0
+        version: 14.0.0(commander@14.0.0)
       '@hono/node-server':
         specifier: ^1.13.4
         version: 1.13.4(hono@4.6.3)
@@ -877,12 +868,21 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.5.8
+      commander:
+        specifier: ^14.0.0
+        version: 14.0.0
       es-toolkit:
         specifier: ^1.32.0
         version: 1.32.0
       execa:
         specifier: ^9.5.2
         version: 9.5.2
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
+      fast-xml-parser:
+        specifier: ^5.2.3
+        version: 5.2.3
       is-port-reachable:
         specifier: ^4.0.0
         version: 4.0.0
@@ -25892,14 +25892,14 @@ snapshots:
       msw: 2.7.0(@types/node@22.13.5)(typescript@5.8.3)
       vite: 5.4.8(@types/node@22.13.5)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)
 
-  '@vitest/mocker@3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@20.16.10)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))':
+  '@vitest/mocker@3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))':
     dependencies:
       '@vitest/spy': 3.1.4
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
       msw: 2.7.0(@types/node@20.16.10)(typescript@5.8.3)
-      vite: 6.1.1(@types/node@20.16.10)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1)
+      vite: 6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1)
 
   '@vitest/mocker@3.1.4(msw@2.7.0(@types/node@22.13.5)(typescript@5.8.3))(vite@6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))':
     dependencies:
@@ -38026,7 +38026,7 @@ snapshots:
   vitest@3.1.4(@types/debug@4.1.12)(@types/node@20.16.10)(jiti@2.4.2)(jsdom@25.0.1)(lightningcss@1.27.0)(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1):
     dependencies:
       '@vitest/expect': 3.1.4
-      '@vitest/mocker': 3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@20.16.10)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))
+      '@vitest/mocker': 3.1.4(msw@2.7.0(@types/node@20.16.10)(typescript@5.8.3))(vite@6.1.1(@types/node@22.13.5)(jiti@2.4.2)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))
       '@vitest/pretty-format': 3.1.4
       '@vitest/runner': 3.1.4
       '@vitest/snapshot': 3.1.4
