@@ -23,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "75747887d28ab1a09d14450aa3056c0cf8a3d316"
+        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
       },
       {
         "type": "dir",
@@ -72,14 +72,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.2\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "d1b69f81b8476678bf6df0e01dc037d5e9f8f163"
+        "hash": "6d688dcaa499347c5cf9c50c00be06c3f9dd8798"
       }
     ],
-    "hash": "847fed697df7147d27815960b323ab6a342faa5e"
+    "hash": "f07f5876affe5a24efc4a190e7e1d707c2bbb50d"
   },
   "android": {
     "sources": [
@@ -105,7 +105,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "75747887d28ab1a09d14450aa3056c0cf8a3d316"
+        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
       },
       {
         "type": "dir",
@@ -161,6 +161,6 @@
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
     ],
-    "hash": "c10b14403e20c56c89d2a308f68b36e7a90c1341"
+    "hash": "4e030e056ba082ed3bf40d92f44e3e158370dfd4"
   }
 }

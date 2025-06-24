@@ -1,5 +1,27 @@
 # @hot-updater/aws
 
+## 0.19.7
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.19.7
+
+## 0.19.6
+
+### Patch Changes
+
+- 657a10e: Android Native Build - Gradle Build
+- Updated dependencies [657a10e]
+  - @hot-updater/plugin-core@0.19.6
+
+## 0.19.5
+
+### Patch Changes
+
+- 40d28c2: bump rnef
+- Updated dependencies [40d28c2]
+  - @hot-updater/plugin-core@0.19.5
+
 ## 0.19.4
 
 ### Patch Changes

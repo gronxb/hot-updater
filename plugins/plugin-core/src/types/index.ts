@@ -2,6 +2,8 @@ import type { Bundle, Platform } from "@hot-updater/core";
 
 export type { Platform, Bundle } from "@hot-updater/core";
 
+export * from "./utils";
+
 export interface BasePluginArgs {
   cwd: string;
 }
@@ -45,12 +47,48 @@ export interface DatabasePluginHooks {
 }
 
 export interface BuildPlugin {
+  nativeBuild?: {
+    prebuild?: (args: { platform: Platform }) => Promise<void>;
+    postbuild?: (args: { platform: Platform }) => Promise<void>;
+  };
   build: (args: { platform: Platform }) => Promise<{
     buildPath: string;
     bundleId: string;
     stdout: string | null;
   }>;
   name: string;
+}
+
+export interface NativeBuildArgs {
+  /**
+   * Android specific configuration.
+   */
+  android?: {
+    /**
+     * Android application module build variant.
+     *
+     * @example Debug, Release
+     * @default Release
+     */
+    variant?: string;
+
+    /**
+     * Artifact type.
+     *
+     * If `true`, the generated artifact type is `.aab`.
+     * If `flase`, the generated artifact type is `apk`.
+     *
+     * @default true
+     */
+    aab?: boolean;
+
+    /**
+     * Android application module name.
+     *
+     * @default app
+     */
+    appModuleName?: string;
+  };
 }
 
 export interface StoragePlugin {
@@ -118,6 +156,7 @@ export type ConfigInput = {
      */
     port?: number;
   };
+  nativeBuild?: NativeBuildArgs;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
   database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;

@@ -12,6 +12,6 @@ export const defineConfig = (
 export {
   generateFingerprints,
   generateFingerprint,
-  createFingerprintJson,
+  createAndInjectFingerprintFiles,
   readLocalFingerprint,
 } from "./utils/fingerprint";

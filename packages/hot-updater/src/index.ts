@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import {
+  interactiveCommandOption,
+  platformCommandOption,
+} from "@/commandOptions";
+import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
@@ -60,12 +65,7 @@ channelCommand
 program
   .command("deploy")
   .description("deploy a new version")
-  .addOption(
-    new Option("-p, --platform <platform>", "specify the platform").choices([
-      "ios",
-      "android",
-    ]),
-  )
+  .addOption(platformCommandOption)
   .addOption(
     new Option(
       "-t, --target-app-version <targetAppVersion>",
@@ -87,7 +87,7 @@ program
       "the path where the bundle.zip will be generated",
     ),
   )
-  .addOption(new Option("-i, --interactive", "interactive mode").default(false))
+  .addOption(interactiveCommandOption)
   .addOption(
     new Option(
       "-c, --channel <channel>",
@@ -124,7 +124,6 @@ program
 program
   .command("app-version")
   .description("get the current app version")
-
   .action(async () => {
     const androidVersion = await getNativeAppVersion("android");
     const iosVersion = await getNativeAppVersion("ios");
@@ -132,5 +131,34 @@ program
     log.info(`Android version: ${androidVersion}`);
     log.info(`iOS version: ${iosVersion}`);
   });
+
+// developing command groups
+if (process.env["NODE_ENV"] === "development") {
+  program
+    .command("build:native")
+    .description("build a new native artifact and deploy")
+    .addOption(
+      new Option("-p, --platform <platform>", "specify the platform").choices([
+        "ios",
+        "android",
+      ]),
+    )
+    .addOption(
+      new Option(
+        "-o, --output-path <outputPath>",
+        "the path where the artifacts will be generated",
+      ),
+    )
+    .addOption(interactiveCommandOption)
+    .addOption(
+      new Option(
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+      ),
+    )
+    .action(async (options: NativeBuildOptions) => {
+      nativeBuild(options);
+    });
+}
 
 program.parse(process.argv);

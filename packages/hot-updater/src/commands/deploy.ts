@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { getPlatform } from "@/prompts/getPlatform";
-import { nativeFingerprint } from "@/utils/fingerprint";
+import {
+  isFingerprintEquals,
+  nativeFingerprint,
+  readLocalFingerprint,
+} from "@/utils/fingerprint";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
@@ -84,25 +88,20 @@ export const deploy = async (options: DeployOptions) => {
       );
       process.exit(1);
     }
-    const fingerprint = await nativeFingerprint(cwd, {
+    const newFingerprint = await nativeFingerprint(cwd, {
       platform,
       ...config.fingerprint,
     });
-    const projectFingerprintJsonFile = fs.readFileSync(
-      path.join(cwd, "fingerprint.json"),
-      "utf-8",
-    );
-
-    const projectFingerprint = JSON.parse(projectFingerprintJsonFile);
-    if (fingerprint.hash !== projectFingerprint[platform].hash) {
+    const projectFingerprint = await readLocalFingerprint();
+    if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
       p.log.error(
         "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
       );
       process.exit(1);
     }
 
-    target.fingerprintHash = fingerprint.hash;
-    s.stop(`Fingerprint(${platform}): ${fingerprint.hash}`);
+    target.fingerprintHash = newFingerprint.hash;
+    s.stop(`Fingerprint(${platform}): ${newFingerprint.hash}`);
   } else {
     const defaultTargetAppVersion =
       (await getDefaultTargetAppVersion(platform)) ?? "1.0.0";

@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/aws",
   "type": "module",
-  "version": "0.19.4",
+  "version": "0.19.7",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -50,7 +50,7 @@
     "hono": "^4.6.3",
     "mime": "^4.0.4",
     "picocolors": "^1.0.0",
-    "@clack/prompts": "0.10.0"
+    "@clack/prompts": "catalog:"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "3.772.0",

@@ -3,8 +3,8 @@ import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import "dotenv/config";
 import { defineConfig } from "hot-updater";
 
-
 export default defineConfig({
+  nativeBuild: { android: { aab: true } },
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,

@@ -1,5 +1,25 @@
 # @hot-updater/js
 
+## 0.19.7
+
+### Patch Changes
+
+- @hot-updater/core@0.19.7
+
+## 0.19.6
+
+### Patch Changes
+
+- @hot-updater/core@0.19.6
+
+## 0.19.5
+
+### Patch Changes
+
+- 40d28c2: bump rnef
+- Updated dependencies [40d28c2]
+  - @hot-updater/core@0.19.5
+
 ## 0.19.4
 
 ### Patch Changes

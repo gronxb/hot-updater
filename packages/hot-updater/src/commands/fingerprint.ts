@@ -1,11 +1,11 @@
 import fs from "fs";
 import path from "path";
 import {
-  createFingerprintJson,
+  createAndInjectFingerprintFiles,
   generateFingerprints,
+  isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
-import { setFingerprintHash } from "@/utils/setFingerprintHash";
 import * as p from "@clack/prompts";
 import { getCwd } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
@@ -56,18 +56,11 @@ export const handleCreateFingerprint = async () => {
       task: async () => {
         try {
           const localFingerprint = await readLocalFingerprint();
-          const newFingerprint = await createFingerprintJson();
+          const newFingerprint = await createAndInjectFingerprintFiles();
 
-          if (
-            !localFingerprint ||
-            localFingerprint?.ios?.hash !== newFingerprint.ios.hash ||
-            localFingerprint?.android?.hash !== newFingerprint.android.hash
-          ) {
+          if (!isFingerprintEquals(localFingerprint, newFingerprint)) {
             diffChanged = true;
           }
-
-          await setFingerprintHash("ios", newFingerprint.ios.hash);
-          await setFingerprintHash("android", newFingerprint.android.hash);
           return "Created fingerprint.json";
         } catch (error) {
           if (error instanceof Error) {

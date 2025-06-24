@@ -1,5 +1,47 @@
 # hot-updater
 
+## 0.19.7
+
+### Patch Changes
+
+- e28313d: chore(cli): move commander to devDependencies and bundle it
+- bcc641e: fix(cli): skipping set config `expo prebuild --platform android`
+  - @hot-updater/console@0.19.7
+  - @hot-updater/core@0.19.7
+  - @hot-updater/aws@0.19.7
+  - @hot-updater/cloudflare@0.19.7
+  - @hot-updater/firebase@0.19.7
+  - @hot-updater/plugin-core@0.19.7
+  - @hot-updater/supabase@0.19.7
+
+## 0.19.6
+
+### Patch Changes
+
+- 657a10e: Android Native Build - Gradle Build
+- Updated dependencies [657a10e]
+  - @hot-updater/aws@0.19.6
+  - @hot-updater/cloudflare@0.19.6
+  - @hot-updater/firebase@0.19.6
+  - @hot-updater/plugin-core@0.19.6
+  - @hot-updater/console@0.19.6
+  - @hot-updater/supabase@0.19.6
+  - @hot-updater/core@0.19.6
+
+## 0.19.5
+
+### Patch Changes
+
+- 40d28c2: bump rnef
+- Updated dependencies [40d28c2]
+  - @hot-updater/console@0.19.5
+  - @hot-updater/core@0.19.5
+  - @hot-updater/aws@0.19.5
+  - @hot-updater/cloudflare@0.19.5
+  - @hot-updater/firebase@0.19.5
+  - @hot-updater/plugin-core@0.19.5
+  - @hot-updater/supabase@0.19.5
+
 ## 0.19.4
 
 ### Patch Changes
