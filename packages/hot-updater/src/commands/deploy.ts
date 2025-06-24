@@ -23,6 +23,7 @@ import {
 } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
 import open from "open";
+import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import { getConsolePort, openConsole } from "./console";
 
@@ -227,6 +228,10 @@ export const deploy = async (options: DeployOptions) => {
           bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(bundlePath);
 
+          p.log.success(
+            `Bundle stored at ${picocolors.blueBright(path.relative(cwd, bundlePath))}`,
+          );
+
           return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
@@ -299,7 +304,6 @@ export const deploy = async (options: DeployOptions) => {
             throw e;
           }
           await databasePlugin.onUnmount?.();
-          await fs.promises.rm(bundlePath);
 
           return `✅ Update Complete (${databasePlugin.name})`;
         },
@@ -345,6 +349,5 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();
-    await fs.promises.rm(bundlePath, { force: true });
   }
 };
