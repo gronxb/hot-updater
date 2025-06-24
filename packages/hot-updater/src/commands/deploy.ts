@@ -9,6 +9,7 @@ import {
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
+import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
 import { printBanner } from "@/utils/printBanner";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
@@ -148,6 +149,10 @@ export const deploy = async (options: DeployOptions) => {
       );
     }
     process.exit(1);
+  }
+
+  if (appendOutputDirectoryIntoGitignore()) {
+    p.log.info(".gitignore has been modified");
   }
 
   const outputPath = options.bundleOutputPath ?? cwd;
