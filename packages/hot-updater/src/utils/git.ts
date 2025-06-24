@@ -40,9 +40,13 @@ export const appendToProjectRootGitignore = ({
     const allLines = content.split(/\r?\n/);
     const willAppendedLines: string[] = [];
     for (const line of globLines) {
-      if (!allLines.includes(line)) {
+      if (!allLines.find((l) => l.trim() === line)) {
         willAppendedLines.push(line);
       }
+    }
+
+    if (!willAppendedLines.length) {
+      return false;
     }
 
     fs.appendFileSync(

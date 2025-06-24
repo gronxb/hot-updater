@@ -41,23 +41,19 @@ describe("appendToProjectRootGitignore", () => {
   });
 
   it("don't add duplicated lines", () => {
-    const firstLine = fs
-      .readFileSync(gitIgnorePath(), { encoding: "utf8" })
-      .split(/\r?\n/)
-      .find((line) => !!line && !line.trim().startsWith("#"));
+    const line = "hello world!";
+    expect(
+      appendToProjectRootGitignore({
+        cwd: rootDir,
+        globLines: [line],
+      }),
+    ).toBe(true);
 
-    expect(firstLine).toBeTruthy();
-
-    appendToProjectRootGitignore({
-      cwd: rootDir,
-      globLines: [firstLine!, ".hot-updater/output"],
-    });
-
-    const sameLineCount = fs
-      .readFileSync(gitIgnorePath(), { encoding: "utf8" })
-      .split(/\r?\n/)
-      .filter((line) => line.trim() === firstLine!.trim()).length;
-
-    expect(sameLineCount).toBe(1);
+    expect(
+      appendToProjectRootGitignore({
+        cwd: rootDir,
+        globLines: [line],
+      }),
+    ).toBe(false);
   });
 });
