@@ -1,0 +1,43 @@
+{
+  "name": "@hot-updater/server",
+  "version": "1.0.0",
+  "description": "Framework-independent server library for Hot Updater",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "build:dev": "tsdown --watch",
+    "test": "vitest",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "semver": "^7.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/semver": "^7.5.0",
+    "tsdown": "^0.2.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "hot-updater",
+    "server",
+    "framework-independent",
+    "ota-updates"
+  ],
+  "author": "Hot Updater Team",
+  "license": "MIT"
+}

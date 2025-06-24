@@ -973,6 +973,31 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
+  packages/server:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
+      semver:
+        specifier: ^7.7.1
+        version: 7.7.2
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.16.10
+      '@types/semver':
+        specifier: ^7.5.0
+        version: 7.5.8
+      tsdown:
+        specifier: ^0.2.0
+        version: 0.2.17(@swc/core@1.7.42(@swc/helpers@0.5.17))(oxc-transform@0.72.0)(rollup@4.34.9)(typescript@5.8.3)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.8.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@20.16.10)(jsdom@25.0.1)(lightningcss@1.27.0)(sass-embedded@1.83.0)(terser@5.31.0)
+
   plugins/aws:
     dependencies:
       '@aws-sdk/client-cloudfront':
@@ -1250,9 +1275,6 @@ importers:
         specifier: 0.72.0
         version: 0.72.0
     devDependencies:
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: 'link:'
       '@types/node':
         specifier: ^22.7.5
         version: 22.13.5
