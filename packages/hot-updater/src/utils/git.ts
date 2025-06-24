@@ -17,12 +17,17 @@ export const getLatestGitCommit = async (): Promise<Commit | null> => {
   }
 };
 
+/**
+ * append globLines into project's .gitignore
+ *
+ * @returns whether .gitignore was changed
+ */
 export const appendToProjectRootGitignore = ({
   cwd,
   globLines,
-}: { cwd?: string; globLines: string[] }) => {
+}: { cwd?: string; globLines: string[] }): boolean => {
   if (!globLines.length) {
-    return;
+    return false;
   }
   const comment = "# hot-updater";
 
@@ -52,4 +57,5 @@ export const appendToProjectRootGitignore = ({
       encoding: "utf8",
     });
   }
+  return true;
 };

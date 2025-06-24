@@ -4,5 +4,5 @@ export const appendOutputDirectoryIntoGitignore = ({
   cwd,
 }: { cwd?: string } = {}) => {
   const appendedLines = [".hot-updater/output"];
-  appendToProjectRootGitignore({ cwd, globLines: appendedLines });
+  return appendToProjectRootGitignore({ cwd, globLines: appendedLines });
 };
