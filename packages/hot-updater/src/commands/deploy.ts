@@ -10,6 +10,7 @@ import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
 import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
+import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
@@ -155,7 +156,7 @@ export const deploy = async (options: DeployOptions) => {
     p.log.info(".gitignore has been modified");
   }
 
-  const outputPath = options.bundleOutputPath ?? cwd;
+  const outputPath = options.bundleOutputPath ?? getDefaultOutputPath();
 
   let bundleId: string | null = null;
   let fileHash: string;
@@ -164,7 +165,7 @@ export const deploy = async (options: DeployOptions) => {
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const bundlePath = path.join(normalizeOutputPath, "bundle.zip");
+  const bundlePath = path.join(normalizeOutputPath, "bundle", "bundle.zip");
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
