@@ -7,7 +7,7 @@
         "reasons": [
           "bareGitIgnore"
         ],
-        "hash": "de983884a3271a85384720763792990407637720"
+        "hash": null
       },
       {
         "type": "dir",
@@ -23,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "639ab86d4133989b947cb4739ade699b11eb4a31"
+        "hash": "a06bc08c69b7079857cab1ec8d3b59a3b4ebb386"
       },
       {
         "type": "contents",
@@ -64,14 +64,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.4\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.7\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "7bc1e770e81a9ac8df1e7e8c89e27048e9e30e45"
+        "hash": "6fa9382a1769b5c70bdd78b1825b4d3e1b513662"
       }
     ],
-    "hash": "bec6c7aa2d4c6f5f5067ee2f39fc9f1b753c9f23"
+    "hash": "ef1c84400cf2fe438d2d56a1645930169e054f16"
   },
   "android": {
     "sources": [
@@ -81,7 +81,7 @@
         "reasons": [
           "bareGitIgnore"
         ],
-        "hash": "de983884a3271a85384720763792990407637720"
+        "hash": null
       },
       {
         "type": "dir",
@@ -97,7 +97,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "639ab86d4133989b947cb4739ade699b11eb4a31"
+        "hash": "a06bc08c69b7079857cab1ec8d3b59a3b4ebb386"
       },
       {
         "type": "contents",
@@ -145,6 +145,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "0a335016350da88a93dd8551604609e1dea16041"
+    "hash": "30981d767a836998dd76b9600d4b7792015e9263"
   }
 }
