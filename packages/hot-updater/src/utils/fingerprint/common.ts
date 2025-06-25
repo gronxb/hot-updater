@@ -24,6 +24,7 @@ export function getFingerprintOptions(
     ignorePaths: [
       "**/android/**/strings.xml",
       "**/ios/**/*.plist",
+      "**/.gitignore",
       ...options.ignorePaths,
     ],
     extraSources: processExtraSources(
