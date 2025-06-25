@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.19.8
+
+### Patch Changes
+
+- 4a6a769: feat(cli): show fingerprint diff
+  - @hot-updater/console@0.19.8
+  - @hot-updater/core@0.19.8
+  - @hot-updater/aws@0.19.8
+  - @hot-updater/cloudflare@0.19.8
+  - @hot-updater/firebase@0.19.8
+  - @hot-updater/plugin-core@0.19.8
+  - @hot-updater/supabase@0.19.8
+
 ## 0.19.7
 
 ### Patch Changes
