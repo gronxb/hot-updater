@@ -11,6 +11,7 @@ import {
   readLocalFingerprint,
 } from "@/utils/fingerprint";
 import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
+import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { ExecaError } from "execa";
@@ -108,11 +109,22 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
   // const nativeBuildConfig = config.nativeBuild;
 
-  const outputPath = options.outputPath ?? path.join(cwd, "nativebuild"); // TODO any suggestion?
+  const artifactResultStorePath =
+    options.outputPath ??
+    path.join(
+      getDefaultOutputPath(),
+      "build",
+      platform,
+      platform === "android"
+        ? config.nativeBuild.android.aab
+          ? "aab"
+          : "apk"
+        : "",
+    );
 
-  const normalizeOutputPath = path.isAbsolute(outputPath)
-    ? outputPath
-    : path.join(cwd, outputPath);
+  const normalizeOutputPath = path.isAbsolute(artifactResultStorePath)
+    ? artifactResultStorePath
+    : path.join(cwd, artifactResultStorePath);
 
   const artifactPath = path.join(normalizeOutputPath, platform);
 
@@ -133,10 +145,12 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     const taskRef: {
       buildResult: {
         stdout: string | null;
-      } | null;
+        buildDirectory: string | null;
+        outputPath: string | null;
+      };
       storageUri: string | null;
     } = {
-      buildResult: null,
+      buildResult: { outputPath: null, stdout: null, buildDirectory: null },
       storageUri: null,
     };
 
@@ -145,13 +159,30 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
           await buildPlugin.nativeBuild?.prebuild?.({ platform });
-          await runNativeBuild({
+          const { buildDirectory, outputFile } = await runNativeBuild({
             platform,
             config: config.nativeBuild,
           });
+          taskRef.buildResult.outputPath = outputFile;
+          taskRef.buildResult.buildDirectory = buildDirectory;
+
           await buildPlugin.nativeBuild?.postbuild?.({ platform });
 
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
+
+          p.log.success(
+            `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), artifactResultStorePath))}.`,
+          );
+
+          await fs.promises.rm(artifactResultStorePath, {
+            recursive: true,
+            force: true,
+          });
+          await fs.promises.cp(
+            taskRef.buildResult.buildDirectory!,
+            artifactResultStorePath,
+            { recursive: true },
+          );
 
           // const files = await fs.promises.readdir(buildPath, {
           //   recursive: true,
@@ -178,7 +209,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
         },
       },
     ]);
-    if (taskRef.buildResult?.stdout) {
+    if (taskRef.buildResult.stdout) {
       p.log.success(taskRef.buildResult.stdout);
     }
     /*

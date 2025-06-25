@@ -9,7 +9,7 @@ export const runAndroidNativeBuild = async ({
   config,
 }: {
   config: RequiredDeep<NativeBuildArgs["android"]>;
-}) => {
+}): Promise<{ buildDirectory: string; outputFile: string }> => {
   const androidProjectPath = path.join(getCwd(), "android");
 
   return runGradle({

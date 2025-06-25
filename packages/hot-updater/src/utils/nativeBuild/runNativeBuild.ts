@@ -8,11 +8,10 @@ export const runNativeBuild = async ({
 }: {
   platform: Platform;
   config: RequiredDeep<NativeBuildArgs>;
-}) => {
+}): Promise<{ buildDirectory: string; outputFile: string }> => {
   switch (platform) {
     case "android":
-      await runAndroidNativeBuild({ config: config.android });
-      break;
+      return runAndroidNativeBuild({ config: config.android });
     case "ios":
       throw new Error("Not Implemented");
   }
