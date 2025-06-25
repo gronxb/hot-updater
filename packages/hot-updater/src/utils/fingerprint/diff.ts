@@ -3,28 +3,22 @@ import type { FingerprintDiffItem, FingerprintSource } from "@expo/fingerprint";
 import { diffFingerprintChangesAsync } from "@expo/fingerprint";
 import { getCwd } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
-import type { FingerprintOptions, FingerprintResult } from ".";
-import { processExtraSources } from "./processExtraSources";
+import {
+  type FingerprintOptions,
+  type FingerprintResult,
+  getFingerprintOptions,
+} from "./common";
 
 export async function getFingerprintDiff(
   oldFingerprint: FingerprintResult,
   options: FingerprintOptions,
 ): Promise<FingerprintDiffItem[]> {
-  const cwd = getCwd();
-  return await diffFingerprintChangesAsync(oldFingerprint, cwd, {
-    platforms: [options.platform],
-    ignorePaths: [
-      "**/android/**/strings.xml",
-      "**/ios/**/*.plist",
-      ...options.ignorePaths,
-    ],
-    extraSources: processExtraSources(
-      options.extraSources,
-      cwd,
-      options.ignorePaths,
-    ),
-    debug: options.debug,
-  });
+  const projectPath = getCwd();
+  return await diffFingerprintChangesAsync(
+    oldFingerprint,
+    projectPath,
+    getFingerprintOptions(options.platform, projectPath, options),
+  );
 }
 
 function getSourcePath(source: FingerprintSource): string {
@@ -103,9 +97,15 @@ export function getDiffSummary(diff: FingerprintDiffItem[]): string {
   const changed = diff.filter((item) => item.op === "changed").length;
 
   const parts: string[] = [];
-  if (added > 0) parts.push(`${added} added`);
-  if (removed > 0) parts.push(`${removed} removed`);
-  if (changed > 0) parts.push(`${changed} changed`);
+  if (added > 0) {
+    parts.push(`${added} added`);
+  }
+  if (removed > 0) {
+    parts.push(`${removed} removed`);
+  }
+  if (changed > 0) {
+    parts.push(`${changed} changed`);
+  }
 
   return parts.join(", ");
 }
