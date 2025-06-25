@@ -2,11 +2,8 @@ import fs from "fs";
 import path from "path";
 import { mockReactNativeProjectRoot } from "@hot-updater/plugin-core/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  type FingerprintResult,
-  isFingerprintEquals,
-  nativeFingerprint,
-} from ".";
+import { nativeFingerprint } from ".";
+import { type FingerprintResult, isFingerprintEquals } from "./common";
 
 describe("nativeFingerprint", () => {
   let rootDir: string;
