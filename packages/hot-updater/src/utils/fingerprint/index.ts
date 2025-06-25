@@ -1,70 +1,17 @@
 import fs from "fs";
 import path from "path";
-import * as p from "@clack/prompts";
-import type { FingerprintSource } from "@expo/fingerprint";
 import { createFingerprintAsync } from "@expo/fingerprint";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { type Platform, getCwd } from "@hot-updater/plugin-core";
 import { setFingerprintHash } from "../setFingerprintHash";
-import { processExtraSources } from "./processExtraSources";
+import {
+  type FingerprintOptions,
+  type FingerprintResult,
+  ensureFingerprintConfig,
+  getFingerprintOptions,
+} from "./common";
 
-export type FingerprintSources = {
-  extraSources: string[];
-  ignorePaths: string[];
-};
-
-export type FingerprintOptions = {
-  platform: "ios" | "android";
-  extraSources: string[];
-  ignorePaths: string[];
-  debug?: boolean;
-};
-
-export type FingerprintResult = {
-  hash: string;
-  sources: FingerprintSource[];
-};
-
-export function isFingerprintEquals(
-  lhs?: FingerprintResult | null,
-  rhs?: FingerprintResult | null,
-): boolean;
-export function isFingerprintEquals(
-  lhs?: {
-    android: FingerprintResult | null;
-    ios: FingerprintResult | null;
-  } | null,
-  rhs?: {
-    android: FingerprintResult | null;
-    ios: FingerprintResult | null;
-  } | null,
-): boolean;
-export function isFingerprintEquals(
-  lhs?: Record<string, any> | null,
-  rhs?: Record<string, any> | null,
-): boolean {
-  if (!lhs || !rhs) return false;
-  if (isFingerprintResultsObject(lhs) && isFingerprintResultsObject(rhs)) {
-    return (
-      lhs.android.hash === rhs.android.hash && lhs.ios.hash === rhs.ios.hash
-    );
-  }
-  if (!isFingerprintResultsObject(lhs) && !isFingerprintResultsObject(rhs)) {
-    return lhs["hash"] === rhs["hash"];
-  }
-
-  return false;
-
-  function isFingerprintResultsObject(
-    result: Record<string, any>,
-  ): result is { android: FingerprintResult; ios: FingerprintResult } {
-    return (
-      typeof result["android"] === "object" &&
-      typeof result["ios"] === "object" &&
-      !!result["android"]?.hash &&
-      !!result["ios"]?.hash
-    );
-  }
-}
+export * from "./common";
+export * from "./diff";
 
 /**
  * Calculates the fingerprint of the native parts project of the project.
@@ -74,43 +21,22 @@ export async function nativeFingerprint(
   options: FingerprintOptions,
 ): Promise<FingerprintResult> {
   const platform = options.platform;
-  return createFingerprintAsync(path, {
-    platforms: [platform],
-    ignorePaths: [
-      "**/android/**/strings.xml",
-      "**/ios/**/*.plist",
-      "**/.gitignore",
-      ...options.ignorePaths,
-    ],
-    extraSources: processExtraSources(
-      options.extraSources,
-      path,
-      options.ignorePaths,
-    ),
-    debug: options.debug,
-  });
+  return createFingerprintAsync(
+    path,
+    getFingerprintOptions(platform, path, options),
+  );
 }
-
-const ensureFingerprintConfig = async () => {
-  const config = await loadConfig(null);
-  if (config.updateStrategy === "appVersion") {
-    p.log.error(
-      "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
-    );
-    process.exit(1);
-  }
-  return config.fingerprint;
-};
 
 export const generateFingerprints = async () => {
   const fingerprintConfig = await ensureFingerprintConfig();
 
+  const projectPath = getCwd();
   const [ios, android] = await Promise.all([
-    nativeFingerprint(getCwd(), {
+    nativeFingerprint(projectPath, {
       platform: "ios",
       ...fingerprintConfig,
     }),
-    nativeFingerprint(getCwd(), {
+    nativeFingerprint(projectPath, {
       platform: "android",
       ...fingerprintConfig,
     }),
