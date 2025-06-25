@@ -1,4 +1,3 @@
-/* highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android/src/lib/commands/runGradle.ts */
 import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
@@ -43,7 +42,7 @@ export async function runGradle({
   args,
   androidProjectPath,
   appModuleName,
-}: RunGradleArgs) {
+}: RunGradleArgs): Promise<{ buildDirectory: string; outputFile: string }> {
   p.log.info(`Run Gradle Settings: 
 Project    ${androidProjectPath}
 App Moudle ${appModuleName}
@@ -78,20 +77,25 @@ Tasks      ${tasks.join(", ")}
     );
   }
 
-  const outputFilePath = await findOutputFile({
+  return findBuildDirectory({
     androidProjectPath,
     moduleName: appModuleName,
     tasks,
   });
-
-  p.log.success(`Output file: ${outputFilePath}`);
 }
 
-async function findOutputFile({
+async function findBuildDirectory({
   moduleName,
   tasks,
   androidProjectPath,
-}: { moduleName: string; tasks: string[]; androidProjectPath: string }) {
+}: {
+  moduleName: string;
+  tasks: string[];
+  androidProjectPath: string;
+}): Promise<{
+  buildDirectory: string;
+  outputFile: string;
+}> {
   const selectedTask = tasks.find(
     (t) =>
       t.startsWith("install") ||
@@ -99,7 +103,7 @@ async function findOutputFile({
       t.startsWith("bundle"),
   );
   if (!selectedTask) {
-    return false;
+    throw new Error(`Not supported gradle task: ${tasks.join(", ")}`);
   }
   // handle if selected task includes build flavour as well, eg. installProductionDebug should create ['production','debug'] array
   const variantFromSelectedTask = selectedTask
@@ -115,13 +119,18 @@ async function findOutputFile({
   const isAabOutput = selectedTask?.includes("bundle") === true;
   const buildDirectory = `${androidProjectPath}/${moduleName}/build/outputs/${isAabOutput ? "bundle" : "apk"}/${variantPath}`;
 
-  const outputPath = await getOutputFilePath({
+  if (!buildDirectory) {
+    throw new Error("Failed to find Android gradle build directory.");
+  }
+
+  const outputFile = await getOutputFilePath({
     aab: isAabOutput,
     appModuleName: moduleName,
     buildDirectory,
     variant,
   });
-  return outputPath ?? null;
+
+  return { buildDirectory, outputFile };
 }
 
 async function getOutputFilePath({

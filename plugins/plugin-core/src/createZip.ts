@@ -53,6 +53,7 @@ export const createZipTargetFiles = async ({
     platform: "UNIX",
   });
 
+  await fs.mkdir(path.dirname(outfile), { recursive: true });
   await fs.writeFile(outfile, content);
   return outfile;
 };

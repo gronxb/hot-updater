@@ -19,11 +19,13 @@ If you haven’t completed these steps, refer to the [quick-start](./getting-sta
 ```
 Options:
   -p, --platform <platform>                    specify the platform (choices: "ios", "android")
-  -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x) only available with "appVersion" update strategy
+  -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
   -f, --force-update                           force update the app (default: false)
+  -o, --bundle-output-path <bundleOutputPath>  the path where the bundle.zip will be generated
   -i, --interactive                            interactive mode (default: false)
+  -c, --channel <channel>                      specify the channel to deploy (default: "production")
+  -m, --message <message>                      Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
   -h, --help                                   display help for command
-  -c, --channel <channel>                      specify the release channel (default: "production")
 ```
 
 ## Usage

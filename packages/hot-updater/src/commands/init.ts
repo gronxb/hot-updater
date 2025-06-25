@@ -1,4 +1,5 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
+import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import type { BuildType } from "@hot-updater/plugin-core";
@@ -135,5 +136,9 @@ export const init = async () => {
     }
     default:
       throw new Error("Invalid provider");
+  }
+
+  if (appendOutputDirectoryIntoGitignore()) {
+    p.log.info(".gitignore has been modified");
   }
 };
