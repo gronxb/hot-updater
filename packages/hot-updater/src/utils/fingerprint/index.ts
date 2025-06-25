@@ -7,6 +7,12 @@ import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
 import { setFingerprintHash } from "../setFingerprintHash";
 import { processExtraSources } from "./processExtraSources";
 
+export {
+  getFingerprintDiff,
+  showFingerprintDiff,
+  getDiffSummary,
+} from "./diff";
+
 export type FingerprintSources = {
   extraSources: string[];
   ignorePaths: string[];
