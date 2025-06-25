@@ -6,8 +6,12 @@ import {
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
+import {
+  getFingerprintDiff,
+  showFingerprintDiff,
+} from "@/utils/fingerprint/diff";
 import * as p from "@clack/prompts";
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd, loadConfig } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 
 export const handleFingerprint = async () => {
@@ -30,10 +34,25 @@ export const handleFingerprint = async () => {
     "utf-8",
   );
   const localFingerprint = JSON.parse(readFingerprint);
+
+  const config = await loadConfig(null);
+  const fingerprintConfig = config.fingerprint;
+
   if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
     p.log.error(
       "iOS fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
     );
+
+    try {
+      const diff = await getFingerprintDiff(localFingerprint.ios, {
+        platform: "ios",
+        ...fingerprintConfig,
+      });
+      showFingerprintDiff(diff, "iOS");
+    } catch (error) {
+      p.log.warn("Could not generate fingerprint diff");
+    }
+
     process.exit(1);
   }
 
@@ -41,6 +60,17 @@ export const handleFingerprint = async () => {
     p.log.error(
       "Android fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
     );
+
+    try {
+      const diff = await getFingerprintDiff(localFingerprint.android, {
+        platform: "android",
+        ...fingerprintConfig,
+      });
+      showFingerprintDiff(diff, "Android");
+    } catch (error) {
+      p.log.warn("Could not generate fingerprint diff");
+    }
+
     process.exit(1);
   }
 
@@ -49,14 +79,16 @@ export const handleFingerprint = async () => {
 
 export const handleCreateFingerprint = async () => {
   let diffChanged = false;
+  let localFingerprint: any = null;
+  let newFingerprint: any = null;
 
   await p.tasks([
     {
       title: "Creating fingerprint.json",
       task: async () => {
         try {
-          const localFingerprint = await readLocalFingerprint();
-          const newFingerprint = await createAndInjectFingerprintFiles();
+          localFingerprint = await readLocalFingerprint();
+          newFingerprint = await createAndInjectFingerprintFiles();
 
           if (!isFingerprintEquals(localFingerprint, newFingerprint)) {
             diffChanged = true;
@@ -79,6 +111,43 @@ export const handleCreateFingerprint = async () => {
         `${picocolors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
       ),
     );
+
+    // Show what changed
+    if (localFingerprint && newFingerprint) {
+      const config = await loadConfig(null);
+      const fingerprintConfig = config.fingerprint;
+
+      try {
+        // Show iOS changes
+        if (
+          localFingerprint.ios &&
+          localFingerprint.ios.hash !== newFingerprint.ios.hash
+        ) {
+          const iosDiff = await getFingerprintDiff(localFingerprint.ios, {
+            platform: "ios",
+            ...fingerprintConfig,
+          });
+          showFingerprintDiff(iosDiff, "iOS");
+        }
+
+        // Show Android changes
+        if (
+          localFingerprint.android &&
+          localFingerprint.android.hash !== newFingerprint.android.hash
+        ) {
+          const androidDiff = await getFingerprintDiff(
+            localFingerprint.android,
+            {
+              platform: "android",
+              ...fingerprintConfig,
+            },
+          );
+          showFingerprintDiff(androidDiff, "Android");
+        }
+      } catch (error) {
+        p.log.warn("Could not generate fingerprint diff");
+      }
+    }
   } else {
     p.log.success(
       picocolors.bold(`${picocolors.blue("fingerprint.json")} is up to date.`),

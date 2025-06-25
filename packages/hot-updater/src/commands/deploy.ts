@@ -6,6 +6,10 @@ import {
   nativeFingerprint,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
+import {
+  getFingerprintDiff,
+  showFingerprintDiff,
+} from "@/utils/fingerprint/diff";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
@@ -86,8 +90,9 @@ export const deploy = async (options: DeployOptions) => {
     const s = p.spinner();
     s.start(`Fingerprinting (${platform})`);
     if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
-      p.log.error(
+      s.stop(
         "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+        1,
       );
       process.exit(1);
     }
@@ -97,9 +102,24 @@ export const deploy = async (options: DeployOptions) => {
     });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
-      p.log.error(
+      s.stop(
         "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
+        1,
       );
+
+      // Show what changed
+      if (projectFingerprint?.[platform]) {
+        try {
+          const diff = await getFingerprintDiff(projectFingerprint[platform], {
+            platform,
+            ...config.fingerprint,
+          });
+          showFingerprintDiff(diff, platform === "ios" ? "iOS" : "Android");
+        } catch (error) {
+          p.log.warn("Could not generate fingerprint diff");
+        }
+      }
+
       process.exit(1);
     }
 
