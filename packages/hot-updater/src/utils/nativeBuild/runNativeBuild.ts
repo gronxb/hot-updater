@@ -1,6 +1,7 @@
 import { runAndroidNativeBuild } from "@/utils/nativeBuild/runAndroidNativeBuild";
 import type { Platform } from "@hot-updater/core";
 import type { NativeBuildArgs, RequiredDeep } from "@hot-updater/plugin-core";
+import { runIosNativeBuild } from "./runIosNativeBuild";
 
 export const runNativeBuild = async ({
   platform,
@@ -13,6 +14,6 @@ export const runNativeBuild = async ({
     case "android":
       return runAndroidNativeBuild({ config: config.android });
     case "ios":
-      throw new Error("Not Implemented");
+      return runIosNativeBuild({ config: config.ios });
   }
 };
