@@ -1,3 +1,4 @@
+import { loadConfig } from "@hot-updater/plugin-core";
 import type { ExpoConfig } from "expo/config";
 import {
   createRunOncePlugin,
@@ -9,7 +10,6 @@ import {
 } from "expo/config-plugins";
 import { createAndInjectFingerprintFiles } from "hot-updater";
 import pkg from "../../package.json";
-import { loadConfig } from "@hot-updater/plugin-core";
 
 let fingerprintCache: Awaited<
   ReturnType<typeof createAndInjectFingerprintFiles>
