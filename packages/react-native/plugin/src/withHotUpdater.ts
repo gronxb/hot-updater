@@ -302,7 +302,6 @@ const withHotUpdaterConfigAsync =
         _: channel,
       });
 
-      // Only add fingerprint hash if we have one
       if (fingerprintHash) {
         // Remove existing hot_updater_fingerprint_hash entry if it exists
         cfg.modResults.resources.string =
