@@ -22,6 +22,33 @@ export default defineConfig({
 });
 ```
 
+## Client-Side Configuration with `getUpdateSource`
+
+When using the app version strategy in your React Native application, you need to configure the `getUpdateSource` function with the `updateStrategy` set to `"appVersion"`. This ensures that the client app sends the correct app version when checking for updates.
+
+```tsx title="App.tsx"
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: getUpdateSource("https://your-update-server.com/api/update-check", {
+    updateStrategy: "appVersion", // Configure for app version strategy
+  }),
+  // ... other options
+})(App);
+```
+
+The `getUpdateSource` function will automatically construct the correct endpoint URL for the app version strategy:
+`GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+
 ## Specifying App Version During Deployment
 
 When using the "App Version" strategy, you must specify the target app version for the update using the `-t` (or `--target-app-version`) option in the `hot-updater deploy` command.

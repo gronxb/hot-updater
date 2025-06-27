@@ -40,6 +40,33 @@ export default defineConfig({
 });
 ```
 
+## Client-Side Configuration with `getUpdateSource`
+
+When using the fingerprint strategy in your React Native application, you need to configure the `getUpdateSource` function with the `updateStrategy` set to `"fingerprint"`. This ensures that the client app sends the correct fingerprint hash when checking for updates.
+
+```tsx title="App.tsx"
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: getUpdateSource("https://your-update-server.com/api/update-check", {
+    updateStrategy: "fingerprint", // Configure for fingerprint strategy
+  }),
+  // ... other options
+})(App);
+```
+
+The `getUpdateSource` function will automatically construct the correct endpoint URL for the fingerprint strategy:
+`GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+
 ## Managing and Updating Fingerprints
 
 It's crucial to check and, if necessary, update the fingerprint whenever changes are made to the native code.
