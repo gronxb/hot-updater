@@ -9,6 +9,7 @@ import {
 } from "expo/config-plugins";
 import { createAndInjectFingerprintFiles } from "hot-updater";
 import pkg from "../../package.json";
+import { loadConfig } from "@hot-updater/plugin-core";
 
 let fingerprintCache: Awaited<
   ReturnType<typeof createAndInjectFingerprintFiles>
@@ -253,17 +254,28 @@ const withHotUpdaterConfigAsync =
 
     // === iOS: Add channel and fingerprint to Info.plist ===
     modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
-      // Generate fingerprints asynchronously
-      const { ios } = await getFingerprint();
+      let fingerprintHash = null;
+      const config = await loadConfig(null);
+      if (config.updateStrategy !== "appVersion") {
+        const { ios } = await getFingerprint();
+        fingerprintHash = ios.hash;
+      }
 
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
-      cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = ios.hash;
+      if (fingerprintHash) {
+        cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = fingerprintHash;
+      }
       return cfg;
     });
 
     // === Android: Add channel and fingerprint to strings.xml ===
     modifiedConfig = withStringsXml(modifiedConfig, async (cfg) => {
-      const { android } = await getFingerprint();
+      let fingerprintHash = null;
+      const config = await loadConfig(null);
+      if (config.updateStrategy !== "appVersion") {
+        const { android } = await getFingerprint();
+        fingerprintHash = android.hash;
+      }
 
       // Ensure resources object exists
       if (!cfg.modResults.resources) {
@@ -290,22 +302,27 @@ const withHotUpdaterConfigAsync =
         _: channel,
       });
 
-      // Remove existing hot_updater_fingerprint_hash entry if it exists
-      cfg.modResults.resources.string = cfg.modResults.resources.string.filter(
-        (item) => !(item.$ && item.$.name === "hot_updater_fingerprint_hash"),
-      );
+      // Only add fingerprint hash if we have one
+      if (fingerprintHash) {
+        // Remove existing hot_updater_fingerprint_hash entry if it exists
+        cfg.modResults.resources.string =
+          cfg.modResults.resources.string.filter(
+            (item) =>
+              !(item.$ && item.$.name === "hot_updater_fingerprint_hash"),
+          );
 
-      // Add the new hot_updater_fingerprint_hash entry
-      cfg.modResults.resources.string.push({
-        $: {
-          name: "hot_updater_fingerprint_hash",
-          moduleConfig: "true",
-        } as {
-          name: string;
-          moduleConfig: string;
-        },
-        _: android.hash,
-      });
+        // Add the new hot_updater_fingerprint_hash entry
+        cfg.modResults.resources.string.push({
+          $: {
+            name: "hot_updater_fingerprint_hash",
+            moduleConfig: "true",
+          } as {
+            name: string;
+            moduleConfig: string;
+          },
+          _: fingerprintHash,
+        });
+      }
 
       return cfg;
     });
