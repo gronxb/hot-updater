@@ -1,0 +1,124 @@
+import { Tab, Tabs } from 'rspress/theme';
+import { PackageManagerTabs } from '@theme';
+import { normalizeImagePath } from 'rspress/runtime';
+
+# Datadog Source Maps Plugin
+
+The `withDatadog()` plugin for hot-updater enables automatic sourcemap upload to Datadog during the update bundle build process.
+
+This helps you track production crashes with accurate stack traces tied to your React Native source code.
+
+## Prerequisites
+
+- Datadog Account: Sign up here if you don’t have one.
+- Auth Token: Generate a token from your Datadog dashboard. This must be defined as the environment variable `DATADOG_API_KEY`.
+- Datadog host: in order to communicate with Datadog, you need to specify the host to which the Auth token refers using the environment variable `DATADOG_HOST` (e.g., `DATADOG_HOST=datadoghq.eu`)
+- Install the plugin:
+
+<PackageManagerTabs command={
+  {
+    npm: "npm install @hot-updater/datadog-plugin --save-dev",
+    pnpm: "pnpm add @hot-updater/datadog-plugin -D",
+    yarn: "yarn add @hot-updater/datadog-plugin -D",
+  }
+} />
+
+::: tip Stable execution
+`withDatadog` internally uses `@datadog/datadog-ci` executed using `npx`. Although not required, you can install it as a `devDependency` to avoid unexpected HTTP calls failing during execution (e.g., in a CI environment). 
+:::
+
+## Step 1: Wrap Your Build Plugin
+
+Use `withDatadog()` to wrap any compatible build plugin such as metro.
+
+Once wrapped, sourcemaps will automatically be uploaded to Datadog when running the `hot-updater deploy` process.
+
+<Tabs>
+  <Tab label="Metro">
+
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { withDatadog } from "@hot-updater/datadog-plugin";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+export default defineConfig({
+  build: withDatadog(
+    bare({
+      enableHermes: false, // or true, depending if you want to use it
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
+    },
+  ),
+  // .. your other config
+});
+```
+</Tab>
+<Tab label="Expo">
+
+```ts title="hot-updater.config.ts"
+import { withDatadog } from "@hot-updater/datadog-plugin";
+import { defineConfig } from "hot-updater";
+import { expo } from "@hot-updater/expo";
+
+export default defineConfig({
+  build: withDatadog(
+    expo({
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
+    },
+  ),
+  // .. your other config
+});
+```
+</Tab>
+
+<Tab label="RNEF">
+
+```ts title="hot-updater.config.ts"
+import { withDatadog } from "@hot-updater/datadog-plugin";
+import { defineConfig } from "hot-updater";
+import { rnef } from "@hot-updater/rnef";
+
+export default defineConfig({
+  build: withDatadog(
+    rnef({
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
+    },
+  ),
+  // .. your other config
+});
+```
+
+</Tab>
+
+</Tabs>
+
+::: tip Automatic Upload
+When `withDatadog()` wraps your build plugin, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
+:::
+
+## Step 3: Deploy
+
+Now, every time you deploy, sourcemaps will be automatically uploaded to Datadog.
+
+<PackageManagerTabs command={
+  {
+    npm: "npx hot-updater deploy -i",
+    pnpm: "pnpm hot-updater deploy -i",
+    yarn: "yarn hot-updater deploy -i",
+  }
+} />
