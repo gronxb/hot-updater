@@ -1,0 +1,1 @@
+# @hot-updater/datadog-plugin
