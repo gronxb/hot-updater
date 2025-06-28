@@ -18,11 +18,13 @@ export const withSignedUrl = async <
   reqUrl,
   keyPairId,
   privateKey,
+  expiresSeconds = 60,
 }: {
   data: T | null;
   reqUrl: string;
   keyPairId: string;
   privateKey: string;
+  expiresSeconds?: number;
 }): Promise<(Omit<T, "storageUri"> & { fileUrl: string | null }) | null> => {
   if (!data) {
     return null;
@@ -44,7 +46,7 @@ export const withSignedUrl = async <
     url: url.toString(),
     keyPairId: keyPairId,
     privateKey: privateKey,
-    dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(), // Valid for 60 seconds
+    dateLessThan: new Date(Date.now() + expiresSeconds * 1000).toISOString(), // Valid for expiresSeconds seconds
   });
 
   return { ...rest, fileUrl: signedUrl };
