@@ -1,5 +1,12 @@
 # @hot-updater/aws
 
+## 0.19.9
+
+### Patch Changes
+
+- bcf6798: Extend signedUrl expiration for cacheable endpoints
+  - @hot-updater/plugin-core@0.19.9
+
 ## 0.19.8
 
 ### Patch Changes
