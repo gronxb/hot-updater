@@ -1101,6 +1101,22 @@ importers:
         specifier: ^8.3.0
         version: 8.3.0
 
+  plugins/datadog-plugin:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+      execa:
+        specifier: ^9.5.2
+        version: 9.5.2
+    devDependencies:
+      '@types/node':
+        specifier: ^20.9.4
+        version: 20.16.10
+
   plugins/expo:
     dependencies:
       '@clack/prompts':
