@@ -68,6 +68,7 @@ android {
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
     consumerProguardFiles 'proguard-rules.pro'
     buildConfigField "long", "BUILD_TIMESTAMP", "${System.currentTimeMillis()}L"
+    buildConfigField "String", "MIN_BUNDLE_ID", project.properties["MIN_BUNDLE_ID"]
   }
 
   buildFeatures {
