@@ -32,100 +32,106 @@ export const withDatadog =
     return {
       ...context,
       build: async (args) => {
-        const tmpDir = await fs.promises.mkdtemp(os.tmpdir());
-        const result = await context.build(args);
-
-        const files = await fs.promises.readdir(result.buildPath, {
-          recursive: true,
-        });
-
-        const javascriptBundleFilename = `index.${args.platform}.bundle`;
-        const javascriptBundleSourcemapFilename = `${javascriptBundleFilename}.map`;
-        const hermesBundleFilename = `${javascriptBundleFilename}.hbc`;
-        const hermesBundleSourcemapFilename = `${javascriptBundleFilename}.hbc.map`;
-
-        const javascriptBundlePath = ensureFilePath(
-          files,
-          result.buildPath,
-          javascriptBundleFilename,
+        const tmpDir = await fs.promises.mkdtemp(
+          path.join(os.tmpdir(), "hot-updater-datadog-sourcemap-"),
         );
 
-        const javascriptBundleSourcemapPath = ensureFilePath(
-          files,
-          result.buildPath,
-          javascriptBundleSourcemapFilename,
-        );
+        try {
+          const result = await context.build(args);
 
-        const hermesBundlePath = ensureFilePath(
-          files,
-          result.buildPath,
-          hermesBundleFilename,
-        );
+          const files = await fs.promises.readdir(result.buildPath, {
+            recursive: true,
+          });
 
-        const hermesBundleSourcemapPath = ensureFilePath(
-          files,
-          result.buildPath,
-          hermesBundleSourcemapFilename,
-        );
+          const javascriptBundleFilename = `index.${args.platform}.bundle`;
+          const javascriptBundleSourcemapFilename = `${javascriptBundleFilename}.map`;
+          const hermesBundleFilename = `${javascriptBundleFilename}.hbc`;
+          const hermesBundleSourcemapFilename = `${javascriptBundleFilename}.hbc.map`;
 
-        if (!javascriptBundlePath || !javascriptBundleSourcemapPath) {
-          throw new Error(
-            "Sourcemap or original bundle not found. Please enable sourcemap in your build plugin. e.g build: bare({ sourcemap: true })",
+          const javascriptBundlePath = ensureFilePath(
+            files,
+            result.buildPath,
+            javascriptBundleFilename,
           );
-        }
 
-        if (!!hermesBundlePath !== !!hermesBundleSourcemapPath) {
-          throw new Error(
-            "Hermes bundle or sourcemap not found. Please enable Hermes in your build plugin. e.g build: bare({ hermes: true })",
+          const javascriptBundleSourcemapPath = ensureFilePath(
+            files,
+            result.buildPath,
+            javascriptBundleSourcemapFilename,
           );
+
+          const hermesBundlePath = ensureFilePath(
+            files,
+            result.buildPath,
+            hermesBundleFilename,
+          );
+
+          const hermesBundleSourcemapPath = ensureFilePath(
+            files,
+            result.buildPath,
+            hermesBundleSourcemapFilename,
+          );
+
+          if (!javascriptBundlePath || !javascriptBundleSourcemapPath) {
+            throw new Error(
+              "Sourcemap or original bundle not found. Please enable sourcemap in your build plugin. e.g build: bare({ sourcemap: true })",
+            );
+          }
+
+          if (!!hermesBundlePath !== !!hermesBundleSourcemapPath) {
+            throw new Error(
+              "Hermes bundle or sourcemap not found. Please enable Hermes in your build plugin. e.g build: bare({ hermes: true })",
+            );
+          }
+
+          const selectedBundleFilePath =
+            hermesBundlePath ?? javascriptBundlePath;
+          const selectedSourcemapFilePath =
+            hermesBundleSourcemapPath ?? javascriptBundleSourcemapPath;
+
+          const tmpDirBundleFilePath = path.join(
+            tmpDir,
+            javascriptBundleFilename,
+          );
+          const tmpDirBundleSourcemapFilePath = path.join(
+            tmpDir,
+            javascriptBundleSourcemapFilename,
+          );
+
+          await fs.promises.copyFile(
+            selectedBundleFilePath,
+            tmpDirBundleFilePath,
+          );
+          await fs.promises.copyFile(
+            selectedSourcemapFilePath,
+            tmpDirBundleSourcemapFilePath,
+          );
+
+          await execa("npx", [
+            "datadog-ci",
+            "react-native",
+            "upload",
+            "--platform",
+            args.platform,
+            "--service",
+            config.service,
+            "--bundle",
+            tmpDirBundleFilePath,
+            "--sourcemap",
+            tmpDirBundleSourcemapFilePath,
+            "--release-version",
+            config.releaseVersion,
+            "--build-version",
+            config.buildNumber,
+            ...(config.repositoryUrl
+              ? ["--repository-url", config.repositoryUrl]
+              : []),
+          ]);
+
+          return result;
+        } finally {
+          await fs.promises.rm(tmpDir, { recursive: true, force: true });
         }
-
-        const selectedBundleFilePath = hermesBundlePath ?? javascriptBundlePath;
-        const selectedSourcemapFilePath =
-          hermesBundleSourcemapPath ?? javascriptBundleSourcemapPath;
-
-        const tmpDirBundleFilePath = path.join(
-          tmpDir,
-          javascriptBundleFilename,
-        );
-        const tmpDirBundleSourcemapFilePath = path.join(
-          tmpDir,
-          javascriptBundleSourcemapFilename,
-        );
-
-        await fs.promises.copyFile(
-          selectedBundleFilePath,
-          tmpDirBundleFilePath,
-        );
-        await fs.promises.copyFile(
-          selectedSourcemapFilePath,
-          tmpDirBundleSourcemapFilePath,
-        );
-
-        await execa("npx", [
-          "datadog-ci",
-          "react-native",
-          "upload",
-          "--platform",
-          args.platform,
-          "--service",
-          config.service,
-          "--bundle",
-          tmpDirBundleFilePath,
-          "--sourcemap",
-          tmpDirBundleSourcemapFilePath,
-          "--release-version",
-          config.releaseVersion,
-          "--build-version",
-          config.buildNumber,
-          ...(config.repositoryUrl
-            ? ["--repository-url", config.repositoryUrl]
-            : []),
-        ]);
-
-        await fs.promises.rm(tmpDir, { recursive: true, force: true });
-
-        return result;
       },
     };
   };
