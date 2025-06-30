@@ -1,5 +1,9 @@
 import * as p from "@clack/prompts";
-import type { FingerprintSource } from "@expo/fingerprint";
+import {
+  type FingerprintSource,
+  type Options,
+  SourceSkips,
+} from "@expo/fingerprint";
 import { loadConfig } from "@hot-updater/plugin-core";
 import { processExtraSources } from "./processExtraSources";
 
@@ -18,7 +22,7 @@ export function getFingerprintOptions(
   platform: "ios" | "android",
   path: string,
   options: FingerprintOptions,
-) {
+): Options {
   return {
     platforms: [platform],
     ignorePaths: [
@@ -27,6 +31,7 @@ export function getFingerprintOptions(
       "**/.gitignore",
       ...options.ignorePaths,
     ],
+    sourceSkips: SourceSkips.GitIgnore | SourceSkips.PackageJsonScriptsAll,
     extraSources: processExtraSources(
       options.extraSources,
       path,
