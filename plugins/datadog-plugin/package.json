@@ -49,5 +49,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.9.4"
+  },
+  "peerDependencies": {
+    "@datadog/datadog-ci": "^3"
   }
 }
