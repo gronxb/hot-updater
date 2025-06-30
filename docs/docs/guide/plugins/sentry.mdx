@@ -68,12 +68,12 @@ export default {
 
 ## Step 2: Wrap Your Build Plugin
 
-Use `withSentry()` to wrap any compatible build plugin such as metro.
+Use `withSentry()` to wrap any compatible build plugin such as bare.
 
 Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the `hot-updater deploy` process.
 
 <Tabs>
-  <Tab label="Metro">
+  <Tab label="Bare">
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
