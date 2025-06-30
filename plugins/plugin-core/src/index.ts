@@ -12,3 +12,6 @@ export * from "./createZip";
 export * from "./createBlobDatabasePlugin";
 export * from "./ConfigBuilder";
 export * from "./calculatePagination";
+export * from "./adapters";
+export * from "./compatibility";
+export { HotUpdater } from "./hot-updater";

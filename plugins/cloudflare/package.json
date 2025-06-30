@@ -48,6 +48,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/node": "workspace:*",
     "cloudflare": "4.2.0"
   },
   "devDependencies": {

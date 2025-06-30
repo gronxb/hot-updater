@@ -42,7 +42,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*"
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.9.4",
