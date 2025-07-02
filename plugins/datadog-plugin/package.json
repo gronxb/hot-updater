@@ -1,0 +1,56 @@
+{
+  "name": "@hot-updater/datadog-plugin",
+  "version": "0.19.9",
+  "type": "module",
+  "description": "React Native OTA solution for self-hosted",
+  "sideEffects": false,
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "datadog",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "execa": "^9.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.4"
+  },
+  "peerDependencies": {
+    "@datadog/datadog-ci": "^3"
+  }
+}
