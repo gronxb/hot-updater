@@ -1,5 +1,13 @@
 # @hot-updater/cloudflare
 
+## 0.19.9
+
+### Patch Changes
+
+- @hot-updater/core@0.19.9
+- @hot-updater/js@0.19.9
+- @hot-updater/plugin-core@0.19.9
+
 ## 0.19.8
 
 ### Patch Changes

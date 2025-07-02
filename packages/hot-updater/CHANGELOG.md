@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.19.9
+
+### Patch Changes
+
+- Updated dependencies [bcf6798]
+  - @hot-updater/aws@0.19.9
+  - @hot-updater/console@0.19.9
+  - @hot-updater/core@0.19.9
+  - @hot-updater/cloudflare@0.19.9
+  - @hot-updater/firebase@0.19.9
+  - @hot-updater/plugin-core@0.19.9
+  - @hot-updater/supabase@0.19.9
+
 ## 0.19.8
 
 ### Patch Changes

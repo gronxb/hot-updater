@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/core",
+  "name": "@hot-updater/datadog-plugin",
   "version": "0.19.9",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
@@ -9,14 +9,8 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    },
-    "./test-utils": {
-      "types": "./src/test-utils/index.ts",
-      "import": "./src/test-utils/index.ts",
-      "require": "./src/test-utils/index.ts"
     }
   },
   "files": [
@@ -27,6 +21,7 @@
     "react-native",
     "react-native-code-push",
     "code-push",
+    "datadog",
     "eas",
     "eas-update",
     "expo",
@@ -47,7 +42,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "execa": "^9.5.2"
+  },
   "devDependencies": {
     "@types/node": "^20.9.4"
+  },
+  "peerDependencies": {
+    "@datadog/datadog-ci": "^3"
   }
 }

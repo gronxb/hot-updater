@@ -64,6 +64,7 @@ const handleUpdateRequest = async (
   c: Context<{ Bindings: Bindings }>,
   params: UpdateRequestParams,
   strategy: UpdateStrategy,
+  expiresSeconds: number,
 ) => {
   try {
     const cdnHost = c.req.header("host");
@@ -102,6 +103,7 @@ const handleUpdateRequest = async (
       reqUrl: c.req.url,
       keyPairId: CLOUDFRONT_KEY_PAIR_ID,
       privateKey: CLOUDFRONT_PRIVATE_KEY,
+      expiresSeconds,
     });
 
     return c.json(appUpdateInfo);
@@ -156,10 +158,12 @@ app.get("/api/check-update", async (c) => {
       ...(fingerprintHash ? { fingerprintHash } : { appVersion }),
     };
 
+    const expiresSeconds = 60;
     return handleUpdateRequest(
       c,
       params,
       fingerprintHash ? "fingerprint" : "appVersion",
+      expiresSeconds,
     );
   } catch (error) {
     console.error("Legacy endpoint error:", error);
@@ -201,7 +205,10 @@ app.get(
       appVersion,
     };
 
-    return handleUpdateRequest(c, params, "appVersion");
+    // Since the signedUrl is also cached due to caching,
+    // we set a sufficiently long expiration time for the signedUrl in this endpoint.
+    const expiresSeconds = 60 * 60 * 24 * 365; // 1 year
+    return handleUpdateRequest(c, params, "appVersion", expiresSeconds);
   },
 );
 
@@ -240,7 +247,10 @@ app.get(
       fingerprintHash,
     };
 
-    return handleUpdateRequest(c, params, "fingerprint");
+    // Since the signedUrl is also cached due to caching,
+    // we set a sufficiently long expiration time for the signedUrl in this endpoint.
+    const expiresSeconds = 60 * 60 * 24 * 365; // 1 year
+    return handleUpdateRequest(c, params, "fingerprint", expiresSeconds);
   },
 );
 
