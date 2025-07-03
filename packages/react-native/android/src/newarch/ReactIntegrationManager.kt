@@ -69,7 +69,7 @@ class ReactIntegrationManager(
                     reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
                 } catch (e: Exception) {
                     Log.d("HotUpdater", "Failed to recreate context in background: ${e.message}")
-                    
+
                     val currentReactContext = reactNativeHost.reactInstanceManager.currentReactContext
                     val currentActivity = currentReactContext?.currentActivity
                     if (currentActivity == null) {

@@ -171,7 +171,7 @@ class HotUpdaterImpl(
             Log.e("HotUpdaterImpl", "Activity is null, cannot reload")
             return
         }
-        
+
         val application = activity.application
         if (application == null) {
             Log.e("HotUpdaterImpl", "Application is null, cannot reload")

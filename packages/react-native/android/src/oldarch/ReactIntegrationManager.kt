@@ -37,19 +37,19 @@ class ReactIntegrationManager(
         try {
             val reactNativeHost = application.reactNativeHost
             val reactInstanceManager = reactNativeHost.reactInstanceManager
-            
+
             // Check if React instance is available before attempting reload
             val currentReactContext = reactInstanceManager.currentReactContext
             if (currentReactContext == null) {
                 Log.d("HotUpdater", "ReactContext is null, cannot reload safely")
                 return
             }
-            
+
             try {
                 reactInstanceManager.recreateReactContextInBackground()
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to recreate context in background: ${e.message}")
-                
+
                 // Fallback to activity recreation if available
                 val currentActivity = currentReactContext.currentActivity
                 if (currentActivity == null) {
