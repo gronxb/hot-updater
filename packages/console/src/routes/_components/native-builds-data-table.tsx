@@ -26,7 +26,7 @@ import type { NativeBuild } from "./native-builds-columns";
 interface NativeBuildsDataTableProps {
   columns: ColumnDef<NativeBuild>[];
   data: NativeBuild[];
-  onRowClick?: (row: NativeBuild) => void;
+  onRowClick?: (build: NativeBuild) => void;
 }
 
 export function NativeBuildsDataTable(props: NativeBuildsDataTableProps) {
