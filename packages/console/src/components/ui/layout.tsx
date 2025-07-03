@@ -1,12 +1,17 @@
 import logo from "@/assets/logo.png";
-import { NativeBuilds } from "@/routes/_components/native-builds";
+import { useLocation } from "@solidjs/router";
+import { A } from "@solidjs/router";
 import type { JSX } from "solid-js";
-import { Show, createSignal } from "solid-js";
-
-type TabType = "ota-updates" | "native-builds";
 
 export default function Layout({ children }: { children: JSX.Element }) {
-  const [activeTab, setActiveTab] = createSignal<TabType>("ota-updates");
+  const location = useLocation();
+  
+  const isActive = (path: string) => {
+    if (path === "/ota-updates") {
+      return location.pathname === "/" || location.pathname === "/ota-updates";
+    }
+    return location.pathname === path;
+  };
 
   return (
     <div class="flex h-screen">
@@ -31,28 +36,28 @@ export default function Layout({ children }: { children: JSX.Element }) {
         <nav class="flex-1 p-4">
           <ul class="space-y-2">
             <li>
-              <button
-                onClick={() => setActiveTab("ota-updates")}
-                class={`w-full text-left px-3 py-2 rounded-md transition-colors ${
-                  activeTab() === "ota-updates"
+              <A
+                href="/ota-updates"
+                class={`block w-full text-left px-3 py-2 rounded-md transition-colors ${
+                  isActive("/ota-updates")
                     ? "bg-blue-100 text-blue-700 font-medium"
                     : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 OTA Updates
-              </button>
+              </A>
             </li>
             <li>
-              <button
-                onClick={() => setActiveTab("native-builds")}
-                class={`w-full text-left px-3 py-2 rounded-md transition-colors ${
-                  activeTab() === "native-builds"
+              <A
+                href="/native-builds"
+                class={`block w-full text-left px-3 py-2 rounded-md transition-colors ${
+                  isActive("/native-builds")
                     ? "bg-blue-100 text-blue-700 font-medium"
                     : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 Native Builds
-              </button>
+              </A>
             </li>
           </ul>
         </nav>
@@ -60,15 +65,7 @@ export default function Layout({ children }: { children: JSX.Element }) {
 
       {/* Main Content */}
       <main class="flex-1 p-6 overflow-auto">
-        <Show when={activeTab() === "ota-updates"}>
-          <div>
-            <h1 class="text-2xl font-bold mb-4 tracking-tight">OTA Updates</h1>
-            {children}
-          </div>
-        </Show>
-        <Show when={activeTab() === "native-builds"}>
-          <NativeBuilds />
-        </Show>
+        {children}
       </main>
     </div>
   );
