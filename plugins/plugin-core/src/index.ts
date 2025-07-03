@@ -12,3 +12,4 @@ export * from "./createZip";
 export * from "./createBlobDatabasePlugin";
 export * from "./ConfigBuilder";
 export * from "./calculatePagination";
+export * from "./generateMinBundleId";

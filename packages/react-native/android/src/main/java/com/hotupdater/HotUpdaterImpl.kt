@@ -69,10 +69,16 @@ class HotUpdaterImpl(
     }
 
     /**
-     * Generates a bundle ID based on build timestamp
+     * Get minimum bundle ID string
      * @return The minimum bundle ID string
      */
-    fun getMinBundleId(): String =
+    fun getMinBundleId(): String = BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
+
+    /**
+     * Generates a bundle ID based on build timestamp
+     * @return The generated minimum bundle ID string
+     */
+    private fun generateMinBundleIdFromBuildTimestamp(): String =
         try {
             val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
             val bytes =

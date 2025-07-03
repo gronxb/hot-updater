@@ -10,7 +10,7 @@
     "clear": "rimraf --glob **/dist .nx",
     "test": "vitest",
     "build": "nx run-many --target=build --projects=packages/*,plugins/*",
-    "build:dev": "nx run-many --target=build --projects=packages/*,plugins/* --watch",
+    "build:dev": "nx watch --projects=packages/*,plugins/* -- nx run \\$NX_PROJECT_NAME:build",
     "fingerprint:create": "nx run-many --target='fingerprint:create' --projects=examples/*",
     "test:type": "nx run-many --target=test:type --all",
     "release:test": "nx release --dry-run",
