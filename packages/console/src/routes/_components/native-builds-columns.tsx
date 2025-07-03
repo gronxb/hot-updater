@@ -5,7 +5,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ColumnDef } from "@tanstack/solid-table";
-import { Download, Fingerprint } from "lucide-solid";
+import { Download, Fingerprint, Package2 } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 
 export interface NativeBuild {
@@ -13,6 +13,7 @@ export interface NativeBuild {
   nativeVersion: string;
   platform: "ios" | "android";
   fingerprintHash: string;
+  minBundleId?: string;
   downloadUrl?: string;
   createdAt: Date;
 }
@@ -66,6 +67,30 @@ export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [
             <p class="font-mono text-sm">{hash}</p>
           </TooltipContent>
         </Tooltip>
+      );
+    },
+  },
+  {
+    accessorKey: "minBundleId",
+    header: "Min Bundle ID",
+    cell: (info) => {
+      const minBundleId = info.getValue() as string | undefined;
+      return (
+        <div class="flex flex-row items-center">
+          <Package2 class="mr-2" size={16} />
+          {minBundleId ? (
+            <Tooltip openDelay={0} closeDelay={0}>
+              <TooltipTrigger class="font-mono text-sm">
+                {minBundleId.slice(-8)}
+              </TooltipTrigger>
+              <TooltipContent>
+                <p class="font-mono text-sm">{minBundleId}</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <span class="text-muted-foreground text-sm">N/A</span>
+          )}
+        </div>
       );
     },
   },

@@ -5,7 +5,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Calendar, Download, Hash, Package } from "lucide-solid";
+import { Calendar, Download, Hash, Package, Package2 } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { Show } from "solid-js";
 import type { NativeBuild } from "./native-builds-columns";
@@ -71,15 +71,18 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
               </div>
             </div>
 
-            <div class="space-y-2 col-span-2">
+            <div class="space-y-2">
               <label class="text-sm font-medium text-muted-foreground">
-                Fingerprint Hash
+                Min Bundle ID
               </label>
               <div class="flex items-center gap-2">
-                <Hash size={16} />
-                <span class="font-mono text-sm break-all">
-                  {props.build.fingerprintHash}
-                </span>
+                <Package2 size={16} />
+                <Show 
+                  when={props.build.minBundleId}
+                  fallback={<span class="text-muted-foreground text-sm">N/A</span>}
+                >
+                  <span class="font-mono text-sm">{props.build.minBundleId}</span>
+                </Show>
               </div>
             </div>
 
@@ -92,6 +95,50 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
                 <span class="text-sm">
                   {props.build.createdAt.toLocaleDateString()} {props.build.createdAt.toLocaleTimeString()}
                 </span>
+              </div>
+            </div>
+
+            <div class="space-y-2 col-span-2">
+              <label class="text-sm font-medium text-muted-foreground">
+                Fingerprint Hash
+              </label>
+              <div class="flex items-center gap-2">
+                <Hash size={16} />
+                <span class="font-mono text-sm break-all">
+                  {props.build.fingerprintHash}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="border-gray-200" />
+
+        {/* Bundle Compatibility */}
+        <div class="space-y-4">
+          <h3 class="text-lg font-semibold">Bundle Compatibility</h3>
+          
+          <div class="p-4 bg-blue-50 rounded-lg">
+            <div class="flex items-start gap-3">
+              <Package2 class="mt-0.5 text-blue-600" size={20} />
+              <div class="space-y-1">
+                <p class="text-sm font-medium text-blue-900">Minimum Bundle Requirement</p>
+                <Show 
+                  when={props.build.minBundleId}
+                  fallback={
+                    <p class="text-sm text-blue-700">
+                      No minimum bundle requirement set for this build.
+                    </p>
+                  }
+                >
+                  <p class="text-sm text-blue-700">
+                    This native build requires at least bundle{" "}
+                    <span class="font-mono bg-blue-100 px-1 rounded">
+                      {props.build.minBundleId}
+                    </span>{" "}
+                    or newer to function properly.
+                  </p>
+                </Show>
               </div>
             </div>
           </div>
