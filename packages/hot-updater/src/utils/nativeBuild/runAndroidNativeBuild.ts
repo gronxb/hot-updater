@@ -2,9 +2,9 @@ import path from "path";
 import {
   type NativeBuildArgs,
   type RequiredDeep,
+  generateMinBundleId,
   getCwd,
 } from "@hot-updater/plugin-core";
-import { uuidv7 } from "uuidv7";
 import { runGradle } from "./gradle";
 export const runAndroidNativeBuild = async ({
   config,
@@ -13,7 +13,7 @@ export const runAndroidNativeBuild = async ({
 }): Promise<{ buildDirectory: string; outputFile: string }> => {
   const androidProjectPath = path.join(getCwd(), "android");
 
-  const bundleId = uuidv7();
+  const bundleId = generateMinBundleId();
 
   return runGradle({
     args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
