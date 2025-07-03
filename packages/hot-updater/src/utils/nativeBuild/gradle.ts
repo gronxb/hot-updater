@@ -43,12 +43,6 @@ export async function runGradle({
   androidProjectPath,
   appModuleName,
 }: RunGradleArgs): Promise<{ buildDirectory: string; outputFile: string }> {
-  p.log.info(`Run Gradle Settings: 
-Project    ${androidProjectPath}
-App Moudle ${appModuleName}
-Tasks      ${tasks.join(", ")}
-`);
-
   const gradleArgs = getTaskNames(appModuleName, tasks);
 
   gradleArgs.push("-x", "lint");
@@ -56,6 +50,13 @@ Tasks      ${tasks.join(", ")}
   if (args.extraParams) {
     gradleArgs.push(...args.extraParams);
   }
+
+  p.log.info(`Run Gradle Settings: 
+Project    ${androidProjectPath}
+App Moudle ${appModuleName}
+Tasks      ${tasks.join(", ")}
+Args       ${gradleArgs.join(" ")}
+`);
 
   if ("port" in args && args.port != null) {
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
