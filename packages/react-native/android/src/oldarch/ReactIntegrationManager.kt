@@ -34,17 +34,36 @@ class ReactIntegrationManager(
      * Reload the React Native application.
      */
     public fun reload(application: ReactApplication) {
-        val reactNativeHost = application.reactNativeHost
         try {
-            reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
-        } catch (e: Exception) {
-            val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
-            if (currentActivity == null) {
+            val reactNativeHost = application.reactNativeHost
+            val reactInstanceManager = reactNativeHost.reactInstanceManager
+            
+            // Check if React instance is available before attempting reload
+            val currentReactContext = reactInstanceManager.currentReactContext
+            if (currentReactContext == null) {
+                Log.d("HotUpdater", "ReactContext is null, cannot reload safely")
                 return
             }
+            
+            try {
+                reactInstanceManager.recreateReactContextInBackground()
+            } catch (e: Exception) {
+                Log.d("HotUpdater", "Failed to recreate context in background: ${e.message}")
+                
+                // Fallback to activity recreation if available
+                val currentActivity = currentReactContext.currentActivity
+                if (currentActivity == null) {
+                    Log.d("HotUpdater", "No current activity available for fallback reload")
+                    return
+                }
 
-            currentActivity.runOnUiThread {
-                currentActivity.recreate()
+                try {
+                    currentActivity.runOnUiThread {
+                        currentActivity.recreate()
+                    }
+                } catch (e: Exception) {
+                    Log.d("HotUpdater", "Failed to recreate activity: ${e.message}")
+                }
             }
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload: ${e.message}")

@@ -53,26 +53,37 @@ class ReactIntegrationManager(
         try {
             val reactHost = application.reactHost
             if (reactHost != null) {
-                val activity = reactHost.currentReactContext?.currentActivity
-                if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
-                    reactHost.onHostResume(activity)
+                val currentReactContext = reactHost.currentReactContext
+                if (currentReactContext != null) {
+                    val activity = currentReactContext.currentActivity
+                    if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
+                        reactHost.onHostResume(activity)
+                    }
+                    reactHost.reload("Requested by HotUpdater")
+                } else {
+                    Log.d("HotUpdater", "ReactContext is null, cannot reload safely")
                 }
-                reactHost.reload("Requested by HotUpdater")
             } else {
                 val reactNativeHost = application.reactNativeHost
                 try {
                     reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
                 } catch (e: Exception) {
-                    val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+                    Log.d("HotUpdater", "Failed to recreate context in background: ${e.message}")
+                    
+                    val currentReactContext = reactNativeHost.reactInstanceManager.currentReactContext
+                    val currentActivity = currentReactContext?.currentActivity
                     if (currentActivity == null) {
+                        Log.d("HotUpdater", "No current activity available for fallback reload")
                         return
                     }
 
-                    currentActivity.runOnUiThread {
-                        currentActivity.recreate()
+                    try {
+                        currentActivity.runOnUiThread {
+                            currentActivity.recreate()
+                        }
+                    } catch (e: Exception) {
+                        Log.d("HotUpdater", "Failed to recreate activity: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.d("HotUpdater", "Failed to reload: ${e.message}")
                 }
             }
         } catch (e: Exception) {

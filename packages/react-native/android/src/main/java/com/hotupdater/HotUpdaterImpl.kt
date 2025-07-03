@@ -167,17 +167,30 @@ class HotUpdaterImpl(
      * @param activity Current activity (optional)
      */
     fun reload(activity: Activity? = null) {
-        val reactIntegrationManager = ReactIntegrationManager(context)
-        val application = activity?.application ?: return
+        if (activity == null) {
+            Log.e("HotUpdaterImpl", "Activity is null, cannot reload")
+            return
+        }
+        
+        val application = activity.application
+        if (application == null) {
+            Log.e("HotUpdaterImpl", "Application is null, cannot reload")
+            return
+        }
 
         try {
+            val reactIntegrationManager = ReactIntegrationManager(context)
             val reactApplication = reactIntegrationManager.getReactApplication(application)
             val bundleURL = getJSBundleFile()
 
             reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
 
             Handler(Looper.getMainLooper()).post {
-                reactIntegrationManager.reload(reactApplication)
+                try {
+                    reactIntegrationManager.reload(reactApplication)
+                } catch (e: Exception) {
+                    Log.e("HotUpdaterImpl", "Failed to reload on main thread", e)
+                }
             }
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
