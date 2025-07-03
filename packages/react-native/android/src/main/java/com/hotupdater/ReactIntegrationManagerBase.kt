@@ -25,6 +25,9 @@ open class ReactIntegrationManagerBase(
     }
 
     public fun getReactApplication(application: Application?): ReactApplication {
+        if (application == null) {
+            throw IllegalArgumentException("Application is null")
+        }
         if (application is ReactApplication) {
             return application
         } else {
