@@ -1,6 +1,8 @@
 import path from "path";
 import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
 import { injectDefaultIosNativeBuildSchemeOptions } from "./injectDefaultToNativeBuildSchemeOptions";
+import { archive, exportArchive } from "./xcodebuild";
+
 export const runIosNativeBuild = async ({
   schemeConfig,
 }: {
@@ -9,5 +11,16 @@ export const runIosNativeBuild = async ({
   const iosProjectRoot = path.join(getCwd(), "ios");
   const mergedConfig = injectDefaultIosNativeBuildSchemeOptions(schemeConfig);
 
-  return { buildDirectory: "", outputFile: "" };
+  const { archivePath } = await archive(mergedConfig);
+
+  if (!mergedConfig.exportOptionsPlist) {
+    throw new Error("exportOptionsPlist is required for exporting the archive.");
+  }
+
+  const { exportPath } = await exportArchive({
+    archivePath,
+    exportOptionsPlist: mergedConfig.exportOptionsPlist,
+  });
+
+  return { buildDirectory: exportPath, outputFile: "" };
 };
