@@ -1,15 +1,13 @@
 import path from "path";
-import {
-  type NativeBuildArgs,
-  type RequiredDeep,
-  getCwd,
-} from "@hot-updater/plugin-core";
+import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
+import { injectDefaultIosNativeBuildSchemeOptions } from "./injectDefaultToNativeBuildSchemeOptions";
 export const runIosNativeBuild = async ({
-  config,
+  schemeConfig,
 }: {
-  config: RequiredDeep<NativeBuildArgs["ios"]>;
+  schemeConfig: NativeBuildIosScheme;
 }): Promise<{ buildDirectory: string; outputFile: string }> => {
-  const androidProjectPath = path.join(getCwd(), "android");
+  const iosProjectRoot = path.join(getCwd(), "ios");
+  const mergedConfig = injectDefaultIosNativeBuildSchemeOptions(schemeConfig);
 
   return { buildDirectory: "", outputFile: "" };
 };

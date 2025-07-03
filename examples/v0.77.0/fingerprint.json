@@ -2,14 +2,6 @@
   "ios": {
     "sources": [
       {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": null
-      },
-      {
         "type": "dir",
         "filePath": "ios",
         "reasons": [
@@ -23,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "16047361589d8f0ccebf751315520a9448926cd8"
+        "hash": "6c9db3bf078f144170cf1129e51c0ec1a60c9831"
       },
       {
         "type": "contents",
@@ -54,15 +46,6 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "c861d99ed39a07477bb00093f1607d435a29b7f3"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
         "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.9\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
@@ -71,18 +54,10 @@
         "hash": "e4f8900b94b623991516207e96470282080b33f7"
       }
     ],
-    "hash": "5049e93baae90bc0d5a35c7cce0341c2bcb0f291"
+    "hash": "32554ecb29484c95fe70f88359d2c6ca6079109b"
   },
   "android": {
     "sources": [
-      {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": null
-      },
       {
         "type": "dir",
         "filePath": "android",
@@ -97,7 +72,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "16047361589d8f0ccebf751315520a9448926cd8"
+        "hash": "6c9db3bf078f144170cf1129e51c0ec1a60c9831"
       },
       {
         "type": "contents",
@@ -128,15 +103,6 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "c861d99ed39a07477bb00093f1607d435a29b7f3"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:android",
         "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
         "reasons": [
@@ -145,6 +111,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "e56f6ecf7226264f156284e2c65b0da20a574531"
+    "hash": "6481866748cc45e0098593335cf2432be66fb33e"
   }
 }

@@ -22,10 +22,16 @@ export interface NativeBuildOptions {
   interactive: boolean;
   message?: string;
   platform?: Platform;
+  scheme?: string;
 }
 
 export const nativeBuild = async (options: NativeBuildOptions) => {
   printBanner();
+
+  if (!options.scheme && !options.interactive) {
+    p.log.error("required option '-s, --scheme <scheme>' not specified");
+    return;
+  }
 
   const cwd = getCwd();
 
@@ -54,8 +60,34 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
   const config = await loadConfig({ platform, channel: /* todo */ "DUMMY" });
   if (!config) {
-    console.error("No config found. Please run `hot-updater init` first.");
+    p.log.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
+  }
+
+  const availableSchemes = Object.keys(config.nativeBuild[platform]).sort();
+
+  if (!availableSchemes.length) {
+    // TODO: add documentation links
+    p.log.error(`configure your native build schemes for ${platform} first.`);
+    return;
+  }
+
+  const scheme =
+    options.scheme ??
+    (await p.select({
+      message: "Which scheme do you use to build?",
+      options: availableSchemes.map((s) => ({ label: s, value: s })),
+    }));
+
+  if (p.isCancel(scheme)) {
+    return;
+  }
+
+  if (!(scheme in config.nativeBuild[platform])) {
+    p.log.error(
+      `scheme ${picocolors.blueBright(options.scheme)} is not in predefined schemes [${picocolors.blueBright(availableSchemes.join(", "))}]`,
+    );
+    return;
   }
 
   const target: {
@@ -116,7 +148,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       "build",
       platform,
       platform === "android"
-        ? config.nativeBuild.android.aab
+        ? config.nativeBuild.android[scheme]!.aab
           ? "aab"
           : "apk"
         : "",
@@ -162,6 +194,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
           const { buildDirectory, outputFile } = await runNativeBuild({
             platform,
             config: config.nativeBuild,
+            scheme,
           });
           taskRef.buildResult.outputPath = outputFile;
           taskRef.buildResult.buildDirectory = buildDirectory;
