@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.19.10
+
+### Patch Changes
+
+- 85b236d: skip gitignore and package json scripts
+- 8d2d55a: Injectable minimum bundle id for Android
+  - @hot-updater/console@0.19.10
+  - @hot-updater/core@0.19.10
+  - @hot-updater/aws@0.19.10
+  - @hot-updater/cloudflare@0.19.10
+  - @hot-updater/firebase@0.19.10
+  - @hot-updater/plugin-core@0.19.10
+  - @hot-updater/supabase@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes
