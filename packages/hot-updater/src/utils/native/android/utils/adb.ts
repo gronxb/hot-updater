@@ -10,7 +10,7 @@ export function getAdbPath() {
 /**
  * Parses the output of the 'adb devices' command
  */
-function parseDevicesResult(result: string): Array<string> {
+function parseDevicesResult(result: string): string[] {
   if (!result) {
     return [];
   }
@@ -31,7 +31,7 @@ function parseDevicesResult(result: string): Array<string> {
 /**
  * Executes the commands needed to get a list of devices from ADB
  */
-export async function getDevices() {
+export async function getDevices(): Promise<String[]> {
   const adbPath = getAdbPath();
   try {
     const { stdout } = await execa(adbPath, ["devices"], { stdio: "pipe" });

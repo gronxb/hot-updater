@@ -10,7 +10,7 @@ export const runAndroidNativeBuild = async ({
   schemeConfig,
 }: {
   schemeConfig: NativeBuildAndroidScheme;
-}): Promise<{ buildDirectory: string; outputFile: string }> => {
+}): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   const androidProjectPath = path.join(getCwd(), "android");
 
   const bundleId = generateMinBundleId();

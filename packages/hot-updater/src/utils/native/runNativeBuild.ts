@@ -11,7 +11,7 @@ export const runNativeBuild = async ({
   platform: Platform;
   config: Required<NativeBuildArgs>;
   scheme: string;
-}): Promise<{ buildDirectory: string; outputFile: string }> => {
+}): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   switch (platform) {
     case "android":
       return runAndroidNativeBuild({ schemeConfig: config.android[scheme]! });

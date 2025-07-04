@@ -16,6 +16,7 @@ import { Command, Option } from "@commander-js/extra-typings";
 import { banner, log } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
+import { type NativeBuildOptions, nativeBuild } from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -149,8 +150,8 @@ if (process.env["NODE_ENV"] === "development") {
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: NativeRunOptions) => {
-      nativeRun(options);
+    .action(async (options: NativeBuildOptions) => {
+      nativeBuild(options);
     });
 
   program

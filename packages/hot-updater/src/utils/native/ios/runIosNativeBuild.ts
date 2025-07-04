@@ -6,7 +6,7 @@ export const runIosNativeBuild = async ({
   schemeConfig,
 }: {
   schemeConfig: NativeBuildIosScheme;
-}): Promise<{ buildDirectory: string; outputFile: string }> => {
+}): Promise<{ buildDirectory: string;  buildArtifactPath: string; }> => {
   // const iosProjectRoot = path.join(getCwd(), "ios");
   const mergedConfig = injectDefaultIosNativeBuildSchemeOptions(schemeConfig);
 
@@ -23,5 +23,5 @@ export const runIosNativeBuild = async ({
     exportOptionsPlist: mergedConfig.exportOptionsPlist,
   });
 
-  return { buildDirectory: exportPath, outputFile: "" };
+  return { buildDirectory: exportPath, buildArtifactPath: "" };
 };

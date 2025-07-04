@@ -42,7 +42,7 @@ export async function runGradle({
   args,
   androidProjectPath,
   appModuleName,
-}: RunGradleArgs): Promise<{ buildDirectory: string; outputFile: string }> {
+}: RunGradleArgs): Promise<{ buildDirectory: string; buildArtifactPath: string }> {
   const gradleArgs = getTaskNames(appModuleName, tasks);
 
   gradleArgs.push("-x", "lint");
@@ -95,7 +95,7 @@ async function findBuildDirectory({
   androidProjectPath: string;
 }): Promise<{
   buildDirectory: string;
-  outputFile: string;
+  buildArtifactPath: string;
 }> {
   const selectedTask = tasks.find(
     (t) =>
@@ -124,17 +124,17 @@ async function findBuildDirectory({
     throw new Error("Failed to find Android gradle build directory.");
   }
 
-  const outputFile = await getOutputFilePath({
+  const buildArtifactPath = await getBuildOutputFilePath({
     aab: isAabOutput,
     appModuleName: moduleName,
     buildDirectory,
     variant,
   });
 
-  return { buildDirectory, outputFile };
+  return { buildDirectory,  buildArtifactPath };
 }
 
-async function getOutputFilePath({
+async function getBuildOutputFilePath({
   aab,
   appModuleName,
   buildDirectory,
@@ -142,7 +142,7 @@ async function getOutputFilePath({
 }: {
   appModuleName: string;
   variant: string;
-  buildDirectory: string;
+  buildDirectory:   string;
   aab: boolean;
 }) {
   // we don't check abi specific output file yet
