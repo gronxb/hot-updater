@@ -17,7 +17,7 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { ExecaError } from "execa";
 import picocolors from "picocolors";
 
-export interface NativeBuildOptions {
+export interface NativeRunOptions {
   outputPath?: string;
   interactive: boolean;
   message?: string;
@@ -25,7 +25,7 @@ export interface NativeBuildOptions {
   scheme?: string;
 }
 
-export const nativeBuild = async (options: NativeBuildOptions) => {
+export const nativeRun = async (options: NativeRunOptions) => {
   printBanner();
 
   if (!options.scheme && !options.interactive) {

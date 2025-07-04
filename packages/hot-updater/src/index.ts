@@ -5,7 +5,6 @@ import {
   nativeBuildSchemeCommandOption,
   platformCommandOption,
 } from "@/commandOptions";
-import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
@@ -23,6 +22,7 @@ import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
+import { type NativeRunOptions, nativeRun } from "./commands/runNative";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -149,8 +149,8 @@ if (process.env["NODE_ENV"] === "development") {
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: NativeBuildOptions) => {
-      nativeBuild(options);
+    .action(async (options: NativeRunOptions) => {
+      nativeRun(options);
     });
 
   program
@@ -166,8 +166,8 @@ if (process.env["NODE_ENV"] === "development") {
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: NativeBuildOptions) => {
-      nativeBuild(options);
+    .action(async (options: NativeRunOptions) => {
+      nativeRun(options);
     });
 }
 
