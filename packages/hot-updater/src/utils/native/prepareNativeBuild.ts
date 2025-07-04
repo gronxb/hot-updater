@@ -34,7 +34,7 @@ export async function prepareNativeBuild(options: NativeBuildOptions): Promise<{
     return null;
   }
 
-  const platform =
+  const platform: Platform | null | symbol =
     options.platform ??
     (options.interactive
       ? await getPlatform("Which platform do you want to deploy?")
@@ -58,7 +58,9 @@ export async function prepareNativeBuild(options: NativeBuildOptions): Promise<{
     return null;
   }
 
-  const availableSchemes = Object.keys(config.nativeBuild[platform]).sort();
+  const availableSchemes: string[] = Object.keys(
+    config.nativeBuild[platform],
+  ).sort();
 
   if (!availableSchemes.length) {
     // TODO: add documentation links
