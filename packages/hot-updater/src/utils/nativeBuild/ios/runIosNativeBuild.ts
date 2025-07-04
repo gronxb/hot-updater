@@ -1,6 +1,6 @@
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
-import { injectDefaultIosNativeBuildSchemeOptions } from "./injectDefaultToNativeBuildSchemeOptions";
-import { archive, exportArchive } from "./xcodebuild";
+import { injectDefaultIosNativeBuildSchemeOptions } from './injectDefaultIosNativeBuildSchemeOptions';
+import { archive, exportArchive } from './utils/xcodebuild';
 
 export const runIosNativeBuild = async ({
   schemeConfig,

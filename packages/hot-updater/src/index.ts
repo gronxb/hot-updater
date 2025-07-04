@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import {
   interactiveCommandOption,
+  nativeBuildOutputCommandOption,
+  nativeBuildSchemeCommandOption,
   platformCommandOption,
 } from "@/commandOptions";
 import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
@@ -137,29 +139,31 @@ if (process.env["NODE_ENV"] === "development") {
   program
     .command("build:native")
     .description("build a new native artifact and deploy")
-    .addOption(
-      new Option("-p, --platform <platform>", "specify the platform").choices([
-        "ios",
-        "android",
-      ]),
-    )
-    .addOption(
-      new Option(
-        "-o, --output-path <outputPath>",
-        "the path where the artifacts will be generated",
-      ),
-    )
+    .addOption(platformCommandOption)
+    .addOption(nativeBuildOutputCommandOption)
     .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
     .addOption(
       new Option(
         "-m, --message <message>",
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
+    .action(async (options: NativeBuildOptions) => {
+      nativeBuild(options);
+    });
+
+  program
+    .command("run:native")
+    .description("build a new native artifact and run to device or simulator")
+    .addOption(platformCommandOption)
+    .addOption(nativeBuildOutputCommandOption)
+    .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
     .addOption(
       new Option(
-        "-s, --scheme <scheme>",
-        "predefined scheme for the native build configuration",
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
     .action(async (options: NativeBuildOptions) => {

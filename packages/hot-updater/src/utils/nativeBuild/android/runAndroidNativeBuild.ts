@@ -1,11 +1,11 @@
-import path from "path";
 import {
   type NativeBuildAndroidScheme,
   generateMinBundleId,
   getCwd,
 } from "@hot-updater/plugin-core";
-import { runGradle } from "./gradle";
-import { injectDefaultAndroidNativeBuildSchemeOptions } from "./injectDefaultToNativeBuildSchemeOptions";
+import path from "path";
+import { runGradle } from "./utils/gradle";
+import { injectDefaultAndroidNativeBuildSchemeOptions } from './utils/injectDefaultAndroidNativeBuildSchemeOptions';
 export const runAndroidNativeBuild = async ({
   schemeConfig,
 }: {
