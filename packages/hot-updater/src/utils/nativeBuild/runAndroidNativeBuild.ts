@@ -1,26 +1,29 @@
 import path from "path";
 import {
-  type NativeBuildArgs,
-  type RequiredDeep,
+  type NativeBuildAndroidScheme,
   generateMinBundleId,
   getCwd,
 } from "@hot-updater/plugin-core";
 import { runGradle } from "./gradle";
+import { injectDefaultAndroidNativeBuildSchemeOptions } from "./injectDefaultToNativeBuildSchemeOptions";
 export const runAndroidNativeBuild = async ({
-  config,
+  schemeConfig,
 }: {
-  config: RequiredDeep<NativeBuildArgs["android"]>;
+  schemeConfig: NativeBuildAndroidScheme;
 }): Promise<{ buildDirectory: string; outputFile: string }> => {
   const androidProjectPath = path.join(getCwd(), "android");
 
   const bundleId = generateMinBundleId();
 
+  const mergedConfig =
+    injectDefaultAndroidNativeBuildSchemeOptions(schemeConfig);
+
   return runGradle({
     args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
-    appModuleName: config.appModuleName,
-    tasks: config.aab
-      ? [`bundle${config.variant}`]
-      : [`assemble${config.variant}`],
-    androidProjectPath: androidProjectPath,
+    appModuleName: mergedConfig.appModuleName,
+    tasks: mergedConfig.aab
+      ? [`bundle${mergedConfig.variant}`]
+      : [`assemble${mergedConfig.variant}`],
+    androidProjectPath,
   });
 };

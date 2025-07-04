@@ -156,6 +156,12 @@ if (process.env["NODE_ENV"] === "development") {
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
+    .addOption(
+      new Option(
+        "-s, --scheme <scheme>",
+        "predefined scheme for the native build configuration",
+      ),
+    )
     .action(async (options: NativeBuildOptions) => {
       nativeBuild(options);
     });

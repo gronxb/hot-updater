@@ -4,7 +4,9 @@ import "dotenv/config";
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  nativeBuild: { android: { aab: false } },
+  nativeBuild: {
+    android: { releaseApk: { aab: false }, releaseAab: { aab: true } },
+  },
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
