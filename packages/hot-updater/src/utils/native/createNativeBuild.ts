@@ -1,7 +1,7 @@
 import type { Platform } from "@hot-updater/core";
 import type { NativeBuildArgs } from "@hot-updater/plugin-core";
-import { runAndroidNativeBuild as createAndroidNativeBuild } from "./android/runAndroidNativeBuild";
-import { runIosNativeBuild as createIosNativeBuild } from "./ios/runIosNativeBuild";
+import { createAndroidNativeBuild } from "./android/createAndroidNativeBuild";
+import { createIosNativeBuild } from "./ios/createIosNativeBuild";
 
 export const createNativeBuild = async ({
   platform,

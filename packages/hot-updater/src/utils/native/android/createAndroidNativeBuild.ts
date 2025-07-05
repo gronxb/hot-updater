@@ -6,7 +6,7 @@ import {
 import path from "path";
 import { runGradle } from "./utils/gradle";
 import { injectDefaultAndroidNativeBuildSchemeOptions } from './utils/injectDefaultAndroidNativeBuildSchemeOptions';
-export const runAndroidNativeBuild = async ({
+export const createAndroidNativeBuild = async ({
   schemeConfig,
 }: {
   schemeConfig: NativeBuildAndroidScheme;
