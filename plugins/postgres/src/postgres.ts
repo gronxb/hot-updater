@@ -2,6 +2,7 @@ import type {
   Bundle,
   DatabasePluginHooks,
   Platform,
+  NativeBuild,
 } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -192,6 +193,140 @@ export const postgres = (
 
         // Trigger hooks after all operations
         hooks?.onDatabaseUpdated?.();
+      },
+
+      // Native build operations
+      async getNativeBuildById(context: { db: Kysely<Database>; pool: Pool }, nativeBuildId: string) {
+        const data = await context.db
+          .selectFrom("native_builds")
+          .selectAll()
+          .where("id", "=", nativeBuildId)
+          .executeTakeFirst();
+
+        if (!data) {
+          return null;
+        }
+
+        return {
+          id: data.id,
+          nativeVersion: data.native_version,
+          platform: data.platform,
+          fingerprintHash: data.fingerprint_hash,
+          storageUri: data.storage_uri,
+          fileHash: data.file_hash,
+          fileSize: data.file_size,
+          channel: data.channel,
+          metadata: data.metadata || {},
+        } as NativeBuild;
+      },
+
+      async getNativeBuilds(context: { db: Kysely<Database>; pool: Pool }, options: {
+        where?: { channel?: string; platform?: string; nativeVersion?: string };
+        limit: number;
+        offset: number;
+      }) {
+        const { where, limit, offset } = options ?? {};
+
+        let countQuery = context.db.selectFrom("native_builds");
+        if (where?.channel) {
+          countQuery = countQuery.where("channel", "=", where.channel);
+        }
+        if (where?.platform) {
+          countQuery = countQuery.where(
+            "platform",
+            "=",
+            where.platform as Platform,
+          );
+        }
+        if (where?.nativeVersion) {
+          countQuery = countQuery.where("native_version", "=", where.nativeVersion);
+        }
+
+        const countResult = await countQuery
+          .select(context.db.fn.count("id").as("total"))
+          .executeTakeFirst();
+        const total = Number(countResult?.total) || 0;
+
+        let query = context.db.selectFrom("native_builds").orderBy("id", "desc");
+        if (where?.channel) {
+          query = query.where("channel", "=", where.channel);
+        }
+        if (where?.platform) {
+          query = query.where("platform", "=", where.platform as Platform);
+        }
+        if (where?.nativeVersion) {
+          query = query.where("native_version", "=", where.nativeVersion);
+        }
+
+        if (limit) {
+          query = query.limit(limit);
+        }
+        if (offset) {
+          query = query.offset(offset);
+        }
+
+        const data = await query.selectAll().execute();
+
+        const nativeBuilds = data.map((build: any) => ({
+          id: build.id,
+          nativeVersion: build.native_version,
+          platform: build.platform,
+          fingerprintHash: build.fingerprint_hash,
+          storageUri: build.storage_uri,
+          fileHash: build.file_hash,
+          fileSize: build.file_size,
+          channel: build.channel,
+          metadata: build.metadata || {},
+        })) as NativeBuild[];
+
+        const pagination = calculatePagination(total, { limit, offset });
+
+        return {
+          data: nativeBuilds,
+          pagination,
+        };
+      },
+
+      async updateNativeBuild(context: { db: Kysely<Database>; pool: Pool }, targetNativeBuildId: string, newNativeBuild: Partial<NativeBuild>) {
+        const updateData: any = {};
+        if (newNativeBuild.nativeVersion !== undefined) updateData.native_version = newNativeBuild.nativeVersion;
+        if (newNativeBuild.platform !== undefined) updateData.platform = newNativeBuild.platform;
+        if (newNativeBuild.fingerprintHash !== undefined) updateData.fingerprint_hash = newNativeBuild.fingerprintHash;
+        if (newNativeBuild.storageUri !== undefined) updateData.storage_uri = newNativeBuild.storageUri;
+        if (newNativeBuild.fileHash !== undefined) updateData.file_hash = newNativeBuild.fileHash;
+        if (newNativeBuild.fileSize !== undefined) updateData.file_size = newNativeBuild.fileSize;
+        if (newNativeBuild.channel !== undefined) updateData.channel = newNativeBuild.channel;
+        if (newNativeBuild.metadata !== undefined) updateData.metadata = newNativeBuild.metadata;
+
+        await context.db
+          .updateTable("native_builds")
+          .set(updateData)
+          .where("id", "=", targetNativeBuildId)
+          .execute();
+      },
+
+      async appendNativeBuild(context: { db: Kysely<Database>; pool: Pool }, insertNativeBuild: NativeBuild) {
+        await context.db
+          .insertInto("native_builds")
+          .values({
+            id: insertNativeBuild.id,
+            native_version: insertNativeBuild.nativeVersion,
+            platform: insertNativeBuild.platform,
+            fingerprint_hash: insertNativeBuild.fingerprintHash,
+            storage_uri: insertNativeBuild.storageUri,
+            file_hash: insertNativeBuild.fileHash,
+            file_size: insertNativeBuild.fileSize,
+            channel: insertNativeBuild.channel,
+            metadata: insertNativeBuild.metadata,
+          })
+          .execute();
+      },
+
+      async deleteNativeBuild(context: { db: Kysely<Database>; pool: Pool }, deleteNativeBuild: NativeBuild) {
+        await context.db
+          .deleteFrom("native_builds")
+          .where("id", "=", deleteNativeBuild.id)
+          .execute();
       },
     },
     hooks,

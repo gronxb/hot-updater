@@ -1,10 +1,14 @@
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePluginHooks,
+  NativeBuild,
+} from "@hot-updater/plugin-core";
+import type { Database } from "./types";
 import {
   calculatePagination,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./types";
 
 export interface SupabaseDatabaseConfig {
   supabaseUrl: string;
@@ -168,6 +172,146 @@ export const supabaseDatabase = (
 
         // Trigger hooks after all operations
         hooks?.onDatabaseUpdated?.();
+      },
+
+      // Native build operations
+      async getNativeBuildById(context, nativeBuildId) {
+        const { data, error } = await context.supabase
+          .from("native_builds")
+          .select("*")
+          .eq("id", nativeBuildId)
+          .single();
+
+        if (!data || error) {
+          return null;
+        }
+
+        return {
+          id: data.id,
+          nativeVersion: data.native_version,
+          platform: data.platform,
+          fingerprintHash: data.fingerprint_hash,
+          storageUri: data.storage_uri,
+          fileHash: data.file_hash,
+          fileSize: data.file_size,
+          channel: data.channel,
+          metadata: data.metadata ?? {},
+        } as NativeBuild;
+      },
+
+      async getNativeBuilds(
+        context,
+        options: {
+          where?: {
+            channel?: string;
+            platform?: string;
+            nativeVersion?: string;
+          };
+          limit: number;
+          offset: number;
+        },
+      ) {
+        const { where, limit, offset } = options ?? {};
+
+        let countQuery = context.supabase
+          .from("native_builds")
+          .select("*", { count: "exact", head: true });
+
+        if (where?.channel) {
+          countQuery = countQuery.eq("channel", where.channel);
+        }
+        if (where?.platform) {
+          countQuery = countQuery.eq("platform", where.platform);
+        }
+        if (where?.nativeVersion) {
+          countQuery = countQuery.eq("native_version", where.nativeVersion);
+        }
+
+        const { count: total = 0 } = await countQuery;
+
+        let query = context.supabase
+          .from("native_builds")
+          .select("*")
+          .order("id", { ascending: false });
+
+        if (where?.channel) {
+          query = query.eq("channel", where.channel);
+        }
+        if (where?.platform) {
+          query = query.eq("platform", where.platform);
+        }
+        if (where?.nativeVersion) {
+          query = query.eq("native_version", where.nativeVersion);
+        }
+
+        if (limit) {
+          query = query.limit(limit);
+        }
+        if (offset) {
+          query = query.range(offset, offset + (limit || 20) - 1);
+        }
+
+        const { data } = await query;
+
+        const nativeBuilds = data
+          ? data.map((build) => ({
+              id: build.id,
+              nativeVersion: build.native_version,
+              platform: build.platform,
+              fingerprintHash: build.fingerprint_hash,
+              storageUri: build.storage_uri,
+              fileHash: build.file_hash,
+              fileSize: build.file_size,
+              channel: build.channel,
+              metadata: build.metadata ?? {},
+            }))
+          : [];
+
+        const pagination = calculatePagination(total ?? 0, { limit, offset });
+
+        return {
+          data: nativeBuilds,
+          pagination,
+        };
+      },
+
+      async updateNativeBuild(context, targetNativeBuildId, newNativeBuild) {
+        const updateData: Partial<Database['public']['Tables']['native_builds']['Update']> = {};
+        if (newNativeBuild.nativeVersion !== undefined) updateData.native_version = newNativeBuild.nativeVersion;
+        if (newNativeBuild.platform !== undefined) updateData.platform = newNativeBuild.platform;
+        if (newNativeBuild.fingerprintHash !== undefined) updateData.fingerprint_hash = newNativeBuild.fingerprintHash;
+        if (newNativeBuild.storageUri !== undefined) updateData.storage_uri = newNativeBuild.storageUri;
+        if (newNativeBuild.fileHash !== undefined) updateData.file_hash = newNativeBuild.fileHash;
+        if (newNativeBuild.fileSize !== undefined) updateData.file_size = newNativeBuild.fileSize;
+        if (newNativeBuild.channel !== undefined) updateData.channel = newNativeBuild.channel;
+        if (newNativeBuild.metadata !== undefined) updateData.metadata = newNativeBuild.metadata;
+
+        await context.supabase
+          .from("native_builds")
+          .update(updateData)
+          .eq("id", targetNativeBuildId);
+      },
+
+      async appendNativeBuild(context, insertNativeBuild) {
+        const insertData: Database['public']['Tables']['native_builds']['Insert'] = {
+          id: insertNativeBuild.id,
+          native_version: insertNativeBuild.nativeVersion,
+          platform: insertNativeBuild.platform,
+          fingerprint_hash: insertNativeBuild.fingerprintHash,
+          storage_uri: insertNativeBuild.storageUri,
+          file_hash: insertNativeBuild.fileHash,
+          file_size: insertNativeBuild.fileSize,
+          channel: insertNativeBuild.channel,
+          metadata: insertNativeBuild.metadata,
+        };
+        await context.supabase.from("native_builds").insert(insertData);
+      },
+
+      async deleteNativeBuild(context, deleteNativeBuild) {
+        await context.supabase
+          .from("native_builds")
+          .delete()
+          .eq("id", deleteNativeBuild.id);
       },
     },
     hooks,

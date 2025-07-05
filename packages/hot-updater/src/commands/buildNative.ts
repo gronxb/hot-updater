@@ -1,6 +1,12 @@
 import fs from "fs";
 import * as p from "@clack/prompts";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { generateMinBundleId } from "@hot-updater/plugin-core";
+import {
+  type NativeBuild,
+  type Platform,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/plugin-core";
 
 import { getPlatform } from "@/prompts/getPlatform";
 
@@ -10,6 +16,7 @@ import {
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
+import { getFileHashFromFile } from "@/utils/getFileHash";
 import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
@@ -126,20 +133,23 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     ? artifactResultStorePath
     : path.join(cwd, artifactResultStorePath);
 
-  const artifactPath = path.join(normalizeOutputPath, platform);
+  // const artifactPath = path.join(normalizeOutputPath, platform);
 
-  // TODO: store and upload in your mind
-  const [buildPlugin /* storagePlugin, databasePlugin */] = await Promise.all([
+  const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
       cwd,
     }),
-    // config.storage({
-    //   cwd,
-    // }),
-    // config.database({
-    //   cwd,
-    // }),
+    config.storage({
+      cwd,
+    }),
+    config.database({
+      cwd,
+    }),
   ]);
+
+  let nativeBuildId: string | null = null;
+  let fileHash: string | null = null;
+  let fileSize: number | null = null;
 
   try {
     const taskRef: {
@@ -184,26 +194,42 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
             { recursive: true },
           );
 
-          // const files = await fs.promises.readdir(buildPath, {
-          //   recursive: true,
-          // });
-
-          /*    const targetFiles = await getBundleZipTargets(
-            buildPath,
-            files
-              .filter(
-                (file) =>
-                  !fs.statSync(path.join(buildPath, file)).isDirectory(),
-              )
-              .map((file) => path.join(buildPath, file)),
-          );
-          await createZipTargetFiles({
-            outfile: artifactPath,
-            targetFiles: targetFiles,
+          // Find the actual build artifact file
+          const files = await fs.promises.readdir(artifactResultStorePath, {
+            recursive: true,
           });
 
-          bundleId = taskRef.buildResult.bundleId;
-          fileHash = await getFileHashFromFile(artifactPath);*/
+          const artifactFiles = files.filter((file) => {
+            const fullPath = path.join(artifactResultStorePath, file);
+            const stat = fs.statSync(fullPath);
+            return (
+              !stat.isDirectory() &&
+              (file.endsWith(".apk") ||
+                file.endsWith(".aab") ||
+                file.endsWith(".ipa"))
+            );
+          });
+
+          if (artifactFiles.length === 0) {
+            throw new Error("No native build artifact found");
+          }
+
+          const artifactFile = artifactFiles[0];
+          if (!artifactResultStorePath)
+            throw new Error("Artifact result store path is required");
+          if (!artifactFile) throw new Error("Artifact file is required");
+          const fullArtifactPath = path.join(
+            artifactResultStorePath,
+            artifactFile,
+          );
+
+          // Generate native build ID (this will be the minBundleId)
+          nativeBuildId = generateMinBundleId();
+
+          // Calculate file hash and size
+          fileHash = await getFileHashFromFile(fullArtifactPath);
+          const stat = await fs.promises.stat(fullArtifactPath);
+          fileSize = stat.size;
 
           return `Build Complete (${buildPlugin.name})`;
         },
@@ -212,113 +238,122 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     if (taskRef.buildResult.stdout) {
       p.log.success(taskRef.buildResult.stdout);
     }
-    /*
-        await p.tasks([
-          {
-            title: `📦 Uploading to Storage (${storagePlugin.name})`,
-            task: async () => {
-              if (!bundleId) {
-                throw new Error("Bundle ID not found");
-              }
 
-              try {
-                const { storageUri } = await storagePlugin.uploadBundle(
-                  bundleId,
-                  artifactPath,
-                );
-                taskRef.storageUri = storageUri;
-              } catch (e) {
-                if (e instanceof Error) {
-                  p.log.error(e.message);
-                }
-                throw new Error("Failed to upload bundle to storage");
-              }
-              return `✅ Upload Complete (${storagePlugin.name})`;
-            },
-          },
-          {
-            title: `📦 Updating Database (${databasePlugin.name})`,
-            task: async () => {
-              if (!bundleId) {
-                throw new Error("Bundle ID not found");
-              }
-              if (!taskRef.storageUri) {
-                throw new Error("Storage URI not found");
-              }
-              const appVersion = await getNativeAppVersion(platform);
+    // Find the actual artifact file for upload
+    const files = await fs.promises.readdir(artifactResultStorePath, {
+      recursive: true,
+    });
 
-              try {
-                await databasePlugin.appendBundle({
-                  shouldForceUpdate: options.forceUpdate,
-                  platform,
-                  fileHash,
-                  gitCommitHash,
-                  message: options?.message ?? gitMessage,
-                  id: bundleId,
-                  enabled: true,
-                  channel,
-                  targetAppVersion: target.appVersion,
-                  fingerprintHash: target.fingerprintHash,
-                  storageUri: taskRef.storageUri,
-                  metadata: {
-                    ...(appVersion
-                      ? {
-                          app_version: appVersion,
-                        }
-                      : {}),
-                  },
-                });
-                await databasePlugin.commitBundle();
-              } catch (e) {
-                if (e instanceof Error) {
-                  p.log.error(e.message);
-                }
-                throw e;
-              }
-              await databasePlugin.onUnmount?.();
-              await fs.promises.rm(artifactPath);
+    const artifactFiles = files.filter((file) => {
+      const fullPath = path.join(artifactResultStorePath, file);
+      const stat = fs.statSync(fullPath);
+      return (
+        !stat.isDirectory() &&
+        (file.endsWith(".apk") ||
+          file.endsWith(".aab") ||
+          file.endsWith(".ipa"))
+      );
+    });
 
-              return `✅ Update Complete (${databasePlugin.name})`;
-            },
-          },
-        ]);
-        if (!bundleId) {
-          throw new Error("Bundle ID not found");
-        }
+    if (artifactFiles.length === 0) {
+      throw new Error("No native build artifact found for upload");
+    }
 
-        if (options.interactive) {
-          const port = await getConsolePort(config);
-          const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
+    const artifactFile = artifactFiles[0];
+    if (!artifactResultStorePath)
+      throw new Error("Artifact result store path is required");
+    if (!artifactFile) throw new Error("Artifact file is required");
+    const fullArtifactPath = path.join(artifactResultStorePath, artifactFile);
 
-          const openUrl = new URL(`http://localhost:${port}`);
-          openUrl.searchParams.set("channel", channel);
-          openUrl.searchParams.set("platform", platform);
-          openUrl.searchParams.set("bundleId", bundleId);
-
-          const url = openUrl.toString();
-
-          const note = `Console: ${url}`;
-          if (!isConsoleOpen) {
-            const result = await p.confirm({
-              message: "Console server is not running. Would you like to start it?",
-              initialValue: false,
-            });
-            if (!p.isCancel(result) && result) {
-              await openConsole(port, () => {
-                open(url);
-              });
-            }
-          } else {
-            open(url);
+    await p.tasks([
+      {
+        title: `📦 Uploading to Storage (${storagePlugin.name})`,
+        task: async () => {
+          if (!nativeBuildId) {
+            throw new Error("Native build ID not found");
           }
 
-          p.note(note);
-        }
-        p.outro("🚀 Deployment Successful");
-     */
+          try {
+            const { storageUri } = await storagePlugin.uploadNativeBuild(
+              nativeBuildId,
+              fullArtifactPath,
+            );
+            taskRef.storageUri = storageUri;
+          } catch (e) {
+            if (e instanceof Error) {
+              p.log.error(e.message);
+            }
+            throw new Error("Failed to upload native build to storage");
+          }
+          return `✅ Upload Complete (${storagePlugin.name})`;
+        },
+      },
+      {
+        title: `📦 Updating Database (${databasePlugin.name})`,
+        task: async () => {
+          if (!nativeBuildId) {
+            throw new Error("Native build ID not found");
+          }
+          if (!taskRef.storageUri) {
+            throw new Error("Storage URI not found");
+          }
+          if (!fileHash || !fileSize) {
+            throw new Error("File hash or size not calculated");
+          }
+
+          const appVersion = await getNativeAppVersion(platform);
+
+          try {
+            const nativeBuild: NativeBuild = {
+              id: nativeBuildId,
+              nativeVersion: appVersion || "unknown",
+              platform,
+              fingerprintHash: target.fingerprintHash || "",
+              storageUri: taskRef.storageUri,
+              fileHash,
+              fileSize,
+              channel: "production", // Default channel for native builds
+              metadata: {
+                ...(options.message ? { message: options.message } : {}),
+                targetAppVersion: target.appVersion,
+              },
+            };
+
+            await databasePlugin.appendNativeBuild(nativeBuild);
+            await databasePlugin.commitBundle();
+          } catch (e) {
+            if (e instanceof Error) {
+              p.log.error(e.message);
+            }
+            throw e;
+          }
+
+          return `✅ Update Complete (${databasePlugin.name})`;
+        },
+      },
+    ]);
+
+    if (!nativeBuildId) {
+      throw new Error("Native build ID not found");
+    }
+
+    p.outro("🚀 Native Build Successful");
+    p.log.info(`Native Build ID (minBundleId): ${nativeBuildId}`);
+    p.log.info(`Platform: ${platform}`);
+    p.log.info(`Fingerprint: ${target.fingerprintHash || "N/A"}`);
+    p.log.info(`App Version: ${target.appVersion || "N/A"}`);
+    p.log.info(`File Hash: ${fileHash}`);
+    p.log.info(`File Size: ${fileSize} bytes`);
+    p.log.info(`Storage URI: ${taskRef.storageUri}`);
+    p.log.info(
+      `Artifact stored locally at: ${picocolors.blueBright(path.relative(getCwd(), artifactResultStorePath))}`,
+    );
   } catch (e) {
-    // await databasePlugin.onUnmount?.();
-    await fs.promises.rm(artifactPath, { force: true });
+    await databasePlugin.onUnmount?.();
+    await fs.promises.rm(artifactResultStorePath, {
+      force: true,
+      recursive: true,
+    });
     if (e instanceof ExecaError) {
       console.error(e);
     } else if (e instanceof Error) {
@@ -328,7 +363,6 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     }
     process.exit(1);
   } finally {
-    // await databasePlugin.onUnmount?.();
-    await fs.promises.rm(artifactPath, { force: true });
+    await databasePlugin.onUnmount?.();
   }
 };

@@ -182,3 +182,47 @@ export type UpdateBundleParams = {
   appVersion: string;
   fingerprintHash: string | null;
 };
+
+export interface NativeBuild {
+  /**
+   * The unique identifier for the native build. 
+   * This is the minBundleId that serves as the primary identifier.
+   */
+  id: string;
+  /**
+   * The version of the native app (e.g., "1.0.0")
+   */
+  nativeVersion: string;
+  /**
+   * The platform the native build is for.
+   */
+  platform: Platform;
+  /**
+   * The fingerprint hash of the native build.
+   */
+  fingerprintHash: string;
+  /**
+   * The storage URI of the native build artifact.
+   * @example "s3://my-bucket/my-app/native-builds/00000000-0000-0000-0000-000000000000/app.apk"
+   * @example "r2://my-bucket/my-app/native-builds/00000000-0000-0000-0000-000000000000/app.ipa"
+   */
+  storageUri: string;
+  /**
+   * The file hash of the native build artifact.
+   */
+  fileHash: string;
+  /**
+   * The file size of the native build artifact in bytes.
+   */
+  fileSize: number;
+  /**
+   * The name of the channel where the native build is deployed.
+   */
+  channel: string;
+  /**
+   * Additional metadata for the native build.
+   */
+  metadata?: Record<string, any>;
+}
+
+export type SnakeCaseNativeBuild = SnakeKeyObject<NativeBuild>;

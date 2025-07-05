@@ -1,6 +1,6 @@
-import type { Bundle, Platform } from "@hot-updater/core";
+import type { Bundle, Platform, NativeBuild } from "@hot-updater/core";
 
-export type { Platform, Bundle } from "@hot-updater/core";
+export type { Platform, Bundle, NativeBuild } from "@hot-updater/core";
 
 export * from "./utils";
 
@@ -40,6 +40,23 @@ export interface DatabasePlugin {
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (deleteBundle: Bundle) => Promise<void>;
+  
+  // Native build operations
+  getNativeBuildById: (nativeBuildId: string) => Promise<NativeBuild | null>;
+  getNativeBuilds: (options: {
+    where?: { channel?: string; platform?: string; nativeVersion?: string };
+    limit: number;
+    offset: number;
+  }) => Promise<{
+    data: NativeBuild[];
+    pagination: PaginationInfo;
+  }>;
+  updateNativeBuild: (
+    targetNativeBuildId: string,
+    newNativeBuild: Partial<NativeBuild>,
+  ) => Promise<void>;
+  appendNativeBuild: (insertNativeBuild: NativeBuild) => Promise<void>;
+  deleteNativeBuild: (deleteNativeBuild: NativeBuild) => Promise<void>;
 }
 
 export interface DatabasePluginHooks {
@@ -102,6 +119,23 @@ export interface StoragePlugin {
   deleteBundle: (bundleId: string) => Promise<{
     storageUri: string;
   }>;
+  
+  // Native build operations
+  uploadNativeBuild: (
+    nativeBuildId: string,
+    nativeBuildPath: string,
+  ) => Promise<{
+    storageUri: string;
+  }>;
+
+  deleteNativeBuild: (nativeBuildId: string) => Promise<{
+    storageUri: string;
+  }>;
+  
+  getNativeBuildDownloadUrl: (nativeBuildId: string) => Promise<{
+    fileUrl: string;
+  }>;
+  
   name: string;
 }
 

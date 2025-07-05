@@ -1,7 +1,8 @@
-import type { SnakeCaseBundle } from "@hot-updater/core";
+import type { SnakeCaseBundle, SnakeCaseNativeBuild } from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePluginHooks,
+  NativeBuild,
   PaginationOptions,
 } from "@hot-updater/plugin-core";
 import {
@@ -23,10 +24,19 @@ interface QueryConditions {
   platform?: string;
 }
 
+interface NativeBuildQueryConditions {
+  channel?: string;
+  platform?: string;
+  nativeVersion?: string;
+}
+
 interface BuildQueryResult {
   sql: string;
   params: any[];
 }
+
+// D1-specific type for NativeBuild rows
+type D1NativeBuildRow = SnakeCaseNativeBuild;
 
 async function resolvePage<T>(singlePage: any): Promise<T[]> {
   const results: T[] = [];
@@ -72,7 +82,50 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     targetAppVersion: row.target_app_version,
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
-    metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
+    metadata: row?.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {},
+  };
+}
+
+// Helper function to build WHERE clause for native builds
+function buildNativeBuildWhereClause(
+  conditions: NativeBuildQueryConditions,
+): BuildQueryResult {
+  const clauses: string[] = [];
+  const params: any[] = [];
+
+  if (conditions.channel) {
+    clauses.push("channel = ?");
+    params.push(conditions.channel);
+  }
+
+  if (conditions.platform) {
+    clauses.push("platform = ?");
+    params.push(conditions.platform);
+  }
+
+  if (conditions.nativeVersion) {
+    clauses.push("native_version = ?");
+    params.push(conditions.nativeVersion);
+  }
+
+  const whereClause =
+    clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+
+  return { sql: whereClause, params };
+}
+
+// Helper function to transform snake_case row to NativeBuild
+function transformRowToNativeBuild(row: D1NativeBuildRow): NativeBuild {
+  return {
+    id: row.id,
+    nativeVersion: row.native_version,
+    platform: row.platform,
+    fingerprintHash: row.fingerprint_hash,
+    storageUri: row.storage_uri,
+    fileHash: row.file_hash,
+    fileSize: row.file_size,
+    channel: row.channel,
+    metadata: row?.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {},
   };
 }
 
@@ -81,6 +134,7 @@ export const d1Database = (
   hooks?: DatabasePluginHooks,
 ) => {
   let bundles: Bundle[] = [];
+  const nativeBuilds: NativeBuild[] = [];
 
   // Helper function to get total count
   async function getTotalCount(
@@ -131,6 +185,59 @@ export const d1Database = (
 
     const rows = await resolvePage<SnakeCaseBundle>(result);
     return rows.map(transformRowToBundle);
+  }
+
+  // Helper function to get total count for native builds
+  async function getNativeBuildTotalCount(
+    context: { cf: Cloudflare },
+    conditions: NativeBuildQueryConditions,
+  ): Promise<number> {
+    const { sql: whereClause, params } =
+      buildNativeBuildWhereClause(conditions);
+    const countSql = minify(
+      `SELECT COUNT(*) as total FROM native_builds${whereClause}`,
+    );
+
+    const countResult = await context.cf.d1.database.query(config.databaseId, {
+      account_id: config.accountId,
+      sql: countSql,
+      params,
+    });
+
+    const rows = await resolvePage<{ total: number }>(countResult);
+    return rows[0]?.total || 0;
+  }
+
+  // Helper function to get paginated native builds
+  async function getPaginatedNativeBuilds(
+    context: { cf: Cloudflare },
+    conditions: NativeBuildQueryConditions,
+    limit: number,
+    offset: number,
+  ): Promise<NativeBuild[]> {
+    const { sql: whereClause, params } =
+      buildNativeBuildWhereClause(conditions);
+
+    // Build the complete query
+    const sql = minify(`
+      SELECT * FROM native_builds
+      ${whereClause}
+      ORDER BY id DESC
+      LIMIT ?
+      OFFSET ?
+    `);
+
+    // Add pagination params
+    params.push(limit, offset);
+
+    const result = await context.cf.d1.database.query(config.databaseId, {
+      account_id: config.accountId,
+      sql,
+      params,
+    });
+
+    const rows = await resolvePage<D1NativeBuildRow>(result);
+    return rows.map(transformRowToNativeBuild);
   }
 
   return createDatabasePlugin(
@@ -280,6 +387,98 @@ export const d1Database = (
 
         // Trigger hooks after all operations
         hooks?.onDatabaseUpdated?.();
+      },
+
+      // Native build operations
+      async getNativeBuildById(context, nativeBuildId) {
+        const found = nativeBuilds.find((nb) => nb.id === nativeBuildId);
+        if (found) {
+          return found;
+        }
+
+        const sql = minify(/* sql */ `
+          SELECT * FROM native_builds WHERE id = ? LIMIT 1`);
+        const singlePage = await context.cf.d1.database.query(
+          config.databaseId,
+          {
+            account_id: config.accountId,
+            sql,
+            params: [nativeBuildId],
+          },
+        );
+
+        const rows = await resolvePage<D1NativeBuildRow>(singlePage);
+
+        if (rows.length === 0) {
+          return null;
+        }
+
+        return transformRowToNativeBuild(rows[0]);
+      },
+
+      async getNativeBuilds(
+        context,
+        options: {
+          where?: {
+            channel?: string;
+            platform?: string;
+            nativeVersion?: string;
+          };
+          limit: number;
+          offset: number;
+        },
+      ) {
+        const { where = {}, limit, offset } = options;
+
+        // 1. Get total count for pagination
+        const totalCount = await getNativeBuildTotalCount(context, where);
+
+        // 2. Get paginated native builds
+        const nativeBuildsData = await getPaginatedNativeBuilds(
+          context,
+          where,
+          limit,
+          offset,
+        );
+
+        // 3. Calculate pagination metadata
+        const paginationOptions: PaginationOptions = { limit, offset };
+        const pagination = calculatePagination(totalCount, paginationOptions);
+
+        return {
+          data: nativeBuildsData,
+          pagination,
+        };
+      },
+
+      async updateNativeBuild(
+        context: { cf: Cloudflare },
+        targetNativeBuildId: string,
+        newNativeBuild: Partial<NativeBuild>,
+      ) {
+        const found = nativeBuilds.find((nb) => nb.id === targetNativeBuildId);
+        if (found) {
+          Object.assign(found, newNativeBuild);
+        }
+        // Database update logic would go here
+        throw new Error("updateNativeBuild not fully implemented for D1");
+      },
+
+      async appendNativeBuild(context, insertNativeBuild) {
+        nativeBuilds.push(insertNativeBuild);
+        // Database insert logic would go here
+        throw new Error("appendNativeBuild not fully implemented for D1");
+      },
+
+      async deleteNativeBuild(context, deleteNativeBuild) {
+        const index = nativeBuilds.findIndex(
+          (nb) => nb.id === deleteNativeBuild.id,
+        );
+        if (index !== -1) {
+          nativeBuilds.splice(index, 1);
+        }
+        // Database delete logic would go here
+        throw new Error("deleteNativeBuild not fully implemented for D1");
       },
     },
     hooks,
