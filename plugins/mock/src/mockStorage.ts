@@ -17,5 +17,17 @@ export const mockStorage =
         Promise.resolve({
           storageUri: `storage://my-app/${bundleId}/bundle.zip`,
         }),
+      uploadNativeBuild: (nativeBuildId: string, nativeBuildPath: string) =>
+        Promise.resolve({
+          storageUri: `storage://my-app/native-builds/${nativeBuildId}/native.apk`,
+        }),
+      deleteNativeBuild: (nativeBuildId: string) =>
+        Promise.resolve({
+          storageUri: `storage://my-app/native-builds/${nativeBuildId}/native.apk`,
+        }),
+      getNativeBuildDownloadUrl: (nativeBuildId: string) =>
+        Promise.resolve({
+          fileUrl: `https://example.com/native-builds/${nativeBuildId}/download`,
+        }),
     };
   };

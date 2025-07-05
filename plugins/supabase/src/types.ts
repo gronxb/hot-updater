@@ -1,4 +1,4 @@
-import type { SnakeCaseBundle } from "@hot-updater/core";
+import type { SnakeCaseBundle, SnakeCaseNativeBuild } from "@hot-updater/core";
 
 export type Database = {
   public: {
@@ -7,6 +7,12 @@ export type Database = {
         Row: SnakeCaseBundle;
         Insert: SnakeCaseBundle;
         Update: SnakeCaseBundle;
+        Relationships: [];
+      };
+      native_builds: {
+        Row: SnakeCaseNativeBuild;
+        Insert: SnakeCaseNativeBuild;
+        Update: Partial<SnakeCaseNativeBuild>;
         Relationships: [];
       };
     };

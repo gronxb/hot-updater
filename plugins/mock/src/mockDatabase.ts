@@ -94,6 +94,30 @@ export const mockDatabase = (
         // Trigger hooks after all operations
         hooks?.onDatabaseUpdated?.();
       },
+
+      // Native build operations
+      async getNativeBuildById(context, nativeBuildId: string) {
+        return null; // Mock implementation returns null
+      },
+
+      async getNativeBuilds(context, options) {
+        return {
+          data: [],
+          pagination: { offset: 0, limit: options.limit, total: 0, totalPages: 0, currentPage: 1, hasNextPage: false, hasPreviousPage: false },
+        };
+      },
+
+      async updateNativeBuild(context, targetNativeBuildId: string, newNativeBuild) {
+        // Mock implementation does nothing
+      },
+
+      async appendNativeBuild(context, insertNativeBuild) {
+        // Mock implementation does nothing
+      },
+
+      async deleteNativeBuild(context, deleteNativeBuild) {
+        // Mock implementation does nothing
+      },
     },
     hooks,
   );

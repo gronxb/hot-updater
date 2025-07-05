@@ -5,9 +5,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Calendar, Download, Hash, Package, Package2 } from "lucide-solid";
+import { createNativeBuildDownloadUrlQuery } from "@/lib/api";
+import { Download, Hash, Package, Package2 } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
-import { Show } from "solid-js";
+import { Show, createMemo } from "solid-js";
 import type { NativeBuild } from "./native-builds-columns";
 
 interface NativeBuildSheetContentProps {
@@ -16,9 +17,20 @@ interface NativeBuildSheetContentProps {
 }
 
 export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
+  const downloadUrlQuery = createNativeBuildDownloadUrlQuery(props.build.id);
+  
+  const downloadUrl = createMemo(() => {
+    const data = downloadUrlQuery.data;
+    if (data && 'fileUrl' in data) {
+      return data.fileUrl;
+    }
+    return undefined;
+  });
+
   const handleDownload = () => {
-    if (props.build.downloadUrl) {
-      window.open(props.build.downloadUrl, '_blank');
+    const url = downloadUrl();
+    if (url) {
+      window.open(url, '_blank');
     }
   };
 
@@ -73,30 +85,14 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
 
             <div class="space-y-2">
               <label class="text-sm font-medium text-muted-foreground">
-                Min Bundle ID
+                Build ID
               </label>
               <div class="flex items-center gap-2">
                 <Package2 size={16} />
-                <Show 
-                  when={props.build.minBundleId}
-                  fallback={<span class="text-muted-foreground text-sm">N/A</span>}
-                >
-                  <span class="font-mono text-sm">{props.build.minBundleId}</span>
-                </Show>
+                <span class="font-mono text-sm">{props.build.id}</span>
               </div>
             </div>
 
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-muted-foreground">
-                Created At
-              </label>
-              <div class="flex items-center gap-2">
-                <Calendar size={16} />
-                <span class="text-sm">
-                  {props.build.createdAt.toLocaleDateString()} {props.build.createdAt.toLocaleTimeString()}
-                </span>
-              </div>
-            </div>
 
             <div class="space-y-2 col-span-2">
               <label class="text-sm font-medium text-muted-foreground">
@@ -122,23 +118,14 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
             <div class="flex items-start gap-3">
               <Package2 class="mt-0.5 text-blue-600" size={20} />
               <div class="space-y-1">
-                <p class="text-sm font-medium text-blue-900">Minimum Bundle Requirement</p>
-                <Show 
-                  when={props.build.minBundleId}
-                  fallback={
-                    <p class="text-sm text-blue-700">
-                      No minimum bundle requirement set for this build.
-                    </p>
-                  }
-                >
-                  <p class="text-sm text-blue-700">
-                    This native build requires at least bundle{" "}
-                    <span class="font-mono bg-blue-100 px-1 rounded">
-                      {props.build.minBundleId}
-                    </span>{" "}
-                    or newer to function properly.
-                  </p>
-                </Show>
+                <p class="text-sm font-medium text-blue-900">Native Build Information</p>
+                <p class="text-sm text-blue-700">
+                  This native build (ID: {" "}
+                  <span class="font-mono bg-blue-100 px-1 rounded">
+                    {props.build.id}
+                  </span>
+                  ) serves as the minimum bundle identifier for compatibility.
+                </p>
               </div>
             </div>
           </div>
@@ -151,20 +138,38 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
           <h3 class="text-lg font-semibold">Download</h3>
           
           <div class="space-y-3">
+            <Show when={downloadUrlQuery.isLoading}>
+              <div class="text-center p-4">
+                <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <p class="mt-2 text-sm text-muted-foreground">Generating download URL...</p>
+              </div>
+            </Show>
+
+            <Show when={downloadUrlQuery.error}>
+              <div class="p-4 bg-red-50 rounded-lg">
+                <p class="text-sm text-red-700">
+                  Failed to generate download URL: {downloadUrlQuery.error?.message}
+                </p>
+              </div>
+            </Show>
+
             <Show 
-              when={props.build.downloadUrl}
+              when={!downloadUrlQuery.isLoading && !downloadUrlQuery.error && downloadUrl()}
               fallback={
-                <div class="p-4 bg-gray-50 rounded-lg">
-                  <p class="text-sm text-muted-foreground">
-                    Download URL not available for this build.
-                  </p>
-                </div>
+                <Show when={!downloadUrlQuery.isLoading && !downloadUrlQuery.error}>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <p class="text-sm text-muted-foreground">
+                      Download URL not available for this build.
+                    </p>
+                  </div>
+                </Show>
               }
             >
               <Button
                 onClick={handleDownload}
                 class="w-full"
                 size="lg"
+                disabled={!downloadUrl()}
               >
                 <Download class="mr-2 h-4 w-4" />
                 Download Build

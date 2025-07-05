@@ -1,9 +1,18 @@
 import { type NativeBuild, nativeBuildsColumns } from "./native-builds-columns";
 import { NativeBuildsDataTable } from "./native-builds-data-table";
+import { Show } from "solid-js";
 
 interface NativeBuildsProps {
   data: NativeBuild[];
   onRowClick: (buildId: string) => void;
+  globalFilter?: string;
+  setGlobalFilter?: (filter: string) => void;
+  platformFilter?: "ios" | "android" | undefined;
+  setPlatformFilter?: (platform: "ios" | "android" | undefined) => void;
+  channelFilter?: string | undefined;
+  setChannelFilter?: (channel: string | undefined) => void;
+  isLoading?: boolean;
+  error?: Error | null;
 }
 
 export function NativeBuilds(props: NativeBuildsProps) {
@@ -22,11 +31,26 @@ export function NativeBuilds(props: NativeBuildsProps) {
         </div>
       </div>
 
-      <NativeBuildsDataTable
-        columns={nativeBuildsColumns}
-        data={props.data}
-        onRowClick={handleRowClick}
-      />
+      <Show when={props.error}>
+        <div class="text-red-500 p-4 border border-red-200 rounded-md bg-red-50">
+          Error loading native builds: {props.error?.message}
+        </div>
+      </Show>
+
+      <Show when={props.isLoading}>
+        <div class="text-center p-8">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          <p class="mt-2 text-muted-foreground">Loading native builds...</p>
+        </div>
+      </Show>
+
+      <Show when={!props.isLoading && !props.error}>
+        <NativeBuildsDataTable
+          columns={nativeBuildsColumns}
+          data={props.data}
+          onRowClick={handleRowClick}
+        />
+      </Show>
     </div>
   );
 }

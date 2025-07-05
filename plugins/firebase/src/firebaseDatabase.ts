@@ -1,5 +1,9 @@
-import type { SnakeCaseBundle } from "@hot-updater/core";
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type { SnakeCaseBundle, SnakeCaseNativeBuild, Platform } from "@hot-updater/core";
+import type {
+  Bundle,
+  DatabasePluginHooks,
+  NativeBuild,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -7,6 +11,9 @@ import {
 import * as admin from "firebase-admin";
 
 type FirestoreData = admin.firestore.DocumentData;
+
+// Firebase-specific type for NativeBuild documents
+type FirestoreNativeBuild = SnakeCaseNativeBuild;
 
 const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   channel: firestoreData.channel,
@@ -23,11 +30,38 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   metadata: firestoreData?.metadata ?? {},
 });
 
+const convertToNativeBuild = (
+  firestoreData: FirestoreNativeBuild,
+): NativeBuild => ({
+  id: firestoreData.id,
+  nativeVersion: firestoreData.native_version,
+  platform: firestoreData.platform,
+  fingerprintHash: firestoreData.fingerprint_hash,
+  storageUri: firestoreData.storage_uri,
+  fileHash: firestoreData.file_hash,
+  fileSize: firestoreData.file_size,
+  channel: firestoreData.channel,
+  metadata: firestoreData?.metadata ?? {},
+});
+
+const convertToSnakeCaseNativeBuild = (nativeBuild: NativeBuild): FirestoreNativeBuild => ({
+  id: nativeBuild.id,
+  native_version: nativeBuild.nativeVersion,
+  platform: nativeBuild.platform,
+  fingerprint_hash: nativeBuild.fingerprintHash,
+  storage_uri: nativeBuild.storageUri,
+  file_hash: nativeBuild.fileHash,
+  file_size: nativeBuild.fileSize,
+  channel: nativeBuild.channel,
+  metadata: nativeBuild.metadata ?? {},
+});
+
 export const firebaseDatabase = (
   config: admin.AppOptions,
   hooks?: DatabasePluginHooks,
 ) => {
   let bundles: Bundle[] = [];
+  let nativeBuilds: NativeBuild[] = [];
 
   return createDatabasePlugin(
     "firebaseDatabase",
@@ -42,10 +76,12 @@ export const firebaseDatabase = (
 
         const db = admin.firestore(app);
         const bundlesCollection = db.collection("bundles");
+        const nativeBuildsCollection = db.collection("native_builds");
 
         return {
           db,
           bundlesCollection,
+          nativeBuildsCollection,
         };
       },
 
@@ -276,6 +312,93 @@ export const firebaseDatabase = (
 
         // Call hook if available
         hooks?.onDatabaseUpdated?.();
+      },
+
+      // Native build operations
+      async getNativeBuildById(context, nativeBuildId: string) {
+        const found = nativeBuilds.find((nb) => nb.id === nativeBuildId);
+        if (found) {
+          return found;
+        }
+
+        const nativeBuildRef =
+          context.nativeBuildsCollection.doc(nativeBuildId);
+        const nativeBuildSnap = await nativeBuildRef.get();
+
+        if (!nativeBuildSnap.exists) {
+          return null;
+        }
+
+        const firestoreData = nativeBuildSnap.data() as FirestoreNativeBuild;
+        return convertToNativeBuild(firestoreData);
+      },
+
+      async getNativeBuilds(context, options) {
+        const { where, limit, offset } = options;
+
+        let query: admin.firestore.Query<FirestoreData> =
+          context.nativeBuildsCollection;
+
+        if (where?.channel) {
+          query = query.where("channel", "==", where.channel);
+        }
+        if (where?.platform) {
+          query = query.where("platform", "==", where.platform);
+        }
+        if (where?.nativeVersion) {
+          query = query.where("native_version", "==", where.nativeVersion);
+        }
+
+        query = query.orderBy("id", "desc");
+
+        const totalCountQuery = query;
+        const totalSnapshot = await totalCountQuery.get();
+        const total = totalSnapshot.size;
+
+        if (offset > 0) {
+          query = query.offset(offset);
+        }
+        if (limit) {
+          query = query.limit(limit);
+        }
+
+        const querySnapshot = await query.get();
+
+        nativeBuilds = querySnapshot.docs.map((doc) =>
+          convertToNativeBuild(doc.data() as FirestoreNativeBuild),
+        );
+
+        return {
+          data: nativeBuilds,
+          pagination: calculatePagination(total, {
+            limit,
+            offset,
+          }),
+        };
+      },
+
+      async updateNativeBuild(context, targetNativeBuildId, newNativeBuild) {
+        const nativeBuildRef =
+          context.nativeBuildsCollection.doc(targetNativeBuildId);
+        await nativeBuildRef.update(
+          convertToSnakeCaseNativeBuild(newNativeBuild as NativeBuild),
+        );
+      },
+
+      async appendNativeBuild(context, insertNativeBuild) {
+        const nativeBuildRef = context.nativeBuildsCollection.doc(
+          insertNativeBuild.id,
+        );
+        await nativeBuildRef.set(
+          convertToSnakeCaseNativeBuild(insertNativeBuild),
+        );
+      },
+
+      async deleteNativeBuild(context, deleteNativeBuild) {
+        const nativeBuildRef = context.nativeBuildsCollection.doc(
+          deleteNativeBuild.id,
+        );
+        await nativeBuildRef.delete();
       },
     },
     hooks,

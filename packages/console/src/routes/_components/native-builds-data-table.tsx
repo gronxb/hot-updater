@@ -7,7 +7,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TextField } from "@/components/ui/text-field";
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -63,11 +62,12 @@ export function NativeBuildsDataTable(props: NativeBuildsDataTableProps) {
       <div class="flex items-center space-x-2">
         <div class="relative flex-1 max-w-sm">
           <Search class="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <TextField
-            placeholder="Search native builds..."
+          <input
+            type="text"
             value={globalFilter()}
-            onInput={(e) => setGlobalFilter(e.currentTarget.value)}
-            class="pl-8"
+            onInput={(e) => setGlobalFilter((e.currentTarget as HTMLInputElement).value)}
+            class="pl-8 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            placeholder="Search native builds..."
           />
         </div>
       </div>

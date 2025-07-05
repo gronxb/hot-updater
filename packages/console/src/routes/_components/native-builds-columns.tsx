@@ -15,7 +15,6 @@ export interface NativeBuild {
   fingerprintHash: string;
   minBundleId?: string;
   downloadUrl?: string;
-  createdAt: Date;
 }
 
 export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [

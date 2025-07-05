@@ -193,6 +193,30 @@ export const standaloneRepository = (
         // Call hook after all operations
         hooks?.onDatabaseUpdated?.();
       },
+
+      // Native build operations
+      async getNativeBuildById(_, nativeBuildId: string) {
+        return null; // Standalone implementation returns null
+      },
+
+      async getNativeBuilds(_, options) {
+        return {
+          data: [],
+          pagination: { offset: 0, limit: options.limit, total: 0, totalPages: 0, currentPage: 1, hasNextPage: false, hasPreviousPage: false },
+        };
+      },
+
+      async updateNativeBuild(_, targetNativeBuildId: string, newNativeBuild) {
+        // Standalone implementation does nothing
+      },
+
+      async appendNativeBuild(_, insertNativeBuild) {
+        // Standalone implementation does nothing
+      },
+
+      async deleteNativeBuild(_, deleteNativeBuild) {
+        // Standalone implementation does nothing
+      },
     },
     hooks,
   );

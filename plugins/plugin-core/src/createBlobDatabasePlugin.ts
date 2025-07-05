@@ -1,17 +1,27 @@
 import { orderBy } from "es-toolkit";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, DatabasePluginHooks } from "./types";
+import type { Bundle, DatabasePluginHooks, NativeBuild } from "./types";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
   _oldUpdateJsonKey?: string;
 }
 
+interface NativeBuildWithMetadata extends NativeBuild {
+  _storageKey: string;
+}
+
 // Helper function to remove internal management keys
 function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   const { _updateJsonKey, _oldUpdateJsonKey, ...pureBundle } = bundle;
   return pureBundle;
+}
+
+// Helper function to remove internal management keys from native builds
+function removeNativeBuildInternalKeys(nativeBuild: NativeBuildWithMetadata): NativeBuild {
+  const { _storageKey, ...pureNativeBuild } = nativeBuild;
+  return pureNativeBuild;
 }
 
 /**
@@ -50,6 +60,10 @@ export const createBlobDatabasePlugin = <TContext = object>({
   const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
   // Temporary store for newly added or modified bundles.
   const pendingBundlesMap = new Map<string, BundleWithUpdateJsonKey>();
+  // Map for O(1) lookup of native builds.
+  const nativeBuildsMap = new Map<string, NativeBuildWithMetadata>();
+  // Temporary store for newly added or modified native builds.
+  const pendingNativeBuildsMap = new Map<string, NativeBuildWithMetadata>();
 
   const PLATFORMS = ["ios", "android"] as const;
 
@@ -167,6 +181,39 @@ export const createBlobDatabasePlugin = <TContext = object>({
     return listObjects(context, prefix).then((keys) =>
       keys.filter((key) => pattern.test(key)),
     );
+  }
+
+  // Reload all native build data from storage.
+  async function reloadNativeBuilds(context: TContext) {
+    nativeBuildsMap.clear();
+
+    const keys = await listObjects(context, "native-builds/");
+    const nativeBuildKeys = keys.filter((key) => key.endsWith("/native-build.json"));
+    
+    const filePromises = nativeBuildKeys.map(async (key) => {
+      const nativeBuild = await loadObject<NativeBuild>(context, key);
+      if (nativeBuild) {
+        return {
+          ...nativeBuild,
+          _storageKey: key,
+        } as NativeBuildWithMetadata;
+      }
+      return null;
+    });
+
+    const results = await Promise.all(filePromises);
+    const validNativeBuilds = results.filter((build): build is NativeBuildWithMetadata => build !== null);
+
+    for (const nativeBuild of validNativeBuilds) {
+      nativeBuildsMap.set(nativeBuild.id, nativeBuild);
+    }
+
+    // Add pending native builds
+    for (const [id, nativeBuild] of pendingNativeBuildsMap.entries()) {
+      nativeBuildsMap.set(id, nativeBuild);
+    }
+
+    return orderBy(validNativeBuilds, [(v) => v.id], ["desc"]);
   }
 
   return createDatabasePlugin(
@@ -493,6 +540,114 @@ export const createBlobDatabasePlugin = <TContext = object>({
         await invalidatePaths(context, Array.from(pathsToInvalidate));
 
         pendingBundlesMap.clear();
+        hooks?.onDatabaseUpdated?.();
+      },
+
+      // Native build operations
+      async getNativeBuildById(context, nativeBuildId: string) {
+        const pendingNativeBuild = pendingNativeBuildsMap.get(nativeBuildId);
+        if (pendingNativeBuild) {
+          return removeNativeBuildInternalKeys(pendingNativeBuild);
+        }
+        const nativeBuild = nativeBuildsMap.get(nativeBuildId);
+        if (nativeBuild) {
+          return removeNativeBuildInternalKeys(nativeBuild);
+        }
+        const nativeBuilds = await reloadNativeBuilds(context);
+        return nativeBuilds.find((build) => build.id === nativeBuildId) ?? null;
+      },
+
+      async getNativeBuilds(context, options) {
+        let allNativeBuilds = await reloadNativeBuilds(context);
+        const { where, limit, offset } = options;
+
+        // Apply filtering conditions
+        if (where) {
+          allNativeBuilds = allNativeBuilds.filter((nativeBuild) => {
+            return Object.entries(where).every(
+              ([key, value]) =>
+                value === undefined ||
+                value === null ||
+                nativeBuild[key as keyof NativeBuild] === value,
+            );
+          });
+        }
+
+        const total = allNativeBuilds.length;
+        const cleanNativeBuilds = allNativeBuilds.map(removeNativeBuildInternalKeys);
+
+        // Apply pagination
+        let paginatedData = cleanNativeBuilds;
+        if (offset > 0) {
+          paginatedData = paginatedData.slice(offset);
+        }
+        if (limit) {
+          paginatedData = paginatedData.slice(0, limit);
+        }
+
+        return {
+          data: paginatedData,
+          pagination: calculatePagination(total, {
+            limit,
+            offset,
+          }),
+        };
+      },
+
+      async updateNativeBuild(context, targetNativeBuildId: string, newNativeBuild: Partial<NativeBuild>) {
+        let nativeBuild = pendingNativeBuildsMap.get(targetNativeBuildId);
+        if (!nativeBuild) {
+          nativeBuild = nativeBuildsMap.get(targetNativeBuildId);
+        }
+        if (!nativeBuild) {
+          throw new Error("Native build not found");
+        }
+
+        const updatedNativeBuild = { ...nativeBuild, ...newNativeBuild } as NativeBuildWithMetadata;
+        nativeBuildsMap.set(targetNativeBuildId, updatedNativeBuild);
+        pendingNativeBuildsMap.set(targetNativeBuildId, updatedNativeBuild);
+
+        // Store the updated native build
+        const storageKey = `native-builds/${targetNativeBuildId}/native-build.json`;
+        await uploadObject(context, storageKey, removeNativeBuildInternalKeys(updatedNativeBuild));
+
+        hooks?.onDatabaseUpdated?.();
+      },
+
+      async appendNativeBuild(context, insertNativeBuild: NativeBuild) {
+        const storageKey = `native-builds/${insertNativeBuild.id}/native-build.json`;
+        const nativeBuildWithMetadata: NativeBuildWithMetadata = {
+          ...insertNativeBuild,
+          _storageKey: storageKey,
+        };
+
+        nativeBuildsMap.set(insertNativeBuild.id, nativeBuildWithMetadata);
+        pendingNativeBuildsMap.set(insertNativeBuild.id, nativeBuildWithMetadata);
+
+        // Store the native build
+        await uploadObject(context, storageKey, insertNativeBuild);
+
+        hooks?.onDatabaseUpdated?.();
+      },
+
+      async deleteNativeBuild(context, deleteNativeBuild: NativeBuild) {
+        const nativeBuildId = deleteNativeBuild.id;
+        let nativeBuild = pendingNativeBuildsMap.get(nativeBuildId);
+        if (!nativeBuild) {
+          nativeBuild = nativeBuildsMap.get(nativeBuildId);
+        }
+        if (!nativeBuild) {
+          throw new Error("Native build not found");
+        }
+
+        // Remove from memory maps
+        nativeBuildsMap.delete(nativeBuildId);
+        pendingNativeBuildsMap.delete(nativeBuildId);
+
+        // Delete from storage
+        const storageKey = `native-builds/${nativeBuildId}/native-build.json`;
+        await deleteObject(context, storageKey);
+
         hooks?.onDatabaseUpdated?.();
       },
     },

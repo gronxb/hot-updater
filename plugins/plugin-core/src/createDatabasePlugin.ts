@@ -1,5 +1,6 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, NativeBuild } from "@hot-updater/core";
 import { memoize, merge } from "es-toolkit";
+import { calculatePagination } from "./calculatePagination";
 import type {
   BasePluginArgs,
   DatabasePlugin,
@@ -40,6 +41,36 @@ export interface AbstractDatabasePlugin<TContext = object> {
         data: Bundle;
       }[];
     },
+  ) => Promise<void>;
+
+  // Native build operations
+  getNativeBuildById: (
+    context: TContext,
+    nativeBuildId: string,
+  ) => Promise<NativeBuild | null>;
+  getNativeBuilds: (
+    context: TContext,
+    options: {
+      where?: { channel?: string; platform?: string; nativeVersion?: string };
+      limit: number;
+      offset: number;
+    },
+  ) => Promise<{
+    data: NativeBuild[];
+    pagination: PaginationInfo;
+  }>;
+  updateNativeBuild: (
+    context: TContext,
+    targetNativeBuildId: string,
+    newNativeBuild: Partial<NativeBuild>,
+  ) => Promise<void>;
+  appendNativeBuild: (
+    context: TContext,
+    insertNativeBuild: NativeBuild,
+  ) => Promise<void>;
+  deleteNativeBuild: (
+    context: TContext,
+    deleteNativeBuild: NativeBuild,
   ) => Promise<void>;
 }
 
@@ -162,6 +193,32 @@ export function createDatabasePlugin<TContext = object>(
 
     async deleteBundle(deleteBundle: Bundle): Promise<void> {
       markChanged("delete", deleteBundle);
+    },
+
+    // Native build operations
+    async getNativeBuildById(nativeBuildId: string) {
+      const context = memoizedContext();
+      return abstractPlugin.getNativeBuildById(context, nativeBuildId);
+    },
+
+    async getNativeBuilds(options) {
+      const context = memoizedContext();
+      return abstractPlugin.getNativeBuilds(context, options);
+    },
+
+    async updateNativeBuild(targetNativeBuildId: string, newNativeBuild: Partial<NativeBuild>) {
+      const context = memoizedContext();
+      return abstractPlugin.updateNativeBuild(context, targetNativeBuildId, newNativeBuild);
+    },
+
+    async appendNativeBuild(insertNativeBuild: NativeBuild) {
+      const context = memoizedContext();
+      return abstractPlugin.appendNativeBuild(context, insertNativeBuild);
+    },
+
+    async deleteNativeBuild(deleteNativeBuild: NativeBuild) {
+      const context = memoizedContext();
+      return abstractPlugin.deleteNativeBuild(context, deleteNativeBuild);
     },
   });
 }
