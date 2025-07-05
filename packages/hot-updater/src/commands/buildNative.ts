@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
-import { runNativeBuild } from "@/utils/native/runNativeBuild";
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/core";
 import { getCwd } from "@hot-updater/plugin-core";
@@ -59,11 +59,13 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
           await buildPlugin.nativeBuild?.prebuild?.({ platform });
-          const { buildDirectory, buildArtifactPath } = await runNativeBuild({
-            platform,
-            config: config.nativeBuild,
-            scheme,
-          });
+          const { buildDirectory, buildArtifactPath } = await createNativeBuild(
+            {
+              platform,
+              config: config.nativeBuild,
+              scheme,
+            },
+          );
           taskRef.buildResult.buildArtifactPath = buildArtifactPath;
           taskRef.buildResult.buildDirectory = buildDirectory;
 
