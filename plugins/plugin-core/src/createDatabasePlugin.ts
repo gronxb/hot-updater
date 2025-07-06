@@ -1,6 +1,5 @@
 import type { Bundle, NativeBuild } from "@hot-updater/core";
 import { memoize, merge } from "es-toolkit";
-import { calculatePagination } from "./calculatePagination";
 import type {
   BasePluginArgs,
   DatabasePlugin,

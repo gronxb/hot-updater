@@ -140,7 +140,7 @@ export const r2Storage =
           const files = lines
             .slice(1) // Skip header
             .map((line) => line.split(/\s+/)[0])
-            .filter((name) => name && name.startsWith(prefix));
+            .filter((name) => name?.startsWith(prefix));
 
           if (files.length === 0) {
             throw new Error("Native build not found");
@@ -192,7 +192,7 @@ export const r2Storage =
           const files = lines
             .slice(1) // Skip header
             .map((line) => line.split(/\s+/)[0])
-            .filter((name) => name && name.startsWith(prefix));
+            .filter((name) => name?.startsWith(prefix));
 
           if (files.length === 0) {
             throw new Error("Native build not found");

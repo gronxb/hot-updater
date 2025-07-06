@@ -58,7 +58,10 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
 
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
-              <label class="text-sm font-medium text-muted-foreground">
+              <label
+                for="nativeVersion"
+                class="text-sm font-medium text-muted-foreground"
+              >
                 Native Version
               </label>
               <div class="flex items-center gap-2">
@@ -68,7 +71,10 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
             </div>
 
             <div class="space-y-2">
-              <label class="text-sm font-medium text-muted-foreground">
+              <label
+                for="platform"
+                class="text-sm font-medium text-muted-foreground"
+              >
                 Platform
               </label>
               <div class="flex items-center gap-2">
@@ -84,7 +90,10 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
             </div>
 
             <div class="space-y-2">
-              <label class="text-sm font-medium text-muted-foreground">
+              <label
+                for="buildId"
+                class="text-sm font-medium text-muted-foreground"
+              >
                 Build ID
               </label>
               <div class="flex items-center gap-2">
@@ -94,7 +103,10 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
             </div>
 
             <div class="space-y-2 col-span-2">
-              <label class="text-sm font-medium text-muted-foreground">
+              <label
+                for="fingerprintHash"
+                class="text-sm font-medium text-muted-foreground"
+              >
                 Fingerprint Hash
               </label>
               <div class="flex items-center gap-2">
@@ -141,7 +153,7 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
           <div class="space-y-3">
             <Show when={downloadUrlQuery.isLoading}>
               <div class="text-center p-4">
-                <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
                 <p class="mt-2 text-sm text-muted-foreground">
                   Generating download URL...
                 </p>

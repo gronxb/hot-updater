@@ -1,4 +1,4 @@
-import type { Bundle, Platform, NativeBuild } from "@hot-updater/core";
+import type { Bundle, NativeBuild, Platform } from "@hot-updater/core";
 
 export type { Platform, Bundle, NativeBuild } from "@hot-updater/core";
 

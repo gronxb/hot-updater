@@ -1,6 +1,6 @@
+import { Show } from "solid-js";
 import { type NativeBuild, nativeBuildsColumns } from "./native-builds-columns";
 import { NativeBuildsDataTable } from "./native-builds-data-table";
-import { Show } from "solid-js";
 
 interface NativeBuildsProps {
   data: NativeBuild[];
@@ -39,7 +39,7 @@ export function NativeBuilds(props: NativeBuildsProps) {
 
       <Show when={props.isLoading}>
         <div class="text-center p-8">
-          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
           <p class="mt-2 text-muted-foreground">Loading native builds...</p>
         </div>
       </Show>

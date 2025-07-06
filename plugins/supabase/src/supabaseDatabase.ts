@@ -3,12 +3,12 @@ import type {
   DatabasePluginHooks,
   NativeBuild,
 } from "@hot-updater/plugin-core";
-import type { Database } from "./types";
 import {
   calculatePagination,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "./types";
 
 export interface SupabaseDatabaseConfig {
   supabaseUrl: string;

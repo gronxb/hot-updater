@@ -1,8 +1,4 @@
-import type {
-  SnakeCaseBundle,
-  SnakeCaseNativeBuild,
-  Platform,
-} from "@hot-updater/core";
+import type { SnakeCaseBundle, SnakeCaseNativeBuild } from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePluginHooks,

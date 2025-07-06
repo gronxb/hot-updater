@@ -1,8 +1,8 @@
 import type {
   Bundle,
   DatabasePluginHooks,
-  Platform,
   NativeBuild,
+  Platform,
 } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
