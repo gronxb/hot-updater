@@ -117,17 +117,17 @@ export const firebaseStorage =
         try {
           const prefix = `native-builds/${nativeBuildId}`;
           const [files] = await bucket.getFiles({ prefix });
-          
+
           if (files.length === 0) {
             throw new Error("Native build not found");
           }
 
           // Get the first file (should be the native build artifact)
           const file = files[0];
-          
+
           // Generate signed URL valid for 1 hour
           const [signedUrl] = await file.getSignedUrl({
-            action: 'read',
+            action: "read",
             expires: Date.now() + 60 * 60 * 1000, // 1 hour
           });
 
@@ -136,7 +136,9 @@ export const firebaseStorage =
           };
         } catch (error) {
           if (error instanceof Error) {
-            throw new Error(`Failed to generate download URL: ${error.message}`);
+            throw new Error(
+              `Failed to generate download URL: ${error.message}`,
+            );
           }
           throw error;
         }

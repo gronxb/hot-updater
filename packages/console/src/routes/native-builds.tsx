@@ -8,8 +8,12 @@ import { NativeBuilds } from "./_components/native-builds";
 export default function NativeBuildsPage() {
   const { buildIdFilter, setBuildIdFilter } = useFilter();
   const [globalFilter, setGlobalFilter] = createSignal("");
-  const [platformFilter, setPlatformFilter] = createSignal<"ios" | "android" | undefined>(undefined);
-  const [channelFilter, setChannelFilter] = createSignal<string | undefined>(undefined);
+  const [platformFilter, setPlatformFilter] = createSignal<
+    "ios" | "android" | undefined
+  >(undefined);
+  const [channelFilter, setChannelFilter] = createSignal<string | undefined>(
+    undefined,
+  );
 
   const nativeBuildsQuery = createNativeBuildsQuery(() => ({
     platform: platformFilter(),
@@ -33,16 +37,17 @@ export default function NativeBuildsPage() {
   const nativeBuilds = createMemo(() => {
     const data = nativeBuildsQuery.data;
     if (!data || !data.data) return [];
-    
+
     // Apply global filter if needed
     const filter = globalFilter().toLowerCase();
     if (!filter) return data.data;
-    
-    return data.data.filter(build => 
-      build.nativeVersion.toLowerCase().includes(filter) ||
-      build.platform.toLowerCase().includes(filter) ||
-      build.fingerprintHash.toLowerCase().includes(filter) ||
-      build.id.toLowerCase().includes(filter)
+
+    return data.data.filter(
+      (build) =>
+        build.nativeVersion.toLowerCase().includes(filter) ||
+        build.platform.toLowerCase().includes(filter) ||
+        build.fingerprintHash.toLowerCase().includes(filter) ||
+        build.id.toLowerCase().includes(filter),
     );
   });
 
@@ -55,7 +60,7 @@ export default function NativeBuildsPage() {
         }
       }}
     >
-      <NativeBuilds 
+      <NativeBuilds
         data={nativeBuilds()}
         onRowClick={handleRowClick}
         globalFilter={globalFilter()}

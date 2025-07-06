@@ -206,9 +206,16 @@ export function createDatabasePlugin<TContext = object>(
       return abstractPlugin.getNativeBuilds(context, options);
     },
 
-    async updateNativeBuild(targetNativeBuildId: string, newNativeBuild: Partial<NativeBuild>) {
+    async updateNativeBuild(
+      targetNativeBuildId: string,
+      newNativeBuild: Partial<NativeBuild>,
+    ) {
       const context = memoizedContext();
-      return abstractPlugin.updateNativeBuild(context, targetNativeBuildId, newNativeBuild);
+      return abstractPlugin.updateNativeBuild(
+        context,
+        targetNativeBuildId,
+        newNativeBuild,
+      );
     },
 
     async appendNativeBuild(insertNativeBuild: NativeBuild) {

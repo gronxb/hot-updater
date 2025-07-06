@@ -11,7 +11,10 @@ import type { RouteConfig } from "./standaloneRepository";
 export interface StorageRoutes {
   uploadBundle: (bundleId: string, bundlePath: string) => RouteConfig;
   deleteBundle: (bundleId: string) => RouteConfig;
-  uploadNativeBuild: (nativeBuildId: string, nativeBuildPath: string) => RouteConfig;
+  uploadNativeBuild: (
+    nativeBuildId: string,
+    nativeBuildPath: string,
+  ) => RouteConfig;
   deleteNativeBuild: (nativeBuildId: string) => RouteConfig;
   getNativeBuildDownloadUrl: (nativeBuildId: string) => RouteConfig;
 }
@@ -167,10 +170,8 @@ export const standaloneStorage =
           mime.getType(nativeBuildPath) ?? "application/octet-stream";
         const filename = path.basename(nativeBuildPath);
 
-        const { path: routePath, headers: routeHeaders } = routes.uploadNativeBuild(
-          nativeBuildId,
-          nativeBuildPath,
-        );
+        const { path: routePath, headers: routeHeaders } =
+          routes.uploadNativeBuild(nativeBuildId, nativeBuildPath);
 
         const formData = new FormData();
         formData.append(
@@ -197,7 +198,8 @@ export const standaloneStorage =
         };
 
         if (!result.storageUri) {
-          const error = "Failed to upload native build - no storageUri in response";
+          const error =
+            "Failed to upload native build - no storageUri in response";
           console.error(`[uploadNativeBuild] ${error}`);
           throw new Error(error);
         }

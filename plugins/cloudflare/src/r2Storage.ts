@@ -87,7 +87,7 @@ export const r2Storage =
         const contentType = mime.getType(nativeBuildPath) ?? void 0;
         const filename = path.basename(nativeBuildPath);
         const Key = `native-builds/${nativeBuildId}/${filename}`;
-        
+
         try {
           const { stderr, exitCode } = await wrangler(
             "r2",
@@ -104,7 +104,9 @@ export const r2Storage =
           }
         } catch (error) {
           if (error instanceof ExecaError) {
-            throw new Error(`Failed to upload native build: ${error.stderr || error.stdout}`);
+            throw new Error(
+              `Failed to upload native build: ${error.stderr || error.stdout}`,
+            );
           }
           throw new Error(`Failed to upload native build: ${error}`);
         }
@@ -118,7 +120,7 @@ export const r2Storage =
 
       async deleteNativeBuild(nativeBuildId) {
         const prefix = `native-builds/${nativeBuildId}`;
-        
+
         try {
           // List objects to find all files with the prefix
           const { stdout: listOutput } = await wrangler(
@@ -132,10 +134,13 @@ export const r2Storage =
           );
 
           // Parse the list output to get file names
-          const lines = (listOutput || "").split('\n').filter(line => line.trim());
-          const files = lines.slice(1) // Skip header
-            .map(line => line.split(/\s+/)[0])
-            .filter(name => name && name.startsWith(prefix));
+          const lines = (listOutput || "")
+            .split("\n")
+            .filter((line) => line.trim());
+          const files = lines
+            .slice(1) // Skip header
+            .map((line) => line.split(/\s+/)[0])
+            .filter((name) => name && name.startsWith(prefix));
 
           if (files.length === 0) {
             throw new Error("Native build not found");
@@ -157,7 +162,9 @@ export const r2Storage =
           };
         } catch (error) {
           if (error instanceof ExecaError) {
-            throw new Error(`Failed to delete native build: ${error.stderr || error.stdout}`);
+            throw new Error(
+              `Failed to delete native build: ${error.stderr || error.stdout}`,
+            );
           }
           throw new Error(`Failed to delete native build: ${error}`);
         }
@@ -165,7 +172,7 @@ export const r2Storage =
 
       async getNativeBuildDownloadUrl(nativeBuildId) {
         const prefix = `native-builds/${nativeBuildId}`;
-        
+
         try {
           // List objects to find the native build file
           const { stdout: listOutput } = await wrangler(
@@ -179,10 +186,13 @@ export const r2Storage =
           );
 
           // Parse the list output to get file names
-          const lines = (listOutput || "").split('\n').filter(line => line.trim());
-          const files = lines.slice(1) // Skip header
-            .map(line => line.split(/\s+/)[0])
-            .filter(name => name && name.startsWith(prefix));
+          const lines = (listOutput || "")
+            .split("\n")
+            .filter((line) => line.trim());
+          const files = lines
+            .slice(1) // Skip header
+            .map((line) => line.split(/\s+/)[0])
+            .filter((name) => name && name.startsWith(prefix));
 
           if (files.length === 0) {
             throw new Error("Native build not found");
@@ -210,7 +220,9 @@ export const r2Storage =
           };
         } catch (error) {
           if (error instanceof ExecaError) {
-            throw new Error(`Failed to generate download URL: ${error.stderr || error.stdout}`);
+            throw new Error(
+              `Failed to generate download URL: ${error.stderr || error.stdout}`,
+            );
           }
           throw new Error(`Failed to generate download URL: ${error}`);
         }

@@ -40,7 +40,7 @@ export interface DatabasePlugin {
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (deleteBundle: Bundle) => Promise<void>;
-  
+
   // Native build operations
   getNativeBuildById: (nativeBuildId: string) => Promise<NativeBuild | null>;
   getNativeBuilds: (options: {
@@ -119,7 +119,7 @@ export interface StoragePlugin {
   deleteBundle: (bundleId: string) => Promise<{
     storageUri: string;
   }>;
-  
+
   // Native build operations
   uploadNativeBuild: (
     nativeBuildId: string,
@@ -131,11 +131,11 @@ export interface StoragePlugin {
   deleteNativeBuild: (nativeBuildId: string) => Promise<{
     storageUri: string;
   }>;
-  
+
   getNativeBuildDownloadUrl: (nativeBuildId: string) => Promise<{
     fileUrl: string;
   }>;
-  
+
   name: string;
 }
 

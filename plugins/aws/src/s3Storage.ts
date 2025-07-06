@@ -93,7 +93,7 @@ export const s3Storage =
         const ContentType = mime.getType(nativeBuildPath) ?? void 0;
 
         const filename = path.basename(nativeBuildPath);
-        
+
         // Store native builds in a separate folder structure
         const Key = ["native-builds", nativeBuildId, filename].join("/");
         const upload = new Upload({
@@ -175,8 +175,12 @@ export const s3Storage =
 
         // Generate signed URL valid for 1 hour
         // AWS SDK types have compatibility issues, but the runtime works correctly
-        const signedUrl = await getSignedUrl(client as unknown as Parameters<typeof getSignedUrl>[0], command, { expiresIn: 3600 });
-        
+        const signedUrl = await getSignedUrl(
+          client as unknown as Parameters<typeof getSignedUrl>[0],
+          command,
+          { expiresIn: 3600 },
+        );
+
         return {
           fileUrl: signedUrl,
         };

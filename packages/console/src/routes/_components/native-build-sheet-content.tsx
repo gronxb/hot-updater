@@ -18,10 +18,10 @@ interface NativeBuildSheetContentProps {
 
 export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
   const downloadUrlQuery = createNativeBuildDownloadUrlQuery(props.build.id);
-  
+
   const downloadUrl = createMemo(() => {
     const data = downloadUrlQuery.data;
-    if (data && 'fileUrl' in data) {
+    if (data && "fileUrl" in data) {
       return data.fileUrl;
     }
     return undefined;
@@ -30,7 +30,7 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
   const handleDownload = () => {
     const url = downloadUrl();
     if (url) {
-      window.open(url, '_blank');
+      window.open(url, "_blank");
     }
   };
 
@@ -55,7 +55,7 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
         {/* Basic Information */}
         <div class="space-y-4">
           <h3 class="text-lg font-semibold">Basic Information</h3>
-          
+
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
               <label class="text-sm font-medium text-muted-foreground">
@@ -66,7 +66,7 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
                 <span class="font-mono">{props.build.nativeVersion}</span>
               </div>
             </div>
-            
+
             <div class="space-y-2">
               <label class="text-sm font-medium text-muted-foreground">
                 Platform
@@ -93,7 +93,6 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
               </div>
             </div>
 
-
             <div class="space-y-2 col-span-2">
               <label class="text-sm font-medium text-muted-foreground">
                 Fingerprint Hash
@@ -113,14 +112,16 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
         {/* Bundle Compatibility */}
         <div class="space-y-4">
           <h3 class="text-lg font-semibold">Bundle Compatibility</h3>
-          
+
           <div class="p-4 bg-blue-50 rounded-lg">
             <div class="flex items-start gap-3">
               <Package2 class="mt-0.5 text-blue-600" size={20} />
               <div class="space-y-1">
-                <p class="text-sm font-medium text-blue-900">Native Build Information</p>
+                <p class="text-sm font-medium text-blue-900">
+                  Native Build Information
+                </p>
                 <p class="text-sm text-blue-700">
-                  This native build (ID: {" "}
+                  This native build (ID:{" "}
                   <span class="font-mono bg-blue-100 px-1 rounded">
                     {props.build.id}
                   </span>
@@ -136,27 +137,36 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
         {/* Download Section */}
         <div class="space-y-4">
           <h3 class="text-lg font-semibold">Download</h3>
-          
+
           <div class="space-y-3">
             <Show when={downloadUrlQuery.isLoading}>
               <div class="text-center p-4">
                 <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                <p class="mt-2 text-sm text-muted-foreground">Generating download URL...</p>
+                <p class="mt-2 text-sm text-muted-foreground">
+                  Generating download URL...
+                </p>
               </div>
             </Show>
 
             <Show when={downloadUrlQuery.error}>
               <div class="p-4 bg-red-50 rounded-lg">
                 <p class="text-sm text-red-700">
-                  Failed to generate download URL: {downloadUrlQuery.error?.message}
+                  Failed to generate download URL:{" "}
+                  {downloadUrlQuery.error?.message}
                 </p>
               </div>
             </Show>
 
-            <Show 
-              when={!downloadUrlQuery.isLoading && !downloadUrlQuery.error && downloadUrl()}
+            <Show
+              when={
+                !downloadUrlQuery.isLoading &&
+                !downloadUrlQuery.error &&
+                downloadUrl()
+              }
               fallback={
-                <Show when={!downloadUrlQuery.isLoading && !downloadUrlQuery.error}>
+                <Show
+                  when={!downloadUrlQuery.isLoading && !downloadUrlQuery.error}
+                >
                   <div class="p-4 bg-gray-50 rounded-lg">
                     <p class="text-sm text-muted-foreground">
                       Download URL not available for this build.
@@ -174,10 +184,11 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
                 <Download class="mr-2 h-4 w-4" />
                 Download Build
               </Button>
-              
+
               <div class="p-3 bg-blue-50 rounded-lg">
                 <p class="text-sm text-blue-700">
-                  This will download the native build file for {props.build.platform} version {props.build.nativeVersion}.
+                  This will download the native build file for{" "}
+                  {props.build.platform} version {props.build.nativeVersion}.
                 </p>
               </div>
             </Show>

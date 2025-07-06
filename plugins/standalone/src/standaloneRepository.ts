@@ -202,7 +202,15 @@ export const standaloneRepository = (
       async getNativeBuilds(_, options) {
         return {
           data: [],
-          pagination: { offset: 0, limit: options.limit, total: 0, totalPages: 0, currentPage: 1, hasNextPage: false, hasPreviousPage: false },
+          pagination: {
+            offset: 0,
+            limit: options.limit,
+            total: 0,
+            totalPages: 0,
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
         };
       },
 

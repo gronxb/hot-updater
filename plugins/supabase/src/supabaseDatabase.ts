@@ -276,15 +276,25 @@ export const supabaseDatabase = (
       },
 
       async updateNativeBuild(context, targetNativeBuildId, newNativeBuild) {
-        const updateData: Partial<Database['public']['Tables']['native_builds']['Update']> = {};
-        if (newNativeBuild.nativeVersion !== undefined) updateData.native_version = newNativeBuild.nativeVersion;
-        if (newNativeBuild.platform !== undefined) updateData.platform = newNativeBuild.platform;
-        if (newNativeBuild.fingerprintHash !== undefined) updateData.fingerprint_hash = newNativeBuild.fingerprintHash;
-        if (newNativeBuild.storageUri !== undefined) updateData.storage_uri = newNativeBuild.storageUri;
-        if (newNativeBuild.fileHash !== undefined) updateData.file_hash = newNativeBuild.fileHash;
-        if (newNativeBuild.fileSize !== undefined) updateData.file_size = newNativeBuild.fileSize;
-        if (newNativeBuild.channel !== undefined) updateData.channel = newNativeBuild.channel;
-        if (newNativeBuild.metadata !== undefined) updateData.metadata = newNativeBuild.metadata;
+        const updateData: Partial<
+          Database["public"]["Tables"]["native_builds"]["Update"]
+        > = {};
+        if (newNativeBuild.nativeVersion !== undefined)
+          updateData.native_version = newNativeBuild.nativeVersion;
+        if (newNativeBuild.platform !== undefined)
+          updateData.platform = newNativeBuild.platform;
+        if (newNativeBuild.fingerprintHash !== undefined)
+          updateData.fingerprint_hash = newNativeBuild.fingerprintHash;
+        if (newNativeBuild.storageUri !== undefined)
+          updateData.storage_uri = newNativeBuild.storageUri;
+        if (newNativeBuild.fileHash !== undefined)
+          updateData.file_hash = newNativeBuild.fileHash;
+        if (newNativeBuild.fileSize !== undefined)
+          updateData.file_size = newNativeBuild.fileSize;
+        if (newNativeBuild.channel !== undefined)
+          updateData.channel = newNativeBuild.channel;
+        if (newNativeBuild.metadata !== undefined)
+          updateData.metadata = newNativeBuild.metadata;
 
         await context.supabase
           .from("native_builds")
@@ -293,17 +303,18 @@ export const supabaseDatabase = (
       },
 
       async appendNativeBuild(context, insertNativeBuild) {
-        const insertData: Database['public']['Tables']['native_builds']['Insert'] = {
-          id: insertNativeBuild.id,
-          native_version: insertNativeBuild.nativeVersion,
-          platform: insertNativeBuild.platform,
-          fingerprint_hash: insertNativeBuild.fingerprintHash,
-          storage_uri: insertNativeBuild.storageUri,
-          file_hash: insertNativeBuild.fileHash,
-          file_size: insertNativeBuild.fileSize,
-          channel: insertNativeBuild.channel,
-          metadata: insertNativeBuild.metadata,
-        };
+        const insertData: Database["public"]["Tables"]["native_builds"]["Insert"] =
+          {
+            id: insertNativeBuild.id,
+            native_version: insertNativeBuild.nativeVersion,
+            platform: insertNativeBuild.platform,
+            fingerprint_hash: insertNativeBuild.fingerprintHash,
+            storage_uri: insertNativeBuild.storageUri,
+            file_hash: insertNativeBuild.fileHash,
+            file_size: insertNativeBuild.fileSize,
+            channel: insertNativeBuild.channel,
+            metadata: insertNativeBuild.metadata,
+          };
         await context.supabase.from("native_builds").insert(insertData);
       },
 

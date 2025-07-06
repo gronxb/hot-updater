@@ -1,4 +1,8 @@
-import type { SnakeCaseBundle, SnakeCaseNativeBuild, Platform } from "@hot-updater/core";
+import type {
+  SnakeCaseBundle,
+  SnakeCaseNativeBuild,
+  Platform,
+} from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePluginHooks,
@@ -44,7 +48,9 @@ const convertToNativeBuild = (
   metadata: firestoreData?.metadata ?? {},
 });
 
-const convertToSnakeCaseNativeBuild = (nativeBuild: NativeBuild): FirestoreNativeBuild => ({
+const convertToSnakeCaseNativeBuild = (
+  nativeBuild: NativeBuild,
+): FirestoreNativeBuild => ({
   id: nativeBuild.id,
   native_version: nativeBuild.nativeVersion,
   platform: nativeBuild.platform,

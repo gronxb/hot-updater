@@ -191,35 +191,39 @@ export const rpc = new Hono()
     },
   )
   // Native builds endpoints
-  .get("/native-builds", typiaValidator("query", queryNativeBuildsSchema), async (c) => {
-    try {
-      const rawQuery = c.req.valid("query");
+  .get(
+    "/native-builds",
+    typiaValidator("query", queryNativeBuildsSchema),
+    async (c) => {
+      try {
+        const rawQuery = c.req.valid("query");
 
-      const query = {
-        channel: rawQuery.channel ?? undefined,
-        platform: rawQuery.platform ?? undefined,
-        nativeVersion: rawQuery.nativeVersion ?? undefined,
-        limit: rawQuery.limit ?? DEFAULT_PAGE_LIMIT,
-        offset: rawQuery.offset ?? DEFAULT_PAGE_OFFSET,
-      };
+        const query = {
+          channel: rawQuery.channel ?? undefined,
+          platform: rawQuery.platform ?? undefined,
+          nativeVersion: rawQuery.nativeVersion ?? undefined,
+          limit: rawQuery.limit ?? DEFAULT_PAGE_LIMIT,
+          offset: rawQuery.offset ?? DEFAULT_PAGE_OFFSET,
+        };
 
-      const { databasePlugin } = await prepareConfig();
-      const nativeBuilds = await databasePlugin.getNativeBuilds({
-        where: {
-          channel: query.channel,
-          platform: query.platform,
-          nativeVersion: query.nativeVersion,
-        },
-        limit: Number(query.limit),
-        offset: Number(query.offset),
-      });
+        const { databasePlugin } = await prepareConfig();
+        const nativeBuilds = await databasePlugin.getNativeBuilds({
+          where: {
+            channel: query.channel,
+            platform: query.platform,
+            nativeVersion: query.nativeVersion,
+          },
+          limit: Number(query.limit),
+          offset: Number(query.offset),
+        });
 
-      return c.json(nativeBuilds ?? []);
-    } catch (error) {
-      console.error("Error during native builds retrieval:", error);
-      throw error;
-    }
-  })
+        return c.json(nativeBuilds ?? []);
+      } catch (error) {
+        console.error("Error during native builds retrieval:", error);
+        throw error;
+      }
+    },
+  )
   .get(
     "/native-builds/:nativeBuildId",
     typiaValidator("param", paramNativeBuildIdSchema),
@@ -227,7 +231,8 @@ export const rpc = new Hono()
       try {
         const { nativeBuildId } = c.req.valid("param");
         const { databasePlugin } = await prepareConfig();
-        const nativeBuild = await databasePlugin.getNativeBuildById(nativeBuildId);
+        const nativeBuild =
+          await databasePlugin.getNativeBuildById(nativeBuildId);
         return c.json(nativeBuild ?? null);
       } catch (error) {
         console.error("Error during native build retrieval:", error);
@@ -242,15 +247,19 @@ export const rpc = new Hono()
       try {
         const { nativeBuildId } = c.req.valid("param");
         const { storagePlugin } = await prepareConfig();
-        
+
         if (!storagePlugin) {
           return c.json({ error: "Storage plugin not configured" }, 500);
         }
 
-        const downloadUrl = await storagePlugin.getNativeBuildDownloadUrl(nativeBuildId);
+        const downloadUrl =
+          await storagePlugin.getNativeBuildDownloadUrl(nativeBuildId);
         return c.json(downloadUrl);
       } catch (error) {
-        console.error("Error during native build download URL retrieval:", error);
+        console.error(
+          "Error during native build download URL retrieval:",
+          error,
+        );
         if (error && typeof error === "object" && "message" in error) {
           return c.json({ error: error.message }, 500);
         }
@@ -271,7 +280,10 @@ export const rpc = new Hono()
         }
 
         const { databasePlugin } = await prepareConfig();
-        await databasePlugin.updateNativeBuild(nativeBuildId, partialNativeBuild);
+        await databasePlugin.updateNativeBuild(
+          nativeBuildId,
+          partialNativeBuild,
+        );
         await databasePlugin.commitBundle();
         return c.json({ success: true });
       } catch (error) {
@@ -291,17 +303,18 @@ export const rpc = new Hono()
         const { nativeBuildId } = c.req.valid("param");
 
         const { databasePlugin, storagePlugin } = await prepareConfig();
-        const deleteNativeBuild = await databasePlugin.getNativeBuildById(nativeBuildId);
+        const deleteNativeBuild =
+          await databasePlugin.getNativeBuildById(nativeBuildId);
         if (!deleteNativeBuild) {
           return c.json({ error: "Native build not found" }, 404);
         }
         await databasePlugin.deleteNativeBuild(deleteNativeBuild);
         await databasePlugin.commitBundle();
-        
+
         if (storagePlugin) {
           await storagePlugin.deleteNativeBuild(nativeBuildId);
         }
-        
+
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during native build deletion:", error);

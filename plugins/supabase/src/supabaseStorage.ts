@@ -78,7 +78,9 @@ export const supabaseStorage =
           contentType: ContentType,
         });
         if (upload.error) {
-          throw new Error(`Failed to upload native build: ${upload.error.message}`);
+          throw new Error(
+            `Failed to upload native build: ${upload.error.message}`,
+          );
         }
 
         const fullPath = upload.data.fullPath;
@@ -91,12 +93,14 @@ export const supabaseStorage =
 
       async deleteNativeBuild(nativeBuildId) {
         const prefix = `native-builds/${nativeBuildId}`;
-        
+
         // List files in the directory
         const { data: files, error: listError } = await bucket.list(prefix);
-        
+
         if (listError) {
-          throw new Error(`Failed to list native build files: ${listError.message}`);
+          throw new Error(
+            `Failed to list native build files: ${listError.message}`,
+          );
         }
 
         if (!files || files.length === 0) {
@@ -104,7 +108,7 @@ export const supabaseStorage =
         }
 
         // Delete all files in the directory
-        const filePaths = files.map(file => `${prefix}/${file.name}`);
+        const filePaths = files.map((file) => `${prefix}/${file.name}`);
         const { error } = await bucket.remove(filePaths);
 
         if (error) {
@@ -118,12 +122,14 @@ export const supabaseStorage =
 
       async getNativeBuildDownloadUrl(nativeBuildId) {
         const prefix = `native-builds/${nativeBuildId}`;
-        
+
         // List files in the directory
         const { data: files, error: listError } = await bucket.list(prefix);
-        
+
         if (listError) {
-          throw new Error(`Failed to list native build files: ${listError.message}`);
+          throw new Error(
+            `Failed to list native build files: ${listError.message}`,
+          );
         }
 
         if (!files || files.length === 0) {

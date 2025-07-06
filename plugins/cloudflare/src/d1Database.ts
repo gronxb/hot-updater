@@ -82,7 +82,11 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     targetAppVersion: row.target_app_version,
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
-    metadata: row?.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {},
+    metadata: row?.metadata
+      ? typeof row.metadata === "string"
+        ? JSON.parse(row.metadata)
+        : row.metadata
+      : {},
   };
 }
 
@@ -125,7 +129,11 @@ function transformRowToNativeBuild(row: D1NativeBuildRow): NativeBuild {
     fileHash: row.file_hash,
     fileSize: row.file_size,
     channel: row.channel,
-    metadata: row?.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {},
+    metadata: row?.metadata
+      ? typeof row.metadata === "string"
+        ? JSON.parse(row.metadata)
+        : row.metadata
+      : {},
   };
 }
 

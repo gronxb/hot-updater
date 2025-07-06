@@ -19,7 +19,9 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
 }
 
 // Helper function to remove internal management keys from native builds
-function removeNativeBuildInternalKeys(nativeBuild: NativeBuildWithMetadata): NativeBuild {
+function removeNativeBuildInternalKeys(
+  nativeBuild: NativeBuildWithMetadata,
+): NativeBuild {
   const { _storageKey, ...pureNativeBuild } = nativeBuild;
   return pureNativeBuild;
 }
@@ -188,8 +190,10 @@ export const createBlobDatabasePlugin = <TContext = object>({
     nativeBuildsMap.clear();
 
     const keys = await listObjects(context, "native-builds/");
-    const nativeBuildKeys = keys.filter((key) => key.endsWith("/native-build.json"));
-    
+    const nativeBuildKeys = keys.filter((key) =>
+      key.endsWith("/native-build.json"),
+    );
+
     const filePromises = nativeBuildKeys.map(async (key) => {
       const nativeBuild = await loadObject<NativeBuild>(context, key);
       if (nativeBuild) {
@@ -202,7 +206,9 @@ export const createBlobDatabasePlugin = <TContext = object>({
     });
 
     const results = await Promise.all(filePromises);
-    const validNativeBuilds = results.filter((build): build is NativeBuildWithMetadata => build !== null);
+    const validNativeBuilds = results.filter(
+      (build): build is NativeBuildWithMetadata => build !== null,
+    );
 
     for (const nativeBuild of validNativeBuilds) {
       nativeBuildsMap.set(nativeBuild.id, nativeBuild);
@@ -574,7 +580,9 @@ export const createBlobDatabasePlugin = <TContext = object>({
         }
 
         const total = allNativeBuilds.length;
-        const cleanNativeBuilds = allNativeBuilds.map(removeNativeBuildInternalKeys);
+        const cleanNativeBuilds = allNativeBuilds.map(
+          removeNativeBuildInternalKeys,
+        );
 
         // Apply pagination
         let paginatedData = cleanNativeBuilds;
@@ -594,7 +602,11 @@ export const createBlobDatabasePlugin = <TContext = object>({
         };
       },
 
-      async updateNativeBuild(context, targetNativeBuildId: string, newNativeBuild: Partial<NativeBuild>) {
+      async updateNativeBuild(
+        context,
+        targetNativeBuildId: string,
+        newNativeBuild: Partial<NativeBuild>,
+      ) {
         let nativeBuild = pendingNativeBuildsMap.get(targetNativeBuildId);
         if (!nativeBuild) {
           nativeBuild = nativeBuildsMap.get(targetNativeBuildId);
@@ -603,13 +615,20 @@ export const createBlobDatabasePlugin = <TContext = object>({
           throw new Error("Native build not found");
         }
 
-        const updatedNativeBuild = { ...nativeBuild, ...newNativeBuild } as NativeBuildWithMetadata;
+        const updatedNativeBuild = {
+          ...nativeBuild,
+          ...newNativeBuild,
+        } as NativeBuildWithMetadata;
         nativeBuildsMap.set(targetNativeBuildId, updatedNativeBuild);
         pendingNativeBuildsMap.set(targetNativeBuildId, updatedNativeBuild);
 
         // Store the updated native build
         const storageKey = `native-builds/${targetNativeBuildId}/native-build.json`;
-        await uploadObject(context, storageKey, removeNativeBuildInternalKeys(updatedNativeBuild));
+        await uploadObject(
+          context,
+          storageKey,
+          removeNativeBuildInternalKeys(updatedNativeBuild),
+        );
 
         hooks?.onDatabaseUpdated?.();
       },
@@ -622,7 +641,10 @@ export const createBlobDatabasePlugin = <TContext = object>({
         };
 
         nativeBuildsMap.set(insertNativeBuild.id, nativeBuildWithMetadata);
-        pendingNativeBuildsMap.set(insertNativeBuild.id, nativeBuildWithMetadata);
+        pendingNativeBuildsMap.set(
+          insertNativeBuild.id,
+          nativeBuildWithMetadata,
+        );
 
         // Store the native build
         await uploadObject(context, storageKey, insertNativeBuild);

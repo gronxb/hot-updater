@@ -21,11 +21,7 @@ export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [
   {
     accessorKey: "nativeVersion",
     header: "Native Version",
-    cell: (info) => (
-      <div class="font-medium">
-        {info.getValue() as string}
-      </div>
-    ),
+    cell: (info) => <div class="font-medium">{info.getValue() as string}</div>,
   },
   {
     accessorKey: "platform",
@@ -99,14 +95,14 @@ export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [
     cell: (info) => {
       const downloadUrl = info.getValue() as string | undefined;
       const row = info.row.original;
-      
+
       return (
         <Button
           size="sm"
           variant="outline"
           onClick={() => {
             if (downloadUrl) {
-              window.open(downloadUrl, '_blank');
+              window.open(downloadUrl, "_blank");
             } else {
               // Fallback: generate download URL or show not available
               console.log(`Download requested for build ${row.id}`);

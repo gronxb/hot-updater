@@ -5,7 +5,7 @@ import type { JSX } from "solid-js";
 
 export default function Layout({ children }: { children: JSX.Element }) {
   const location = useLocation();
-  
+
   const isActive = (path: string) => {
     if (path === "/ota-updates") {
       return location.pathname === "/" || location.pathname === "/ota-updates";
@@ -64,9 +64,7 @@ export default function Layout({ children }: { children: JSX.Element }) {
       </div>
 
       {/* Main Content */}
-      <main class="flex-1 p-6 overflow-auto">
-        {children}
-      </main>
+      <main class="flex-1 p-6 overflow-auto">{children}</main>
     </div>
   );
 }

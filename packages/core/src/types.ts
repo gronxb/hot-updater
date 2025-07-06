@@ -185,7 +185,7 @@ export type UpdateBundleParams = {
 
 export interface NativeBuild {
   /**
-   * The unique identifier for the native build. 
+   * The unique identifier for the native build.
    * This is the minBundleId that serves as the primary identifier.
    */
   id: string;

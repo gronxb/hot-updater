@@ -196,7 +196,10 @@ export const postgres = (
       },
 
       // Native build operations
-      async getNativeBuildById(context: { db: Kysely<Database>; pool: Pool }, nativeBuildId: string) {
+      async getNativeBuildById(
+        context: { db: Kysely<Database>; pool: Pool },
+        nativeBuildId: string,
+      ) {
         const data = await context.db
           .selectFrom("native_builds")
           .selectAll()
@@ -220,11 +223,18 @@ export const postgres = (
         } as NativeBuild;
       },
 
-      async getNativeBuilds(context: { db: Kysely<Database>; pool: Pool }, options: {
-        where?: { channel?: string; platform?: string; nativeVersion?: string };
-        limit: number;
-        offset: number;
-      }) {
+      async getNativeBuilds(
+        context: { db: Kysely<Database>; pool: Pool },
+        options: {
+          where?: {
+            channel?: string;
+            platform?: string;
+            nativeVersion?: string;
+          };
+          limit: number;
+          offset: number;
+        },
+      ) {
         const { where, limit, offset } = options ?? {};
 
         let countQuery = context.db.selectFrom("native_builds");
@@ -239,7 +249,11 @@ export const postgres = (
           );
         }
         if (where?.nativeVersion) {
-          countQuery = countQuery.where("native_version", "=", where.nativeVersion);
+          countQuery = countQuery.where(
+            "native_version",
+            "=",
+            where.nativeVersion,
+          );
         }
 
         const countResult = await countQuery
@@ -247,7 +261,9 @@ export const postgres = (
           .executeTakeFirst();
         const total = Number(countResult?.total) || 0;
 
-        let query = context.db.selectFrom("native_builds").orderBy("id", "desc");
+        let query = context.db
+          .selectFrom("native_builds")
+          .orderBy("id", "desc");
         if (where?.channel) {
           query = query.where("channel", "=", where.channel);
         }
@@ -287,16 +303,28 @@ export const postgres = (
         };
       },
 
-      async updateNativeBuild(context: { db: Kysely<Database>; pool: Pool }, targetNativeBuildId: string, newNativeBuild: Partial<NativeBuild>) {
+      async updateNativeBuild(
+        context: { db: Kysely<Database>; pool: Pool },
+        targetNativeBuildId: string,
+        newNativeBuild: Partial<NativeBuild>,
+      ) {
         const updateData: any = {};
-        if (newNativeBuild.nativeVersion !== undefined) updateData.native_version = newNativeBuild.nativeVersion;
-        if (newNativeBuild.platform !== undefined) updateData.platform = newNativeBuild.platform;
-        if (newNativeBuild.fingerprintHash !== undefined) updateData.fingerprint_hash = newNativeBuild.fingerprintHash;
-        if (newNativeBuild.storageUri !== undefined) updateData.storage_uri = newNativeBuild.storageUri;
-        if (newNativeBuild.fileHash !== undefined) updateData.file_hash = newNativeBuild.fileHash;
-        if (newNativeBuild.fileSize !== undefined) updateData.file_size = newNativeBuild.fileSize;
-        if (newNativeBuild.channel !== undefined) updateData.channel = newNativeBuild.channel;
-        if (newNativeBuild.metadata !== undefined) updateData.metadata = newNativeBuild.metadata;
+        if (newNativeBuild.nativeVersion !== undefined)
+          updateData.native_version = newNativeBuild.nativeVersion;
+        if (newNativeBuild.platform !== undefined)
+          updateData.platform = newNativeBuild.platform;
+        if (newNativeBuild.fingerprintHash !== undefined)
+          updateData.fingerprint_hash = newNativeBuild.fingerprintHash;
+        if (newNativeBuild.storageUri !== undefined)
+          updateData.storage_uri = newNativeBuild.storageUri;
+        if (newNativeBuild.fileHash !== undefined)
+          updateData.file_hash = newNativeBuild.fileHash;
+        if (newNativeBuild.fileSize !== undefined)
+          updateData.file_size = newNativeBuild.fileSize;
+        if (newNativeBuild.channel !== undefined)
+          updateData.channel = newNativeBuild.channel;
+        if (newNativeBuild.metadata !== undefined)
+          updateData.metadata = newNativeBuild.metadata;
 
         await context.db
           .updateTable("native_builds")
@@ -305,7 +333,10 @@ export const postgres = (
           .execute();
       },
 
-      async appendNativeBuild(context: { db: Kysely<Database>; pool: Pool }, insertNativeBuild: NativeBuild) {
+      async appendNativeBuild(
+        context: { db: Kysely<Database>; pool: Pool },
+        insertNativeBuild: NativeBuild,
+      ) {
         await context.db
           .insertInto("native_builds")
           .values({
@@ -322,7 +353,10 @@ export const postgres = (
           .execute();
       },
 
-      async deleteNativeBuild(context: { db: Kysely<Database>; pool: Pool }, deleteNativeBuild: NativeBuild) {
+      async deleteNativeBuild(
+        context: { db: Kysely<Database>; pool: Pool },
+        deleteNativeBuild: NativeBuild,
+      ) {
         await context.db
           .deleteFrom("native_builds")
           .where("id", "=", deleteNativeBuild.id)
