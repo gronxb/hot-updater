@@ -1,12 +1,9 @@
-import fs from "fs";
-import path from "path";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/core";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
-import picocolors from "picocolors";
 
 export interface NativeBuildOptions {
   outputPath?: string;
@@ -19,11 +16,12 @@ export interface NativeBuildOptions {
 export const nativeBuild = async (options: NativeBuildOptions) => {
   const preparedConfig = await prepareNativeBuild(options);
   if (!preparedConfig) {
+    p.log.error("preparing native build failed");
     return;
   }
-  const cwd = getCwd();
   const { config, outputPath, platform, scheme } = preparedConfig;
 
+  const cwd = getCwd();
   // TODO: store and upload in your mind
   const [buildPlugin /* storagePlugin, databasePlugin */] = await Promise.all([
     config.build({
@@ -58,34 +56,18 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
-          await buildPlugin.nativeBuild?.prebuild?.({ platform });
           const { buildDirectory, buildArtifactPath } = await createNativeBuild(
             {
+              buildPlugin,
               platform,
-              config: config.nativeBuild,
+              config,
               scheme,
+              outputPath,
+              cwd,
             },
           );
           taskRef.buildResult.buildArtifactPath = buildArtifactPath;
           taskRef.buildResult.buildDirectory = buildDirectory;
-
-          await buildPlugin.nativeBuild?.postbuild?.({ platform });
-
-          await fs.promises.mkdir(outputPath, { recursive: true });
-
-          p.log.success(
-            `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), outputPath))}.`,
-          );
-
-          await fs.promises.rm(outputPath, {
-            recursive: true,
-            force: true,
-          });
-          await fs.promises.cp(
-            taskRef.buildResult.buildDirectory!,
-            outputPath,
-            { recursive: true },
-          );
 
           return `Build Complete (${buildPlugin.name})`;
         },

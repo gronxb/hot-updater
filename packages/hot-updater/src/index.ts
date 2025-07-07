@@ -23,7 +23,7 @@ import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
-import { type NativeRunOptions, nativeRun } from "./commands/runNative";
+import { type NativeRunOptions, runNative } from "./commands/runNative";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -168,7 +168,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: NativeRunOptions) => {
-      nativeRun(options);
+      runNative(options);
     });
 }
 
