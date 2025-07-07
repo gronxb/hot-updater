@@ -1,16 +1,16 @@
 import path from "node:path";
 import { execa } from "execa";
 
-export function getAdbPath() {
+const getAdbPath = (): string => {
   return process.env["ANDROID_HOME"]
     ? path.join(process.env["ANDROID_HOME"], "platform-tools", "adb")
     : "adb";
-}
+};
 
 /**
  * Parses the output of the 'adb devices' command
  */
-function parseDevicesResult(result: string): string[] {
+const parseDevicesResult = ({ result }: { result: string; }): string[] => {
   if (!result) {
     return [];
   }
@@ -26,17 +26,23 @@ function parseDevicesResult(result: string): string[] {
     }
   }
   return devices;
-}
+};
 
 /**
  * Executes the commands needed to get a list of devices from ADB
  */
-export async function getDevices(): Promise<String[]> {
+const getDevices = async (): Promise<string[]> => {
   const adbPath = getAdbPath();
   try {
     const { stdout } = await execa(adbPath, ["devices"], { stdio: "pipe" });
-    return parseDevicesResult(stdout);
+    return parseDevicesResult({ result: stdout });
   } catch {
     return [];
   }
-}
+};
+
+export const Adb = {
+  getAdbPath,
+  parseDevicesResult,
+  getDevices,
+};

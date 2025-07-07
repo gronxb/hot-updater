@@ -19,3 +19,8 @@ export const nativeBuildOutputCommandOption = new Option(
   "-o, --output-path <outputPath>",
   "the path where the artifacts will be generated",
 );
+
+export const deviceCommandOption = new Option(
+  "-d, --device [deviceName]",
+  "specify the ADB device name or use default",
+);

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+  deviceCommandOption,
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
   nativeBuildSchemeCommandOption,
@@ -161,6 +162,7 @@ if (process.env["NODE_ENV"] === "development") {
     .addOption(nativeBuildOutputCommandOption)
     .addOption(interactiveCommandOption)
     .addOption(nativeBuildSchemeCommandOption)
+    .addOption(deviceCommandOption)
     .addOption(
       new Option(
         "-m, --message <message>",
