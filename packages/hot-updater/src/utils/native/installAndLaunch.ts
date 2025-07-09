@@ -2,6 +2,10 @@ import {
   injectDefaultAndroidNativeBuildSchemeOptions,
   installAndLaunchAndroid,
 } from "@hot-updater/android-helper";
+import {
+  injectDefaultIosNativeBuildSchemeOptions,
+  installAndLaunchIOS,
+} from "@hot-updater/apple-helper";
 import type { NativeBuildArgs, Platform } from "@hot-updater/plugin-core";
 
 export async function installAndLaunch({
