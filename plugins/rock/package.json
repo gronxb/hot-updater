@@ -25,10 +25,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/plugin-core": "workspace:*",
-    "@clack/prompts": "catalog:",
-    "execa": "catalog:",
-    "picocolors": "catalog:"
+    "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
