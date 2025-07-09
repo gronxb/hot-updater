@@ -31,10 +31,10 @@
   "dependencies": {
     "@clack/prompts": "catalog:",
     "execa": "catalog:",
-    "picocolors": "catalog:"
+    "picocolors": "catalog:",
+    "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
-    "@hot-updater/plugin-core": "workspace:*",
     "@types/node": "catalog:"
   }
 }

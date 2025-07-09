@@ -680,6 +680,9 @@ importers:
       '@clack/prompts':
         specifier: 'catalog:'
         version: 0.10.0
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
       execa:
         specifier: 'catalog:'
         version: 9.5.2
@@ -687,9 +690,6 @@ importers:
         specifier: 'catalog:'
         version: 1.1.1
     devDependencies:
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.6
@@ -699,6 +699,9 @@ importers:
       '@clack/prompts':
         specifier: 'catalog:'
         version: 0.10.0
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
       execa:
         specifier: 'catalog:'
         version: 9.5.2
@@ -706,9 +709,6 @@ importers:
         specifier: 'catalog:'
         version: 1.1.1
     devDependencies:
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.6
