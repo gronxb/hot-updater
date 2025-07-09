@@ -55,6 +55,6 @@
     "es-toolkit": "^1.32.0",
     "execa": "catalog:",
     "mime": "^4.0.4",
-    "picocolors": "^1.0.0"
+    "picocolors": "catalog:"
   }
 }

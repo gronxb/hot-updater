@@ -89,7 +89,7 @@
     "execa": "catalog:",
     "is-port-reachable": "^4.0.0",
     "open": "^10.1.0",
-    "picocolors": "^1.0.0",
+    "picocolors": "catalog:",
     "plist": "^3.1.0",
     "read-package-up": "^11.0.0",
     "semver": "^7.6.3",

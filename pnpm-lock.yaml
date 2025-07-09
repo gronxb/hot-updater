@@ -15,6 +15,9 @@ catalogs:
     execa:
       specifier: 9.5.2
       version: 9.5.2
+    picocolors:
+      specifier: 1.0.0
+      version: 1.0.0
 
 importers:
 
@@ -769,6 +772,25 @@ importers:
         specifier: ^4.30.0
         version: 4.30.0(@cloudflare/workers-types@4.20250507.0)
 
+  packages/android-helper:
+    dependencies:
+      '@clack/prompts':
+        specifier: 'catalog:'
+        version: 0.10.0
+      execa:
+        specifier: 'catalog:'
+        version: 9.5.2
+      picocolors:
+        specifier: 'catalog:'
+        version: 1.0.0
+    devDependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.9.0
+
   packages/console:
     dependencies:
       '@hot-updater/core':
@@ -993,8 +1015,8 @@ importers:
         specifier: ^10.1.0
         version: 10.1.0
       picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
+        specifier: 'catalog:'
+        version: 1.0.0
       plist:
         specifier: ^3.1.0
         version: 3.1.0
@@ -1118,8 +1140,8 @@ importers:
         specifier: ^4.0.4
         version: 4.0.4
       picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
+        specifier: 'catalog:'
+        version: 1.0.0
 
   plugins/bare:
     dependencies:
@@ -1183,8 +1205,8 @@ importers:
         specifier: ^1.6.5
         version: 1.6.5
       picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
+        specifier: 'catalog:'
+        version: 1.0.0
       semver:
         specifier: ^7.6.3
         version: 7.7.2
@@ -1294,8 +1316,8 @@ importers:
         specifier: ^4.0.4
         version: 4.0.4
       picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
+        specifier: 'catalog:'
+        version: 1.0.0
 
   plugins/js:
     dependencies:
@@ -1363,8 +1385,8 @@ importers:
         specifier: ^3.10.1
         version: 3.10.1
       picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
+        specifier: 'catalog:'
+        version: 1.0.0
       typescript:
         specifier: 5.8.2
         version: 5.8.2
@@ -1422,24 +1444,30 @@ importers:
         specifier: ^1.32.0
         version: 1.32.0
       picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
+        specifier: 'catalog:'
+        version: 1.0.0
       uuidv7:
         specifier: ^1.0.2
         version: 1.0.2
 
   plugins/rock:
     dependencies:
+      '@clack/prompts':
+        specifier: 'catalog:'
+        version: 0.10.0
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      execa:
+        specifier: 'catalog:'
+        version: 9.5.2
+      picocolors:
+        specifier: 'catalog:'
+        version: 1.0.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 22.9.0
-      execa:
-        specifier: 'catalog:'
-        version: 9.5.2
       uuidv7:
         specifier: ^1.0.2
         version: 1.0.2
@@ -1522,8 +1550,8 @@ importers:
         specifier: ^4.0.4
         version: 4.0.4
       picocolors:
-        specifier: ^1.0.0
-        version: 1.1.1
+        specifier: 'catalog:'
+        version: 1.0.0
 
 packages:
 
@@ -13877,6 +13905,9 @@ packages:
 
   pgpass@1.0.5:
     resolution: {integrity: sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==}
+
+  picocolors@1.0.0:
+    resolution: {integrity: sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -36901,6 +36932,8 @@ snapshots:
   pgpass@1.0.5:
     dependencies:
       split2: 4.2.0
+
+  picocolors@1.0.0: {}
 
   picocolors@1.1.1: {}
 
