@@ -30,7 +30,8 @@
   },
   "dependencies": {
     "@clack/prompts": "catalog:",
-    "execa": "catalog:"
+    "execa": "catalog:",
+    "picocolors": "catalog:"
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:*",

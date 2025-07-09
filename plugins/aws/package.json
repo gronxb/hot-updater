@@ -49,7 +49,7 @@
     "execa": "catalog:",
     "hono": "^4.6.3",
     "mime": "^4.0.4",
-    "picocolors": "^1.0.0",
+    "picocolors": "catalog:",
     "@clack/prompts": "catalog:"
   },
   "dependencies": {
