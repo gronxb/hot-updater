@@ -1,21 +1,25 @@
+import {
+  injectDefaultAndroidNativeBuildSchemeOptions,
+  installAndLaunchAndroid,
+} from "@hot-updater/android-helper";
 import type { NativeBuildArgs, Platform } from "@hot-updater/plugin-core";
-import { installAndLaunchAndroid, injectDefaultAndroidNativeBuildSchemeOptions } from "@hot-updater/android-helper";
-import { installAndLaunchIOS, injectDefaultIosNativeBuildSchemeOptions } from "@hot-updater/apple-helper";
 
 export async function installAndLaunch({
   config,
   platform,
   scheme,
+  buildArtifactPath,
 }: {
   platform: Platform;
   scheme: string;
   config: Required<NativeBuildArgs>;
+  buildArtifactPath: string;
 }) {
   if (platform === "android") {
     const schemeConfig = injectDefaultAndroidNativeBuildSchemeOptions(
       config.android[scheme]!,
     );
-    await installAndLaunchAndroid({ schemeConfig });
+    await installAndLaunchAndroid({ schemeConfig, buildArtifactPath });
   } else if (platform === "ios") {
     const schemeConfig = injectDefaultIosNativeBuildSchemeOptions(
       config.ios[scheme]!,

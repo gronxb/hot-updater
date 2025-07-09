@@ -1,12 +1,17 @@
-import { NativeBuildAndroidScheme, RequiredDeep } from "@hot-updater/plugin-core";
-import { execa } from "execa";
-import { Adb } from "./utils/adb";
 import * as p from "@clack/prompts";
+import type {
+  NativeBuildAndroidScheme,
+  RequiredDeep,
+} from "@hot-updater/plugin-core";
+import { execa } from "execa";
+import { Adb } from "./adb";
 
 export const installAndLaunchAndroid = async ({
   schemeConfig,
+  buildArtifactPath,
 }: {
   schemeConfig: RequiredDeep<NativeBuildAndroidScheme>;
+  buildArtifactPath: string;
 }) => {
   const devices = await Adb.getDevices();
   if (devices.length === 0) {
@@ -23,12 +28,13 @@ export const installAndLaunchAndroid = async ({
     return;
   }
 
-  if (!packageName) {
-    p.log.error("No package name found in config");
-    return;
-  }
+  // if (!packageName) {
+  //   p.log.error("No package name found in config");
+  //   return;
+  // }
+  const { packageName } = schemeConfig;
 
-  await execa("adb", ["-s", device, "install", "-r", artifactPath]);
+  await execa("adb", ["-s", device, "install", "-r", buildArtifactPath]);
   await execa("adb", [
     "-s",
     device,
@@ -42,4 +48,4 @@ export const installAndLaunchAndroid = async ({
   ]);
 
   p.log.success(`Successfully launched ${packageName} on ${device}`);
-}
+};

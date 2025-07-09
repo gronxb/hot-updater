@@ -1,11 +1,11 @@
-import {
-    type NativeBuildAndroidScheme,
-    RequiredDeep,
-    generateMinBundleId,
-   getCwd,
-} from "@hot-updater/plugin-core";
 import path from "path";
-import { runGradle } from "@hot-updater/android-helper";
+import {
+  type NativeBuildAndroidScheme,
+  type RequiredDeep,
+  generateMinBundleId,
+  getCwd,
+} from "@hot-updater/plugin-core";
+import { runGradle } from "./gradle";
 export const createAndroidNativeBuild = async ({
   schemeConfig,
 }: {
@@ -14,7 +14,6 @@ export const createAndroidNativeBuild = async ({
   const androidProjectPath = path.join(getCwd(), "android");
 
   const bundleId = generateMinBundleId();
-
 
   return runGradle({
     args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },

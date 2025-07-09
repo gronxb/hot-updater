@@ -137,21 +137,9 @@ const tryLaunchEmulator = async (name?: string) => {
 };
 
 /**
- * Check if emulator is booted
- */
-/**
  * Check if emulator has finished booting
  */
-const isEmulatorBooted = async (device: string) => {
-  const adbPath = Adb.getAdbPath();
-  const adbArgs = ['-s', device, 'shell', 'getprop', 'sys.boot_completed'];
-  try {
-    const { stdout } = await execa(adbPath, adbArgs, { stdio: 'pipe' });
-    return stdout.trim() === '1';
-  } catch {
-    return false;
-  }
-};
+const isEmulatorBooted = Adb.isEmulatorBooted;
 
 export const Emulator = {
   getEmulators,
