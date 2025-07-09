@@ -49,9 +49,9 @@
   "devDependencies": {
     "@clack/prompts": "catalog:",
     "@hot-updater/js": "workspace:*",
-    "@types/node": "^22.13.5",
+    "@types/node": "catalog:",
     "es-toolkit": "^1.32.0",
-    "execa": "^9.5.2",
+    "execa": "catalog:",
     "firebase-admin": "^13.2.0",
     "firebase-functions": "^6.3.2",
     "firebase-functions-test": "^3.4.0",

@@ -45,7 +45,7 @@
     "@hot-updater/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.9.4",
+    "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "jose": "^6.0.10",
     "semver": "^7.6.3"

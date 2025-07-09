@@ -15,3 +15,5 @@ onlyBuiltDependencies:
 
 catalog:
   "@clack/prompts": 0.10.0
+  "@types/node": 22.9.0
+  "execa": 9.5.2
