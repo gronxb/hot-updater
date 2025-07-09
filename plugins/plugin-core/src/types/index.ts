@@ -87,6 +87,11 @@ export interface NativeBuildAndroidScheme {
    * @default app
    */
   appModuleName?: string;
+
+  /**
+   * Android application package name.
+   */
+  packageName: string;
 }
 
 /**
