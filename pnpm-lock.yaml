@@ -16,8 +16,8 @@ catalogs:
       specifier: 9.5.2
       version: 9.5.2
     picocolors:
-      specifier: 1.0.0
-      version: 1.0.0
+      specifier: 1.1.1
+      version: 1.1.1
 
 importers:
 
@@ -685,7 +685,7 @@ importers:
         version: 9.5.2
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
     devDependencies:
       '@hot-updater/plugin-core':
         specifier: workspace:*
@@ -704,7 +704,7 @@ importers:
         version: 9.5.2
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
     devDependencies:
       '@hot-updater/plugin-core':
         specifier: workspace:*
@@ -944,7 +944,7 @@ importers:
         version: 10.1.0
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
       plist:
         specifier: ^3.1.0
         version: 3.1.0
@@ -1069,7 +1069,7 @@ importers:
         version: 4.0.4
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
 
   plugins/bare:
     dependencies:
@@ -1134,7 +1134,7 @@ importers:
         version: 1.6.5
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
       semver:
         specifier: ^7.6.3
         version: 7.7.2
@@ -1245,7 +1245,7 @@ importers:
         version: 4.0.4
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
 
   plugins/js:
     dependencies:
@@ -1311,7 +1311,7 @@ importers:
         version: 3.10.1
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
       typescript:
         specifier: 5.8.2
         version: 5.8.2
@@ -1370,7 +1370,7 @@ importers:
         version: 1.32.0
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
       uuidv7:
         specifier: ^1.0.2
         version: 1.0.2
@@ -1470,7 +1470,7 @@ importers:
         version: 4.0.4
       picocolors:
         specifier: 'catalog:'
-        version: 1.0.0
+        version: 1.1.1
 
 packages:
 
@@ -13522,9 +13522,6 @@ packages:
   pgpass@1.0.5:
     resolution: {integrity: sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==}
 
-  picocolors@1.0.0:
-    resolution: {integrity: sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==}
-
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -20236,13 +20233,13 @@ snapshots:
 
   '@clack/core@0.4.1':
     dependencies:
-      picocolors: 1.0.0
+      picocolors: 1.1.1
       sisteransi: 1.0.5
 
   '@clack/prompts@0.10.0':
     dependencies:
       '@clack/core': 0.4.1
-      picocolors: 1.0.0
+      picocolors: 1.1.1
       sisteransi: 1.0.5
 
   '@cloudflare/kv-asset-handler@0.4.0':
@@ -32217,7 +32214,7 @@ snapshots:
       ansi-escapes: 4.3.2
       figures: 3.2.0
       inquirer: 8.2.6
-      picocolors: 1.0.0
+      picocolors: 1.1.1
       run-async: 2.4.1
       rxjs: 7.8.1
 
@@ -36528,8 +36525,6 @@ snapshots:
   pgpass@1.0.5:
     dependencies:
       split2: 4.2.0
-
-  picocolors@1.0.0: {}
 
   picocolors@1.1.1: {}
 
