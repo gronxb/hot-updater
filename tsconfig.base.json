@@ -20,7 +20,6 @@
     "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "pretty": true,
-    "noUncheckedIndexedAccess": false
+    "pretty": true
   }
 }
