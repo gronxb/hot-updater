@@ -11,7 +11,9 @@ import {
 } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import { createAndroidNativeBuild } from "./android/createAndroidNativeBuild";
+import { injectDefaultAndroidNativeBuildSchemeOptions } from "./android/utils/injectDefaultAndroidNativeBuildSchemeOptions";
 import { createIosNativeBuild } from "./ios/createIosNativeBuild";
+import { injectDefaultIosNativeBuildSchemeOptions } from "./ios/utils/injectDefaultIosNativeBuildSchemeOptions";
 
 const createNativeBuildWithPlatform = async ({
   config,
@@ -25,10 +27,16 @@ const createNativeBuildWithPlatform = async ({
   switch (platform) {
     case "android":
       return createAndroidNativeBuild({
-        schemeConfig: config.android[scheme]!,
+        schemeConfig: injectDefaultAndroidNativeBuildSchemeOptions(
+          config.android[scheme]!,
+        ),
       });
     case "ios":
-      return createIosNativeBuild({ schemeConfig: config.ios[scheme]! });
+      return createIosNativeBuild({
+        schemeConfig: injectDefaultIosNativeBuildSchemeOptions(
+          config.ios[scheme]!,
+        ),
+      });
     default:
       throw new Error(`Unexpected platform ${platform}`);
   }

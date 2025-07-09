@@ -1,18 +1,16 @@
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
-import { injectDefaultIosNativeBuildSchemeOptions } from './injectDefaultIosNativeBuildSchemeOptions';
+import type { NativeBuildIosScheme, RequiredDeep } from "@hot-updater/plugin-core";
 import { archive, exportArchive } from './utils/xcodebuild';
 
 export const createIosNativeBuild = async ({
   schemeConfig,
 }: {
-  schemeConfig: NativeBuildIosScheme;
+  schemeConfig: RequiredDeep<NativeBuildIosScheme>;
 }): Promise<{ buildDirectory: string;  buildArtifactPath: string; }> => {
   // const iosProjectRoot = path.join(getCwd(), "ios");
-  const mergedConfig = injectDefaultIosNativeBuildSchemeOptions(schemeConfig);
 
-  const { archivePath } = await archive(mergedConfig);
+  const { archivePath } = await archive(schemeConfig);
 
-  if (!mergedConfig.exportOptionsPlist) {
+  if (!schemeConfig.exportOptionsPlist) {
     throw new Error(
       "exportOptionsPlist is required for exporting the archive.",
     );
@@ -20,7 +18,7 @@ export const createIosNativeBuild = async ({
 
   const { exportPath } = await exportArchive({
     archivePath,
-    exportOptionsPlist: mergedConfig.exportOptionsPlist,
+    exportOptionsPlist: schemeConfig.exportOptionsPlist,
   });
 
   return { buildDirectory: exportPath, buildArtifactPath: "" };

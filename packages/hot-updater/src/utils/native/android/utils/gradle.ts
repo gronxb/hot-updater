@@ -10,6 +10,9 @@ export type RunGradleArgs = {
   androidProjectPath: string;
 };
 
+/**
+ * Clean up gradle error message by removing common noise
+ */
 const getCleanedErrorMessage = (error: ExecaError) => {
   const gradleLinesToRemove = [
     "FAILURE: Build failed with an exception.",
@@ -30,13 +33,22 @@ const getCleanedErrorMessage = (error: ExecaError) => {
     .trim();
 };
 
+/**
+ * Generate gradle task names with module prefix
+ */
 function getTaskNames(moduleName: string, tasks: string[]): Array<string> {
   return tasks.map((task) => `${moduleName}:${task}`);
 }
 
+/**
+ * Get gradle wrapper command based on platform
+ */
 const getGradleWrapper = () =>
   process.platform.startsWith("win") ? "gradlew.bat" : "./gradlew";
 
+/**
+ * Run gradle build with specified tasks and arguments
+ */
 export async function runGradle({
   tasks,
   args,
@@ -85,6 +97,9 @@ Args       ${gradleArgs.join(" ")}
   });
 }
 
+/**
+ * Find the build output directory and artifact path
+ */
 async function findBuildDirectory({
   moduleName,
   tasks,
@@ -134,6 +149,9 @@ async function findBuildDirectory({
   return { buildDirectory,  buildArtifactPath };
 }
 
+/**
+ * Get the path to the build output file (APK or AAB)
+ */
 async function getBuildOutputFilePath({
   aab,
   appModuleName,

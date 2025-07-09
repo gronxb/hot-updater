@@ -1,3 +1,4 @@
+import { listAndroidDevices } from "@/utils/native/android/utils/listAndroidDevices";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { selectTargetDevice } from "@/utils/native/selectTargetDevice";
@@ -18,11 +19,6 @@ export const runNative = async (options: NativeRunOptions) => {
   }
 
   const { outputPath, platform, config, scheme } = preparedConfig;
-  const {} = await selectTargetDevice({
-    interactive: options.interactive,
-    platform,
-    deviceOption: options.device,
-  });
   const cwd = getCwd();
 
   const buildPlugin = await config.build({ cwd });
@@ -41,6 +37,13 @@ export const runNative = async (options: NativeRunOptions) => {
         buildDirectory: null,
       },
     };
+
+    p.log.info((await listAndroidDevices()).join("\n"));
+    const { device } = await selectTargetDevice({
+      interactive: options.interactive,
+      platform,
+      deviceOption: options.device,
+    });
 
     await p.tasks([
       {
