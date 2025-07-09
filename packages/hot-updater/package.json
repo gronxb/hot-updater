@@ -54,6 +54,8 @@
   "dependencies": {
     "@clack/prompts": "catalog:",
     "@expo/fingerprint": "0.12.4",
+    "@hot-updater/android-helper": "workspace:*",
+    "@hot-updater/apple-helper": "workspace:*",
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",

@@ -5,7 +5,7 @@ import {
    getCwd,
 } from "@hot-updater/plugin-core";
 import path from "path";
-import { runGradle } from "./utils/gradle";
+import { runGradle } from "@hot-updater/android-helper";
 export const createAndroidNativeBuild = async ({
   schemeConfig,
 }: {

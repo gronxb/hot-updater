@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/core";
-import { Adb } from "./android/utils/adb";
+import { Adb } from "@hot-updater/android-helper";
 
 export const selectTargetDevice = async ({
   interactive,

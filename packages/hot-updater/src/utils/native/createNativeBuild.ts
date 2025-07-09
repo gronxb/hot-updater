@@ -10,10 +10,8 @@ import {
   getCwd,
 } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
-import { createAndroidNativeBuild } from "./android/createAndroidNativeBuild";
-import { injectDefaultAndroidNativeBuildSchemeOptions } from "./android/utils/injectDefaultAndroidNativeBuildSchemeOptions";
-import { createIosNativeBuild } from "./ios/createIosNativeBuild";
-import { injectDefaultIosNativeBuildSchemeOptions } from "./ios/utils/injectDefaultIosNativeBuildSchemeOptions";
+import { createAndroidNativeBuild, injectDefaultAndroidNativeBuildSchemeOptions } from "@hot-updater/android-helper";
+import { createIosNativeBuild, injectDefaultIosNativeBuildSchemeOptions } from "@hot-updater/apple-helper";
 
 const createNativeBuildWithPlatform = async ({
   config,

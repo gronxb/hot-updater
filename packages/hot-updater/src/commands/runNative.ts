@@ -1,4 +1,4 @@
-import { listAndroidDevices } from "@/utils/native/android/utils/listAndroidDevices";
+import { listAndroidDevices } from "@hot-updater/android-helper";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { selectTargetDevice } from "@/utils/native/selectTargetDevice";
