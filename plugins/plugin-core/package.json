@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:*",
-    "@types/node": "^22.7.5",
+    "@types/node": "catalog:",
     "boxen": "^8.0.1",
     "es-toolkit": "^1.32.0",
     "jszip": "^3.10.1",
