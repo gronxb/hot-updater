@@ -1,22 +1,21 @@
-
 // Main build and install functions (Primary exports)
 export { createIosNativeBuild } from "./createIosNativeBuild";
-export { 
-  installAndLaunchIOS, 
-  buildIosApp, 
+export {
+  installAndLaunchIOS,
+  buildIosApp,
   launchMacApp,
-  type InstallAndLaunchOptions 
+  type InstallAndLaunchOptions,
 } from "./installAndLaunchIOS";
-export { injectDefaultIosNativeBuildSchemeOptions } from "./injectDefaultIosNativeBuildSchemeOptions";
 
 // Essential types
 export type { ApplePlatform } from "./utils/platformSupport";
-export type { 
-  Device, 
-  DeviceType, 
-  DeviceState
+export type {
+  Device,
+  DeviceType,
+  DeviceState,
 } from "./utils/deviceManager";
 export type {
   BuildFlags,
-  BuildResult
+  BuildResult,
 } from "./builder/buildOptions";
+

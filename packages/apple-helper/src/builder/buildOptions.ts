@@ -5,11 +5,11 @@ import type { ApplePlatform } from "../utils/platformSupport";
  */
 export interface BuildFlags {
   /** Enable verbose logging */
-  verbose?: boolean;
+  verbose: boolean;
   /** Xcode configuration to use (Debug, Release) */
-  configuration?: string;
+  configuration: string;
   /** Xcode scheme to build */
-  scheme?: string;
+  scheme: string;
   /** Specific target to build */
   target?: string;
   /** Additional parameters passed to xcodebuild */
@@ -23,7 +23,7 @@ export interface BuildFlags {
   /** Build destinations (simulator, device, or xcodebuild format) */
   destination?: string[];
   /** Create archive for App Store distribution */
-  archive?: boolean;
+  archive: boolean;
   /** Automatically install CocoaPods dependencies */
   installPods: boolean;
 }
@@ -121,6 +121,7 @@ export const getSdkForPlatform = (
  */
 export const defaultBuildConfig = {
   configuration: "Release",
+  scheme: "Release",
   verbose: false,
   installPods: true,
   archive: false,
@@ -135,7 +136,5 @@ export const validateBuildOptions = (options: Partial<BuildFlags>): BuildFlags =
   return {
     ...defaultBuildConfig,
     ...options,
-    // Ensure required fields have defaults
-    installPods: options.installPods ?? defaultBuildConfig.installPods,
   };
 };

@@ -5,10 +5,7 @@ import {
   createAndroidNativeBuild,
   injectDefaultAndroidNativeBuildSchemeOptions,
 } from "@hot-updater/android-helper";
-import {
-  createIosNativeBuild,
-  injectDefaultIosNativeBuildSchemeOptions,
-} from "@hot-updater/apple-helper";
+import { createIosNativeBuild } from "@hot-updater/apple-helper";
 import type { Platform } from "@hot-updater/core";
 import {
   type BuildPlugin,
@@ -37,9 +34,7 @@ const createNativeBuildWithPlatform = async ({
       });
     case "ios":
       return createIosNativeBuild({
-        schemeConfig: injectDefaultIosNativeBuildSchemeOptions(
-          config.ios[scheme]!,
-        ),
+        schemeConfig: config.ios[scheme]!,
       });
     default:
       throw new Error(`Unexpected platform ${platform}`);
