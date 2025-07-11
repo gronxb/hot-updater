@@ -11,7 +11,7 @@ export default defineConfig({
     },
     ios: {
       release: {
-        scheme: "Release",
+        scheme: "HotUpdaterExample",
         // exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
       },
       // debug: {

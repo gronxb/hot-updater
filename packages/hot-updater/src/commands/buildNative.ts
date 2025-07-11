@@ -35,6 +35,18 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     // }),
   ]);
 
+  const cleanup = (e: unknown): never => {
+    // await databasePlugin.onUnmount?.();
+    if (e instanceof ExecaError) {
+      console.error(e);
+    } else if (e instanceof Error) {
+      p.log.error(e.stack ?? e.message);
+    } else {
+      console.error(e);
+    }
+    process.exit(1);
+  };
+
   try {
     const taskRef: {
       buildResult: {
@@ -56,20 +68,24 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
-          const { buildDirectory, buildArtifactPath } = await createNativeBuild(
-            {
-              buildPlugin,
-              platform,
-              config,
-              scheme,
-              outputPath,
-              cwd,
-            },
-          );
-          taskRef.buildResult.buildArtifactPath = buildArtifactPath;
-          taskRef.buildResult.buildDirectory = buildDirectory;
+          try {
+            const { buildDirectory, buildArtifactPath } =
+              await createNativeBuild({
+                buildPlugin,
+                platform,
+                config,
+                scheme,
+                outputPath,
+                cwd,
+              });
+            taskRef.buildResult.buildArtifactPath = buildArtifactPath;
+            taskRef.buildResult.buildDirectory = buildDirectory;
 
-          return `Build Complete (${buildPlugin.name})`;
+            return `Build Complete (${buildPlugin.name})`;
+          } catch (error) {
+            cleanup(error);
+            return "";
+          }
         },
       },
     ]);
@@ -77,13 +93,6 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       p.log.success(taskRef.buildResult.stdout);
     }
   } catch (e) {
-    // await databasePlugin.onUnmount?.();
-    if (e instanceof ExecaError) {
-      console.error(e);
-    } else if (e instanceof Error) {
-      p.log.error(e.stack ?? e.message);
-    } else {
-      console.error(e);
-    }
+    cleanup(e);
   }
 };
