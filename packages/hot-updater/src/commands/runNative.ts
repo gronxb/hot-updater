@@ -1,8 +1,8 @@
-import { listAndroidDevices } from "@hot-updater/android-helper";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { selectTargetDevice } from "@/utils/native/selectTargetDevice";
 import * as p from "@clack/prompts";
+import { listAndroidDevices } from "@hot-updater/android-helper";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import type { NativeBuildOptions } from "./buildNative";
