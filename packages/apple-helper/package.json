@@ -30,8 +30,9 @@
   },
   "dependencies": {
     "@clack/prompts": "catalog:",
-    "execa": "catalog:",
     "@hot-updater/plugin-core": "workspace:*",
+    "execa": "catalog:",
+    "fast-xml-parser": "^5.2.3",
     "picocolors": "catalog:"
   },
   "devDependencies": {

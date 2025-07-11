@@ -1,6 +1,14 @@
 import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
+import {
+  createAndroidNativeBuild,
+  injectDefaultAndroidNativeBuildSchemeOptions,
+} from "@hot-updater/android-helper";
+import {
+  createIosNativeBuild,
+  injectDefaultIosNativeBuildSchemeOptions,
+} from "@hot-updater/apple-helper";
 import type { Platform } from "@hot-updater/core";
 import {
   type BuildPlugin,
@@ -10,8 +18,6 @@ import {
   getCwd,
 } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
-import { createAndroidNativeBuild, injectDefaultAndroidNativeBuildSchemeOptions } from "@hot-updater/android-helper";
-import { createIosNativeBuild, injectDefaultIosNativeBuildSchemeOptions } from "@hot-updater/apple-helper";
 
 const createNativeBuildWithPlatform = async ({
   config,
@@ -66,11 +72,6 @@ export const createNativeBuild = async ({
   await buildPlugin.nativeBuild?.postbuild?.({ platform });
 
   await fs.promises.mkdir(outputPath, { recursive: true });
-
-  p.log.success(
-    `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), outputPath))}.`,
-  );
-
   await fs.promises.rm(outputPath, {
     recursive: true,
     force: true,
@@ -78,6 +79,10 @@ export const createNativeBuild = async ({
   await fs.promises.cp(buildDirectory, outputPath, {
     recursive: true,
   });
+
+  p.log.success(
+    `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), outputPath))}.`,
+  );
 
   return { buildArtifactPath, buildDirectory };
 };

@@ -94,3 +94,6 @@ generated/
 .wrangler/
 
 .hot-updater/
+
+# Claude Code settings
+.claude/settings.local.json

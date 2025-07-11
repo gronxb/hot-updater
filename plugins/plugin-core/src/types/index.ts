@@ -137,6 +137,56 @@ export interface NativeBuildIosScheme {
    * Path to an .xcconfig file to include additional build settings.
    */
   xcconfig?: string;
+
+  /**
+   * Whether to create an archive for distribution.
+   * When true, creates .xcarchive instead of .app bundle.
+   *
+   * @default false
+   */
+  archive?: boolean;
+
+  /**
+   * Automatically install CocoaPods dependencies before building.
+   *
+   * @default true
+   */
+  installPods?: boolean;
+
+  /**
+   * Additional parameters passed to xcodebuild.
+   *
+   * @example ["-quiet", "-allowProvisioningUpdates"]
+   */
+  extraParams?: string[];
+
+  /**
+   * Additional parameters for exportArchive command.
+   *
+   * @example ["-allowProvisioningUpdates"]
+   */
+  exportExtraParams?: string[];
+
+  /**
+   * Custom build folder (derivedDataPath) for Xcode build artifacts.
+   *
+   * @example "/tmp/ios-build"
+   */
+  buildFolder?: string;
+
+  /**
+   * Specific target to build within the scheme.
+   *
+   * @example "MyApp"
+   */
+  target?: string;
+
+  /**
+   * Enable verbose logging for build process.
+   *
+   * @default false
+   */
+  verbose?: boolean;
 }
 
 export interface NativeBuildArgs {

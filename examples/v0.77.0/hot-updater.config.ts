@@ -5,7 +5,20 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   nativeBuild: {
-    android: { releaseApk: { aab: false }, releaseAab: { aab: true } },
+    android: {
+      releaseApk: { packageName: "com.hotupdaterexample", aab: false },
+      releaseAab: { packageName: "com.hotupdaterexample", aab: true },
+    },
+    ios: {
+      release: {
+        scheme: "Release",
+        // exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
+      },
+      // debug: {
+      //   scheme: "Debug",
+      //   exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
+      // },
+    },
   },
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({

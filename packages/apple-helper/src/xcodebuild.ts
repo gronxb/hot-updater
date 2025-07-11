@@ -1,12 +1,9 @@
-import fs from "fs/promises";
 import path from "path";
 import * as p from "@clack/prompts";
+import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import fs from "fs/promises";
 import picocolors from "picocolors";
-import {
-  type NativeBuildIosScheme,
-  getCwd,
-} from "@hot-updater/plugin-core";
 
 export const ensureXcodebuildExist = async () => {
   try {
@@ -27,7 +24,9 @@ const getProjectInfo = async () => {
   const project = files.find((file) => file.endsWith(".xcodeproj"));
 
   if (!workspace || !project) {
-    throw new Error("Could not find .xcworkspace or .xcodeproj file in ios directory");
+    throw new Error(
+      "Could not find .xcworkspace or .xcodeproj file in ios directory",
+    );
   }
 
   return {
@@ -53,10 +52,6 @@ export const archive = async (
     path.join(getCwd(), "ios", workspace),
     "-scheme",
     scheme,
-    "-sdk",
-    sdk,
-    "-destination",
-    destination,
     "-configuration",
     buildConfiguration,
     "archive",
@@ -121,4 +116,3 @@ export const exportArchive = async (options: {
 
   return { exportPath };
 };
-
