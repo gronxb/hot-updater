@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execa } from "execa";
 import * as p from "@clack/prompts";
+import { execa } from "execa";
 import { XMLParser } from "fast-xml-parser";
 
 /**
@@ -54,16 +54,6 @@ const parseTargetList = (json: string): ProjectInfo | undefined => {
 
 /**
  * Discovers Xcode project or workspace in a directory
- * @param sourceDir - Directory to search for Xcode projects
- * @returns Xcode project information
- * @throws Error if no project or workspace is found
- *
- * @example
- * ```typescript
- * const projectInfo = await discoverXcodeProject("./ios");
- * console.log(projectInfo.isWorkspace); // true
- * console.log(projectInfo.name); // "MyApp.xcworkspace"
- * ```
  */
 export const discoverXcodeProject = async (
   sourceDir: string,

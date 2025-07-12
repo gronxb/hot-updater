@@ -168,13 +168,6 @@ export interface NativeBuildIosScheme {
   exportExtraParams?: string[];
 
   /**
-   * Custom build folder (derivedDataPath) for Xcode build artifacts.
-   *
-   * @example "/tmp/ios-build"
-   */
-  buildFolder?: string;
-
-  /**
    * Specific target to build within the scheme.
    *
    * @example "MyApp"

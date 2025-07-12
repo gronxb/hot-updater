@@ -1,18 +1,18 @@
 import path from "node:path";
+import * as p from "@clack/prompts";
 import type {
   NativeBuildIosScheme,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";
-import * as p from "@clack/prompts";
-import { createXcodeBuilder } from "./builder/xcodeBuilder";
+import { createXcodeBuilder } from "./builder/XcodeBuilder";
 import { validateBuildOptions } from "./builder/buildOptions";
 import type { BuildFlags } from "./builder/buildOptions";
-import { listDevicesAndSimulators, selectDevice } from "./utils/deviceManager";
-import { createDeviceRunner } from "./runner/deviceRunner";
-import { createSimulatorRunner } from "./runner/simulatorRunner";
-import { createMacRunner } from "./runner/macRunner";
 import { createDeviceMatcher } from "./runner/deviceMatcher";
+import { createDeviceRunner } from "./runner/deviceRunner";
+import { createMacRunner } from "./runner/macRunner";
+import { createSimulatorRunner } from "./runner/simulatorRunner";
+import { listDevicesAndSimulators, selectDevice } from "./utils/deviceManager";
 
 /**
  * Options for iOS installation and launch
@@ -63,7 +63,7 @@ export const installAndLaunchIOS = async ({
   appPath,
   launch = true,
 }: {
-  schemeConfig: RequiredDeep<NativeBuildIosScheme>;
+  schemeConfig: NativeBuildIosScheme;
 } & InstallAndLaunchOptions): Promise<void> => {
   const iosProjectRoot = path.join(getCwd(), "ios");
   let finalAppPath = appPath;

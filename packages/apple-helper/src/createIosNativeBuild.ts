@@ -3,18 +3,22 @@ import path from "node:path";
 import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";
+import { createXcodeBuilder } from "./builder/XcodeBuilder";
 import { validateBuildOptions } from "./builder/buildOptions";
 import type { BuildFlags } from "./builder/buildOptions";
-import { createXcodeBuilder } from "./builder/xcodeBuilder";
+import { ensureXcodebuildExist } from "./utils/ensureXcodebuildExist";
 
 /**
  * Creates an iOS native build with archive and export capabilities
  */
 export const createIosNativeBuild = async ({
   schemeConfig,
+  outputPath,
 }: {
   schemeConfig: NativeBuildIosScheme;
+  outputPath: string;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+  await ensureXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
   const buildFlags: BuildFlags = validateBuildOptions({
@@ -25,50 +29,43 @@ export const createIosNativeBuild = async ({
     exportOptionsPlist: schemeConfig.exportOptionsPlist,
   });
 
-  p.log.info(JSON.stringify(buildFlags, null, 2));
-
   const builder = createXcodeBuilder(iosProjectRoot, "ios");
 
-  try {
-    p.log.info("Creating iOS archive...");
-    const { archivePath } = await builder.archive({
-      scheme: buildFlags.scheme,
-      buildConfiguration: buildFlags.configuration,
-      platform: "ios",
-      extraParams: buildFlags.extraParams,
-      buildFolder: buildFlags.buildFolder,
+  const { archivePath } = await builder.archive({
+    scheme: buildFlags.scheme,
+    buildConfiguration: buildFlags.configuration,
+    platform: "ios",
+    extraParams: buildFlags.extraParams,
+    installPods: buildFlags.installPods,
+    outputPath,
+  });
+
+  if (buildFlags.exportOptionsPlist) {
+    p.log.info("Exporting archive to IPA...");
+    const { exportPath } = await builder.exportArchive({
+      archivePath,
+      exportOptionsPlist: buildFlags.exportOptionsPlist,
+      exportExtraParams: buildFlags.exportExtraParams,
     });
 
-    if (buildFlags.exportOptionsPlist) {
-      p.log.info("Exporting archive to IPA...");
-      const { exportPath } = await builder.exportArchive({
-        archivePath,
-        exportOptionsPlist: buildFlags.exportOptionsPlist,
-        exportExtraParams: buildFlags.exportExtraParams,
-      });
+    // Find the IPA file in export directory
+    const files = fs.readdirSync(exportPath);
+    const ipaFile = files.find((file) => file.endsWith(".ipa"));
 
-      // Find the IPA file in export directory
-      const files = fs.readdirSync(exportPath);
-      const ipaFile = files.find((file) => file.endsWith(".ipa"));
-
-      if (ipaFile) {
-        const ipaPath = path.join(exportPath, ipaFile);
-        return {
-          buildDirectory: exportPath,
-          buildArtifactPath: ipaPath,
-        };
-      }
+    if (ipaFile) {
+      const ipaPath = path.join(exportPath, ipaFile);
+      return {
+        buildDirectory: exportPath,
+        buildArtifactPath: ipaPath,
+      };
     }
-
-    // If no export options or IPA not found, return archive path
-    return {
-      buildDirectory: path.dirname(archivePath),
-      buildArtifactPath: archivePath,
-    };
-  } catch (error) {
-    p.log.error(`iOS build failed: ${error}`);
-    throw error;
   }
+
+  // If no export options or IPA not found, return archive path
+  return {
+    buildDirectory: path.dirname(archivePath),
+    buildArtifactPath: archivePath,
+  };
 };
 
 // TODO: Add advanced build features

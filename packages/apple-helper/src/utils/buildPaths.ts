@@ -1,12 +1,11 @@
 import path from "node:path";
-import os from "node:os";
 
 /**
  * Build paths configuration for Apple platform builds
  */
-export interface BuildPaths {
+export interface OutputPaths {
   /** Main build directory */
-  buildDir: string;
+  outputDir: string;
   /** Directory for exported IPAs and apps */
   exportDir: string;
   /** Directory for Xcode archives */
@@ -17,33 +16,18 @@ export interface BuildPaths {
   derivedDataDir: string;
 }
 
-/**
- * Gets the cache root path for the current platform
- * @returns Cache root directory path
- */
-const getCacheRootPath = (): string => {
-  return path.join(os.homedir(), ".hot-updater", "cache");
-};
+// const getCacheRootPath = (): string => {
+//   return path.join(getCwd(), ".hot-updater", "cache");
+// };
 
-/**
- * Creates build paths for a specific platform
- * @param platformName - The platform name (ios, macos, tvos, visionos)
- * @returns Object containing all build-related directory paths
- *
- * @example
- * ```typescript
- * const paths = createBuildPaths("ios");
- * console.log(paths.exportDir); // ~/.hot-updater/cache/ios/export
- * ```
- */
-export const createBuildPaths = (platformName: string): BuildPaths => {
-  const buildDir = path.join(getCacheRootPath(), platformName);
+export const createOutputPaths = (outputPath: string): OutputPaths => {
+  const outputDir = path.join(outputPath);
 
   return {
-    buildDir,
-    exportDir: path.join(buildDir, "export"),
-    archiveDir: path.join(buildDir, "archive"),
-    packageDir: path.join(buildDir, "package"),
-    derivedDataDir: path.join(buildDir, "derivedData"),
+    outputDir,
+    exportDir: path.join(outputDir, "export"),
+    archiveDir: path.join(outputDir, "archive"),
+    packageDir: path.join(outputDir, "package"),
+    derivedDataDir: path.join(outputDir, "derivedData"),
   };
 };

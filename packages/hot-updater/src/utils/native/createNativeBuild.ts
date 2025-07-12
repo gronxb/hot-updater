@@ -20,10 +20,12 @@ const createNativeBuildWithPlatform = async ({
   config,
   platform,
   scheme,
+  outputPath,
 }: {
   platform: Platform;
   scheme: string;
   config: Required<NativeBuildArgs>;
+  outputPath: string;
 }) => {
   switch (platform) {
     case "android":
@@ -35,6 +37,7 @@ const createNativeBuildWithPlatform = async ({
     case "ios":
       return createIosNativeBuild({
         schemeConfig: config.ios[scheme]!,
+        outputPath,
       });
     default:
       throw new Error(`Unexpected platform ${platform}`);
@@ -62,6 +65,7 @@ export const createNativeBuild = async ({
       platform,
       config: config.nativeBuild,
       scheme,
+      outputPath,
     });
 
   await buildPlugin.nativeBuild?.postbuild?.({ platform });

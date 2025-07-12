@@ -18,8 +18,6 @@ export interface BuildFlags {
   exportExtraParams?: string[];
   /** Path to ExportOptions.plist file */
   exportOptionsPlist?: string;
-  /** Custom build folder (derivedDataPath) */
-  buildFolder?: string;
   /** Build destinations (simulator, device, or xcodebuild format) */
   destination?: string[];
   /** Create archive for App Store distribution */
@@ -56,16 +54,14 @@ export interface ArchiveOptions {
   buildConfiguration: string;
   /** Platform to build for */
   platform: ApplePlatform;
-  /** SDK to use for building */
-  sdk?: string;
-  /** Build destinations */
-  destination?: string;
+  /** Automatically install CocoaPods dependencies */
+  installPods: boolean;
   /** Path to xcconfig file */
   xcconfig?: string;
   /** Additional xcodebuild parameters */
   extraParams?: string[];
-  /** Custom build folder */
-  buildFolder?: string;
+  /** Output path */
+  outputPath: string;
 }
 
 /**

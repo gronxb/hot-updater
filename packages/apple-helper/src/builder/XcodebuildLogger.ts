@@ -15,7 +15,7 @@ interface BuildPhase {
 /**
  * Build progress monitor for xcodebuild output
  */
-export class BuildMonitor {
+export class XcodebuildLogger {
   private phases: BuildPhase[] = [
     {
       name: "PhaseScriptExecution Check\\ React\\ Native\\ Integration",
@@ -118,8 +118,7 @@ export class BuildMonitor {
     if (!this.spinner) return;
 
     const progressBar = this.generateProgressBar(this.currentProgress);
-    // Note: @clack/prompts might not support message updates, so we'll work with what we have
-    // For now, progress is tracked internally and displayed at completion
+    this.spinner.message(`${progressBar} ${this.currentProgress}%`);
   }
 
   /**
@@ -182,11 +181,3 @@ export class BuildMonitor {
     this.buildSucceeded = false;
   }
 }
-
-/**
- * Creates a new build monitor instance
- * @returns New BuildMonitor instance
- */
-export const createBuildMonitor = (): BuildMonitor => {
-  return new BuildMonitor();
-};
