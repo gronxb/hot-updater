@@ -19,7 +19,7 @@ import type {
 /**
  * Main Xcode builder class that handles all build operations
  */
-class XcodeBuilder {
+export class XcodeBuilder {
   private sourceDir: string;
   private platform: ApplePlatform;
 
