@@ -110,7 +110,7 @@ export const sdkMappings = {
  */
 export const getSdkForPlatform = (
   platform: ApplePlatform,
-  isSimulator: boolean = false
+  isSimulator = false,
 ): string => {
   const destination = isSimulator ? "simulator" : "device";
   return sdkMappings[platform][destination];
@@ -132,7 +132,9 @@ export const defaultBuildConfig = {
  * @param options - Partial build options
  * @returns Complete build options with defaults applied
  */
-export const validateBuildOptions = (options: Partial<BuildFlags>): BuildFlags => {
+export const validateBuildOptions = (
+  options: Partial<BuildFlags>,
+): BuildFlags => {
   return {
     ...defaultBuildConfig,
     ...options,

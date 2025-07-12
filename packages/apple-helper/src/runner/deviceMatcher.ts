@@ -33,7 +33,7 @@ export class DeviceMatcher {
    * @param deviceArg - Device name or UDID to search for
    * @param options - Matching options
    * @returns Matching device or undefined
-   * 
+   *
    * @example
    * ```typescript
    * const matcher = new DeviceMatcher(devices);
@@ -41,28 +41,35 @@ export class DeviceMatcher {
    * const deviceByUdid = matcher.findDevice("12345678-1234-1234-1234-123456789ABC");
    * ```
    */
-  findDevice(deviceArg: string, options: DeviceMatchOptions = {}): Device | undefined {
+  findDevice(
+    deviceArg: string,
+    options: DeviceMatchOptions = {},
+  ): Device | undefined {
     const filteredDevices = this.filterDevices(options);
-    
+
     // Try exact name match first
-    const deviceByName = filteredDevices.find(device => device.name === deviceArg);
+    const deviceByName = filteredDevices.find(
+      (device) => device.name === deviceArg,
+    );
     if (deviceByName) return deviceByName;
 
     // Try formatted name match (includes version info)
     const deviceByFormattedName = filteredDevices.find(
-      device => this.formatDeviceName(device) === deviceArg
+      (device) => this.formatDeviceName(device) === deviceArg,
     );
     if (deviceByFormattedName) return deviceByFormattedName;
 
     // Try UDID match
-    const deviceByUdid = filteredDevices.find(device => device.udid === deviceArg);
+    const deviceByUdid = filteredDevices.find(
+      (device) => device.udid === deviceArg,
+    );
     if (deviceByUdid) return deviceByUdid;
 
     // Try partial name match (case insensitive)
-    const deviceByPartialName = filteredDevices.find(device =>
-      device.name.toLowerCase().includes(deviceArg.toLowerCase())
+    const deviceByPartialName = filteredDevices.find((device) =>
+      device.name.toLowerCase().includes(deviceArg.toLowerCase()),
     );
-    
+
     return deviceByPartialName;
   }
 
@@ -71,7 +78,7 @@ export class DeviceMatcher {
    * @param deviceArg - Device name pattern or UDID
    * @param options - Matching options
    * @returns Array of matching devices
-   * 
+   *
    * @example
    * ```typescript
    * const matcher = new DeviceMatcher(devices);
@@ -80,11 +87,14 @@ export class DeviceMatcher {
    */
   findDevices(deviceArg: string, options: DeviceMatchOptions = {}): Device[] {
     const filteredDevices = this.filterDevices(options);
-    
-    return filteredDevices.filter(device => 
-      device.name.toLowerCase().includes(deviceArg.toLowerCase()) ||
-      this.formatDeviceName(device).toLowerCase().includes(deviceArg.toLowerCase()) ||
-      device.udid === deviceArg
+
+    return filteredDevices.filter(
+      (device) =>
+        device.name.toLowerCase().includes(deviceArg.toLowerCase()) ||
+        this.formatDeviceName(device)
+          .toLowerCase()
+          .includes(deviceArg.toLowerCase()) ||
+        device.udid === deviceArg,
     );
   }
 
@@ -93,35 +103,38 @@ export class DeviceMatcher {
    * @param deviceArg - Device name or UDID
    * @param options - Matching options with preferences
    * @returns Best matching device or undefined
-   * 
+   *
    * @example
    * ```typescript
    * const matcher = new DeviceMatcher(devices);
-   * const device = matcher.getBestMatch("iPhone 15", { 
+   * const device = matcher.getBestMatch("iPhone 15", {
    *   preferDevices: true,
-   *   bootedOnly: true 
+   *   bootedOnly: true
    * });
    * ```
    */
-  getBestMatch(deviceArg: string, options: DeviceMatchOptions = {}): Device | undefined {
+  getBestMatch(
+    deviceArg: string,
+    options: DeviceMatchOptions = {},
+  ): Device | undefined {
     const matches = this.findDevices(deviceArg, options);
-    
+
     if (matches.length === 0) return undefined;
     if (matches.length === 1) return matches[0];
 
     // Apply preferences
     if (options.preferDevices) {
-      const physicalDevices = matches.filter(d => d.type === "device");
+      const physicalDevices = matches.filter((d) => d.type === "device");
       if (physicalDevices.length > 0) return physicalDevices[0];
     }
 
     if (options.preferSimulators) {
-      const simulators = matches.filter(d => d.type === "simulator");
+      const simulators = matches.filter((d) => d.type === "simulator");
       if (simulators.length > 0) return simulators[0];
     }
 
     // Prefer booted devices
-    const bootedDevices = matches.filter(d => d.state === "Booted");
+    const bootedDevices = matches.filter((d) => d.state === "Booted");
     if (bootedDevices.length > 0) return bootedDevices[0];
 
     // Return first available device
@@ -132,7 +145,7 @@ export class DeviceMatcher {
    * Formats device name with version information
    * @param device - Device to format
    * @returns Formatted device name
-   * 
+   *
    * @example
    * ```typescript
    * const formatted = matcher.formatDeviceName(device);
@@ -140,9 +153,7 @@ export class DeviceMatcher {
    * ```
    */
   formatDeviceName(device: Device): string {
-    return device.version
-      ? `${device.name} (${device.version})`
-      : device.name;
+    return device.version ? `${device.name} (${device.version})` : device.name;
   }
 
   /**
@@ -160,7 +171,7 @@ export class DeviceMatcher {
    * @returns Array of devices of specified type
    */
   getDevicesByType(deviceType: DeviceType): Device[] {
-    return this.devices.filter(device => device.type === deviceType);
+    return this.devices.filter((device) => device.type === deviceType);
   }
 
   /**
@@ -169,9 +180,10 @@ export class DeviceMatcher {
    * @returns Array of booted devices
    */
   getBootedDevices(deviceType?: DeviceType): Device[] {
-    return this.devices.filter(device => 
-      device.state === "Booted" && 
-      (!deviceType || device.type === deviceType)
+    return this.devices.filter(
+      (device) =>
+        device.state === "Booted" &&
+        (!deviceType || device.type === deviceType),
     );
   }
 
@@ -184,11 +196,13 @@ export class DeviceMatcher {
     let filtered = [...this.devices];
 
     if (options.deviceType) {
-      filtered = filtered.filter(device => device.type === options.deviceType);
+      filtered = filtered.filter(
+        (device) => device.type === options.deviceType,
+      );
     }
 
     if (options.bootedOnly) {
-      filtered = filtered.filter(device => device.state === "Booted");
+      filtered = filtered.filter((device) => device.state === "Booted");
     }
 
     return filtered;
@@ -212,9 +226,9 @@ export const createDeviceMatcher = (devices: Device[]): DeviceMatcher => {
  * @returns Matching device or undefined
  */
 export const matchingDevice = (
-  devices: Device[], 
-  deviceArg: string, 
-  options: DeviceMatchOptions = {}
+  devices: Device[],
+  deviceArg: string,
+  options: DeviceMatchOptions = {},
 ): Device | undefined => {
   const matcher = createDeviceMatcher(devices);
   return matcher.findDevice(deviceArg, options);
@@ -226,7 +240,5 @@ export const matchingDevice = (
  * @returns Formatted device name string
  */
 export const formattedDeviceName = (device: Device): string => {
-  return device.version
-    ? `${device.name} (${device.version})`
-    : device.name;
+  return device.version ? `${device.name} (${device.version})` : device.name;
 };

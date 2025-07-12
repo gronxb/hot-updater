@@ -19,7 +19,7 @@ interface PListBuddyOptions {
  * @param options - Additional options for PListBuddy
  * @returns The value of the key as string
  * @throws Error if key cannot be read
- * 
+ *
  * @example
  * ```typescript
  * const bundleId = await readKeyFromPlist("Info.plist", "CFBundleIdentifier");
@@ -29,7 +29,7 @@ interface PListBuddyOptions {
 export const readKeyFromPlist = async (
   plistPath: string,
   key: string,
-  options: PListBuddyOptions = {}
+  options: PListBuddyOptions = {},
 ): Promise<string> => {
   try {
     const result = await plistBuddy(plistPath, `Print:${key}`, options);
@@ -45,7 +45,7 @@ export const readKeyFromPlist = async (
  * @param key - Key to read from the plist
  * @returns The value of the key as Buffer
  * @throws Error if key cannot be read
- * 
+ *
  * @example
  * ```typescript
  * const data = await readBufferFromPlist("profile.mobileprovision", "DeveloperCertificates:0");
@@ -54,13 +54,15 @@ export const readKeyFromPlist = async (
  */
 export const readBufferFromPlist = async (
   plistPath: string,
-  key: string
+  key: string,
 ): Promise<Buffer> => {
   try {
     const result = await binaryPlistBuddy(plistPath, `Print:${key}`);
     return Buffer.from(result.stdout, "binary");
   } catch (error) {
-    throw new Error(`Error reading buffer key ${key} from ${plistPath}: ${error}`);
+    throw new Error(
+      `Error reading buffer key ${key} from ${plistPath}: ${error}`,
+    );
   }
 };
 
@@ -70,7 +72,7 @@ export const readBufferFromPlist = async (
  * @param key - Key to set in the plist
  * @param value - Value to set
  * @param type - Type of the value (string, bool, integer, etc.)
- * 
+ *
  * @example
  * ```typescript
  * await setKeyInPlist("Info.plist", "CFBundleVersion", "1.0.0", "string");
@@ -80,7 +82,7 @@ export const setKeyInPlist = async (
   plistPath: string,
   key: string,
   value: string,
-  type: string = "string"
+  type: string = "string",
 ): Promise<void> => {
   try {
     await plistBuddy(plistPath, `Set:${key} ${value}`, {});
@@ -104,7 +106,7 @@ export const setKeyInPlist = async (
 const plistBuddy = async (
   path: string,
   command: string,
-  options?: PListBuddyOptions
+  options?: PListBuddyOptions,
 ): Promise<{ stdout: string; stderr: string }> => {
   const args = ["-c", command, path];
   if (options?.xml) {
@@ -124,7 +126,7 @@ const plistBuddy = async (
  */
 const binaryPlistBuddy = async (
   path: string,
-  command: string
+  command: string,
 ): Promise<{ stdout: string; stderr: string }> => {
   const args = ["-c", command, path];
   const result = await execFileAsync("/usr/libexec/PlistBuddy", args, {

@@ -87,7 +87,7 @@ type User = {
 };
 
 const userRegex = new RegExp(
-  /^\s*UserInfo\{(?<userId>\d+):(?<userName>.*):(?<userFlags>[0-9a-f]*)}/
+  /^\s*UserInfo\{(?<userId>\d+):(?<userName>.*):(?<userFlags>[0-9a-f]*)}/,
 );
 
 /**
@@ -124,7 +124,7 @@ const checkUsers = async (device: string): Promise<User[]> => {
       `Unexpected error while checking users of "${device}". Continuing without user selection. Error details: ${
         (error as { message: string }).message
       }.`,
-      1
+      1,
     );
     return [];
   }
@@ -159,14 +159,17 @@ const getEmulatorName = async (deviceId: string): Promise<string> => {
   const { stdout } = await execa(
     adbPath,
     ["-s", deviceId, "emu", "avd", "name"],
-    { stdio: "pipe" }
+    { stdio: "pipe" },
   );
   if (!stdout) {
     return "";
   }
 
   // 1st line should get us emu name
-  return stdout.split(os.EOL)[0]!.replace(/(\r\n|\n|\r)/gm, "").trim();
+  return stdout
+    .split(os.EOL)[0]!
+    .replace(/(\r\n|\n|\r)/gm, "")
+    .trim();
 };
 
 /**
@@ -177,7 +180,7 @@ const getPhoneName = async (deviceId: string): Promise<string> => {
   const { stdout } = await execa(
     adbPath,
     ["-s", deviceId, "shell", "getprop", "ro.product.model"],
-    { stdio: "pipe" }
+    { stdio: "pipe" },
   );
   return stdout.replace(/\[ro\.product\.model\]:\s*\[(.*)\]/, "$1").trim();
 };

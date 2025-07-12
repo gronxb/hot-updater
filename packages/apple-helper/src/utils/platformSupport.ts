@@ -1,4 +1,3 @@
-
 /**
  * Supported Apple platforms for building and deployment
  */
@@ -12,7 +11,8 @@ export const supportedPlatforms = {
 /**
  * Type representing a supported Apple platform
  */
-export type ApplePlatform = typeof supportedPlatforms[keyof typeof supportedPlatforms];
+export type ApplePlatform =
+  (typeof supportedPlatforms)[keyof typeof supportedPlatforms];
 
 /**
  * Platform configuration for builds
@@ -43,7 +43,7 @@ export const platformConfigs: Record<ApplePlatform, PlatformConfig> = {
   },
   macos: {
     name: "macos",
-    defaultSdk: "macosx", 
+    defaultSdk: "macosx",
     supportsSimulator: false,
     deviceDestination: "generic/platform=macOS",
   },
@@ -68,7 +68,9 @@ export const platformConfigs: Record<ApplePlatform, PlatformConfig> = {
  * @param platform - Platform name to check
  * @returns True if platform is supported
  */
-export const isSupportedPlatform = (platform: string): platform is ApplePlatform => {
+export const isSupportedPlatform = (
+  platform: string,
+): platform is ApplePlatform => {
   return Object.values(supportedPlatforms).includes(platform as ApplePlatform);
 };
 
@@ -80,7 +82,9 @@ export const isSupportedPlatform = (platform: string): platform is ApplePlatform
  */
 export const getPlatformConfig = (platform: string): PlatformConfig => {
   if (!isSupportedPlatform(platform)) {
-    throw new Error(`Unsupported platform: ${platform}. Supported platforms: ${Object.values(supportedPlatforms).join(", ")}`);
+    throw new Error(
+      `Unsupported platform: ${platform}. Supported platforms: ${Object.values(supportedPlatforms).join(", ")}`,
+    );
   }
   return platformConfigs[platform];
 };

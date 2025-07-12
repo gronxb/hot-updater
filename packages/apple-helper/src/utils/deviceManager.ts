@@ -85,7 +85,8 @@ const parseDevicectlList = (devicectlOutput: DevicectlOutput[]): Device[] => {
     udid: device.hardwareProperties.udid,
     version: `${device.hardwareProperties.platform} ${device.deviceProperties.osVersionNumber}`,
     platform: getPlatformFromOsVersion(device.hardwareProperties.platform),
-    state: device.deviceProperties.bootState === "booted" ? "Booted" : "Shutdown",
+    state:
+      device.deviceProperties.bootState === "booted" ? "Booted" : "Shutdown",
     type: "device",
   }));
 };
@@ -97,7 +98,7 @@ const parseDevicectlList = (devicectlOutput: DevicectlOutput[]): Device[] => {
  */
 const getDevices = async (): Promise<Device[]> => {
   const tmpPath = path.resolve(os.tmpdir(), "iosPhysicalDevices.json");
-  
+
   try {
     await execa("xcrun", ["devicectl", "list", "devices", "-j", tmpPath]);
     const output = JSON.parse(fs.readFileSync(tmpPath, "utf8"));
@@ -114,7 +115,12 @@ const getDevices = async (): Promise<Device[]> => {
  */
 const getSimulators = async (): Promise<Device[]> => {
   try {
-    const { stdout } = await execa("xcrun", ["simctl", "list", "devices", "available"]);
+    const { stdout } = await execa("xcrun", [
+      "simctl",
+      "list",
+      "devices",
+      "available",
+    ]);
     return parseSimctlOutput(stdout);
   } catch (error) {
     throw new Error(`Failed to get simulators: ${error}`);
@@ -140,9 +146,9 @@ const parseSimctlOutput = (input: string): Device[] => {
     if (currentOsMatch && currentOsMatch.length > 0) {
       osVersion = currentOsMatch[currentOSIdx];
     }
-    
+
     const deviceMatch = line.match(
-      /(.*?) (\\(([0-9.]+)\\) )?\\(([0-9A-F-]+)\\) \\((.*?)\\)/
+      /(.*?) (\\(([0-9.]+)\\) )?\\(([0-9A-F-]+)\\) \\((.*?)\\)/,
     );
     if (deviceMatch && deviceMatch.length > 0) {
       const platform = getPlatformFromOsVersion(osVersion.split(" ")[0]);
@@ -187,14 +193,16 @@ const getPlatformFromOsVersion = (osVersion: string): ApplePlatform => {
  * Lists all devices and simulators for a specific platform
  * @param platform - Apple platform to filter by
  * @returns Array of devices and simulators for the platform
- * 
+ *
  * @example
  * ```typescript
  * const devices = await listDevicesAndSimulators("ios");
  * console.log(devices.length); // Number of iOS devices + simulators
  * ```
  */
-export const listDevicesAndSimulators = async (platform: ApplePlatform): Promise<Device[]> => {
+export const listDevicesAndSimulators = async (
+  platform: ApplePlatform,
+): Promise<Device[]> => {
   const spinner = p.spinner();
   spinner.start(`Discovering ${platform} devices and simulators`);
 
@@ -205,7 +213,7 @@ export const listDevicesAndSimulators = async (platform: ApplePlatform): Promise
     ]);
 
     const filtered = [...simulators, ...devices].filter(
-      (device) => device.platform === platform
+      (device) => device.platform === platform,
     );
 
     spinner.stop(`Found ${filtered.length} ${platform} devices and simulators`);
@@ -221,7 +229,9 @@ export const listDevicesAndSimulators = async (platform: ApplePlatform): Promise
  * @param platform - Apple platform to filter by
  * @returns Array of physical devices
  */
-export const listDevices = async (platform: ApplePlatform): Promise<Device[]> => {
+export const listDevices = async (
+  platform: ApplePlatform,
+): Promise<Device[]> => {
   const devices = await getDevices();
   return devices.filter((device) => device.platform === platform);
 };
@@ -231,7 +241,9 @@ export const listDevices = async (platform: ApplePlatform): Promise<Device[]> =>
  * @param platform - Apple platform to filter by
  * @returns Array of simulators
  */
-export const listSimulators = async (platform: ApplePlatform): Promise<Device[]> => {
+export const listSimulators = async (
+  platform: ApplePlatform,
+): Promise<Device[]> => {
   const simulators = await getSimulators();
   return simulators.filter((device) => device.platform === platform);
 };
@@ -241,10 +253,12 @@ export const listSimulators = async (platform: ApplePlatform): Promise<Device[]>
  * @param platform - Apple platform to filter by
  * @returns Array of available devices
  */
-export const listAvailableDevices = async (platform: ApplePlatform): Promise<Device[]> => {
+export const listAvailableDevices = async (
+  platform: ApplePlatform,
+): Promise<Device[]> => {
   const allDevices = await listDevicesAndSimulators(platform);
-  return allDevices.filter((device) => 
-    device.state === "Booted" || device.state === "Shutdown"
+  return allDevices.filter(
+    (device) => device.state === "Booted" || device.state === "Shutdown",
   );
 };
 
@@ -253,7 +267,9 @@ export const listAvailableDevices = async (platform: ApplePlatform): Promise<Dev
  * @param platform - Apple platform to filter by
  * @returns Array of booted devices
  */
-export const listBootedDevices = async (platform: ApplePlatform): Promise<Device[]> => {
+export const listBootedDevices = async (
+  platform: ApplePlatform,
+): Promise<Device[]> => {
   const allDevices = await listDevicesAndSimulators(platform);
   return allDevices.filter((device) => device.state === "Booted");
 };
@@ -266,10 +282,10 @@ export const listBootedDevices = async (platform: ApplePlatform): Promise<Device
  */
 export const selectDevice = async (
   platform: ApplePlatform,
-  deviceType?: DeviceType
+  deviceType?: DeviceType,
 ): Promise<Device | undefined> => {
   const devices = await listAvailableDevices(platform);
-  const filtered = deviceType 
+  const filtered = deviceType
     ? devices.filter((device) => device.type === deviceType)
     : devices;
 
@@ -294,7 +310,7 @@ export const selectDevice = async (
   return p.isCancel(selected) ? undefined : selected;
 };
 
-// TODO: Add advanced device discovery features 
+// TODO: Add advanced device discovery features
 // - Device availability validation (check if device is ready for deployment)
 // - Automatic simulator boot functionality
 // - Device pairing status checking for physical devices

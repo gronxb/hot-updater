@@ -34,7 +34,7 @@ export class CodeSignManager {
   /**
    * Gets valid code signing identities from macOS Keychain
    * @returns Array of available signing identities
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new CodeSignManager();
@@ -61,7 +61,7 @@ export class CodeSignManager {
    * Prompts user to select a signing identity interactively
    * @param currentIdentity - Current identity to highlight in the list
    * @returns Selected signing identity name
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new CodeSignManager();
@@ -69,7 +69,9 @@ export class CodeSignManager {
    * console.log(selected); // "Apple Development: John Doe (TEAMID)"
    * ```
    */
-  async promptSigningIdentity(currentIdentity?: string): Promise<string | undefined> {
+  async promptSigningIdentity(
+    currentIdentity?: string,
+  ): Promise<string | undefined> {
     const identities = await this.getValidSigningIdentities();
 
     if (identities.length === 0) {
@@ -103,7 +105,7 @@ export class CodeSignManager {
   /**
    * Signs an iOS app bundle with specified identity
    * @param options - Code signing options
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new CodeSignManager();
@@ -120,11 +122,7 @@ export class CodeSignManager {
     spinner.start(`Signing app with identity: ${options.identity}`);
 
     try {
-      const codesignArgs = [
-        "--sign",
-        options.identity,
-        "--verbose",
-      ];
+      const codesignArgs = ["--sign", options.identity, "--verbose"];
 
       if (options.force) {
         codesignArgs.push("--force");
@@ -153,7 +151,7 @@ export class CodeSignManager {
    * @param appPath - Path to the app bundle
    * @param verbose - Enable verbose verification output
    * @returns True if signature is valid
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new CodeSignManager();
@@ -161,14 +159,17 @@ export class CodeSignManager {
    * console.log(isValid); // true or false
    * ```
    */
-  async verifySignature(appPath: string, verbose: boolean = false): Promise<boolean> {
+  async verifySignature(
+    appPath: string,
+    verbose: boolean = false,
+  ): Promise<boolean> {
     try {
       const verifyArgs = ["--verify"];
-      
+
       if (verbose) {
         verifyArgs.push("--verbose");
       }
-      
+
       verifyArgs.push(appPath);
 
       await execa("codesign", verifyArgs);
@@ -183,7 +184,7 @@ export class CodeSignManager {
    * Gets signing information for an app bundle
    * @param appPath - Path to the app bundle
    * @returns Signing information or null if not signed
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new CodeSignManager();
@@ -191,7 +192,9 @@ export class CodeSignManager {
    * console.log(info?.identity); // "Apple Development: John Doe (TEAMID)"
    * ```
    */
-  async getSigningInfo(appPath: string): Promise<{ identity?: string; teamId?: string } | null> {
+  async getSigningInfo(
+    appPath: string,
+  ): Promise<{ identity?: string; teamId?: string } | null> {
     try {
       const { stdout } = await execa("codesign", [
         "--display",
@@ -215,7 +218,7 @@ export class CodeSignManager {
   /**
    * Removes code signature from an app bundle
    * @param appPath - Path to the app bundle
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new CodeSignManager();
@@ -239,7 +242,7 @@ export class CodeSignManager {
    * Parses signing identities from security command output
    * @param output - Output from `security find-identity` command
    * @returns Array of parsed signing identities
-   * 
+   *
    * Input format:
    * ```
    *   1) 1234567890ABCDEF1234567890ABCDEF12345678 "Apple Development: John Doe (TEAMID1234)"

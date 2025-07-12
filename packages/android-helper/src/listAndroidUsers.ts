@@ -1,6 +1,6 @@
 // highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
 
-import { Adb, type User } from './adb';
+import { Adb, type User } from "./adb";
 
 /**
  * Check users on Android device

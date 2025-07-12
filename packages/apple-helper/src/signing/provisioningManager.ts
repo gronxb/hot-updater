@@ -42,7 +42,7 @@ export class ProvisioningManager {
    * Decodes a provisioning profile to XML plist format
    * @param profilePath - Path to the .mobileprovision file
    * @param outputPath - Path where decoded plist should be written
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new ProvisioningManager();
@@ -54,24 +54,33 @@ export class ProvisioningManager {
    */
   async decodeProvisioningProfileToPlist(
     profilePath: string,
-    outputPath: string
+    outputPath: string,
   ): Promise<void> {
     const spinner = p.spinner();
     spinner.start("Decoding provisioning profile");
 
     try {
-      await execa("security", ["cms", "-D", "-i", profilePath, "-o", outputPath]);
+      await execa("security", [
+        "cms",
+        "-D",
+        "-i",
+        profilePath,
+        "-o",
+        outputPath,
+      ]);
       spinner.stop("Successfully decoded provisioning profile");
     } catch (error) {
       spinner.stop("Failed to decode provisioning profile");
-      throw new Error(`Failed to decode provisioning profile ${profilePath}: ${error}`);
+      throw new Error(
+        `Failed to decode provisioning profile ${profilePath}: ${error}`,
+      );
     }
   }
 
   /**
    * Generates entitlements plist file from provisioning profile
    * @param options - Generation options
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new ProvisioningManager();
@@ -81,7 +90,9 @@ export class ProvisioningManager {
    * });
    * ```
    */
-  async generateEntitlementsPlist(options: GenerateEntitlementsOptions): Promise<void> {
+  async generateEntitlementsPlist(
+    options: GenerateEntitlementsOptions,
+  ): Promise<void> {
     const spinner = p.spinner();
     spinner.start("Generating entitlements file");
 
@@ -89,7 +100,7 @@ export class ProvisioningManager {
       const entitlements = await readKeyFromPlist(
         options.provisioningPlistPath,
         "Entitlements",
-        { xml: true }
+        { xml: true },
       );
 
       fs.writeFileSync(options.outputPath, entitlements);
@@ -104,7 +115,7 @@ export class ProvisioningManager {
    * Extracts code signing identity from provisioning profile
    * @param plistPath - Path to the decoded provisioning profile plist
    * @returns Code signing identity name
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new ProvisioningManager();
@@ -112,13 +123,20 @@ export class ProvisioningManager {
    * console.log(identity); // "Apple Development: John Doe (TEAMID)"
    * ```
    */
-  async getIdentityFromProvisioningPlist(plistPath: string): Promise<string | null> {
+  async getIdentityFromProvisioningPlist(
+    plistPath: string,
+  ): Promise<string | null> {
     try {
-      const cert = await readBufferFromPlist(plistPath, "DeveloperCertificates:0");
+      const cert = await readBufferFromPlist(
+        plistPath,
+        "DeveloperCertificates:0",
+      );
       const decodedCert = new crypto.X509Certificate(cert);
       return this.extractCertificateName(decodedCert.subject);
     } catch (error) {
-      throw new Error(`Failed to extract identity from provisioning profile: ${error}`);
+      throw new Error(
+        `Failed to extract identity from provisioning profile: ${error}`,
+      );
     }
   }
 
@@ -126,7 +144,7 @@ export class ProvisioningManager {
    * Parses a provisioning profile to extract detailed information
    * @param profilePath - Path to the .mobileprovision file
    * @returns Provisioning profile information
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new ProvisioningManager();
@@ -134,15 +152,24 @@ export class ProvisioningManager {
    * console.log(profile.name); // "iOS Team Provisioning Profile: com.example.app"
    * ```
    */
-  async parseProvisioningProfile(profilePath: string): Promise<ProvisioningProfile> {
+  async parseProvisioningProfile(
+    profilePath: string,
+  ): Promise<ProvisioningProfile> {
     const tempPlistPath = `${profilePath}.decoded.plist`;
-    
+
     try {
       // Decode profile to temporary plist
       await this.decodeProvisioningProfileToPlist(profilePath, tempPlistPath);
 
       // Read profile information
-      const [name, appIdPrefix, bundleId, teamId, expirationDateStr, entitlements] = await Promise.all([
+      const [
+        name,
+        appIdPrefix,
+        bundleId,
+        teamId,
+        expirationDateStr,
+        entitlements,
+      ] = await Promise.all([
         readKeyFromPlist(tempPlistPath, "Name"),
         readKeyFromPlist(tempPlistPath, "ApplicationIdentifierPrefix:0"),
         readKeyFromPlist(tempPlistPath, "Entitlements:application-identifier"),
@@ -152,8 +179,11 @@ export class ProvisioningManager {
       ]);
 
       // Read developer certificates
-      const cert = await readBufferFromPlist(tempPlistPath, "DeveloperCertificates:0");
-      
+      const cert = await readBufferFromPlist(
+        tempPlistPath,
+        "DeveloperCertificates:0",
+      );
+
       return {
         name,
         appIdPrefix,
@@ -178,7 +208,7 @@ export class ProvisioningManager {
    * @param profilePath - Path to the .mobileprovision file
    * @param bundleId - Bundle identifier to validate against
    * @returns True if profile matches bundle ID
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new ProvisioningManager();
@@ -186,20 +216,23 @@ export class ProvisioningManager {
    * console.log(isValid); // true or false
    * ```
    */
-  async validateProfile(profilePath: string, bundleId: string): Promise<boolean> {
+  async validateProfile(
+    profilePath: string,
+    bundleId: string,
+  ): Promise<boolean> {
     try {
       const profile = await this.parseProvisioningProfile(profilePath);
-      
+
       // Check if bundle ID matches (supports wildcards)
       if (profile.bundleId === "*") {
         return true; // Wildcard profile
       }
-      
+
       if (profile.bundleId.endsWith("*")) {
         const prefix = profile.bundleId.slice(0, -1);
         return bundleId.startsWith(prefix);
       }
-      
+
       return profile.bundleId === bundleId;
     } catch (error) {
       p.log.warn(`Failed to validate provisioning profile: ${error}`);
@@ -210,7 +243,7 @@ export class ProvisioningManager {
   /**
    * Lists installed provisioning profiles
    * @returns Array of provisioning profile paths
-   * 
+   *
    * @example
    * ```typescript
    * const manager = new ProvisioningManager();
@@ -220,12 +253,12 @@ export class ProvisioningManager {
    */
   async listInstalledProfiles(): Promise<string[]> {
     const profilesDir = `${process.env.HOME}/Library/MobileDevice/Provisioning Profiles`;
-    
+
     try {
       const files = fs.readdirSync(profilesDir);
       return files
-        .filter(file => file.endsWith(".mobileprovision"))
-        .map(file => `${profilesDir}/${file}`);
+        .filter((file) => file.endsWith(".mobileprovision"))
+        .map((file) => `${profilesDir}/${file}`);
     } catch (error) {
       return [];
     }

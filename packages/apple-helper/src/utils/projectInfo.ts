@@ -57,7 +57,7 @@ const parseTargetList = (json: string): ProjectInfo | undefined => {
  * @param sourceDir - Directory to search for Xcode projects
  * @returns Xcode project information
  * @throws Error if no project or workspace is found
- * 
+ *
  * @example
  * ```typescript
  * const projectInfo = await discoverXcodeProject("./ios");
@@ -65,9 +65,11 @@ const parseTargetList = (json: string): ProjectInfo | undefined => {
  * console.log(projectInfo.name); // "MyApp.xcworkspace"
  * ```
  */
-export const discoverXcodeProject = async (sourceDir: string): Promise<XcodeProjectInfo> => {
+export const discoverXcodeProject = async (
+  sourceDir: string,
+): Promise<XcodeProjectInfo> => {
   const files = await fs.promises.readdir(sourceDir);
-  
+
   // Look for workspace first (preferred)
   const workspace = files.find((file) => file.endsWith(".xcworkspace"));
   if (workspace) {
@@ -97,7 +99,7 @@ export const discoverXcodeProject = async (sourceDir: string): Promise<XcodeProj
  * @param sourceDir - Source directory containing the project
  * @returns Detailed project information including schemes and configurations
  * @throws Error if project information cannot be retrieved
- * 
+ *
  * @example
  * ```typescript
  * const projectInfo = await discoverXcodeProject("./ios");
@@ -107,7 +109,7 @@ export const discoverXcodeProject = async (sourceDir: string): Promise<XcodeProj
  */
 export const getProjectInfo = async (
   projectInfo: XcodeProjectInfo,
-  sourceDir: string
+  sourceDir: string,
 ): Promise<ProjectInfo | undefined> => {
   const spinner = p.spinner();
   spinner.start("Gathering Xcode project information");
@@ -134,9 +136,9 @@ export const getProjectInfo = async (
     const xcworkspacedata = path.join(
       sourceDir,
       projectInfo.name,
-      "contents.xcworkspacedata"
+      "contents.xcworkspacedata",
     );
-    
+
     const workspace = fs.readFileSync(xcworkspacedata, { encoding: "utf-8" });
     const fileRef = xmlParser.parse(workspace).Workspace.FileRef;
     const refs = Array.isArray(fileRef) ? fileRef : [fileRef];
@@ -145,7 +147,7 @@ export const getProjectInfo = async (
       .filter(
         (location: string) =>
           !location.endsWith("/Pods.xcodeproj") && // Ignore CocoaPods project
-          location.endsWith(".xcodeproj") // Only project files
+          location.endsWith(".xcodeproj"), // Only project files
       );
 
     let info: ProjectInfo | undefined = undefined;
@@ -155,7 +157,7 @@ export const getProjectInfo = async (
         const { stdout } = await execa(
           "xcodebuild",
           ["-list", "-json", "-project", location.replace("group:", "")],
-          { cwd: sourceDir }
+          { cwd: sourceDir },
         );
 
         const projectInfo = parseTargetList(stdout);
@@ -200,14 +202,16 @@ export const getProjectInfo = async (
  * Gets available schemes for a project
  * @param sourceDir - Directory containing the Xcode project
  * @returns Array of available scheme names
- * 
+ *
  * @example
  * ```typescript
  * const schemes = await getAvailableSchemes("./ios");
  * console.log(schemes); // ["MyApp", "MyAppTests"]
  * ```
  */
-export const getAvailableSchemes = async (sourceDir: string): Promise<string[]> => {
+export const getAvailableSchemes = async (
+  sourceDir: string,
+): Promise<string[]> => {
   const projectInfo = await discoverXcodeProject(sourceDir);
   const info = await getProjectInfo(projectInfo, sourceDir);
   return info?.schemes || [];
@@ -217,20 +221,22 @@ export const getAvailableSchemes = async (sourceDir: string): Promise<string[]> 
  * Gets available configurations for a project
  * @param sourceDir - Directory containing the Xcode project
  * @returns Array of available configuration names
- * 
+ *
  * @example
  * ```typescript
  * const configs = await getAvailableConfigurations("./ios");
  * console.log(configs); // ["Debug", "Release"]
  * ```
  */
-export const getAvailableConfigurations = async (sourceDir: string): Promise<string[]> => {
+export const getAvailableConfigurations = async (
+  sourceDir: string,
+): Promise<string[]> => {
   const projectInfo = await discoverXcodeProject(sourceDir);
   const info = await getProjectInfo(projectInfo, sourceDir);
   return info?.configurations || [];
 };
 
-// TODO: Add advanced project discovery features 
+// TODO: Add advanced project discovery features
 // - Swift Package Manager integration and dependency analysis
 // - Xcode build settings extraction and validation
 // - Target dependency mapping and build order optimization

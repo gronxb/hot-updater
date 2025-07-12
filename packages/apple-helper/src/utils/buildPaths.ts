@@ -29,7 +29,7 @@ const getCacheRootPath = (): string => {
  * Creates build paths for a specific platform
  * @param platformName - The platform name (ios, macos, tvos, visionos)
  * @returns Object containing all build-related directory paths
- * 
+ *
  * @example
  * ```typescript
  * const paths = createBuildPaths("ios");

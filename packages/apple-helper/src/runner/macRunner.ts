@@ -19,7 +19,7 @@ export class MacRunner {
    * Launches a macOS app using the open command
    * @param appPath - Path to the .app bundle
    * @param options - Launch options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new MacRunner();
@@ -46,16 +46,20 @@ export class MacRunner {
    * @param appPath - Path to the .app bundle
    * @param scheme - Scheme name for the executable
    * @param options - Launch options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new MacRunner();
    * await runner.launchCatalyst("/path/to/MyApp.app", "MyApp");
    * ```
    */
-  async launchCatalyst(appPath: string, scheme: string, options: MacRunnerOptions = {}): Promise<void> {
+  async launchCatalyst(
+    appPath: string,
+    scheme: string,
+    options: MacRunnerOptions = {},
+  ): Promise<void> {
     const executablePath = `${appPath}/${scheme}`;
-    
+
     const spinner = p.spinner();
     spinner.start(`Launching Mac Catalyst app`);
 
@@ -65,7 +69,7 @@ export class MacRunner {
         stdio: "ignore",
         cwd: options.sourceDir,
       });
-      
+
       // Unref the process so it doesn't keep the parent alive
       if (options.detached !== false) {
         process.unref();
@@ -83,14 +87,18 @@ export class MacRunner {
    * @param appPath - Path to the .app bundle
    * @param args - Arguments to pass to the app
    * @param options - Launch options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new MacRunner();
    * await runner.openWithArgs("/path/to/MyApp.app", ["--debug", "--verbose"]);
    * ```
    */
-  async openWithArgs(appPath: string, args: string[] = [], options: MacRunnerOptions = {}): Promise<void> {
+  async openWithArgs(
+    appPath: string,
+    args: string[] = [],
+    options: MacRunnerOptions = {},
+  ): Promise<void> {
     const spinner = p.spinner();
     spinner.start(`Opening macOS app with arguments`);
 
@@ -109,24 +117,28 @@ export class MacRunner {
    * Terminates a running macOS app by bundle ID
    * @param bundleId - App bundle identifier
    * @param options - Termination options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new MacRunner();
    * await runner.terminate("com.example.myapp");
    * ```
    */
-  async terminate(bundleId: string, options: MacRunnerOptions = {}): Promise<void> {
+  async terminate(
+    bundleId: string,
+    options: MacRunnerOptions = {},
+  ): Promise<void> {
     const spinner = p.spinner();
     spinner.start(`Terminating app ${bundleId}`);
 
     try {
-      await execa("osascript", [
-        "-e",
-        `tell application id "${bundleId}" to quit`,
-      ], {
-        cwd: options.sourceDir,
-      });
+      await execa(
+        "osascript",
+        ["-e", `tell application id "${bundleId}" to quit`],
+        {
+          cwd: options.sourceDir,
+        },
+      );
       spinner.stop(`Successfully terminated app ${bundleId}`);
     } catch (error) {
       spinner.stop(`Failed to terminate app ${bundleId}`);
@@ -139,18 +151,20 @@ export class MacRunner {
    * Gets information about a running macOS app
    * @param bundleId - App bundle identifier
    * @returns App information or null if not running
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new MacRunner();
    * const info = await runner.getAppInfo("com.example.myapp");
    * ```
    */
-  async getAppInfo(bundleId: string): Promise<{ isRunning: boolean; pid?: number } | null> {
+  async getAppInfo(
+    bundleId: string,
+  ): Promise<{ isRunning: boolean; pid?: number } | null> {
     try {
       const { stdout } = await execa("pgrep", ["-f", bundleId]);
       const pids = stdout.split("\\n").filter(Boolean).map(Number);
-      
+
       return {
         isRunning: pids.length > 0,
         pid: pids[0],

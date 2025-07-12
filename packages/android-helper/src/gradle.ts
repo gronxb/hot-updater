@@ -54,7 +54,10 @@ export async function runGradle({
   args,
   androidProjectPath,
   appModuleName,
-}: RunGradleArgs): Promise<{ buildDirectory: string; buildArtifactPath: string }> {
+}: RunGradleArgs): Promise<{
+  buildDirectory: string;
+  buildArtifactPath: string;
+}> {
   const gradleArgs = getTaskNames(appModuleName, tasks);
 
   gradleArgs.push("-x", "lint");
@@ -146,7 +149,7 @@ async function findBuildDirectory({
     variant,
   });
 
-  return { buildDirectory,  buildArtifactPath };
+  return { buildDirectory, buildArtifactPath };
 }
 
 /**
@@ -160,7 +163,7 @@ async function getBuildOutputFilePath({
 }: {
   appModuleName: string;
   variant: string;
-  buildDirectory:   string;
+  buildDirectory: string;
   aab: boolean;
 }) {
   // we don't check abi specific output file yet

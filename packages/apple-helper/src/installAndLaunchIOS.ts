@@ -1,5 +1,8 @@
 import path from "node:path";
-import type { NativeBuildIosScheme, RequiredDeep } from "@hot-updater/plugin-core";
+import type {
+  NativeBuildIosScheme,
+  RequiredDeep,
+} from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";
 import * as p from "@clack/prompts";
 import { createXcodeBuilder } from "./builder/xcodeBuilder";
@@ -28,7 +31,7 @@ export interface InstallAndLaunchOptions {
 /**
  * Installs and launches an iOS app on device or simulator
  * @param options - Configuration and installation options
- * 
+ *
  * @example
  * ```typescript
  * // Auto-select device and build+install+launch
@@ -38,13 +41,13 @@ export interface InstallAndLaunchOptions {
  *     buildConfiguration: "Debug"
  *   }
  * });
- * 
+ *
  * // Install on specific simulator
  * await installAndLaunchIOS({
  *   schemeConfig: config,
  *   target: "iPhone 15 Pro"
  * });
- * 
+ *
  * // Install existing app bundle
  * await installAndLaunchIOS({
  *   schemeConfig: config,
@@ -68,7 +71,7 @@ export const installAndLaunchIOS = async ({
   // Build app if needed
   if (build && !appPath) {
     p.log.info("Building iOS app for installation...");
-    
+
     const buildFlags: BuildFlags = validateBuildOptions({
       scheme: schemeConfig.scheme,
       configuration: schemeConfig.buildConfiguration || "Debug",
@@ -82,7 +85,9 @@ export const installAndLaunchIOS = async ({
   }
 
   if (!finalAppPath) {
-    throw new Error("No app path provided and build is disabled. Please provide appPath or enable build.");
+    throw new Error(
+      "No app path provided and build is disabled. Please provide appPath or enable build.",
+    );
   }
 
   // Discover and select target device/simulator
@@ -91,7 +96,9 @@ export const installAndLaunchIOS = async ({
     throw new Error("No suitable device or simulator found");
   }
 
-  p.log.info(`Selected device: ${selectedDevice.name} (${selectedDevice.type})`);
+  p.log.info(
+    `Selected device: ${selectedDevice.name} (${selectedDevice.type})`,
+  );
 
   // Install and launch based on device type
   try {
@@ -114,7 +121,9 @@ export const installAndLaunchIOS = async ({
     }
 
     if (launch) {
-      p.log.success(`Successfully installed and launched app on ${selectedDevice.name}`);
+      p.log.success(
+        `Successfully installed and launched app on ${selectedDevice.name}`,
+      );
     } else {
       p.log.success(`Successfully installed app on ${selectedDevice.name}`);
     }
@@ -166,7 +175,9 @@ async function selectTargetDevice(target: string) {
   }
 
   // If not found, let user select interactively
-  p.log.warn(`Device "${target}" not found. Please select from available devices:`);
+  p.log.warn(
+    `Device "${target}" not found. Please select from available devices:`,
+  );
   return await selectDevice("ios");
 }
 
@@ -175,7 +186,7 @@ async function selectTargetDevice(target: string) {
  * @param schemeConfig - iOS build scheme configuration
  * @param destination - Build destination (device/simulator)
  * @returns Path to built .app bundle
- * 
+ *
  * @example
  * ```typescript
  * const appPath = await buildIosApp({
@@ -187,10 +198,10 @@ async function selectTargetDevice(target: string) {
  */
 export const buildIosApp = async (
   schemeConfig: RequiredDeep<NativeBuildIosScheme>,
-  destination: "device" | "simulator" = "simulator"
+  destination: "device" | "simulator" = "simulator",
 ): Promise<string> => {
   const iosProjectRoot = path.join(getCwd(), "ios");
-  
+
   const buildFlags: BuildFlags = validateBuildOptions({
     scheme: schemeConfig.scheme,
     configuration: schemeConfig.buildConfiguration || "Debug",
@@ -201,7 +212,7 @@ export const buildIosApp = async (
 
   const builder = createXcodeBuilder(iosProjectRoot, "ios");
   const result = await builder.build(buildFlags);
-  
+
   return result.appPath;
 };
 
@@ -209,25 +220,30 @@ export const buildIosApp = async (
  * Launches an iOS app on macOS (for Mac Catalyst apps)
  * @param appPath - Path to the .app bundle
  * @param scheme - Scheme name for the executable
- * 
+ *
  * @example
  * ```typescript
  * await launchMacApp("/path/to/MyApp.app", "MyApp");
  * ```
  */
-export const launchMacApp = async (appPath: string, scheme: string): Promise<void> => {
+export const launchMacApp = async (
+  appPath: string,
+  scheme: string,
+): Promise<void> => {
   const runner = createMacRunner();
-  
+
   try {
     // Try Mac Catalyst first, then fallback to regular macOS app
     await runner.launchCatalyst(appPath, scheme);
   } catch (error) {
-    p.log.warn(`Mac Catalyst launch failed, trying regular macOS app: ${error}`);
+    p.log.warn(
+      `Mac Catalyst launch failed, trying regular macOS app: ${error}`,
+    );
     await runner.launch(appPath);
   }
 };
 
-// TODO: Add advanced installation and launch features 
+// TODO: Add advanced installation and launch features
 // - Deep linking support for app launch with custom URLs
 // - App permission management and automatic permission granting
 // - Launch with environment variables and debugging flags

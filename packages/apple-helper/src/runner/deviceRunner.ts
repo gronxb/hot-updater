@@ -32,7 +32,7 @@ export class DeviceRunner {
    * Installs and optionally launches an app on a physical device
    * @param appPath - Path to the .app bundle
    * @param options - Installation and launch options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new DeviceRunner(device);
@@ -42,11 +42,17 @@ export class DeviceRunner {
    * });
    * ```
    */
-  async installAndLaunch(appPath: string, options: DeviceRunnerOptions = {}): Promise<void> {
+  async installAndLaunch(
+    appPath: string,
+    options: DeviceRunnerOptions = {},
+  ): Promise<void> {
     await this.install(appPath, options);
-    
+
     if (options.launch !== false) {
-      await this.launch(options.bundleId || await this.extractBundleId(appPath), options);
+      await this.launch(
+        options.bundleId || (await this.extractBundleId(appPath)),
+        options,
+      );
     }
   }
 
@@ -54,14 +60,17 @@ export class DeviceRunner {
    * Installs an app on the device
    * @param appPath - Path to the .app bundle
    * @param options - Installation options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new DeviceRunner(device);
    * await runner.install("/path/to/MyApp.app");
    * ```
    */
-  async install(appPath: string, options: DeviceRunnerOptions = {}): Promise<void> {
+  async install(
+    appPath: string,
+    options: DeviceRunnerOptions = {},
+  ): Promise<void> {
     const deviceCtlArgs = [
       "devicectl",
       "device",
@@ -76,13 +85,15 @@ export class DeviceRunner {
     spinner.start(`Installing app on ${this.device.name}`);
 
     try {
-      await execa("xcrun", deviceCtlArgs, { 
+      await execa("xcrun", deviceCtlArgs, {
         cwd: options.sourceDir,
       });
       spinner.stop(`Successfully installed app on ${this.device.name}`);
     } catch (error) {
       spinner.stop(`Failed to install app on ${this.device.name}`);
-      throw new Error(`Failed to install the app on ${this.device.name}: ${error}`);
+      throw new Error(
+        `Failed to install the app on ${this.device.name}: ${error}`,
+      );
     }
   }
 
@@ -90,14 +101,17 @@ export class DeviceRunner {
    * Launches an app on the device by bundle ID
    * @param bundleId - App bundle identifier
    * @param options - Launch options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new DeviceRunner(device);
    * await runner.launch("com.example.myapp");
    * ```
    */
-  async launch(bundleId: string, options: DeviceRunnerOptions = {}): Promise<void> {
+  async launch(
+    bundleId: string,
+    options: DeviceRunnerOptions = {},
+  ): Promise<void> {
     const deviceCtlArgs = [
       "devicectl",
       "device",
@@ -118,7 +132,9 @@ export class DeviceRunner {
       spinner.stop(`Successfully launched app on ${this.device.name}`);
     } catch (error) {
       spinner.stop(`Failed to launch app on ${this.device.name}`);
-      throw new Error(`Failed to launch the app on ${this.device.name}: ${error}`);
+      throw new Error(
+        `Failed to launch the app on ${this.device.name}: ${error}`,
+      );
     }
   }
 
@@ -126,14 +142,17 @@ export class DeviceRunner {
    * Uninstalls an app from the device
    * @param bundleId - App bundle identifier to uninstall
    * @param options - Uninstall options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new DeviceRunner(device);
    * await runner.uninstall("com.example.myapp");
    * ```
    */
-  async uninstall(bundleId: string, options: DeviceRunnerOptions = {}): Promise<void> {
+  async uninstall(
+    bundleId: string,
+    options: DeviceRunnerOptions = {},
+  ): Promise<void> {
     const deviceCtlArgs = [
       "devicectl",
       "device",
@@ -154,7 +173,9 @@ export class DeviceRunner {
       spinner.stop(`Successfully uninstalled app from ${this.device.name}`);
     } catch (error) {
       spinner.stop(`Failed to uninstall app from ${this.device.name}`);
-      throw new Error(`Failed to uninstall the app from ${this.device.name}: ${error}`);
+      throw new Error(
+        `Failed to uninstall the app from ${this.device.name}: ${error}`,
+      );
     }
   }
 
@@ -202,7 +223,7 @@ export const createDeviceRunner = (device: Device): DeviceRunner => {
   return new DeviceRunner(device);
 };
 
-// TODO: Add advanced device runner features 
+// TODO: Add advanced device runner features
 // - App process monitoring and logging
 // - Crash detection and reporting
 // - Performance metrics collection during app runtime

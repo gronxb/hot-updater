@@ -17,11 +17,31 @@ interface BuildPhase {
  */
 export class BuildMonitor {
   private phases: BuildPhase[] = [
-    { name: "PhaseScriptExecution Check\\ React\\ Native\\ Integration", progress: 10, completed: false },
-    { name: "PhaseScriptExecution [RN]Check\\ Hermes", progress: 35, completed: false },
-    { name: "PhaseScriptExecution [React-Fabric]", progress: 53, completed: false },
-    { name: "PhaseScriptExecution [React-Codegen]", progress: 66, completed: false },
-    { name: "PhaseScriptExecution Bundle\\ React\\ Native\\ code\\ and\\ images", progress: 90, completed: false },
+    {
+      name: "PhaseScriptExecution Check\\ React\\ Native\\ Integration",
+      progress: 10,
+      completed: false,
+    },
+    {
+      name: "PhaseScriptExecution [RN]Check\\ Hermes",
+      progress: 35,
+      completed: false,
+    },
+    {
+      name: "PhaseScriptExecution [React-Fabric]",
+      progress: 53,
+      completed: false,
+    },
+    {
+      name: "PhaseScriptExecution [React-Codegen]",
+      progress: 66,
+      completed: false,
+    },
+    {
+      name: "PhaseScriptExecution Bundle\\ React\\ Native\\ code\\ and\\ images",
+      progress: 90,
+      completed: false,
+    },
   ];
 
   private currentProgress = 0;
@@ -44,7 +64,10 @@ export class BuildMonitor {
    */
   processLine(line: string): void {
     // Check for build success
-    if (line.includes("BUILD SUCCEEDED") || line.includes("ARCHIVE SUCCEEDED")) {
+    if (
+      line.includes("BUILD SUCCEEDED") ||
+      line.includes("ARCHIVE SUCCEEDED")
+    ) {
       this.buildSucceeded = true;
       this.currentProgress = 100;
       this.updateSpinner();
@@ -78,7 +101,7 @@ export class BuildMonitor {
    * @param message - Final message to display
    * @param success - Whether the build was successful
    */
-  stop(message?: string, success: boolean = true): void {
+  stop(message?: string, success = true): void {
     if (this.spinner) {
       if (success || this.buildSucceeded) {
         this.spinner.stop(message || "Build completed successfully");
@@ -129,7 +152,9 @@ export class BuildMonitor {
     ];
 
     const lowerLine = line.toLowerCase();
-    return importantPrefixes.some(prefix => lowerLine.includes(prefix.toLowerCase()));
+    return importantPrefixes.some((prefix) =>
+      lowerLine.includes(prefix.toLowerCase()),
+    );
   }
 
   /**
@@ -152,7 +177,7 @@ export class BuildMonitor {
    * Resets the monitor for a new build
    */
   reset(): void {
-    this.phases.forEach(phase => phase.completed = false);
+    this.phases.forEach((phase) => (phase.completed = false));
     this.currentProgress = 0;
     this.buildSucceeded = false;
   }

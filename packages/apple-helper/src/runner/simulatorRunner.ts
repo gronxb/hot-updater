@@ -39,7 +39,7 @@ export class SimulatorRunner {
    * Installs and launches an app on the simulator
    * @param appPath - Path to the .app bundle
    * @param options - Installation and launch options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new SimulatorRunner(simulator);
@@ -49,23 +49,28 @@ export class SimulatorRunner {
    * });
    * ```
    */
-  async installAndLaunch(appPath: string, options: SimulatorRunnerOptions = {}): Promise<void> {
+  async installAndLaunch(
+    appPath: string,
+    options: SimulatorRunnerOptions = {},
+  ): Promise<void> {
     // Ensure simulator is booted and visible
     await this.launchSimulator();
-    
+
     // Install the app
     await this.install(appPath, options);
-    
+
     // Launch the app if requested
     if (options.launch !== false) {
-      const bundleId = options.bundleId || await this.extractBundleId(appPath, options.infoPlistPath);
+      const bundleId =
+        options.bundleId ||
+        (await this.extractBundleId(appPath, options.infoPlistPath));
       await this.launch(bundleId, options);
     }
   }
 
   /**
    * Launches Simulator.app and boots the simulator if needed
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new SimulatorRunner(simulator);
@@ -101,14 +106,17 @@ export class SimulatorRunner {
    * Installs an app on the simulator
    * @param appPath - Path to the .app bundle
    * @param options - Installation options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new SimulatorRunner(simulator);
    * await runner.install("/path/to/MyApp.app");
    * ```
    */
-  async install(appPath: string, options: SimulatorRunnerOptions = {}): Promise<void> {
+  async install(
+    appPath: string,
+    options: SimulatorRunnerOptions = {},
+  ): Promise<void> {
     const spinner = p.spinner();
     spinner.start(`Installing app on "${this.device.name}"`);
 
@@ -127,14 +135,17 @@ export class SimulatorRunner {
    * Launches an app on the simulator
    * @param bundleId - App bundle identifier
    * @param options - Launch options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new SimulatorRunner(simulator);
    * await runner.launch("com.example.myapp");
    * ```
    */
-  async launch(bundleId: string, options: SimulatorRunnerOptions = {}): Promise<void> {
+  async launch(
+    bundleId: string,
+    options: SimulatorRunnerOptions = {},
+  ): Promise<void> {
     const spinner = p.spinner();
     spinner.start(`Launching app on "${this.device.name}"`);
 
@@ -153,21 +164,28 @@ export class SimulatorRunner {
    * Uninstalls an app from the simulator
    * @param bundleId - App bundle identifier to uninstall
    * @param options - Uninstall options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new SimulatorRunner(simulator);
    * await runner.uninstall("com.example.myapp");
    * ```
    */
-  async uninstall(bundleId: string, options: SimulatorRunnerOptions = {}): Promise<void> {
+  async uninstall(
+    bundleId: string,
+    options: SimulatorRunnerOptions = {},
+  ): Promise<void> {
     const spinner = p.spinner();
     spinner.start(`Uninstalling app from "${this.device.name}"`);
 
     try {
-      await execa("xcrun", ["simctl", "uninstall", this.device.udid, bundleId], {
-        cwd: options.sourceDir,
-      });
+      await execa(
+        "xcrun",
+        ["simctl", "uninstall", this.device.udid, bundleId],
+        {
+          cwd: options.sourceDir,
+        },
+      );
       spinner.stop(`Successfully uninstalled app from "${this.device.name}"`);
     } catch (error) {
       spinner.stop(`Failed to uninstall app from "${this.device.name}"`);
@@ -183,8 +201,11 @@ export class SimulatorRunner {
       await execa("xcrun", ["simctl", "boot", this.device.udid]);
     } catch (error) {
       // Handle case where simulator is already booted but state shows as Shutdown
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes("Unable to boot device in current state: Booted")) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes("Unable to boot device in current state: Booted")
+      ) {
         p.log.info(`Simulator ${this.device.udid} already booted. Skipping.`);
         return;
       }
@@ -198,13 +219,18 @@ export class SimulatorRunner {
    * @param infoPlistPath - Optional explicit path to Info.plist
    * @returns Bundle identifier string
    */
-  private async extractBundleId(appPath: string, infoPlistPath?: string): Promise<string> {
+  private async extractBundleId(
+    appPath: string,
+    infoPlistPath?: string,
+  ): Promise<string> {
     const plistPath = infoPlistPath || path.join(appPath, "Info.plist");
-    
+
     try {
       return await readKeyFromPlist(plistPath, "CFBundleIdentifier");
     } catch (error) {
-      throw new Error(`Failed to extract bundle ID from ${plistPath}: ${error}`);
+      throw new Error(
+        `Failed to extract bundle ID from ${plistPath}: ${error}`,
+      );
     }
   }
 
@@ -227,7 +253,7 @@ export class SimulatorRunner {
   /**
    * Resets the simulator to factory settings
    * @param options - Reset options
-   * 
+   *
    * @example
    * ```typescript
    * const runner = new SimulatorRunner(simulator);

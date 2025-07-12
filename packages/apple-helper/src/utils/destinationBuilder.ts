@@ -42,7 +42,7 @@ export const genericDestinations = {
  * @param platform - The Apple platform
  * @param deviceType - Type of device (device or simulator)
  * @returns Xcode destination string
- * 
+ *
  * @example
  * ```typescript
  * const destination = getGenericDestination("ios", "device");
@@ -51,7 +51,7 @@ export const genericDestinations = {
  */
 export const getGenericDestination = (
   platform: ApplePlatform,
-  deviceType: DeviceType
+  deviceType: DeviceType,
 ): string => {
   return genericDestinations[platform][deviceType];
 };
@@ -60,7 +60,7 @@ export const getGenericDestination = (
  * Builds a specific device destination string
  * @param deviceId - Device UDID or name
  * @returns Xcode destination string for the specific device
- * 
+ *
  * @example
  * ```typescript
  * const destination = buildDeviceDestination("iPhone 15 Pro");
@@ -80,7 +80,7 @@ export const buildDeviceDestination = (deviceId: string): string => {
  * Builds a simulator destination string
  * @param simulatorId - Simulator UDID or name
  * @returns Xcode destination string for the simulator
- * 
+ *
  * @example
  * ```typescript
  * const destination = buildSimulatorDestination("iPhone 15 Pro Simulator");

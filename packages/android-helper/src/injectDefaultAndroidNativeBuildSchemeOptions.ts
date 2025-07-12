@@ -1,4 +1,7 @@
-import { NativeBuildAndroidScheme, RequiredDeep } from '@hot-updater/plugin-core';
+import {
+  NativeBuildAndroidScheme,
+  RequiredDeep,
+} from "@hot-updater/plugin-core";
 
 export const injectDefaultAndroidNativeBuildSchemeOptions = (
   scheme: NativeBuildAndroidScheme,

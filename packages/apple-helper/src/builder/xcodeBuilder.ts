@@ -3,13 +3,16 @@ import { execa } from "execa";
 import * as p from "@clack/prompts";
 import type { ApplePlatform } from "../utils/platformSupport";
 import { createBuildPaths } from "../utils/buildPaths";
-import { discoverXcodeProject, type XcodeProjectInfo } from "../utils/projectInfo";
+import {
+  discoverXcodeProject,
+  type XcodeProjectInfo,
+} from "../utils/projectInfo";
 import { createBuildMonitor } from "./buildMonitor";
-import type { 
-  BuildFlags, 
-  BuildResult, 
-  ArchiveOptions, 
-  ExportOptions 
+import type {
+  BuildFlags,
+  BuildResult,
+  ArchiveOptions,
+  ExportOptions,
 } from "./buildOptions";
 
 /**
@@ -33,7 +36,7 @@ export class XcodeBuilder {
    * Builds an iOS app without archiving
    * @param options - Build configuration options
    * @returns Build result with app path and metadata
-   * 
+   *
    * @example
    * ```typescript
    * const builder = new XcodeBuilder("./ios", "ios");
@@ -47,7 +50,7 @@ export class XcodeBuilder {
    */
   async build(options: BuildFlags): Promise<BuildResult> {
     const xcodeProject = await discoverXcodeProject(this.sourceDir);
-    
+
     // Install CocoaPods if requested
     if (options.installPods) {
       await this.installPodsIfNeeded();
@@ -55,9 +58,9 @@ export class XcodeBuilder {
 
     const buildArgs = this.prepareBuildArgs(xcodeProject, options, false);
     const monitor = createBuildMonitor();
-    
+
     monitor.start(xcodeProject.name);
-    
+
     try {
       const { stdout, stderr } = await execa("xcodebuild", buildArgs, {
         cwd: this.sourceDir,
@@ -65,12 +68,12 @@ export class XcodeBuilder {
 
       // Process output for progress tracking
       const output = stdout + stderr;
-      output.split("\\n").forEach(line => monitor.processLine(line));
+      output.split("\\n").forEach((line) => monitor.processLine(line));
 
       monitor.stop("Build completed successfully");
 
       const buildSettings = await this.getBuildSettings(xcodeProject, options);
-      
+
       return {
         appPath: buildSettings.appPath,
         infoPlistPath: buildSettings.infoPlistPath,
@@ -87,7 +90,7 @@ export class XcodeBuilder {
    * Archives an iOS app for distribution
    * @param options - Archive configuration options
    * @returns Archive path and metadata
-   * 
+   *
    * @example
    * ```typescript
    * const builder = new XcodeBuilder("./ios", "ios");
@@ -102,7 +105,7 @@ export class XcodeBuilder {
   async archive(options: ArchiveOptions): Promise<{ archivePath: string }> {
     const xcodeProject = await discoverXcodeProject(this.sourceDir);
     const { archiveDir } = createBuildPaths(this.platform);
-    
+
     const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
     const archivePath = path.join(archiveDir, archiveName);
 
@@ -111,7 +114,7 @@ export class XcodeBuilder {
       path.join(this.sourceDir, xcodeProject.name),
       "-scheme",
       options.scheme,
-      "-configuration", 
+      "-configuration",
       options.buildConfiguration,
       "archive",
       "-archivePath",
@@ -136,7 +139,7 @@ export class XcodeBuilder {
 
       // Process output for progress tracking
       const output = stdout + stderr;
-      output.split("\\n").forEach(line => monitor.processLine(line));
+      output.split("\\n").forEach((line) => monitor.processLine(line));
 
       monitor.stop("Archive completed successfully");
 
@@ -151,7 +154,7 @@ export class XcodeBuilder {
    * Exports an archive to IPA
    * @param options - Export configuration options
    * @returns Export path containing IPA
-   * 
+   *
    * @example
    * ```typescript
    * const builder = new XcodeBuilder("./ios", "ios");
@@ -205,7 +208,7 @@ export class XcodeBuilder {
   private prepareBuildArgs(
     xcodeProject: XcodeProjectInfo,
     options: BuildFlags,
-    isArchive: boolean = false
+    isArchive: boolean = false,
   ): string[] {
     const args = [
       xcodeProject.isWorkspace ? "-workspace" : "-project",
@@ -217,12 +220,14 @@ export class XcodeBuilder {
     }
 
     args.push(
-      "-configuration", options.configuration || "Release",
-      "-scheme", options.scheme || "Release"
+      "-configuration",
+      options.configuration || "Release",
+      "-scheme",
+      options.scheme || "Release",
     );
 
     if (options.destination) {
-      options.destination.forEach(dest => {
+      options.destination.forEach((dest) => {
         args.push("-destination", this.resolveDestination(dest));
       });
     }
@@ -230,11 +235,7 @@ export class XcodeBuilder {
     if (isArchive) {
       const { archiveDir } = createBuildPaths(this.platform);
       const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
-      args.push(
-        "-archivePath",
-        path.join(archiveDir, archiveName),
-        "archive"
-      );
+      args.push("-archivePath", path.join(archiveDir, archiveName), "archive");
     } else {
       args.push("build");
     }
@@ -269,7 +270,7 @@ export class XcodeBuilder {
    */
   private async getBuildSettings(
     xcodeProject: XcodeProjectInfo,
-    options: BuildFlags
+    options: BuildFlags,
   ): Promise<{ appPath: string; infoPlistPath: string }> {
     const buildSettingsArgs = [
       xcodeProject.isWorkspace ? "-workspace" : "-project",
@@ -294,7 +295,7 @@ export class XcodeBuilder {
       const buildSettings = JSON.parse(stdout);
       const target = buildSettings[0];
       const settings = target.buildSettings;
-      
+
       const productName = settings.PRODUCT_NAME;
       const configurationBuildDir = settings.CONFIGURATION_BUILD_DIR;
       const appPath = path.join(configurationBuildDir, `${productName}.app`);
@@ -318,14 +319,14 @@ export class XcodeBuilder {
    */
   private async installPodsIfNeeded(): Promise<void> {
     const podfilePath = path.join(this.sourceDir, "Podfile");
-    
+
     try {
       // Check if Podfile exists
       await execa("test", ["-f", podfilePath]);
-      
+
       const spinner = p.spinner();
       spinner.start("Installing CocoaPods dependencies");
-      
+
       try {
         await execa("pod", ["install"], { cwd: this.sourceDir });
         spinner.stop("CocoaPods dependencies installed");
@@ -346,6 +347,9 @@ export class XcodeBuilder {
  * @param platform - Target Apple platform
  * @returns New XcodeBuilder instance
  */
-export const createXcodeBuilder = (sourceDir: string, platform: ApplePlatform): XcodeBuilder => {
+export const createXcodeBuilder = (
+  sourceDir: string,
+  platform: ApplePlatform,
+): XcodeBuilder => {
   return new XcodeBuilder(sourceDir, platform);
 };
