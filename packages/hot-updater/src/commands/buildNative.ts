@@ -1,5 +1,6 @@
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
+import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/core";
 import { getCwd } from "@hot-updater/plugin-core";
@@ -14,6 +15,7 @@ export interface NativeBuildOptions {
 }
 
 export const nativeBuild = async (options: NativeBuildOptions) => {
+  printBanner();
   const preparedConfig = await prepareNativeBuild(options);
   if (!preparedConfig) {
     p.log.error("preparing native build failed");
@@ -64,31 +66,22 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       storageUri: null,
     };
 
-    await p.tasks([
-      {
-        title: `📦 Building Native (${buildPlugin.name})`,
-        task: async () => {
-          try {
-            const { buildDirectory, buildArtifactPath } =
-              await createNativeBuild({
-                buildPlugin,
-                platform,
-                config,
-                scheme,
-                outputPath,
-                cwd,
-              });
-            taskRef.buildResult.buildArtifactPath = buildArtifactPath;
-            taskRef.buildResult.buildDirectory = buildDirectory;
+    p.log.info(`📦 Building Native (${buildPlugin.name}) Started`);
 
-            return `Build Complete (${buildPlugin.name})`;
-          } catch (error) {
-            cleanup(error);
-            return "";
-          }
-        },
-      },
-    ]);
+    const { buildDirectory, buildArtifactPath } = await createNativeBuild({
+      buildPlugin,
+      platform,
+      config,
+      scheme,
+      outputPath,
+      cwd,
+    });
+
+    // spinner.start(`📦 Build Complete (${buildPlugin.name})`);
+
+    taskRef.buildResult.buildArtifactPath = buildArtifactPath;
+    taskRef.buildResult.buildDirectory = buildDirectory;
+
     if (taskRef.buildResult.stdout) {
       p.log.success(taskRef.buildResult.stdout);
     }

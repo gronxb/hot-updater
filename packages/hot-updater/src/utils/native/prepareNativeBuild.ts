@@ -15,7 +15,6 @@ import {
   readLocalFingerprint,
 } from "@/utils/fingerprint";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
-import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import type { NativeBuildOptions } from "@/commands/buildNative";
@@ -26,7 +25,6 @@ export async function prepareNativeBuild(options: NativeBuildOptions): Promise<{
   platform: Platform;
   scheme: string;
 } | null> {
-  printBanner();
   const cwd = getCwd();
 
   if (!options.scheme && !options.interactive) {

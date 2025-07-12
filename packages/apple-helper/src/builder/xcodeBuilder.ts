@@ -1,4 +1,5 @@
-import path from "node:path";
+import fs from "fs";
+import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import { createOutputPaths } from "../utils/buildPaths";
@@ -78,6 +79,8 @@ class XcodeBuilder {
     if (options.installPods) {
       await this.installPodsIfNeeded();
     }
+
+    await fs.promises.mkdir(archiveDir, { recursive: true });
 
     const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
     const archivePath = path.join(archiveDir, archiveName);

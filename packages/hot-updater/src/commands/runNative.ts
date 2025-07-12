@@ -1,6 +1,6 @@
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
-import { selectTargetDevice } from "@/utils/native/selectTargetDevice";
+import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import { listAndroidDevices } from "@hot-updater/android-helper";
 import { getCwd } from "@hot-updater/plugin-core";
@@ -12,6 +12,7 @@ export interface NativeRunOptions extends NativeBuildOptions {
 }
 
 export const runNative = async (options: NativeRunOptions) => {
+  printBanner();
   const preparedConfig = await prepareNativeBuild(options);
   if (!preparedConfig) {
     p.log.error("preparing native build failed");
@@ -39,11 +40,11 @@ export const runNative = async (options: NativeRunOptions) => {
     };
 
     p.log.info((await listAndroidDevices()).join("\n"));
-    const { device } = await selectTargetDevice({
-      interactive: options.interactive,
-      platform,
-      deviceOption: options.device,
-    });
+    // const { device } = await selectTargetDevice({
+    //   interactive: options.interactive,
+    //   platform,
+    //   deviceOption: options.device,
+    // });
 
     await p.tasks([
       {
@@ -72,6 +73,7 @@ export const runNative = async (options: NativeRunOptions) => {
         },
       },
     ]);
+
     if (taskRef.buildResult.stdout) {
       p.log.success(taskRef.buildResult.stdout);
     }
