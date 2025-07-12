@@ -1,5 +1,5 @@
-import { execa } from "execa";
 import * as p from "@clack/prompts";
+import { execa } from "execa";
 import type { Device } from "../utils/deviceManager";
 
 /**

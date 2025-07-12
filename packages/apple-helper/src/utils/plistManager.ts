@@ -82,7 +82,7 @@ export const setKeyInPlist = async (
   plistPath: string,
   key: string,
   value: string,
-  type: string = "string",
+  type = "string",
 ): Promise<void> => {
   try {
     await plistBuddy(plistPath, `Set:${key} ${value}`, {});

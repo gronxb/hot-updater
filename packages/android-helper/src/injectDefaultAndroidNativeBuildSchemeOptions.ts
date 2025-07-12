@@ -1,4 +1,4 @@
-import {
+import type {
   NativeBuildAndroidScheme,
   RequiredDeep,
 } from "@hot-updater/plugin-core";

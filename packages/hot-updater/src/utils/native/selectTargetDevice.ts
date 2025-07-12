@@ -32,7 +32,8 @@ export const selectTargetDevice = async ({
       process.exit(1);
     }
     return { device };
-  } else if (typeof deviceOption === "string") {
+  }
+  if (typeof deviceOption === "string") {
     if (!availableDevices.includes(deviceOption)) {
       p.log.error(
         `device '${deviceOption}' isn't included in the attached devices.`,
@@ -40,7 +41,6 @@ export const selectTargetDevice = async ({
       process.exit(1);
     }
     return { device: deviceOption };
-  } else {
-    return {};
   }
+  return {};
 };

@@ -51,7 +51,9 @@ export class XcodeBuilder {
 
       // Process output for progress tracking
       const output = stdout + stderr;
-      output.split("\\n").forEach((line) => logger.processLine(line));
+      for (const line of output.split("\\n")) {
+        logger.processLine(line);
+      }
 
       logger.stop("Build completed successfully");
 
@@ -115,7 +117,9 @@ export class XcodeBuilder {
 
       // Process output for progress tracking
       const output = stdout + stderr;
-      output.split("\\n").forEach((line) => logger.processLine(line));
+      for (const line of output.split("\\n")) {
+        logger.processLine(line);
+      }
 
       logger.stop("Archive completed successfully");
 
@@ -183,9 +187,9 @@ export class XcodeBuilder {
     );
 
     if (options.destination) {
-      options.destination.forEach((dest) => {
+      for (const dest of options.destination) {
         args.push("-destination", this.resolveDestination(dest));
-      });
+      }
     }
 
     if (isArchive) {

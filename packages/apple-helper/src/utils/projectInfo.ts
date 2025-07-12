@@ -42,7 +42,8 @@ const parseTargetList = (json: string): ProjectInfo | undefined => {
 
     if ("project" in info) {
       return info.project;
-    } else if ("workspace" in info) {
+    }
+    if ("workspace" in info) {
       return info.workspace;
     }
 
@@ -176,7 +177,6 @@ export const getProjectInfo = async (
         }
       } catch (error) {
         p.log.warn(`Failed to get info for project ${location}: ${error}`);
-        continue;
       }
     }
 

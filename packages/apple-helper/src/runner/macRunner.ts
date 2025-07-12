@@ -1,5 +1,5 @@
-import { execa } from "execa";
 import * as p from "@clack/prompts";
+import { execa } from "execa";
 
 /**
  * Options for macOS app operations
@@ -28,7 +28,7 @@ export class MacRunner {
    */
   async launch(appPath: string, options: MacRunnerOptions = {}): Promise<void> {
     const spinner = p.spinner();
-    spinner.start(`Launching macOS app`);
+    spinner.start("Launching macOS app");
 
     try {
       await execa("open", [appPath], {
@@ -61,7 +61,7 @@ export class MacRunner {
     const executablePath = `${appPath}/${scheme}`;
 
     const spinner = p.spinner();
-    spinner.start(`Launching Mac Catalyst app`);
+    spinner.start("Launching Mac Catalyst app");
 
     try {
       const process = execa(executablePath, [], {
@@ -100,7 +100,7 @@ export class MacRunner {
     options: MacRunnerOptions = {},
   ): Promise<void> {
     const spinner = p.spinner();
-    spinner.start(`Opening macOS app with arguments`);
+    spinner.start("Opening macOS app with arguments");
 
     try {
       await execa("open", [appPath, "--args", ...args], {

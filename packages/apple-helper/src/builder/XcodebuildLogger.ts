@@ -176,7 +176,9 @@ export class XcodebuildLogger {
    * Resets the monitor for a new build
    */
   reset(): void {
-    this.phases.forEach((phase) => (phase.completed = false));
+    for (const phase of this.phases) {
+      phase.completed = false;
+    }
     this.currentProgress = 0;
     this.buildSucceeded = false;
   }

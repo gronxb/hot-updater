@@ -1,8 +1,8 @@
 // highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
 
+import os from "node:os";
 import { spinner } from "@clack/prompts";
 import { execa } from "execa";
-import os from "node:os";
 import { Adb } from "./adb";
 
 const emulatorCommand = process.env["ANDROID_HOME"]
@@ -115,7 +115,7 @@ const tryLaunchEmulator = async (name?: string) => {
   loader.start(`Looking for available emulators"`);
   const emulators = await getEmulators();
   const emulatorName = name ?? emulators[0];
-  let deviceId;
+  let deviceId: string | undefined;
   if (emulators.length > 0) {
     try {
       loader.message(`Launching emulator "${emulatorName}"`);

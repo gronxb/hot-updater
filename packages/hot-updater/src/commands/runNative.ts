@@ -67,9 +67,9 @@ export const runNative = async (options: NativeRunOptions) => {
         },
       },
       {
-        title: `Install Artifact`,
+        title: "Install Artifact",
         task: async () => {
-          return `Install Complete`;
+          return "Install Complete";
         },
       },
     ]);

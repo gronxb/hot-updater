@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execa } from "execa";
 import * as p from "@clack/prompts";
+import { execa } from "execa";
 import type { ApplePlatform } from "./platformSupport";
 
 /**
@@ -141,7 +141,7 @@ const parseSimctlOutput = (input: string): Device[] => {
   const deviceStateIdx = 5;
   let osVersion = "";
 
-  lines.forEach((line) => {
+  for (const line of lines) {
     const currentOsMatch = line.match(/-- (.*?) --/);
     if (currentOsMatch && currentOsMatch.length > 0) {
       osVersion = currentOsMatch[currentOSIdx];
@@ -163,7 +163,7 @@ const parseSimctlOutput = (input: string): Device[] => {
         });
       }
     }
-  });
+  }
 
   return devices;
 };

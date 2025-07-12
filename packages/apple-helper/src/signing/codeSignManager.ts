@@ -1,5 +1,5 @@
-import { execa } from "execa";
 import * as p from "@clack/prompts";
+import { execa } from "execa";
 
 /**
  * Signing identity information
@@ -159,10 +159,7 @@ export class CodeSignManager {
    * console.log(isValid); // true or false
    * ```
    */
-  async verifySignature(
-    appPath: string,
-    verbose: boolean = false,
-  ): Promise<boolean> {
+  async verifySignature(appPath: string, verbose = false): Promise<boolean> {
     try {
       const verifyArgs = ["--verify"];
 

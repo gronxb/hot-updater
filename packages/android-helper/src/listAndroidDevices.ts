@@ -1,6 +1,6 @@
 // highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
 
-import { Adb, AndroidDeviceData } from "./adb";
+import { Adb, type AndroidDeviceData } from "./adb";
 import { Emulator } from "./emulator";
 
 /**
@@ -34,10 +34,10 @@ export async function listAndroidDevices() {
   const emulators = await Emulator.getEmulators();
 
   // Find not booted ones:
-  emulators.forEach((emulatorName) => {
+  for (const emulatorName of emulators) {
     // skip those already booted
     if (allDevices.some((device) => device.readableName === emulatorName)) {
-      return;
+      continue;
     }
     const emulatorData: AndroidDeviceData = {
       deviceId: undefined,
@@ -46,7 +46,7 @@ export async function listAndroidDevices() {
       connected: false,
     };
     allDevices = [...allDevices, emulatorData];
-  });
+  }
 
   return allDevices;
 }
