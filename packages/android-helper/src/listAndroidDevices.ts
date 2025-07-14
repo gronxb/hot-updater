@@ -1,5 +1,4 @@
 // highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
-
 import { Adb, type AndroidDeviceData } from "./adb";
 import { Emulator } from "./emulator";
 
