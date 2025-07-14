@@ -1,7 +1,7 @@
 // // highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
 //
-// import fs from "node:fs";
-// import path from "node:path";
+// import fs from "fs";
+// import path from "path";
 // import type {
 //   AndroidProjectConfig,
 //   Config,

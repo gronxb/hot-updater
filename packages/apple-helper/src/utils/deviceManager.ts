@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import fs from "fs";
 import os from "node:os";
-import path from "node:path";
+import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import type { ApplePlatform } from "./platformSupport";

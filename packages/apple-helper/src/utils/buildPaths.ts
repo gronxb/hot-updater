@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "path";
 
 /**
  * Build paths configuration for Apple platform builds

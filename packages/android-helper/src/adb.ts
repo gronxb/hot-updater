@@ -1,5 +1,5 @@
 import os from "node:os";
-import path from "node:path";
+import path from "path";
 import * as p from "@clack/prompts";
 import { select, spinner } from "@clack/prompts";
 import { execa } from "execa";

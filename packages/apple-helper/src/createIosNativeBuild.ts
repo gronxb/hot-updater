@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
 import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";

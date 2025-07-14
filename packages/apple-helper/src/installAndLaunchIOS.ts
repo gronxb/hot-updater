@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "path";
 import * as p from "@clack/prompts";
 import type {
   NativeBuildIosScheme,

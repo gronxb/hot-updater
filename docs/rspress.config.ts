@@ -1,4 +1,4 @@
-import * as path from "node:path";
+import * as path from "path";
 import { pluginLlms } from "@rspress/plugin-llms";
 import {
   transformerNotationDiff,

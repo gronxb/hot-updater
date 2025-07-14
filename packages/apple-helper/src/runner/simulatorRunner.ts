@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import type { Device } from "../utils/deviceManager";
