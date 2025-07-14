@@ -4,9 +4,8 @@ import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";
 import { createXcodeBuilder } from "./builder/XcodeBuilder";
-import { validateBuildOptions } from "./builder/buildOptions";
-import type { BuildFlags } from "./builder/buildOptions";
-import { ensureXcodebuildExist } from "./utils/ensureXcodebuildExist";
+import { type BuildFlags, validateBuildOptions } from "./builder/buildOptions";
+import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 
 /**
  * Creates an iOS native build with archive and export capabilities
@@ -14,17 +13,19 @@ import { ensureXcodebuildExist } from "./utils/ensureXcodebuildExist";
 export const createIosNativeBuild = async ({
   schemeConfig,
   outputPath,
+  forceArchive = false,
 }: {
   schemeConfig: NativeBuildIosScheme;
   outputPath: string;
+  forceArchive?: boolean;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
-  await ensureXcodebuildExist();
+  await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
   const buildFlags: BuildFlags = validateBuildOptions({
     scheme: schemeConfig.scheme,
     configuration: schemeConfig.buildConfiguration,
-    archive: true, // Always create archive for distribution
+    archive: forceArchive ? forceArchive : schemeConfig.archive,
     installPods: true,
     exportOptionsPlist: schemeConfig.exportOptionsPlist,
   });
