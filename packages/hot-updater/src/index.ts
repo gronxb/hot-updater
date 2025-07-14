@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import {
+  deviceCommandOption,
   interactiveCommandOption,
+  nativeBuildOutputCommandOption,
+  nativeBuildSchemeCommandOption,
   platformCommandOption,
 } from "@/commandOptions";
-import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
@@ -15,12 +17,14 @@ import { Command, Option } from "@commander-js/extra-typings";
 import { banner, log } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
+import { type NativeBuildOptions, nativeBuild } from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
+import { type NativeRunOptions, runNative } from "./commands/runNative";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -137,19 +141,10 @@ if (process.env["NODE_ENV"] === "development") {
   program
     .command("build:native")
     .description("build a new native artifact and deploy")
-    .addOption(
-      new Option("-p, --platform <platform>", "specify the platform").choices([
-        "ios",
-        "android",
-      ]),
-    )
-    .addOption(
-      new Option(
-        "-o, --output-path <outputPath>",
-        "the path where the artifacts will be generated",
-      ),
-    )
+    .addOption(platformCommandOption)
+    .addOption(nativeBuildOutputCommandOption)
     .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
     .addOption(
       new Option(
         "-m, --message <message>",
@@ -158,6 +153,24 @@ if (process.env["NODE_ENV"] === "development") {
     )
     .action(async (options: NativeBuildOptions) => {
       nativeBuild(options);
+    });
+
+  program
+    .command("run:native")
+    .description("build a new native artifact and run to device or simulator")
+    .addOption(platformCommandOption)
+    .addOption(nativeBuildOutputCommandOption)
+    .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
+    .addOption(deviceCommandOption)
+    .addOption(
+      new Option(
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+      ),
+    )
+    .action(async (options: NativeRunOptions) => {
+      runNative(options);
     });
 }
 

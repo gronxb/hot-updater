@@ -53,8 +53,8 @@
     "@hot-updater/postgres": "workspace:*",
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",
-    "execa": "^9.5.2",
+    "execa": "catalog:",
     "mime": "^4.0.4",
-    "picocolors": "^1.0.0"
+    "picocolors": "catalog:"
   }
 }

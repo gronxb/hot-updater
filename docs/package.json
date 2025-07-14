@@ -11,7 +11,7 @@
   "devDependencies": {
     "@shikijs/transformers": "^3.4.2",
     "@rspress/plugin-llms": "^2.0.0-beta.8",
-    "@types/node": "^18.11.17",
+    "@types/node": "catalog:",
     "rspress": "^2.0.0-beta.8"
   }
 }

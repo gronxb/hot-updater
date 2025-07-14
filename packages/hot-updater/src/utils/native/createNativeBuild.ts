@@ -1,0 +1,37 @@
+import fs from "fs";
+import path from "path";
+import * as p from "@clack/prompts";
+import type { Platform } from "@hot-updater/core";
+import { type BuildPlugin, getCwd } from "@hot-updater/plugin-core";
+import picocolors from "picocolors";
+
+export const createNativeBuild = async ({
+  platform,
+  outputPath,
+  buildPlugin,
+  builder,
+}: {
+  platform: Platform;
+  outputPath: string;
+  buildPlugin: BuildPlugin;
+  builder: () => Promise<{ buildDirectory: string; buildArtifactPath: string }>;
+}): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+  await buildPlugin.nativeBuild?.prebuild?.({ platform });
+  const { buildArtifactPath, buildDirectory } = await builder();
+  await buildPlugin.nativeBuild?.postbuild?.({ platform });
+
+  await fs.promises.mkdir(outputPath, { recursive: true });
+  await fs.promises.rm(outputPath, {
+    recursive: true,
+    force: true,
+  });
+  await fs.promises.cp(buildDirectory, outputPath, {
+    recursive: true,
+  });
+
+  p.log.success(
+    `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), outputPath))}.`,
+  );
+
+  return { buildArtifactPath, buildDirectory };
+};

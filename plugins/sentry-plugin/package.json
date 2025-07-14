@@ -47,6 +47,6 @@
     "@sentry/cli": "2.46.0"
   },
   "devDependencies": {
-    "@types/node": "^20.9.4"
+    "@types/node": "catalog:"
   }
 }
