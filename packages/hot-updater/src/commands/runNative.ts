@@ -1,8 +1,12 @@
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
+import { installAndLaunch } from "@/utils/native/installAndLaunch";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
-import { listAndroidDevices } from "@hot-updater/android-helper";
+import {
+  type AndroidDeviceData,
+  selectAndroidTargetDevice,
+} from "@hot-updater/android-helper";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import type { NativeBuildOptions } from "./buildNative";
@@ -39,17 +43,26 @@ export const runNative = async (options: NativeRunOptions) => {
       },
     };
 
-    p.log.info((await listAndroidDevices()).join("\n"));
-    // const { device } = await selectTargetDevice({
-    //   interactive: options.interactive,
-    //   platform,
-    //   deviceOption: options.device,
-    // });
+    let androidDevice: AndroidDeviceData | undefined;
+    // TODO: select ios device
+    const iosDevice: any | undefined = undefined;
+
+    if (platform === "android") {
+      androidDevice = (
+        await selectAndroidTargetDevice({
+          interactive: options.interactive,
+          deviceOption: options.device,
+        })
+      ).device;
+    }
+    if (platform === "ios") {
+    }
 
     await p.tasks([
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
+          await installAndLaunch();
           const { buildDirectory, buildArtifactPath } = await createNativeBuild(
             {
               buildPlugin,

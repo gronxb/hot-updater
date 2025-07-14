@@ -2,6 +2,11 @@ import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
+import {
+  createAndroidNativeBuild,
+  enrichAndroidNativeBuildSchemeOptions,
+} from "@hot-updater/android-helper";
+import { createIosNativeBuild } from "@hot-updater/apple-helper";
 import type { Platform } from "@hot-updater/core";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
@@ -68,13 +73,22 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
     p.log.info(`📦 Building Native (${buildPlugin.name}) Started`);
 
+    const builder =
+      platform === "android"
+        ? () =>
+            createAndroidNativeBuild({
+              schemeConfig: enrichAndroidNativeBuildSchemeOptions(
+                config.nativeBuild.android[scheme]!,
+                {},
+              ),
+            })
+        : () => createIosNativeBuild({});
+
     const { buildDirectory, buildArtifactPath } = await createNativeBuild({
       buildPlugin,
       platform,
-      config,
-      scheme,
       outputPath,
-      cwd,
+      builder,
     });
 
     // spinner.start(`📦 Build Complete (${buildPlugin.name})`);

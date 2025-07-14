@@ -21,6 +21,6 @@ export const nativeBuildOutputCommandOption = new Option(
 );
 
 export const deviceCommandOption = new Option(
-  "-d, --device [deviceName]",
+  "-d, --device [deviceName | deviceId]",
   "specify the ADB device name or use default",
 );
