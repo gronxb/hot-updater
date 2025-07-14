@@ -1,5 +1,5 @@
 import {
-  injectDefaultAndroidNativeBuildSchemeOptions,
+  enrichAndroidNativeBuildSchemeOptions,
   installAndLaunchAndroid,
 } from "@hot-updater/android-helper";
 import { installAndLaunchIOS } from "@hot-updater/apple-helper";
@@ -17,8 +17,9 @@ export async function installAndLaunch({
   buildArtifactPath: string;
 }) {
   if (platform === "android") {
-    const schemeConfig = injectDefaultAndroidNativeBuildSchemeOptions(
+    const schemeConfig = enrichAndroidNativeBuildSchemeOptions(
       config.android[scheme]!,
+      {},
     );
     await installAndLaunchAndroid({ schemeConfig, buildArtifactPath });
   } else if (platform === "ios") {

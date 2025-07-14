@@ -82,7 +82,11 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
                 {},
               ),
             })
-        : () => createIosNativeBuild({});
+        : () =>
+            createIosNativeBuild({
+              schemeConfig: config.nativeBuild.ios[scheme]! as any,
+              outputPath,
+            });
 
     const { buildDirectory, buildArtifactPath } = await createNativeBuild({
       buildPlugin,
