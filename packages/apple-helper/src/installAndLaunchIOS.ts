@@ -6,7 +6,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";
 import { createXcodeBuilder } from "./builder/XcodeBuilder";
-import { validateBuildOptions } from "./builder/buildOptions";
+import { enrichIosNativeBuildSchemeOptions } from "./builder/buildOptions";
 import type { BuildFlags } from "./builder/buildOptions";
 import { createDeviceMatcher } from "./runner/deviceMatcher";
 import { createDeviceRunner } from "./runner/deviceRunner";
@@ -72,7 +72,7 @@ export const installAndLaunchIOS = async ({
   if (build && !appPath) {
     p.log.info("Building iOS app for installation...");
 
-    const buildFlags: BuildFlags = validateBuildOptions({
+    const buildFlags: BuildFlags = enrichIosNativeBuildSchemeOptions({
       scheme: schemeConfig.scheme,
       configuration: schemeConfig.buildConfiguration || "Debug",
       archive: false, // Build .app, not archive
@@ -183,18 +183,6 @@ async function selectTargetDevice(target: string) {
 
 /**
  * Builds iOS app for device/simulator installation
- * @param schemeConfig - iOS build scheme configuration
- * @param destination - Build destination (device/simulator)
- * @returns Path to built .app bundle
- *
- * @example
- * ```typescript
- * const appPath = await buildIosApp({
- *   scheme: "MyApp",
- *   buildConfiguration: "Debug"
- * }, "simulator");
- * console.log(appPath); // "/path/to/MyApp.app"
- * ```
  */
 export const buildIosApp = async (
   schemeConfig: RequiredDeep<NativeBuildIosScheme>,
@@ -202,10 +190,10 @@ export const buildIosApp = async (
 ): Promise<string> => {
   const iosProjectRoot = path.join(getCwd(), "ios");
 
-  const buildFlags: BuildFlags = validateBuildOptions({
+  const buildFlags: BuildFlags = enrichIosNativeBuildSchemeOptions({
     scheme: schemeConfig.scheme,
     configuration: schemeConfig.buildConfiguration || "Debug",
-    destination: [destination],
+    destination,
     archive: false,
     installPods: true,
   });

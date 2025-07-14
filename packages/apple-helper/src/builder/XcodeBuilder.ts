@@ -187,9 +187,7 @@ export class XcodeBuilder {
     );
 
     if (options.destination) {
-      for (const dest of options.destination) {
-        args.push("-destination", this.resolveDestination(dest));
-      }
+      args.push("-destination", this.resolveDestination(options.destination));
     }
 
     if (isArchive) {

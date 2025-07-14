@@ -1,10 +1,13 @@
 import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";
 import { createXcodeBuilder } from "./builder/XcodeBuilder";
-import { type BuildFlags, validateBuildOptions } from "./builder/buildOptions";
+import {
+  type BuildFlags,
+  enrichIosNativeBuildSchemeOptions,
+} from "./builder/buildOptions";
+import type { EnrichedNativeBuildIosScheme } from "./types";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 
 /**
@@ -13,19 +16,17 @@ import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 export const createIosNativeBuild = async ({
   schemeConfig,
   outputPath,
-  forceArchive = false,
 }: {
-  schemeConfig: NativeBuildIosScheme;
+  schemeConfig: EnrichedNativeBuildIosScheme;
   outputPath: string;
-  forceArchive?: boolean;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
-  const buildFlags: BuildFlags = validateBuildOptions({
+  const buildFlags: BuildFlags = enrichIosNativeBuildSchemeOptions({
     scheme: schemeConfig.scheme,
     configuration: schemeConfig.buildConfiguration,
-    archive: forceArchive ? forceArchive : schemeConfig.archive,
+    archive: true,
     installPods: true,
     exportOptionsPlist: schemeConfig.exportOptionsPlist,
   });

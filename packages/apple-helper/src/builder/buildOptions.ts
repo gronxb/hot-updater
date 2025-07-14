@@ -18,8 +18,8 @@ export interface BuildFlags {
   exportExtraParams?: string[];
   /** Path to ExportOptions.plist file */
   exportOptionsPlist?: string;
-  /** Build destinations (simulator, device, or xcodebuild format) */
-  destination?: string[];
+  /** Build destination (simulator, device, or xcodebuild format) */
+  destination?: string;
   /** Create archive for App Store distribution */
   archive: boolean;
   /** Automatically install CocoaPods dependencies */
@@ -113,26 +113,19 @@ export const getSdkForPlatform = (
 };
 
 /**
- * Default build configurations
- */
-export const defaultBuildConfig = {
-  configuration: "Release",
-  scheme: "Release",
-  verbose: false,
-  installPods: true,
-  archive: false,
-} as const;
-
-/**
  * Validates build options and fills in defaults
  * @param options - Partial build options
  * @returns Complete build options with defaults applied
  */
-export const validateBuildOptions = (
+export const enrichIosNativeBuildSchemeOptions = (
   options: Partial<BuildFlags>,
 ): BuildFlags => {
   return {
-    ...defaultBuildConfig,
+    configuration: "Release",
+    scheme: "Release",
+    verbose: false,
+    installPods: true,
+    archive: false,
     ...options,
   };
 };
