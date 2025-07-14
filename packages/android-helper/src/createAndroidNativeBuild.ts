@@ -1,15 +1,11 @@
 import path from "path";
-import {
-  type NativeBuildAndroidScheme,
-  type RequiredDeep,
-  generateMinBundleId,
-  getCwd,
-} from "@hot-updater/plugin-core";
-import { runGradle } from "./gradle";
+import { generateMinBundleId, getCwd } from "@hot-updater/plugin-core";
+import type { EnrichedNativeBuildAndroidScheme } from "./types";
+import { runGradle } from "./utils/gradle";
 export const createAndroidNativeBuild = async ({
   schemeConfig,
 }: {
-  schemeConfig: RequiredDeep<NativeBuildAndroidScheme>;
+  schemeConfig: EnrichedNativeBuildAndroidScheme;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   const androidProjectPath = path.join(getCwd(), "android");
 

@@ -1,18 +1,16 @@
 import * as p from "@clack/prompts";
-import { Adb } from "@hot-updater/android-helper";
-import type { Platform } from "@hot-updater/core";
+import type { AndroidDeviceData } from "./types";
+import { listAndroidDevices } from "./utils/listAndroidDevices";
 
-export const selectTargetDevice = async ({
+export const selectAndroidTargetDevice = async ({
   interactive,
   deviceOption,
 }: {
-  platform: Platform;
   deviceOption?: string | boolean;
   interactive: boolean;
-}): Promise<{ device?: string }> => {
-  // TODO: iOS device select logic
-  const availableDevices = await Adb.getDevices();
-  if (deviceOption === true && interactive) {
+}): Promise<{ device?: AndroidDeviceData }> => {
+  const availableDevices = await listAndroidDevices();
+  if (deviceOption === true && !interactive) {
     p.log.error(
       "you can't select device manually with non-interactive cli mode(without -i option).",
     );
@@ -26,7 +24,10 @@ export const selectTargetDevice = async ({
     }
     const device = await p.select({
       message: "Target Device",
-      options: availableDevices.map((d) => ({ value: d, label: d })),
+      options: availableDevices.map((d) => ({
+        value: d,
+        label: d.readableName,
+      })),
     });
     if (p.isCancel(device)) {
       process.exit(1);
@@ -34,13 +35,22 @@ export const selectTargetDevice = async ({
     return { device };
   }
   if (typeof deviceOption === "string") {
-    if (!availableDevices.includes(deviceOption)) {
+    const matchedDevice = matchingDevice(availableDevices, deviceOption);
+    if (!matchedDevice) {
       p.log.error(
         `device '${deviceOption}' isn't included in the attached devices.`,
       );
       process.exit(1);
     }
-    return { device: deviceOption };
+    return { device: matchedDevice };
   }
-  return {};
+  return { device: undefined };
 };
+
+function matchingDevice(devices: Array<AndroidDeviceData>, deviceArg: string) {
+  const deviceByName = devices.find(
+    (device) => device.readableName === deviceArg,
+  );
+  const deviceById = devices.find((d) => d.deviceId === deviceArg);
+  return deviceByName || deviceById;
+}

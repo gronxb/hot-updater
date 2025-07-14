@@ -4,7 +4,7 @@ import type {
   RequiredDeep,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import { Adb } from "./adb";
+import { Adb } from "./utils/adb";
 
 export const installAndLaunchAndroid = async ({
   schemeConfig,

@@ -3,6 +3,7 @@ import path from "path";
 import * as p from "@clack/prompts";
 import { select, spinner } from "@clack/prompts";
 import { execa } from "execa";
+import type { AndroidUser } from "../types";
 
 /**
  * Get the path to adb executable from ANDROID_HOME or use system adb
@@ -73,19 +74,6 @@ async function tryRunAdbReverse(packagerPort: number | string, device: string) {
   }
 }
 
-export type AndroidDeviceData = {
-  deviceId: string | undefined;
-  readableName: string;
-  connected: boolean;
-  type: "emulator" | "phone";
-};
-
-// User management functions
-type User = {
-  id: string;
-  name: string;
-};
-
 const userRegex = new RegExp(
   /^\s*UserInfo\{(?<userId>\d+):(?<userName>.*):(?<userFlags>[0-9a-f]*)}/,
 );
@@ -93,7 +81,7 @@ const userRegex = new RegExp(
 /**
  * Check users on Android device
  */
-const checkUsers = async (device: string): Promise<User[]> => {
+const checkUsers = async (device: string): Promise<AndroidUser[]> => {
   const adbPath = getAdbPath();
   const adbArgs = ["-s", device, "shell", "pm", "list", "users"];
   const loader = spinner();
@@ -118,7 +106,7 @@ const checkUsers = async (device: string): Promise<User[]> => {
     }
 
     loader.stop(`Found ${users.length} users on "${device}".`);
-    return users as User[];
+    return users as AndroidUser[];
   } catch (error) {
     loader.stop(
       `Unexpected error while checking users of "${device}". Continuing without user selection. Error details: ${
@@ -210,4 +198,4 @@ export const Adb = {
   isEmulatorBooted,
 };
 
-export type { User };
+export type { AndroidUser as User };
