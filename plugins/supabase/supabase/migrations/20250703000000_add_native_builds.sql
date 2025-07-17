@@ -9,7 +9,6 @@ CREATE TABLE native_builds (
     file_hash text NOT NULL,
     file_size bigint NOT NULL,
     channel text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
     metadata jsonb
 );
 

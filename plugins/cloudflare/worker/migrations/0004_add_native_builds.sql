@@ -9,7 +9,6 @@ CREATE TABLE native_builds (
     file_hash TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     channel TEXT NOT NULL,
-    created_at DATETIME DEFAULT (datetime('now')) NOT NULL,
     metadata TEXT
 );
 
