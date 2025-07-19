@@ -23,6 +23,8 @@ export default function NativeBuildsPage() {
   }));
 
   const selectedBuildQuery = useNativeBuildQuery(buildIdFilter() || "");
+  
+  console.log("selectedBuildQuery.data:", selectedBuildQuery.data);
 
   const isOpen = createMemo(() => buildIdFilter() !== null);
 

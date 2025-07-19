@@ -6,7 +6,14 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useNativeBuildDownloadUrlQuery } from "@/lib/api";
-import { Download, Hash, Package, Package2 } from "lucide-solid";
+import {
+  Download,
+  HardDrive,
+  Hash,
+  Package,
+  Package2,
+  Tag,
+} from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { Show, createMemo } from "solid-js";
 import type { NativeBuild } from "./native-builds-columns";
@@ -17,6 +24,7 @@ interface NativeBuildSheetContentProps {
 }
 
 export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
+  console.log("NativeBuildSheetContent props.build:", props.build);
   const downloadUrlQuery = useNativeBuildDownloadUrlQuery(props.build.id);
 
   const downloadUrl = createMemo(() => {
@@ -56,7 +64,7 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
         <div class="space-y-4">
           <h3 class="text-lg font-semibold">Basic Information</h3>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-2">
               <label
                 for="nativeVersion"
@@ -102,6 +110,34 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
               </div>
             </div>
 
+            <div class="space-y-2">
+              <label
+                for="channel"
+                class="text-sm font-medium text-muted-foreground"
+              >
+                Channel
+              </label>
+              <div class="flex items-center gap-2">
+                <Tag size={16} />
+                <span class="font-mono">{props.build.channel}</span>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label
+                for="fileSize"
+                class="text-sm font-medium text-muted-foreground"
+              >
+                File Size
+              </label>
+              <div class="flex items-center gap-2">
+                <HardDrive size={16} />
+                <span class="text-sm">
+                  {(props.build.fileSize / 1024 / 1024).toFixed(2)} MB
+                </span>
+              </div>
+            </div>
+
             <div class="space-y-2 col-span-2">
               <label
                 for="fingerprintHash"
@@ -116,10 +152,42 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
                 </span>
               </div>
             </div>
+
+            <div class="space-y-2 col-span-2">
+              <label
+                for="fileHash"
+                class="text-sm font-medium text-muted-foreground"
+              >
+                File Hash
+              </label>
+              <div class="flex items-center gap-2">
+                <Hash size={16} />
+                <span class="font-mono text-sm break-all">
+                  {props.build.fileHash}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
         <hr class="border-gray-200" />
+
+        {/* Metadata */}
+        <Show
+          when={
+            props.build.metadata && Object.keys(props.build.metadata).length > 0
+          }
+        >
+          <div class="space-y-4">
+            <h3 class="text-lg font-semibold">Metadata</h3>
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <pre class="text-sm font-mono overflow-x-auto">
+                {JSON.stringify(props.build.metadata, null, 2)}
+              </pre>
+            </div>
+          </div>
+          <hr class="border-gray-200" />
+        </Show>
 
         {/* Bundle Compatibility */}
         <div class="space-y-4">

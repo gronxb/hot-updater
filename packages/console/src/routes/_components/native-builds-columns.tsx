@@ -16,8 +16,11 @@ export interface NativeBuild {
   nativeVersion: string;
   platform: "ios" | "android";
   fingerprintHash: string;
-  minBundleId?: string;
-  downloadUrl?: string;
+  storageUri: string;
+  fileHash: string;
+  fileSize: number;
+  channel: string;
+  metadata?: Record<string, any>;
 }
 
 export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [
@@ -44,6 +47,11 @@ export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [
         </div>
       );
     },
+  },
+  {
+    accessorKey: "channel",
+    header: "Channel",
+    cell: (info) => info.getValue(),
   },
   {
     accessorKey: "platform",
