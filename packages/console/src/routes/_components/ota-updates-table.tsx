@@ -3,6 +3,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useBundlesByFingerprintQuery } from "@/lib/api";
 import { extractDateFromUUIDv7 } from "@/lib/utils";
 import type { Bundle } from "@hot-updater/core";
 import {
@@ -14,7 +15,7 @@ import {
 import dayjs from "dayjs";
 import { Check, X } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
-import { For, Show } from "solid-js";
+import { For, Show, createMemo } from "solid-js";
 
 const otaUpdatesColumns: ColumnDef<Bundle>[] = [
   {
@@ -103,15 +104,18 @@ const otaUpdatesColumns: ColumnDef<Bundle>[] = [
 ];
 
 interface OtaUpdatesTableProps {
-  data: Bundle[];
-  isLoading?: boolean;
+  fingerprintHash: string;
   onRowClick?: (bundle: Bundle) => void;
 }
 
 export function OtaUpdatesTable(props: OtaUpdatesTableProps) {
+  const bundlesQuery = useBundlesByFingerprintQuery(props.fingerprintHash);
+
+  const bundles = createMemo(() => bundlesQuery.data?.data || []);
+
   const table = createSolidTable({
     get data() {
-      return props.data || [];
+      return bundles();
     },
     columns: otaUpdatesColumns,
     getCoreRowModel: getCoreRowModel(),
@@ -119,19 +123,27 @@ export function OtaUpdatesTable(props: OtaUpdatesTableProps) {
 
   return (
     <div class="space-y-4">
-      <Show when={props.isLoading}>
+      <Show when={bundlesQuery.isLoading}>
         <div class="flex justify-center py-8">
           <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
         </div>
       </Show>
 
-      <Show when={!props.isLoading && props.data?.length === 0}>
+      <Show
+        when={!bundlesQuery.isLoading && bundlesQuery.data?.data?.length === 0}
+      >
         <div class="text-center py-8 text-muted-foreground">
           No OTA updates found for this native build.
         </div>
       </Show>
 
-      <Show when={!props.isLoading && props.data?.length > 0}>
+      <Show
+        when={
+          !bundlesQuery.isLoading &&
+          bundlesQuery.data?.data &&
+          bundlesQuery.data.data.length > 0
+        }
+      >
         <div class="rounded-md border">
           <table class="w-full">
             <thead>

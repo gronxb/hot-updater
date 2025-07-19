@@ -220,8 +220,7 @@ function ExpandedRowContent(props: {
           }
         >
           <OtaUpdatesTable
-            data={bundlesQuery.data?.data || []}
-            isLoading={bundlesQuery.isLoading}
+            fingerprintHash={props.build.fingerprintHash}
             onRowClick={props.onOtaRowClick}
           />
         </Show>

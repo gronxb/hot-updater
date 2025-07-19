@@ -27,7 +27,7 @@ export const useBundlesQuery = (
 
 export const useBundlesByFingerprintQuery = (fingerprintHash: string) =>
   useQuery(() => ({
-    queryKey: ['bundles-by-fingerprint', fingerprintHash],
+    queryKey: ['bundles', 'fingerprint', fingerprintHash],
     queryFn: async () => {
       const res = await api.bundles.$get({ 
         query: { 
