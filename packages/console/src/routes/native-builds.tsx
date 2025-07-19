@@ -1,11 +1,11 @@
 import { Sheet } from "@/components/ui/sheet";
 import { useFilter } from "@/hooks/useFilter";
 import { useNativeBuildQuery, useNativeBuildsQuery } from "@/lib/api";
-import { Show, Suspense, createMemo, createSignal } from "solid-js";
-import { NativeBuildSheetContent } from "./_components/native-build-sheet-content";
-import { EditBundleSheetContent } from "./_components/edit-bundle-sheet-content";
-import { NativeBuilds } from "./_components/native-builds";
 import type { Bundle } from "@hot-updater/core";
+import { Show, Suspense, createMemo, createSignal } from "solid-js";
+import { EditBundleSheetContent } from "./_components/edit-bundle-sheet-content";
+import { NativeBuildSheetContent } from "./_components/native-build-sheet-content";
+import { NativeBuilds } from "./_components/native-builds";
 
 export default function NativeBuildsPage() {
   const { buildIdFilter, setBuildIdFilter } = useFilter();
@@ -104,10 +104,10 @@ export default function NativeBuildsPage() {
           isLoading={nativeBuildsQuery.isLoading}
           error={nativeBuildsQuery.error}
         />
-        <Show when={buildIdFilter() && selectedBuildQuery.data}>
+        <Show when={buildIdFilter()}>
           <Suspense>
             <NativeBuildSheetContent
-              build={selectedBuildQuery.data!}
+              buildId={buildIdFilter()!}
               onClose={handleBuildSheetClose}
             />
           </Suspense>
