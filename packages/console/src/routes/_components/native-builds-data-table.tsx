@@ -136,8 +136,8 @@ export function NativeBuildsDataTable(props: NativeBuildsDataTableProps) {
                       <Show when={isExpanded()}>
                         <TableRow>
                           <TableCell colSpan={props.columns.length} class="p-0">
-                            <ExpandedRowContent 
-                              build={row.original} 
+                            <ExpandedRowContent
+                              build={row.original}
                               onOtaRowClick={props.onOtaRowClick}
                             />
                           </TableCell>
@@ -183,9 +183,9 @@ export function NativeBuildsDataTable(props: NativeBuildsDataTableProps) {
   );
 }
 
-function ExpandedRowContent(props: { 
-  build: NativeBuild; 
-  onOtaRowClick?: (bundle: Bundle) => void; 
+function ExpandedRowContent(props: {
+  build: NativeBuild;
+  onOtaRowClick?: (bundle: Bundle) => void;
 }) {
   const bundlesQuery = useBundlesByFingerprintQuery(
     props.build.fingerprintHash,

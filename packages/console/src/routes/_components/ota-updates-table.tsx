@@ -157,8 +157,8 @@ export function OtaUpdatesTable(props: OtaUpdatesTableProps) {
             <tbody>
               <For each={table.getRowModel().rows}>
                 {(row) => (
-                  <tr 
-                    class={`border-b transition-colors hover:bg-muted/50 ${props.onRowClick ? 'cursor-pointer' : ''}`}
+                  <tr
+                    class={`border-b transition-colors hover:bg-muted/50 ${props.onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => props.onRowClick?.(row.original)}
                   >
                     <For each={row.getVisibleCells()}>
