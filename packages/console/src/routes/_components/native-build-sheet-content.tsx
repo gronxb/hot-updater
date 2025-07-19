@@ -5,6 +5,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useNativeBuildDownloadUrlQuery } from "@/lib/api";
 import {
   Download,
@@ -64,8 +69,9 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
         <div class="space-y-4">
           <h3 class="text-lg font-semibold">Basic Information</h3>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="space-y-2">
+          {/* Native Version and Platform - side by side */}
+          <div class="flex gap-4">
+            <div class="flex-1 space-y-2">
               <label
                 for="nativeVersion"
                 class="text-sm font-medium text-muted-foreground"
@@ -78,7 +84,7 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
               </div>
             </div>
 
-            <div class="space-y-2">
+            <div class="flex-1 space-y-2">
               <label
                 for="platform"
                 class="text-sm font-medium text-muted-foreground"
@@ -96,17 +102,27 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
                 </Show>
               </div>
             </div>
+          </div>
 
+          {/* Other fields - full width */}
+          <div class="space-y-4">
             <div class="space-y-2">
               <label
                 for="buildId"
                 class="text-sm font-medium text-muted-foreground"
               >
-                Build ID
+                Min Bundle ID
               </label>
-              <div class="flex items-center gap-2">
+              <div class="flex gap-2">
                 <Package2 size={16} />
-                <span class="font-mono text-sm">{props.build.id}</span>
+                <Tooltip openDelay={0} closeDelay={0}>
+                  <TooltipTrigger class="font-mono text-sm">
+                    {props.build.id.slice(0, 8)}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p class="font-mono text-sm">{props.build.id}</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
@@ -138,33 +154,25 @@ export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
               </div>
             </div>
 
-            <div class="space-y-2 col-span-2">
+            <div class="space-y-2">
               <label
                 for="fingerprintHash"
                 class="text-sm font-medium text-muted-foreground"
               >
                 Fingerprint Hash
               </label>
-              <div class="flex items-center gap-2">
+              <div class="flex gap-2">
                 <Hash size={16} />
-                <span class="font-mono text-sm break-all">
-                  {props.build.fingerprintHash}
-                </span>
-              </div>
-            </div>
-
-            <div class="space-y-2 col-span-2">
-              <label
-                for="fileHash"
-                class="text-sm font-medium text-muted-foreground"
-              >
-                File Hash
-              </label>
-              <div class="flex items-center gap-2">
-                <Hash size={16} />
-                <span class="font-mono text-sm break-all">
-                  {props.build.fileHash}
-                </span>
+                <Tooltip openDelay={0} closeDelay={0}>
+                  <TooltipTrigger class="font-mono text-sm">
+                    {props.build.fingerprintHash.slice(0, 8)}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p class="font-mono text-sm">
+                      {props.build.fingerprintHash}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </div>
