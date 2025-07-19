@@ -7,6 +7,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useBundlesByFingerprintQuery } from "@/lib/api";
+import type { Bundle } from "@hot-updater/core";
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -18,12 +20,10 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
 } from "@tanstack/solid-table";
-import { useBundlesByFingerprintQuery } from "@/lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-solid";
 import { For, Show, createSignal } from "solid-js";
 import type { NativeBuild } from "./native-builds-columns";
 import { OtaUpdatesTable } from "./ota-updates-table";
-import type { Bundle } from "@hot-updater/core";
 
 interface NativeBuildsDataTableProps {
   columns: ColumnDef<NativeBuild>[];

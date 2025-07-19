@@ -1,10 +1,10 @@
+import type { Bundle } from "@hot-updater/core";
 import { Show } from "solid-js";
 import {
   type NativeBuild,
   createNativeBuildsColumns,
 } from "./native-builds-columns";
 import { NativeBuildsDataTable } from "./native-builds-data-table";
-import type { Bundle } from "@hot-updater/core";
 
 interface NativeBuildsProps {
   data: NativeBuild[];
