@@ -18,7 +18,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
 } from "@tanstack/solid-table";
-import { ChevronLeft, ChevronRight, Search } from "lucide-solid";
+import { ChevronLeft, ChevronRight } from "lucide-solid";
 import { For, Show, createSignal } from "solid-js";
 import type { NativeBuild } from "./native-builds-columns";
 
@@ -60,22 +60,6 @@ export function NativeBuildsDataTable(props: NativeBuildsDataTableProps) {
 
   return (
     <div class="space-y-4">
-      {/* Search and Filters */}
-      <div class="flex items-center space-x-2">
-        <div class="relative flex-1 max-w-sm">
-          <Search class="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={globalFilter()}
-            onInput={(e) =>
-              setGlobalFilter((e.currentTarget as HTMLInputElement).value)
-            }
-            class="pl-8 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="Search native builds..."
-          />
-        </div>
-      </div>
-
       {/* Table */}
       <div class="rounded-md border">
         <Table>
@@ -99,15 +83,6 @@ export function NativeBuildsDataTable(props: NativeBuildsDataTableProps) {
                               header.column.columnDef.header,
                               header.getContext(),
                             )}
-                            <Show when={header.column.getCanSort()}>
-                              <span class="text-xs">
-                                {{
-                                  asc: " ↑",
-                                  desc: " ↓",
-                                }[header.column.getIsSorted() as string] ??
-                                  " ↕"}
-                              </span>
-                            </Show>
                           </div>
                         </Show>
                       </TableHead>

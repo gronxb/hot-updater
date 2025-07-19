@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { showToast } from "@/components/ui/toast";
-import { createBundleDeleteMutation } from "@/lib/api";
+import { useBundleDeleteMutation } from "@/lib/api";
 import { CloseButton as AlertDialogCloseButton } from "@kobalte/core/alert-dialog";
 import { Trash2 } from "lucide-solid";
 import { Show } from "solid-js";
@@ -22,7 +22,7 @@ export const DeleteBundleDialog = ({
   bundleId,
   onDeleteSuccess,
 }: DeleteBundleDialogProps) => {
-  const deleteMutation = createBundleDeleteMutation();
+  const deleteMutation = useBundleDeleteMutation();
 
   const handleDelete = () => {
     deleteMutation.mutate(bundleId, {

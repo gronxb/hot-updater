@@ -1,6 +1,6 @@
 import { Sheet } from "@/components/ui/sheet";
 import { useFilter } from "@/hooks/useFilter";
-import { createNativeBuildQuery, createNativeBuildsQuery } from "@/lib/api";
+import { useNativeBuildQuery, useNativeBuildsQuery } from "@/lib/api";
 import { Show, Suspense, createMemo, createSignal } from "solid-js";
 import { NativeBuildSheetContent } from "./_components/native-build-sheet-content";
 import { NativeBuilds } from "./_components/native-builds";
@@ -15,14 +15,14 @@ export default function NativeBuildsPage() {
     undefined,
   );
 
-  const nativeBuildsQuery = createNativeBuildsQuery(() => ({
+  const nativeBuildsQuery = useNativeBuildsQuery(() => ({
     platform: platformFilter(),
     channel: channelFilter(),
     limit: "50",
     offset: "0",
   }));
 
-  const selectedBuildQuery = createNativeBuildQuery(buildIdFilter() || "");
+  const selectedBuildQuery = useNativeBuildQuery(buildIdFilter() || "");
 
   const isOpen = createMemo(() => buildIdFilter() !== null);
 

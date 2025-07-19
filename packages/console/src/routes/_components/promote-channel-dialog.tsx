@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/combobox";
 import { TextField, TextFieldLabel } from "@/components/ui/text-field";
 import { showToast } from "@/components/ui/toast";
-import { api, createChannelsQuery } from "@/lib/api";
+import { api, useChannelsQuery } from "@/lib/api";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { CloseButton as AlertDialogCloseButton } from "@kobalte/core/alert-dialog";
 import { useQueryClient } from "@tanstack/solid-query";
@@ -32,7 +32,7 @@ export interface PromoteChannelDialogProps {
 
 export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
   const queryClient = useQueryClient();
-  const channels = createChannelsQuery();
+  const channels = useChannelsQuery();
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [selectedChannel, setSelectedChannel] = createSignal(bundle.channel);
   const [open, setOpen] = createSignal(false);

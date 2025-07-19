@@ -5,7 +5,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { createNativeBuildDownloadUrlQuery } from "@/lib/api";
+import { useNativeBuildDownloadUrlQuery } from "@/lib/api";
 import { Download, Hash, Package, Package2 } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { Show, createMemo } from "solid-js";
@@ -17,7 +17,7 @@ interface NativeBuildSheetContentProps {
 }
 
 export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
-  const downloadUrlQuery = createNativeBuildDownloadUrlQuery(props.build.id);
+  const downloadUrlQuery = useNativeBuildDownloadUrlQuery(props.build.id);
 
   const downloadUrl = createMemo(() => {
     const data = downloadUrlQuery.data;

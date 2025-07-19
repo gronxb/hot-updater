@@ -11,7 +11,7 @@ import {
   TextFieldLabel,
 } from "@/components/ui/text-field";
 import { showToast } from "@/components/ui/toast";
-import { api, createConfigQuery } from "@/lib/api";
+import { api, useConfigQuery } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createForm } from "@tanstack/solid-form";
@@ -31,7 +31,7 @@ export const EditBundleSheetForm = ({
   onEditSuccess,
 }: EditBundleSheetFormProps) => {
   const queryClient = useQueryClient();
-  const config = createConfigQuery();
+  const config = useConfigQuery();
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const gitUrl = createMemo(() => config.data?.console?.gitUrl ?? null);

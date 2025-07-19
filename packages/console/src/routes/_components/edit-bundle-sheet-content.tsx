@@ -5,7 +5,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { createBundleQuery } from "@/lib/api";
+import { useBundleQuery } from "@/lib/api";
 import { Show } from "solid-js";
 import { DeleteBundleDialog } from "./delete-bundle-dialog";
 import { EditBundleSheetForm } from "./edit-bundle-sheet-form";
@@ -20,7 +20,7 @@ export const EditBundleSheetContent = ({
   bundleId,
   onClose,
 }: EditBundleSheetContentProps) => {
-  const data = createBundleQuery(bundleId);
+  const data = useBundleQuery(bundleId);
 
   return (
     <SheetContent class="flex flex-col h-full">
