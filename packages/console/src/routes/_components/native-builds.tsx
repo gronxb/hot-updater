@@ -1,10 +1,17 @@
 import { Show } from "solid-js";
-import { type NativeBuild, nativeBuildsColumns } from "./native-builds-columns";
+import {
+  type NativeBuild,
+  createNativeBuildsColumns,
+} from "./native-builds-columns";
 import { NativeBuildsDataTable } from "./native-builds-data-table";
+import type { Bundle } from "@hot-updater/core";
 
 interface NativeBuildsProps {
   data: NativeBuild[];
   onRowClick: (buildId: string) => void;
+  onRowDetailClick: (build: NativeBuild) => void;
+  onOtaRowClick: (bundle: Bundle) => void;
+  expandedRows?: Set<string>;
   globalFilter?: string;
   setGlobalFilter?: (filter: string) => void;
   platformFilter?: "ios" | "android" | undefined;
@@ -19,6 +26,12 @@ export function NativeBuilds(props: NativeBuildsProps) {
   const handleRowClick = (build: NativeBuild) => {
     props.onRowClick(build.id);
   };
+
+  const handleRowDetailClick = (build: NativeBuild) => {
+    props.onRowDetailClick(build);
+  };
+
+  const columns = createNativeBuildsColumns(handleRowDetailClick);
 
   return (
     <div class="space-y-4">
@@ -46,9 +59,11 @@ export function NativeBuilds(props: NativeBuildsProps) {
 
       <Show when={!props.isLoading && !props.error}>
         <NativeBuildsDataTable
-          columns={nativeBuildsColumns}
+          columns={columns}
           data={props.data}
           onRowClick={handleRowClick}
+          onOtaRowClick={props.onOtaRowClick}
+          expandedRows={props.expandedRows}
         />
       </Show>
     </div>

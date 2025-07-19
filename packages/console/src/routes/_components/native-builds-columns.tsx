@@ -7,7 +7,7 @@ import {
 import { useNativeBuildDownloadUrlQuery } from "@/lib/api";
 import { extractDateFromUUIDv7 } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/solid-table";
-import { Download, Fingerprint, Package2 } from "lucide-solid";
+import { Download, Eye, Fingerprint, Package2 } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { createMemo } from "solid-js";
 
@@ -23,7 +23,9 @@ export interface NativeBuild {
   metadata?: Record<string, any>;
 }
 
-export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [
+export const createNativeBuildsColumns = (
+  onRowDetailClick?: (build: NativeBuild) => void,
+): ColumnDef<NativeBuild>[] => [
   {
     accessorKey: "id",
     header: "Min Bundle ID",
@@ -140,6 +142,26 @@ export const nativeBuildsColumns: ColumnDef<NativeBuild>[] = [
         <div class="text-sm text-muted-foreground">
           {date.toLocaleDateString()} {date.toLocaleTimeString()}
         </div>
+      );
+    },
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    cell: (info) => {
+      const row = info.row.original;
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent row click
+            onRowDetailClick?.(row);
+          }}
+        >
+          <Eye class="mr-2 h-4 w-4" />
+          Go to Detail
+        </Button>
       );
     },
   },

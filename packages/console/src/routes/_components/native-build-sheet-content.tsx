@@ -10,7 +10,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useNativeBuildDownloadUrlQuery } from "@/lib/api";
+import {
+  useBundlesByFingerprintQuery,
+  useNativeBuildDownloadUrlQuery,
+} from "@/lib/api";
 import {
   Download,
   HardDrive,
@@ -20,7 +23,7 @@ import {
   Tag,
 } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
-import { Show, createMemo } from "solid-js";
+import { Show, createMemo, createSignal } from "solid-js";
 import type { NativeBuild } from "./native-builds-columns";
 
 interface NativeBuildSheetContentProps {
@@ -31,6 +34,10 @@ interface NativeBuildSheetContentProps {
 export function NativeBuildSheetContent(props: NativeBuildSheetContentProps) {
   console.log("NativeBuildSheetContent props.build:", props.build);
   const downloadUrlQuery = useNativeBuildDownloadUrlQuery(props.build.id);
+  const bundlesQuery = useBundlesByFingerprintQuery(
+    props.build.fingerprintHash,
+  );
+  const [otaUpdatesOpen, setOtaUpdatesOpen] = createSignal(false);
 
   const downloadUrl = createMemo(() => {
     const data = downloadUrlQuery.data;

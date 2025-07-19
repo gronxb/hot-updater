@@ -17,6 +17,7 @@ const DEFAULT_PAGE_OFFSET = 0;
 const queryBundlesSchema = typia.createValidate<{
   channel?: string;
   platform?: "ios" | "android";
+  fingerprintHash?: string;
   limit?: string;
   offset?: string;
 }>();
@@ -105,6 +106,7 @@ export const rpc = new Hono()
       const query = {
         channel: rawQuery.channel ?? undefined,
         platform: rawQuery.platform ?? undefined,
+        fingerprintHash: rawQuery.fingerprintHash ?? undefined,
         limit: rawQuery.limit ?? DEFAULT_PAGE_LIMIT,
         offset: rawQuery.offset ?? DEFAULT_PAGE_OFFSET,
       };
@@ -114,6 +116,7 @@ export const rpc = new Hono()
         where: {
           channel: query.channel,
           platform: query.platform,
+          fingerprintHash: query.fingerprintHash,
         },
         limit: Number(query.limit),
         offset: Number(query.offset),

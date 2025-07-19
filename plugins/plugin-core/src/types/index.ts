@@ -24,7 +24,7 @@ export interface DatabasePlugin {
   getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
   getBundles: (options: {
-    where?: { channel?: string; platform?: string };
+    where?: { channel?: string; platform?: string; fingerprintHash?: string };
     limit: number;
     offset: number;
   }) => Promise<{

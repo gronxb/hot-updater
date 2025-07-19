@@ -116,6 +116,9 @@ export const firebaseDatabase = (
         if (where?.platform) {
           query = query.where("platform", "==", where.platform);
         }
+        if (where?.fingerprintHash) {
+          query = query.where("fingerprint_hash", "==", where.fingerprintHash);
+        }
 
         query = query.orderBy("id", "desc");
 

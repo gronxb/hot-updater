@@ -22,6 +22,7 @@ export interface D1DatabaseConfig {
 interface QueryConditions {
   channel?: string;
   platform?: string;
+  fingerprintHash?: string;
 }
 
 interface NativeBuildQueryConditions {
@@ -60,6 +61,11 @@ function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
   if (conditions.platform) {
     clauses.push("platform = ?");
     params.push(conditions.platform);
+  }
+
+  if (conditions.fingerprintHash) {
+    clauses.push("fingerprint_hash = ?");
+    params.push(conditions.fingerprintHash);
   }
 
   const whereClause =

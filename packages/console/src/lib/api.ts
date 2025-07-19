@@ -25,6 +25,23 @@ export const useBundlesQuery = (
     staleTime: Number.POSITIVE_INFINITY,
   }));
 
+export const useBundlesByFingerprintQuery = (fingerprintHash: string) =>
+  useQuery(() => ({
+    queryKey: ['bundles-by-fingerprint', fingerprintHash],
+    queryFn: async () => {
+      const res = await api.bundles.$get({ 
+        query: { 
+          fingerprintHash,
+          limit: "50",
+          offset: "0"
+        } 
+      });
+      return res.json();
+    },
+    enabled: !!fingerprintHash,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  }));
+
 export const useBundleQuery = (bundleId: string) =>
   useQuery(() => ({
     queryKey: ['bundle', bundleId],

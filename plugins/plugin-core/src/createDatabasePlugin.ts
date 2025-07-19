@@ -20,7 +20,11 @@ export interface AbstractDatabasePlugin<TContext = object> {
   getBundles: (
     context: TContext,
     options: {
-      where?: { channel?: string; platform?: string };
+      where?: {
+        channel?: string;
+        platform?: string;
+        fingerprintHash?: string;
+      };
       limit: number;
       offset: number;
     },
