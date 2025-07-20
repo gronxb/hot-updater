@@ -25,29 +25,16 @@ export const firebaseStorage =
 
     return {
       name: "firebaseStorage",
-      async deleteBundle(bundleId) {
-        const Key = `${bundleId}/bundle.zip`;
-        try {
-          const [files] = await bucket.getFiles({ prefix: Key });
-          await Promise.all(files.map((file) => file.delete()));
-          return {
-            storageUri: `gs://${config.storageBucket}/${Key}`,
-          };
-        } catch (e) {
-          console.error("Error listing or deleting files:", e);
-          throw new Error("Bundle Not Found");
-        }
-      },
 
-      async uploadBundle(bundleId, bundlePath) {
+      async upload(key: string, filePath: string) {
         try {
-          const fileContent = await fs.readFile(bundlePath);
+          const fileContent = await fs.readFile(filePath);
           const contentType =
-            mime.getType(bundlePath) ?? "application/octet-stream";
-          const filename = path.basename(bundlePath);
-          const key = `${bundleId}/${filename}`;
+            mime.getType(filePath) ?? "application/octet-stream";
+          const filename = path.basename(filePath);
+          const fullKey = `${key}/${filename}`;
 
-          const file = bucket.file(key);
+          const file = bucket.file(fullKey);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
@@ -57,7 +44,7 @@ export const firebaseStorage =
           hooks?.onStorageUploaded?.();
 
           return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
+            storageUri: `gs://${config.storageBucket}/${fullKey}`,
           };
         } catch (error) {
           if (error instanceof Error) {
@@ -67,63 +54,54 @@ export const firebaseStorage =
         }
       },
 
-      // Native build operations
-      async uploadNativeBuild(nativeBuildId, nativeBuildPath) {
-        try {
-          const fileContent = await fs.readFile(nativeBuildPath);
-          const contentType =
-            mime.getType(nativeBuildPath) ?? "application/octet-stream";
-          const filename = path.basename(nativeBuildPath);
-          const key = `native-builds/${nativeBuildId}/${filename}`;
-
-          const file = bucket.file(key);
-          await file.save(fileContent, {
-            metadata: {
-              contentType: contentType,
-            },
-          });
-
-          hooks?.onStorageUploaded?.();
-
-          return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
-          };
-        } catch (error) {
-          if (error instanceof Error) {
-            throw new Error(`Failed to upload native build: ${error.message}`);
-          }
-          throw error;
+      async delete(storageUri: string) {
+        // Parse gs://bucket-name/key from storageUri
+        const match = storageUri.match(/^gs:\/\/([^/]+)\/(.+)$/);
+        if (!match) {
+          throw new Error("Invalid Firebase storage URI format");
         }
-      },
 
-      async deleteNativeBuild(nativeBuildId) {
-        const prefix = `native-builds/${nativeBuildId}`;
+        const [, bucketName, key] = match;
+        if (bucketName !== config.storageBucket) {
+          throw new Error("Storage URI bucket does not match configured bucket");
+        }
+
         try {
-          const [files] = await bucket.getFiles({ prefix });
+          const [files] = await bucket.getFiles({ prefix: key });
           if (files.length === 0) {
-            throw new Error("Native build not found");
+            throw new Error("File not found in storage");
           }
           await Promise.all(files.map((file) => file.delete()));
-          return {
-            storageUri: `gs://${config.storageBucket}/${prefix}`,
-          };
         } catch (e) {
-          console.error("Error listing or deleting native build files:", e);
-          throw new Error("Native build not found or failed to delete");
+          console.error("Error listing or deleting files:", e);
+          throw new Error("File not found or failed to delete");
         }
       },
 
-      async getNativeBuildDownloadUrl(nativeBuildId) {
-        try {
-          const prefix = `native-builds/${nativeBuildId}`;
-          const [files] = await bucket.getFiles({ prefix });
+      async getDownloadUrl(storageUri: string) {
+        // Parse gs://bucket-name/key from storageUri
+        const match = storageUri.match(/^gs:\/\/([^/]+)\/(.+)$/);
+        if (!match) {
+          throw new Error("Invalid Firebase storage URI format");
+        }
 
-          if (files.length === 0) {
-            throw new Error("Native build not found");
+        const [, bucketName, key] = match;
+        if (bucketName !== config.storageBucket) {
+          throw new Error("Storage URI bucket does not match configured bucket");
+        }
+
+        try {
+          // If key represents a directory prefix, find the actual file
+          let actualKey = key;
+          if (!key.includes('.')) {
+            const [files] = await bucket.getFiles({ prefix: key });
+            if (files.length === 0) {
+              throw new Error("File not found in storage");
+            }
+            actualKey = files[0].name;
           }
 
-          // Get the first file (should be the native build artifact)
-          const file = files[0];
+          const file = bucket.file(actualKey);
 
           // Generate signed URL valid for 1 hour
           const [signedUrl] = await file.getSignedUrl({

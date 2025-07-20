@@ -29,30 +29,12 @@ export const r2Storage =
 
     return {
       name: "r2Storage",
-      async deleteBundle(bundleId) {
-        const Key = `${bundleId}/bundle.zip `;
-        try {
-          await wrangler(
-            "r2",
-            "object",
-            "delete",
-            [bucketName, Key].join("/"),
-            "--remote",
-          );
 
-          return {
-            storageUri: `r2://${bucketName}/${Key}`,
-          };
-        } catch (error) {
-          throw new Error("Can not delete bundle");
-        }
-      },
-      async uploadBundle(bundleId, bundlePath) {
-        const contentType = mime.getType(bundlePath) ?? void 0;
+      async upload(key: string, filePath: string) {
+        const contentType = mime.getType(filePath) ?? void 0;
+        const filename = path.basename(filePath);
+        const Key = [key, filename].join("/");
 
-        const filename = path.basename(bundlePath);
-
-        const Key = [bundleId, filename].join("/");
         try {
           const { stderr, exitCode } = await wrangler(
             "r2",
@@ -60,7 +42,7 @@ export const r2Storage =
             "put",
             [bucketName, Key].join("/"),
             "--file",
-            bundlePath,
+            filePath,
             ...(contentType ? ["--content-type", contentType] : []),
             "--remote",
           );
@@ -71,7 +53,6 @@ export const r2Storage =
           if (error instanceof ExecaError) {
             throw new Error(error.stderr || error.stdout);
           }
-
           throw error;
         }
 
@@ -82,44 +63,17 @@ export const r2Storage =
         };
       },
 
-      // Native build operations
-      async uploadNativeBuild(nativeBuildId, nativeBuildPath) {
-        const contentType = mime.getType(nativeBuildPath) ?? void 0;
-        const filename = path.basename(nativeBuildPath);
-        const Key = `native-builds/${nativeBuildId}/${filename}`;
-
-        try {
-          const { stderr, exitCode } = await wrangler(
-            "r2",
-            "object",
-            "put",
-            [bucketName, Key].join("/"),
-            "--file",
-            nativeBuildPath,
-            ...(contentType ? ["--content-type", contentType] : []),
-            "--remote",
-          );
-          if (exitCode !== 0 && stderr) {
-            throw new Error(stderr);
-          }
-        } catch (error) {
-          if (error instanceof ExecaError) {
-            throw new Error(
-              `Failed to upload native build: ${error.stderr || error.stdout}`,
-            );
-          }
-          throw new Error(`Failed to upload native build: ${error}`);
+      async delete(storageUri: string) {
+        // Parse r2://bucket-name/key from storageUri
+        const match = storageUri.match(/^r2:\/\/([^/]+)\/(.+)$/);
+        if (!match) {
+          throw new Error("Invalid R2 storage URI format");
         }
 
-        hooks?.onStorageUploaded?.();
-
-        return {
-          storageUri: `r2://${bucketName}/${Key}`,
-        };
-      },
-
-      async deleteNativeBuild(nativeBuildId) {
-        const prefix = `native-builds/${nativeBuildId}`;
+        const [, bucket, key] = match;
+        if (bucket !== bucketName) {
+          throw new Error("Storage URI bucket does not match configured bucket");
+        }
 
         try {
           // List objects to find all files with the prefix
@@ -129,7 +83,7 @@ export const r2Storage =
             "list",
             bucketName,
             "--prefix",
-            prefix,
+            key,
             "--remote",
           );
 
@@ -140,10 +94,10 @@ export const r2Storage =
           const files = lines
             .slice(1) // Skip header
             .map((line) => line.split(/\s+/)[0])
-            .filter((name) => name?.startsWith(prefix));
+            .filter((name) => name?.startsWith(key));
 
           if (files.length === 0) {
-            throw new Error("Native build not found");
+            throw new Error("File not found in storage");
           }
 
           // Delete each file
@@ -156,57 +110,64 @@ export const r2Storage =
               "--remote",
             );
           }
-
-          return {
-            storageUri: `r2://${bucketName}/${prefix}`,
-          };
         } catch (error) {
           if (error instanceof ExecaError) {
             throw new Error(
-              `Failed to delete native build: ${error.stderr || error.stdout}`,
+              `Failed to delete file: ${error.stderr || error.stdout}`,
             );
           }
-          throw new Error(`Failed to delete native build: ${error}`);
+          throw new Error(`Failed to delete file: ${error}`);
         }
       },
 
-      async getNativeBuildDownloadUrl(nativeBuildId) {
-        const prefix = `native-builds/${nativeBuildId}`;
+      async getDownloadUrl(storageUri: string) {
+        // Parse r2://bucket-name/key from storageUri
+        const match = storageUri.match(/^r2:\/\/([^/]+)\/(.+)$/);
+        if (!match) {
+          throw new Error("Invalid R2 storage URI format");
+        }
+
+        const [, bucket, key] = match;
+        if (bucket !== bucketName) {
+          throw new Error("Storage URI bucket does not match configured bucket");
+        }
 
         try {
-          // List objects to find the native build file
-          const { stdout: listOutput } = await wrangler(
-            "r2",
-            "object",
-            "list",
-            bucketName,
-            "--prefix",
-            prefix,
-            "--remote",
-          );
+          // If key represents a directory prefix, find the actual file
+          let actualKey = key;
+          if (!key.includes('.')) {
+            const { stdout: listOutput } = await wrangler(
+              "r2",
+              "object",
+              "list",
+              bucketName,
+              "--prefix",
+              key,
+              "--remote",
+            );
 
-          // Parse the list output to get file names
-          const lines = (listOutput || "")
-            .split("\n")
-            .filter((line) => line.trim());
-          const files = lines
-            .slice(1) // Skip header
-            .map((line) => line.split(/\s+/)[0])
-            .filter((name) => name?.startsWith(prefix));
+            // Parse the list output to get file names
+            const lines = (listOutput || "")
+              .split("\n")
+              .filter((line) => line.trim());
+            const files = lines
+              .slice(1) // Skip header
+              .map((line) => line.split(/\s+/)[0])
+              .filter((name) => name?.startsWith(key));
 
-          if (files.length === 0) {
-            throw new Error("Native build not found");
+            if (files.length === 0) {
+              throw new Error("File not found in storage");
+            }
+
+            actualKey = files[0];
           }
-
-          // Get the first file (should be the native build artifact)
-          const fileName = files[0];
 
           // Generate presigned URL valid for 1 hour
           const { stdout: urlOutput } = await wrangler(
             "r2",
             "object",
             "presign",
-            [bucketName, fileName].join("/"),
+            [bucketName, actualKey].join("/"),
             "--expires-in",
             "3600", // 1 hour in seconds
             "--remote",

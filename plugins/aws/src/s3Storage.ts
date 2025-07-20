@@ -28,44 +28,14 @@ export const s3Storage =
 
     return {
       name: "s3Storage",
-      async deleteBundle(bundleId) {
-        const Key = bundleId;
+      
+      async upload(key: string, filePath: string) {
+        const Body = await fs.readFile(filePath);
+        const ContentType = mime.getType(filePath) ?? void 0;
 
-        const listCommand = new ListObjectsV2Command({
-          Bucket: bucketName,
-          Prefix: bundleId,
-        });
-        const listResponse = await client.send(listCommand);
-
-        if (listResponse.Contents && listResponse.Contents.length > 0) {
-          const objectsToDelete = listResponse.Contents.map((obj) => ({
-            Key: obj.Key,
-          }));
-
-          const deleteParams = {
-            Bucket: bucketName,
-            Delete: {
-              Objects: objectsToDelete,
-              Quiet: true,
-            },
-          };
-
-          const deleteCommand = new DeleteObjectsCommand(deleteParams);
-          await client.send(deleteCommand);
-          return {
-            storageUri: `s3://${bucketName}/${Key}`,
-          };
-        }
-
-        throw new Error("Bundle Not Found");
-      },
-      async uploadBundle(bundleId, bundlePath) {
-        const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
-
-        const filename = path.basename(bundlePath);
-
-        const Key = [bundleId, filename].join("/");
+        const filename = path.basename(filePath);
+        const Key = [key, filename].join("/");
+        
         const upload = new Upload({
           client,
           params: {
@@ -76,6 +46,7 @@ export const s3Storage =
             CacheControl: "max-age=31536000",
           },
         });
+        
         const response = await upload.done();
         if (!response.Bucket || !response.Key) {
           throw new Error("Upload Failed");
@@ -87,42 +58,22 @@ export const s3Storage =
         };
       },
 
-      // Native build operations
-      async uploadNativeBuild(nativeBuildId, nativeBuildPath) {
-        const Body = await fs.readFile(nativeBuildPath);
-        const ContentType = mime.getType(nativeBuildPath) ?? void 0;
-
-        const filename = path.basename(nativeBuildPath);
-
-        // Store native builds in a separate folder structure
-        const Key = ["native-builds", nativeBuildId, filename].join("/");
-        const upload = new Upload({
-          client,
-          params: {
-            ContentType,
-            Bucket: bucketName,
-            Key,
-            Body,
-            CacheControl: "max-age=31536000",
-          },
-        });
-        const response = await upload.done();
-        if (!response.Bucket || !response.Key) {
-          throw new Error("Native build upload failed");
+      async delete(storageUri: string) {
+        // Parse s3://bucket-name/key from storageUri
+        const match = storageUri.match(/^s3:\/\/([^/]+)\/(.+)$/);
+        if (!match) {
+          throw new Error("Invalid S3 storage URI format");
+        }
+        
+        const [, bucket, key] = match;
+        if (bucket !== bucketName) {
+          throw new Error("Storage URI bucket does not match configured bucket");
         }
 
-        hooks?.onStorageUploaded?.();
-        return {
-          storageUri: `s3://${bucketName}/${Key}`,
-        };
-      },
-
-      async deleteNativeBuild(nativeBuildId) {
-        const prefix = `native-builds/${nativeBuildId}`;
-
+        // For directories, list and delete all objects with the prefix
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
-          Prefix: prefix,
+          Prefix: key,
         });
         const listResponse = await client.send(listCommand);
 
@@ -141,40 +92,49 @@ export const s3Storage =
 
           const deleteCommand = new DeleteObjectsCommand(deleteParams);
           await client.send(deleteCommand);
-          return {
-            storageUri: `s3://${bucketName}/${prefix}`,
-          };
+        } else {
+          throw new Error("File not found in storage");
         }
-
-        throw new Error("Native build not found");
       },
 
-      async getNativeBuildDownloadUrl(nativeBuildId) {
-        // List objects to find the actual file
-        const prefix = `native-builds/${nativeBuildId}`;
-        const listCommand = new ListObjectsV2Command({
-          Bucket: bucketName,
-          Prefix: prefix,
-        });
-        const listResponse = await client.send(listCommand);
-
-        if (!listResponse.Contents || listResponse.Contents.length === 0) {
-          throw new Error("Native build not found");
+      async getDownloadUrl(storageUri: string) {
+        // Parse s3://bucket-name/key from storageUri
+        const match = storageUri.match(/^s3:\/\/([^/]+)\/(.+)$/);
+        if (!match) {
+          throw new Error("Invalid S3 storage URI format");
+        }
+        
+        const [, bucket, key] = match;
+        if (bucket !== bucketName) {
+          throw new Error("Storage URI bucket does not match configured bucket");
         }
 
-        // Get the first file (should be the native build artifact)
-        const firstObject = listResponse.Contents[0];
-        if (!firstObject.Key) {
-          throw new Error("Invalid native build object");
+        // If key represents a directory prefix, find the actual file
+        let actualKey = key;
+        if (!key.includes('.')) {
+          const listCommand = new ListObjectsV2Command({
+            Bucket: bucketName,
+            Prefix: key,
+          });
+          const listResponse = await client.send(listCommand);
+
+          if (!listResponse.Contents || listResponse.Contents.length === 0) {
+            throw new Error("File not found in storage");
+          }
+
+          const firstObject = listResponse.Contents[0];
+          if (!firstObject.Key) {
+            throw new Error("Invalid storage object");
+          }
+          actualKey = firstObject.Key;
         }
 
         const command = new GetObjectCommand({
           Bucket: bucketName,
-          Key: firstObject.Key,
+          Key: actualKey,
         });
 
         // Generate signed URL valid for 1 hour
-        // AWS SDK types have compatibility issues, but the runtime works correctly
         const signedUrl = await getSignedUrl(
           client as unknown as Parameters<typeof getSignedUrl>[0],
           command,

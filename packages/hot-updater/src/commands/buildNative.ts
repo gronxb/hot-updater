@@ -274,8 +274,8 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
           }
 
           try {
-            const { storageUri } = await storagePlugin.uploadNativeBuild(
-              nativeBuildId,
+            const { storageUri } = await storagePlugin.upload(
+              `native-builds/${nativeBuildId}`,
               fullArtifactPath,
             );
             taskRef.storageUri = storageUri;

@@ -182,7 +182,7 @@ export const rpc = new Hono()
         }
         await databasePlugin.deleteBundle(deleteBundle);
         await databasePlugin.commitBundle();
-        await storagePlugin.deleteBundle(bundleId);
+        await storagePlugin.delete(deleteBundle.storageUri);
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle deletion:", error);
@@ -249,14 +249,18 @@ export const rpc = new Hono()
     async (c) => {
       try {
         const { nativeBuildId } = c.req.valid("param");
-        const { storagePlugin } = await prepareConfig();
+        const { databasePlugin, storagePlugin } = await prepareConfig();
 
         if (!storagePlugin) {
           return c.json({ error: "Storage plugin not configured" }, 500);
         }
 
+        const nativeBuild = await databasePlugin.getNativeBuildById(nativeBuildId);
+        if (!nativeBuild) {
+          return c.json({ error: "Native build not found" }, 404);
+        }
         const downloadUrl =
-          await storagePlugin.getNativeBuildDownloadUrl(nativeBuildId);
+          await storagePlugin.getDownloadUrl(nativeBuild.storageUri);
         return c.json(downloadUrl);
       } catch (error) {
         console.error(
@@ -315,7 +319,7 @@ export const rpc = new Hono()
         await databasePlugin.commitBundle();
 
         if (storagePlugin) {
-          await storagePlugin.deleteNativeBuild(nativeBuildId);
+          await storagePlugin.delete(deleteNativeBuild.storageUri);
         }
 
         return c.json({ success: true });
