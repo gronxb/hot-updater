@@ -255,12 +255,14 @@ export const rpc = new Hono()
           return c.json({ error: "Storage plugin not configured" }, 500);
         }
 
-        const nativeBuild = await databasePlugin.getNativeBuildById(nativeBuildId);
+        const nativeBuild =
+          await databasePlugin.getNativeBuildById(nativeBuildId);
         if (!nativeBuild) {
           return c.json({ error: "Native build not found" }, 404);
         }
-        const downloadUrl =
-          await storagePlugin.getDownloadUrl(nativeBuild.storageUri);
+        const downloadUrl = await storagePlugin.getDownloadUrl(
+          nativeBuild.storageUri,
+        );
         return c.json(downloadUrl);
       } catch (error) {
         console.error(

@@ -63,7 +63,9 @@ export const firebaseStorage =
 
         const [, bucketName, key] = match;
         if (bucketName !== config.storageBucket) {
-          throw new Error("Storage URI bucket does not match configured bucket");
+          throw new Error(
+            "Storage URI bucket does not match configured bucket",
+          );
         }
 
         try {
@@ -87,13 +89,15 @@ export const firebaseStorage =
 
         const [, bucketName, key] = match;
         if (bucketName !== config.storageBucket) {
-          throw new Error("Storage URI bucket does not match configured bucket");
+          throw new Error(
+            "Storage URI bucket does not match configured bucket",
+          );
         }
 
         try {
           // If key represents a directory prefix, find the actual file
           let actualKey = key;
-          if (!key.includes('.')) {
+          if (!key.includes(".")) {
             const [files] = await bucket.getFiles({ prefix: key });
             if (files.length === 0) {
               throw new Error("File not found in storage");

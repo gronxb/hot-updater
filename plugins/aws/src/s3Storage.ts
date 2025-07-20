@@ -28,14 +28,14 @@ export const s3Storage =
 
     return {
       name: "s3Storage",
-      
+
       async upload(key: string, filePath: string) {
         const Body = await fs.readFile(filePath);
         const ContentType = mime.getType(filePath) ?? void 0;
 
         const filename = path.basename(filePath);
         const Key = [key, filename].join("/");
-        
+
         const upload = new Upload({
           client,
           params: {
@@ -46,7 +46,7 @@ export const s3Storage =
             CacheControl: "max-age=31536000",
           },
         });
-        
+
         const response = await upload.done();
         if (!response.Bucket || !response.Key) {
           throw new Error("Upload Failed");
@@ -64,10 +64,12 @@ export const s3Storage =
         if (!match) {
           throw new Error("Invalid S3 storage URI format");
         }
-        
+
         const [, bucket, key] = match;
         if (bucket !== bucketName) {
-          throw new Error("Storage URI bucket does not match configured bucket");
+          throw new Error(
+            "Storage URI bucket does not match configured bucket",
+          );
         }
 
         // For directories, list and delete all objects with the prefix
@@ -103,15 +105,17 @@ export const s3Storage =
         if (!match) {
           throw new Error("Invalid S3 storage URI format");
         }
-        
+
         const [, bucket, key] = match;
         if (bucket !== bucketName) {
-          throw new Error("Storage URI bucket does not match configured bucket");
+          throw new Error(
+            "Storage URI bucket does not match configured bucket",
+          );
         }
 
         // If key represents a directory prefix, find the actual file
         let actualKey = key;
-        if (!key.includes('.')) {
+        if (!key.includes(".")) {
           const listCommand = new ListObjectsV2Command({
             Bucket: bucketName,
             Prefix: key,

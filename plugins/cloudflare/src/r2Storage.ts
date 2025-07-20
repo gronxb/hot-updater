@@ -72,7 +72,9 @@ export const r2Storage =
 
         const [, bucket, key] = match;
         if (bucket !== bucketName) {
-          throw new Error("Storage URI bucket does not match configured bucket");
+          throw new Error(
+            "Storage URI bucket does not match configured bucket",
+          );
         }
 
         try {
@@ -129,13 +131,15 @@ export const r2Storage =
 
         const [, bucket, key] = match;
         if (bucket !== bucketName) {
-          throw new Error("Storage URI bucket does not match configured bucket");
+          throw new Error(
+            "Storage URI bucket does not match configured bucket",
+          );
         }
 
         try {
           // If key represents a directory prefix, find the actual file
           let actualKey = key;
-          if (!key.includes('.')) {
+          if (!key.includes(".")) {
             const { stdout: listOutput } = await wrangler(
               "r2",
               "object",
