@@ -10,6 +10,11 @@ import mime from "mime";
 
 export interface FirebaseStorageConfig extends admin.AppOptions {
   storageBucket: string;
+  /**
+   * Base path where bundles will be stored in the bucket
+   * @default "bundles"
+   */
+  basePath?: string;
 }
 
 export const firebaseStorage =
@@ -22,16 +27,21 @@ export const firebaseStorage =
       app = admin.initializeApp(config);
     }
     const bucket = app.storage().bucket(config.storageBucket);
+    const basePath = config.basePath || "bundles";
+
+    const getBundleKey = (bundleId: string, filename = "bundle.zip") => {
+      return path.posix.join(basePath, bundleId, filename);
+    };
 
     return {
       name: "firebaseStorage",
       async deleteBundle(bundleId) {
-        const Key = `${bundleId}/bundle.zip`;
+        const key = getBundleKey(bundleId);
         try {
-          const [files] = await bucket.getFiles({ prefix: Key });
+          const [files] = await bucket.getFiles({ prefix: key });
           await Promise.all(files.map((file) => file.delete()));
           return {
-            storageUri: `gs://${config.storageBucket}/${Key}`,
+            storageUri: `gs://${config.storageBucket}/${key}`,
           };
         } catch (e) {
           console.error("Error listing or deleting files:", e);
@@ -45,7 +55,7 @@ export const firebaseStorage =
           const contentType =
             mime.getType(bundlePath) ?? "application/octet-stream";
           const filename = path.basename(bundlePath);
-          const key = `${bundleId}/${filename}`;
+          const key = getBundleKey(bundleId, filename);
 
           const file = bucket.file(key);
           await file.save(fileContent, {
@@ -60,8 +70,9 @@ export const firebaseStorage =
             storageUri: `gs://${config.storageBucket}/${key}`,
           };
         } catch (error) {
+          console.error("Error uploading bundle:", error);
           if (error instanceof Error) {
-            throw new Error(error.message);
+            throw new Error(`Failed to upload bundle: ${error.message}`);
           }
           throw error;
         }
