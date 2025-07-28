@@ -10,8 +10,8 @@
   ## Documentation
 
   Full documentation is available at:
-  https://gronxb.github.io/hot-updater
-
+  https://hot-updater.dev
+  
   ## Key Features
 
   - **Self-Hosted**: Complete control over your update infrastructure
