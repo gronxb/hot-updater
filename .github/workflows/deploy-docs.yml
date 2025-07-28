@@ -24,10 +24,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
-      - name: Create redirect index.html
+      - name: Create redirect files
         run: |
           mkdir -p public
           cp .github/workflows/redirect.html public/index.html
+          cp .github/workflows/404.html public/404.html
           touch public/.nojekyll
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
