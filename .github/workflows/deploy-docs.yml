@@ -25,25 +25,7 @@ jobs:
       - name: Create redirect index.html
         run: |
           mkdir public
-          echo '<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=https://yourdomain.com/repo/">
-    <script>
-      const basePath = "/repo";
-      const target = "https://yourdomain.com";
-      const path = location.pathname.replace(basePath, "");
-      const search = location.search;
-      const hash = location.hash;
-      location.href = target + path + search + hash;
-    </script>
-    <title>Redirecting...</title>
-  </head>
-  <body>
-    <p>Redirecting...</p>
-  </body>
-</html>' > public/index.html
+          cp .github/workflows/redirect.html public/index.html
           touch public/.nojekyll
 
       - name: Deploy to gh-pages
