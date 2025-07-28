@@ -22,27 +22,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Not needed if lastUpdated is not enabled
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
       - name: Setup Pages
         uses: actions/configure-pages@v5
-      - name: Install dependencies
-        run: pnpm install
-      - name: Build with Rspress
+      - name: Create redirect files
         run: |
-          pnpm run build
-        working-directory: ./docs
+          mkdir -p public
+          cp .github/workflows/redirect.html public/index.html
+          cp .github/workflows/404.html public/404.html
+          touch public/.nojekyll
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/doc_build
+          path: public
 
   # Deployment job
   deploy:
