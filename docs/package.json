@@ -9,9 +9,10 @@
     "preview": "rspress preview"
   },
   "devDependencies": {
-    "@shikijs/transformers": "^3.4.2",
     "@rspress/plugin-llms": "^2.0.0-beta.8",
+    "@shikijs/transformers": "^3.4.2",
     "@types/node": "^18.11.17",
-    "rspress": "^2.0.0-beta.8"
+    "rspress": "^2.0.0-beta.8",
+    "wrangler": "^4.26.0"
   }
 }
