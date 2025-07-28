@@ -16,43 +16,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Build job
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Not needed if lastUpdated is not enabled
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Install dependencies
-        run: pnpm install
-      - name: Build with Rspress
-        run: |
-          pnpm run build
-        working-directory: ./docs
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/doc_build
-
-  # Deployment job
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
     runs-on: ubuntu-latest
-    name: Deploy
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Create redirect index.html
+        run: |
+          mkdir public
+          echo '<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=https://yourdomain.com/repo/">
+    <script>
+      const basePath = "/repo";
+      const target = "https://yourdomain.com";
+      const path = location.pathname.replace(basePath, "");
+      const search = location.search;
+      const hash = location.hash;
+      location.href = `${target}${path}${search}${hash}`;
+    </script>
+    <title>Redirecting...</title>
+  </head>
+  <body>
+    <p>Redirecting...</p>
+  </body>
+</html>' > public/index.html
+          touch public/.nojekyll
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
