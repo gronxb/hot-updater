@@ -12,7 +12,6 @@ export interface FirebaseStorageConfig extends admin.AppOptions {
   storageBucket: string;
   /**
    * Base path where bundles will be stored in the bucket
-   * @default "bundles"
    */
   basePath?: string;
 }
@@ -27,10 +26,11 @@ export const firebaseStorage =
       app = admin.initializeApp(config);
     }
     const bucket = app.storage().bucket(config.storageBucket);
-    const basePath = config.basePath || "bundles";
 
     const getBundleKey = (bundleId: string, filename = "bundle.zip") => {
-      return path.posix.join(basePath, bundleId, filename);
+      return path.posix.join(
+        ...[config.basePath, bundleId, filename].filter(Boolean) as string[]
+      );
     };
 
     return {
