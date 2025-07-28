@@ -36,7 +36,7 @@ jobs:
       const path = location.pathname.replace(basePath, "");
       const search = location.search;
       const hash = location.hash;
-      location.href = `${target}${path}${search}${hash}`;
+      location.href = target + path + search + hash;
     </script>
     <title>Redirecting...</title>
   </head>
