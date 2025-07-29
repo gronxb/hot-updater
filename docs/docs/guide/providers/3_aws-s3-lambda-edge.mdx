@@ -109,7 +109,7 @@ import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import "dotenv/config";
 
-const options = {
+const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
@@ -120,8 +120,11 @@ const options = {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage(options),
-  database: s3Database(options),
+  storage: s3Storage(commonOptions),
+  database: s3Database({
+    ...commonOptions,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  }),
 });
 ```
 
