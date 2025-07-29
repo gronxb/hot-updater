@@ -29,7 +29,7 @@ export const firebaseStorage =
 
     const getBundleKey = (bundleId: string, filename = "bundle.zip") => {
       return path.posix.join(
-        ...[config.basePath || '', bundleId, filename].filter(Boolean)
+        ...[config.basePath || "", bundleId, filename].filter(Boolean),
       );
     };
 
