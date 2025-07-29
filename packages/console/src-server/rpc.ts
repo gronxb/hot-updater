@@ -3,6 +3,7 @@ import {
   type Bundle,
   type ConfigResponse,
   type DatabasePlugin,
+  type NativeBuild,
   type StoragePlugin,
   getCwd,
   loadConfig,
@@ -16,6 +17,7 @@ const DEFAULT_PAGE_OFFSET = 0;
 const queryBundlesSchema = typia.createValidate<{
   channel?: string;
   platform?: "ios" | "android";
+  fingerprintHash?: string;
   limit?: string;
   offset?: string;
 }>();
@@ -25,6 +27,20 @@ const paramBundleIdSchema = typia.createValidate<{
 }>();
 
 const updateBundleSchema = typia.createValidate<Partial<Bundle>>();
+
+const queryNativeBuildsSchema = typia.createValidate<{
+  channel?: string;
+  platform?: "ios" | "android";
+  nativeVersion?: string;
+  limit?: string;
+  offset?: string;
+}>();
+
+const paramNativeBuildIdSchema = typia.createValidate<{
+  nativeBuildId: string;
+}>();
+
+const updateNativeBuildSchema = typia.createValidate<Partial<NativeBuild>>();
 
 let configPromise: Promise<{
   config: ConfigResponse;
@@ -90,6 +106,7 @@ export const rpc = new Hono()
       const query = {
         channel: rawQuery.channel ?? undefined,
         platform: rawQuery.platform ?? undefined,
+        fingerprintHash: rawQuery.fingerprintHash ?? undefined,
         limit: rawQuery.limit ?? DEFAULT_PAGE_LIMIT,
         offset: rawQuery.offset ?? DEFAULT_PAGE_OFFSET,
       };
@@ -99,6 +116,7 @@ export const rpc = new Hono()
         where: {
           channel: query.channel,
           platform: query.platform,
+          fingerprintHash: query.fingerprintHash,
         },
         limit: Number(query.limit),
         offset: Number(query.offset),
@@ -164,10 +182,151 @@ export const rpc = new Hono()
         }
         await databasePlugin.deleteBundle(deleteBundle);
         await databasePlugin.commitBundle();
-        await storagePlugin.deleteBundle(bundleId);
+        await storagePlugin.delete(deleteBundle.storageUri);
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle deletion:", error);
+        if (error && typeof error === "object" && "message" in error) {
+          return c.json({ error: error.message }, 500);
+        }
+        return c.json({ error: "Unknown error" }, 500);
+      }
+    },
+  )
+  // Native builds endpoints
+  .get(
+    "/native-builds",
+    typiaValidator("query", queryNativeBuildsSchema),
+    async (c) => {
+      try {
+        const rawQuery = c.req.valid("query");
+
+        const query = {
+          channel: rawQuery.channel ?? undefined,
+          platform: rawQuery.platform ?? undefined,
+          nativeVersion: rawQuery.nativeVersion ?? undefined,
+          limit: rawQuery.limit ?? DEFAULT_PAGE_LIMIT,
+          offset: rawQuery.offset ?? DEFAULT_PAGE_OFFSET,
+        };
+
+        const { databasePlugin } = await prepareConfig();
+        const nativeBuilds = await databasePlugin.getNativeBuilds({
+          where: {
+            channel: query.channel,
+            platform: query.platform,
+            nativeVersion: query.nativeVersion,
+          },
+          limit: Number(query.limit),
+          offset: Number(query.offset),
+        });
+
+        return c.json(nativeBuilds ?? []);
+      } catch (error) {
+        console.error("Error during native builds retrieval:", error);
+        throw error;
+      }
+    },
+  )
+  .get(
+    "/native-builds/:nativeBuildId",
+    typiaValidator("param", paramNativeBuildIdSchema),
+    async (c) => {
+      try {
+        const { nativeBuildId } = c.req.valid("param");
+        const { databasePlugin } = await prepareConfig();
+        const nativeBuild =
+          await databasePlugin.getNativeBuildById(nativeBuildId);
+        return c.json(nativeBuild ?? null);
+      } catch (error) {
+        console.error("Error during native build retrieval:", error);
+        throw error;
+      }
+    },
+  )
+  .get(
+    "/native-builds/:nativeBuildId/download",
+    typiaValidator("param", paramNativeBuildIdSchema),
+    async (c) => {
+      try {
+        const { nativeBuildId } = c.req.valid("param");
+        const { databasePlugin, storagePlugin } = await prepareConfig();
+
+        if (!storagePlugin) {
+          return c.json({ error: "Storage plugin not configured" }, 500);
+        }
+
+        const nativeBuild =
+          await databasePlugin.getNativeBuildById(nativeBuildId);
+        if (!nativeBuild) {
+          return c.json({ error: "Native build not found" }, 404);
+        }
+        const downloadUrl = await storagePlugin.getDownloadUrl(
+          nativeBuild.storageUri,
+        );
+        return c.json(downloadUrl);
+      } catch (error) {
+        console.error(
+          "Error during native build download URL retrieval:",
+          error,
+        );
+        if (error && typeof error === "object" && "message" in error) {
+          return c.json({ error: error.message }, 500);
+        }
+        return c.json({ error: "Unknown error" }, 500);
+      }
+    },
+  )
+  .patch(
+    "/native-builds/:nativeBuildId",
+    typiaValidator("json", updateNativeBuildSchema),
+    async (c) => {
+      try {
+        const nativeBuildId = c.req.param("nativeBuildId");
+
+        const partialNativeBuild = c.req.valid("json");
+        if (!nativeBuildId) {
+          return c.json({ error: "Target native build ID is required" }, 400);
+        }
+
+        const { databasePlugin } = await prepareConfig();
+        await databasePlugin.updateNativeBuild(
+          nativeBuildId,
+          partialNativeBuild,
+        );
+        await databasePlugin.commitBundle();
+        return c.json({ success: true });
+      } catch (error) {
+        console.error("Error during native build update:", error);
+        if (error && typeof error === "object" && "message" in error) {
+          return c.json({ error: error.message }, 500);
+        }
+        return c.json({ error: "Unknown error" }, 500);
+      }
+    },
+  )
+  .delete(
+    "/native-builds/:nativeBuildId",
+    typiaValidator("param", paramNativeBuildIdSchema),
+    async (c) => {
+      try {
+        const { nativeBuildId } = c.req.valid("param");
+
+        const { databasePlugin, storagePlugin } = await prepareConfig();
+        const deleteNativeBuild =
+          await databasePlugin.getNativeBuildById(nativeBuildId);
+        if (!deleteNativeBuild) {
+          return c.json({ error: "Native build not found" }, 404);
+        }
+        await databasePlugin.deleteNativeBuild(deleteNativeBuild);
+        await databasePlugin.commitBundle();
+
+        if (storagePlugin) {
+          await storagePlugin.delete(deleteNativeBuild.storageUri);
+        }
+
+        return c.json({ success: true });
+      } catch (error) {
+        console.error("Error during native build deletion:", error);
         if (error && typeof error === "object" && "message" in error) {
           return c.json({ error: error.message }, 500);
         }

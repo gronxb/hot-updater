@@ -16,28 +16,39 @@ export default function Home() {
   };
 
   return (
-    <Sheet
-      open={isOpen()}
-      onOpenChange={(open) => {
-        if (!open) {
-          setBundleIdFilter(null);
-        }
-      }}
-    >
-      <DataTable
-        columns={columns}
-        onRowClick={(row) => {
-          setBundleIdFilter(row.id);
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight">OTA Updates</h1>
+          <p class="text-muted-foreground">
+            Manage and deploy over-the-air updates for your applications
+          </p>
+        </div>
+      </div>
+
+      <Sheet
+        open={isOpen()}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBundleIdFilter(null);
+          }
         }}
-      />
-      <Show when={bundleIdFilter()}>
-        <Suspense>
-          <EditBundleSheetContent
-            bundleId={bundleIdFilter()!}
-            onClose={handleClose}
-          />
-        </Suspense>
-      </Show>
-    </Sheet>
+      >
+        <DataTable
+          columns={columns}
+          onRowClick={(row) => {
+            setBundleIdFilter(row.id);
+          }}
+        />
+        <Show when={bundleIdFilter()}>
+          <Suspense>
+            <EditBundleSheetContent
+              bundleId={bundleIdFilter()!}
+              onClose={handleClose}
+            />
+          </Suspense>
+        </Show>
+      </Sheet>
+    </div>
   );
 }

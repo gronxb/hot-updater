@@ -9,16 +9,20 @@ import mime from "mime";
 import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {
-  uploadBundle: (bundleId: string, bundlePath: string) => RouteConfig;
-  deleteBundle: (bundleId: string) => RouteConfig;
+  upload: (key: string, filePath: string) => RouteConfig;
+  delete: (storageUri: string) => RouteConfig;
+  getDownloadUrl: (storageUri: string) => RouteConfig;
 }
 
 const defaultRoutes: StorageRoutes = {
-  uploadBundle: (bundleId: string, bundlePath: string) => ({
-    path: "/uploadBundle",
+  upload: (key: string, filePath: string) => ({
+    path: "/upload",
   }),
-  deleteBundle: (bundleId: string) => ({
-    path: "/deleteBundle",
+  delete: (storageUri: string) => ({
+    path: "/delete",
+  }),
+  getDownloadUrl: (storageUri: string) => ({
+    path: "/getDownloadUrl",
   }),
 };
 
@@ -43,15 +47,20 @@ export const standaloneStorage =
   (config: StandaloneStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
     const routes: StorageRoutes = {
-      uploadBundle: (bundleId: string, bundlePath: string) =>
+      upload: (key: string, filePath: string) =>
         createRoute(
-          defaultRoutes.uploadBundle(bundleId, bundlePath),
-          config.routes?.uploadBundle?.(bundleId, bundlePath),
+          defaultRoutes.upload(key, filePath),
+          config.routes?.upload?.(key, filePath),
         ),
-      deleteBundle: (bundleId: string) =>
+      delete: (storageUri: string) =>
         createRoute(
-          defaultRoutes.deleteBundle(bundleId),
-          config.routes?.deleteBundle?.(bundleId),
+          defaultRoutes.delete(storageUri),
+          config.routes?.delete?.(storageUri),
+        ),
+      getDownloadUrl: (storageUri: string) =>
+        createRoute(
+          defaultRoutes.getDownloadUrl(storageUri),
+          config.routes?.getDownloadUrl?.(storageUri),
         ),
     };
 
@@ -62,38 +71,16 @@ export const standaloneStorage =
 
     return {
       name: "standaloneStorage",
-      async deleteBundle(bundleId: string) {
-        const { path: routePath, headers: routeHeaders } =
-          routes.deleteBundle(bundleId);
-        const response = await fetch(`${config.baseUrl}${routePath}`, {
-          method: "DELETE",
-          headers: getHeaders(routeHeaders),
-          body: JSON.stringify({ bundleId }),
-        });
 
-        if (!response.ok) {
-          const error = new Error(
-            `Failed to delete bundle: ${response.statusText}`,
-          );
-          console.error(error);
-          throw error;
-        }
-        const result = (await response.json()) as {
-          storageUri: string;
-        };
-        return {
-          storageUri: result.storageUri,
-        };
-      },
-      async uploadBundle(bundleId: string, bundlePath: string) {
-        const fileContent = await fs.readFile(bundlePath);
+      async upload(key: string, filePath: string) {
+        const fileContent = await fs.readFile(filePath);
         const contentType =
-          mime.getType(bundlePath) ?? "application/octet-stream";
-        const filename = path.basename(bundlePath);
+          mime.getType(filePath) ?? "application/octet-stream";
+        const filename = path.basename(filePath);
 
-        const { path: routePath, headers: routeHeaders } = routes.uploadBundle(
-          bundleId,
-          bundlePath,
+        const { path: routePath, headers: routeHeaders } = routes.upload(
+          key,
+          filePath,
         );
 
         const formData = new FormData();
@@ -102,7 +89,7 @@ export const standaloneStorage =
           new Blob([fileContent], { type: contentType }),
           filename,
         );
-        formData.append("bundleId", bundleId);
+        formData.append("key", key);
 
         const response = await fetch(`${config.baseUrl}${routePath}`, {
           method: "POST",
@@ -111,8 +98,8 @@ export const standaloneStorage =
         });
 
         if (!response.ok) {
-          const error = `Failed to upload bundle: ${response.statusText}`;
-          console.error(`[uploadBundle] ${error}`);
+          const error = `Failed to upload file: ${response.statusText}`;
+          console.error(`[upload] ${error}`);
           throw new Error(error);
         }
 
@@ -121,8 +108,8 @@ export const standaloneStorage =
         };
 
         if (!result.storageUri) {
-          const error = "Failed to upload bundle - no storageUri in response";
-          console.error(`[uploadBundle] ${error}`);
+          const error = "Failed to upload file - no storageUri in response";
+          console.error(`[upload] ${error}`);
           throw new Error(error);
         }
 
@@ -130,6 +117,48 @@ export const standaloneStorage =
 
         return {
           storageUri: result.storageUri,
+        };
+      },
+
+      async delete(storageUri: string) {
+        const { path: routePath, headers: routeHeaders } =
+          routes.delete(storageUri);
+        const response = await fetch(`${config.baseUrl}${routePath}`, {
+          method: "DELETE",
+          headers: getHeaders(routeHeaders),
+          body: JSON.stringify({ storageUri }),
+        });
+
+        if (!response.ok) {
+          const error = new Error(
+            `Failed to delete file: ${response.statusText}`,
+          );
+          console.error(error);
+          throw error;
+        }
+      },
+
+      async getDownloadUrl(storageUri: string) {
+        const { path: routePath, headers: routeHeaders } =
+          routes.getDownloadUrl(storageUri);
+        const response = await fetch(`${config.baseUrl}${routePath}`, {
+          method: "GET",
+          headers: getHeaders(routeHeaders),
+          body: JSON.stringify({ storageUri }),
+        });
+
+        if (!response.ok) {
+          const error = new Error(
+            `Failed to get download URL: ${response.statusText}`,
+          );
+          console.error(error);
+          throw error;
+        }
+        const result = (await response.json()) as {
+          fileUrl: string;
+        };
+        return {
+          fileUrl: result.fileUrl,
         };
       },
     };

@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { extractTimestampFromUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
+import { extractDateFromUUIDv7 } from "@/lib/utils";
 import type { Bundle } from "@hot-updater/core";
 import type { ColumnDef } from "@tanstack/solid-table";
 import dayjs from "dayjs";
@@ -124,7 +124,7 @@ export const columns: ColumnDef<Bundle>[] = [
     accessorKey: "id",
     header: "Created At",
     cell: (info) =>
-      dayjs(extractTimestampFromUUIDv7(String(info.getValue()))).format(
+      dayjs(extractDateFromUUIDv7(String(info.getValue()))).format(
         "YYYY-MM-DD HH:mm:ss",
       ),
   },
