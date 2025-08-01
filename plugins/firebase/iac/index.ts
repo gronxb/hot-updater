@@ -446,7 +446,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   p.log.message(
     `Next step: ${link(
-      "https://gronxb.github.io/hot-updater/guide/providers/4_firebase.html#step-3-generated-configurations",
+      "https://hot-updater.dev/guide/providers/4_firebase.html#step-3-generated-configurations",
     )}`,
   );
   p.log.message(
