@@ -269,7 +269,7 @@ export const runInit = async ({
   const sourceUrl = `https://${distributionDomain}/api/check-update`;
   p.note(transformTemplate(SOURCE_TEMPLATE, { source: sourceUrl }));
   p.log.message(
-    `Next step: ${link("https://gronxb.github.io/hot-updater/guide/providers/3_aws-s3-lambda-edge.html#step-4-changeenv-file-optional")}`,
+    `Next step: ${link("https://hot-updater.dev/guide/providers/3_aws-s3-lambda-edge.html#step-4-changeenv-file-optional")}`,
   );
   p.log.success("Done! 🎉");
 };

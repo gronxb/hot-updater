@@ -447,7 +447,7 @@ export const runInit = async ({
 
   p.log.message(
     `Next step: ${link(
-      "https://gronxb.github.io/hot-updater/guide/providers/2_cloudflare.html#step-4-add-hotupdater-to-your-project",
+      "https://hot-updater.dev/guide/providers/2_cloudflare.html#step-4-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");
