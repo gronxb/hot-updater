@@ -1,5 +1,13 @@
 # @hot-updater/supabase
 
+## 0.19.10
+
+### Patch Changes
+
+- 4be92bd: link
+  - @hot-updater/core@0.19.10
+  - @hot-updater/plugin-core@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes
