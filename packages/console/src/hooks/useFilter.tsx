@@ -14,11 +14,15 @@ export const useFilter = () => {
   const platformFilter = createMemo(
     () => (searchParams?.platform ?? null) as Platform | null,
   );
+  const buildIdFilter = createMemo(
+    () => (searchParams?.buildId ?? null) as string | null,
+  );
 
   return {
     bundleIdFilter,
     channelFilter,
     platformFilter,
+    buildIdFilter,
     setBundleIdFilter: (bundleId: string | null) => {
       setSearchParams({
         bundleId: bundleId ?? undefined,
@@ -32,6 +36,11 @@ export const useFilter = () => {
     setPlatformFilter: (platform: Platform | null) => {
       setSearchParams({
         platform: platform ?? undefined,
+      });
+    },
+    setBuildIdFilter: (buildId: string | null) => {
+      setSearchParams({
+        buildId: buildId ?? undefined,
       });
     },
   };

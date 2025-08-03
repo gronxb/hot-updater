@@ -41,7 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useFilter } from "@/hooks/useFilter";
-import { createBundlesQuery, createChannelsQuery } from "@/lib/api";
+import { useBundlesQuery, useChannelsQuery } from "@/lib/api";
 import type { Bundle } from "@hot-updater/core";
 
 interface DataTableProps {
@@ -68,7 +68,7 @@ export function DataTable(props: DataTableProps) {
     offset: (pagination().pageIndex * pagination().pageSize).toString(),
   }));
 
-  const bundlesQuery = createBundlesQuery(query);
+  const bundlesQuery = useBundlesQuery(query);
 
   const bundlesResponse = createMemo(
     () => bundlesQuery.data ?? { data: [], pagination: null },
@@ -104,7 +104,7 @@ export function DataTable(props: DataTableProps) {
     local.onRowClick(row.original);
   };
 
-  const channels = createChannelsQuery();
+  const channels = useChannelsQuery();
 
   createEffect(() => {
     if (channels.isFetched && channels.data && channelFilter() === null) {
