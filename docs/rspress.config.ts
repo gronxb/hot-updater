@@ -16,7 +16,6 @@ export default defineConfig({
     light: "/logo.png",
     dark: "/logo.png",
   },
-  base: "/hot-updater/",
   markdown: {
     showLineNumbers: true,
     defaultWrapCode: true,

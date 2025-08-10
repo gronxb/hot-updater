@@ -10,8 +10,8 @@
   ## Documentation
 
   Full documentation is available at:
-  https://gronxb.github.io/hot-updater
-
+  https://hot-updater.dev
+  
   ## Key Features
 
   - **Self-Hosted**: Complete control over your update infrastructure
@@ -34,7 +34,7 @@
 
   ### Configuration Example
 
-  * [Supabase](https://gronxb.github.io/hot-updater/guide/providers/1_supabase.html)
+  * [Supabase](https://hot-updater.dev/guide/providers/1_supabase.html)
   ```tsx
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
@@ -55,7 +55,7 @@
   });
   ```
 
-* [Cloudflare](https://gronxb.github.io/hot-updater/guide/providers/2_cloudflare.html)
+* [Cloudflare](https://hot-updater.dev/guide/providers/2_cloudflare.html)
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
@@ -77,7 +77,7 @@ export default defineConfig({
 });
 ```
 
-* [AWS S3 + Lambda@Edge](https://gronxb.github.io/hot-updater/guide/providers/3_aws-s3-lambda-edge.html)
+* [AWS S3 + Lambda@Edge](https://hot-updater.dev/guide/providers/3_aws-s3-lambda-edge.html)
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
@@ -100,7 +100,7 @@ export default defineConfig({
 });
 ```
 
-* [Firebase](https://gronxb.github.io/hot-updater/guide/providers/4_firebase.html)
+* [Firebase](https://hot-updater.dev/guide/providers/4_firebase.html)
 ```tsx
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';

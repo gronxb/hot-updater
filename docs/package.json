@@ -2,16 +2,17 @@
   "name": "@hot-updater/docs",
   "version": "0.2.0",
   "private": true,
-  "homepage": "https://gronxb.github.io/hot-updater/",
+  "homepage": "https://hot-updater.dev/",
   "scripts": {
     "dev": "rspress dev",
     "build": "rspress build",
     "preview": "rspress preview"
   },
   "devDependencies": {
-    "@shikijs/transformers": "^3.4.2",
     "@rspress/plugin-llms": "^2.0.0-beta.8",
     "@types/node": "catalog:",
-    "rspress": "^2.0.0-beta.8"
+    "rspress": "^2.0.0-beta.8",
+    "@shikijs/transformers": "^3.4.2",
+    "wrangler": "^4.26.0"
   }
 }
