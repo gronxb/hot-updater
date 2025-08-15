@@ -48,6 +48,6 @@
     "access": "public"
   },
   "devDependencies": {
-    "@types/node": "^20.9.4"
+    "@types/node": "catalog:"
   }
 }

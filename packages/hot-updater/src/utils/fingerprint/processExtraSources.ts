@@ -1,5 +1,5 @@
 // Credit https://github.com/callstack/rnef/blob/eb89247576934a976e8e486722c5e74f9bc068b7/packages/tools/src/lib/fingerprint/processExtraSources.ts#L14
-import fs from "node:fs";
+import fs from "fs";
 import type { HashSourceContents, HashSourceDir } from "@expo/fingerprint";
 import fg from "fast-glob";
 
