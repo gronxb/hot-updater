@@ -1,5 +1,5 @@
-import crypto from "node:crypto";
 import fs from "fs";
+import crypto from "node:crypto";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import { readBufferFromPlist, readKeyFromPlist } from "../utils/plistManager";
