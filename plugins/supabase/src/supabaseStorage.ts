@@ -1,13 +1,13 @@
 import path from "path";
-import type {
-  BasePluginArgs,
-  StoragePlugin,
-  StoragePluginHooks,
+import {
+  type BasePluginArgs,
+  type StoragePlugin,
+  type StoragePluginHooks,
+  createStorageKeyBuilder,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
 import mime from "mime";
-import { createStorageKeyBuilder } from "../../plugin-core/dist/index.cjs";
 import type { Database } from "./types";
 
 export interface SupabaseStorageConfig {
