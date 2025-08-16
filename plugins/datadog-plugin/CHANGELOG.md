@@ -1,1 +1,10 @@
 # @hot-updater/datadog-plugin
+
+## 0.19.10
+
+### Patch Changes
+
+- 9c373a6: Introduce Datadog plugin for sourcemaps upload
+- Updated dependencies [2bc52e8]
+  - @hot-updater/plugin-core@0.19.10
+  - @hot-updater/core@0.19.10
