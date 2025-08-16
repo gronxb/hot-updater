@@ -1,8 +1,9 @@
 import path from "path";
-import type {
-  BasePluginArgs,
-  StoragePlugin,
-  StoragePluginHooks,
+import {
+  type BasePluginArgs,
+  type StoragePlugin,
+  type StoragePluginHooks,
+  createStorageKeyBuilder,
 } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 import fs from "fs/promises";
@@ -27,16 +28,11 @@ export const firebaseStorage =
     }
     const bucket = app.storage().bucket(config.storageBucket);
 
-    const getBundleKey = (bundleId: string, filename = "bundle.zip") => {
-      return path.posix.join(
-        ...[config.basePath || "", bundleId, filename].filter(Boolean),
-      );
-    };
-
+    const getStorageKey = createStorageKeyBuilder(config.basePath);
     return {
       name: "firebaseStorage",
       async deleteBundle(bundleId) {
-        const key = getBundleKey(bundleId);
+        const key = getStorageKey(bundleId, "bundle.zip");
         try {
           const [files] = await bucket.getFiles({ prefix: key });
           await Promise.all(files.map((file) => file.delete()));
@@ -55,7 +51,7 @@ export const firebaseStorage =
           const contentType =
             mime.getType(bundlePath) ?? "application/octet-stream";
           const filename = path.basename(bundlePath);
-          const key = getBundleKey(bundleId, filename);
+          const key = getStorageKey(bundleId, filename);
 
           const file = bucket.file(key);
           await file.save(fileContent, {

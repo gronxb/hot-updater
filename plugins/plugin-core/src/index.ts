@@ -13,3 +13,4 @@ export * from "./createBlobDatabasePlugin";
 export * from "./ConfigBuilder";
 export * from "./calculatePagination";
 export * from "./generateMinBundleId";
+export * from "./createStorageKeyBuilder";

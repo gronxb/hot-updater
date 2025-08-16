@@ -49,7 +49,7 @@
     "@hot-updater/core": "workspace:*",
     "cosmiconfig": "9.0.0",
     "cosmiconfig-typescript-loader": "5.0.0",
-    "oxc-transform": "0.72.0"
+    "oxc-transform": "0.82.1"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
