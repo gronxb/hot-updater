@@ -6,16 +6,21 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import type {
-  BasePluginArgs,
-  StoragePlugin,
-  StoragePluginHooks,
+import {
+  type BasePluginArgs,
+  type StoragePlugin,
+  type StoragePluginHooks,
+  createStorageKeyBuilder,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
 
 export interface S3StorageConfig extends S3ClientConfig {
   bucketName: string;
+  /**
+   * Base path where bundles will be stored in the bucket
+   */
+  basePath?: string;
 }
 
 export const s3Storage =
@@ -24,10 +29,12 @@ export const s3Storage =
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
+    const getStorageKey = createStorageKeyBuilder(config.basePath);
+
     return {
       name: "s3Storage",
       async deleteBundle(bundleId) {
-        const Key = bundleId;
+        const Key = getStorageKey(bundleId, "bundle.zip");
 
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
@@ -63,7 +70,7 @@ export const s3Storage =
 
         const filename = path.basename(bundlePath);
 
-        const Key = [bundleId, filename].join("/");
+        const Key = getStorageKey(bundleId, filename);
         const upload = new Upload({
           client,
           params: {

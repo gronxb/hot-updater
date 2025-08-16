@@ -7,12 +7,17 @@ import type {
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
 import mime from "mime";
+import { createStorageKeyBuilder } from "../../plugin-core/dist/index.cjs";
 import type { Database } from "./types";
 
 export interface SupabaseStorageConfig {
   supabaseUrl: string;
   supabaseAnonKey: string;
   bucketName: string;
+  /**
+   * Base path where bundles will be stored in the bucket
+   */
+  basePath?: string;
 }
 
 export const supabaseStorage =
@@ -24,11 +29,12 @@ export const supabaseStorage =
     );
 
     const bucket = supabase.storage.from(config.bucketName);
+    const getStorageKey = createStorageKeyBuilder(config.basePath);
     return {
       name: "supabaseStorage",
       async deleteBundle(bundleId) {
         const filename = "bundle.zip";
-        const Key = `${bundleId}/${filename}`;
+        const Key = getStorageKey(bundleId, filename);
 
         const { error } = await bucket.remove([Key]);
 
@@ -49,7 +55,7 @@ export const supabaseStorage =
 
         const filename = path.basename(bundlePath);
 
-        const Key = [bundleId, filename].join("/");
+        const Key = getStorageKey(bundleId, filename);
 
         const upload = await bucket.upload(Key, Body, {
           contentType: ContentType,
