@@ -6,12 +6,14 @@ export const transformEnv = <T extends Record<string, string>>(
   env: T,
 ) => {
   const code = fs.readFileSync(filename, "utf-8");
-  return transform(filename, code, {
-    define: Object.fromEntries(
-      Object.entries(env).map(([key, value]) => [
-        `HotUpdater.${key}`,
-        JSON.stringify(value),
-      ]),
-    ),
-  }).code;
+  return (
+    transform(filename, code, {
+      define: Object.fromEntries(
+        Object.entries(env).map(([key, value]) => [
+          `HotUpdater.${key}`,
+          JSON.stringify(value),
+        ]),
+      ),
+    })?.code || code
+  );
 };
