@@ -1,5 +1,19 @@
 # @hot-updater/react-native
 
+## 0.19.10
+
+### Patch Changes
+
+- 4be92bd: link
+- 8d2d55a: Injectable minimum bundle id for Android
+- Updated dependencies [85b236d]
+- Updated dependencies [8d2d55a]
+- Updated dependencies [2bc52e8]
+  - hot-updater@0.19.10
+  - @hot-updater/plugin-core@0.19.10
+  - @hot-updater/core@0.19.10
+  - @hot-updater/js@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes

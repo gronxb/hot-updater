@@ -1,5 +1,14 @@
 # @hot-updater/aws
 
+## 0.19.10
+
+### Patch Changes
+
+- 4be92bd: link
+- 2bc52e8: feat(storage): add support for target storage location and return storageUri (v0.18.0+)
+- Updated dependencies [2bc52e8]
+  - @hot-updater/plugin-core@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes
