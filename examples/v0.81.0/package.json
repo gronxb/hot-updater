@@ -39,6 +39,7 @@
     "@types/jest": "^29.5.13",
     "@types/react": "^19.1.0",
     "@types/react-test-renderer": "^19.1.0",
+    "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
     "hot-updater": "workspace:*",
     "jest": "^29.6.3",
