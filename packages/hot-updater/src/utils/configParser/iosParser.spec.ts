@@ -237,7 +237,9 @@ describe("IosConfigParser", () => {
         new Error("Permission denied"),
       );
 
-      await expect(iosParser.get("TEST_KEY")).rejects.toThrow("Permission denied");
+      await expect(iosParser.get("TEST_KEY")).rejects.toThrow(
+        "Permission denied",
+      );
     });
 
     it("should handle plist parse errors by throwing", async () => {
@@ -247,7 +249,9 @@ describe("IosConfigParser", () => {
         throw new Error("Invalid plist format");
       });
 
-      await expect(iosParser.get("TEST_KEY")).rejects.toThrow("Invalid plist format");
+      await expect(iosParser.get("TEST_KEY")).rejects.toThrow(
+        "Invalid plist format",
+      );
     });
 
     it("should return value from first matching file with custom paths", async () => {
