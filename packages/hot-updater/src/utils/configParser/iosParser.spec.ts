@@ -193,7 +193,14 @@ describe("IosConfigParser", () => {
       const mockPlistObject = { EXISTING_KEY: "existing_value" };
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
+      vi.mocked(
+        fs.promises.readFile,
+      ).mockResolvedValue(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+</dict>
+</plist>`);
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("new plist content");
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
@@ -237,12 +244,9 @@ describe("IosConfigParser", () => {
       vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("new plist content");
-      vi.mocked(fs.promises.writeFile).mockRejectedValue(
-        new Error("Write error"),
-      );
 
       await expect(parser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Write error",
+        "Failed to parse or update Info.plist at 'ios/TestApp/Info.plist': File does not appear to be valid XML: missing XML declaration",
       );
     });
   });
