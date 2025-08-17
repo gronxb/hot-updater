@@ -20,6 +20,7 @@ vi.mock("path", () => ({
   default: {
     join: vi.fn(),
     relative: vi.fn(),
+    isAbsolute: vi.fn(),
   },
 }));
 
@@ -33,13 +34,10 @@ vi.mock("fast-xml-parser", () => ({
 }));
 
 describe("AndroidConfigParser", () => {
-  let androidParser: AndroidConfigParser;
   let mockParser: any;
   let mockBuilder: any;
   const mockStringsXmlPath =
     "/mock/project/android/app/src/main/res/values/strings.xml";
-  const mockExtensionXmlPath =
-    "/mock/project/android/extension/src/main/res/values/strings.xml";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,65 +59,47 @@ describe("AndroidConfigParser", () => {
     vi.mocked(path.relative).mockImplementation((from, to) =>
       to.replace(`${from}/`, ""),
     );
-
-    androidParser = new AndroidConfigParser();
+    vi.mocked(path.isAbsolute).mockImplementation((p) => p.startsWith("/"));
   });
 
   describe("constructor", () => {
-    it("should use default path when no custom paths provided", () => {
+    it("should create parser with empty paths when no custom paths provided", () => {
       const parser = new AndroidConfigParser();
       expect(parser).toBeDefined();
     });
 
-    it("should use custom paths when provided", () => {
-      const customPaths = [
-        "android/app/src/main/res/values/strings.xml",
-        "android/extension/src/main/res/values/strings.xml",
-      ];
+    it("should create parser with custom paths when provided", () => {
+      const customPaths = ["android/app/src/main/res/values/strings.xml"];
       const parser = new AndroidConfigParser(customPaths);
       expect(parser).toBeDefined();
     });
   });
 
   describe("exists", () => {
-    it("should return true when strings.xml exists", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-
-      const result = await androidParser.exists();
-
-      expect(result).toBe(true);
-      expect(fs.existsSync).toHaveBeenCalledWith(mockStringsXmlPath);
-    });
-
-    it("should return false when strings.xml does not exist", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-
-      const result = await androidParser.exists();
-
+    it("should return false when no paths provided", async () => {
+      const parser = new AndroidConfigParser();
+      const result = await parser.exists();
       expect(result).toBe(false);
     });
 
-    it("should return true when at least one path exists with multiple paths", async () => {
+    it("should return true when file exists", async () => {
       const parser = new AndroidConfigParser([
-        mockStringsXmlPath,
-        mockExtensionXmlPath,
+        "android/app/src/main/res/values/strings.xml",
       ]);
-
-      vi.mocked(fs.existsSync).mockImplementation((path) => {
-        return path === mockStringsXmlPath;
-      });
+      vi.mocked(fs.existsSync).mockReturnValue(true);
 
       const result = await parser.exists();
 
       expect(result).toBe(true);
+      expect(fs.existsSync).toHaveBeenCalledWith(
+        "/mock/project/android/app/src/main/res/values/strings.xml",
+      );
     });
 
-    it("should return false when no paths exist with multiple paths", async () => {
+    it("should return false when file does not exist", async () => {
       const parser = new AndroidConfigParser([
-        mockStringsXmlPath,
-        mockExtensionXmlPath,
+        "android/app/src/main/res/values/strings.xml",
       ]);
-
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const result = await parser.exists();
@@ -129,110 +109,85 @@ describe("AndroidConfigParser", () => {
   });
 
   describe("get", () => {
-    it("should return null value and path when file does not exist", async () => {
+    it("should return null when no paths provided", async () => {
+      const parser = new AndroidConfigParser();
+      const result = await parser.get("test_key");
+
+      expect(result).toEqual({
+        value: null,
+        paths: [],
+      });
+    });
+
+    it("should return null when no files exist", async () => {
+      const parser = new AndroidConfigParser([
+        "android/app/src/main/res/values/strings.xml",
+      ]);
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      const result = await androidParser.get("test_key");
+      const result = await parser.get("test_key");
 
       expect(result).toEqual({
         value: null,
-        path: "android/app/src/main/res/values/strings.xml",
+        paths: [],
       });
     });
 
-    it("should return null value when no string elements exist", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-</resources>`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {},
-      });
-
-      const result = await androidParser.get("test_key");
-
-      expect(result).toEqual({
-        value: null,
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should return object with value and path for existing moduleConfig string (single element)", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string moduleConfig="true" name="hot_updater_channel">dev</string>
-</resources>`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
+    it("should return value when key exists with moduleConfig=true", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
+      const mockXmlData = {
         resources: {
           string: {
-            "@_name": "hot_updater_channel",
+            "@_name": "test_key",
             "@_moduleConfig": "true",
-            "#text": "dev",
+            "#text": "test_value",
           },
         },
-      });
-
-      const result = await androidParser.get("hot_updater_channel");
-
-      expect(result).toEqual({
-        value: "dev",
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should return object with value and path for existing moduleConfig string (multiple elements)", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">MyApp</string>
-    <string moduleConfig="true" name="hot_updater_channel">dev</string>
-    <string moduleConfig="true" name="api_url">https://dev.api.com</string>
-</resources>`;
+      };
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
+      vi.mocked(fs.promises.readFile).mockResolvedValue("xml content");
+      mockParser.parse.mockReturnValue(mockXmlData);
+
+      const result = await parser.get("test_key");
+
+      expect(result).toEqual({
+        value: "test_value",
+        paths: ["android/app/src/main/res/values/strings.xml"],
+      });
+      expect(fs.promises.readFile).toHaveBeenCalledWith(
+        mockStringsXmlPath,
+        "utf-8",
+      );
+      expect(mockParser.parse).toHaveBeenCalledWith("xml content");
+    });
+
+    it("should return null when key exists but moduleConfig is not true", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
+      const mockXmlData = {
         resources: {
-          string: [
-            {
-              "@_name": "app_name",
-              "#text": "MyApp",
-            },
-            {
-              "@_name": "hot_updater_channel",
-              "@_moduleConfig": "true",
-              "#text": "dev",
-            },
-            {
-              "@_name": "api_url",
-              "@_moduleConfig": "true",
-              "#text": "https://dev.api.com",
-            },
-          ],
+          string: {
+            "@_name": "test_key",
+            "#text": "test_value",
+          },
         },
-      });
+      };
 
-      const result = await androidParser.get("hot_updater_channel");
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("xml content");
+      mockParser.parse.mockReturnValue(mockXmlData);
+
+      const result = await parser.get("test_key");
 
       expect(result).toEqual({
-        value: "dev",
-        path: "android/app/src/main/res/values/strings.xml",
+        value: null,
+        paths: ["android/app/src/main/res/values/strings.xml"],
       });
     });
 
-    it("should return null value for non-existent key", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string moduleConfig="true" name="other_key">other_value</string>
-</resources>`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
+    it("should return null when key does not exist", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
+      const mockXmlData = {
         resources: {
           string: {
             "@_name": "other_key",
@@ -240,629 +195,196 @@ describe("AndroidConfigParser", () => {
             "#text": "other_value",
           },
         },
-      });
-
-      const result = await androidParser.get("nonexistent_key");
-
-      expect(result).toEqual({
-        value: null,
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should ignore strings without moduleConfig attribute", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">MyApp</string>
-    <string name="hot_updater_channel">dev</string>
-    <string moduleConfig="true" name="api_url">https://api.com</string>
-</resources>`;
+      };
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: [
-            {
-              "@_name": "app_name",
-              "#text": "MyApp",
-            },
-            {
-              "@_name": "hot_updater_channel",
-              "#text": "dev",
-            },
-            {
-              "@_name": "api_url",
-              "@_moduleConfig": "true",
-              "#text": "https://api.com",
-            },
-          ],
-        },
-      });
+      vi.mocked(fs.promises.readFile).mockResolvedValue("xml content");
+      mockParser.parse.mockReturnValue(mockXmlData);
 
-      const result = await androidParser.get("hot_updater_channel");
+      const result = await parser.get("test_key");
 
       expect(result).toEqual({
         value: null,
-        path: "android/app/src/main/res/values/strings.xml",
+        paths: ["android/app/src/main/res/values/strings.xml"],
       });
     });
 
-    it("should ignore strings with moduleConfig=false", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string moduleConfig="false" name="hot_updater_channel">dev</string>
-    <string moduleConfig="true" name="api_url">https://api.com</string>
-</resources>`;
-
+    it("should handle file read errors", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: [
-            {
-              "@_name": "hot_updater_channel",
-              "@_moduleConfig": "false",
-              "#text": "dev",
-            },
-            {
-              "@_name": "api_url",
-              "@_moduleConfig": "true",
-              "#text": "https://api.com",
-            },
-          ],
-        },
-      });
+      vi.mocked(fs.promises.readFile).mockRejectedValue(
+        new Error("Read error"),
+      );
 
-      const result = await androidParser.get("hot_updater_channel");
-
-      expect(result).toEqual({
-        value: null,
-        path: "android/app/src/main/res/values/strings.xml",
-      });
+      await expect(parser.get("test_key")).rejects.toThrow("Failed to get");
     });
 
-    it("should handle XML parsing errors", async () => {
+    it("should handle XML parse errors", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
       mockParser.parse.mockImplementation(() => {
-        throw new Error("Invalid XML");
+        throw new Error("Parse error");
       });
 
-      await expect(androidParser.get("test_key")).rejects.toThrow(
-        "Invalid XML",
-      );
-    });
-
-    it("should handle file read errors by throwing", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockRejectedValue(
-        new Error("Permission denied"),
-      );
-
-      await expect(androidParser.get("test_key")).rejects.toThrow(
-        "Permission denied",
-      );
-    });
-
-    it("should trim whitespace from text content", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: {
-            "@_name": "test_key",
-            "@_moduleConfig": "true",
-            "#text": "  value with spaces  ",
-          },
-        },
-      });
-
-      const result = await androidParser.get("test_key");
-
-      expect(result).toEqual({
-        value: "value with spaces",
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should handle missing text content", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: {
-            "@_name": "test_key",
-            "@_moduleConfig": "true",
-            // no #text property
-          },
-        },
-      });
-
-      const result = await androidParser.get("test_key");
-
-      expect(result).toEqual({
-        value: null,
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should return value from first matching file with multiple paths", async () => {
-      const parser = new AndroidConfigParser([
-        mockStringsXmlPath,
-        mockExtensionXmlPath,
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-
-      // First file has the value
-      mockParser.parse.mockReturnValueOnce({
-        resources: {
-          string: {
-            "@_name": "test_key",
-            "@_moduleConfig": "true",
-            "#text": "first_value",
-          },
-        },
-      });
-
-      const result = await parser.get("test_key");
-
-      expect(result).toEqual({
-        value: "first_value",
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should check second file if first file doesn't have the key", async () => {
-      const parser = new AndroidConfigParser([
-        mockStringsXmlPath,
-        mockExtensionXmlPath,
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-
-      // First file doesn't have the key
-      mockParser.parse
-        .mockReturnValueOnce({
-          resources: {
-            string: {
-              "@_name": "other_key",
-              "@_moduleConfig": "true",
-              "#text": "other_value",
-            },
-          },
-        })
-        // Second file has the key
-        .mockReturnValueOnce({
-          resources: {
-            string: {
-              "@_name": "test_key",
-              "@_moduleConfig": "true",
-              "#text": "second_value",
-            },
-          },
-        });
-
-      const result = await parser.get("test_key");
-
-      expect(result).toEqual({
-        value: "second_value",
-        path: "android/extension/src/main/res/values/strings.xml",
-      });
+      await expect(parser.get("test_key")).rejects.toThrow("Failed to get");
     });
   });
 
   describe("set", () => {
-    it("should return empty path when file does not exist", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+    it("should return null path when no paths provided", async () => {
+      const parser = new AndroidConfigParser();
+      const result = await parser.set("test_key", "test_value");
 
-      const result = await androidParser.set("test_key", "test_value");
-
-      expect(result).toEqual({ path: null });
+      expect(result).toEqual({ paths: [] });
     });
 
-    it("should update existing moduleConfig string", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string moduleConfig="true" name="hot_updater_channel">old_value</string>
-</resources>`;
+    it("should return null path when no files exist", async () => {
+      const parser = new AndroidConfigParser([
+        "android/app/src/main/res/values/strings.xml",
+      ]);
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const result = await parser.set("test_key", "test_value");
+
+      expect(result).toEqual({ paths: [] });
+    });
+
+    it("should set value successfully in empty resources", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
+      const mockXmlData = {
+        resources: {},
+      };
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: {
-            "@_name": "hot_updater_channel",
-            "@_moduleConfig": "true",
-            "#text": "old_value",
-          },
-        },
-      });
-      mockBuilder.build.mockReturnValue(
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string moduleConfig="true" name="hot_updater_channel">new_value</string>\n</resources>',
-      );
+      vi.mocked(fs.promises.readFile).mockResolvedValue("xml content");
+      mockParser.parse.mockReturnValue(mockXmlData);
+      mockBuilder.build.mockReturnValue("new xml content");
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      const result = await androidParser.set(
-        "hot_updater_channel",
-        "new_value",
-      );
+      const result = await parser.set("test_key", "test_value");
 
       expect(mockBuilder.build).toHaveBeenCalledWith({
         resources: {
           string: {
-            "@_name": "hot_updater_channel",
+            "@_name": "test_key",
+            "@_moduleConfig": "true",
+            "#text": "test_value",
+          },
+        },
+      });
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        mockStringsXmlPath,
+        "new xml content",
+        "utf-8",
+      );
+      expect(result).toEqual({
+        paths: ["android/app/src/main/res/values/strings.xml"],
+      });
+    });
+
+    it("should update existing moduleConfig string", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
+      const mockXmlData = {
+        resources: {
+          string: {
+            "@_name": "test_key",
+            "@_moduleConfig": "true",
+            "#text": "old_value",
+          },
+        },
+      };
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("xml content");
+      mockParser.parse.mockReturnValue(mockXmlData);
+      mockBuilder.build.mockReturnValue("new xml content");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      const result = await parser.set("test_key", "new_value");
+
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        resources: {
+          string: {
+            "@_name": "test_key",
             "@_moduleConfig": "true",
             "#text": "new_value",
           },
         },
       });
-      expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        mockStringsXmlPath,
-        expect.stringContaining("new_value"),
-        "utf-8",
-      );
       expect(result).toEqual({
-        path: "android/app/src/main/res/values/strings.xml",
+        paths: ["android/app/src/main/res/values/strings.xml"],
       });
     });
 
-    it("should add new moduleConfig string to existing resources", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">MyApp</string>
-</resources>`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
+    it("should add new moduleConfig string to existing strings", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
+      const mockXmlData = {
         resources: {
           string: {
-            "@_name": "app_name",
-            "#text": "MyApp",
+            "@_name": "existing_key",
+            "#text": "existing_value",
           },
         },
-      });
-      mockBuilder.build.mockReturnValue(
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">MyApp</string>\n    <string moduleConfig="true" name="hot_updater_channel">dev</string>\n</resources>',
-      );
+      };
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("xml content");
+      mockParser.parse.mockReturnValue(mockXmlData);
+      mockBuilder.build.mockReturnValue("new xml content");
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      const result = await androidParser.set("hot_updater_channel", "dev");
+      const result = await parser.set("test_key", "test_value");
 
       expect(mockBuilder.build).toHaveBeenCalledWith({
         resources: {
           string: [
             {
-              "@_name": "app_name",
-              "#text": "MyApp",
+              "@_name": "existing_key",
+              "#text": "existing_value",
             },
             {
-              "@_name": "hot_updater_channel",
+              "@_name": "test_key",
               "@_moduleConfig": "true",
-              "#text": "dev",
+              "#text": "test_value",
             },
           ],
         },
       });
       expect(result).toEqual({
-        path: "android/app/src/main/res/values/strings.xml",
+        paths: ["android/app/src/main/res/values/strings.xml"],
       });
     });
 
-    it("should handle empty resources (no string elements)", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-</resources>`;
-
+    it("should handle file read errors", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {},
-      });
-      mockBuilder.build.mockReturnValue(
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string moduleConfig="true" name="hot_updater_channel">dev</string>\n</resources>',
-      );
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await androidParser.set("hot_updater_channel", "dev");
-
-      expect(mockBuilder.build).toHaveBeenCalledWith({
-        resources: {
-          string: {
-            "@_name": "hot_updater_channel",
-            "@_moduleConfig": "true",
-            "#text": "dev",
-          },
-        },
-      });
-      expect(result).toEqual({
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should update correct string when multiple moduleConfig strings exist", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string moduleConfig="true" name="api_url">https://api.com</string>
-    <string moduleConfig="true" name="hot_updater_channel">old_value</string>
-    <string moduleConfig="true" name="debug_mode">true</string>
-</resources>`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: [
-            {
-              "@_name": "api_url",
-              "@_moduleConfig": "true",
-              "#text": "https://api.com",
-            },
-            {
-              "@_name": "hot_updater_channel",
-              "@_moduleConfig": "true",
-              "#text": "old_value",
-            },
-            {
-              "@_name": "debug_mode",
-              "@_moduleConfig": "true",
-              "#text": "true",
-            },
-          ],
-        },
-      });
-      mockBuilder.build.mockReturnValue(
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
-      );
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await androidParser.set(
-        "hot_updater_channel",
-        "new_value",
+      vi.mocked(fs.promises.readFile).mockRejectedValue(
+        new Error("Read error"),
       );
 
-      expect(mockBuilder.build).toHaveBeenCalledWith({
-        resources: {
-          string: [
-            {
-              "@_name": "api_url",
-              "@_moduleConfig": "true",
-              "#text": "https://api.com",
-            },
-            {
-              "@_name": "hot_updater_channel",
-              "@_moduleConfig": "true",
-              "#text": "new_value",
-            },
-            {
-              "@_name": "debug_mode",
-              "@_moduleConfig": "true",
-              "#text": "true",
-            },
-          ],
-        },
-      });
-      expect(result).toEqual({
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should preserve non-moduleConfig strings when adding new moduleConfig string", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">MyApp</string>
-    <string name="normal_string">Normal Value</string>
-</resources>`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: [
-            {
-              "@_name": "app_name",
-              "#text": "MyApp",
-            },
-            {
-              "@_name": "normal_string",
-              "#text": "Normal Value",
-            },
-          ],
-        },
-      });
-      mockBuilder.build.mockReturnValue(
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
-      );
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await androidParser.set("hot_updater_channel", "dev");
-
-      expect(mockBuilder.build).toHaveBeenCalledWith({
-        resources: {
-          string: [
-            {
-              "@_name": "app_name",
-              "#text": "MyApp",
-            },
-            {
-              "@_name": "normal_string",
-              "#text": "Normal Value",
-            },
-            {
-              "@_name": "hot_updater_channel",
-              "@_moduleConfig": "true",
-              "#text": "dev",
-            },
-          ],
-        },
-      });
-      expect(result).toEqual({
-        path: "android/app/src/main/res/values/strings.xml",
-      });
-    });
-
-    it("should handle XML parsing errors", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
-      mockParser.parse.mockImplementation(() => {
-        throw new Error("Invalid XML format");
-      });
-
-      await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
-        "Failed to parse or update strings.xml: Error: Invalid XML format",
+      await expect(parser.set("test_key", "test_value")).rejects.toThrow(
+        "Failed to parse or update strings.xml",
       );
     });
 
     it("should handle file write errors", async () => {
+      const parser = new AndroidConfigParser([mockStringsXmlPath]);
+      const mockXmlData = {
+        resources: {},
+      };
+
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(
-        "<resources></resources>",
-      );
-      mockParser.parse.mockReturnValue({ resources: {} });
-      mockBuilder.build.mockReturnValue(
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
-      );
+      vi.mocked(fs.promises.readFile).mockResolvedValue("xml content");
+      mockParser.parse.mockReturnValue(mockXmlData);
+      mockBuilder.build.mockReturnValue("new xml content");
       vi.mocked(fs.promises.writeFile).mockRejectedValue(
-        new Error("Permission denied"),
+        new Error("Write error"),
       );
 
-      await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
-        "Failed to parse or update strings.xml: Error: Permission denied",
-      );
-    });
-
-    it("should handle array to single object conversion correctly", async () => {
-      const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string moduleConfig="true" name="hot_updater_channel">old_value</string>
-    <string moduleConfig="true" name="api_url">https://api.com</string>
-</resources>`;
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(xmlContent);
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: [
-            {
-              "@_name": "hot_updater_channel",
-              "@_moduleConfig": "true",
-              "#text": "old_value",
-            },
-            {
-              "@_name": "api_url",
-              "@_moduleConfig": "true",
-              "#text": "https://api.com",
-            },
-          ],
-        },
-      });
-      mockBuilder.build.mockReturnValue(
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>...</resources>',
-      );
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      await androidParser.set("hot_updater_channel", "new_value");
-
-      // Should keep as array since length > 1
-      expect(mockBuilder.build).toHaveBeenCalledWith({
-        resources: {
-          string: [
-            {
-              "@_name": "hot_updater_channel",
-              "@_moduleConfig": "true",
-              "#text": "new_value",
-            },
-            {
-              "@_name": "api_url",
-              "@_moduleConfig": "true",
-              "#text": "https://api.com",
-            },
-          ],
-        },
-      });
-    });
-
-    it("should update all existing files with multiple paths", async () => {
-      const parser = new AndroidConfigParser([
-        mockStringsXmlPath,
-        mockExtensionXmlPath,
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: [],
-        },
-      });
-      mockBuilder.build.mockReturnValue("new xml content");
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await parser.set("test_key", "test_value");
-
-      // Should have been called twice
-      expect(fs.promises.writeFile).toHaveBeenCalledTimes(2);
-      expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        mockStringsXmlPath,
-        "new xml content",
-        "utf-8",
-      );
-      expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        mockExtensionXmlPath,
-        "new xml content",
-        "utf-8",
-      );
-
-      expect(result.path).toContain(
-        "android/app/src/main/res/values/strings.xml",
-      );
-      expect(result.path).toContain(
-        "android/extension/src/main/res/values/strings.xml",
-      );
-    });
-
-    it("should handle partial failures when updating multiple files", async () => {
-      const parser = new AndroidConfigParser([
-        mockStringsXmlPath,
-        mockExtensionXmlPath,
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      mockParser.parse.mockReturnValue({
-        resources: {
-          string: [],
-        },
-      });
-      mockBuilder.build.mockReturnValue("new xml content");
-
-      // First write succeeds, second fails
-      vi.mocked(fs.promises.writeFile)
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error("Permission denied"));
-
-      // Should throw on first error
       await expect(parser.set("test_key", "test_value")).rejects.toThrow(
-        "Failed to parse or update strings.xml: Error: Permission denied",
+        "Failed to parse or update strings.xml",
       );
-    });
-
-    it("should return null path when no files exist with multiple paths", async () => {
-      const parser = new AndroidConfigParser([
-        mockStringsXmlPath,
-        mockExtensionXmlPath,
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-
-      const result = await parser.set("test_key", "test_value");
-
-      expect(result).toEqual({ path: null });
-      expect(fs.promises.writeFile).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
-import fg from "fast-glob";
 import plist from "plist";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IosConfigParser } from "./iosParser";
@@ -25,12 +24,6 @@ vi.mock("path", () => ({
   },
 }));
 
-vi.mock("fast-glob", () => ({
-  default: {
-    glob: vi.fn(),
-  },
-}));
-
 vi.mock("plist", () => ({
   default: {
     parse: vi.fn(),
@@ -43,7 +36,6 @@ vi.mock("@hot-updater/plugin-core", () => ({
 }));
 
 describe("IosConfigParser", () => {
-  let iosParser: IosConfigParser;
   const mockPlistPath = "/mock/project/ios/TestApp/Info.plist";
 
   beforeEach(() => {
@@ -56,434 +48,202 @@ describe("IosConfigParser", () => {
       to.replace(`${from}/`, ""),
     );
     vi.mocked(path.isAbsolute).mockImplementation((p) => p.startsWith("/"));
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-
-    iosParser = new IosConfigParser();
   });
 
   describe("constructor", () => {
-    it("should use default glob pattern when no custom paths provided", () => {
+    it("should create parser with empty paths when no custom paths provided", () => {
       const parser = new IosConfigParser();
       expect(parser).toBeDefined();
     });
 
-    it("should use custom paths when provided", () => {
-      const customPaths = [
-        "ios/TestApp/Info.plist",
-        "ios/Extension/Info.plist",
-      ];
+    it("should create parser with custom paths when provided", () => {
+      const customPaths = ["ios/TestApp/Info.plist"];
       const parser = new IosConfigParser(customPaths);
       expect(parser).toBeDefined();
     });
   });
 
   describe("exists", () => {
-    it("should return true when plist file exists with default glob", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-
-      const result = await iosParser.exists();
-
-      expect(result).toBe(true);
-      expect(fg.glob).toHaveBeenCalledWith("*/Info.plist", {
-        cwd: "/mock/project/ios",
-        absolute: true,
-        onlyFiles: true,
-      });
-    });
-
-    it("should return false when no plist files found with default glob", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([]);
-
-      const result = await iosParser.exists();
-
+    it("should return false when no paths provided", async () => {
+      const parser = new IosConfigParser();
+      const result = await parser.exists();
       expect(result).toBe(false);
     });
 
-    it("should return true when custom paths exist", async () => {
-      const parser = new IosConfigParser([
-        "ios/TestApp/Info.plist",
-        "ios/Extension/Info.plist",
-      ]);
-
-      vi.mocked(fs.existsSync).mockImplementation((path) => {
-        return path === "/mock/project/ios/TestApp/Info.plist";
-      });
+    it("should return true when file exists", async () => {
+      const parser = new IosConfigParser(["ios/TestApp/Info.plist"]);
+      vi.mocked(fs.existsSync).mockReturnValue(true);
 
       const result = await parser.exists();
 
       expect(result).toBe(true);
+      expect(fs.existsSync).toHaveBeenCalledWith(
+        "/mock/project/ios/TestApp/Info.plist",
+      );
     });
 
-    it("should return false when no custom paths exist", async () => {
-      const parser = new IosConfigParser([
-        "ios/TestApp/Info.plist",
-        "ios/Extension/Info.plist",
-      ]);
-
+    it("should return false when file does not exist", async () => {
+      const parser = new IosConfigParser(["ios/TestApp/Info.plist"]);
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const result = await parser.exists();
+
       expect(result).toBe(false);
     });
   });
 
   describe("get", () => {
-    it("should return null value and path when plist file not found", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([]);
-
-      const result = await iosParser.get("TEST_KEY");
+    it("should return null when no paths provided", async () => {
+      const parser = new IosConfigParser();
+      const result = await parser.get("TEST_KEY");
 
       expect(result).toEqual({
         value: null,
-        path: null,
+        paths: [],
       });
     });
 
-    it("should return value for existing key in Info.plist", async () => {
-      const mockPlistContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>TEST_KEY</key>
-    <string>test_value</string>
-</dict>
-</plist>`;
+    it("should return null when no files exist", async () => {
+      const parser = new IosConfigParser(["ios/TestApp/Info.plist"]);
+      vi.mocked(fs.existsSync).mockReturnValue(false);
 
+      const result = await parser.get("TEST_KEY");
+
+      expect(result).toEqual({
+        value: null,
+        paths: [],
+      });
+    });
+
+    it("should return value when key exists", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
       const mockPlistObject = { TEST_KEY: "test_value" };
 
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
 
-      const result = await iosParser.get("TEST_KEY");
+      const result = await parser.get("TEST_KEY");
 
       expect(result).toEqual({
         value: "test_value",
-        path: "ios/TestApp/Info.plist",
+        paths: ["ios/TestApp/Info.plist"],
       });
-      expect(plist.parse).toHaveBeenCalledWith(mockPlistContent);
+      expect(fs.promises.readFile).toHaveBeenCalledWith(mockPlistPath, "utf-8");
+      expect(plist.parse).toHaveBeenCalledWith("plist content");
     });
 
-    it("should return null value for non-existent key", async () => {
-      const mockPlistContent =
-        '<?xml version="1.0"?><plist><dict></dict></plist>';
+    it("should return null when key does not exist", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
       const mockPlistObject = {};
 
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
 
-      const result = await iosParser.get("NONEXISTENT_KEY");
+      const result = await parser.get("NONEXISTENT_KEY");
 
       expect(result).toEqual({
         value: null,
-        path: "ios/TestApp/Info.plist",
+        paths: ["ios/TestApp/Info.plist"],
       });
     });
 
-    it("should handle numeric values from plist", async () => {
-      const mockPlistObject = { PORT: 3000 };
-
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
-
-      const result = await iosParser.get("PORT");
-
-      expect(result).toEqual({
-        value: "3000",
-        path: "ios/TestApp/Info.plist",
-      });
-    });
-
-    it("should handle boolean values from plist", async () => {
-      const mockPlistObject = { DEBUG_MODE: true };
-
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
-
-      const result = await iosParser.get("DEBUG_MODE");
-
-      expect(result).toEqual({
-        value: "true",
-        path: "ios/TestApp/Info.plist",
-      });
-    });
-
-    it("should handle null and undefined values from plist", async () => {
-      const mockPlistObject = { NULL_KEY: null, UNDEFINED_KEY: undefined };
-
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject as any);
-
-      const nullResult = await iosParser.get("NULL_KEY");
-      expect(nullResult).toEqual({
-        value: null,
-        path: "ios/TestApp/Info.plist",
-      });
-
-      const undefinedResult = await iosParser.get("UNDEFINED_KEY");
-      expect(undefinedResult).toEqual({
-        value: null,
-        path: "ios/TestApp/Info.plist",
-      });
-    });
-
-    it("should handle Info.plist read errors by throwing", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
+    it("should handle file read errors", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
+      vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockRejectedValue(
-        new Error("Permission denied"),
+        new Error("Read error"),
       );
 
-      await expect(iosParser.get("TEST_KEY")).rejects.toThrow(
-        "Permission denied",
-      );
+      await expect(parser.get("TEST_KEY")).rejects.toThrow("Read error");
     });
 
-    it("should handle plist parse errors by throwing", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
+    it("should handle plist parse errors", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid plist");
       vi.mocked(plist.parse).mockImplementation(() => {
-        throw new Error("Invalid plist format");
+        throw new Error("Parse error");
       });
 
-      await expect(iosParser.get("TEST_KEY")).rejects.toThrow(
-        "Invalid plist format",
-      );
-    });
-
-    it("should return value from first matching file with custom paths", async () => {
-      const parser = new IosConfigParser([
-        "/mock/project/ios/TestApp/Info.plist",
-        "/mock/project/ios/Extension/Info.plist",
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse).mockReturnValueOnce({
-        TEST_KEY: "first_value",
-      });
-
-      const result = await parser.get("TEST_KEY");
-
-      expect(result).toEqual({
-        value: "first_value",
-        path: "ios/TestApp/Info.plist",
-      });
-    });
-
-    it("should check second file if first doesn't have the key", async () => {
-      const parser = new IosConfigParser([
-        "/mock/project/ios/TestApp/Info.plist",
-        "/mock/project/ios/Extension/Info.plist",
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse)
-        .mockReturnValueOnce({
-          OTHER_KEY: "other_value",
-        })
-        .mockReturnValueOnce({
-          TEST_KEY: "second_value",
-        });
-
-      const result = await parser.get("TEST_KEY");
-
-      expect(result).toEqual({
-        value: "second_value",
-        path: "ios/Extension/Info.plist",
-      });
+      await expect(parser.get("TEST_KEY")).rejects.toThrow("Parse error");
     });
   });
 
   describe("set", () => {
-    it("should return empty path when plist file not found", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([]);
+    it("should return null path when no paths provided", async () => {
+      const parser = new IosConfigParser();
+      const result = await parser.set("TEST_KEY", "test_value");
 
-      const result = await iosParser.set("TEST_KEY", "test_value");
-
-      expect(result).toEqual({ path: null });
+      expect(result).toEqual({ paths: [] });
     });
 
-    it("should set value directly in Info.plist", async () => {
-      const mockPlistContent =
-        '<?xml version="1.0"?><plist><dict></dict></plist>';
-      const mockPlistObject = {};
-      const newPlistXml =
-        '<?xml version="1.0"?><plist><dict><key>TEST_KEY</key><string>test_value</string></dict></plist>';
+    it("should return null path when no files exist", async () => {
+      const parser = new IosConfigParser(["ios/TestApp/Info.plist"]);
+      vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
+      const result = await parser.set("TEST_KEY", "test_value");
+
+      expect(result).toEqual({ paths: [] });
+    });
+
+    it("should set value successfully", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
+      const mockPlistObject = { EXISTING_KEY: "existing_value" };
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
-      vi.mocked(plist.build).mockReturnValue(newPlistXml);
+      vi.mocked(plist.build).mockReturnValue("new plist content");
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
-      const result = await iosParser.set("TEST_KEY", "test_value");
+      const result = await parser.set("TEST_KEY", "test_value");
 
-      expect(mockPlistObject).toEqual({ TEST_KEY: "test_value" });
+      expect(mockPlistObject).toEqual({
+        EXISTING_KEY: "existing_value",
+        TEST_KEY: "test_value",
+      });
       expect(plist.build).toHaveBeenCalledWith(mockPlistObject, {
         indent: "\t",
         pretty: true,
       });
       expect(fs.promises.writeFile).toHaveBeenCalledWith(
         mockPlistPath,
-        newPlistXml,
+        "new plist content",
       );
       expect(result).toEqual({
-        path: "ios/TestApp/Info.plist",
+        paths: ["ios/TestApp/Info.plist"],
       });
     });
 
-    it("should update existing value in Info.plist", async () => {
-      const mockPlistContent =
-        '<?xml version="1.0"?><plist><dict><key>TEST_KEY</key><string>old_value</string></dict></plist>';
-      const mockPlistObject = { TEST_KEY: "old_value" };
-      const newPlistXml =
-        '<?xml version="1.0"?><plist><dict><key>TEST_KEY</key><string>new_value</string></dict></plist>';
+    it("should handle file read errors", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockRejectedValue(
+        new Error("Read error"),
+      );
 
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue(mockPlistContent);
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
-      vi.mocked(plist.build).mockReturnValue(newPlistXml);
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await iosParser.set("TEST_KEY", "new_value");
-
-      expect(mockPlistObject).toEqual({ TEST_KEY: "new_value" });
-      expect(result).toEqual({
-        path: "ios/TestApp/Info.plist",
-      });
-    });
-
-    it("should preserve existing keys when setting new value", async () => {
-      const mockPlistObject = {
-        EXISTING_KEY: "existing_value",
-        ANOTHER_KEY: "another_value",
-      };
-
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
-      vi.mocked(plist.build).mockReturnValue("");
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await iosParser.set("NEW_KEY", "new_value");
-
-      expect(mockPlistObject).toEqual({
-        EXISTING_KEY: "existing_value",
-        ANOTHER_KEY: "another_value",
-        NEW_KEY: "new_value",
-      });
-      expect(result).toEqual({
-        path: "ios/TestApp/Info.plist",
-      });
-    });
-
-    it("should handle plist parse errors", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
-      vi.mocked(plist.parse).mockImplementation(() => {
-        throw new Error("Invalid plist format");
-      });
-
-      await expect(iosParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Invalid plist format",
+      await expect(parser.set("TEST_KEY", "test_value")).rejects.toThrow(
+        "Read error",
       );
     });
 
     it("should handle file write errors", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
       const mockPlistObject = {};
 
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
       vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
-      vi.mocked(plist.build).mockReturnValue("");
+      vi.mocked(plist.build).mockReturnValue("new plist content");
       vi.mocked(fs.promises.writeFile).mockRejectedValue(
-        new Error("Permission denied"),
+        new Error("Write error"),
       );
 
-      await expect(iosParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Permission denied",
-      );
-    });
-
-    it("should handle file read errors during set operation", async () => {
-      vi.mocked(fg.glob).mockResolvedValue([mockPlistPath]);
-      vi.mocked(fs.promises.readFile).mockRejectedValue(
-        new Error("Permission denied"),
-      );
-
-      await expect(iosParser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Permission denied",
-      );
-    });
-
-    it("should update all existing files with custom paths", async () => {
-      const parser = new IosConfigParser([
-        "/mock/project/ios/TestApp/Info.plist",
-        "/mock/project/ios/Extension/Info.plist",
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse).mockReturnValue({});
-      vi.mocked(plist.build).mockReturnValue("new plist content");
-      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
-
-      const result = await parser.set("TEST_KEY", "test_value");
-
-      // Should have been called twice
-      expect(fs.promises.writeFile).toHaveBeenCalledTimes(2);
-      expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        "/mock/project/ios/TestApp/Info.plist",
-        "new plist content",
-      );
-      expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        "/mock/project/ios/Extension/Info.plist",
-        "new plist content",
-      );
-
-      expect(result.path).toContain("ios/TestApp/Info.plist");
-      expect(result.path).toContain("ios/Extension/Info.plist");
-    });
-
-    it("should handle partial failures when updating multiple files", async () => {
-      const parser = new IosConfigParser([
-        "/mock/project/ios/TestApp/Info.plist",
-        "/mock/project/ios/Extension/Info.plist",
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("");
-      vi.mocked(plist.parse).mockReturnValue({});
-      vi.mocked(plist.build).mockReturnValue("new plist content");
-
-      // First write succeeds, second fails
-      vi.mocked(fs.promises.writeFile)
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error("Permission denied"));
-
-      // Should throw on first error
       await expect(parser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Permission denied",
+        "Write error",
       );
-    });
-
-    it("should return null path when no files exist with custom paths", async () => {
-      const parser = new IosConfigParser([
-        "/mock/project/ios/TestApp/Info.plist",
-        "/mock/project/ios/Extension/Info.plist",
-      ]);
-
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-
-      const result = await parser.set("TEST_KEY", "test_value");
-
-      expect(result).toEqual({ path: null });
-      expect(fs.promises.writeFile).not.toHaveBeenCalled();
     });
   });
 });

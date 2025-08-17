@@ -22,18 +22,10 @@ export class AndroidConfigParser implements ConfigParser {
   private builder: XMLBuilder;
 
   constructor(customPaths?: string[]) {
-    this.stringsXmlPaths = customPaths || [
-      path.join(
-        getCwd(),
-        "android",
-        "app",
-        "src",
-        "main",
-        "res",
-        "values",
-        "strings.xml",
-      ),
-    ];
+    // Convert to absolute paths
+    this.stringsXmlPaths = (customPaths || []).map((p) =>
+      path.isAbsolute(p) ? p : path.join(getCwd(), p),
+    );
 
     const options = {
       ignoreAttributes: false,
@@ -64,19 +56,23 @@ export class AndroidConfigParser implements ConfigParser {
 
   async get(key: string): Promise<{
     value: string | null;
-    path: string;
+    paths: string[];
   }> {
     const existingPaths = this.getExistingPaths();
+    const searchedPaths: string[] = [];
 
     if (existingPaths.length === 0) {
       return {
         value: null,
-        path: path.relative(getCwd(), this.stringsXmlPaths[0] || ""),
+        paths: [],
       };
     }
 
     // Check each existing path until we find the key
     for (const stringsXmlPath of existingPaths) {
+      const relativePath = path.relative(getCwd(), stringsXmlPath);
+      searchedPaths.push(relativePath);
+
       try {
         const content = await fs.promises.readFile(stringsXmlPath, "utf-8");
         const result = this.parser.parse(content) as ResourcesXml;
@@ -97,7 +93,7 @@ export class AndroidConfigParser implements ConfigParser {
         if (stringElement?.["#text"]) {
           return {
             value: stringElement["#text"].trim(),
-            path: path.relative(getCwd(), stringsXmlPath),
+            paths: searchedPaths,
           };
         }
       } catch (error) {
@@ -107,18 +103,18 @@ export class AndroidConfigParser implements ConfigParser {
 
     return {
       value: null,
-      path: path.relative(getCwd(), existingPaths[0] || ""),
+      paths: searchedPaths,
     };
   }
 
-  async set(key: string, value: string): Promise<{ path: string | null }> {
+  async set(key: string, value: string): Promise<{ paths: string[] }> {
     const existingPaths = this.getExistingPaths();
 
     if (existingPaths.length === 0) {
       console.warn(
         "hot-updater: No strings.xml files found. Skipping Android-specific config modifications.",
       );
-      return { path: null };
+      return { paths: [] };
     }
 
     const updatedPaths: string[] = [];
@@ -172,7 +168,7 @@ export class AndroidConfigParser implements ConfigParser {
     }
 
     return {
-      path: updatedPaths.length > 0 ? updatedPaths.join(", ") : null,
+      paths: updatedPaths,
     };
   }
 }

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {
+  type FingerprintResult,
   createAndInjectFingerprintFiles,
   generateFingerprints,
   isFingerprintEquals,
@@ -80,32 +81,49 @@ export const handleFingerprint = async () => {
 export const handleCreateFingerprint = async () => {
   let diffChanged = false;
   let localFingerprint: any = null;
-  let newFingerprint: any = null;
+  let result: {
+    fingerprint: {
+      android: FingerprintResult;
+      ios: FingerprintResult;
+    };
+    androidPaths: string[];
+    iosPaths: string[];
+  } | null = null;
 
-  await p.tasks([
-    {
-      title: "Creating fingerprint.json",
-      task: async () => {
-        try {
-          localFingerprint = await readLocalFingerprint();
-          newFingerprint = await createAndInjectFingerprintFiles();
+  const s = p.spinner();
+  s.start("Creating fingerprint.json");
 
-          if (!isFingerprintEquals(localFingerprint, newFingerprint)) {
-            diffChanged = true;
-          }
-          return "Created fingerprint.json";
-        } catch (error) {
-          if (error instanceof Error) {
-            p.log.error(error.message);
-          }
-          console.error(error);
-          process.exit(1);
-        }
-      },
-    },
-  ]);
+  try {
+    localFingerprint = await readLocalFingerprint();
+    result = await createAndInjectFingerprintFiles();
 
-  if (diffChanged) {
+    if (!isFingerprintEquals(localFingerprint, result.fingerprint)) {
+      diffChanged = true;
+    }
+    s.stop("Created fingerprint.json");
+  } catch (error) {
+    if (error instanceof Error) {
+      p.log.error(error.message);
+    }
+    console.error(error);
+    process.exit(1);
+  }
+
+  if (diffChanged && result) {
+    if (result.androidPaths.length > 0) {
+      p.log.info(picocolors.bold("Changed Android paths:"));
+      for (const path of result.androidPaths) {
+        p.log.info(`  ${picocolors.green(path)}`);
+      }
+    }
+
+    if (result.iosPaths.length > 0) {
+      p.log.info(picocolors.bold("Changed iOS paths:"));
+      for (const path of result.iosPaths) {
+        p.log.info(`  ${picocolors.green(path)}`);
+      }
+    }
+
     p.log.success(
       picocolors.bold(
         `${picocolors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
@@ -113,7 +131,7 @@ export const handleCreateFingerprint = async () => {
     );
 
     // Show what changed
-    if (localFingerprint && newFingerprint) {
+    if (localFingerprint && result.fingerprint) {
       const config = await loadConfig(null);
       const fingerprintConfig = config.fingerprint;
 
@@ -121,7 +139,7 @@ export const handleCreateFingerprint = async () => {
         // Show iOS changes
         if (
           localFingerprint.ios &&
-          localFingerprint.ios.hash !== newFingerprint.ios.hash
+          localFingerprint.ios.hash !== result.fingerprint.ios.hash
         ) {
           const iosDiff = await getFingerprintDiff(localFingerprint.ios, {
             platform: "ios",
@@ -133,7 +151,7 @@ export const handleCreateFingerprint = async () => {
         // Show Android changes
         if (
           localFingerprint.android &&
-          localFingerprint.android.hash !== newFingerprint.android.hash
+          localFingerprint.android.hash !== result.fingerprint.android.hash
         ) {
           const androidDiff = await getFingerprintDiff(
             localFingerprint.android,

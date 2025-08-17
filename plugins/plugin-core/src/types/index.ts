@@ -67,7 +67,8 @@ export interface PlatformConfig {
     /**
      * Android string resource paths.
      *
-     * @default ["android/app/src/main/res/values/strings.xml"]
+     * @default all strings.xml files in the android directory
+     * @example ["android/app/src/main/res/values/strings.xml"]
      */
     stringResourcePaths?: string[];
   };
@@ -79,7 +80,8 @@ export interface PlatformConfig {
     /**
      * iOS info.plist paths.
      *
-     * @default ["ios/\*\/Info.plist"]
+     * @default all Info.plist files in the ios directory
+     * @example ["ios/HotUpdaterExample/Info.plist"]
      */
     infoPlistPaths?: string[];
   };

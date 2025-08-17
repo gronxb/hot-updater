@@ -20,12 +20,4 @@ export default defineConfig({
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
   updateStrategy: "fingerprint",
-  platform: {
-    ios: {
-      infoPlistPaths: ["ios/HotUpdaterExample/Info.plist"],
-    },
-    android: {
-      stringResourcePaths: ["android/app/src/main/res/values/strings.xml"],
-    },
-  },
 });
