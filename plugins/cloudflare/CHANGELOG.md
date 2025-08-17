@@ -1,5 +1,18 @@
 # @hot-updater/cloudflare
 
+## 0.20.0
+
+### Minor Changes
+
+- a0e538c: feat(android): Support 0.81.0
+
+### Patch Changes
+
+- Updated dependencies [bc8e23d]
+  - @hot-updater/plugin-core@0.20.0
+  - @hot-updater/core@0.20.0
+  - @hot-updater/js@0.20.0
+
 ## 0.19.10
 
 ### Patch Changes

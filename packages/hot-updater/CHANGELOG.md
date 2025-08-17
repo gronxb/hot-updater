@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [a0e538c]
+- Updated dependencies [bc8e23d]
+  - @hot-updater/cloudflare@0.20.0
+  - @hot-updater/plugin-core@0.20.0
+  - @hot-updater/console@0.20.0
+  - @hot-updater/aws@0.20.0
+  - @hot-updater/firebase@0.20.0
+  - @hot-updater/supabase@0.20.0
+  - @hot-updater/core@0.20.0
+
 ## 0.19.10
 
 ### Patch Changes
