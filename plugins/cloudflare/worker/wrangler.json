@@ -16,7 +16,7 @@
   "r2_buckets": [
     {
       "binding": "BUCKET",
-      "bucket_name": "USER_BUCKET"
+      "bucket_name": "user_buckets"
     }
   ],
   "vars": {
