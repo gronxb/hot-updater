@@ -38,6 +38,8 @@ describe("AndroidConfigParser", () => {
   let mockBuilder: any;
   const mockStringsXmlPath =
     "/mock/project/android/app/src/main/res/values/strings.xml";
+  const mockExtensionXmlPath =
+    "/mock/project/android/extension/src/main/res/values/strings.xml";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,6 +65,22 @@ describe("AndroidConfigParser", () => {
     androidParser = new AndroidConfigParser();
   });
 
+  describe("constructor", () => {
+    it("should use default path when no custom paths provided", () => {
+      const parser = new AndroidConfigParser();
+      expect(parser).toBeDefined();
+    });
+
+    it("should use custom paths when provided", () => {
+      const customPaths = [
+        "android/app/src/main/res/values/strings.xml",
+        "android/extension/src/main/res/values/strings.xml",
+      ];
+      const parser = new AndroidConfigParser(customPaths);
+      expect(parser).toBeDefined();
+    });
+  });
+
   describe("exists", () => {
     it("should return true when strings.xml exists", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
@@ -77,6 +95,34 @@ describe("AndroidConfigParser", () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const result = await androidParser.exists();
+
+      expect(result).toBe(false);
+    });
+
+    it("should return true when at least one path exists with multiple paths", async () => {
+      const parser = new AndroidConfigParser([
+        mockStringsXmlPath,
+        mockExtensionXmlPath,
+      ]);
+
+      vi.mocked(fs.existsSync).mockImplementation((path) => {
+        return path === mockStringsXmlPath;
+      });
+
+      const result = await parser.exists();
+
+      expect(result).toBe(true);
+    });
+
+    it("should return false when no paths exist with multiple paths", async () => {
+      const parser = new AndroidConfigParser([
+        mockStringsXmlPath,
+        mockExtensionXmlPath,
+      ]);
+
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const result = await parser.exists();
 
       expect(result).toBe(false);
     });
@@ -276,33 +322,23 @@ describe("AndroidConfigParser", () => {
       });
     });
 
-    it("should handle XML parsing errors gracefully", async () => {
+    it("should handle XML parsing errors", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue("invalid xml");
       mockParser.parse.mockImplementation(() => {
         throw new Error("Invalid XML");
       });
 
-      const result = await androidParser.get("test_key");
-
-      expect(result).toEqual({
-        value: null,
-        path: "android/app/src/main/res/values/strings.xml",
-      });
+      await expect(androidParser.get("test_key")).rejects.toThrow("Invalid XML");
     });
 
-    it("should handle file read errors gracefully", async () => {
+    it("should handle file read errors by throwing", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockRejectedValue(
         new Error("Permission denied"),
       );
 
-      const result = await androidParser.get("test_key");
-
-      expect(result).toEqual({
-        value: null,
-        path: "android/app/src/main/res/values/strings.xml",
-      });
+      await expect(androidParser.get("test_key")).rejects.toThrow("Permission denied");
     });
 
     it("should trim whitespace from text content", async () => {
@@ -344,6 +380,73 @@ describe("AndroidConfigParser", () => {
       expect(result).toEqual({
         value: null,
         path: "android/app/src/main/res/values/strings.xml",
+      });
+    });
+
+    it("should return value from first matching file with multiple paths", async () => {
+      const parser = new AndroidConfigParser([
+        mockStringsXmlPath,
+        mockExtensionXmlPath,
+      ]);
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+
+      // First file has the value
+      mockParser.parse.mockReturnValueOnce({
+        resources: {
+          string: {
+            "@_name": "test_key",
+            "@_moduleConfig": "true",
+            "#text": "first_value",
+          },
+        },
+      });
+
+      const result = await parser.get("test_key");
+
+      expect(result).toEqual({
+        value: "first_value",
+        path: "android/app/src/main/res/values/strings.xml",
+      });
+    });
+
+    it("should check second file if first file doesn't have the key", async () => {
+      const parser = new AndroidConfigParser([
+        mockStringsXmlPath,
+        mockExtensionXmlPath,
+      ]);
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+
+      // First file doesn't have the key
+      mockParser.parse
+        .mockReturnValueOnce({
+          resources: {
+            string: {
+              "@_name": "other_key",
+              "@_moduleConfig": "true",
+              "#text": "other_value",
+            },
+          },
+        })
+        // Second file has the key
+        .mockReturnValueOnce({
+          resources: {
+            string: {
+              "@_name": "test_key",
+              "@_moduleConfig": "true",
+              "#text": "second_value",
+            },
+          },
+        });
+
+      const result = await parser.get("test_key");
+
+      expect(result).toEqual({
+        value: "second_value",
+        path: "android/extension/src/main/res/values/strings.xml",
       });
     });
   });
@@ -624,7 +727,7 @@ describe("AndroidConfigParser", () => {
       );
 
       await expect(androidParser.set("test_key", "test_value")).rejects.toThrow(
-        "Permission denied",
+        "Failed to parse or update strings.xml: Error: Permission denied",
       );
     });
 
@@ -677,6 +780,85 @@ describe("AndroidConfigParser", () => {
           ],
         },
       });
+    });
+
+    it("should update all existing files with multiple paths", async () => {
+      const parser = new AndroidConfigParser([
+        mockStringsXmlPath,
+        mockExtensionXmlPath,
+      ]);
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [],
+        },
+      });
+      mockBuilder.build.mockReturnValue("new xml content");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      const result = await parser.set("test_key", "test_value");
+
+      // Should have been called twice
+      expect(fs.promises.writeFile).toHaveBeenCalledTimes(2);
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        mockStringsXmlPath,
+        "new xml content",
+        "utf-8",
+      );
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        mockExtensionXmlPath,
+        "new xml content",
+        "utf-8",
+      );
+
+      expect(result.path).toContain(
+        "android/app/src/main/res/values/strings.xml",
+      );
+      expect(result.path).toContain(
+        "android/extension/src/main/res/values/strings.xml",
+      );
+    });
+
+    it("should handle partial failures when updating multiple files", async () => {
+      const parser = new AndroidConfigParser([
+        mockStringsXmlPath,
+        mockExtensionXmlPath,
+      ]);
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("");
+      mockParser.parse.mockReturnValue({
+        resources: {
+          string: [],
+        },
+      });
+      mockBuilder.build.mockReturnValue("new xml content");
+
+      // First write succeeds, second fails
+      vi.mocked(fs.promises.writeFile)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("Permission denied"));
+
+      // Should throw on first error
+      await expect(parser.set("test_key", "test_value")).rejects.toThrow(
+        "Failed to parse or update strings.xml: Error: Permission denied",
+      );
+    });
+
+    it("should return null path when no files exist with multiple paths", async () => {
+      const parser = new AndroidConfigParser([
+        mockStringsXmlPath,
+        mockExtensionXmlPath,
+      ]);
+
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const result = await parser.set("test_key", "test_value");
+
+      expect(result).toEqual({ path: null });
+      expect(fs.promises.writeFile).not.toHaveBeenCalled();
     });
   });
 });

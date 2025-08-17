@@ -59,6 +59,32 @@ export interface BuildPlugin {
   name: string;
 }
 
+export interface PlatformConfig {
+  /**
+   * Android platform configuration.
+   */
+  android?: {
+    /**
+     * Android string resource paths.
+     *
+     * @default ["android/app/src/main/res/values/strings.xml"]
+     */
+    stringResourcePaths?: string[];
+  };
+
+  /**
+   * iOS platform configuration.
+   */
+  ios?: {
+    /**
+     * iOS info.plist paths.
+     *
+     * @default ["ios/\*\/Info.plist"]
+     */
+    infoPlistPaths?: string[];
+  };
+}
+
 export interface NativeBuildArgs {
   /**
    * Android specific configuration.
@@ -156,6 +182,7 @@ export type ConfigInput = {
      */
     port?: number;
   };
+  platform?: PlatformConfig;
   nativeBuild?: NativeBuildArgs;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
