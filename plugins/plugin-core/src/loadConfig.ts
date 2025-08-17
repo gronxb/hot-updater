@@ -1,3 +1,4 @@
+import path from "path";
 import {
   type CosmiconfigResult,
   cosmiconfig,
@@ -5,6 +6,7 @@ import {
 } from "cosmiconfig";
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { merge } from "es-toolkit";
+import fg from "fast-glob";
 import { getCwd } from "./cwd.js";
 import type { ConfigInput, Platform } from "./types";
 import type { RequiredDeep } from "./types/utils.js";
@@ -14,40 +16,59 @@ export type HotUpdaterConfigOptions = {
   channel: string;
 } | null;
 
-const defaultConfig: ConfigInput = {
-  releaseChannel: "production",
-  updateStrategy: "fingerprint",
-  fingerprint: {
-    extraSources: [],
-    ignorePaths: [],
-  },
-  console: {
-    port: 1422,
-  },
-  platform: {
-    android: {
-      stringResourcePaths: ["android/app/src/main/res/values/strings.xml"],
+const getDefaultConfig = (): ConfigInput => {
+  // Find actual Info.plist files in the ios directory
+  let infoPlistPaths: string[] = []; // fallback
+  try {
+    const plistFiles = fg.sync("*/Info.plist", {
+      cwd: path.join(getCwd(), "ios"),
+      absolute: false,
+      onlyFiles: true,
+    });
+
+    if (plistFiles.length > 0) {
+      // Convert to relative paths from project root
+      infoPlistPaths = plistFiles.map((file) => `ios/${file}`);
+    }
+  } catch (error) {
+    // Keep fallback value if glob fails
+  }
+
+  return {
+    releaseChannel: "production",
+    updateStrategy: "fingerprint",
+    fingerprint: {
+      extraSources: [],
+      ignorePaths: [],
     },
-    ios: {
-      infoPlistPaths: ["ios/*/Info.plist"],
+    console: {
+      port: 1422,
     },
-  },
-  nativeBuild: {
-    android: {
-      aab: true,
-      variant: "Release",
-      appModuleName: "app",
+    platform: {
+      android: {
+        stringResourcePaths: ["android/app/src/main/res/values/strings.xml"],
+      },
+      ios: {
+        infoPlistPaths,
+      },
     },
-  },
-  build: () => {
-    throw new Error("build plugin is required");
-  },
-  storage: () => {
-    throw new Error("storage plugin is required");
-  },
-  database: () => {
-    throw new Error("database plugin is required");
-  },
+    nativeBuild: {
+      android: {
+        aab: true,
+        variant: "Release",
+        appModuleName: "app",
+      },
+    },
+    build: () => {
+      throw new Error("build plugin is required");
+    },
+    storage: () => {
+      throw new Error("storage plugin is required");
+    },
+    database: () => {
+      throw new Error("database plugin is required");
+    },
+  };
 };
 
 export type ConfigResponse = RequiredDeep<ConfigInput>;
@@ -79,6 +100,7 @@ const ensureConfig = (
       ? result.config(options)
       : (result?.config as ConfigInput);
 
+  const defaultConfig = getDefaultConfig();
   return merge(defaultConfig, config ?? {});
 };
 
@@ -87,7 +109,7 @@ export const loadConfig = async (
 ): Promise<ConfigResponse> => {
   const result = await cosmiconfig("hot-updater", configOptions).search();
 
-  return ensureConfig(result, options);
+  return await ensureConfig(result, options);
 };
 
 export const loadConfigSync = (

@@ -7,6 +7,7 @@ config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   nativeBuild: { android: { aab: false } },
+
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
@@ -19,4 +20,12 @@ export default defineConfig({
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
   updateStrategy: "fingerprint",
+  platform: {
+    ios: {
+      infoPlistPaths: ["ios/HotUpdaterExample/Info.plist"],
+    },
+    android: {
+      stringResourcePaths: ["android/app/src/main/res/values/strings.xml"],
+    },
+  },
 });
