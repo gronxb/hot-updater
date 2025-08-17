@@ -1,5 +1,14 @@
 # @hot-updater/console
 
+## 0.20.1
+
+### Patch Changes
+
+- b7b83ae: feat(console): promote channel with copy
+- Updated dependencies [a3a4a28]
+  - @hot-updater/plugin-core@0.20.1
+  - @hot-updater/core@0.20.1
+
 ## 0.20.0
 
 ### Patch Changes

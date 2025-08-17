@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.20.1
+
+### Patch Changes
+
+- a3a4a28: feat(cli): set stringResourcePaths and infoPlistPaths in hot-updater.config.ts
+  - @hot-updater/core@0.20.1
+
 ## 0.20.0
 
 ### Minor Changes
