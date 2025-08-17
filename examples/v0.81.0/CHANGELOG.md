@@ -1,5 +1,12 @@
 # @hot-updater/example-react-native-v81
 
+## 0.20.2
+
+### Patch Changes
+
+- 0e78fb0: fix(cli): Info.plist correct path
+  - @hot-updater/react-native@0.20.2
+
 ## 0.20.1
 
 ### Patch Changes
