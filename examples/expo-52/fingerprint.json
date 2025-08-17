@@ -55,7 +55,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "3adb577f39bfb3127075cd56e79a21a48b6f0bbc"
+        "hash": "d764d8cbe2003c81adbd0a0438f65a5eceb53507"
       },
       {
         "type": "file",
@@ -254,7 +254,7 @@
         "hash": "9cc0adb488d8c36337d8b04bb9e0ea0979c83074"
       }
     ],
-    "hash": "04719f7199a032f1f98b3d7d96bce744c3104ece"
+    "hash": "e3d021a942ae3f4891f1fac87a00a4351b2d3212"
   },
   "android": {
     "sources": [
@@ -312,7 +312,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "3adb577f39bfb3127075cd56e79a21a48b6f0bbc"
+        "hash": "d764d8cbe2003c81adbd0a0438f65a5eceb53507"
       },
       {
         "type": "file",
@@ -527,6 +527,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "7796386b4633cd98759bf33641ef0303b0f77d8e"
+    "hash": "199df518b4c9ab82b281c836926330e393a98efb"
   }
 }

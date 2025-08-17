@@ -7,19 +7,19 @@ const DEFAULT_CHANNEL = "production";
 
 const setAndroidChannel = async (
   channel: string,
-): Promise<{ path: string | null }> => {
+): Promise<{ paths: string[] }> => {
   const config = await loadConfig(null);
-  const customPaths = (config as any).platform?.android?.stringResourcePaths;
+  const customPaths = config.platform.android.stringResourcePaths;
   const androidParser = new AndroidConfigParser(customPaths);
   return await androidParser.set("hot_updater_channel", channel);
 };
 
 const getAndroidChannel = async (): Promise<{
   value: string;
-  path: string;
+  paths: string[];
 }> => {
   const config = await loadConfig(null);
-  const customPaths = (config as any).platform?.android?.stringResourcePaths;
+  const customPaths = config.platform.android.stringResourcePaths;
   const androidParser = new AndroidConfigParser(customPaths);
   if (!(await androidParser.exists())) {
     throw new Error("No Android strings.xml files found");
@@ -30,21 +30,19 @@ const getAndroidChannel = async (): Promise<{
   );
 };
 
-const setIosChannel = async (
-  channel: string,
-): Promise<{ path: string | null }> => {
+const setIosChannel = async (channel: string): Promise<{ paths: string[] }> => {
   const config = await loadConfig(null);
-  const customPaths = (config as any).platform?.ios?.infoPlistPaths;
+  const customPaths = config.platform.ios.infoPlistPaths;
   const iosParser = new IosConfigParser(customPaths);
   return await iosParser.set("HOT_UPDATER_CHANNEL", channel);
 };
 
 const getIosChannel = async (): Promise<{
   value: string;
-  path: string | null;
+  paths: string[];
 }> => {
   const config = await loadConfig(null);
-  const customPaths = (config as any).platform?.ios?.infoPlistPaths;
+  const customPaths = config.platform.ios.infoPlistPaths;
   const iosParser = new IosConfigParser(customPaths);
   if (!(await iosParser.exists())) {
     throw new Error("No iOS Info.plist files found");
@@ -58,7 +56,7 @@ const getIosChannel = async (): Promise<{
 export const setChannel = async (
   platform: "android" | "ios",
   channel: string,
-): Promise<{ path: string | null }> => {
+): Promise<{ paths: string[] }> => {
   switch (platform) {
     case "android":
       return await setAndroidChannel(channel);
@@ -70,7 +68,7 @@ export const getChannel = async (
   platform: "android" | "ios",
 ): Promise<{
   value: string;
-  path: string | null;
+  paths: string[];
 }> => {
   switch (platform) {
     case "android":

@@ -257,8 +257,8 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { ios } = await getFingerprint();
-        fingerprintHash = ios.hash;
+        const { fingerprint } = await getFingerprint();
+        fingerprintHash = fingerprint.ios.hash;
       }
 
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
@@ -273,8 +273,8 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { android } = await getFingerprint();
-        fingerprintHash = android.hash;
+        const { fingerprint } = await getFingerprint();
+        fingerprintHash = fingerprint.android.hash;
       }
 
       // Ensure resources object exists

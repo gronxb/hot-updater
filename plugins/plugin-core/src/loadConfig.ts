@@ -16,24 +16,55 @@ export type HotUpdaterConfigOptions = {
   channel: string;
 } | null;
 
-const getDefaultConfig = (): ConfigInput => {
+const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   // Find actual Info.plist files in the ios directory
   let infoPlistPaths: string[] = []; // fallback
   try {
-    const plistFiles = fg.sync("*/Info.plist", {
+    const plistFiles = fg.sync("**/Info.plist", {
       cwd: path.join(getCwd(), "ios"),
       absolute: false,
       onlyFiles: true,
+      ignore: ["**/Pods/**"],
     });
 
     if (plistFiles.length > 0) {
       // Convert to relative paths from project root
-      infoPlistPaths = plistFiles.map((file) => `ios/${file}`);
+      infoPlistPaths = plistFiles.map((file: string) => `ios/${file}`);
     }
   } catch (error) {
     // Keep fallback value if glob fails
   }
 
+  // Find actual strings.xml files in the android directory
+  let stringResourcePaths: string[] = []; // fallback
+  try {
+    const stringsFiles = fg.sync(path.join("**", "strings.xml"), {
+      cwd: path.join(getCwd(), "android"),
+      absolute: false,
+      onlyFiles: true,
+    });
+
+    if (stringsFiles.length > 0) {
+      // Convert to relative paths from project root
+      stringResourcePaths = stringsFiles.map((file: string) =>
+        path.join("android", file),
+      );
+    }
+  } catch (error) {
+    // Keep fallback value if glob fails
+  }
+
+  return {
+    android: {
+      stringResourcePaths,
+    },
+    ios: {
+      infoPlistPaths,
+    },
+  };
+};
+
+const getDefaultConfig = (): ConfigInput => {
   return {
     releaseChannel: "production",
     updateStrategy: "fingerprint",
@@ -44,14 +75,7 @@ const getDefaultConfig = (): ConfigInput => {
     console: {
       port: 1422,
     },
-    platform: {
-      android: {
-        stringResourcePaths: ["android/app/src/main/res/values/strings.xml"],
-      },
-      ios: {
-        infoPlistPaths,
-      },
-    },
+    platform: getDefaultPlatformConfig(),
     nativeBuild: {
       android: {
         aab: true,
@@ -101,6 +125,7 @@ const ensureConfig = (
       : (result?.config as ConfigInput);
 
   const defaultConfig = getDefaultConfig();
+
   return merge(defaultConfig, config ?? {});
 };
 

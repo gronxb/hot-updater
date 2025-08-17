@@ -81,6 +81,39 @@ Channels are not limited to environment management alone—they also support man
   </Tab>
 </Tabs>
 
+## Custom Configuration Paths
+
+For projects with non-standard structures or iOS app extensions, you can configure custom paths for platform-specific configuration files in your `hot-updater.config.ts`:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... other configurations
+  platform: {
+    ios: {
+      infoPlistPaths: [
+        "ios/YourApp/Info.plist",
+        "ios/YourAppExtension/Info.plist", // Include extension Info.plist
+        "ios/NotificationService/Info.plist"
+      ]
+    },
+    android: {
+      stringResourcePaths: [
+        "android/app/src/main/res/values/strings.xml",
+        "android/app/src/debug/res/values/strings.xml" // Include additional resource files
+      ]
+    }
+  }
+});
+```
+
+This is useful when:
+- Your iOS project has app extensions (widgets, share extensions, notification services)
+- You have multiple Android build variants with different resource paths
+- Your project doesn't follow the standard React Native file structure
+
+**Important**: Configure these custom paths before running `hot-updater channel set` commands to ensure all relevant files are updated with the new channel.
 
 ### 2. Rebuild App with New Channel
 
@@ -198,40 +231,6 @@ export default HotUpdater.wrap({
   }),
 })(App);
 ```
-
-## Custom Configuration Paths
-
-For projects with non-standard structures or iOS app extensions, you can configure custom paths for platform-specific configuration files in your `hot-updater.config.ts`:
-
-```typescript title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  // ... other configurations
-  platform: {
-    ios: {
-      infoPlistPaths: [
-        "ios/YourApp/Info.plist",
-        "ios/YourAppExtension/Info.plist", // Include extension Info.plist
-        "ios/NotificationService/Info.plist"
-      ]
-    },
-    android: {
-      stringResourcePaths: [
-        "android/app/src/main/res/values/strings.xml",
-        "android/app/src/debug/res/values/strings.xml" // Include additional resource files
-      ]
-    }
-  }
-});
-```
-
-This is useful when:
-- Your iOS project has app extensions (widgets, share extensions, notification services)
-- You have multiple Android build variants with different resource paths
-- Your project doesn't follow the standard React Native file structure
-
-**Important**: Configure these custom paths before running `hot-updater channel set` commands to ensure all relevant files are updated with the new channel.
 
 ## Channel Behavior
 
