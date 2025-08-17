@@ -1,5 +1,15 @@
 # @hot-updater/plugin-core
 
+## 0.20.0
+
+### Minor Changes
+
+- bc8e23d: fix(cli): hot-updater.config.ts required updateStrategy field
+
+### Patch Changes
+
+- @hot-updater/core@0.20.0
+
 ## 0.19.10
 
 ### Patch Changes
