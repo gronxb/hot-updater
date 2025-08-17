@@ -1,5 +1,13 @@
 # @hot-updater/example-react-native-v81
 
+## 0.20.3
+
+### Patch Changes
+
+- e63056a: fix(cli): platform parser from hot-updater.config
+- Updated dependencies [e63056a]
+  - @hot-updater/react-native@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes
