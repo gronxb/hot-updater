@@ -15,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "cd2d46708faee00ffdea5b921af9eca3099a92d6"
+        "hash": "8bea260fa55b707f9f77969426fc9548b520f642"
       },
       {
         "type": "contents",
@@ -47,14 +47,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "1273fa5a68a4291d43a8d6148307d563af5e8f19"
+        "hash": "bba6ba8c16f7b20c831bd7d9783435320cf11641"
       }
     ],
-    "hash": "e3fcc97ae1e54c930e9905768690514778dce734"
+    "hash": "c4625e5a81e4a4b75d72f944fbe9210387b5b6fa"
   },
   "android": {
     "sources": [
@@ -72,7 +72,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "cd2d46708faee00ffdea5b921af9eca3099a92d6"
+        "hash": "8bea260fa55b707f9f77969426fc9548b520f642"
       },
       {
         "type": "contents",
@@ -111,6 +111,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "fb2d75037b7e125fc42e2d61676f4b7fadf985e4"
+    "hash": "0bcfb439e8aa05c80e2029d35601fd03da50a440"
   }
 }

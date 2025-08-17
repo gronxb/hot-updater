@@ -39,7 +39,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "016c861b101f6e2ae33dc31f5cd9de3ec3d63ba7"
+        "hash": "2c26251f9d5e99efab1b34f8384a8ff4b38eb13a"
       },
       {
         "type": "file",
@@ -55,7 +55,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "6d6400a86483e343cab4bc0783a09e51b15d487a"
+        "hash": "b46f620ada49dbf958d1f79c78e8de9fab6d8dda"
       },
       {
         "type": "file",
@@ -207,7 +207,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "cd2d46708faee00ffdea5b921af9eca3099a92d6"
+        "hash": "8bea260fa55b707f9f77969426fc9548b520f642"
       },
       {
         "type": "dir",
@@ -247,14 +247,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "9b260c4396c2b74f6c0b3fc81616e73f464216fa"
+        "hash": "235b05e1ae62843262d366afdbec510e6a9cb9f9"
       }
     ],
-    "hash": "6ef55ad144bad0b5c9476b91de32e30ffa925b7a"
+    "hash": "b7f92affeb3bb50ade67dd1c63d9569b727b8b17"
   },
   "android": {
     "sources": [
@@ -296,7 +296,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "016c861b101f6e2ae33dc31f5cd9de3ec3d63ba7"
+        "hash": "2c26251f9d5e99efab1b34f8384a8ff4b38eb13a"
       },
       {
         "type": "file",
@@ -312,7 +312,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "6d6400a86483e343cab4bc0783a09e51b15d487a"
+        "hash": "b46f620ada49dbf958d1f79c78e8de9fab6d8dda"
       },
       {
         "type": "file",
@@ -480,7 +480,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "cd2d46708faee00ffdea5b921af9eca3099a92d6"
+        "hash": "8bea260fa55b707f9f77969426fc9548b520f642"
       },
       {
         "type": "dir",
@@ -520,13 +520,13 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:android",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/expo/android\",\"packageImportPath\":\"import expo.modules.ExpoModulesPackage;\",\"packageInstance\":\"new ExpoModulesPackage()\",\"buildTypes\":[],\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/expo/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/expo/android\",\"packageImportPath\":\"import expo.core.ExpoModulesPackage;\",\"packageInstance\":\"new ExpoModulesPackage()\",\"buildTypes\":[],\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/expo/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "27874db459f41edcd460f2541807685bfc6cd7a8"
+        "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "caef60c6b8baf0f38fbfa36cd0b2d51e949e4c02"
+    "hash": "a96eb8967dd1841f792457a2875d3b5ddcf8da36"
   }
 }

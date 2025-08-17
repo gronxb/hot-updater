@@ -7,7 +7,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "cb09ef5e325616ac8ff91a2462e1cf7f89b81d7f"
+        "hash": "785b4ec68f68d50277d945f19af08d2f5e33a494"
       },
       {
         "type": "dir",
@@ -15,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "0fd7df1d82a0e3f021691a0f1ca63bda17c771f0"
+        "hash": "8bea260fa55b707f9f77969426fc9548b520f642"
       },
       {
         "type": "dir",
@@ -37,11 +37,11 @@
       {
         "type": "contents",
         "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.0.1\"}",
+        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.20.0\"}",
         "reasons": [
           "expoConfig"
         ],
-        "hash": "636b8aa4672e49676d48cb5e32a825733dfa129c"
+        "hash": "ef4c0eff6a658cb0f49bc18641e60b404dc6afa8"
       },
       {
         "type": "contents",
@@ -55,14 +55,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}},\"react-native-safe-area-context\":{\"root\":\"node_modules/react-native-safe-area-context\",\"name\":\"react-native-safe-area-context\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec\",\"version\":\"5.6.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.0\",\"configurations\":[],\"scriptPhases\":[]}}},\"react-native-safe-area-context\":{\"root\":\"node_modules/react-native-safe-area-context\",\"name\":\"react-native-safe-area-context\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec\",\"version\":\"5.6.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "b0799c0e5d6a653a2fd596fb1dfb5a2325c4e21f"
+        "hash": "5decfacafb15467a099ea07d2d2221864f553fbd"
       }
     ],
-    "hash": "5c34ee7f4d7188e5798b9f0fe98612afd3e12801"
+    "hash": "fd3b4e1cd87f7ac4e032d753ce9646cab0ea6336"
   },
   "android": {
     "sources": [
@@ -80,7 +80,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "0fd7df1d82a0e3f021691a0f1ca63bda17c771f0"
+        "hash": "8bea260fa55b707f9f77969426fc9548b520f642"
       },
       {
         "type": "dir",
@@ -102,11 +102,11 @@
       {
         "type": "contents",
         "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.0.1\"}",
+        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.20.0\"}",
         "reasons": [
           "expoConfig"
         ],
-        "hash": "636b8aa4672e49676d48cb5e32a825733dfa129c"
+        "hash": "ef4c0eff6a658cb0f49bc18641e60b404dc6afa8"
       },
       {
         "type": "contents",
@@ -127,6 +127,6 @@
         "hash": "2281fd4bf2f5df3d74410475b29e306b1d40b883"
       }
     ],
-    "hash": "f57f80f76878abc9b814e908c53aca327f9c0ec7"
+    "hash": "4b8c676afe0c7e913def89dd9c63b6d81ebc36b5"
   }
 }
