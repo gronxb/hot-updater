@@ -49,15 +49,19 @@ export const appendToProjectRootGitignore = ({
       return false;
     }
 
+    // Ensure there's a newline before appending if the file doesn't end with one
+    const needsNewlineBefore = content.length > 0 && !content.endsWith("\n");
+    const textToAppend = [comment, ...willAppendedLines].join("\n");
+
     fs.appendFileSync(
       gitIgnorePath,
-      [comment, ...willAppendedLines].join("\n"),
+      `${needsNewlineBefore ? "\n" : ""}${textToAppend}\n`,
       {
         encoding: "utf8",
       },
     );
   } else {
-    fs.writeFileSync(gitIgnorePath, [comment, ...globLines].join("\n"), {
+    fs.writeFileSync(gitIgnorePath, `${[comment, ...globLines].join("\n")}\n`, {
       encoding: "utf8",
     });
   }

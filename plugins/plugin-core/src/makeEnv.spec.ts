@@ -13,7 +13,7 @@ describe("makeEnv", () => {
     vi.resetAllMocks();
   });
 
-  it("adds new environment variables while preserving existing .env content", async () => {
+  it("adds new environment variables while preserving existing .env.hotupdater content", async () => {
     vi.mocked(fs.readFile).mockResolvedValueOnce("EXISTING_KEY=existing_value");
     const newEnvVars = {
       NEW_KEY: "new_value",

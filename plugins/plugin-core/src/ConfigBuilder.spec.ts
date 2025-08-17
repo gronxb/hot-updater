@@ -127,7 +127,7 @@ const getFirebaseConfigTemplate = (build: BuildType) => {
 
   const intermediate = `
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = admin.credential.applicationDefault();`.trim();
@@ -149,8 +149,10 @@ describe("ConfigBuilder", () => {
 
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -183,8 +185,10 @@ export default defineConfig({
 
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -298,7 +302,7 @@ import * as admin from "firebase-admin";
 import { defineConfig } from "hot-updater";
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = admin.credential.applicationDefault();
@@ -330,7 +334,7 @@ export default defineConfig({
   // import { defineConfig } from "hot-updater";
 
   // // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-  // // Check your .env file and add the credentials
+  // // Check your .env.hotupdater file and add the credentials
   // // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
   // // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
   // const credential = admin.credential.applicationDefault();

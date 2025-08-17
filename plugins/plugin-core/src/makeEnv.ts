@@ -4,10 +4,10 @@ type EnvVarValue = string | { comment: string; value: string };
 
 export const makeEnv = async (
   newEnvVars: Record<string, EnvVarValue>,
-  filePath = ".env",
+  filePath = ".env.hotupdater",
 ): Promise<string> => {
   try {
-    // Read the existing .env file or initialize with an empty string if not found
+    // Read the existing .env.hotupdater file or initialize with an empty string if not found
     const existingContent = await fs
       .readFile(filePath, "utf-8")
       .catch(() => "");
@@ -84,7 +84,7 @@ export const makeEnv = async (
     await fs.writeFile(filePath, updatedContent, "utf-8");
     return updatedContent;
   } catch (error) {
-    console.error("Error while updating .env file:", error);
+    console.error("Error while updating .env.hotupdater file:", error);
     throw error;
   }
 };

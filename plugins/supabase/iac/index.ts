@@ -413,7 +413,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
-  p.log.success("Generated '.env' file with Supabase settings.");
+  p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
   p.log.success(
     "Generated 'hot-updater.config.ts' file with Supabase settings.",
   );
