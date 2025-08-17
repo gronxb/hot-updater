@@ -3,7 +3,7 @@ PODS:
   - hermes-engine (0.81.0):
     - hermes-engine/Pre-built (= 0.81.0)
   - hermes-engine/Pre-built (0.81.0)
-  - HotUpdater (0.19.0):
+  - HotUpdater (0.20.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1923,7 +1923,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   FBLazyVector: ab4b9b95d08c7d60f758a8ec05e83803eea069b4
   hermes-engine: e7491a2038f2618c8cd444ed411a6deb350a3742
-  HotUpdater: 6350934c5388930a9d82663240d5301a5f999e40
+  HotUpdater: 95ab625a18079a8f849b905db53d13f1927e4e46
   RCTDeprecation: 368edec96c3f4e20f89b5ee10b694e2103b33511
   RCTRequired: b72d606f27bbc2428967eea01da57c33e1e8909e
   RCTTypeSafety: c1a121340f401122046012dc32d5f31d63782c3c
