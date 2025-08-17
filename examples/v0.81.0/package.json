@@ -41,6 +41,7 @@
     "eslint": "^8.19.0",
     "hot-updater": "workspace:*",
     "jest": "^29.6.3",
+    "metro": "0.83.1",
     "prettier": "2.8.8",
     "react-native-dotenv": "^3.4.11",
     "react-test-renderer": "19.1.0",
