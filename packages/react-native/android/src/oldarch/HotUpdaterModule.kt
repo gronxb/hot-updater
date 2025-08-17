@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.util.Log
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
