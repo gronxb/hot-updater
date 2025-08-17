@@ -32,24 +32,22 @@ interface PreferencesService {
  */
 class VersionedPreferencesService(
     private val context: Context,
-    private val appVersion: String,
-    private val appChannel: String,
+    private val isolationKey: String,
 ) : PreferencesService {
     private val prefs: SharedPreferences
 
     init {
-        val prefsName = "HotUpdaterPrefs_${appVersion}_$appChannel"
 
         val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
         if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
             sharedPrefsDir.listFiles()?.forEach { file ->
-                if (file.name.startsWith("HotUpdaterPrefs_") && file.name != "$prefsName.xml") {
+                if (file.name.startsWith("HotUpdaterPrefs_") && file.name != "$isolationKey.xml") {
                     file.delete()
                 }
             }
         }
 
-        prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        prefs = context.getSharedPreferences(isolationKey, Context.MODE_PRIVATE)
     }
 
     override fun getItem(key: String): String? = prefs.getString(key, null)

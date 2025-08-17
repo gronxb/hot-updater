@@ -2,14 +2,6 @@
   "ios": {
     "sources": [
       {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "de983884a3271a85384720763792990407637720"
-      },
-      {
         "type": "dir",
         "filePath": "ios",
         "reasons": [
@@ -23,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "cd2d46708faee00ffdea5b921af9eca3099a92d6"
       },
       {
         "type": "contents",
@@ -54,42 +46,25 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.5\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "774b8bb49d59f373f00d80c846d589cb3f96290b"
+        "hash": "1273fa5a68a4291d43a8d6148307d563af5e8f19"
       }
     ],
-    "hash": "693557f833b859a5a5551cdf15f013fd580dfa12"
+    "hash": "758fa899f05655482ce75e73d0b913fffeea1a7b"
   },
   "android": {
     "sources": [
-      {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "de983884a3271a85384720763792990407637720"
-      },
       {
         "type": "dir",
         "filePath": "android",
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "5368c5f5537136d162d7ade824c1f24d9139099f"
+        "hash": "c83d926992d4f46375e99477a884c2440b51ed5f"
       },
       {
         "type": "dir",
@@ -97,7 +72,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "cd2d46708faee00ffdea5b921af9eca3099a92d6"
       },
       {
         "type": "contents",
@@ -128,15 +103,6 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:android",
         "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
         "reasons": [
@@ -145,6 +111,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "46daae3b00d95e80e66d06f975d1c5069e3d21de"
+    "hash": "22b5ba9cc8c4f4c2d383af7e00ec1b482d2b64a6"
   }
 }

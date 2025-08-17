@@ -66,6 +66,32 @@ class HotUpdaterImpl(
                 DEFAULT_CHANNEL
             }
         }
+
+        /**
+         * Gets the complete isolation key for preferences storage
+         * @param context Application context
+         * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}
+         */
+        fun getIsolationKey(context: Context): String {
+            // Get fingerprint hash directly from resources
+            val fingerprintId = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+            val fingerprintHash =
+                if (fingerprintId != 0) {
+                    context.getString(fingerprintId).takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+
+            // Get app version and channel
+            val appVersion = getAppVersion(context) ?: "unknown"
+            val appChannel = getChannel(context)
+
+            // Use fingerprint if available, otherwise use app version
+            val baseKey = if (!fingerprintHash.isNullOrEmpty()) fingerprintHash else appVersion
+
+            // Build complete isolation key
+            return "HotUpdaterPrefs_${baseKey}_$appChannel"
+        }
     }
 
     /**
@@ -188,17 +214,5 @@ class HotUpdaterImpl(
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
         }
-    }
-
-    /**
-     * Gets the current activity from ReactApplicationContext
-     * @param context Context that might be a ReactApplicationContext
-     * @return The current activity or null
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun getCurrentActivity(context: Context): Activity? {
-        // This would need to be implemented differently or moved
-        // since it requires ReactApplicationContext which introduces circular dependencies
-        return null
     }
 }

@@ -13,19 +13,19 @@ protocol PreferencesService {
 
 class VersionedPreferencesService: PreferencesService {
     private let userDefaults: UserDefaults
-    private var keyPrefix: String = ""
+    private var isolationKey: String = ""
     
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
     }
     
     /**
-     * Configures the service with app version for key prefixing.
-     * @param appVersion The app version to use for key prefixing
+     * Configures the service with isolation key.
+     * @param isolationKey The complete isolation key to use for storage
      */
-    func configure(appVersion: String?, appChannel: String) {
-        self.keyPrefix = "hotupdater_\(appVersion ?? "unknown")_\(appChannel)_"
-        NSLog("[PreferencesService] Configured with appVersion: \(appVersion ?? "nil"). Key prefix: \(self.keyPrefix)")
+    func configure(isolationKey: String) {
+        self.isolationKey = isolationKey
+        NSLog("[PreferencesService] Configured with isolation key: \(self.isolationKey)")
     }
     
     /**
@@ -35,11 +35,11 @@ class VersionedPreferencesService: PreferencesService {
      * @throws PreferencesError if configuration is missing
      */
     private func prefixedKey(forKey key: String) throws -> String {
-        guard !keyPrefix.isEmpty else {
-            NSLog("[PreferencesService] Warning: PreferencesService used before configure(appVersion:) was called. Key prefix is empty.")
+        guard !isolationKey.isEmpty else {
+            NSLog("[PreferencesService] Warning: PreferencesService used before configure(isolationKey:) was called. Isolation key is empty.")
             throw PreferencesError.configurationError
         }
-        return "\(keyPrefix)\(key)"
+        return "\(isolationKey)\(key)"
     }
     
     /**

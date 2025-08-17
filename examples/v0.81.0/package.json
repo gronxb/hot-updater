@@ -1,0 +1,53 @@
+{
+  "name": "@hot-updater/example-react-native-v81",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "lint": "eslint .",
+    "start": "react-native start",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@hot-updater/react-native": "workspace:*",
+    "@react-native/new-app-screen": "0.81.0",
+    "react": "19.1.0",
+    "react-native": "0.81.0",
+    "react-native-safe-area-context": "^5.5.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/bare": "workspace:*",
+    "@hot-updater/cloudflare": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "@react-native-community/cli": "20.0.0",
+    "@react-native-community/cli-platform-android": "20.0.0",
+    "@react-native-community/cli-platform-ios": "20.0.0",
+    "@react-native/babel-preset": "0.81.0",
+    "@react-native/codegen": "0.81.0",
+    "@react-native/eslint-config": "0.81.0",
+    "@react-native/gradle-plugin": "0.81.0",
+    "@react-native/metro-config": "0.81.0",
+    "@react-native/typescript-config": "0.81.0",
+    "@rnx-kit/metro-config": "^2.0.1",
+    "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
+    "@types/jest": "^29.5.13",
+    "@types/react": "^19.1.0",
+    "@types/react-test-renderer": "^19.1.0",
+    "eslint": "^8.19.0",
+    "hot-updater": "workspace:*",
+    "jest": "^29.6.3",
+    "metro": "0.83.1",
+    "prettier": "2.8.8",
+    "react-native-dotenv": "^3.4.11",
+    "react-test-renderer": "19.1.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
