@@ -217,8 +217,10 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 
 export default defineConfig({
@@ -243,8 +245,10 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 
 export default defineConfig({
@@ -270,8 +274,10 @@ export default defineConfig({
 
     const expectedConfig = `import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { rnef } from "@hot-updater/rnef";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 
 export default defineConfig({
@@ -297,9 +303,11 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-import "dotenv/config";
 import * as admin from "firebase-admin";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env.hotupdater file and add the credentials
@@ -323,35 +331,4 @@ export default defineConfig({
 
     expect(result).toBe(expectedConfig);
   });
-
-  //   it("should build a Firebase config with rnef", () => {
-  //     const result = getFirebaseConfigTemplate("rnef");
-
-  //     const expectedConfig = `import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-  // import { rnef } from "@hot-updater/rnef";
-  // import admin from "firebase-admin";
-  // import "dotenv/config";
-  // import { defineConfig } from "hot-updater";
-
-  // // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-  // // Check your .env.hotupdater file and add the credentials
-  // // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-  // // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-  // const credential = admin.credential.applicationDefault();
-
-  // export default defineConfig({
-  //   build: rnef(),
-  //   storage: firebaseStorage({
-  //     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-  //     storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-  //     credential,
-  //   }),
-  //   database: firebaseDatabase({
-  //     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-  //     credential,
-  //   }),
-  // });`;
-
-  //     expect(result).toBe(expectedConfig);
-  //   });
 });
