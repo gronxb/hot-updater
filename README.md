@@ -38,8 +38,10 @@
   ```tsx
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+  import { config } from "dotenv";
   import { defineConfig } from "hot-updater";
-  import "dotenv/config";
+
+  config({ path: ".env.hotupdater" });
 
   export default defineConfig({
     build: bare({ enableHermes: true }),
@@ -59,8 +61,10 @@
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -81,8 +85,10 @@ export default defineConfig({
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+
+config({ path: ".env.hotupdater" });
 
 const options = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -105,8 +111,10 @@ export default defineConfig({
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import * as admin from 'firebase-admin';
-import { defineConfig } from 'hot-updater';
-import 'dotenv/config';
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env file and add the credentials

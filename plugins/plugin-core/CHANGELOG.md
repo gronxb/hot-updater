@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.20.2
+
+### Patch Changes
+
+- 0e78fb0: fix(cli): Info.plist correct path
+  - @hot-updater/core@0.20.2
+
 ## 0.20.1
 
 ### Patch Changes
