@@ -49,16 +49,17 @@
     "@hot-updater/core": "workspace:*",
     "cosmiconfig": "9.0.0",
     "cosmiconfig-typescript-loader": "5.0.0",
+    "fast-glob": "3.3.3",
     "oxc-transform": "0.82.1"
   },
   "devDependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
     "@types/node": "^22.7.5",
     "boxen": "^8.0.1",
     "es-toolkit": "^1.32.0",
     "jszip": "^3.10.1",
     "picocolors": "^1.0.0",
     "typescript": "5.8.2",
-    "workspace-tools": "^0.36.4",
-    "@hot-updater/plugin-core": "workspace:*"
+    "workspace-tools": "^0.36.4"
   }
 }
