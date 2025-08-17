@@ -1,7 +1,9 @@
 import { rnef } from "@hot-updater/rnef";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: rnef(),

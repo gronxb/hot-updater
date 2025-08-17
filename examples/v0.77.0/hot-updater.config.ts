@@ -1,7 +1,9 @@
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   nativeBuild: { android: { aab: false } },
