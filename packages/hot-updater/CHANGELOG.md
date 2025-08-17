@@ -1,5 +1,21 @@
 # hot-updater
 
+## 0.20.1
+
+### Patch Changes
+
+- a3a4a28: feat(cli): set stringResourcePaths and infoPlistPaths in hot-updater.config.ts
+- 42ff0e1: chore: bump @expo/fingerprint
+- Updated dependencies [a3a4a28]
+- Updated dependencies [b7b83ae]
+  - @hot-updater/plugin-core@0.20.1
+  - @hot-updater/console@0.20.1
+  - @hot-updater/aws@0.20.1
+  - @hot-updater/cloudflare@0.20.1
+  - @hot-updater/firebase@0.20.1
+  - @hot-updater/supabase@0.20.1
+  - @hot-updater/core@0.20.1
+
 ## 0.20.0
 
 ### Patch Changes
