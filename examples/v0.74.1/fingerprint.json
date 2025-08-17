@@ -2,20 +2,12 @@
   "ios": {
     "sources": [
       {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "de983884a3271a85384720763792990407637720"
-      },
-      {
         "type": "dir",
         "filePath": "ios",
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "cb9a120dbeaae79794b3a89fa0682110cf046925"
+        "hash": "3c47db19a3b71cb01b1d2989378bfe67981b56d5"
       },
       {
         "type": "dir",
@@ -23,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "688fd3e82622864e8d73f537e94982fe47098c77"
       },
       {
         "type": "contents",
@@ -54,35 +46,18 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"bundle:ios\":\"react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build\",\"make-apk\":\"react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/ && cd android && ./gradlew assembleDebug && cd ..\",\"bundle:android\":\"react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build\",\"webpack-start\":\"react-native webpack-start\",\"webpack-bundle:ios\":\"react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "6bfddff432ead1339c3736f7c75391a6d658bda0"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.5\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "774b8bb49d59f373f00d80c846d589cb3f96290b"
+        "hash": "1273fa5a68a4291d43a8d6148307d563af5e8f19"
       }
     ],
-    "hash": "41ddbae5a1661d54bbd5e7b5fcc13e15049eb465"
+    "hash": "5cbdaee8942c82f9da5fc29bc902a171e87163b1"
   },
   "android": {
     "sources": [
-      {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "de983884a3271a85384720763792990407637720"
-      },
       {
         "type": "dir",
         "filePath": "android",
@@ -97,7 +72,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "688fd3e82622864e8d73f537e94982fe47098c77"
       },
       {
         "type": "contents",
@@ -128,15 +103,6 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"bundle:ios\":\"react-native bundle --platform ios --entry-file index.js --bundle-output build/index.ios.bundle --assets-dest build\",\"make-apk\":\"react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/ && cd android && ./gradlew assembleDebug && cd ..\",\"bundle:android\":\"react-native bundle --platform android --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build\",\"webpack-start\":\"react-native webpack-start\",\"webpack-bundle:ios\":\"react-native webpack-bundle --platform ios --bundle-output build/index.ios.bundle --entry-file index.js --assets-dest ios\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "6bfddff432ead1339c3736f7c75391a6d658bda0"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:android",
         "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
         "reasons": [
@@ -145,6 +111,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "7fba468047d4f8a7c9f7ec60945436c9c9a4e173"
+    "hash": "0e0839c447bfcfd7d60a947470f83684faf8ca51"
   }
 }

@@ -2,14 +2,6 @@
   "ios": {
     "sources": [
       {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "8ec28c557b7cbfa0f8dd610434ccdc848cce35f6"
-      },
-      {
         "type": "dir",
         "filePath": "ios",
         "reasons": [
@@ -23,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "688fd3e82622864e8d73f537e94982fe47098c77"
       },
       {
         "type": "dir",
@@ -62,42 +54,25 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "6d688dcaa499347c5cf9c50c00be06c3f9dd8798"
+        "hash": "b3fa5262942dd34399f93e93b7c4009202e702a6"
       }
     ],
-    "hash": "f07f5876affe5a24efc4a190e7e1d707c2bbb50d"
+    "hash": "9d0a9461907514cb2b5666a07a3d8d405f95de61"
   },
   "android": {
     "sources": [
-      {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "8ec28c557b7cbfa0f8dd610434ccdc848cce35f6"
-      },
       {
         "type": "dir",
         "filePath": "android",
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "b0e1cf6e500fefb81171b0941c56c2e58b33ca2f"
+        "hash": "766357d06badad0c4e76d68835e9b9aa6657ba62"
       },
       {
         "type": "dir",
@@ -105,7 +80,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "688fd3e82622864e8d73f537e94982fe47098c77"
       },
       {
         "type": "dir",
@@ -144,15 +119,6 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"android\":\"react-native run-android\",\"ios\":\"react-native run-ios\",\"lint\":\"eslint .\",\"start\":\"react-native start\",\"test\":\"jest\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "c28ae71b64799721e29f504ab09b798a07cbb950"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:android",
         "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@sentry/react-native/android\",\"packageImportPath\":\"import io.sentry.react.RNSentryPackage;\",\"packageInstance\":\"new RNSentryPackage()\",\"buildTypes\":[],\"libraryName\":\"RNSentrySpec\",\"componentDescriptors\":[\"RNSentryReplayMaskComponentDescriptor\",\"RNSentryReplayUnmaskComponentDescriptor\"],\"cmakeListsPath\":\"node_modules/@sentry/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
         "reasons": [
@@ -161,6 +127,6 @@
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
     ],
-    "hash": "4e030e056ba082ed3bf40d92f44e3e158370dfd4"
+    "hash": "241331020c5137208f93a0913eadbe2ee4d1cea1"
   }
 }

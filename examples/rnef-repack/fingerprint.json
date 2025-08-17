@@ -2,14 +2,6 @@
   "ios": {
     "sources": [
       {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "83df031d738ba3f28a58e1e9900a933f96218446"
-      },
-      {
         "type": "dir",
         "filePath": "ios",
         "reasons": [
@@ -31,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "66246c80ddbedee9a5717f7e1def22bca794843f"
+        "hash": "4eae371c2157fe054ad42866ef5f7f8de0717e1f"
       },
       {
         "type": "dir",
@@ -70,35 +62,18 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "ea7a0152589ee904b0a99ade0d582906fcbe072a"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.1.2\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@callstack/repack/callstack-repack.podspec\",\"version\":\"5.1.2\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "68c24e3ed7026bf37e59e8d27da3694ac8ba1570"
+        "hash": "01267a96934ffe3dcdcf3a9fc6466f2e8ed6edcb"
       }
     ],
-    "hash": "8f6a758b8ad4f0823d4174a2dabf9489c832366d"
+    "hash": "5cf72789e13d01c61f56d44dbdabc5400ab5c543"
   },
   "android": {
     "sources": [
-      {
-        "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "83df031d738ba3f28a58e1e9900a933f96218446"
-      },
       {
         "type": "dir",
         "filePath": "android",
@@ -121,7 +96,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "66246c80ddbedee9a5717f7e1def22bca794843f"
+        "hash": "4eae371c2157fe054ad42866ef5f7f8de0717e1f"
       },
       {
         "type": "dir",
@@ -160,15 +135,6 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"start\":\"rnef start\",\"lint\":\"eslint .\",\"test\":\"jest\",\"ios\":\"rnef run:ios\",\"android\":\"rnef run:android\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "ea7a0152589ee904b0a99ade0d582906fcbe072a"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:android",
         "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"@callstack/repack\":{\"root\":\"node_modules/@callstack/repack\",\"name\":\"@callstack/repack\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@callstack/repack/android\",\"packageImportPath\":\"import com.callstack.repack.ScriptManagerPackage;\",\"packageInstance\":\"new ScriptManagerPackage()\",\"buildTypes\":[],\"libraryName\":\"RNScriptManagerSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@callstack/repack/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@sentry/react-native/android\",\"packageImportPath\":\"import io.sentry.react.RNSentryPackage;\",\"packageInstance\":\"new RNSentryPackage()\",\"buildTypes\":[],\"libraryName\":\"RNSentrySpec\",\"componentDescriptors\":[\"RNSentryReplayMaskComponentDescriptor\",\"RNSentryReplayUnmaskComponentDescriptor\"],\"cmakeListsPath\":\"node_modules/@sentry/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
         "reasons": [
@@ -177,6 +143,6 @@
         "hash": "f0a78546641e82e7e05d1b6a421d18b1fda50e74"
       }
     ],
-    "hash": "2daf04ac7bc1c589cfceda414672811b200b85b0"
+    "hash": "583c027bb5d2f47f784ab2b76aecea8b451218ee"
   }
 }

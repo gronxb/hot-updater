@@ -3,27 +3,27 @@
     "sources": [
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/chunk-DWy1uDak.cjs",
-        "reasons": [
-          "expoConfigPlugins"
-        ],
-        "hash": "a52b3706b4c3779cb43a53033ebd65abc2a81ddc"
-      },
-      {
-        "type": "file",
         "filePath": "../../packages/hot-updater/dist/config.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "fdb470962e03e781b93edbb172eee7dcce0081cc"
+        "hash": "d205d70618514222947d51bbfff507294e4ee50d"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-BNX6xt9h.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-3QU5apyj.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "fb4ee42913406371d6de6f354f6d587fc458822e"
+        "hash": "80eb8c991c208cf6b9fed88ac18135146d674bc2"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/hot-updater/dist/picocolors-y8lGs7d-.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "9da9a70bc6643f090017968bf0592a58ca70ee2c"
       },
       {
         "type": "file",
@@ -39,7 +39,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "b4782ab6f01af353a62a7fce9dfbe878e7128d7a"
+        "hash": "016c861b101f6e2ae33dc31f5cd9de3ec3d63ba7"
       },
       {
         "type": "file",
@@ -47,7 +47,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "1713e8ce1aade443d163bc1dcec1674a7342c6a2"
+        "hash": "12ab50239f9cd401fc9f2a37cf5ec671430ed68b"
       },
       {
         "type": "file",
@@ -55,7 +55,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "3bba271430fa032d7570c9d6732f25e31d8ec6f3"
+        "hash": "6d6400a86483e343cab4bc0783a09e51b15d487a"
       },
       {
         "type": "file",
@@ -75,14 +75,6 @@
       },
       {
         "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "5d2321d237c7fcf7e101ae47c9c7f09f5fa9dc57"
-      },
-      {
-        "type": "file",
         "filePath": "eas.json",
         "reasons": [
           "easBuild"
@@ -91,7 +83,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_3a64f3f307fdb4ee21778e1c6a02f478/node_modules/expo-asset/ios",
+        "filePath": "../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_d9c2bf47032dcb04803c8ad62050c5a4/node_modules/expo-asset/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -99,7 +91,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_d497bf53f21202baf7a58097d9be5858/node_modules/expo-constants/ios",
+        "filePath": "../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_50ae7080039bd5f74818aca7d58c07ba/node_modules/expo-constants/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -107,7 +99,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_70572d6f6872b7b11bab3a0d4abc3f5a/node_modules/expo-dev-client/ios",
+        "filePath": "../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_b1926465e96a3117e74ce4b21b52d0b9/node_modules/expo-dev-client/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -115,7 +107,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_179960d5208aff0763751944aaf558ee/node_modules/expo-dev-launcher",
+        "filePath": "../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7dbf51952cc28512e9531750537ad524/node_modules/expo-dev-launcher",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -123,7 +115,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__9ece5efe67965af6e3452cb58562bfaa/node_modules/expo-dev-menu-interface/ios",
+        "filePath": "../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__16045448625c5d84beb2bc78ce786236/node_modules/expo-dev-menu-interface/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -131,7 +123,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_63090252fd024f94aaa8720dc7dd6f5f/node_modules/expo-dev-menu",
+        "filePath": "../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_ddd8e33183e410fadaba0d1d9469aa00/node_modules/expo-dev-menu",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -139,7 +131,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7419aaef0ae89cf9d9ff0a12fba0f9bc/node_modules/expo-file-system/ios",
+        "filePath": "../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_f8a81dd9aa6f3b474cb5a3356b4eca54/node_modules/expo-file-system/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -147,7 +139,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_267db1023076f21c34eecca5bb00edff/node_modules/expo-font/ios",
+        "filePath": "../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_aefbc552ddfb56baf8955dcb1c9a3e0b/node_modules/expo-font/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -163,7 +155,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_6f552b1893cbc6cc00c5b769d32d5655/node_modules/expo-keep-awake/ios",
+        "filePath": "../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_c51ca7911bf8733af1bd33734993600f/node_modules/expo-keep-awake/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -171,7 +163,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_1d7c304a32b929650c428a5ba73c8f79/node_modules/expo-manifests/ios",
+        "filePath": "../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_ff49fa8b916c9df83451f16dba7a058b/node_modules/expo-manifests/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -187,7 +179,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_ae5318e956649c24abcfc7e919b3cc99/node_modules/expo-updates-interface/ios",
+        "filePath": "../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_e368e9e2beafd14545244fccece94b86/node_modules/expo-updates-interface/ios",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -195,7 +187,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_0500c26904192039cf44f4dbe0a4e0b5/node_modules/expo",
+        "filePath": "../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_085cdc30eb79d107938fb0a007228f02/node_modules/expo",
         "reasons": [
           "expoAutolinkingIos"
         ],
@@ -207,7 +199,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "c1a81d06534323c793133f74bf883fa29c5477b7"
+        "hash": "204f44ac490bd34045b8e81cc13c0c9a5906df01"
       },
       {
         "type": "dir",
@@ -215,7 +207,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "688fd3e82622864e8d73f537e94982fe47098c77"
       },
       {
         "type": "dir",
@@ -228,11 +220,11 @@
       {
         "type": "contents",
         "id": "expoAutolinkingConfig:ios",
-        "contents": "{\"extraDependencies\":[],\"modules\":[{\"packageName\":\"expo\",\"packageVersion\":\"52.0.46\",\"pods\":[{\"podName\":\"Expo\",\"podspecDir\":\"../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_0500c26904192039cf44f4dbe0a4e0b5/node_modules/expo\"}],\"swiftModuleNames\":[\"Expo\"],\"modules\":[\"ExpoFetchModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-asset\",\"packageVersion\":\"11.0.5\",\"pods\":[{\"podName\":\"ExpoAsset\",\"podspecDir\":\"../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_3a64f3f307fdb4ee21778e1c6a02f478/node_modules/expo-asset/ios\"}],\"swiftModuleNames\":[\"ExpoAsset\"],\"modules\":[\"AssetModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-constants\",\"packageVersion\":\"17.0.8\",\"pods\":[{\"podName\":\"EXConstants\",\"podspecDir\":\"../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_d497bf53f21202baf7a58097d9be5858/node_modules/expo-constants/ios\"}],\"swiftModuleNames\":[\"EXConstants\"],\"modules\":[\"ConstantsModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-dev-client\",\"packageVersion\":\"5.0.20\",\"pods\":[{\"podName\":\"expo-dev-client\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_70572d6f6872b7b11bab3a0d4abc3f5a/node_modules/expo-dev-client/ios\"}],\"swiftModuleNames\":[\"expo_dev_client\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-dev-launcher\",\"packageVersion\":\"5.0.35\",\"pods\":[{\"podName\":\"expo-dev-launcher\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_179960d5208aff0763751944aaf558ee/node_modules/expo-dev-launcher\"}],\"swiftModuleNames\":[\"EXDevLauncher\"],\"modules\":[\"DevLauncherInternal\",\"DevLauncherAuth\",\"RNCSafeAreaProviderManager\"],\"appDelegateSubscribers\":[\"ExpoDevLauncherAppDelegateSubscriber\"],\"reactDelegateHandlers\":[\"ExpoDevLauncherReactDelegateHandler\"],\"debugOnly\":true},{\"packageName\":\"expo-dev-menu\",\"packageVersion\":\"6.0.25\",\"pods\":[{\"podName\":\"expo-dev-menu\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_63090252fd024f94aaa8720dc7dd6f5f/node_modules/expo-dev-menu\"}],\"swiftModuleNames\":[\"EXDevMenu\"],\"modules\":[\"DevMenuModule\",\"DevMenuInternalModule\",\"DevMenuPreferences\",\"RNCSafeAreaProviderManager\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[\"ExpoDevMenuReactDelegateHandler\"],\"debugOnly\":true},{\"packageName\":\"expo-dev-menu-interface\",\"packageVersion\":\"1.9.3\",\"pods\":[{\"podName\":\"expo-dev-menu-interface\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__9ece5efe67965af6e3452cb58562bfaa/node_modules/expo-dev-menu-interface/ios\"}],\"swiftModuleNames\":[\"expo_dev_menu_interface\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-file-system\",\"packageVersion\":\"18.0.12\",\"pods\":[{\"podName\":\"ExpoFileSystem\",\"podspecDir\":\"../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7419aaef0ae89cf9d9ff0a12fba0f9bc/node_modules/expo-file-system/ios\"}],\"swiftModuleNames\":[\"ExpoFileSystem\"],\"modules\":[\"FileSystemModule\",\"FileSystemNextModule\"],\"appDelegateSubscribers\":[\"FileSystemBackgroundSessionHandler\"],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-font\",\"packageVersion\":\"13.0.4\",\"pods\":[{\"podName\":\"ExpoFont\",\"podspecDir\":\"../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_267db1023076f21c34eecca5bb00edff/node_modules/expo-font/ios\"}],\"swiftModuleNames\":[\"ExpoFont\"],\"modules\":[\"FontLoaderModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-json-utils\",\"packageVersion\":\"0.14.0\",\"pods\":[{\"podName\":\"EXJSONUtils\",\"podspecDir\":\"../../node_modules/.pnpm/expo-json-utils@0.14.0/node_modules/expo-json-utils/ios\"}],\"swiftModuleNames\":[\"EXJSONUtils\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-keep-awake\",\"packageVersion\":\"14.0.3\",\"pods\":[{\"podName\":\"ExpoKeepAwake\",\"podspecDir\":\"../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_6f552b1893cbc6cc00c5b769d32d5655/node_modules/expo-keep-awake/ios\"}],\"swiftModuleNames\":[\"ExpoKeepAwake\"],\"modules\":[\"KeepAwakeModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-manifests\",\"packageVersion\":\"0.15.8\",\"pods\":[{\"podName\":\"EXManifests\",\"podspecDir\":\"../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_1d7c304a32b929650c428a5ba73c8f79/node_modules/expo-manifests/ios\"}],\"swiftModuleNames\":[\"EXManifests\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-modules-core\",\"packageVersion\":\"2.2.3\",\"pods\":[{\"podName\":\"ExpoModulesCore\",\"podspecDir\":\"../../node_modules/.pnpm/expo-modules-core@2.2.3/node_modules/expo-modules-core\"}],\"swiftModuleNames\":[\"ExpoModulesCore\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-updates-interface\",\"packageVersion\":\"1.0.0\",\"pods\":[{\"podName\":\"EXUpdatesInterface\",\"podspecDir\":\"../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_ae5318e956649c24abcfc7e919b3cc99/node_modules/expo-updates-interface/ios\"}],\"swiftModuleNames\":[\"EXUpdatesInterface\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false}]}",
+        "contents": "{\"extraDependencies\":[],\"modules\":[{\"packageName\":\"expo\",\"packageVersion\":\"52.0.46\",\"pods\":[{\"podName\":\"Expo\",\"podspecDir\":\"../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_085cdc30eb79d107938fb0a007228f02/node_modules/expo\"}],\"swiftModuleNames\":[\"Expo\"],\"modules\":[\"ExpoFetchModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-asset\",\"packageVersion\":\"11.0.5\",\"pods\":[{\"podName\":\"ExpoAsset\",\"podspecDir\":\"../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_d9c2bf47032dcb04803c8ad62050c5a4/node_modules/expo-asset/ios\"}],\"swiftModuleNames\":[\"ExpoAsset\"],\"modules\":[\"AssetModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-constants\",\"packageVersion\":\"17.0.8\",\"pods\":[{\"podName\":\"EXConstants\",\"podspecDir\":\"../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_50ae7080039bd5f74818aca7d58c07ba/node_modules/expo-constants/ios\"}],\"swiftModuleNames\":[\"EXConstants\"],\"modules\":[\"ConstantsModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-dev-client\",\"packageVersion\":\"5.0.20\",\"pods\":[{\"podName\":\"expo-dev-client\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_b1926465e96a3117e74ce4b21b52d0b9/node_modules/expo-dev-client/ios\"}],\"swiftModuleNames\":[\"expo_dev_client\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-dev-launcher\",\"packageVersion\":\"5.0.35\",\"pods\":[{\"podName\":\"expo-dev-launcher\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7dbf51952cc28512e9531750537ad524/node_modules/expo-dev-launcher\"}],\"swiftModuleNames\":[\"EXDevLauncher\"],\"modules\":[\"DevLauncherInternal\",\"DevLauncherAuth\",\"RNCSafeAreaProviderManager\"],\"appDelegateSubscribers\":[\"ExpoDevLauncherAppDelegateSubscriber\"],\"reactDelegateHandlers\":[\"ExpoDevLauncherReactDelegateHandler\"],\"debugOnly\":true},{\"packageName\":\"expo-dev-menu\",\"packageVersion\":\"6.0.25\",\"pods\":[{\"podName\":\"expo-dev-menu\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_ddd8e33183e410fadaba0d1d9469aa00/node_modules/expo-dev-menu\"}],\"swiftModuleNames\":[\"EXDevMenu\"],\"modules\":[\"DevMenuModule\",\"DevMenuInternalModule\",\"DevMenuPreferences\",\"RNCSafeAreaProviderManager\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[\"ExpoDevMenuReactDelegateHandler\"],\"debugOnly\":true},{\"packageName\":\"expo-dev-menu-interface\",\"packageVersion\":\"1.9.3\",\"pods\":[{\"podName\":\"expo-dev-menu-interface\",\"podspecDir\":\"../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__16045448625c5d84beb2bc78ce786236/node_modules/expo-dev-menu-interface/ios\"}],\"swiftModuleNames\":[\"expo_dev_menu_interface\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-file-system\",\"packageVersion\":\"18.0.12\",\"pods\":[{\"podName\":\"ExpoFileSystem\",\"podspecDir\":\"../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_f8a81dd9aa6f3b474cb5a3356b4eca54/node_modules/expo-file-system/ios\"}],\"swiftModuleNames\":[\"ExpoFileSystem\"],\"modules\":[\"FileSystemModule\",\"FileSystemNextModule\"],\"appDelegateSubscribers\":[\"FileSystemBackgroundSessionHandler\"],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-font\",\"packageVersion\":\"13.0.4\",\"pods\":[{\"podName\":\"ExpoFont\",\"podspecDir\":\"../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_aefbc552ddfb56baf8955dcb1c9a3e0b/node_modules/expo-font/ios\"}],\"swiftModuleNames\":[\"ExpoFont\"],\"modules\":[\"FontLoaderModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-json-utils\",\"packageVersion\":\"0.14.0\",\"pods\":[{\"podName\":\"EXJSONUtils\",\"podspecDir\":\"../../node_modules/.pnpm/expo-json-utils@0.14.0/node_modules/expo-json-utils/ios\"}],\"swiftModuleNames\":[\"EXJSONUtils\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-keep-awake\",\"packageVersion\":\"14.0.3\",\"pods\":[{\"podName\":\"ExpoKeepAwake\",\"podspecDir\":\"../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_c51ca7911bf8733af1bd33734993600f/node_modules/expo-keep-awake/ios\"}],\"swiftModuleNames\":[\"ExpoKeepAwake\"],\"modules\":[\"KeepAwakeModule\"],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-manifests\",\"packageVersion\":\"0.15.8\",\"pods\":[{\"podName\":\"EXManifests\",\"podspecDir\":\"../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_ff49fa8b916c9df83451f16dba7a058b/node_modules/expo-manifests/ios\"}],\"swiftModuleNames\":[\"EXManifests\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-modules-core\",\"packageVersion\":\"2.2.3\",\"pods\":[{\"podName\":\"ExpoModulesCore\",\"podspecDir\":\"../../node_modules/.pnpm/expo-modules-core@2.2.3/node_modules/expo-modules-core\"}],\"swiftModuleNames\":[\"ExpoModulesCore\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false},{\"packageName\":\"expo-updates-interface\",\"packageVersion\":\"1.0.0\",\"pods\":[{\"podName\":\"EXUpdatesInterface\",\"podspecDir\":\"../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_e368e9e2beafd14545244fccece94b86/node_modules/expo-updates-interface/ios\"}],\"swiftModuleNames\":[\"EXUpdatesInterface\"],\"modules\":[],\"appDelegateSubscribers\":[],\"reactDelegateHandlers\":[],\"debugOnly\":false}]}",
         "reasons": [
           "expoAutolinkingIos"
         ],
-        "hash": "d2cef625547d4651a266decdcb9244dee5ea85f1"
+        "hash": "3242eace569a22d4b31e18cd17444d7f9562344d"
       },
       {
         "type": "contents",
@@ -254,50 +246,41 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"start\":\"expo start\",\"web\":\"expo start --web\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "fa7a71d1d1ccba0c985e2776fc9dc0927e0faa1d"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.5\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.19.10\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.46\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "463e7a3066890644c0f4f51a150a2c3d6698d5fd"
+        "hash": "9b260c4396c2b74f6c0b3fc81616e73f464216fa"
       }
     ],
-    "hash": "f65d235dfa922279888139b1883514b86f61c03f"
+    "hash": "12c226347ca9653291f9bb210158068129cb5162"
   },
   "android": {
     "sources": [
-      {
-        "type": "file",
-        "filePath": "../../packages/hot-updater/dist/chunk-DWy1uDak.cjs",
-        "reasons": [
-          "expoConfigPlugins"
-        ],
-        "hash": "a52b3706b4c3779cb43a53033ebd65abc2a81ddc"
-      },
       {
         "type": "file",
         "filePath": "../../packages/hot-updater/dist/config.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "fdb470962e03e781b93edbb172eee7dcce0081cc"
+        "hash": "d205d70618514222947d51bbfff507294e4ee50d"
       },
       {
         "type": "file",
-        "filePath": "../../packages/hot-updater/dist/fingerprint-BNX6xt9h.cjs",
+        "filePath": "../../packages/hot-updater/dist/fingerprint-3QU5apyj.cjs",
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "fb4ee42913406371d6de6f354f6d587fc458822e"
+        "hash": "80eb8c991c208cf6b9fed88ac18135146d674bc2"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/hot-updater/dist/picocolors-y8lGs7d-.cjs",
+        "reasons": [
+          "expoConfigPlugins"
+        ],
+        "hash": "9da9a70bc6643f090017968bf0592a58ca70ee2c"
       },
       {
         "type": "file",
@@ -313,7 +296,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "b4782ab6f01af353a62a7fce9dfbe878e7128d7a"
+        "hash": "016c861b101f6e2ae33dc31f5cd9de3ec3d63ba7"
       },
       {
         "type": "file",
@@ -321,7 +304,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "1713e8ce1aade443d163bc1dcec1674a7342c6a2"
+        "hash": "12ab50239f9cd401fc9f2a37cf5ec671430ed68b"
       },
       {
         "type": "file",
@@ -329,7 +312,7 @@
         "reasons": [
           "expoConfigPlugins"
         ],
-        "hash": "3bba271430fa032d7570c9d6732f25e31d8ec6f3"
+        "hash": "6d6400a86483e343cab4bc0783a09e51b15d487a"
       },
       {
         "type": "file",
@@ -357,14 +340,6 @@
       },
       {
         "type": "file",
-        "filePath": ".gitignore",
-        "reasons": [
-          "bareGitIgnore"
-        ],
-        "hash": "5d2321d237c7fcf7e101ae47c9c7f09f5fa9dc57"
-      },
-      {
-        "type": "file",
         "filePath": "eas.json",
         "reasons": [
           "easBuild"
@@ -373,7 +348,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_3a64f3f307fdb4ee21778e1c6a02f478/node_modules/expo-asset/android",
+        "filePath": "../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_d9c2bf47032dcb04803c8ad62050c5a4/node_modules/expo-asset/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -381,7 +356,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_d497bf53f21202baf7a58097d9be5858/node_modules/expo-constants/android",
+        "filePath": "../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_50ae7080039bd5f74818aca7d58c07ba/node_modules/expo-constants/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -389,7 +364,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_70572d6f6872b7b11bab3a0d4abc3f5a/node_modules/expo-dev-client/android",
+        "filePath": "../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_b1926465e96a3117e74ce4b21b52d0b9/node_modules/expo-dev-client/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -397,7 +372,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_179960d5208aff0763751944aaf558ee/node_modules/expo-dev-launcher/android",
+        "filePath": "../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7dbf51952cc28512e9531750537ad524/node_modules/expo-dev-launcher/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -405,7 +380,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_179960d5208aff0763751944aaf558ee/node_modules/expo-dev-launcher/expo-dev-launcher-gradle-plugin",
+        "filePath": "../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7dbf51952cc28512e9531750537ad524/node_modules/expo-dev-launcher/expo-dev-launcher-gradle-plugin",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -413,7 +388,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__9ece5efe67965af6e3452cb58562bfaa/node_modules/expo-dev-menu-interface/android",
+        "filePath": "../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__16045448625c5d84beb2bc78ce786236/node_modules/expo-dev-menu-interface/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -421,7 +396,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_63090252fd024f94aaa8720dc7dd6f5f/node_modules/expo-dev-menu/android",
+        "filePath": "../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_ddd8e33183e410fadaba0d1d9469aa00/node_modules/expo-dev-menu/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -429,7 +404,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7419aaef0ae89cf9d9ff0a12fba0f9bc/node_modules/expo-file-system/android",
+        "filePath": "../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_f8a81dd9aa6f3b474cb5a3356b4eca54/node_modules/expo-file-system/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -437,7 +412,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_267db1023076f21c34eecca5bb00edff/node_modules/expo-font/android",
+        "filePath": "../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_aefbc552ddfb56baf8955dcb1c9a3e0b/node_modules/expo-font/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -453,7 +428,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_6f552b1893cbc6cc00c5b769d32d5655/node_modules/expo-keep-awake/android",
+        "filePath": "../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_c51ca7911bf8733af1bd33734993600f/node_modules/expo-keep-awake/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -461,7 +436,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_1d7c304a32b929650c428a5ba73c8f79/node_modules/expo-manifests/android",
+        "filePath": "../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_ff49fa8b916c9df83451f16dba7a058b/node_modules/expo-manifests/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -477,7 +452,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_ae5318e956649c24abcfc7e919b3cc99/node_modules/expo-updates-interface/android",
+        "filePath": "../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_e368e9e2beafd14545244fccece94b86/node_modules/expo-updates-interface/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -485,7 +460,7 @@
       },
       {
         "type": "dir",
-        "filePath": "../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_0500c26904192039cf44f4dbe0a4e0b5/node_modules/expo/android",
+        "filePath": "../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_085cdc30eb79d107938fb0a007228f02/node_modules/expo/android",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
@@ -497,7 +472,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "3f008f23333440571ef452460b69111cb2917f8d"
+        "hash": "5efec8c03b08933b0c903d47e2e1de7ba26b0987"
       },
       {
         "type": "dir",
@@ -505,7 +480,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "d3a7389586664cd1c03d5ac21beaff90f12853f2"
+        "hash": "688fd3e82622864e8d73f537e94982fe47098c77"
       },
       {
         "type": "dir",
@@ -518,11 +493,11 @@
       {
         "type": "contents",
         "id": "expoAutolinkingConfig:android",
-        "contents": "{\"extraDependencies\":[],\"modules\":[{\"packageName\":\"expo\",\"packageVersion\":\"52.0.46\",\"projects\":[{\"name\":\"expo\",\"sourceDir\":\"../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_0500c26904192039cf44f4dbe0a4e0b5/node_modules/expo/android\"}],\"modules\":[\"expo.modules.fetch.ExpoFetchModule\"]},{\"packageName\":\"expo-asset\",\"packageVersion\":\"11.0.5\",\"projects\":[{\"name\":\"expo-asset\",\"sourceDir\":\"../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_3a64f3f307fdb4ee21778e1c6a02f478/node_modules/expo-asset/android\"}],\"modules\":[\"expo.modules.asset.AssetModule\"]},{\"packageName\":\"expo-constants\",\"packageVersion\":\"17.0.8\",\"projects\":[{\"name\":\"expo-constants\",\"sourceDir\":\"../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_d497bf53f21202baf7a58097d9be5858/node_modules/expo-constants/android\"}],\"modules\":[\"expo.modules.constants.ConstantsModule\"]},{\"packageName\":\"expo-dev-client\",\"packageVersion\":\"5.0.20\",\"projects\":[{\"name\":\"expo-dev-client\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_70572d6f6872b7b11bab3a0d4abc3f5a/node_modules/expo-dev-client/android\"}],\"modules\":[]},{\"packageName\":\"expo-dev-launcher\",\"packageVersion\":\"5.0.35\",\"projects\":[{\"name\":\"expo-dev-launcher\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_179960d5208aff0763751944aaf558ee/node_modules/expo-dev-launcher/android\"}],\"plugins\":[{\"id\":\"expo-dev-launcher-gradle-plugin\",\"group\":\"expo.modules\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_179960d5208aff0763751944aaf558ee/node_modules/expo-dev-launcher/expo-dev-launcher-gradle-plugin\"}],\"modules\":[]},{\"packageName\":\"expo-dev-menu\",\"packageVersion\":\"6.0.25\",\"projects\":[{\"name\":\"expo-dev-menu\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_63090252fd024f94aaa8720dc7dd6f5f/node_modules/expo-dev-menu/android\"}],\"modules\":[\"expo.modules.devmenu.modules.DevMenuModule\",\"expo.modules.devmenu.modules.DevMenuPreferences\"]},{\"packageName\":\"expo-dev-menu-interface\",\"packageVersion\":\"1.9.3\",\"projects\":[{\"name\":\"expo-dev-menu-interface\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__9ece5efe67965af6e3452cb58562bfaa/node_modules/expo-dev-menu-interface/android\"}],\"modules\":[]},{\"packageName\":\"expo-file-system\",\"packageVersion\":\"18.0.12\",\"projects\":[{\"name\":\"expo-file-system\",\"sourceDir\":\"../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7419aaef0ae89cf9d9ff0a12fba0f9bc/node_modules/expo-file-system/android\"}],\"modules\":[\"expo.modules.filesystem.FileSystemModule\",\"expo.modules.filesystem.next.FileSystemNextModule\"]},{\"packageName\":\"expo-font\",\"packageVersion\":\"13.0.4\",\"projects\":[{\"name\":\"expo-font\",\"sourceDir\":\"../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_267db1023076f21c34eecca5bb00edff/node_modules/expo-font/android\"}],\"modules\":[\"expo.modules.font.FontLoaderModule\"]},{\"packageName\":\"expo-json-utils\",\"packageVersion\":\"0.14.0\",\"projects\":[{\"name\":\"expo-json-utils\",\"sourceDir\":\"../../node_modules/.pnpm/expo-json-utils@0.14.0/node_modules/expo-json-utils/android\"}],\"modules\":[]},{\"packageName\":\"expo-keep-awake\",\"packageVersion\":\"14.0.3\",\"projects\":[{\"name\":\"expo-keep-awake\",\"sourceDir\":\"../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_6f552b1893cbc6cc00c5b769d32d5655/node_modules/expo-keep-awake/android\"}],\"modules\":[\"expo.modules.keepawake.KeepAwakeModule\"]},{\"packageName\":\"expo-manifests\",\"packageVersion\":\"0.15.8\",\"projects\":[{\"name\":\"expo-manifests\",\"sourceDir\":\"../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_1d7c304a32b929650c428a5ba73c8f79/node_modules/expo-manifests/android\"}],\"modules\":[]},{\"packageName\":\"expo-modules-core\",\"packageVersion\":\"2.2.3\",\"projects\":[{\"name\":\"expo-modules-core\",\"sourceDir\":\"../../node_modules/.pnpm/expo-modules-core@2.2.3/node_modules/expo-modules-core/android\"}],\"modules\":[]},{\"packageName\":\"expo-updates-interface\",\"packageVersion\":\"1.0.0\",\"projects\":[{\"name\":\"expo-updates-interface\",\"sourceDir\":\"../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_ae5318e956649c24abcfc7e919b3cc99/node_modules/expo-updates-interface/android\"}],\"modules\":[]}]}",
+        "contents": "{\"extraDependencies\":[],\"modules\":[{\"packageName\":\"expo\",\"packageVersion\":\"52.0.46\",\"projects\":[{\"name\":\"expo\",\"sourceDir\":\"../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7.26.0__@expo+metr_085cdc30eb79d107938fb0a007228f02/node_modules/expo/android\"}],\"modules\":[\"expo.modules.fetch.ExpoFetchModule\"]},{\"packageName\":\"expo-asset\",\"packageVersion\":\"11.0.5\",\"projects\":[{\"name\":\"expo-asset\",\"sourceDir\":\"../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_d9c2bf47032dcb04803c8ad62050c5a4/node_modules/expo-asset/android\"}],\"modules\":[\"expo.modules.asset.AssetModule\"]},{\"packageName\":\"expo-constants\",\"packageVersion\":\"17.0.8\",\"projects\":[{\"name\":\"expo-constants\",\"sourceDir\":\"../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_50ae7080039bd5f74818aca7d58c07ba/node_modules/expo-constants/android\"}],\"modules\":[\"expo.modules.constants.ConstantsModule\"]},{\"packageName\":\"expo-dev-client\",\"packageVersion\":\"5.0.20\",\"projects\":[{\"name\":\"expo-dev-client\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-client@5.0.20_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_b1926465e96a3117e74ce4b21b52d0b9/node_modules/expo-dev-client/android\"}],\"modules\":[]},{\"packageName\":\"expo-dev-launcher\",\"packageVersion\":\"5.0.35\",\"projects\":[{\"name\":\"expo-dev-launcher\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7dbf51952cc28512e9531750537ad524/node_modules/expo-dev-launcher/android\"}],\"plugins\":[{\"id\":\"expo-dev-launcher-gradle-plugin\",\"group\":\"expo.modules\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-launcher@5.0.35_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_7dbf51952cc28512e9531750537ad524/node_modules/expo-dev-launcher/expo-dev-launcher-gradle-plugin\"}],\"modules\":[]},{\"packageName\":\"expo-dev-menu\",\"packageVersion\":\"6.0.25\",\"projects\":[{\"name\":\"expo-dev-menu\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-menu@6.0.25_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+co_ddd8e33183e410fadaba0d1d9469aa00/node_modules/expo-dev-menu/android\"}],\"modules\":[\"expo.modules.devmenu.modules.DevMenuModule\",\"expo.modules.devmenu.modules.DevMenuPreferences\"]},{\"packageName\":\"expo-dev-menu-interface\",\"packageVersion\":\"1.9.3\",\"projects\":[{\"name\":\"expo-dev-menu-interface\",\"sourceDir\":\"../../node_modules/.pnpm/expo-dev-menu-interface@1.9.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0__16045448625c5d84beb2bc78ce786236/node_modules/expo-dev-menu-interface/android\"}],\"modules\":[]},{\"packageName\":\"expo-file-system\",\"packageVersion\":\"18.0.12\",\"projects\":[{\"name\":\"expo-file-system\",\"sourceDir\":\"../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babe_f8a81dd9aa6f3b474cb5a3356b4eca54/node_modules/expo-file-system/android\"}],\"modules\":[\"expo.modules.filesystem.FileSystemModule\",\"expo.modules.filesystem.next.FileSystemNextModule\"]},{\"packageName\":\"expo-font\",\"packageVersion\":\"13.0.4\",\"projects\":[{\"name\":\"expo-font\",\"sourceDir\":\"../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@7_aefbc552ddfb56baf8955dcb1c9a3e0b/node_modules/expo-font/android\"}],\"modules\":[\"expo.modules.font.FontLoaderModule\"]},{\"packageName\":\"expo-json-utils\",\"packageVersion\":\"0.14.0\",\"projects\":[{\"name\":\"expo-json-utils\",\"sourceDir\":\"../../node_modules/.pnpm/expo-json-utils@0.14.0/node_modules/expo-json-utils/android\"}],\"modules\":[]},{\"packageName\":\"expo-keep-awake\",\"packageVersion\":\"14.0.3\",\"projects\":[{\"name\":\"expo-keep-awake\",\"sourceDir\":\"../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+_c51ca7911bf8733af1bd33734993600f/node_modules/expo-keep-awake/android\"}],\"modules\":[\"expo.modules.keepawake.KeepAwakeModule\"]},{\"packageName\":\"expo-manifests\",\"packageVersion\":\"0.15.8\",\"projects\":[{\"name\":\"expo-manifests\",\"sourceDir\":\"../../node_modules/.pnpm/expo-manifests@0.15.8_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+c_ff49fa8b916c9df83451f16dba7a058b/node_modules/expo-manifests/android\"}],\"modules\":[]},{\"packageName\":\"expo-modules-core\",\"packageVersion\":\"2.2.3\",\"projects\":[{\"name\":\"expo-modules-core\",\"sourceDir\":\"../../node_modules/.pnpm/expo-modules-core@2.2.3/node_modules/expo-modules-core/android\"}],\"modules\":[]},{\"packageName\":\"expo-updates-interface\",\"packageVersion\":\"1.0.0\",\"projects\":[{\"name\":\"expo-updates-interface\",\"sourceDir\":\"../../node_modules/.pnpm/expo-updates-interface@1.0.0_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@_e368e9e2beafd14545244fccece94b86/node_modules/expo-updates-interface/android\"}],\"modules\":[]}]}",
         "reasons": [
           "expoAutolinkingAndroid"
         ],
-        "hash": "a9737ab326ad7f2cde65cce41202a0f23c28240c"
+        "hash": "cfef781d5564606ab1bdd31de138559c178c1113"
       },
       {
         "type": "contents",
@@ -544,15 +519,6 @@
       },
       {
         "type": "contents",
-        "id": "packageJson:scripts",
-        "contents": "{\"start\":\"expo start\",\"web\":\"expo start --web\",\"fingerprint:create\":\"hot-updater fingerprint create\"}",
-        "reasons": [
-          "packageJson:scripts"
-        ],
-        "hash": "fa7a71d1d1ccba0c985e2776fc9dc0927e0faa1d"
-      },
-      {
-        "type": "contents",
         "id": "rncoreAutolinkingConfig:android",
         "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/expo/android\",\"packageImportPath\":\"import expo.core.ExpoModulesPackage;\",\"packageInstance\":\"new ExpoModulesPackage()\",\"buildTypes\":[],\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/expo/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
         "reasons": [
@@ -561,6 +527,6 @@
         "hash": "5c28dd0b9d8ccff78f9c757b384aab1f3d2d4d61"
       }
     ],
-    "hash": "88e3c5a8bc09dbcb21835f1bace03a045a196abc"
+    "hash": "1f556b7160c19a2bb845fbc6a07fbac7446365a6"
   }
 }
