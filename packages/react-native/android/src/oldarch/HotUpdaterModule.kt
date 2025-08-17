@@ -31,7 +31,7 @@ class HotUpdaterModule internal constructor(
         params: ReadableMap,
         promise: Promise,
     ) {
-        mReactApplicationContext.currentActivity?.lifecycleScope?.launch {
+        (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
             try {
                 val bundleId = params.getString("bundleId")!!
                 val fileUrl = params.getString("fileUrl")
