@@ -56,7 +56,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 0
+        Hot Updater 1
       </Text>
 
       <Text
@@ -85,8 +85,8 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
+        // source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
