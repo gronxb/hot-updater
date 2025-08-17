@@ -329,7 +329,9 @@ describe("AndroidConfigParser", () => {
         throw new Error("Invalid XML");
       });
 
-      await expect(androidParser.get("test_key")).rejects.toThrow("Invalid XML");
+      await expect(androidParser.get("test_key")).rejects.toThrow(
+        "Invalid XML",
+      );
     });
 
     it("should handle file read errors by throwing", async () => {
@@ -338,7 +340,9 @@ describe("AndroidConfigParser", () => {
         new Error("Permission denied"),
       );
 
-      await expect(androidParser.get("test_key")).rejects.toThrow("Permission denied");
+      await expect(androidParser.get("test_key")).rejects.toThrow(
+        "Permission denied",
+      );
     });
 
     it("should trim whitespace from text content", async () => {
