@@ -22,6 +22,8 @@
 		<string>????</string>
 		<key>CFBundleVersion</key>
 		<string>$(CURRENT_PROJECT_VERSION)</string>
+		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
+		<string>5c34ee7f4d7188e5798b9f0fe98612afd3e12801</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>NSAppTransportSecurity</key>
@@ -33,6 +35,8 @@
 		</dict>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string/>
+		<key>RCTNewArchEnabled</key>
+		<true/>
 		<key>UILaunchStoryboardName</key>
 		<string>LaunchScreen</string>
 		<key>UIRequiredDeviceCapabilities</key>
@@ -47,7 +51,5 @@
 		</array>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
-		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>06cae8e55f749d7dc1ca4bfd9a9f2e0973164c93</string>
 	</dict>
 </plist>
