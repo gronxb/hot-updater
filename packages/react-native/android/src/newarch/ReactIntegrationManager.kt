@@ -17,7 +17,19 @@ class ReactIntegrationManager(
         try {
             val reactHost = application.reactHost
             check(reactHost != null)
-            val reactHostDelegateField = reactHost::class.java.getDeclaredField("mReactHostDelegate")
+
+            // Try both Java and Kotlin field names for compatibility
+            val reactHostDelegateField =
+                try {
+                    reactHost::class.java.getDeclaredField("mReactHostDelegate")
+                } catch (e: NoSuchFieldException) {
+                    try {
+                        reactHost::class.java.getDeclaredField("reactHostDelegate")
+                    } catch (e2: NoSuchFieldException) {
+                        throw RuntimeException("Neither mReactHostDelegate nor reactHostDelegate field found", e2)
+                    }
+                }
+
             reactHostDelegateField.isAccessible = true
             val reactHostDelegate =
                 reactHostDelegateField.get(
