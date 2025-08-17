@@ -28,6 +28,8 @@ class ReactIntegrationManager(
             jsBundleLoaderField.set(reactHostDelegate, getJSBundlerLoader(bundleURL))
         } catch (e: Exception) {
             try {
+                // Fallback to old architecture if ReactHost is not available
+                @Suppress("DEPRECATION")
                 val instanceManager = application.reactNativeHost.reactInstanceManager
                 val bundleLoader: JSBundleLoader? = this.getJSBundlerLoader(bundleURL)
                 val bundleLoaderField: Field =
@@ -59,6 +61,8 @@ class ReactIntegrationManager(
                 }
                 reactHost.reload("Requested by HotUpdater")
             } else {
+                // Fallback to old architecture if ReactHost is not available
+                @Suppress("DEPRECATION")
                 val reactNativeHost = application.reactNativeHost
                 try {
                     reactNativeHost.reactInstanceManager.recreateReactContextInBackground()

@@ -189,16 +189,4 @@ class HotUpdaterImpl(
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
         }
     }
-
-    /**
-     * Gets the current activity from ReactApplicationContext
-     * @param context Context that might be a ReactApplicationContext
-     * @return The current activity or null
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun getCurrentActivity(context: Context): Activity? {
-        // This would need to be implemented differently or moved
-        // since it requires ReactApplicationContext which introduces circular dependencies
-        return null
-    }
 }

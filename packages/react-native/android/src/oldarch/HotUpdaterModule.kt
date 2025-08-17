@@ -1,7 +1,6 @@
 package com.hotupdater
 
 import android.util.Log
-import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -32,8 +31,7 @@ class HotUpdaterModule internal constructor(
         params: ReadableMap,
         promise: Promise,
     ) {
-        // Use lifecycleScope when currentActivity is FragmentActivity
-        (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
+        mReactApplicationContext.currentActivity?.lifecycleScope?.launch {
             try {
                 val bundleId = params.getString("bundleId")!!
                 val fileUrl = params.getString("fileUrl")
