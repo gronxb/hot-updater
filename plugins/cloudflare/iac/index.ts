@@ -432,7 +432,7 @@ export const runInit = async ({
     HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: selectedBucketName,
     HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: selectedD1DatabaseId,
   });
-  p.log.success("Generated '.env' file with Cloudflare settings.");
+  p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
   p.log.success(
     "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
   );

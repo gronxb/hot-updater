@@ -36,7 +36,8 @@ describe("appendToProjectRootGitignore", () => {
 
     expect(fs.readFileSync(gitIgnorePath(), { encoding: "utf8" })).toBe(
       `# hot-updater
-.hot-updater/output`,
+.hot-updater/output
+`,
     );
   });
 

@@ -74,3 +74,5 @@ yarn-error.log
 !.yarn/versions
 # hot-updater
 .hot-updater/output
+# hot-updater
+.env.hotupdater

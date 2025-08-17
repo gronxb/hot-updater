@@ -46,7 +46,7 @@ export class ConfigBuilder implements IConfigBuilder {
 
   constructor() {
     // Add common imports needed by almost all configurations by default
-    this.addImport({ pkg: "dotenv/config", sideEffect: true });
+    this.addImport({ pkg: "dotenv", named: ["config"] });
     this.addImport({ pkg: "hot-updater", named: ["defineConfig"] });
   }
 
@@ -202,6 +202,8 @@ export class ConfigBuilder implements IConfigBuilder {
     // Assemble the final string
     return `
 ${importStatements}
+
+config({ path: ".env.hotupdater" });
 
 ${this.intermediateCode ? `${this.intermediateCode}\n` : ""}
 export default defineConfig({

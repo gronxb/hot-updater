@@ -67,7 +67,7 @@ module.exports = {
         envName: 'APP_ENV',
         allowlist: ['HOT_UPDATER_SUPABASE_ANON_KEY', 'HOT_UPDATER_CLOUDFLARE_API_TOKEN'], ❌ Do not add private keys to allowlist // [!code --]
         allowlist: ['HOT_UPDATER_SUPABASE_URL'], // ✅ Only add public keys that are safe to expose to allowlist // [!code ++]
-        path: '.env',
+        path: '.env.hotupdater', // ✅ Use .env.hotupdater file separate from .env file
       },
     ],
   ],

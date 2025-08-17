@@ -1,4 +1,5 @@
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
+import { appendToProjectRootGitignore } from "@/utils/git";
 import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
@@ -136,6 +137,11 @@ export const init = async () => {
     }
     default:
       throw new Error("Invalid provider");
+  }
+
+  // Add .env.hotupdater to .gitignore
+  if (appendToProjectRootGitignore({ globLines: [".env.hotupdater"] })) {
+    p.log.info(".gitignore has been modified to include .env.hotupdater");
   }
 
   if (appendOutputDirectoryIntoGitignore()) {
