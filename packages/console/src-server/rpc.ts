@@ -25,6 +25,7 @@ const paramBundleIdSchema = typia.createValidate<{
 }>();
 
 const updateBundleSchema = typia.createValidate<Partial<Bundle>>();
+const createBundleSchema = typia.createValidate<Bundle>();
 
 let configPromise: Promise<{
   config: ConfigResponse;
@@ -150,6 +151,21 @@ export const rpc = new Hono()
       }
     },
   )
+  .post("/bundles", typiaValidator("json", createBundleSchema), async (c) => {
+    try {
+      const bundle = c.req.valid("json");
+      const { databasePlugin } = await prepareConfig();
+      await databasePlugin.appendBundle(bundle);
+      await databasePlugin.commitBundle();
+      return c.json({ success: true, bundleId: bundle.id });
+    } catch (error) {
+      console.error("Error during bundle creation:", error);
+      if (error && typeof error === "object" && "message" in error) {
+        return c.json({ error: error.message }, 500);
+      }
+      return c.json({ error: "Unknown error" }, 500);
+    }
+  })
   .delete(
     "/bundles/:bundleId",
     typiaValidator("param", paramBundleIdSchema),
