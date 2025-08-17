@@ -109,7 +109,7 @@ export const loadConfig = async (
 ): Promise<ConfigResponse> => {
   const result = await cosmiconfig("hot-updater", configOptions).search();
 
-  return await ensureConfig(result, options);
+  return ensureConfig(result, options);
 };
 
 export const loadConfigSync = (
