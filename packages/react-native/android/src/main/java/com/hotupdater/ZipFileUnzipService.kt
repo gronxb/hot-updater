@@ -1,8 +1,12 @@
 package com.hotupdater
 
 import android.util.Log
+import java.io.BufferedInputStream
 import java.io.File
-import java.util.zip.ZipFile
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 
 /**
  * Interface for unzip operations
@@ -21,7 +25,7 @@ interface UnzipService {
 }
 
 /**
- * Implementation of UnzipService using standard Zip API
+ * Implementation of UnzipService using ZipInputStream for 16KB page compatibility
  */
 class ZipFileUnzipService : UnzipService {
     override fun extractZipFile(
@@ -29,17 +33,35 @@ class ZipFileUnzipService : UnzipService {
         destinationPath: String,
     ): Boolean =
         try {
-            ZipFile(filePath).use { zip ->
-                zip.entries().asSequence().forEach { entry ->
-                    val file = File(destinationPath, entry.name)
-                    if (entry.isDirectory) {
-                        file.mkdirs()
-                    } else {
-                        file.parentFile?.mkdirs()
-                        zip.getInputStream(entry).use { input ->
-                            file.outputStream().use { output ->
-                                input.copyTo(output)
+            val destinationDir = File(destinationPath)
+            if (!destinationDir.exists()) {
+                destinationDir.mkdirs()
+            }
+
+            FileInputStream(filePath).use { fileInputStream ->
+                BufferedInputStream(fileInputStream).use { bufferedInputStream ->
+                    ZipInputStream(bufferedInputStream).use { zipInputStream ->
+                        var entry: ZipEntry? = zipInputStream.nextEntry
+                        while (entry != null) {
+                            val file = File(destinationPath, entry.name)
+
+                            // Validate that the entry path doesn't escape the destination directory
+                            if (!file.canonicalPath.startsWith(destinationDir.canonicalPath)) {
+                                Log.w("UnzipService", "Skipping potentially malicious zip entry: ${entry.name}")
+                                entry = zipInputStream.nextEntry
+                                continue
                             }
+
+                            if (entry.isDirectory) {
+                                file.mkdirs()
+                            } else {
+                                file.parentFile?.mkdirs()
+                                FileOutputStream(file).use { output ->
+                                    zipInputStream.copyTo(output)
+                                }
+                            }
+                            zipInputStream.closeEntry()
+                            entry = zipInputStream.nextEntry
                         }
                     }
                 }

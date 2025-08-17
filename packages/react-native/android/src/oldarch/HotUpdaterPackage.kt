@@ -28,6 +28,7 @@ class HotUpdaterPackage : TurboReactPackage() {
                     HotUpdaterModule.NAME,
                     false, // canOverrideExistingModule
                     false, // needsEagerInit
+                    true, // hasConstants
                     false, // isCxxModule
                     isTurboModule, // isTurboModule
                 )
