@@ -15,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "3b6333f03ade7b5ca667ef3708b71e59771d906a"
+        "hash": "6896c5df1123801db7d7d33f883b0501df11643b"
       },
       {
         "type": "dir",
@@ -55,14 +55,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.1\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.2\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "721eef1a944ad0a0b2de43a51c9ce62a1f157e26"
+        "hash": "d5cd37e675df448fd296291c5e2916f1b2102310"
       }
     ],
-    "hash": "01060dc51be4f288e4816c72b1eb951f48027763"
+    "hash": "1c9206a1c0b704db61be37b506c24a5809198024"
   },
   "android": {
     "sources": [
@@ -80,7 +80,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "3b6333f03ade7b5ca667ef3708b71e59771d906a"
+        "hash": "6896c5df1123801db7d7d33f883b0501df11643b"
       },
       {
         "type": "dir",
@@ -127,6 +127,6 @@
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
     ],
-    "hash": "332f9e31516d82c1b2d16269246aadb8204aca30"
+    "hash": "c0bd5195bfb2e0788d2c82b06a82bd278f73653c"
   }
 }

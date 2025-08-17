@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">HotUpdaterExample</string>
-    <string name="hot_updater_fingerprint_hash" moduleConfig="true">24a9d685b478719571e37c47892c0145594f7759</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">bb5fd08dab6a726a0390b980d52949e27e68df47</string>
 </resources>

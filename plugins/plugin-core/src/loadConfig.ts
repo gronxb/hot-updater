@@ -24,7 +24,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
       cwd: path.join(getCwd(), "ios"),
       absolute: false,
       onlyFiles: true,
-      ignore: ["**/Pods/**"],
+      ignore: ["**/Pods/**", "**/build/**", "**/Build/**", "**/*.app/**", "**/*.xcarchive/**"],
     });
 
     if (plistFiles.length > 0) {

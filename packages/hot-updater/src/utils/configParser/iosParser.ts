@@ -82,8 +82,23 @@ export class IosConfigParser implements ConfigParser {
 
     // Update all existing plist files
     for (const plistFile of plistPaths) {
+      const relativePath = path.relative(getCwd(), plistFile);
       try {
         const plistXml = await fs.promises.readFile(plistFile, "utf-8");
+
+        // Basic XML validation
+        if (!plistXml.trim().startsWith("<?xml")) {
+          throw new Error(
+            "File does not appear to be valid XML: missing XML declaration",
+          );
+        }
+
+        if (!plistXml.includes("<plist") || !plistXml.includes("</plist>")) {
+          throw new Error(
+            "File does not appear to be a valid plist: missing plist tags",
+          );
+        }
+
         const plistObject = plist.parse(plistXml) as Record<string, any>;
 
         plistObject[key] = value;
@@ -94,9 +109,11 @@ export class IosConfigParser implements ConfigParser {
         });
 
         await fs.promises.writeFile(plistFile, newPlistXml);
-        updatedPaths.push(path.relative(getCwd(), plistFile));
+        updatedPaths.push(relativePath);
       } catch (error) {
-        throw new Error(`Failed to parse or update Info.plist: ${error}`);
+        throw new Error(
+          `Failed to parse or update Info.plist at '${relativePath}': ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
