@@ -125,7 +125,7 @@ export type ConfigInput = {
    *
    * @default "fingerprint"
    */
-  updateStrategy?: "fingerprint" | "appVersion";
+  updateStrategy: "fingerprint" | "appVersion";
   /**
    * The fingerprint configuration.
    */

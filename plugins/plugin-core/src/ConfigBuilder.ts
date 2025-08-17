@@ -208,6 +208,7 @@ export default defineConfig({
   build: ${buildConfigString},
   storage: ${this.storageInfo.configString},
   database: ${this.databaseInfo.configString},
+  updateStrategy: "fingerprint",
 });
 `.trim(); // Ensure trailing newline
   }
