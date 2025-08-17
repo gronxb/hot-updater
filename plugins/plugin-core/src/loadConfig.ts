@@ -24,6 +24,14 @@ const defaultConfig: ConfigInput = {
   console: {
     port: 1422,
   },
+  platform: {
+    android: {
+      stringResourcePaths: ["android/app/src/main/res/values/strings.xml"],
+    },
+    ios: {
+      infoPlistPaths: ["ios/*/Info.plist"],
+    },
+  },
   nativeBuild: {
     android: {
       aab: true,

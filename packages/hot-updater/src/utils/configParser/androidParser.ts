@@ -17,21 +17,23 @@ interface ResourcesXml {
 }
 
 export class AndroidConfigParser implements ConfigParser {
-  private stringsXmlPath: string;
+  private stringsXmlPaths: string[];
   private parser: XMLParser;
   private builder: XMLBuilder;
 
-  constructor() {
-    this.stringsXmlPath = path.join(
-      getCwd(),
-      "android",
-      "app",
-      "src",
-      "main",
-      "res",
-      "values",
-      "strings.xml",
-    );
+  constructor(customPaths?: string[]) {
+    this.stringsXmlPaths = customPaths || [
+      path.join(
+        getCwd(),
+        "android",
+        "app",
+        "src",
+        "main",
+        "res",
+        "values",
+        "strings.xml",
+      ),
+    ];
 
     const options = {
       ignoreAttributes: false,
@@ -53,105 +55,124 @@ export class AndroidConfigParser implements ConfigParser {
   }
 
   async exists(): Promise<boolean> {
-    return fs.existsSync(this.stringsXmlPath);
+    return this.stringsXmlPaths.some((path) => fs.existsSync(path));
+  }
+
+  private getExistingPaths(): string[] {
+    return this.stringsXmlPaths.filter((path) => fs.existsSync(path));
   }
 
   async get(key: string): Promise<{
     value: string | null;
     path: string;
   }> {
-    if (!(await this.exists())) {
+    const existingPaths = this.getExistingPaths();
+
+    if (existingPaths.length === 0) {
       return {
         value: null,
-        path: path.relative(getCwd(), this.stringsXmlPath),
+        path: path.relative(getCwd(), this.stringsXmlPaths[0] || ""),
       };
     }
 
-    try {
-      const content = await fs.promises.readFile(this.stringsXmlPath, "utf-8");
-      const result = this.parser.parse(content) as ResourcesXml;
+    // Check each existing path until we find the key
+    for (const stringsXmlPath of existingPaths) {
+      try {
+        const content = await fs.promises.readFile(stringsXmlPath, "utf-8");
+        const result = this.parser.parse(content) as ResourcesXml;
 
-      if (!result.resources.string) {
-        return {
-          value: null,
-          path: path.relative(getCwd(), this.stringsXmlPath),
-        };
+        if (!result.resources.string) {
+          continue;
+        }
+
+        // Handle both single string and array of strings
+        const strings = Array.isArray(result.resources.string)
+          ? result.resources.string
+          : [result.resources.string];
+
+        const stringElement = strings.find(
+          (str) => str["@_name"] === key && str["@_moduleConfig"] === "true",
+        );
+
+        if (stringElement?.["#text"]) {
+          return {
+            value: stringElement["#text"].trim(),
+            path: path.relative(getCwd(), stringsXmlPath),
+          };
+        }
+      } catch (error) {
+        throw new Error(`Failed to get ${stringsXmlPath}: ${error}`);
       }
-
-      // Handle both single string and array of strings
-      const strings = Array.isArray(result.resources.string)
-        ? result.resources.string
-        : [result.resources.string];
-
-      const stringElement = strings.find(
-        (str) => str["@_name"] === key && str["@_moduleConfig"] === "true",
-      );
-
-      return {
-        value: stringElement?.["#text"]?.trim() ?? null,
-        path: path.relative(getCwd(), this.stringsXmlPath),
-      };
-    } catch (error) {
-      return {
-        value: null,
-        path: path.relative(getCwd(), this.stringsXmlPath),
-      };
     }
+
+    return {
+      value: null,
+      path: path.relative(getCwd(), existingPaths[0] || ""),
+    };
   }
 
   async set(key: string, value: string): Promise<{ path: string | null }> {
-    if (!(await this.exists())) {
+    const existingPaths = this.getExistingPaths();
+
+    if (existingPaths.length === 0) {
       console.warn(
-        "hot-updater: strings.xml not found. Skipping Android-specific config modifications.",
+        "hot-updater: No strings.xml files found. Skipping Android-specific config modifications.",
       );
       return { path: null };
     }
 
-    const content = await fs.promises.readFile(this.stringsXmlPath, "utf-8");
+    const updatedPaths: string[] = [];
 
-    try {
-      const result = this.parser.parse(content) as ResourcesXml;
+    // Update all existing files
+    for (const stringsXmlPath of existingPaths) {
+      try {
+        const content = await fs.promises.readFile(stringsXmlPath, "utf-8");
+        const result = this.parser.parse(content) as ResourcesXml;
 
-      // Ensure resources.string exists
-      if (!result.resources.string) {
-        result.resources.string = [];
+        // Ensure resources.string exists
+        if (!result.resources.string) {
+          result.resources.string = [];
+        }
+
+        // Convert to array if it's a single object
+        const strings = Array.isArray(result.resources.string)
+          ? result.resources.string
+          : [result.resources.string];
+
+        // Find existing string element with moduleConfig="true"
+        const existingIndex = strings.findIndex(
+          (str) => str["@_name"] === key && str["@_moduleConfig"] === "true",
+        );
+
+        const stringElement: StringElement = {
+          "@_name": key,
+          "@_moduleConfig": "true",
+          "#text": value,
+        };
+
+        if (existingIndex !== -1) {
+          // Update existing element
+          strings[existingIndex] = stringElement;
+        } else {
+          // Add new element
+          strings.push(stringElement);
+        }
+
+        // Update the result
+        result.resources.string = strings.length === 1 ? strings[0] : strings;
+
+        // XMLBuilder already includes the XML declaration, so we don't need to add it manually
+        const newContent = this.builder.build(result);
+
+        await fs.promises.writeFile(stringsXmlPath, newContent, "utf-8");
+        updatedPaths.push(path.relative(getCwd(), stringsXmlPath));
+      } catch (error) {
+        throw new Error(`Failed to parse or update strings.xml: ${error}`);
       }
-
-      // Convert to array if it's a single object
-      const strings = Array.isArray(result.resources.string)
-        ? result.resources.string
-        : [result.resources.string];
-
-      // Find existing string element with moduleConfig="true"
-      const existingIndex = strings.findIndex(
-        (str) => str["@_name"] === key && str["@_moduleConfig"] === "true",
-      );
-
-      const stringElement: StringElement = {
-        "@_name": key,
-        "@_moduleConfig": "true",
-        "#text": value,
-      };
-
-      if (existingIndex !== -1) {
-        // Update existing element
-        strings[existingIndex] = stringElement;
-      } else {
-        // Add new element
-        strings.push(stringElement);
-      }
-
-      // Update the result
-      result.resources.string = strings.length === 1 ? strings[0] : strings;
-
-      // XMLBuilder already includes the XML declaration, so we don't need to add it manually
-      const newContent = this.builder.build(result);
-
-      await fs.promises.writeFile(this.stringsXmlPath, newContent, "utf-8");
-
-      return { path: path.relative(getCwd(), this.stringsXmlPath) };
-    } catch (error) {
-      throw new Error(`Failed to parse or update strings.xml: ${error}`);
     }
+
+    return {
+      path: updatedPaths.length > 0 ? updatedPaths.join(", ") : null,
+    };
   }
 }
