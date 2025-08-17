@@ -80,7 +80,10 @@ export const handleFingerprint = async () => {
 
 export const handleCreateFingerprint = async () => {
   let diffChanged = false;
-  let localFingerprint: any = null;
+  let localFingerprint: {
+    ios: FingerprintResult | null;
+    android: FingerprintResult | null;
+  } | null = null;
   let result: {
     fingerprint: {
       android: FingerprintResult;
