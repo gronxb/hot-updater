@@ -172,7 +172,7 @@ export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
           </Switch>
           <Show when={shouldCopy()}>
             <Callout variant="default">
-              <CalloutContent>
+              <CalloutContent class="mt-0 text-sm">
                 The copied bundle will have a new database ID that differs from
                 the bundle ID inside the JavaScript bundle.
               </CalloutContent>
