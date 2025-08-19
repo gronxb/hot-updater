@@ -15,7 +15,7 @@ async function applyAppUpdate(updateInfo: UpdateInfo) {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
       source: getUpdateSource("<your-update-server-url>", {
-        updateStrategy: "fingerprint", // or "appVersion"
+        updateStrategy: "appVersion", // or "fingerprint"
       }),
       requestHeaders: {
         Authorization: "Bearer <your-access-token>",

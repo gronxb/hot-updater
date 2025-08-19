@@ -172,7 +172,7 @@ export default defineConfig({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -206,7 +206,7 @@ export default defineConfig({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -234,7 +234,7 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -263,7 +263,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -292,7 +292,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -326,7 +326,7 @@ export default defineConfig({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     credential,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);

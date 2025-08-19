@@ -227,7 +227,7 @@ function App() {
 
 export default HotUpdater.wrap({
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
 })(App);
 ```

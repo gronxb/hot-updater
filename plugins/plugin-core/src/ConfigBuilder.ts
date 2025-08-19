@@ -210,7 +210,7 @@ export default defineConfig({
   build: ${buildConfigString},
   storage: ${this.storageInfo.configString},
   database: ${this.databaseInfo.configString},
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // or "fingerprint"
 });
 `.trim(); // Ensure trailing newline
   }
