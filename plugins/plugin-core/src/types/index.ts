@@ -153,7 +153,7 @@ export type ConfigInput = {
    * If `appVersion`, the bundle will be updated if the target app version is valid.
    * @docs https://hot-updater.dev/guide/update-strategy/2_app-version
    *
-   * @default "fingerprint"
+   * @default "appVersion"
    */
   updateStrategy: "fingerprint" | "appVersion";
   /**
