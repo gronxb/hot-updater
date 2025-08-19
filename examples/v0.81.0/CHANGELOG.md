@@ -1,5 +1,12 @@
 # @hot-updater/example-react-native-v81
 
+## 0.20.4
+
+### Patch Changes
+
+- 711392b: feat: default updateStrategy is 'appVersion'
+  - @hot-updater/react-native@0.20.4
+
 ## 0.20.3
 
 ### Patch Changes

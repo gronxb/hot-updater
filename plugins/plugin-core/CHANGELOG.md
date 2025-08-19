@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 0.20.4
+
+### Patch Changes
+
+- 5314b31: feat(rock): intergration formerly rnef
+- 711392b: feat: default updateStrategy is 'appVersion'
+  - @hot-updater/core@0.20.4
+
 ## 0.20.3
 
 ### Patch Changes

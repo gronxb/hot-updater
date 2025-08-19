@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies [5314b31]
+- Updated dependencies [711392b]
+  - hot-updater@0.20.4
+  - @hot-updater/plugin-core@0.20.4
+  - @hot-updater/core@0.20.4
+  - @hot-updater/js@0.20.4
+
 ## 0.20.3
 
 ### Patch Changes

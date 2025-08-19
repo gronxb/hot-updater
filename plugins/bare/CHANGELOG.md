@@ -1,5 +1,13 @@
 # @hot-updater/bare
 
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies [5314b31]
+- Updated dependencies [711392b]
+  - @hot-updater/plugin-core@0.20.4
+
 ## 0.20.3
 
 ### Patch Changes
