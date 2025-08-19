@@ -149,7 +149,9 @@ export type ConfigInput = {
    * The strategy used to update the app.
    *
    * If `fingerprint`, the bundle will be updated if the fingerprint of the app is changed.
-   * If `app-version`, the bundle will be updated if the target app version is valid.
+   * @docs https://hot-updater.dev/guide/update-strategy/1_fingerprint
+   * If `appVersion`, the bundle will be updated if the target app version is valid.
+   * @docs https://hot-updater.dev/guide/update-strategy/2_app-version
    *
    * @default "fingerprint"
    */
