@@ -7,7 +7,7 @@ import { config } from "dotenv";
 import { SentryDebugIdPlugin } from "repack-plugin-sentry";
 
 config({
-  path: ".env.hotupdater",
+  path: ".env.public",
 });
 
 const __filename = fileURLToPath(import.meta.url);
