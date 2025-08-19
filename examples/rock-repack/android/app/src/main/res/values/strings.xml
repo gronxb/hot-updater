@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">RockRepack</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">f513204098f1ad1d1ff0d806d6b0fe2fd8f3edb1</string>
 </resources>
