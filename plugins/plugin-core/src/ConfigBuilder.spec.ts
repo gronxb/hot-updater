@@ -270,10 +270,10 @@ export default defineConfig({
   });
 
   it("should build a Cloudflare config", () => {
-    const result = getCloudflareConfigTemplate("rnef");
+    const result = getCloudflareConfigTemplate("rock");
 
     const expectedConfig = `import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { rnef } from "@hot-updater/rnef";
+import { rock } from "@hot-updater/rock";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
@@ -281,7 +281,7 @@ config({ path: ".env.hotupdater" });
 
 
 export default defineConfig({
-  build: rnef(),
+  build: rock(),
   storage: r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,

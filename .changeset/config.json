@@ -5,7 +5,7 @@
   "ignore": [
     "@hot-updater/docs",
     "expo-52",
-    "rnef-repack",
+    "rock-repack",
     "@hot-updater/example-react-native-v71",
     "@hot-updater/example-react-native-v74",
     "@hot-updater/example-react-native-v76",

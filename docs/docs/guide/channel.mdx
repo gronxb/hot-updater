@@ -146,23 +146,23 @@ After specifying the new channel, rebuild your native app:
       </Tab>
     </Tabs>
   </Tab>
-  <Tab label="RNEF (React Native Enterprise Framework)">
+  <Tab label="Rock (React Native Enterprise Framework)">
     <Tabs>
         <Tab label="iOS">
           <PackageManagerTabs command={
             {
-              npm: "npx rnef run:ios --configuration Release",
-              pnpm: "pnpm rnef run:ios --configuration Release",
-              yarn: "yarn rnef run:ios --configuration Release",
+              npm: "npx rock run:ios --configuration Release",
+              pnpm: "pnpm rock run:ios --configuration Release",
+              yarn: "yarn rock run:ios --configuration Release",
             }
           } />
         </Tab>
         <Tab label="Android">
         <PackageManagerTabs command={
           {
-            npm: "npx rnef run:android --variant Release",
-            pnpm: "pnpm rnef run:android --variant Release",
-            yarn: "yarn rnef run:android --variant Release",
+            npm: "npx rock run:android --variant Release",
+            pnpm: "pnpm rock run:android --variant Release",
+            yarn: "yarn rock run:android --variant Release",
           }
         } />
       </Tab>

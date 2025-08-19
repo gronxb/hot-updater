@@ -1,0 +1,50 @@
+{
+  "name": "rock-repack",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "rock start",
+    "lint": "eslint .",
+    "test": "jest",
+    "ios": "rock run:ios",
+    "android": "rock run:android"
+  },
+  "dependencies": {
+    "@hot-updater/react-native": "workspace:*",
+    "react": "19.1.0",
+    "react-native": "0.80.1"
+  },
+  "devDependencies": {
+    "@hot-updater/rock": "workspace:*",
+    "hot-updater": "workspace:*",
+    "@hot-updater/repack": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "dotenv": "^16.4.5",
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@callstack/repack": "^5.0.3",
+    "@expo/fingerprint": "^0.11.6",
+    "@react-native/babel-preset": "0.80.1",
+    "@react-native/eslint-config": "0.80.1",
+    "@react-native/typescript-config": "0.80.1",
+    "@rock-js/platform-android": "^0.9.0",
+    "@rock-js/platform-ios": "^0.9.0",
+    "@rock-js/plugin-repack": "^0.9.0",
+    "@rspack/core": "^1.2.8",
+    "@swc/helpers": "^0.5.15",
+    "@types/react": "^19.1.0",
+    "@types/react-test-renderer": "^19.1.0",
+    "babel-jest": "^29.6.3",
+    "eslint": "^8.19.0",
+    "jest": "^29.6.3",
+    "prettier": "2.8.8",
+    "react-test-renderer": "19.1.0",
+    "rock": "^0.8.13",
+    "typescript": "5.0.4"
+  },
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=18"
+  }
+}
