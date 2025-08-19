@@ -1,5 +1,20 @@
 # hot-updater
 
+## 0.20.4
+
+### Patch Changes
+
+- 5314b31: feat(rock): intergration formerly rnef
+- Updated dependencies [5314b31]
+- Updated dependencies [711392b]
+  - @hot-updater/plugin-core@0.20.4
+  - @hot-updater/cloudflare@0.20.4
+  - @hot-updater/firebase@0.20.4
+  - @hot-updater/supabase@0.20.4
+  - @hot-updater/aws@0.20.4
+  - @hot-updater/console@0.20.4
+  - @hot-updater/core@0.20.4
+
 ## 0.20.3
 
 ### Patch Changes
