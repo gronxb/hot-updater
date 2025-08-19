@@ -73,6 +73,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
 const getDefaultConfig = (): ConfigInput => {
   return {
     releaseChannel: "production",
+    updateStrategy: "appVersion",
     fingerprint: {
       extraSources: [],
       ignorePaths: [],
