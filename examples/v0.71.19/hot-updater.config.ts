@@ -21,7 +21,8 @@ export default defineConfig({
   storage: s3Storage(commonOptions),
   database: s3Database({
     ...commonOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    cloudfrontDistributionId:
+      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion",
 });

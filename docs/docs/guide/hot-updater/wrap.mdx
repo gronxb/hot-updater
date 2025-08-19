@@ -20,7 +20,7 @@ function App() {
 
 export default HotUpdater.wrap({ // [!code hl:10]
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
@@ -75,7 +75,7 @@ function App() {
 
 export default HotUpdater.wrap({ // [!code hl:26]
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
   fallbackComponent: ({ progress, status, message }) => (
       <View
@@ -130,7 +130,7 @@ function App() {
 
 export default HotUpdater.wrap({
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
@@ -159,7 +159,7 @@ function App() {
 
 export default HotUpdater.wrap({
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
@@ -202,7 +202,7 @@ function App() {
 
 export default HotUpdater.wrap({
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
