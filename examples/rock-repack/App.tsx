@@ -96,7 +96,7 @@ export default HotUpdater.wrap({
   source: getUpdateSource(
     `${process.env.HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
     {
-      updateStrategy: "fingerprint", // or "appVersion"
+      updateStrategy: "appVersion", // or "appVersion"
     },
   ),
   fallbackComponent: ({ progress, status }) => (
