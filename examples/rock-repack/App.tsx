@@ -10,12 +10,9 @@ import {
   getUpdateSource,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
-
 import React from "react";
 import { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
-
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -46,6 +43,7 @@ function App(): React.JSX.Element {
       <Text>Babel {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>Fingerprint: {HotUpdater.getFingerprintHash()}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
@@ -56,7 +54,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 1
+        Hot Updater 0
       </Text>
 
       <Text
@@ -85,28 +83,18 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        // source={require("./src/logo.png")}
-        source={require("./src/test/_image.png")}
+        source={require("./src/logo.png")}
+        // source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
-      <Button
-        title="HotUpdater.runUpdateProcess()"
-        onPress={() =>
-          HotUpdater.runUpdateProcess({
-            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-          }).then((status) => {
-            console.log("Update process completed", JSON.stringify(status));
-          })
-        }
-      />
     </SafeAreaView>
   );
 }
 
 export default HotUpdater.wrap({
   source: getUpdateSource(
-    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+    `${process.env.HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
     {
       updateStrategy: "appVersion", // or "appVersion"
     },

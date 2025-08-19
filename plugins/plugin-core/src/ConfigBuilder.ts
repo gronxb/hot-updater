@@ -1,6 +1,6 @@
 // types.ts (or place in the same file initially)
 
-export type BuildType = "bare" | "rnef" | "expo";
+export type BuildType = "bare" | "rock" | "expo";
 
 export type ImportInfo = {
   pkg: string;
@@ -16,7 +16,7 @@ export type ProviderConfig = {
 
 // Builder Interface
 export interface IConfigBuilder {
-  /** Sets the build type ('bare' or 'rnef' or 'expo') and adds necessary build imports. */
+  /** Sets the build type ('bare' or 'rock' or 'expo') and adds necessary build imports. */
   setBuildType(buildType: BuildType): this;
 
   /** Sets the storage configuration and adds its required imports. */
@@ -130,8 +130,8 @@ export class ConfigBuilder implements IConfigBuilder {
     switch (this.buildType) {
       case "bare":
         return "bare({ enableHermes: true })";
-      case "rnef":
-        return "rnef()";
+      case "rock":
+        return "rock()";
       case "expo":
         return "expo()";
       default:

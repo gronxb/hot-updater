@@ -51,12 +51,12 @@ export const init = async () => {
       },
       {
         value: {
-          name: "rnef",
+          name: "rock",
           dependencies: [],
-          devDependencies: ["@hot-updater/rnef"],
+          devDependencies: ["@hot-updater/rock"],
         },
         hint: "React Native Enterprise Framework by Callstack",
-        label: "RNEF",
+        label: "Rock",
       },
       {
         value: {

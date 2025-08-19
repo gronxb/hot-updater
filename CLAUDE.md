@@ -10,7 +10,7 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 
 ### Plugin System
 The system is built around three plugin types:
-- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rnef/`
+- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rock/`
 - **Storage Plugins**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
 - **Database Plugins**: Handle metadata storage (PostgreSQL, Cloudflare D1, Supabase Database) - uses same plugin directories as storage
 
