@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
+import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import { createOutputPaths } from "../utils/buildPaths";
 import type { ApplePlatform } from "../utils/platformSupport";
@@ -11,7 +12,6 @@ import {
 import { XcodebuildLogger } from "./XcodebuildLogger";
 import type {
   ArchiveOptions,
-  BuildFlags,
   BuildResult,
   ExportOptions,
 } from "./buildOptions";
@@ -31,11 +31,13 @@ export class XcodeBuilder {
   /**
    * Builds an iOS app without archiving
    */
-  async build(options: BuildFlags): Promise<BuildResult> {
+  async build({
+    scheme: { installPods },
+  }: { scheme: NativeBuildIosScheme }): Promise<BuildResult> {
     const xcodeProject = await discoverXcodeProject(this.sourceDir);
 
     // Install CocoaPods if requested
-    if (options.installPods) {
+    if (installPods) {
       await this.installPodsIfNeeded();
     }
 
@@ -74,11 +76,15 @@ export class XcodeBuilder {
   /**
    * Archives an iOS app for distribution
    */
-  async archive(options: ArchiveOptions): Promise<{ archivePath: string }> {
+  async archive({
+    outputPath,
+    platform,
+    schemeConfig,
+  }: ArchiveOptions): Promise<{ archivePath: string }> {
     const xcodeProject = await discoverXcodeProject(this.sourceDir);
-    const { archiveDir } = createOutputPaths(options.outputPath);
+    const { archiveDir } = createOutputPaths(outputPath);
 
-    if (options.installPods) {
+    if (schemeConfig.installPods ?? true) {
       await this.installPodsIfNeeded();
     }
 
@@ -87,25 +93,11 @@ export class XcodeBuilder {
     const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
     const archivePath = path.join(archiveDir, archiveName);
 
-    const archiveArgs = [
-      xcodeProject.isWorkspace ? "-workspace" : "-project",
-      path.join(this.sourceDir, xcodeProject.name),
-      "-scheme",
-      options.scheme,
-      "-configuration",
-      options.buildConfiguration,
-      "archive",
-      "-archivePath",
+    const archiveArgs = this.prepareArchiveArgs(
+      xcodeProject,
+      options,
       archivePath,
-    ];
-
-    if (options.xcconfig) {
-      archiveArgs.push("-xcconfig", options.xcconfig);
-    }
-
-    if (options.extraParams) {
-      archiveArgs.push(...options.extraParams);
-    }
+    );
 
     const logger = new XcodebuildLogger();
     logger.start(`${xcodeProject.name} (Archive)`);
@@ -136,19 +128,7 @@ export class XcodeBuilder {
   async exportArchive(options: ExportOptions): Promise<{ exportPath: string }> {
     const { exportDir } = createOutputPaths(this.platform);
 
-    const exportArgs = [
-      "-exportArchive",
-      "-archivePath",
-      options.archivePath,
-      "-exportPath",
-      exportDir,
-      "-exportOptionsPlist",
-      options.exportOptionsPlist,
-    ];
-
-    if (options.exportExtraParams) {
-      exportArgs.push(...options.exportExtraParams);
-    }
+    const exportArgs = this.prepareExportArgs(options, exportDir);
 
     const spinner = p.spinner();
     spinner.start("Exporting archive to IPA");
@@ -202,6 +182,65 @@ export class XcodeBuilder {
       args.push(...options.extraParams);
     }
 
+    return args;
+  }
+
+  /**
+   * Prepares xcodebuild archive arguments
+   */
+  private prepareArchiveArgs(
+    xcodeProject: XcodeProjectInfo,
+    { schemeConfig }: ArchiveOptions,
+    archivePath: string,
+  ): string[] {
+    const args = [
+      xcodeProject.isWorkspace ? "-workspace" : "-project",
+      path.join(this.sourceDir, xcodeProject.name),
+      "-scheme",
+      schemeConfig.scheme,
+      "-configuration",
+      schemeConfig.configuration || "Release",
+      "archive",
+      "-archivePath",
+      archivePath,
+      // todo: configure destination with config
+      "-destination",
+      "generic/platform=iOS Simulator",
+    ];
+
+    if (schemeConfig.xcconfig) {
+      args.push("-xcconfig", schemeConfig.xcconfig);
+    }
+
+    if (schemeConfig.extraParams) {
+      args.push(...schemeConfig.extraParams);
+    }
+
+    return args;
+  }
+
+  /**
+   * Prepares xcodebuild export arguments
+   */
+  private prepareExportArgs({
+    schemeConfig,
+    archivePath,
+    exportPath,
+  }: ExportOptions): string[] {
+    const args = [
+      "-exportArchive",
+      "-archivePath",
+      archivePath,
+      "-exportPath",
+      exportPath,
+    ];
+
+    if (schemeConfig.exportExtraParams) {
+      args.push(...schemeConfig.exportExtraParams);
+    }
+    if (schemeConfig.exportOptionsPlist) {
+      args.push("-exportOptionsPlist", schemeConfig.exportOptionsPlist);
+    }
     return args;
   }
 
