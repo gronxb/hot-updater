@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.20.5
+
+### Patch Changes
+
+- 3383d38: fix(android): fix proguard syntax
+  - hot-updater@0.20.5
+  - @hot-updater/core@0.20.5
+  - @hot-updater/js@0.20.5
+  - @hot-updater/plugin-core@0.20.5
+
 ## 0.20.4
 
 ### Patch Changes
