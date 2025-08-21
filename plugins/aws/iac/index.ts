@@ -262,7 +262,7 @@ export const runInit = async ({
     }),
     HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
   });
-  p.log.success("Generated '.env' file with AWS settings.");
+  p.log.success("Generated '.env.hotupdater' file with AWS settings.");
   p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
 
   // Provide API URL for client use (using CloudFront domain)

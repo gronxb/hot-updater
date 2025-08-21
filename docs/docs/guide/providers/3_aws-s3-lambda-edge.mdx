@@ -159,7 +159,7 @@ function App() {
 
 export default HotUpdater.wrap({ 
   source: getUpdateSource("https://<your-cloudfront-distribution-url>/api/check-update", { // [!code ++]
-    updateStrategy: "fingerprint", // or "appVersion" // [!code ++]
+    updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   }), // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here

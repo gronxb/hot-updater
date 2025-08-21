@@ -60,14 +60,25 @@ export const createAndInjectFingerprintFiles = async ({
   const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
   const newFingerprint = await generateFingerprints();
 
+  const androidPaths: string[] = [];
+  const iosPaths: string[] = [];
   // replace whole file if and only if platform argument is none or fingerprint file doesn't exist
   if (!localFingerprint || !platform) {
     await fs.promises.writeFile(
       FINGERPRINT_FILE_PATH,
       JSON.stringify(newFingerprint, null, 2),
     );
-    await setFingerprintHash("android", newFingerprint.android.hash);
-    await setFingerprintHash("ios", newFingerprint.ios.hash);
+    const { paths: _androidPaths } = await setFingerprintHash(
+      "android",
+      newFingerprint.android.hash,
+    );
+    androidPaths.push(..._androidPaths);
+
+    const { paths: _iosPaths } = await setFingerprintHash(
+      "ios",
+      newFingerprint.ios.hash,
+    );
+    iosPaths.push(..._iosPaths);
   } else {
     // respect previous local fingerprint content first and replace the fingerprint of target platform.
     const nextFingerprints = {
@@ -80,10 +91,25 @@ export const createAndInjectFingerprintFiles = async ({
       FINGERPRINT_FILE_PATH,
       JSON.stringify(nextFingerprints, null, 2),
     );
-    await setFingerprintHash(platform, newFingerprint[platform].hash);
+    const { paths: _platformPaths } = await setFingerprintHash(
+      platform,
+      newFingerprint[platform].hash,
+    );
+    switch (platform) {
+      case "android":
+        androidPaths.push(..._platformPaths);
+        break;
+      case "ios":
+        iosPaths.push(..._platformPaths);
+        break;
+    }
   }
 
-  return newFingerprint;
+  return {
+    fingerprint: newFingerprint,
+    androidPaths,
+    iosPaths,
+  };
 };
 
 export const readLocalFingerprint = async (): Promise<{

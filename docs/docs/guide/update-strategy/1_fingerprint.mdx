@@ -92,6 +92,41 @@ It's crucial to check and, if necessary, update the fingerprint whenever changes
 
     **Important**: After creating a new fingerprint, you **must rebuild your app**. This ensures that the updated native environment and the new fingerprint are correctly incorporated into the app binary, preventing compatibility issues with apps built using the previous fingerprint.
 
+## Custom Platform Paths Configuration
+
+If your project has a non-standard structure or includes iOS app extensions with multiple Info.plist files, you can configure custom paths for platform-specific configuration files using the `platform` field:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... other configurations
+  updateStrategy: "fingerprint",
+  platform: {
+    ios: {
+      infoPlistPaths: [
+        "ios/YourApp/Info.plist",
+        "ios/YourAppExtension/Info.plist", // Include extension Info.plist
+        "ios/AnotherExtension/Info.plist"
+      ]
+    },
+    android: {
+      stringResourcePaths: [
+        "android/app/src/main/res/values/strings.xml",
+        "android/app/src/debug/res/values/strings.xml" // Include additional resource files
+      ]
+    }
+  }
+});
+```
+
+This configuration is particularly useful when:
+- Your iOS project includes app extensions (widgets, share extensions, etc.)
+- You have custom build configurations with different resource paths
+- Your project structure doesn't follow the standard React Native layout
+
+**Note**: Configure these paths before running fingerprint commands to ensure all relevant files are included in the fingerprint calculation.
+
 ## Fingerprint File Example (`fingerprint.json`)
 
 ```json

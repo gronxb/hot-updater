@@ -26,12 +26,13 @@ object HotUpdaterFactory {
      */
     private fun createHotUpdaterImpl(context: Context): HotUpdaterImpl {
         val appContext = context.applicationContext
-        val appVersion = HotUpdaterImpl.getAppVersion(appContext) ?: "unknown"
-        val appChannel = HotUpdaterImpl.getChannel(appContext)
+
+        // Get isolation key using the utility method
+        val isolationKey = HotUpdaterImpl.getIsolationKey(appContext)
 
         // Create services
         val fileSystem = FileManagerService(appContext)
-        val preferences = VersionedPreferencesService(appContext, appVersion, appChannel)
+        val preferences = VersionedPreferencesService(appContext, isolationKey)
         val downloadService = HttpDownloadService()
         val unzipService = ZipFileUnzipService()
 

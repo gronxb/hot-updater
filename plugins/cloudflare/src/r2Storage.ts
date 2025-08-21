@@ -3,10 +3,11 @@ import { createWrangler } from "./utils/createWrangler";
 
 import mime from "mime";
 
-import type {
-  BasePluginArgs,
-  StoragePlugin,
-  StoragePluginHooks,
+import {
+  type BasePluginArgs,
+  type StoragePlugin,
+  type StoragePluginHooks,
+  createStorageKeyBuilder,
 } from "@hot-updater/plugin-core";
 
 import { ExecaError } from "execa";
@@ -15,6 +16,10 @@ export interface R2StorageConfig {
   cloudflareApiToken: string;
   accountId: string;
   bucketName: string;
+  /**
+   * Base path where bundles will be stored in the bucket
+   */
+  basePath?: string;
 }
 
 export const r2Storage =
@@ -27,10 +32,12 @@ export const r2Storage =
       cwd: process.cwd(),
     });
 
+    const getStorageKey = createStorageKeyBuilder(config.basePath);
+
     return {
       name: "r2Storage",
       async deleteBundle(bundleId) {
-        const Key = `${bundleId}/bundle.zip `;
+        const Key = getStorageKey(bundleId, "bundle.zip");
         try {
           await wrangler(
             "r2",
@@ -52,7 +59,7 @@ export const r2Storage =
 
         const filename = path.basename(bundlePath);
 
-        const Key = [bundleId, filename].join("/");
+        const Key = getStorageKey(bundleId, filename);
         try {
           const { stderr, exitCode } = await wrangler(
             "r2",

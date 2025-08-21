@@ -204,6 +204,34 @@ export interface NativeBuildIosScheme {
   verbose?: boolean;
 }
 
+export interface PlatformConfig {
+  /**
+   * Android platform configuration.
+   */
+  android?: {
+    /**
+     * Android string resource paths.
+     *
+     * @default all strings.xml files in the android directory
+     * @example ["android/app/src/main/res/values/strings.xml"]
+     */
+    stringResourcePaths?: string[];
+  };
+
+  /**
+   * iOS platform configuration.
+   */
+  ios?: {
+    /**
+     * iOS info.plist paths.
+     *
+     * @default all Info.plist files in the ios directory
+     * @example ["ios/HotUpdaterExample/Info.plist"]
+     */
+    infoPlistPaths?: string[];
+  };
+}
+
 export interface NativeBuildArgs {
   /**
    * Android specific configuration schemes.
@@ -246,11 +274,13 @@ export type ConfigInput = {
    * The strategy used to update the app.
    *
    * If `fingerprint`, the bundle will be updated if the fingerprint of the app is changed.
-   * If `app-version`, the bundle will be updated if the target app version is valid.
+   * @docs https://hot-updater.dev/guide/update-strategy/1_fingerprint
+   * If `appVersion`, the bundle will be updated if the target app version is valid.
+   * @docs https://hot-updater.dev/guide/update-strategy/2_app-version
    *
-   * @default "fingerprint"
+   * @default "appVersion"
    */
-  updateStrategy?: "fingerprint" | "appVersion";
+  updateStrategy: "fingerprint" | "appVersion";
   /**
    * The fingerprint configuration.
    */
@@ -281,6 +311,7 @@ export type ConfigInput = {
      */
     port?: number;
   };
+  platform?: PlatformConfig;
   nativeBuild?: NativeBuildArgs;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;

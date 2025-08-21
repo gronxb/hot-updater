@@ -120,16 +120,16 @@ export default defineConfig({
 ```
 </Tab>
 
-<Tab label="RNEF">
+<Tab label="Rock">
 
 ```ts title="hot-updater.config.ts"
 import { withSentry } from "@hot-updater/sentry-plugin";
 import { defineConfig } from "hot-updater";
-import { rnef } from "@hot-updater/rnef";
+import { rock } from "@hot-updater/rock";
 
 export default defineConfig({
   build: withSentry(
-    rnef({
+    rock({
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),
     {

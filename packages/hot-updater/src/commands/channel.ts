@@ -8,19 +8,30 @@ export const handleChannel = async () => {
   p.log.info(
     `Current Android channel: ${picocolors.green(androidChannel.value)}`,
   );
-  p.log.info(`  from: ${picocolors.blue(androidChannel.path)}`);
+
+  p.log.info(`  from: ${picocolors.blue(androidChannel.paths[0])}`);
   p.log.info(`Current iOS channel: ${picocolors.green(iosChannel.value)}`);
-  p.log.info(`  from: ${picocolors.blue(iosChannel.path)}`);
+  p.log.info(`  from: ${picocolors.blue(iosChannel.paths[0])}`);
 };
 
 export const handleSetChannel = async (channel: string) => {
-  const { path: androidPath } = await setChannel("android", channel);
+  const { paths: androidPaths } = await setChannel("android", channel);
   p.log.success(`Set Android channel to: ${picocolors.green(channel)}`);
-  p.log.info(`  from: ${picocolors.blue(androidPath)}`);
+  if (androidPaths.length > 0) {
+    p.log.info(picocolors.bold("Changed Android paths:"));
+    for (const path of androidPaths) {
+      p.log.info(`  ${picocolors.green(path)}`);
+    }
+  }
 
-  const { path: iosPath } = await setChannel("ios", channel);
+  const { paths: iosPaths } = await setChannel("ios", channel);
   p.log.success(`Set iOS channel to: ${picocolors.green(channel)}`);
-  p.log.info(`  from: ${picocolors.blue(iosPath)}`);
+  if (iosPaths.length > 0) {
+    p.log.info(picocolors.bold("Changed iOS paths:"));
+    for (const path of iosPaths) {
+      p.log.info(`  ${picocolors.green(path)}`);
+    }
+  }
 
   p.log.success(
     "You need to rebuild the native app if the channel has changed.",

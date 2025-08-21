@@ -117,7 +117,7 @@ function App() {
 
 export default HotUpdater.wrap({ 
   source: getUpdateSource("https://<project-id>.supabase.co/functions/v1/update-server", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }), // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here

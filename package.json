@@ -27,9 +27,9 @@
     "@swc/helpers": "^0.5.17",
     "nx": "^21.0.1",
     "rimraf": "^5.0.7",
-    "tsdown": "^0.12.6",
+    "tsdown": "^0.14.1",
     "typescript": "^5.8.3",
     "vitest": "^3.1.4"
   },
-  "packageManager": "pnpm@10.11.0"
+  "packageManager": "pnpm@10.14.0"
 }

@@ -1,3 +1,4 @@
+import { loadConfig } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import { AndroidConfigParser } from "./configParser/androidParser";
 import { IosConfigParser } from "./configParser/iosParser";
@@ -6,18 +7,22 @@ const DEFAULT_CHANNEL = "production";
 
 const setAndroidChannel = async (
   channel: string,
-): Promise<{ path: string | null }> => {
-  const androidParser = new AndroidConfigParser();
+): Promise<{ paths: string[] }> => {
+  const config = await loadConfig(null);
+  const customPaths = config.platform.android.stringResourcePaths;
+  const androidParser = new AndroidConfigParser(customPaths);
   return await androidParser.set("hot_updater_channel", channel);
 };
 
 const getAndroidChannel = async (): Promise<{
   value: string;
-  path: string;
+  paths: string[];
 }> => {
-  const androidParser = new AndroidConfigParser();
-  if (!androidParser.exists()) {
-    throw new Error("android/app/src/main/res/values/strings.xml not found");
+  const config = await loadConfig(null);
+  const customPaths = config.platform.android.stringResourcePaths;
+  const androidParser = new AndroidConfigParser(customPaths);
+  if (!(await androidParser.exists())) {
+    throw new Error("No Android strings.xml files found");
   }
   return merge(
     { value: DEFAULT_CHANNEL },
@@ -25,20 +30,22 @@ const getAndroidChannel = async (): Promise<{
   );
 };
 
-const setIosChannel = async (
-  channel: string,
-): Promise<{ path: string | null }> => {
-  const iosParser = new IosConfigParser();
+const setIosChannel = async (channel: string): Promise<{ paths: string[] }> => {
+  const config = await loadConfig(null);
+  const customPaths = config.platform.ios.infoPlistPaths;
+  const iosParser = new IosConfigParser(customPaths);
   return await iosParser.set("HOT_UPDATER_CHANNEL", channel);
 };
 
 const getIosChannel = async (): Promise<{
   value: string;
-  path: string | null;
+  paths: string[];
 }> => {
-  const iosParser = new IosConfigParser();
-  if (!iosParser.exists()) {
-    throw new Error("Info.plist not found");
+  const config = await loadConfig(null);
+  const customPaths = config.platform.ios.infoPlistPaths;
+  const iosParser = new IosConfigParser(customPaths);
+  if (!(await iosParser.exists())) {
+    throw new Error("No iOS Info.plist files found");
   }
   return merge(
     { value: DEFAULT_CHANNEL },
@@ -49,7 +56,7 @@ const getIosChannel = async (): Promise<{
 export const setChannel = async (
   platform: "android" | "ios",
   channel: string,
-): Promise<{ path: string | null }> => {
+): Promise<{ paths: string[] }> => {
   switch (platform) {
     case "android":
       return await setAndroidChannel(channel);
@@ -61,7 +68,7 @@ export const getChannel = async (
   platform: "android" | "ios",
 ): Promise<{
   value: string;
-  path: string | null;
+  paths: string[];
 }> => {
   switch (platform) {
     case "android":

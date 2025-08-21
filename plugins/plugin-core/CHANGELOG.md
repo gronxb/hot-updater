@@ -1,5 +1,51 @@
 # @hot-updater/plugin-core
 
+## 0.20.4
+
+### Patch Changes
+
+- 5314b31: feat(rock): intergration formerly rnef
+- 711392b: feat: default updateStrategy is 'appVersion'
+  - @hot-updater/core@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- e63056a: fix(cli): platform parser from hot-updater.config
+  - @hot-updater/core@0.20.3
+
+## 0.20.2
+
+### Patch Changes
+
+- 0e78fb0: fix(cli): Info.plist correct path
+  - @hot-updater/core@0.20.2
+
+## 0.20.1
+
+### Patch Changes
+
+- a3a4a28: feat(cli): set stringResourcePaths and infoPlistPaths in hot-updater.config.ts
+  - @hot-updater/core@0.20.1
+
+## 0.20.0
+
+### Minor Changes
+
+- bc8e23d: fix(cli): hot-updater.config.ts required updateStrategy field
+
+### Patch Changes
+
+- @hot-updater/core@0.20.0
+
+## 0.19.10
+
+### Patch Changes
+
+- 2bc52e8: feat(storage): add support for target storage location and return storageUri (v0.18.0+)
+  - @hot-updater/core@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes

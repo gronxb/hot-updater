@@ -1,18 +1,21 @@
-import {bare} from '@hot-updater/bare';
-import {supabaseDatabase, supabaseStorage} from '@hot-updater/supabase';
-import 'dotenv/config';
-import {defineConfig} from 'hot-updater';
+import "dotenv/config";
+import { bare } from "@hot-updater/bare";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   nativeBuild: {
     android: {
-      releaseApk: {packageName: 'com.hotupdaterexample', aab: false},
-      releaseAab: {packageName: 'com.hotupdaterexample', aab: true},
+      releaseApk: { packageName: "com.hotupdaterexample", aab: false },
+      releaseAab: { packageName: "com.hotupdaterexample", aab: true },
     },
     ios: {
       release: {
-        scheme: 'HotUpdaterExample',
-        buildConfiguration: 'Release',
+        scheme: "HotUpdaterExample",
+        configuration: "Release",
         archive: false,
         installPods: false,
         // exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
@@ -23,7 +26,7 @@ export default defineConfig({
       // },
     },
   },
-  build: bare({enableHermes: true}),
+  build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
@@ -33,4 +36,5 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
+  updateStrategy: "appVersion",
 });

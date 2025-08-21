@@ -22,7 +22,7 @@ import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 
 const result = await HotUpdater.runUpdateProcess({
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
   requestHeaders: {
     // Add any necessary request headers here
@@ -38,7 +38,7 @@ When a force update exists, the app will not reload. `shouldForceUpdate` will be
 ```tsx
 const result = await HotUpdater.runUpdateProcess({
   source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
   requestHeaders: {
     // Add any necessary request headers here

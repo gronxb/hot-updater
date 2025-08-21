@@ -32,8 +32,7 @@ class HotUpdaterModule internal constructor(
         params: ReadableMap,
         promise: Promise,
     ) {
-        // Use lifecycleScope when currentActivity is FragmentActivity
-        (currentActivity as? FragmentActivity)?.lifecycleScope?.launch {
+        (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
             try {
                 val bundleId = params.getString("bundleId")!!
                 val fileUrl = params.getString("fileUrl")

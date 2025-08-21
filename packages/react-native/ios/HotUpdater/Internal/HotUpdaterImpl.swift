@@ -38,13 +38,9 @@ import React
         self.preferences = preferences
         super.init()
 
-        // Configure preferences with app version
-        if let appVersion = HotUpdaterImpl.appVersion {
-            (preferences as? VersionedPreferencesService)?.configure(
-                appVersion: appVersion,
-                appChannel: HotUpdaterImpl.appChannel
-            )
-        }
+        // Configure preferences with isolation key
+        let isolationKey = HotUpdaterImpl.getIsolationKey()
+        (preferences as? VersionedPreferencesService)?.configure(isolationKey: isolationKey)
     }
     
     // MARK: - Static Properties
@@ -61,6 +57,25 @@ import React
      */
     public static var appChannel: String {
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
+    }
+    
+    /**
+     * Gets the complete isolation key for preferences storage.
+     * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_
+     */
+    public static func getIsolationKey() -> String {
+        // Get fingerprint hash from Info.plist
+        let fingerprintHash = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+        
+        // Get app version and channel
+        let appVersion = self.appVersion ?? "unknown"
+        let appChannel = self.appChannel
+        
+        // Use fingerprint if available, otherwise use app version
+        let baseKey = (fingerprintHash != nil && !fingerprintHash!.isEmpty) ? fingerprintHash! : appVersion
+        
+        // Build complete isolation key
+        return "hotupdater_\(baseKey)_\(appChannel)_"
     }
 
     // MARK: - Channel Management

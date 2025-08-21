@@ -1,7 +1,9 @@
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({
@@ -16,4 +18,5 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
+  updateStrategy: "appVersion",
 });

@@ -1,48 +1,46 @@
 import fs from "fs";
 import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
-import fg from "fast-glob";
 import plist from "plist";
 import type { ConfigParser } from "./configParser";
 
 // iOS Info.plist parser
 export class IosConfigParser implements ConfigParser {
-  private async getPlistPath(): Promise<string | null> {
-    const [plistFile] = await fg.glob("*/Info.plist", {
-      cwd: path.join(getCwd(), "ios"),
-      absolute: true,
-      onlyFiles: true,
-    });
-    if (!plistFile) {
-      return null;
-    }
-    return plistFile;
+  private plistPaths: string[];
+
+  constructor(customPaths?: string[]) {
+    this.plistPaths = customPaths || [];
+  }
+
+  private getPlistPaths(): string[] {
+    // Use provided paths, resolve them relative to cwd and filter existing files
+    return this.plistPaths
+      .map((p) => (path.isAbsolute(p) ? p : path.join(getCwd(), p)))
+      .filter((p) => fs.existsSync(p));
   }
 
   async exists(): Promise<boolean> {
-    try {
-      await this.getPlistPath();
-      return true;
-    } catch {
-      return false;
-    }
+    const paths = this.getPlistPaths();
+    return paths.length > 0;
   }
 
-  async get(
-    key: string,
-  ): Promise<{ value: string | null; path: string | null }> {
-    try {
-      const plistFile = await this.getPlistPath();
-      if (!plistFile) {
-        return {
-          value: null,
-          path: null,
-        };
-      }
+  async get(key: string): Promise<{ value: string | null; paths: string[] }> {
+    const plistPaths = this.getPlistPaths();
+    const searchedPaths: string[] = [];
+
+    if (plistPaths.length === 0) {
+      return {
+        value: null,
+        paths: [],
+      };
+    }
+
+    // Check each plist file until we find the key
+    for (const plistFile of plistPaths) {
+      const relativePath = path.relative(getCwd(), plistFile);
+      searchedPaths.push(relativePath);
 
       const plistXml = await fs.promises.readFile(plistFile, "utf-8");
-
-      // Parse the plist file
       const plistObject = plist.parse(plistXml) as Record<string, any>;
 
       // Check if the key exists in the plist
@@ -51,58 +49,76 @@ export class IosConfigParser implements ConfigParser {
 
         // Handle different value types
         if (value === null || value === undefined) {
-          return {
-            value: null,
-            path: path.relative(getCwd(), plistFile),
-          };
+          continue; // Try next file
         }
 
         // Convert to string if it's not already
-        if (typeof value === "string") {
-          return {
-            value,
-            path: path.relative(getCwd(), plistFile),
-          };
-        }
+        const stringValue = typeof value === "string" ? value : String(value);
+
         return {
-          value: String(value),
-          path: path.relative(getCwd(), plistFile),
+          value: stringValue,
+          paths: searchedPaths,
         };
       }
-
-      return {
-        value: null,
-        path: path.relative(getCwd(), plistFile),
-      };
-    } catch (error) {
-      return {
-        value: null,
-        path: "",
-      };
     }
+
+    return {
+      value: null,
+      paths: searchedPaths,
+    };
   }
 
-  async set(key: string, value: string): Promise<{ path: string | null }> {
-    const plistFile = await this.getPlistPath();
-    if (!plistFile) {
+  async set(key: string, value: string): Promise<{ paths: string[] }> {
+    const plistPaths = this.getPlistPaths();
+
+    if (plistPaths.length === 0) {
       console.warn(
-        "hot-updater: Info.plist not found. Skipping iOS-specific config modifications.",
+        "hot-updater: No Info.plist files found. Skipping iOS-specific config modifications.",
       );
-      return { path: null };
+      return { paths: [] };
     }
 
-    const plistXml = await fs.promises.readFile(plistFile, "utf-8");
-    const plistObject = plist.parse(plistXml) as Record<string, any>;
+    const updatedPaths: string[] = [];
 
-    plistObject[key] = value;
+    // Update all existing plist files
+    for (const plistFile of plistPaths) {
+      const relativePath = path.relative(getCwd(), plistFile);
+      try {
+        const plistXml = await fs.promises.readFile(plistFile, "utf-8");
 
-    const newPlistXml = plist.build(plistObject, {
-      indent: "\t",
-      pretty: true,
-    });
+        // Basic XML validation
+        if (!plistXml.trim().startsWith("<?xml")) {
+          throw new Error(
+            "File does not appear to be valid XML: missing XML declaration",
+          );
+        }
 
-    await fs.promises.writeFile(plistFile, newPlistXml);
+        if (!plistXml.includes("<plist") || !plistXml.includes("</plist>")) {
+          throw new Error(
+            "File does not appear to be a valid plist: missing plist tags",
+          );
+        }
 
-    return { path: path.relative(getCwd(), plistFile) };
+        const plistObject = plist.parse(plistXml) as Record<string, any>;
+
+        plistObject[key] = value;
+
+        const newPlistXml = plist.build(plistObject, {
+          indent: "\t",
+          pretty: true,
+        });
+
+        await fs.promises.writeFile(plistFile, newPlistXml);
+        updatedPaths.push(relativePath);
+      } catch (error) {
+        throw new Error(
+          `Failed to parse or update Info.plist at '${relativePath}': ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return {
+      paths: updatedPaths,
+    };
   }
 }

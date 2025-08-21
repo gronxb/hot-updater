@@ -127,7 +127,7 @@ const getFirebaseConfigTemplate = (build: BuildType) => {
 
   const intermediate = `
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = admin.credential.applicationDefault();`.trim();
@@ -149,8 +149,10 @@ describe("ConfigBuilder", () => {
 
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -170,6 +172,7 @@ export default defineConfig({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -182,8 +185,10 @@ export default defineConfig({
 
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -201,6 +206,7 @@ export default defineConfig({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -211,8 +217,10 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 
 export default defineConfig({
@@ -226,6 +234,7 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -236,8 +245,10 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 
 export default defineConfig({
@@ -252,22 +263,25 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
   });
 
   it("should build a Cloudflare config", () => {
-    const result = getCloudflareConfigTemplate("rnef");
+    const result = getCloudflareConfigTemplate("rock");
 
     const expectedConfig = `import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { rnef } from "@hot-updater/rnef";
-import "dotenv/config";
+import { rock } from "@hot-updater/rock";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
 
 
 export default defineConfig({
-  build: rnef(),
+  build: rock(),
   storage: r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
@@ -278,6 +292,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -288,12 +303,14 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-import "dotenv/config";
 import * as admin from "firebase-admin";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
+config({ path: ".env.hotupdater" });
+
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = admin.credential.applicationDefault();
@@ -309,39 +326,9 @@ export default defineConfig({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     credential,
   }),
+  updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
     expect(result).toBe(expectedConfig);
   });
-
-  //   it("should build a Firebase config with rnef", () => {
-  //     const result = getFirebaseConfigTemplate("rnef");
-
-  //     const expectedConfig = `import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-  // import { rnef } from "@hot-updater/rnef";
-  // import admin from "firebase-admin";
-  // import "dotenv/config";
-  // import { defineConfig } from "hot-updater";
-
-  // // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-  // // Check your .env file and add the credentials
-  // // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-  // // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-  // const credential = admin.credential.applicationDefault();
-
-  // export default defineConfig({
-  //   build: rnef(),
-  //   storage: firebaseStorage({
-  //     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-  //     storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-  //     credential,
-  //   }),
-  //   database: firebaseDatabase({
-  //     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-  //     credential,
-  //   }),
-  // });`;
-
-  //     expect(result).toBe(expectedConfig);
-  //   });
 });

@@ -1,5 +1,94 @@
 # hot-updater
 
+## 0.20.4
+
+### Patch Changes
+
+- 5314b31: feat(rock): intergration formerly rnef
+- Updated dependencies [5314b31]
+- Updated dependencies [711392b]
+  - @hot-updater/plugin-core@0.20.4
+  - @hot-updater/cloudflare@0.20.4
+  - @hot-updater/firebase@0.20.4
+  - @hot-updater/supabase@0.20.4
+  - @hot-updater/aws@0.20.4
+  - @hot-updater/console@0.20.4
+  - @hot-updater/core@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- e63056a: fix(cli): platform parser from hot-updater.config
+- Updated dependencies [e63056a]
+  - @hot-updater/plugin-core@0.20.3
+  - @hot-updater/console@0.20.3
+  - @hot-updater/aws@0.20.3
+  - @hot-updater/cloudflare@0.20.3
+  - @hot-updater/firebase@0.20.3
+  - @hot-updater/supabase@0.20.3
+  - @hot-updater/core@0.20.3
+
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [0e78fb0]
+  - @hot-updater/plugin-core@0.20.2
+  - @hot-updater/console@0.20.2
+  - @hot-updater/aws@0.20.2
+  - @hot-updater/cloudflare@0.20.2
+  - @hot-updater/firebase@0.20.2
+  - @hot-updater/supabase@0.20.2
+  - @hot-updater/core@0.20.2
+
+## 0.20.1
+
+### Patch Changes
+
+- a3a4a28: feat(cli): set stringResourcePaths and infoPlistPaths in hot-updater.config.ts
+- 42ff0e1: chore: bump @expo/fingerprint
+- Updated dependencies [a3a4a28]
+- Updated dependencies [b7b83ae]
+  - @hot-updater/plugin-core@0.20.1
+  - @hot-updater/console@0.20.1
+  - @hot-updater/aws@0.20.1
+  - @hot-updater/cloudflare@0.20.1
+  - @hot-updater/firebase@0.20.1
+  - @hot-updater/supabase@0.20.1
+  - @hot-updater/core@0.20.1
+
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [a0e538c]
+- Updated dependencies [bc8e23d]
+  - @hot-updater/cloudflare@0.20.0
+  - @hot-updater/plugin-core@0.20.0
+  - @hot-updater/console@0.20.0
+  - @hot-updater/aws@0.20.0
+  - @hot-updater/firebase@0.20.0
+  - @hot-updater/supabase@0.20.0
+  - @hot-updater/core@0.20.0
+
+## 0.19.10
+
+### Patch Changes
+
+- 85b236d: skip gitignore and package json scripts
+- 8d2d55a: Injectable minimum bundle id for Android
+- Updated dependencies [a3c0901]
+- Updated dependencies [4be92bd]
+- Updated dependencies [2bc52e8]
+  - @hot-updater/firebase@0.19.10
+  - @hot-updater/cloudflare@0.19.10
+  - @hot-updater/supabase@0.19.10
+  - @hot-updater/aws@0.19.10
+  - @hot-updater/plugin-core@0.19.10
+  - @hot-updater/console@0.19.10
+  - @hot-updater/core@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes

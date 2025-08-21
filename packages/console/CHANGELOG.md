@@ -1,5 +1,55 @@
 # @hot-updater/console
 
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies [5314b31]
+- Updated dependencies [711392b]
+  - @hot-updater/plugin-core@0.20.4
+  - @hot-updater/core@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- Updated dependencies [e63056a]
+  - @hot-updater/plugin-core@0.20.3
+  - @hot-updater/core@0.20.3
+
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [0e78fb0]
+  - @hot-updater/plugin-core@0.20.2
+  - @hot-updater/core@0.20.2
+
+## 0.20.1
+
+### Patch Changes
+
+- b7b83ae: feat(console): promote channel with copy
+- Updated dependencies [a3a4a28]
+  - @hot-updater/plugin-core@0.20.1
+  - @hot-updater/core@0.20.1
+
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [bc8e23d]
+  - @hot-updater/plugin-core@0.20.0
+  - @hot-updater/core@0.20.0
+
+## 0.19.10
+
+### Patch Changes
+
+- Updated dependencies [2bc52e8]
+  - @hot-updater/plugin-core@0.19.10
+  - @hot-updater/core@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes

@@ -8,7 +8,7 @@ module.exports = {
         envName: 'APP_ENV',
         moduleName: '@env',
         allowlist: ['HOT_UPDATER_SUPABASE_URL'],
-        path: '.env',
+        path: '.env.hotupdater',
       },
     ],
   ],

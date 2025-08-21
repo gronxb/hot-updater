@@ -34,3 +34,8 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# hot-updater
+.hot-updater/output
+# hot-updater
+.env.hotupdater

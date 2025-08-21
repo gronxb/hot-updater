@@ -49,7 +49,7 @@ function App() {
 
 export default HotUpdater.wrap({
   source: getUpdateSource("%%source%%", {
-    updateStrategy: "fingerprint", // or "appVersion"
+    updateStrategy: "appVersion", // or "fingerprint"
   }),
 })(App);`;
 
@@ -223,9 +223,11 @@ export const selectBucket = async (
   return JSON.parse(selectedBucketId);
 };
 
-const linkSupabase = async (workdir: string, projectId: string) => {
+const linkSupabase = async (
+  workdir: string,
+  { projectId, dbPassword }: { projectId: string; dbPassword?: string },
+) => {
   const spinner = p.spinner();
-  spinner.start("Linking Supabase...");
 
   try {
     // Write the config.toml with correct projectId
@@ -236,10 +238,20 @@ const linkSupabase = async (workdir: string, projectId: string) => {
       }),
     );
 
-    // Link
+    spinner.start("Linking Supabase...");
+
+    // Link with password
     await execa(
       "npx",
-      ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
+      [
+        "supabase",
+        "link",
+        "--project-ref",
+        projectId,
+        "--workdir",
+        workdir,
+        dbPassword ? ["--password", dbPassword] : [],
+      ].flat(),
       {
         cwd: workdir,
         input: "",
@@ -258,11 +270,20 @@ const linkSupabase = async (workdir: string, projectId: string) => {
   }
 };
 
-const pushDB = async (workdir: string) => {
+const pushDB = async (
+  workdir: string,
+  { dbPassword }: { dbPassword?: string },
+) => {
   try {
     const dbPush = await execa(
       "npx",
-      ["supabase", "db", "push", "--include-all"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        dbPassword ? ["--password", dbPassword] : [],
+      ].flat(),
       {
         cwd: workdir,
         stdio: "inherit",
@@ -399,9 +420,19 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     }
   }
 
-  await linkSupabase(tmpDir, project.id);
+  // Get database password from user
+  const dbPassword = await p.password({
+    message:
+      "Enter your Supabase database password (press Enter to skip if none)",
+  });
 
-  await pushDB(tmpDir);
+  if (p.isCancel(dbPassword)) {
+    process.exit(0);
+  }
+
+  await linkSupabase(tmpDir, { projectId: project.id, dbPassword });
+
+  await pushDB(tmpDir, { dbPassword });
   await deployEdgeFunction(tmpDir, project.id);
 
   await removeTmpDir();
@@ -413,7 +444,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
-  p.log.success("Generated '.env' file with Supabase settings.");
+  p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
   p.log.success(
     "Generated 'hot-updater.config.ts' file with Supabase settings.",
   );

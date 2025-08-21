@@ -1,5 +1,77 @@
 # @hot-updater/react-native
 
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies [5314b31]
+- Updated dependencies [711392b]
+  - hot-updater@0.20.4
+  - @hot-updater/plugin-core@0.20.4
+  - @hot-updater/core@0.20.4
+  - @hot-updater/js@0.20.4
+
+## 0.20.3
+
+### Patch Changes
+
+- e63056a: fix(cli): platform parser from hot-updater.config
+- Updated dependencies [e63056a]
+  - hot-updater@0.20.3
+  - @hot-updater/plugin-core@0.20.3
+  - @hot-updater/core@0.20.3
+  - @hot-updater/js@0.20.3
+
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [0e78fb0]
+  - @hot-updater/plugin-core@0.20.2
+  - hot-updater@0.20.2
+  - @hot-updater/core@0.20.2
+  - @hot-updater/js@0.20.2
+
+## 0.20.1
+
+### Patch Changes
+
+- a3a4a28: feat(cli): set stringResourcePaths and infoPlistPaths in hot-updater.config.ts
+- Updated dependencies [a3a4a28]
+- Updated dependencies [42ff0e1]
+  - hot-updater@0.20.1
+  - @hot-updater/plugin-core@0.20.1
+  - @hot-updater/core@0.20.1
+  - @hot-updater/js@0.20.1
+
+## 0.20.0
+
+### Minor Changes
+
+- a0e538c: feat(android): Support 0.81.0
+
+### Patch Changes
+
+- Updated dependencies [bc8e23d]
+  - @hot-updater/plugin-core@0.20.0
+  - hot-updater@0.20.0
+  - @hot-updater/core@0.20.0
+  - @hot-updater/js@0.20.0
+
+## 0.19.10
+
+### Patch Changes
+
+- 4be92bd: link
+- 8d2d55a: Injectable minimum bundle id for Android
+- Updated dependencies [85b236d]
+- Updated dependencies [8d2d55a]
+- Updated dependencies [2bc52e8]
+  - hot-updater@0.19.10
+  - @hot-updater/plugin-core@0.19.10
+  - @hot-updater/core@0.19.10
+  - @hot-updater/js@0.19.10
+
 ## 0.19.9
 
 ### Patch Changes
