@@ -58,52 +58,6 @@ const commonOptions = {
     .getResult();
 };
 
-export const CONFIG_TEMPLATE = `
-import { bare } from "@hot-updater/bare";
-import { s3Storage, s3Database } from "@hot-updater/aws";
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
-
-const options = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-  },
-};
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage(options),
-  database: s3Database(options),
-});
-`;
-
-export const CONFIG_TEMPLATE_WITH_SESSION = `
-import { bare } from "@hot-updater/bare";
-import { s3Storage, s3Database } from "@hot-updater/aws";
-import { defineConfig } from "hot-updater";
-import "dotenv/config";
-
-const options = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-    // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
-    sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
-  },
-};
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage(options),
-  database: s3Database(options),
-});
-`;
-
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
 import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 

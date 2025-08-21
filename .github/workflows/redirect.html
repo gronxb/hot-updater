@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <script>
+      const basePath = "/hot-updater";
+      const target = "https://hot-updater.dev";
+      const path = location.pathname.replace(basePath, "");
+      const search = location.search;
+      const hash = location.hash;
+      location.href = `${target}${path}${search}${hash}`;
+    </script>
+    <title>Redirecting...</title>
+  </head>
+  <body>
+    <p>Redirecting...</p>
+  </body>
+</html> 
