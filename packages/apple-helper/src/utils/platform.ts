@@ -1,19 +1,4 @@
-/**
- * Supported Apple platforms for building and deployment
- */
-export const supportedPlatforms = {
-  ios: "ios",
-  macos: "macos",
-  visionos: "visionos",
-  tvos: "tvos",
-  watchos: "watchos",
-} as const;
-
-/**
- * Type representing a supported Apple platform
- */
-export type ApplePlatform =
-  (typeof supportedPlatforms)[keyof typeof supportedPlatforms];
+import type { ApplePlatform } from "@hot-updater/plugin-core";
 
 /**
  * Platform configuration for builds

@@ -1,31 +1,10 @@
-import type { IosBuildDestination } from "@hot-updater/plugin-core";
-import { type ApplePlatform, platformConfigs } from "./platform";
+import type {
+  ApplePlatform,
+  IosBuildDestination,
+} from "@hot-updater/plugin-core";
+import { platformConfigs } from "./platform";
 
 export type DeviceType = "device" | "simulator";
-
-/**
- * Determines device type from IosBuildDestination
- */
-const determineDeviceType = (destination: IosBuildDestination): DeviceType => {
-  if (typeof destination === "string") {
-    switch (destination) {
-      case "ios-device":
-      case "mac":
-      case "visionos-device":
-      case "tvos":
-        return "device";
-      case "ios-simulator":
-      case "mac-catalyst":
-      case "visionos-simulator":
-      case "tvos-simulator":
-        return "simulator";
-    }
-  }
-
-  // For device with id or name, determine based on the type
-  // Assume physical device by default
-  return "device";
-};
 
 const buildDestinationString = ({
   deviceType,

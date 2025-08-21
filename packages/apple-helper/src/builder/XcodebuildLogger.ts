@@ -16,34 +16,6 @@ interface BuildPhase {
  * Build progress monitor for xcodebuild output
  */
 export class XcodebuildLogger {
-  private phases: BuildPhase[] = [
-    {
-      name: "PhaseScriptExecution Check\\ React\\ Native\\ Integration",
-      progress: 10,
-      completed: false,
-    },
-    {
-      name: "PhaseScriptExecution [RN]Check\\ Hermes",
-      progress: 35,
-      completed: false,
-    },
-    {
-      name: "PhaseScriptExecution [React-Fabric]",
-      progress: 53,
-      completed: false,
-    },
-    {
-      name: "PhaseScriptExecution [React-Codegen]",
-      progress: 66,
-      completed: false,
-    },
-    {
-      name: "PhaseScriptExecution Bundle\\ React\\ Native\\ code\\ and\\ images",
-      progress: 90,
-      completed: false,
-    },
-  ];
-
   private currentProgress = 0;
   private spinner?: ReturnType<typeof p.spinner>;
   private buildSucceeded = false;
@@ -80,13 +52,29 @@ export class XcodebuildLogger {
       return;
     }
 
-    // Check for phase completion
-    for (const phase of this.phases) {
-      if (!phase.completed && line.includes(phase.name)) {
-        phase.completed = true;
-        this.currentProgress = phase.progress;
+    // Check for specific React Native and CocoaPods phases
+    if (line.includes("PhaseScriptExecution")) {
+      if (line.includes("[CP-User]\\ [Hermes]\\ Replace\\ Hermes\\")) {
+        this.currentProgress = Math.max(this.currentProgress, 10);
         this.updateSpinner();
-        break;
+      } else if (
+        line.includes("[CP-User]\\ [RN]Check\\ rncore") &&
+        line.includes("React-Fabric")
+      ) {
+        this.currentProgress = Math.max(this.currentProgress, 35);
+        this.updateSpinner();
+      } else if (line.includes("[CP-User]\\ [RN]Check\\ FBReactNativeSpec")) {
+        this.currentProgress = Math.max(this.currentProgress, 53);
+        this.updateSpinner();
+      } else if (
+        line.includes("[CP-User]\\ [RN]Check\\ rncore") &&
+        line.includes("React-FabricComponents")
+      ) {
+        this.currentProgress = Math.max(this.currentProgress, 66);
+        this.updateSpinner();
+      } else if (line.includes("[CP]\\ Check\\ Pods\\ Manifest.lock")) {
+        this.currentProgress = Math.max(this.currentProgress, 90);
+        this.updateSpinner();
       }
     }
 
@@ -176,9 +164,6 @@ export class XcodebuildLogger {
    * Resets the monitor for a new build
    */
   reset(): void {
-    for (const phase of this.phases) {
-      phase.completed = false;
-    }
     this.currentProgress = 0;
     this.buildSucceeded = false;
   }

@@ -1,14 +1,13 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import { createOutputPaths } from "../utils/buildPaths";
 import {
   getDefaultDestination,
   resolveDestinations,
 } from "../utils/destination";
-import type { ApplePlatform } from "../utils/platform";
 import {
   type XcodeProjectInfo,
   discoverXcodeProject,
@@ -20,37 +19,29 @@ import type {
   ExportOptions,
 } from "./buildOptions";
 
-/**
- * Main Xcode builder class that handles all build operations
- */
 export class XcodeBuilder {
   private sourceDir: string;
-  private platform: ApplePlatform;
 
-  constructor(sourceDir: string, platform: ApplePlatform) {
+  constructor(sourceDir: string) {
     this.sourceDir = sourceDir;
-    this.platform = platform;
   }
 
-  /**
-   * Archives an iOS app for distribution
-   */
   async archive({
     outputPath,
     platform,
     schemeConfig,
   }: ArchiveOptions): Promise<{ archivePath: string }> {
     const xcodeProject = await discoverXcodeProject(this.sourceDir);
-    const { archiveDir } = createOutputPaths(outputPath);
 
     if (schemeConfig.installPods ?? true) {
       await this.installPodsIfNeeded();
     }
 
-    await fs.promises.mkdir(archiveDir, { recursive: true });
+    const tmpResultDir = path.join(os.tmpdir(), "archive");
+    await fs.promises.mkdir(tmpResultDir, { recursive: true });
 
     const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
-    const archivePath = path.join(archiveDir, archiveName);
+    const archivePath = path.join(tmpResultDir, archiveName);
 
     const archiveArgs = this.prepareArchiveArgs({
       archiveOptions: { outputPath, platform, schemeConfig },
@@ -58,17 +49,23 @@ export class XcodeBuilder {
       xcodeProject,
     });
 
+    p.log.info(`Xcode Archive Settings:
+Project    ${xcodeProject.name}
+Scheme     ${schemeConfig.scheme}
+Platform   ${platform}
+Command    xcodebuild ${archiveArgs.join(" ")}
+`);
+
     const logger = new XcodebuildLogger();
     logger.start(`${xcodeProject.name} (Archive)`);
 
     try {
-      const { stdout, stderr } = await execa("xcodebuild", archiveArgs, {
+      const process = execa("xcodebuild", archiveArgs, {
         cwd: this.sourceDir,
       });
 
-      // Process output for progress tracking
-      const output = stdout + stderr;
-      for (const line of output.split("\\n")) {
+      for await (const line of process) {
+        console.log(line);
         logger.processLine(line);
       }
 
@@ -86,7 +83,7 @@ export class XcodeBuilder {
    */
   private prepareArchiveArgs({
     xcodeProject,
-    archiveOptions: { schemeConfig, platform },
+    archiveOptions: { schemeConfig },
     archivePath,
   }: {
     xcodeProject: XcodeProjectInfo;
@@ -130,12 +127,32 @@ export class XcodeBuilder {
       args.push("-destination", destination);
     }
 
-    // biome-ignore lint/style/useTemplate: <explanation>
-    p.log.info("args: " + args.join(" "));
-
     return args;
   }
 
+  /**
+   * Exports an archive to IPA
+   */
+  async exportArchive(options: ExportOptions): Promise<{ exportPath: string }> {
+    const { exportDir } = createOutputPaths(this.platform);
+
+    const exportArgs = this.prepareExportArgs(options, exportDir);
+
+    const spinner = p.spinner();
+    spinner.start("Exporting archive to IPA");
+
+    try {
+      await execa("xcodebuild", exportArgs, {
+        cwd: this.sourceDir,
+      });
+
+      spinner.stop("Archive exported successfully");
+      return { exportPath: exportDir };
+    } catch (error) {
+      spinner.stop("Export failed");
+      throw new Error(`Archive export failed: ${error}`);
+    }
+  }
   /**
    * Prepares xcodebuild export arguments
    */
@@ -192,7 +209,7 @@ export class XcodeBuilder {
 
       logger.stop("Build completed successfully");
 
-      const buildSettings = await this.getBuildSettings(xcodeProject, options);
+      const buildSettings = await this.runBuild(xcodeProject, options);
 
       return {
         appPath: buildSettings.appPath,
@@ -203,30 +220,6 @@ export class XcodeBuilder {
     } catch (error) {
       logger.stop("Build failed", false);
       throw new Error(`Xcode build failed: ${error}`);
-    }
-  }
-
-  /**
-   * Exports an archive to IPA
-   */
-  async exportArchive(options: ExportOptions): Promise<{ exportPath: string }> {
-    const { exportDir } = createOutputPaths(this.platform);
-
-    const exportArgs = this.prepareExportArgs(options, exportDir);
-
-    const spinner = p.spinner();
-    spinner.start("Exporting archive to IPA");
-
-    try {
-      await execa("xcodebuild", exportArgs, {
-        cwd: this.sourceDir,
-      });
-
-      spinner.stop("Archive exported successfully");
-      return { exportPath: exportDir };
-    } catch (error) {
-      spinner.stop("Export failed");
-      throw new Error(`Archive export failed: ${error}`);
     }
   }
 
@@ -269,13 +262,7 @@ export class XcodeBuilder {
     return args;
   }
 
-  /**
-   * Gets build settings from xcodebuild
-   * @param xcodeProject - Xcode project information
-   * @param options - Build options
-   * @returns Build settings including app path
-   */
-  private async getBuildSettings(
+  private async runBuild(
     xcodeProject: XcodeProjectInfo,
     options: BuildFlags,
   ): Promise<{ appPath: string; infoPlistPath: string }> {
@@ -344,9 +331,6 @@ export class XcodeBuilder {
   }
 }
 
-export const createXcodeBuilder = (
-  sourceDir: string,
-  platform: ApplePlatform,
-): XcodeBuilder => {
-  return new XcodeBuilder(sourceDir, platform);
+export const createXcodeBuilder = (sourceDir: string): XcodeBuilder => {
+  return new XcodeBuilder(sourceDir);
 };

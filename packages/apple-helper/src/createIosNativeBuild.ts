@@ -16,12 +16,11 @@ export const createIosNativeBuild = async ({
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
-  const builder = createXcodeBuilder(iosProjectRoot, "ios");
+  const builder = createXcodeBuilder(iosProjectRoot);
 
   const { archivePath } = await builder.archive({
     schemeConfig,
-    // todo: platform from config?
-    platform: "ios",
+    platform: schemeConfig.platform ?? "ios",
     outputPath,
   });
 

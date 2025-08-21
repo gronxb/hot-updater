@@ -107,9 +107,33 @@ export type IosBuildDestination =
   | "tvos-simulator";
 
 /**
+ * Supported Apple platforms for building and deployment
+ */
+export const supportedIosPlatforms = {
+  ios: "ios",
+  macos: "macos",
+  visionos: "visionos",
+  tvos: "tvos",
+  watchos: "watchos",
+} as const;
+
+/**
+ * Type representing a supported Apple platform
+ */
+export type ApplePlatform =
+  (typeof supportedIosPlatforms)[keyof typeof supportedIosPlatforms];
+
+/**
  * iOS native build configuration.
  */
 export interface NativeBuildIosScheme {
+  /**
+   * The apple platform for build & archive
+   *
+   * @default ios
+   */
+  platform?: ApplePlatform;
+
   /**
    * The Xcode scheme to build.
    *

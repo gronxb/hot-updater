@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
-import type { ApplePlatform } from "./platformSupport";
+import type { ApplePlatform } from "@hot-updater/plugin-core";
 
 /**
  * Device types

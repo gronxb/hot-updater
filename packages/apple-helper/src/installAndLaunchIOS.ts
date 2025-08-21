@@ -6,8 +6,6 @@ import type {
 } from "@hot-updater/plugin-core";
 import { getCwd } from "@hot-updater/plugin-core";
 import { createXcodeBuilder } from "./builder/XcodeBuilder";
-import { enrichIosNativeBuildSchemeOptions } from "./builder/buildOptions";
-import type { BuildFlags } from "./builder/buildOptions";
 import { createDeviceMatcher } from "./runner/deviceMatcher";
 import { createDeviceRunner } from "./runner/deviceRunner";
 import { createMacRunner } from "./runner/macRunner";

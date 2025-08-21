@@ -8,7 +8,6 @@ export {
 } from "./installAndLaunchIOS";
 
 // Essential types
-export type { ApplePlatform } from "./utils/platformSupport";
 export type {
   Device,
   DeviceType,
