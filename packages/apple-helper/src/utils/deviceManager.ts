@@ -2,8 +2,8 @@ import fs from "fs";
 import os from "node:os";
 import path from "path";
 import * as p from "@clack/prompts";
-import { execa } from "execa";
 import type { ApplePlatform } from "@hot-updater/plugin-core";
+import { execa } from "execa";
 
 /**
  * Device types

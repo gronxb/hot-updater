@@ -19,6 +19,7 @@ import type {
   ExportOptions,
 } from "./buildOptions";
 
+const getTmpResultDir = () => path.join(os.tmpdir(), "archive");
 export class XcodeBuilder {
   private sourceDir: string;
 
@@ -37,7 +38,7 @@ export class XcodeBuilder {
       await this.installPodsIfNeeded();
     }
 
-    const tmpResultDir = path.join(os.tmpdir(), "archive");
+    const tmpResultDir = getTmpResultDir();
     await fs.promises.mkdir(tmpResultDir, { recursive: true });
 
     const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
@@ -83,7 +84,7 @@ Command    xcodebuild ${archiveArgs.join(" ")}
    */
   private prepareArchiveArgs({
     xcodeProject,
-    archiveOptions: { schemeConfig },
+    archiveOptions: { schemeConfig, platform },
     archivePath,
   }: {
     xcodeProject: XcodeProjectInfo;
@@ -134,9 +135,11 @@ Command    xcodebuild ${archiveArgs.join(" ")}
    * Exports an archive to IPA
    */
   async exportArchive(options: ExportOptions): Promise<{ exportPath: string }> {
-    const { exportDir } = createOutputPaths(this.platform);
-
-    const exportArgs = this.prepareExportArgs(options, exportDir);
+    const exportPath = path.join(getTmpResultDir(), "export");
+    const exportArgs = this.prepareExportArgs({
+      exportOptions: options,
+      exportPath,
+    });
 
     const spinner = p.spinner();
     spinner.start("Exporting archive to IPA");
@@ -147,7 +150,7 @@ Command    xcodebuild ${archiveArgs.join(" ")}
       });
 
       spinner.stop("Archive exported successfully");
-      return { exportPath: exportDir };
+      return { exportPath };
     } catch (error) {
       spinner.stop("Export failed");
       throw new Error(`Archive export failed: ${error}`);
@@ -157,10 +160,9 @@ Command    xcodebuild ${archiveArgs.join(" ")}
    * Prepares xcodebuild export arguments
    */
   private prepareExportArgs({
-    schemeConfig,
-    archivePath,
     exportPath,
-  }: ExportOptions): string[] {
+    exportOptions: { archivePath, schemeConfig },
+  }: { exportOptions: ExportOptions; exportPath: string }): string[] {
     const args = [
       "-exportArchive",
       "-archivePath",
@@ -184,117 +186,43 @@ Command    xcodebuild ${archiveArgs.join(" ")}
   async build({
     scheme: { installPods },
   }: { scheme: NativeBuildIosScheme }): Promise<BuildResult> {
-    const xcodeProject = await discoverXcodeProject(this.sourceDir);
-
-    // Install CocoaPods if requested
-    if (installPods) {
-      await this.installPodsIfNeeded();
-    }
-
-    const buildArgs = this.prepareBuildArgs(xcodeProject, options, false);
-    const logger = new XcodebuildLogger();
-
-    logger.start(xcodeProject.name);
-
-    try {
-      const { stdout, stderr } = await execa("xcodebuild", buildArgs, {
-        cwd: this.sourceDir,
-      });
-
-      // Process output for progress tracking
-      const output = stdout + stderr;
-      for (const line of output.split("\\n")) {
-        logger.processLine(line);
-      }
-
-      logger.stop("Build completed successfully");
-
-      const buildSettings = await this.runBuild(xcodeProject, options);
-
-      return {
-        appPath: buildSettings.appPath,
-        infoPlistPath: buildSettings.infoPlistPath,
-        scheme: options.scheme || "Release",
-        configuration: options.configuration || "Release",
-      };
-    } catch (error) {
-      logger.stop("Build failed", false);
-      throw new Error(`Xcode build failed: ${error}`);
-    }
-  }
-
-  /**
-   * Prepares xcodebuild arguments
-   */
-  private prepareBuildArgs(
-    xcodeProject: XcodeProjectInfo,
-    options: BuildFlags,
-    isArchive = false,
-  ): string[] {
-    const args = [
-      xcodeProject.isWorkspace ? "-workspace" : "-project",
-      xcodeProject.name,
-    ];
-
-    args.push(
-      "-configuration",
-      options.configuration || "Release",
-      "-scheme",
-      options.scheme || "Release",
-    );
-
-    if (options.destination) {
-      args.push("-destination", this.resolveDestination(options.destination));
-    }
-
-    if (isArchive) {
-      const { archiveDir } = createOutputPaths(this.platform);
-      const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
-      args.push("-archivePath", path.join(archiveDir, archiveName), "archive");
-    } else {
-      args.push("build");
-    }
-
-    if (options.extraParams) {
-      args.push(...options.extraParams);
-    }
-
-    return args;
-  }
-
-  private async runBuild(
-    xcodeProject: XcodeProjectInfo,
-    options: BuildFlags,
-  ): Promise<{ appPath: string; infoPlistPath: string }> {
-    const buildSettingsArgs = [
-      xcodeProject.isWorkspace ? "-workspace" : "-project",
-      xcodeProject.name,
-      "-scheme",
-      options.scheme || "Release",
-      "-configuration",
-      options.configuration || "Release",
-      "-showBuildSettings",
-      "-json",
-    ];
-
-    try {
-      const { stdout } = await execa("xcodebuild", buildSettingsArgs, {
-        cwd: this.sourceDir,
-      });
-
-      const buildSettings = JSON.parse(stdout);
-      const target = buildSettings[0];
-      const settings = target.buildSettings;
-
-      const productName = settings.PRODUCT_NAME;
-      const configurationBuildDir = settings.CONFIGURATION_BUILD_DIR;
-      const appPath = path.join(configurationBuildDir, `${productName}.app`);
-      const infoPlistPath = path.join(appPath, "Info.plist");
-
-      return { appPath, infoPlistPath };
-    } catch (error) {
-      throw new Error(`Failed to get build settings: ${error}`);
-    }
+    return {
+      appPath: "",
+      configuration: "",
+      infoPlistPath: "",
+      scheme: "",
+      archivePath: "",
+      exportPath: "",
+    };
+    // const xcodeProject = await discoverXcodeProject(this.sourceDir);
+    // // Install CocoaPods if requested
+    // if (installPods) {
+    //   await this.installPodsIfNeeded();
+    // }
+    // const buildArgs = this.prepareBuildArgs(xcodeProject);
+    // const logger = new XcodebuildLogger();
+    // logger.start(xcodeProject.name);
+    // try {
+    //   const { stdout, stderr } = await execa("xcodebuild", buildArgs, {
+    //     cwd: this.sourceDir,
+    //   });
+    //   // Process output for progress tracking
+    //   const output = stdout + stderr;
+    //   for (const line of output.split("\\n")) {
+    //     logger.processLine(line);
+    //   }
+    //   logger.stop("Build completed successfully");
+    //   const buildSettings = await this.prepareBuildArgs(xcodeProject);
+    //   return {
+    //     appPath: buildSettings.appPath,
+    //     infoPlistPath: buildSettings.infoPlistPath,
+    //     scheme: "Release",
+    //     configuration: "Release",
+    //   };
+    // } catch (error) {
+    //   logger.stop("Build failed", false);
+    //   throw new Error(`Xcode build failed: ${error}`);
+    // }
   }
 
   /**

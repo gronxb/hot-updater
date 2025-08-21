@@ -1,4 +1,7 @@
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
+import type {
+  ApplePlatform,
+  NativeBuildIosScheme,
+} from "@hot-updater/plugin-core";
 
 /**
  * Build result information
@@ -21,10 +24,10 @@ export interface BuildResult {
 export interface ArchiveOptions {
   schemeConfig: NativeBuildIosScheme;
   outputPath: string;
+  platform: ApplePlatform;
 }
 
 export interface ExportOptions {
   schemeConfig: NativeBuildIosScheme;
   archivePath: string;
-  exportPath: string;
 }

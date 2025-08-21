@@ -12,9 +12,6 @@ import { createMacRunner } from "./runner/macRunner";
 import { createSimulatorRunner } from "./runner/simulatorRunner";
 import { listDevicesAndSimulators, selectDevice } from "./utils/deviceManager";
 
-/**
- * Options for iOS installation and launch
- */
 export interface InstallAndLaunchOptions {
   /** Target to install on (auto, device, simulator, or specific device name/UDID) */
   target?: string;
@@ -26,34 +23,6 @@ export interface InstallAndLaunchOptions {
   launch?: boolean;
 }
 
-/**
- * Installs and launches an iOS app on device or simulator
- * @param options - Configuration and installation options
- *
- * @example
- * ```typescript
- * // Auto-select device and build+install+launch
- * await installAndLaunchIOS({
- *   schemeConfig: {
- *     scheme: "MyApp",
- *     buildConfiguration: "Debug"
- *   }
- * });
- *
- * // Install on specific simulator
- * await installAndLaunchIOS({
- *   schemeConfig: config,
- *   target: "iPhone 15 Pro"
- * });
- *
- * // Install existing app bundle
- * await installAndLaunchIOS({
- *   schemeConfig: config,
- *   appPath: "/path/to/MyApp.app",
- *   build: false
- * });
- * ```
- */
 export const installAndLaunchIOS = async ({
   schemeConfig,
   target = "auto",
@@ -70,7 +39,7 @@ export const installAndLaunchIOS = async ({
   if (build && !appPath) {
     p.log.info("Building iOS app for installation...");
 
-    const buildFlags: BuildFlags = enrichIosNativeBuildSchemeOptions({
+    const buildFlags = enrichIosNativeBuildSchemeOptions({
       scheme: schemeConfig.scheme,
       configuration: schemeConfig.buildConfiguration || "Debug",
       archive: false, // Build .app, not archive
@@ -131,13 +100,7 @@ export const installAndLaunchIOS = async ({
   }
 };
 
-/**
- * Selects target device based on user preference
- * @param target - Target device specification
- * @returns Selected device or undefined
- */
 async function selectTargetDevice(target: string) {
-  // Get all available devices and simulators
   const devices = await listDevicesAndSimulators("ios");
   const matcher = createDeviceMatcher(devices);
 
@@ -166,22 +129,17 @@ async function selectTargetDevice(target: string) {
     return await selectDevice("ios", "simulator");
   }
 
-  // Try to find specific device by name or UDID
   const specificDevice = matcher.findDevice(target);
   if (specificDevice) {
     return specificDevice;
   }
 
-  // If not found, let user select interactively
   p.log.warn(
     `Device "${target}" not found. Please select from available devices:`,
   );
   return await selectDevice("ios");
 }
 
-/**
- * Builds iOS app for device/simulator installation
- */
 export const buildIosApp = async (
   schemeConfig: RequiredDeep<NativeBuildIosScheme>,
   destination: "device" | "simulator" = "simulator",
@@ -202,16 +160,6 @@ export const buildIosApp = async (
   return result.appPath;
 };
 
-/**
- * Launches an iOS app on macOS (for Mac Catalyst apps)
- * @param appPath - Path to the .app bundle
- * @param scheme - Scheme name for the executable
- *
- * @example
- * ```typescript
- * await launchMacApp("/path/to/MyApp.app", "MyApp");
- * ```
- */
 export const launchMacApp = async (
   appPath: string,
   scheme: string,
@@ -228,10 +176,3 @@ export const launchMacApp = async (
     await runner.launch(appPath);
   }
 };
-
-// TODO: Add advanced installation and launch features
-// - Deep linking support for app launch with custom URLs
-// - App permission management and automatic permission granting
-// - Launch with environment variables and debugging flags
-// - Real-time app state monitoring during launch
-// - Integration with React Native developer tools and debugging

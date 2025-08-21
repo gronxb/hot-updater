@@ -105,9 +105,8 @@ export async function prepareNativeBuild(options: NativeBuildOptions): Promise<{
     s.start(`Fingerprinting (${platform})`);
 
     // generate fingerprint.json automatically
-    const generatedFingerprint = (await createAndInjectFingerprintFiles())[
-      platform
-    ];
+    const generatedFingerprint = (await createAndInjectFingerprintFiles())
+      .fingerprint[platform];
 
     s.stop(`Fingerprint(${platform}): ${generatedFingerprint.hash}`);
 
