@@ -104,7 +104,9 @@ export type IosBuildDestination =
   | "visionos-device"
   | "visionos-simulator"
   | "tvos"
-  | "tvos-simulator";
+  | "tvos-simulator"
+  | "watchos"
+  | "watchos-simulator";
 
 /**
  * Supported Apple platforms for building and deployment

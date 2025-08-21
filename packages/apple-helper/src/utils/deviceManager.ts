@@ -4,11 +4,7 @@ import path from "path";
 import * as p from "@clack/prompts";
 import type { ApplePlatform } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-
-/**
- * Device types
- */
-export type DeviceType = "device" | "simulator";
+import type { DeviceType } from "./destination";
 
 /**
  * Device states

@@ -2,7 +2,6 @@ import {
   enrichAndroidNativeBuildSchemeOptions,
   installAndLaunchAndroid,
 } from "@hot-updater/android-helper";
-import { installAndLaunchIOS } from "@hot-updater/apple-helper";
 import type { NativeBuildArgs, Platform } from "@hot-updater/plugin-core";
 
 export async function installAndLaunch({
@@ -23,6 +22,6 @@ export async function installAndLaunch({
     );
     await installAndLaunchAndroid({ schemeConfig, buildArtifactPath });
   } else if (platform === "ios") {
-    await installAndLaunchIOS({ schemeConfig: config.ios[scheme]! });
+    // await installAndLaunchIOS({ schemeConfig: config.ios[scheme]! });
   }
 }
