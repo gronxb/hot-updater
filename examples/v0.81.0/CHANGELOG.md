@@ -1,5 +1,12 @@
 # @hot-updater/example-react-native-v81
 
+## 0.20.5
+
+### Patch Changes
+
+- Updated dependencies [3383d38]
+  - @hot-updater/react-native@0.20.5
+
 ## 0.20.4
 
 ### Patch Changes
