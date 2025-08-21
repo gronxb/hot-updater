@@ -14,7 +14,4 @@ export type {
   DeviceType,
   DeviceState,
 } from "./utils/deviceManager";
-export type {
-  BuildFlags,
-  BuildResult,
-} from "./builder/buildOptions";
+export type { BuildResult } from "./builder/buildOptions";

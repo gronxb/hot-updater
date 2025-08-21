@@ -5,8 +5,11 @@ import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import {
   type AndroidDeviceData,
+  createAndroidNativeBuild,
+  enrichAndroidNativeBuildSchemeOptions,
   selectAndroidTargetDevice,
 } from "@hot-updater/android-helper";
+import { createIosNativeBuild } from "@hot-updater/apple-helper";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import type { NativeBuildOptions } from "./buildNative";
@@ -62,17 +65,30 @@ export const runNative = async (options: NativeRunOptions) => {
       {
         title: `📦 Building Native (${buildPlugin.name})`,
         task: async () => {
-          await installAndLaunch();
+          const builder =
+            platform === "android"
+              ? () =>
+                  createAndroidNativeBuild({
+                    schemeConfig: enrichAndroidNativeBuildSchemeOptions(
+                      config.nativeBuild.android[scheme]!,
+                      {},
+                    ),
+                  })
+              : () =>
+                  createIosNativeBuild({
+                    schemeConfig: config.nativeBuild.ios[scheme]!,
+                    outputPath,
+                  });
+
           const { buildDirectory, buildArtifactPath } = await createNativeBuild(
             {
               buildPlugin,
               platform,
-              config,
-              scheme,
               outputPath,
-              cwd,
+              builder,
             },
           );
+          await installAndLaunch({ buildArtifactPath });
           taskRef.buildResult.buildArtifactPath = buildArtifactPath;
           taskRef.buildResult.buildDirectory = buildDirectory;
 

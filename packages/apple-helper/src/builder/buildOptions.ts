@@ -1,30 +1,5 @@
-import type { ApplePlatform } from "../utils/platformSupport";
-
-/**
- * Build flags for Apple platform builds
- */
-export interface BuildFlags {
-  /** Enable verbose logging */
-  verbose: boolean;
-  /** Xcode configuration to use (Debug, Release) */
-  configuration: string;
-  /** Xcode scheme to build */
-  scheme: string;
-  /** Specific target to build */
-  target?: string;
-  /** Additional parameters passed to xcodebuild */
-  extraParams?: string[];
-  /** Additional parameters for exportArchive */
-  exportExtraParams?: string[];
-  /** Path to ExportOptions.plist file */
-  exportOptionsPlist?: string;
-  /** Build destination (simulator, device, or xcodebuild format) */
-  destination?: string;
-  /** Create archive for App Store distribution */
-  archive: boolean;
-  /** Automatically install CocoaPods dependencies */
-  installPods: boolean;
-}
+import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
+import type { ApplePlatform } from "../utils/platform";
 
 /**
  * Build result information
@@ -44,36 +19,16 @@ export interface BuildResult {
   configuration: string;
 }
 
-/**
- * Archive options
- */
 export interface ArchiveOptions {
-  /** Xcode scheme to archive */
-  scheme: string;
-  /** Build configuration */
-  buildConfiguration: string;
-  /** Platform to build for */
+  schemeConfig: NativeBuildIosScheme;
   platform: ApplePlatform;
-  /** Automatically install CocoaPods dependencies */
-  installPods: boolean;
-  /** Path to xcconfig file */
-  xcconfig?: string;
-  /** Additional xcodebuild parameters */
-  extraParams?: string[];
-  /** Output path */
   outputPath: string;
 }
 
-/**
- * Export archive options
- */
 export interface ExportOptions {
-  /** Path to the archive to export */
+  schemeConfig: NativeBuildIosScheme;
   archivePath: string;
-  /** Path to ExportOptions.plist file */
-  exportOptionsPlist: string;
-  /** Additional export parameters */
-  exportExtraParams?: string[];
+  exportPath: string;
 }
 
 /**
@@ -125,7 +80,6 @@ export const enrichIosNativeBuildSchemeOptions = (
     scheme: "Release",
     verbose: false,
     installPods: true,
-    archive: false,
     ...options,
   };
 };

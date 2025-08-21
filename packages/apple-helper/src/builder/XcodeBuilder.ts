@@ -4,7 +4,11 @@ import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import { createOutputPaths } from "../utils/buildPaths";
-import type { ApplePlatform } from "../utils/platformSupport";
+import {
+  getDefaultDestination,
+  resolveDestinations,
+} from "../utils/destination";
+import type { ApplePlatform } from "../utils/platform";
 import {
   type XcodeProjectInfo,
   discoverXcodeProject,
@@ -26,6 +30,135 @@ export class XcodeBuilder {
   constructor(sourceDir: string, platform: ApplePlatform) {
     this.sourceDir = sourceDir;
     this.platform = platform;
+  }
+
+  /**
+   * Archives an iOS app for distribution
+   */
+  async archive({
+    outputPath,
+    platform,
+    schemeConfig,
+  }: ArchiveOptions): Promise<{ archivePath: string }> {
+    const xcodeProject = await discoverXcodeProject(this.sourceDir);
+    const { archiveDir } = createOutputPaths(outputPath);
+
+    if (schemeConfig.installPods ?? true) {
+      await this.installPodsIfNeeded();
+    }
+
+    await fs.promises.mkdir(archiveDir, { recursive: true });
+
+    const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
+    const archivePath = path.join(archiveDir, archiveName);
+
+    const archiveArgs = this.prepareArchiveArgs({
+      archiveOptions: { outputPath, platform, schemeConfig },
+      archivePath,
+      xcodeProject,
+    });
+
+    const logger = new XcodebuildLogger();
+    logger.start(`${xcodeProject.name} (Archive)`);
+
+    try {
+      const { stdout, stderr } = await execa("xcodebuild", archiveArgs, {
+        cwd: this.sourceDir,
+      });
+
+      // Process output for progress tracking
+      const output = stdout + stderr;
+      for (const line of output.split("\\n")) {
+        logger.processLine(line);
+      }
+
+      logger.stop("Archive completed successfully");
+
+      return { archivePath };
+    } catch (error) {
+      logger.stop("Archive failed", false);
+      throw new Error(`Xcode archive failed: ${error}`);
+    }
+  }
+
+  /**
+   * Prepares xcodebuild archive arguments
+   */
+  private prepareArchiveArgs({
+    xcodeProject,
+    archiveOptions: { schemeConfig, platform },
+    archivePath,
+  }: {
+    xcodeProject: XcodeProjectInfo;
+    archiveOptions: ArchiveOptions;
+    archivePath: string;
+  }): string[] {
+    const args = [
+      xcodeProject.isWorkspace ? "-workspace" : "-project",
+      path.join(this.sourceDir, xcodeProject.name),
+      "-scheme",
+      schemeConfig.scheme,
+      "-configuration",
+      schemeConfig.configuration || "Release",
+      "archive",
+      "-archivePath",
+      archivePath,
+    ];
+
+    if (schemeConfig.xcconfig) {
+      args.push("-xcconfig", schemeConfig.xcconfig);
+    }
+
+    if (schemeConfig.extraParams) {
+      args.push(...schemeConfig.extraParams);
+    }
+
+    const resolvedDestinations = resolveDestinations({
+      destinations: schemeConfig.destination || [],
+      useGeneric: true,
+    });
+    if (resolvedDestinations.length === 0) {
+      resolvedDestinations.push(
+        getDefaultDestination({
+          platform,
+          useGeneric: true,
+        }),
+      );
+    }
+
+    for (const destination of resolvedDestinations) {
+      args.push("-destination", destination);
+    }
+
+    // biome-ignore lint/style/useTemplate: <explanation>
+    p.log.info("args: " + args.join(" "));
+
+    return args;
+  }
+
+  /**
+   * Prepares xcodebuild export arguments
+   */
+  private prepareExportArgs({
+    schemeConfig,
+    archivePath,
+    exportPath,
+  }: ExportOptions): string[] {
+    const args = [
+      "-exportArchive",
+      "-archivePath",
+      archivePath,
+      "-exportPath",
+      exportPath,
+    ];
+
+    if (schemeConfig.exportExtraParams) {
+      args.push(...schemeConfig.exportExtraParams);
+    }
+    if (schemeConfig.exportOptionsPlist) {
+      args.push("-exportOptionsPlist", schemeConfig.exportOptionsPlist);
+    }
+    return args;
   }
 
   /**
@@ -70,55 +203,6 @@ export class XcodeBuilder {
     } catch (error) {
       logger.stop("Build failed", false);
       throw new Error(`Xcode build failed: ${error}`);
-    }
-  }
-
-  /**
-   * Archives an iOS app for distribution
-   */
-  async archive({
-    outputPath,
-    platform,
-    schemeConfig,
-  }: ArchiveOptions): Promise<{ archivePath: string }> {
-    const xcodeProject = await discoverXcodeProject(this.sourceDir);
-    const { archiveDir } = createOutputPaths(outputPath);
-
-    if (schemeConfig.installPods ?? true) {
-      await this.installPodsIfNeeded();
-    }
-
-    await fs.promises.mkdir(archiveDir, { recursive: true });
-
-    const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
-    const archivePath = path.join(archiveDir, archiveName);
-
-    const archiveArgs = this.prepareArchiveArgs(
-      xcodeProject,
-      options,
-      archivePath,
-    );
-
-    const logger = new XcodebuildLogger();
-    logger.start(`${xcodeProject.name} (Archive)`);
-
-    try {
-      const { stdout, stderr } = await execa("xcodebuild", archiveArgs, {
-        cwd: this.sourceDir,
-      });
-
-      // Process output for progress tracking
-      const output = stdout + stderr;
-      for (const line of output.split("\\n")) {
-        logger.processLine(line);
-      }
-
-      logger.stop("Archive completed successfully");
-
-      return { archivePath };
-    } catch (error) {
-      logger.stop("Archive failed", false);
-      throw new Error(`Xcode archive failed: ${error}`);
     }
   }
 
@@ -183,80 +267,6 @@ export class XcodeBuilder {
     }
 
     return args;
-  }
-
-  /**
-   * Prepares xcodebuild archive arguments
-   */
-  private prepareArchiveArgs(
-    xcodeProject: XcodeProjectInfo,
-    { schemeConfig }: ArchiveOptions,
-    archivePath: string,
-  ): string[] {
-    const args = [
-      xcodeProject.isWorkspace ? "-workspace" : "-project",
-      path.join(this.sourceDir, xcodeProject.name),
-      "-scheme",
-      schemeConfig.scheme,
-      "-configuration",
-      schemeConfig.configuration || "Release",
-      "archive",
-      "-archivePath",
-      archivePath,
-      // todo: configure destination with config
-      "-destination",
-      "generic/platform=iOS Simulator",
-    ];
-
-    if (schemeConfig.xcconfig) {
-      args.push("-xcconfig", schemeConfig.xcconfig);
-    }
-
-    if (schemeConfig.extraParams) {
-      args.push(...schemeConfig.extraParams);
-    }
-
-    return args;
-  }
-
-  /**
-   * Prepares xcodebuild export arguments
-   */
-  private prepareExportArgs({
-    schemeConfig,
-    archivePath,
-    exportPath,
-  }: ExportOptions): string[] {
-    const args = [
-      "-exportArchive",
-      "-archivePath",
-      archivePath,
-      "-exportPath",
-      exportPath,
-    ];
-
-    if (schemeConfig.exportExtraParams) {
-      args.push(...schemeConfig.exportExtraParams);
-    }
-    if (schemeConfig.exportOptionsPlist) {
-      args.push("-exportOptionsPlist", schemeConfig.exportOptionsPlist);
-    }
-    return args;
-  }
-
-  /**
-   * Resolves destination string to xcodebuild format
-   * @param destination - Destination string (device, simulator, or xcodebuild format)
-   * @returns Resolved destination string
-   */
-  private resolveDestination(destination: string): string {
-    if (destination === "device") {
-      return `generic/platform=${this.platform === "ios" ? "iOS" : this.platform}`;
-    }
-    if (destination === "simulator") {
-      return `generic/platform=${this.platform === "ios" ? "iOS" : this.platform} Simulator`;
-    }
-    return destination;
   }
 
   /**

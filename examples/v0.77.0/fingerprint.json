@@ -23,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "a5e91f81ff775fb1767b00ac07d133dba832e6b0"
+        "hash": "23a427f7209bd5e4aa74f347fb045d10091f8ae5"
       },
       {
         "type": "contents",
@@ -62,7 +62,7 @@
         "hash": "e4f8900b94b623991516207e96470282080b33f7"
       }
     ],
-    "hash": "d54403e63a38eef7f822159a9fc657a713ebd497"
+    "hash": "4c2b339429089b504e00c33fd0a77b1170dd5f0d"
   },
   "android": {
     "sources": [
@@ -88,7 +88,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "a5e91f81ff775fb1767b00ac07d133dba832e6b0"
+        "hash": "23a427f7209bd5e4aa74f347fb045d10091f8ae5"
       },
       {
         "type": "contents",
@@ -127,6 +127,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "cb5b56bee0aef6399082c2fc3d14e1ee966e4929"
+    "hash": "d8580906f86804e9200c52757f3ee1e52b711672"
   }
 }

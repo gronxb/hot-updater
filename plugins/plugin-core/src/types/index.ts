@@ -94,6 +94,18 @@ export interface NativeBuildAndroidScheme {
   packageName: string;
 }
 
+export type IosBuildDestination =
+  | { id: string }
+  | { name: string }
+  | "mac-catalyst"
+  | "ios-device"
+  | "ios-simulator"
+  | "mac"
+  | "visionos-device"
+  | "visionos-simulator"
+  | "tvos"
+  | "tvos-simulator";
+
 /**
  * iOS native build configuration.
  */
@@ -110,21 +122,14 @@ export interface NativeBuildIosScheme {
    *
    * @default "Release"
    */
-  buildConfiguration?: "Debug" | "Release";
-
-  /**
-   * The SDK to build against (e.g., "iphoneos", "iphonesimulator").
-   *
-   * @default "iphoneos"
-   */
-  sdk?: string;
+  configuration?: "Debug" | "Release";
 
   /**
    * The destination for the build.
    *
-   * @default "generic/platform=iOS"
+   * @default "['generic/platform=iOS']"
    */
-  destination?: string;
+  destination?: IosBuildDestination[];
 
   /**
    * Path to a plist file that specifies options for exporting the archive.
@@ -166,13 +171,6 @@ export interface NativeBuildIosScheme {
    * @example ["-allowProvisioningUpdates"]
    */
   exportExtraParams?: string[];
-
-  /**
-   * Specific target to build within the scheme.
-   *
-   * @example "MyApp"
-   */
-  target?: string;
 
   /**
    * Enable verbose logging for build process.
