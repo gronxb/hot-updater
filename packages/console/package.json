@@ -37,7 +37,7 @@
     "@tanstack/solid-form": "^1.12.2",
     "@tanstack/solid-query": "^5.80.6",
     "@tanstack/solid-table": "^8.21.3",
-    "@types/node": "^22.8.6",
+    "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "autoprefixer": "^10.4.19",
     "class-variance-authority": "^0.7.0",

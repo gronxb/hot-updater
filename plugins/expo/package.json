@@ -30,8 +30,8 @@
     "@clack/prompts": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.8.7",
-    "execa": "^9.5.2",
+    "@types/node": "catalog:",
+    "execa": "catalog:",
     "uuidv7": "^1.0.2"
   }
 }
