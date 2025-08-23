@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import type { AndroidDeviceData } from "./types";
+import type { AndroidDevice } from "./types";
 import { listAndroidDevices } from "./utils/listAndroidDevices";
 
 export const selectAndroidTargetDevice = async ({
@@ -8,7 +8,7 @@ export const selectAndroidTargetDevice = async ({
 }: {
   deviceOption?: string | boolean;
   interactive: boolean;
-}): Promise<{ device?: AndroidDeviceData }> => {
+}): Promise<{ device?: AndroidDevice }> => {
   const availableDevices = await listAndroidDevices();
   if (deviceOption === true && !interactive) {
     p.log.error(
@@ -47,7 +47,7 @@ export const selectAndroidTargetDevice = async ({
   return { device: undefined };
 };
 
-function matchingDevice(devices: Array<AndroidDeviceData>, deviceArg: string) {
+function matchingDevice(devices: Array<AndroidDevice>, deviceArg: string) {
   const deviceByName = devices.find(
     (device) => device.readableName === deviceArg,
   );
