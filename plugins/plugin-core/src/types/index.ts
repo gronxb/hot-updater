@@ -97,26 +97,28 @@ export interface NativeBuildAndroidScheme {
 export type IosBuildDestination =
   | { id: string }
   | { name: string }
-  | "mac-catalyst"
   | "ios-device"
-  | "ios-simulator"
-  | "mac"
-  | "visionos-device"
-  | "visionos-simulator"
-  | "tvos"
-  | "tvos-simulator"
-  | "watchos"
-  | "watchos-simulator";
+  | "ios-simulator";
+// TODO: support other apple platforms
+// | "mac"
+// | "mac-catalyst"
+// | "visionos-device"
+// | "visionos-simulator"
+// | "tvos"
+// | "tvos-simulator"
+// | "watchos"
+// | "watchos-simulator";
 
 /**
  * Supported Apple platforms for building and deployment
  */
 export const supportedIosPlatforms = {
   ios: "ios",
-  macos: "macos",
-  visionos: "visionos",
-  tvos: "tvos",
-  watchos: "watchos",
+  // TODO: support other apple platforms
+  // macos: "macos",
+  // visionos: "visionos",
+  // tvos: "tvos",
+  // watchos: "watchos",
 } as const;
 
 /**

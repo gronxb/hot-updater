@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "WebFetch(domain:alexpasmantier.github.io)"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}

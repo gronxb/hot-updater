@@ -43,50 +43,51 @@ const resolveDestination = ({
         deviceType: "simulator",
         useGeneric,
       });
-    case "mac":
-      return buildDestinationString({
-        platform: "macos",
-        deviceType: "device",
-        useGeneric,
-      });
-    case "mac-catalyst":
-      return "platform=macOS,variant=Mac Catalyst";
-    case "visionos-device":
-      return buildDestinationString({
-        platform: "visionos",
-        deviceType: "device",
-        useGeneric,
-      });
-    case "visionos-simulator":
-      return buildDestinationString({
-        platform: "visionos",
-        deviceType: "simulator",
-        useGeneric,
-      });
-    case "tvos":
-      return buildDestinationString({
-        platform: "tvos",
-        deviceType: "device",
-        useGeneric,
-      });
-    case "tvos-simulator":
-      return buildDestinationString({
-        platform: "tvos",
-        deviceType: "simulator",
-        useGeneric,
-      });
-    case "watchos":
-      return buildDestinationString({
-        platform: "watchos",
-        deviceType: "device",
-        useGeneric,
-      });
-    case "watchos-simulator":
-      return buildDestinationString({
-        platform: "watchos",
-        deviceType: "simulator",
-        useGeneric,
-      });
+    // TODO: support other apple platforms
+    // case "mac":
+    //   return buildDestinationString({
+    //     platform: "macos",
+    //     deviceType: "device",
+    //     useGeneric,
+    //   });
+    // case "mac-catalyst":
+    //   return "platform=macOS,variant=Mac Catalyst";
+    // case "visionos-device":
+    //   return buildDestinationString({
+    //     platform: "visionos",
+    //     deviceType: "device",
+    //     useGeneric,
+    //   });
+    // case "visionos-simulator":
+    //   return buildDestinationString({
+    //     platform: "visionos",
+    //     deviceType: "simulator",
+    //     useGeneric,
+    //   });
+    // case "tvos":
+    //   return buildDestinationString({
+    //     platform: "tvos",
+    //     deviceType: "device",
+    //     useGeneric,
+    //   });
+    // case "tvos-simulator":
+    //   return buildDestinationString({
+    //     platform: "tvos",
+    //     deviceType: "simulator",
+    //     useGeneric,
+    //   });
+    // case "watchos":
+    //   return buildDestinationString({
+    //     platform: "watchos",
+    //     deviceType: "device",
+    //     useGeneric,
+    //   });
+    // case "watchos-simulator":
+    //   return buildDestinationString({
+    //     platform: "watchos",
+    //     deviceType: "simulator",
+    //     useGeneric,
+    //   });
   }
 };
 

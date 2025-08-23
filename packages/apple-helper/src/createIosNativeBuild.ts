@@ -1,14 +1,15 @@
+import fs from "fs";
 import path from "path";
+import * as p from "@clack/prompts";
 import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
+import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 
 export const createIosNativeBuild = async ({
   schemeConfig,
-  outputPath,
 }: {
   schemeConfig: NativeBuildIosScheme;
-  outputPath: string;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
@@ -19,26 +20,27 @@ export const createIosNativeBuild = async ({
     sourceDir: iosProjectRoot,
   });
 
-  // if (buildFlags.exportOptionsPlist) {
-  //   p.log.info("Exporting archive to IPA...");
-  //   const { exportPath } = await builder.exportArchive({
-  //     archivePath,
-  //     exportOptionsPlist: buildFlags.exportOptionsPlist,
-  //     exportExtraParams: buildFlags.exportExtraParams,
-  //   });
-  //
-  //   // Find the IPA file in export directory
-  //   const files = fs.readdirSync(exportPath);
-  //   const ipaFile = files.find((file) => file.endsWith(".ipa"));
-  //
-  //   if (ipaFile) {
-  //     const ipaPath = path.join(exportPath, ipaFile);
-  //     return {
-  //       buildDirectory: exportPath,
-  //       buildArtifactPath: ipaPath,
-  //     };
-  //   }
-  // }
+  if (schemeConfig.exportOptionsPlist) {
+    p.log.info("Exporting archive to IPA...");
+    const { exportPath } = await exportXcodeArchive({
+      archivePath,
+      schemeConfig,
+      sourceDir: iosProjectRoot,
+    });
+
+    // Find the IPA file in export directory
+    const files = fs.readdirSync(exportPath);
+    const ipaFile = files.find((file) => file.endsWith(".ipa"));
+
+    if (ipaFile) {
+      const ipaPath = path.join(exportPath, ipaFile);
+      return {
+        buildDirectory: exportPath,
+        buildArtifactPath: ipaPath,
+      };
+    }
+    throw new Error("IPA file not found after export");
+  }
 
   // If no export options or IPA not found, return archive path
   return {

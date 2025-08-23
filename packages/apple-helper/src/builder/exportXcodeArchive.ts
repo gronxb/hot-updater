@@ -1,19 +1,25 @@
 import os from "os";
 import path from "path";
 import * as p from "@clack/prompts";
+import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import type { ExportOptions } from "./buildOptions";
 
 const getTmpResultDir = () => path.join(os.tmpdir(), "archive");
 
-export const exportXcodeArchive = async (
-  sourceDir: string,
-  options: ExportOptions,
-): Promise<{ exportPath: string }> => {
+export const exportXcodeArchive = async ({
+  archivePath,
+  schemeConfig,
+  sourceDir,
+}: {
+  sourceDir: string;
+  schemeConfig: NativeBuildIosScheme;
+  archivePath: string;
+}): Promise<{ exportPath: string }> => {
   const exportPath = path.join(getTmpResultDir(), "export");
   const exportArgs = prepareExportArgs({
-    exportOptions: options,
+    archivePath,
     exportPath,
+    schemeConfig,
   });
 
   const spinner = p.spinner();
@@ -34,8 +40,13 @@ export const exportXcodeArchive = async (
 
 const prepareExportArgs = ({
   exportPath,
-  exportOptions: { archivePath, schemeConfig },
-}: { exportOptions: ExportOptions; exportPath: string }): string[] => {
+  archivePath,
+  schemeConfig,
+}: {
+  exportPath: string;
+  archivePath: string;
+  schemeConfig: NativeBuildIosScheme;
+}): string[] => {
   const args = [
     "-exportArchive",
     "-archivePath",

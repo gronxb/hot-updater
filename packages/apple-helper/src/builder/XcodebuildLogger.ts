@@ -5,13 +5,13 @@ export class XcodebuildLogger {
   private spinner?: ReturnType<typeof p.spinner>;
   private buildSucceeded = false;
 
-  start(projectName: string): void {
+  start(projectName: string) {
     this.spinner = p.spinner();
     this.spinner.start(`Building ${projectName}`);
     this.updateSpinner();
   }
 
-  processLine(line: string): void {
+  processLine(line: string) {
     // Check for build success
     if (
       line.includes("BUILD SUCCEEDED") ||
@@ -61,7 +61,7 @@ export class XcodebuildLogger {
     }
   }
 
-  stop(message?: string, success = true): void {
+  stop(message?: string, success = true) {
     if (this.spinner) {
       if (success || this.buildSucceeded) {
         this.spinner.stop(message || "Build completed successfully");
@@ -71,21 +71,21 @@ export class XcodebuildLogger {
     }
   }
 
-  private updateSpinner(): void {
+  private updateSpinner() {
     if (!this.spinner) return;
 
     const progressBar = this.generateProgressBar(this.currentProgress);
     this.spinner.message(`${progressBar} ${this.currentProgress}%`);
   }
 
-  private generateProgressBar(progress: number): string {
+  private generateProgressBar(progress: number) {
     const width = 20;
     const filled = Math.round((progress / 100) * width);
     const empty = width - filled;
     return `[${"█".repeat(filled)}${"░".repeat(empty)}]`;
   }
 
-  private shouldLogLine(line: string): boolean {
+  private shouldLogLine(line: string) {
     const importantPrefixes = [
       "error:",
       // "warning:",
@@ -103,15 +103,15 @@ export class XcodebuildLogger {
     );
   }
 
-  getProgress(): number {
+  getProgress() {
     return this.currentProgress;
   }
 
-  isSuccessful(): boolean {
+  isSuccessful() {
     return this.buildSucceeded;
   }
 
-  reset(): void {
+  reset() {
     this.currentProgress = 0;
     this.buildSucceeded = false;
   }

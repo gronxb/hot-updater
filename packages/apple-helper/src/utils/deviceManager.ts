@@ -6,26 +6,14 @@ import type { ApplePlatform } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import type { DeviceType } from "./destination";
 
-/**
- * Device states
- */
 export type DeviceState = "Booted" | "Shutdown";
 
-/**
- * Device information
- */
 export interface Device {
-  /** Device name */
   name: string;
-  /** Device UDID */
   udid: string;
-  /** OS version string */
   version: string;
-  /** Apple platform */
   platform: ApplePlatform;
-  /** Current device state */
   state: DeviceState;
-  /** Device type */
   type: DeviceType;
 }
 
@@ -89,8 +77,6 @@ const parseDevicectlList = (devicectlOutput: DevicectlOutput[]): Device[] => {
 
 /**
  * Gets physical iOS devices using devicectl
- * @returns Array of physical devices
- * @throws Error if devicectl fails
  */
 const getDevices = async (): Promise<Device[]> => {
   const tmpPath = path.resolve(os.tmpdir(), "iosPhysicalDevices.json");
@@ -106,8 +92,6 @@ const getDevices = async (): Promise<Device[]> => {
 
 /**
  * Gets iOS simulators using simctl
- * @returns Array of simulators
- * @throws Error if simctl fails
  */
 const getSimulators = async (): Promise<Device[]> => {
   try {
@@ -125,8 +109,6 @@ const getSimulators = async (): Promise<Device[]> => {
 
 /**
  * Parses simctl output to Device array
- * @param input - Raw simctl text output
- * @returns Array of parsed simulators
  */
 const parseSimctlOutput = (input: string): Device[] => {
   const lines = input.split("\\n");
@@ -173,13 +155,13 @@ const getPlatformFromOsVersion = (osVersion: string): ApplePlatform => {
   switch (osVersion) {
     case "iOS":
       return "ios";
-    case "tvOS":
-      return "tvos";
-    case "macOS":
-      return "macos";
-    case "xrOS":
-    case "visionOS":
-      return "visionos";
+    // case "tvOS":
+    //   return "tvos";
+    // case "macOS":
+    //   return "macos";
+    // case "xrOS":
+    // case "visionOS":
+    //   return "visionos";
     default:
       return "ios"; // Default fallback
   }
@@ -222,8 +204,6 @@ export const listDevicesAndSimulators = async (
 
 /**
  * Lists only physical devices for a platform
- * @param platform - Apple platform to filter by
- * @returns Array of physical devices
  */
 export const listDevices = async (
   platform: ApplePlatform,
@@ -234,8 +214,6 @@ export const listDevices = async (
 
 /**
  * Lists only simulators for a platform
- * @param platform - Apple platform to filter by
- * @returns Array of simulators
  */
 export const listSimulators = async (
   platform: ApplePlatform,
@@ -246,8 +224,6 @@ export const listSimulators = async (
 
 /**
  * Finds available (booted or shutdown) devices for a platform
- * @param platform - Apple platform to filter by
- * @returns Array of available devices
  */
 export const listAvailableDevices = async (
   platform: ApplePlatform,
@@ -260,8 +236,6 @@ export const listAvailableDevices = async (
 
 /**
  * Finds booted devices for a platform
- * @param platform - Apple platform to filter by
- * @returns Array of booted devices
  */
 export const listBootedDevices = async (
   platform: ApplePlatform,
@@ -272,9 +246,6 @@ export const listBootedDevices = async (
 
 /**
  * Prompts user to select a device from available devices
- * @param platform - Apple platform
- * @param deviceType - Optional filter by device type
- * @returns Selected device or undefined if cancelled
  */
 export const selectDevice = async (
   platform: ApplePlatform,
@@ -304,6 +275,15 @@ export const selectDevice = async (
   });
 
   return p.isCancel(selected) ? undefined : selected;
+};
+
+/**
+ * Checks if a device is available for deployment
+ * @param device - Device to check
+ * @returns true if device is available (Booted or Shutdown)
+ */
+export const isDeviceAvailable = (device: Device) => {
+  return device.state === "Booted" || device.state === "Shutdown";
 };
 
 // TODO: Add advanced device discovery features
