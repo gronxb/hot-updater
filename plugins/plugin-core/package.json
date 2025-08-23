@@ -54,13 +54,13 @@
     "oxc-transform": "0.82.1"
   },
   "devDependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
     "@types/node": "catalog:",
     "boxen": "^8.0.1",
     "es-toolkit": "^1.32.0",
     "jszip": "^3.10.1",
     "picocolors": "catalog:",
     "typescript": "5.8.2",
-    "workspace-tools": "^0.36.4",
-    "@hot-updater/plugin-core": "workspace:*"
+    "workspace-tools": "^0.36.4"
   }
 }
