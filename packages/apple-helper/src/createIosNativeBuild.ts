@@ -1,6 +1,6 @@
 import path from "path";
 import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
-import { createXcodeBuilder } from "./builder/XcodeBuilder";
+import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 
 /**
@@ -16,12 +16,10 @@ export const createIosNativeBuild = async ({
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
-  const builder = createXcodeBuilder(iosProjectRoot);
-
-  const { archivePath } = await builder.archive({
-    schemeConfig,
+  const { archivePath } = await archiveXcodeProject({
     platform: schemeConfig.platform ?? "ios",
-    outputPath,
+    schemeConfig,
+    sourceDir: iosProjectRoot,
   });
 
   // if (buildFlags.exportOptionsPlist) {
@@ -31,11 +29,11 @@ export const createIosNativeBuild = async ({
   //     exportOptionsPlist: buildFlags.exportOptionsPlist,
   //     exportExtraParams: buildFlags.exportExtraParams,
   //   });
-
+  //
   //   // Find the IPA file in export directory
   //   const files = fs.readdirSync(exportPath);
   //   const ipaFile = files.find((file) => file.endsWith(".ipa"));
-
+  //
   //   if (ipaFile) {
   //     const ipaPath = path.join(exportPath, ipaFile);
   //     return {

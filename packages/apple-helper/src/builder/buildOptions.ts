@@ -21,12 +21,6 @@ export interface BuildResult {
   configuration: string;
 }
 
-export interface ArchiveOptions {
-  schemeConfig: NativeBuildIosScheme;
-  outputPath: string;
-  platform: ApplePlatform;
-}
-
 export interface ExportOptions {
   schemeConfig: NativeBuildIosScheme;
   archivePath: string;
