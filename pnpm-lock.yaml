@@ -772,25 +772,6 @@ importers:
         specifier: ^4.30.0
         version: 4.30.0(@cloudflare/workers-types@4.20250507.0)
 
-  packages/android-helper:
-    dependencies:
-      '@clack/prompts':
-        specifier: 'catalog:'
-        version: 0.10.0
-      execa:
-        specifier: 'catalog:'
-        version: 9.5.2
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
-    devDependencies:
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
-      '@types/node':
-        specifier: 'catalog:'
-        version: 20.19.11
-
   packages/console:
     dependencies:
       '@hot-updater/core':
