@@ -3,9 +3,6 @@ import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 
-/**
- * Creates an iOS native build with archive and export capabilities
- */
 export const createIosNativeBuild = async ({
   schemeConfig,
   outputPath,

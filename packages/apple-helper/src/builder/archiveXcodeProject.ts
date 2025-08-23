@@ -65,7 +65,6 @@ Command    xcodebuild ${archiveArgs.join(" ")}
     });
 
     for await (const line of process) {
-      console.log(line);
       logger.processLine(line);
     }
 

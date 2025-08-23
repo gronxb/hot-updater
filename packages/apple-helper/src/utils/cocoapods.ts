@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
+import { getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
 export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
-  console.log(sourceDir);
   const podfilePath = path.join(sourceDir, "Podfile");
 
   // Check if Podfile exists
@@ -15,13 +15,18 @@ export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
     return;
   }
 
-  const gemfilePath = path.join(sourceDir, "Gemfile");
-  const shouldUseBundler = await checkShouldUseBundler(gemfilePath);
+  const gemfilePaths = [
+    path.join(sourceDir, "Gemfile"),
+    path.join(getCwd(), "Gemfile"),
+  ];
+  const shouldUseBundler = (
+    await Promise.all(gemfilePaths.map(checkShouldUseBundler))
+  ).some(Boolean);
 
   try {
     if (shouldUseBundler) {
       p.log.info("Using bundler for CocoaPods installation");
-      
+
       const bundleSpinner = p.spinner();
       bundleSpinner.start("Installing Ruby gems");
       await execa("bundle", ["install"], { cwd: sourceDir });
@@ -48,8 +53,8 @@ const checkShouldUseBundler = async (gemfilePath: string): Promise<boolean> => {
       return false;
     }
 
-    const gemfileContent = await fs.promises.readFile(gemfilePath, 'utf-8');
-    return gemfileContent.includes('cocoapods');
+    const gemfileContent = await fs.promises.readFile(gemfilePath, "utf-8");
+    return gemfileContent.includes("cocoapods");
   } catch (error) {
     return false;
   }

@@ -129,10 +129,10 @@ export class XcodebuildLogger {
   private shouldLogLine(line: string): boolean {
     const importantPrefixes = [
       "error:",
-      "warning:",
-      "note:",
-      "ld:",
-      "clang:",
+      // "warning:",
+      // "note:",
+      // "ld:",
+      // "clang:",
       "** BUILD FAILED **",
       "** ARCHIVE FAILED **",
       "The following build commands failed:",
