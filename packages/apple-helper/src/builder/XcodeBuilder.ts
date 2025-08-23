@@ -4,6 +4,7 @@ import path from "path";
 import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import { installPodsIfNeeded } from "../utils/cocoapods";
 import {
   getDefaultDestination,
   resolveDestinations,
@@ -21,7 +22,7 @@ import type {
 
 const getTmpResultDir = () => path.join(os.tmpdir(), "archive");
 export class XcodeBuilder {
-  private sourceDir: string;
+  private readonly sourceDir: string;
 
   constructor(sourceDir: string) {
     this.sourceDir = sourceDir;
@@ -35,7 +36,7 @@ export class XcodeBuilder {
     const xcodeProject = await discoverXcodeProject(this.sourceDir);
 
     if (schemeConfig.installPods ?? true) {
-      await this.installPodsIfNeeded();
+      await installPodsIfNeeded(this.sourceDir);
     }
 
     const tmpResultDir = getTmpResultDir();
@@ -223,39 +224,6 @@ Command    xcodebuild ${archiveArgs.join(" ")}
     //   logger.stop("Build failed", false);
     //   throw new Error(`Xcode build failed: ${error}`);
     // }
-  }
-
-  /**
-   * Installs CocoaPods if needed
-   * TODO: Implement advanced CocoaPods features:
-   * - Bundle/Gemfile support for Ruby dependency management
-   * - Dependency hash caching to avoid unnecessary installs
-   * - Automatic repo update handling when installation fails
-   * - Environment variable support (RCT_NEW_ARCH_ENABLED, etc.)
-   * - Codegen integration before pod install
-   * - Build folder cleanup to avoid path clashes
-   */
-  private async installPodsIfNeeded(): Promise<void> {
-    const podfilePath = path.join(this.sourceDir, "Podfile");
-
-    try {
-      // Check if Podfile exists
-      await execa("test", ["-f", podfilePath]);
-
-      const spinner = p.spinner();
-      spinner.start("Installing CocoaPods dependencies");
-
-      try {
-        await execa("pod", ["install"], { cwd: this.sourceDir });
-        spinner.stop("CocoaPods dependencies installed");
-      } catch (error) {
-        spinner.stop("CocoaPods installation failed");
-        throw new Error(`pod install failed: ${error}`);
-      }
-    } catch {
-      // Podfile doesn't exist, skip pod install
-      p.log.info("No Podfile found, skipping CocoaPods installation");
-    }
   }
 }
 
