@@ -1,6 +1,4 @@
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
-import { installPodsIfNeeded } from "../utils/cocoapods";
-import { discoverXcodeProject } from "../utils/projectInfo";
 import type { BuildResult } from "./buildOptions";
 
 /**
@@ -8,7 +6,7 @@ import type { BuildResult } from "./buildOptions";
  */
 export const buildXcodeProject = async (
   sourceDir: string,
-  { scheme: { installPods } }: { scheme: NativeBuildIosScheme }
+  { scheme: { installPods } }: { scheme: NativeBuildIosScheme },
 ): Promise<BuildResult> => {
   // TODO: Implement actual build functionality
   return {
@@ -19,7 +17,7 @@ export const buildXcodeProject = async (
     archivePath: "",
     exportPath: "",
   };
-  
+
   // const xcodeProject = await discoverXcodeProject(sourceDir);
   // // Install CocoaPods if requested
   // if (installPods) {

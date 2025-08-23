@@ -1,7 +1,6 @@
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import type { Device } from "../utils/deviceManager";
-import { isDeviceAvailable } from "../utils/deviceManager";
 
 export interface DeviceRunnerOptions {
   sourceDir?: string;
@@ -126,4 +125,3 @@ const extractBundleId = async (appPath: string) => {
     throw new Error(`Failed to extract bundle ID from ${appPath}: ${error}`);
   }
 };
-

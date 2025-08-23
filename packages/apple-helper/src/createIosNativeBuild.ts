@@ -25,7 +25,7 @@ export const createIosNativeBuild = async ({
   if (appFromArchive) {
     await fs.promises.copyFile(
       appFromArchive,
-      path.join(archivePath, path.basename(appFromArchive)),
+      path.join(path.dirname(archivePath), path.basename(appFromArchive)),
     );
     p.log.success(".app extracted from .xcarchive");
   }

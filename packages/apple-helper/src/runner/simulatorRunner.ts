@@ -2,7 +2,6 @@ import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import type { Device } from "../utils/deviceManager";
-import { isDeviceAvailable } from "../utils/deviceManager";
 import { readKeyFromPlist } from "../utils/plistManager";
 
 export interface SimulatorRunnerOptions {
