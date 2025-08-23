@@ -46,8 +46,10 @@ export const runNative = async (options: NativeRunOptions) => {
       },
     };
 
+    // @ts-ignore
     let androidDevice: AndroidDeviceData | undefined;
     // TODO: select ios device
+    // @ts-ignore
     const iosDevice: any | undefined = undefined;
 
     if (platform === "android") {
@@ -88,6 +90,7 @@ export const runNative = async (options: NativeRunOptions) => {
               builder,
             },
           );
+          // @ts-ignore
           await installAndLaunch({ buildArtifactPath });
           taskRef.buildResult.buildArtifactPath = buildArtifactPath;
           taskRef.buildResult.buildDirectory = buildDirectory;

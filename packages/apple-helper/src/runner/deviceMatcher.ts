@@ -1,24 +1,25 @@
-import type { Device, DeviceType } from "../utils/deviceManager";
+import type { DeviceType } from "../utils/destination";
+import type { Device } from "../utils/deviceManager";
 
 /**
  * Device matching options
  */
 export interface DeviceMatchOptions {
-  /** Prefer devices over simulators */
-  preferDevices?: boolean;
-  /** Prefer simulators over devices */
-  preferSimulators?: boolean;
-  /** Only match specific device type */
-  deviceType?: DeviceType;
   /** Only match booted devices/simulators */
   bootedOnly?: boolean;
+  /** Only match specific device type */
+  deviceType?: DeviceType;
+  /** Prefer devices to simulators */
+  preferDevices?: boolean;
+  /** Prefer simulators to devices */
+  preferSimulators?: boolean;
 }
 
 /**
  * Device matcher utility for finding devices by various criteria
  */
 export class DeviceMatcher {
-  private devices: Device[];
+  private readonly devices: Device[];
 
   /**
    * Creates a new DeviceMatcher instance
@@ -66,11 +67,9 @@ export class DeviceMatcher {
     if (deviceByUdid) return deviceByUdid;
 
     // Try partial name match (case insensitive)
-    const deviceByPartialName = filteredDevices.find((device) =>
+    return filteredDevices.find((device) =>
       device.name.toLowerCase().includes(deviceArg.toLowerCase()),
     );
-
-    return deviceByPartialName;
   }
 
   /**
