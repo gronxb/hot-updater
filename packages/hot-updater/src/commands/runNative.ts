@@ -79,7 +79,6 @@ export const runNative = async (options: NativeRunOptions) => {
               : () =>
                   createIosNativeBuild({
                     schemeConfig: config.nativeBuild.ios[scheme]!,
-                    outputPath,
                   });
 
           const { buildDirectory, buildArtifactPath } = await createNativeBuild(

@@ -66,14 +66,13 @@ const extractAppFromXcarchive = (archivePath: string) => {
     return null;
   }
 
-  try {
-    const files = fs.readdirSync(productsPath);
-    return files.find((file) => file.endsWith(".app"));
-  } catch (error) {
-    p.log.warn(`Failed to extract .app from xcarchive: ${error}`);
+  const files = fs.readdirSync(productsPath);
+  const appFile = files.find((file) => file.endsWith(".app"));
+  if (appFile) {
+    return path.join(productsPath, appFile);
   }
 
-  return null;
+  p.log.warn("Failed to extract .app from xcarchive");
 };
 
 // TODO: Add advanced build features
