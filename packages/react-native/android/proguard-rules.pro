@@ -9,7 +9,7 @@
 # Support both Java (mReactHostDelegate) and Kotlin (reactHostDelegate) field names
 -keepclassmembers class com.facebook.react.runtime.ReactHostImpl {
     private final ** mReactHostDelegate;
-    private val reactHostDelegate: **;
+    private final ** reactHostDelegate;
 }
 
 -keepclassmembers class * implements com.facebook.react.runtime.ReactHostDelegate {
