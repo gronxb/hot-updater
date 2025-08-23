@@ -16,10 +16,15 @@ export const createNativeBuild = async ({
   buildPlugin: BuildPlugin;
   builder: () => Promise<{ buildDirectory: string; buildArtifactPath: string }>;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+  // run prebuild hook
   await buildPlugin.nativeBuild?.prebuild?.({ platform });
+
   const { buildArtifactPath, buildDirectory } = await builder();
+
+  // run postbuild hook
   await buildPlugin.nativeBuild?.postbuild?.({ platform });
 
+  // copy artifacts to outputPath
   await fs.promises.mkdir(outputPath, { recursive: true });
   await fs.promises.rm(outputPath, {
     recursive: true,

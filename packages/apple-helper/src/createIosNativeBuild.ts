@@ -20,6 +20,16 @@ export const createIosNativeBuild = async ({
     sourceDir: iosProjectRoot,
   });
 
+  // Extract .app from xcarchive if present
+  const appFromArchive = extractAppFromXcarchive(archivePath);
+  if (appFromArchive) {
+    await fs.promises.copyFile(
+      appFromArchive,
+      path.join(archivePath, path.basename(appFromArchive)),
+    );
+    p.log.success(".app extracted from .xcarchive");
+  }
+
   if (schemeConfig.exportOptionsPlist) {
     p.log.info("Exporting archive to IPA...");
     const { exportPath } = await exportXcodeArchive({
@@ -47,6 +57,23 @@ export const createIosNativeBuild = async ({
     buildDirectory: path.dirname(archivePath),
     buildArtifactPath: archivePath,
   };
+};
+
+const extractAppFromXcarchive = (archivePath: string) => {
+  const productsPath = path.join(archivePath, "Products", "Applications");
+
+  if (!fs.existsSync(productsPath)) {
+    return null;
+  }
+
+  try {
+    const files = fs.readdirSync(productsPath);
+    return files.find((file) => file.endsWith(".app"));
+  } catch (error) {
+    p.log.warn(`Failed to extract .app from xcarchive: ${error}`);
+  }
+
+  return null;
 };
 
 // TODO: Add advanced build features
