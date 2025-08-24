@@ -1,4 +1,4 @@
-import type { AndroidDeviceData } from "../types";
+import type { AndroidDevice } from "../types";
 // highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
 import { Adb } from "./adb";
 import { Emulator } from "./emulator";
@@ -9,11 +9,11 @@ import { Emulator } from "./emulator";
 export async function listAndroidDevices() {
   const devices = await Adb.getDevices();
 
-  let allDevices: Array<AndroidDeviceData> = [];
+  let allDevices: Array<AndroidDevice> = [];
 
   for (const deviceId of devices) {
     if (deviceId.includes("emulator")) {
-      const emulatorData: AndroidDeviceData = {
+      const emulatorData: AndroidDevice = {
         deviceId,
         readableName: await Adb.getEmulatorName(deviceId),
         connected: true,
@@ -21,7 +21,7 @@ export async function listAndroidDevices() {
       };
       allDevices = [...allDevices, emulatorData];
     } else {
-      const phoneData: AndroidDeviceData = {
+      const phoneData: AndroidDevice = {
         deviceId,
         readableName: await Adb.getPhoneName(deviceId),
         type: "phone",
@@ -39,7 +39,7 @@ export async function listAndroidDevices() {
     if (allDevices.some((device) => device.readableName === emulatorName)) {
       continue;
     }
-    const emulatorData: AndroidDeviceData = {
+    const emulatorData: AndroidDevice = {
       deviceId: undefined,
       readableName: emulatorName,
       type: "emulator",

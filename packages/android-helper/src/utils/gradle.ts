@@ -78,9 +78,14 @@ Args       ${gradleArgs.join(" ")}
   }
 
   try {
-    await execa(getGradleWrapper(), gradleArgs, {
+    const process = execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectPath,
     });
+    for await (const line of process) {
+      if (line) {
+        p.log.info(line);
+      }
+    }
   } catch (e) {
     if (e instanceof ExecaError) {
       p.log.error(getCleanedErrorMessage(e));

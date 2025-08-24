@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
-import type { AndroidDevice } from "./types";
-import { listAndroidDevices } from "./utils/listAndroidDevices";
+import type { AndroidDevice } from "../types";
+import { listAndroidDevices } from "./listAndroidDevices";
 
 export const selectAndroidTargetDevice = async ({
   interactive,

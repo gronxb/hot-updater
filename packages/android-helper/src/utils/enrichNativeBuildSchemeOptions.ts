@@ -3,13 +3,13 @@ import type { AndroidDevice } from "../types";
 import { selectAndroidTargetDevice } from "./selectAndroidTargetDevice";
 
 /**
- * Validated android scheme filled nullish values with default values.
+ * Validated scheme filled nullish values with default values.
  */
 export type EnrichedNativeBuildAndroidScheme =
   Required<NativeBuildAndroidScheme> & {
     device?: AndroidDevice;
   };
-export const enrichAndroidNativeBuildSchemeOptions = async ({
+export const enrichNativeBuildSchemeOptions = async ({
   schemeConfig,
   selectDevice,
   deviceOption,

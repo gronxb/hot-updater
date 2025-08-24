@@ -1,11 +1,4 @@
-import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
-
-export type EnrichedNativeBuildAndroidScheme =
-  Required<NativeBuildAndroidScheme> & {
-    device?: AndroidDeviceData;
-  };
-
-export type AndroidDeviceData = {
+export type AndroidDevice = {
   deviceId: string | undefined;
   readableName: string;
   connected: boolean;
