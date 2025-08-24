@@ -29,6 +29,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.29.3
         version: 2.29.3
+      '@clack/prompts':
+        specifier: 'catalog:'
+        version: 0.10.0
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.8.26
         version: 0.8.26(@cloudflare/workers-types@4.20250507.0)(@vitest/runner@3.1.4)(@vitest/snapshot@3.1.4)(vitest@3.1.4(@types/debug@4.1.12)(@types/node@22.13.5)(jiti@2.4.2)(jsdom@25.0.1)(lightningcss@1.27.0)(msw@2.7.0(@types/node@22.13.5)(typescript@5.8.3))(sass-embedded@1.83.0)(terser@5.31.0)(yaml@2.6.1))
@@ -38,9 +41,18 @@ importers:
       '@swc/helpers':
         specifier: ^0.5.17
         version: 0.5.17
+      chokidar:
+        specifier: ^4.0.3
+        version: 4.0.3
+      execa:
+        specifier: 'catalog:'
+        version: 9.5.2
       nx:
         specifier: ^21.0.1
         version: 21.0.1(@swc-node/register@1.10.9(@swc/core@1.7.42(@swc/helpers@0.5.17))(@swc/types@0.1.13)(typescript@5.8.3))(@swc/core@1.7.42(@swc/helpers@0.5.17))
+      picocolors:
+        specifier: 'catalog:'
+        version: 1.1.1
       rimraf:
         specifier: ^5.0.7
         version: 5.0.7
