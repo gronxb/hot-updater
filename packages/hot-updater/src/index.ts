@@ -17,7 +17,7 @@ import { Command, Option } from "@commander-js/extra-typings";
 import { banner, log } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
-import { type NativeBuildOptions, nativeBuild } from "./commands/buildNative";
+import { type NativeBuildOptions, buildNative } from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -152,7 +152,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: NativeBuildOptions) => {
-      nativeBuild(options);
+      buildNative(options);
     });
 
   program

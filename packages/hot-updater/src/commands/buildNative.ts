@@ -16,7 +16,7 @@ export interface NativeBuildOptions {
   scheme?: string;
 }
 
-export const nativeBuild = async (options: NativeBuildOptions) => {
+export const buildNative = async (options: NativeBuildOptions) => {
   printBanner();
   const preparedConfig = await prepareNativeBuild(options);
   if (!preparedConfig) {

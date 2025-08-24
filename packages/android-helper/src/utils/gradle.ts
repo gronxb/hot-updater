@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as p from "@clack/prompts";
 import { ExecaError, execa } from "execa";
+import { GradleLogger } from "./GradleLogger";
 
 export type RunGradleArgs = {
   tasks: string[];
@@ -77,16 +78,24 @@ Args       ${gradleArgs.join(" ")}
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
   }
 
+  const logger = new GradleLogger();
+  logger.start(`${appModuleName}`);
+
   try {
     const process = execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectPath,
     });
+    
     for await (const line of process) {
       if (line) {
-        p.log.info(line);
+        logger.processLine(line);
       }
     }
+    
+    logger.stop();
   } catch (e) {
+    logger.stop("Build failed", false);
+    
     if (e instanceof ExecaError) {
       p.log.error(getCleanedErrorMessage(e));
     } else if (e instanceof Error) {
@@ -94,7 +103,7 @@ Args       ${gradleArgs.join(" ")}
     }
 
     throw new Error(
-      "Faild to build the app. See the error above for details from Gradle.",
+      "Failed to build the app. See the error above for details from Gradle.",
     );
   }
 

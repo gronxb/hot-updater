@@ -16,7 +16,7 @@ import {
   type XcodeProjectInfo,
   discoverXcodeProject,
 } from "../utils/projectInfo";
-import { XcodebuildLogger } from "./XcodebuildLogger";
+import { createXcodebuildLogger } from "./createXcodebuildLogger";
 
 const getTmpResultDir = () => path.join(os.tmpdir(), "archive");
 
@@ -56,7 +56,7 @@ Platform   ${platform}
 Command    xcodebuild ${archiveArgs.join(" ")}
 `);
 
-  const logger = new XcodebuildLogger();
+  const logger = createXcodebuildLogger();
   logger.start(`${xcodeProject.name} (Archive)`);
 
   try {

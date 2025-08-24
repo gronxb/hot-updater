@@ -8,7 +8,7 @@ import { enrichNativeBuildSchemeOptions } from "./utils/enrichNativeBuildSchemeO
 import { runGradle } from "./utils/gradle";
 
 export const createAndroidNativeBuild = async ({
-  schemeConfig,
+  schemeConfig: _schemeConfig,
 }: {
   schemeConfig: NativeBuildAndroidScheme;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
@@ -17,16 +17,16 @@ export const createAndroidNativeBuild = async ({
   const bundleId = generateMinBundleId();
 
   const enrichedSchemeConfig = await enrichNativeBuildSchemeOptions({
-    schemeConfig,
+    schemeConfig: _schemeConfig,
     selectDevice: false,
   });
 
   return runGradle({
     args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
     appModuleName: enrichedSchemeConfig.appModuleName,
-    tasks: schemeConfig.aab
-      ? [`bundle${schemeConfig.variant}`]
-      : [`assemble${schemeConfig.variant}`],
+    tasks: enrichedSchemeConfig.aab
+      ? [`bundle${enrichedSchemeConfig.variant}`]
+      : [`assemble${enrichedSchemeConfig.variant}`],
     androidProjectPath,
   });
 };
