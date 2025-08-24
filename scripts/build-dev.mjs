@@ -1,24 +1,25 @@
 #!/usr/bin/env node
-import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
+import * as p from "@clack/prompts";
 import chokidar from "chokidar";
+import { execa } from "execa";
 import picocolors from "picocolors";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 
 let buildProcess = null;
-let buildQueue = false;
 
 const runBuild = async () => {
+  // Cancel existing build if running
   if (buildProcess) {
-    buildQueue = true;
-    return;
+    buildProcess.kill();
+    p.log.info("Build cancelled - new build starting");
   }
 
-  console.log(picocolors.blue("🔨 Building..."));
-  
+  p.log.info(picocolors.cyan("🔨 Building packages..."));
+
   try {
     buildProcess = execa("pnpm", ["-w", "build"], {
       stdio: "inherit",
@@ -31,75 +32,89 @@ const runBuild = async () => {
 
     await buildProcess;
     buildProcess = null;
-    console.log(picocolors.green("✅ Build completed"));
-    
-    if (buildQueue) {
-      buildQueue = false;
-      setTimeout(runBuild, 100);
-    }
+    p.log.success("✅ Build completed successfully");
   } catch (error) {
     buildProcess = null;
-    console.log(picocolors.red(`❌ Build failed (${error.exitCode || 'unknown'})`));
-    
-    if (buildQueue) {
-      buildQueue = false;
-      setTimeout(runBuild, 100);
+
+    // Don't show error if build was cancelled
+    if (error.signal === "SIGTERM") {
+      return;
     }
+
+    p.log.error(`❌ Build failed (exit code: ${error.exitCode || "unknown"})`);
   }
 };
 
-const watchPaths = ["docs/**/*", "packages/**/*", "plugins/**/*"];
+const watchPaths = ["docs", "packages", "plugins"];
 
-const ignorePaths = [
-  "**/node_modules/**",
-  "**/dist/**",
-  "**/.git/**",
-  "**/*.log",
-  "**/.DS_Store",
-  "**/build/**",
-];
+p.intro("🚀 Hot Updater Build Watcher");
 
-console.log("👀 Watching for changes...");
+p.log.info(`👀 Watching: ${watchPaths.join(", ")}`);
+p.log.info("🚫 Ignoring: dist, node_modules, .git, logs, fingerprint.json");
 
 const watcher = chokidar.watch(watchPaths, {
-  ignored: ignorePaths,
+  ignoreInitial: true,
+  ignored: (filePath, stats) => {
+    if (!stats) return false;
+
+    // Ignore directories we don't want to watch
+    if (filePath.includes("node_modules")) return true;
+    if (filePath.includes("/dist/")) return true;
+    if (filePath.includes("/.git/")) return true;
+    if (filePath.includes("/build/")) return true;
+
+    // Only watch specific file extensions
+    if (stats.isFile()) {
+      const allowedExtensions = [".js", ".ts", ".tsx", ".json"];
+      const hasAllowedExtension = allowedExtensions.some((ext) =>
+        filePath.endsWith(ext),
+      );
+      if (!hasAllowedExtension) return true;
+
+      // Ignore specific files even with allowed extensions
+      if (filePath.endsWith(".js.map")) return true;
+      if (filePath.endsWith("fingerprint.json")) return true;
+    }
+
+    return false;
+  },
   persistent: true,
   cwd: rootDir,
 });
 
 watcher.on("ready", () => {
-  console.log("✨ Watcher ready - running initial build");
+  p.log.success("✨ File watcher ready");
   runBuild();
 });
 
 watcher.on("change", (filePath) => {
-  console.log(picocolors.yellow(`📝 ${filePath}`));
+  p.log.info(picocolors.blueBright(`📝 Changed: ${filePath}`));
   runBuild();
 });
 
 watcher.on("add", (filePath) => {
-  console.log(picocolors.green(`➕ ${filePath}`));
+  p.log.info(picocolors.greenBright(`➕ Added: ${filePath}`));
   runBuild();
 });
 
 watcher.on("unlink", (filePath) => {
-  console.log(picocolors.red(`➖ ${filePath}`));
+  p.log.info(picocolors.red(`➖ Removed: ${filePath}`));
   runBuild();
 });
 
 watcher.on("error", (error) => {
-  console.error("❌ Watcher error:", error);
+  p.log.error(`Watcher error: ${error.message}`);
 });
 
 process.on("SIGINT", () => {
-  console.log("\n🛑 Stopping file watcher...");
+  p.log.warn("\n🛑 Stopping file watcher...");
   if (buildProcess) {
     buildProcess.kill();
   }
   watcher.close().then(() => {
-    console.log("👋 File watcher stopped");
+    p.outro("👋 File watcher stopped");
     process.exit(0);
   });
 });
 
-console.log("Press Ctrl+C to stop");
+p.note("Press Ctrl+C to stop", "Instructions");
