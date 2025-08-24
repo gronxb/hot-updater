@@ -9,6 +9,11 @@ config({ path: ".env.hotupdater" });
 export default defineConfig({
   nativeBuild: {
     android: {
+      debugApk: {
+        packageName: "com.hotupdaterexample",
+        aab: false,
+        variant: "Debug",
+      },
       releaseApk: { packageName: "com.hotupdaterexample", aab: false },
       releaseAab: { packageName: "com.hotupdaterexample", aab: true },
     },

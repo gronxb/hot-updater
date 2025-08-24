@@ -1,5 +1,5 @@
 import {
-  enrichAndroidNativeBuildSchemeOptions,
+  enrichNativeBuildSchemeOptions,
   installAndLaunchAndroid,
 } from "@hot-updater/android-helper";
 import type { NativeBuildArgs, Platform } from "@hot-updater/plugin-core";

@@ -2,10 +2,7 @@ import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
-import {
-  createAndroidNativeBuild,
-  enrichAndroidNativeBuildSchemeOptions,
-} from "@hot-updater/android-helper";
+import { createAndroidNativeBuild } from "@hot-updater/android-helper";
 import { createIosNativeBuild } from "@hot-updater/apple-helper";
 import type { Platform } from "@hot-updater/core";
 import { getCwd } from "@hot-updater/plugin-core";
@@ -77,10 +74,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       platform === "android"
         ? () =>
             createAndroidNativeBuild({
-              schemeConfig: enrichAndroidNativeBuildSchemeOptions(
-                config.nativeBuild.android[scheme]!,
-                {},
-              ),
+              schemeConfig: config.nativeBuild.android[scheme]!,
             })
         : () =>
             createIosNativeBuild({
@@ -94,14 +88,14 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
       builder,
     });
 
-    // spinner.start(`📦 Build Complete (${buildPlugin.name})`);
-
     taskRef.buildResult.buildArtifactPath = buildArtifactPath;
     taskRef.buildResult.buildDirectory = buildDirectory;
 
     if (taskRef.buildResult.stdout) {
-      p.log.success(taskRef.buildResult.stdout);
+      p.log.info(taskRef.buildResult.stdout);
     }
+
+    p.log.success(`📦 Build Complete (${buildPlugin.name})`);
   } catch (e) {
     cleanup(e);
   }

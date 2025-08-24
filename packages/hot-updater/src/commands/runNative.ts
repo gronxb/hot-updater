@@ -3,12 +3,7 @@ import { installAndLaunch } from "@/utils/native/installAndLaunch";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
-import {
-  type AndroidDeviceData,
-  createAndroidNativeBuild,
-  enrichAndroidNativeBuildSchemeOptions,
-  selectAndroidTargetDevice,
-} from "@hot-updater/android-helper";
+import { createAndroidNativeBuild } from "@hot-updater/android-helper";
 import { createIosNativeBuild } from "@hot-updater/apple-helper";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
@@ -46,21 +41,7 @@ export const runNative = async (options: NativeRunOptions) => {
       },
     };
 
-    // @ts-ignore
-    let androidDevice: AndroidDeviceData | undefined;
-    // TODO: select ios device
-    // @ts-ignore
-    const iosDevice: any | undefined = undefined;
-
     if (platform === "android") {
-      androidDevice = (
-        await selectAndroidTargetDevice({
-          interactive: options.interactive,
-          deviceOption: options.device,
-        })
-      ).device;
-    }
-    if (platform === "ios") {
     }
 
     await p.tasks([
@@ -71,10 +52,7 @@ export const runNative = async (options: NativeRunOptions) => {
             platform === "android"
               ? () =>
                   createAndroidNativeBuild({
-                    schemeConfig: enrichAndroidNativeBuildSchemeOptions(
-                      config.nativeBuild.android[scheme]!,
-                      {},
-                    ),
+                    schemeConfig: config.nativeBuild.android[scheme]!,
                   })
               : () =>
                   createIosNativeBuild({

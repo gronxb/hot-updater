@@ -34,7 +34,7 @@ export const createNativeBuild = async ({
     recursive: true,
   });
 
-  p.log.success(
+  p.log.info(
     `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), outputPath))}.`,
   );
 
