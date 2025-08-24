@@ -59,6 +59,155 @@ export interface BuildPlugin {
   name: string;
 }
 
+/**
+ * Android native build gradle configuration.
+ */
+export interface NativeBuildAndroidScheme {
+  /**
+   * Android application module build variant.
+   *
+   * @example Debug, Release
+   * @default Release
+   */
+  variant?: string;
+
+  /**
+   * Artifact type.
+   *
+   * If `true`, the generated artifact type is `.aab`.
+   * If `flase`, the generated artifact type is `apk`.
+   *
+   * @default true
+   */
+  aab?: boolean;
+
+  /**
+   * Android application module name.
+   *
+   * @default app
+   */
+  appModuleName?: string;
+
+  /**
+   * Android application package name.
+   */
+  packageName: string;
+}
+
+export type IosBuildDestination =
+  | { id: string }
+  | { name: string }
+  | "ios-device"
+  | "ios-simulator";
+// TODO: support other apple platforms
+// | "mac"
+// | "mac-catalyst"
+// | "visionos-device"
+// | "visionos-simulator"
+// | "tvos"
+// | "tvos-simulator"
+// | "watchos"
+// | "watchos-simulator";
+
+/**
+ * Supported Apple platforms for building and deployment
+ */
+export const supportedIosPlatforms = {
+  ios: "ios",
+  // TODO: support other apple platforms
+  // macos: "macos",
+  // visionos: "visionos",
+  // tvos: "tvos",
+  // watchos: "watchos",
+} as const;
+
+/**
+ * Type representing a supported Apple platform
+ */
+export type ApplePlatform =
+  (typeof supportedIosPlatforms)[keyof typeof supportedIosPlatforms];
+
+/**
+ * iOS native build configuration.
+ */
+export interface NativeBuildIosScheme {
+  /**
+   * The apple platform for build & archive
+   *
+   * @default ios
+   */
+  platform?: ApplePlatform;
+
+  /**
+   * The Xcode scheme to build.
+   *
+   * @example "app"
+   */
+  scheme: string;
+
+  /**
+   * The build configuration to use (e.g., "Debug", "Release").
+   *
+   * @default "Release"
+   */
+  configuration?: "Debug" | "Release";
+
+  /**
+   * The destination for the build.
+   *
+   * @default "['generic/platform=iOS']"
+   */
+  destination?: IosBuildDestination[];
+
+  /**
+   * Path to a plist file that specifies options for exporting the archive.
+   *
+   * @example "exportOptions.plist"
+   */
+  exportOptionsPlist?: string;
+
+  /**
+   * Path to an .xcconfig file to include additional build settings.
+   */
+  xcconfig?: string;
+
+  /**
+   * Whether to create an archive for distribution.
+   * When true, creates .xcarchive instead of .app bundle.
+   *
+   * @default false
+   */
+  archive?: boolean;
+
+  /**
+   * Automatically install CocoaPods dependencies before building.
+   *
+   * @default true
+   */
+  installPods?: boolean;
+
+  /**
+   * Additional parameters passed to xcodebuild.
+   *
+   * @example ["-quiet", "-allowProvisioningUpdates"]
+   */
+  extraParams?: string[];
+
+  /**
+   * Additional parameters for exportArchive command.
+   *
+   * @example ["-allowProvisioningUpdates"]
+   */
+  exportExtraParams?: string[];
+
+  /**
+   * Enable verbose logging for build process.
+   *
+   * @default false
+   */
+  verbose?: boolean;
+}
+
 export interface PlatformConfig {
   /**
    * Android platform configuration.
@@ -89,34 +238,14 @@ export interface PlatformConfig {
 
 export interface NativeBuildArgs {
   /**
-   * Android specific configuration.
+   * Android specific configuration schemes.
    */
-  android?: {
-    /**
-     * Android application module build variant.
-     *
-     * @example Debug, Release
-     * @default Release
-     */
-    variant?: string;
+  android?: Record<string, NativeBuildAndroidScheme>;
 
-    /**
-     * Artifact type.
-     *
-     * If `true`, the generated artifact type is `.aab`.
-     * If `flase`, the generated artifact type is `apk`.
-     *
-     * @default true
-     */
-    aab?: boolean;
-
-    /**
-     * Android application module name.
-     *
-     * @default app
-     */
-    appModuleName?: string;
-  };
+  /**
+   * iOS specific configuration schemes.
+   */
+  ios?: Record<string, NativeBuildIosScheme>;
 }
 
 export interface StoragePlugin {
