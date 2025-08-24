@@ -35,13 +35,6 @@ const runBuild = async () => {
     p.log.success("✅ Build completed successfully");
   } catch (error) {
     buildProcess = null;
-
-    // Don't show error if build was cancelled
-    if (error.signal === "SIGTERM") {
-      return;
-    }
-
-    p.log.error(`❌ Build failed (exit code: ${error.exitCode || "unknown"})`);
   }
 };
 
@@ -60,6 +53,7 @@ const watcher = chokidar.watch(watchPaths, {
     // Ignore directories we don't want to watch
     if (filePath.includes("node_modules")) return true;
     if (filePath.includes("/dist/")) return true;
+    if (filePath.includes("/lib/")) return true;
     if (filePath.includes("/.git/")) return true;
     if (filePath.includes("/build/")) return true;
 
