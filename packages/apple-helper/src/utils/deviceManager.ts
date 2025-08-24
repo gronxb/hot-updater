@@ -8,7 +8,7 @@ import type { DeviceType } from "./destination";
 
 export type DeviceState = "Booted" | "Shutdown";
 
-export interface Device {
+export interface AppleDevice {
   name: string;
   udid: string;
   version: string;
@@ -63,7 +63,9 @@ interface DevicectlOutput {
  * @param devicectlOutput - Raw devicectl JSON output
  * @returns Array of parsed devices
  */
-const parseDevicectlList = (devicectlOutput: DevicectlOutput[]): Device[] => {
+const parseDevicectlList = (
+  devicectlOutput: DevicectlOutput[],
+): AppleDevice[] => {
   return devicectlOutput.map((device) => ({
     name: device.deviceProperties.name,
     udid: device.hardwareProperties.udid,
@@ -78,7 +80,7 @@ const parseDevicectlList = (devicectlOutput: DevicectlOutput[]): Device[] => {
 /**
  * Gets physical iOS devices using devicectl
  */
-const getDevices = async (): Promise<Device[]> => {
+const getDevices = async (): Promise<AppleDevice[]> => {
   const tmpPath = path.resolve(os.tmpdir(), "iosPhysicalDevices.json");
 
   try {
@@ -93,7 +95,7 @@ const getDevices = async (): Promise<Device[]> => {
 /**
  * Gets iOS simulators using simctl
  */
-const getSimulators = async (): Promise<Device[]> => {
+const getSimulators = async (): Promise<AppleDevice[]> => {
   try {
     const { stdout } = await execa("xcrun", [
       "simctl",
@@ -110,9 +112,9 @@ const getSimulators = async (): Promise<Device[]> => {
 /**
  * Parses simctl output to Device array
  */
-const parseSimctlOutput = (input: string): Device[] => {
+const parseSimctlOutput = (input: string): AppleDevice[] => {
   const lines = input.split("\\n");
-  const devices: Device[] = [];
+  const devices: AppleDevice[] = [];
   const currentOSIdx = 1;
   const deviceNameIdx = 1;
   const identifierIdx = 4;
@@ -180,7 +182,7 @@ const getPlatformFromOsVersion = (osVersion: string): ApplePlatform => {
  */
 export const listDevicesAndSimulators = async (
   platform: ApplePlatform,
-): Promise<Device[]> => {
+): Promise<AppleDevice[]> => {
   const spinner = p.spinner();
   spinner.start(`Discovering ${platform} devices and simulators`);
 
@@ -207,7 +209,7 @@ export const listDevicesAndSimulators = async (
  */
 export const listDevices = async (
   platform: ApplePlatform,
-): Promise<Device[]> => {
+): Promise<AppleDevice[]> => {
   const devices = await getDevices();
   return devices.filter((device) => device.platform === platform);
 };
@@ -217,7 +219,7 @@ export const listDevices = async (
  */
 export const listSimulators = async (
   platform: ApplePlatform,
-): Promise<Device[]> => {
+): Promise<AppleDevice[]> => {
   const simulators = await getSimulators();
   return simulators.filter((device) => device.platform === platform);
 };
@@ -227,7 +229,7 @@ export const listSimulators = async (
  */
 export const listAvailableDevices = async (
   platform: ApplePlatform,
-): Promise<Device[]> => {
+): Promise<AppleDevice[]> => {
   const allDevices = await listDevicesAndSimulators(platform);
   return allDevices.filter(
     (device) => device.state === "Booted" || device.state === "Shutdown",
@@ -239,7 +241,7 @@ export const listAvailableDevices = async (
  */
 export const listBootedDevices = async (
   platform: ApplePlatform,
-): Promise<Device[]> => {
+): Promise<AppleDevice[]> => {
   const allDevices = await listDevicesAndSimulators(platform);
   return allDevices.filter((device) => device.state === "Booted");
 };
@@ -250,7 +252,7 @@ export const listBootedDevices = async (
 export const selectDevice = async (
   platform: ApplePlatform,
   deviceType?: DeviceType,
-): Promise<Device | undefined> => {
+): Promise<AppleDevice | undefined> => {
   const devices = await listAvailableDevices(platform);
   const filtered = deviceType
     ? devices.filter((device) => device.type === deviceType)
@@ -282,7 +284,7 @@ export const selectDevice = async (
  * @param device - Device to check
  * @returns true if device is available (Booted or Shutdown)
  */
-export const isDeviceAvailable = (device: Device) => {
+export const isDeviceAvailable = (device: AppleDevice) => {
   return device.state === "Booted" || device.state === "Shutdown";
 };
 

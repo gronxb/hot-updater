@@ -3,7 +3,7 @@ export { createIosNativeBuild } from "./createIosNativeBuild";
 
 // Essential types
 export type {
-  Device,
+  AppleDevice,
   DeviceState,
 } from "./utils/deviceManager";
 export type { BuildResult } from "./builder/buildOptions";

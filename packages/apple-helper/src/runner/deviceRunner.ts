@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { execa } from "execa";
-import type { Device } from "../utils/deviceManager";
+import type { AppleDevice } from "../utils/deviceManager";
 
 export interface DeviceRunnerOptions {
   sourceDir?: string;
@@ -9,7 +9,7 @@ export interface DeviceRunnerOptions {
 }
 
 export const installAndLaunchOnDevice = async (
-  device: Device,
+  device: AppleDevice,
   appPath: string,
   options: DeviceRunnerOptions = {},
 ) => {
@@ -25,7 +25,7 @@ export const installAndLaunchOnDevice = async (
 };
 
 export const installOnDevice = async (
-  device: Device,
+  device: AppleDevice,
   appPath: string,
   options: DeviceRunnerOptions = {},
 ) => {
@@ -54,7 +54,7 @@ export const installOnDevice = async (
 };
 
 export const launchAppOnDevice = async (
-  device: Device,
+  device: AppleDevice,
   bundleId: string,
   options: DeviceRunnerOptions = {},
 ) => {
@@ -83,7 +83,7 @@ export const launchAppOnDevice = async (
 };
 
 export const uninstallFromDevice = async (
-  device: Device,
+  device: AppleDevice,
   bundleId: string,
   options: DeviceRunnerOptions = {},
 ) => {

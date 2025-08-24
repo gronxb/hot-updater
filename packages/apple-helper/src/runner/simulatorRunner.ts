@@ -1,7 +1,7 @@
 import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
-import type { Device } from "../utils/deviceManager";
+import type { AppleDevice } from "../utils/deviceManager";
 import { readKeyFromPlist } from "../utils/plistManager";
 
 export interface SimulatorRunnerOptions {
@@ -12,7 +12,7 @@ export interface SimulatorRunnerOptions {
 }
 
 export const installAndLaunchOnSimulator = async (
-  device: Device,
+  device: AppleDevice,
   appPath: string,
   options: SimulatorRunnerOptions = {},
 ) => {
@@ -31,7 +31,7 @@ export const installAndLaunchOnSimulator = async (
   }
 };
 
-export const launchSimulator = async (device: Device) => {
+export const launchSimulator = async (device: AppleDevice) => {
   if (device.type !== "simulator") {
     return;
   }
@@ -52,7 +52,7 @@ export const launchSimulator = async (device: Device) => {
 };
 
 export const installOnSimulator = async (
-  device: Device,
+  device: AppleDevice,
   appPath: string,
   options: SimulatorRunnerOptions = {},
 ) => {
@@ -71,7 +71,7 @@ export const installOnSimulator = async (
 };
 
 export const launchAppOnSimulator = async (
-  device: Device,
+  device: AppleDevice,
   bundleId: string,
   options: SimulatorRunnerOptions = {},
 ) => {
@@ -90,7 +90,7 @@ export const launchAppOnSimulator = async (
 };
 
 export const uninstallFromSimulator = async (
-  device: Device,
+  device: AppleDevice,
   bundleId: string,
   options: SimulatorRunnerOptions = {},
 ) => {
@@ -109,7 +109,7 @@ export const uninstallFromSimulator = async (
 };
 
 export const resetSimulator = async (
-  device: Device,
+  device: AppleDevice,
   options: SimulatorRunnerOptions = {},
 ) => {
   const spinner = p.spinner();
@@ -126,7 +126,7 @@ export const resetSimulator = async (
   }
 };
 
-const bootSimulator = async (device: Device) => {
+const bootSimulator = async (device: AppleDevice) => {
   try {
     await execa("xcrun", ["simctl", "boot", device.udid]);
   } catch (error) {

@@ -1,5 +1,5 @@
 import type { DeviceType } from "../utils/destination";
-import type { Device } from "../utils/deviceManager";
+import type { AppleDevice } from "../utils/deviceManager";
 
 export interface DeviceMatchOptions {
   bootedOnly?: boolean;
@@ -9,7 +9,7 @@ export interface DeviceMatchOptions {
 }
 
 export const findDevice = (
-  devices: Device[],
+  devices: AppleDevice[],
   deviceArg: string,
   options: DeviceMatchOptions = {},
 ) => {
@@ -40,7 +40,7 @@ export const findDevice = (
 };
 
 export const findDevices = (
-  devices: Device[],
+  devices: AppleDevice[],
   deviceArg: string,
   options: DeviceMatchOptions = {},
 ) => {
@@ -57,7 +57,7 @@ export const findDevices = (
 };
 
 export const getBestMatch = (
-  devices: Device[],
+  devices: AppleDevice[],
   deviceArg: string,
   options: DeviceMatchOptions = {},
 ) => {
@@ -84,11 +84,11 @@ export const getBestMatch = (
   return matches[0];
 };
 
-export const formatDeviceName = (device: Device) => {
+export const formatDeviceName = (device: AppleDevice) => {
   return device.version ? `${device.name} (${device.version})` : device.name;
 };
 
-const filterDevices = (devices: Device[], options: DeviceMatchOptions) => {
+const filterDevices = (devices: AppleDevice[], options: DeviceMatchOptions) => {
   let filtered = [...devices];
 
   if (options.deviceType) {
@@ -103,7 +103,7 @@ const filterDevices = (devices: Device[], options: DeviceMatchOptions) => {
 };
 
 export const matchingDevice = (
-  devices: Device[],
+  devices: AppleDevice[],
   deviceArg: string,
   options: DeviceMatchOptions = {},
 ) => {

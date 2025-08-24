@@ -103,14 +103,6 @@ export class XcodebuildLogger {
     );
   }
 
-  getProgress() {
-    return this.currentProgress;
-  }
-
-  isSuccessful() {
-    return this.buildSucceeded;
-  }
-
   reset() {
     this.currentProgress = 0;
     this.buildSucceeded = false;
