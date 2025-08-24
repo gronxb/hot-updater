@@ -35,11 +35,6 @@ const runBuild = async () => {
     p.log.success("✅ Build completed successfully");
   } catch (error) {
     buildProcess = null;
-
-    // Don't show error if build was cancelled
-    if (error.signal === "SIGTERM") {
-      return;
-    }
   }
 };
 
