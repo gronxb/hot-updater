@@ -1,6 +1,7 @@
 import { BuildLogger } from "@hot-updater/plugin-core";
 
 export const createGradleLogger = () =>
+  // FIXME: I don't know what should be written
   new BuildLogger({
     failurePatterns: ["BUILD FAILED"],
     importantLogPatterns: [
