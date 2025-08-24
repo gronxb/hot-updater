@@ -30,7 +30,9 @@
     "rimraf": "^5.0.7",
     "tsdown": "^0.14.1",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.4"
+    "vitest": "^3.1.4",
+    "picocolors": "catalog:",
+    "execa": "catalog:"
   },
   "packageManager": "pnpm@10.14.0"
 }

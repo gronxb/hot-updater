@@ -1,67 +1,65 @@
 #!/usr/bin/env node
-import { spawn } from 'child_process';
-import chokidar from 'chokidar';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { execa } from "execa";
+import path from "path";
+import { fileURLToPath } from "url";
+import chokidar from "chokidar";
+import picocolors from "picocolors";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, '..');
+const rootDir = path.resolve(__dirname, "..");
 
 let buildProcess = null;
 let buildQueue = false;
 
-const runBuild = () => {
+const runBuild = async () => {
   if (buildProcess) {
-    console.log('⏳ Build already running, queuing next build...');
     buildQueue = true;
     return;
   }
 
-  console.log('🔨 Starting build...');
-  buildProcess = spawn('pnpm', ['-w', 'build'], {
-    stdio: 'inherit',
-    cwd: rootDir,
-  });
+  console.log(picocolors.blue("🔨 Building..."));
+  
+  try {
+    buildProcess = execa("pnpm", ["-w", "build"], {
+      stdio: "inherit",
+      cwd: rootDir,
+      env: {
+        ...process.env,
+        NX_TUI: "false",
+      },
+    });
 
-  buildProcess.on('close', (code) => {
+    await buildProcess;
     buildProcess = null;
-    if (code === 0) {
-      console.log('✅ Build completed successfully');
-    } else {
-      console.log(`❌ Build failed with exit code ${code}`);
-    }
-
+    console.log(picocolors.green("✅ Build completed"));
+    
     if (buildQueue) {
       buildQueue = false;
-      console.log('🔄 Running queued build...');
       setTimeout(runBuild, 100);
     }
-  });
-
-  buildProcess.on('error', (error) => {
-    console.error('❌ Build process error:', error);
+  } catch (error) {
     buildProcess = null;
-  });
+    console.log(picocolors.red(`❌ Build failed (${error.exitCode || 'unknown'})`));
+    
+    if (buildQueue) {
+      buildQueue = false;
+      setTimeout(runBuild, 100);
+    }
+  }
 };
 
-const watchPaths = [
-  'docs/**/*',
-  'packages/**/*',
-  'plugins/**/*',
-];
+const watchPaths = ["docs/**/*", "packages/**/*", "plugins/**/*"];
 
 const ignorePaths = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/.git/**',
-  '**/*.log',
-  '**/.DS_Store',
-  '**/build/**',
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/.git/**",
+  "**/*.log",
+  "**/.DS_Store",
+  "**/build/**",
 ];
 
-console.log('👀 Starting file watcher...');
-console.log('📂 Watching paths:', watchPaths);
-console.log('🚫 Ignoring paths:', ignorePaths);
+console.log("👀 Watching for changes...");
 
 const watcher = chokidar.watch(watchPaths, {
   ignored: ignorePaths,
@@ -69,40 +67,39 @@ const watcher = chokidar.watch(watchPaths, {
   cwd: rootDir,
 });
 
-watcher.on('ready', () => {
-  console.log('✨ File watcher ready');
-  console.log('🔨 Running initial build...');
+watcher.on("ready", () => {
+  console.log("✨ Watcher ready - running initial build");
   runBuild();
 });
 
-watcher.on('change', (filePath) => {
-  console.log(`📝 File changed: ${filePath}`);
+watcher.on("change", (filePath) => {
+  console.log(picocolors.yellow(`📝 ${filePath}`));
   runBuild();
 });
 
-watcher.on('add', (filePath) => {
-  console.log(`➕ File added: ${filePath}`);
+watcher.on("add", (filePath) => {
+  console.log(picocolors.green(`➕ ${filePath}`));
   runBuild();
 });
 
-watcher.on('unlink', (filePath) => {
-  console.log(`➖ File removed: ${filePath}`);
+watcher.on("unlink", (filePath) => {
+  console.log(picocolors.red(`➖ ${filePath}`));
   runBuild();
 });
 
-watcher.on('error', (error) => {
-  console.error('❌ Watcher error:', error);
+watcher.on("error", (error) => {
+  console.error("❌ Watcher error:", error);
 });
 
-process.on('SIGINT', () => {
-  console.log('\n🛑 Stopping file watcher...');
+process.on("SIGINT", () => {
+  console.log("\n🛑 Stopping file watcher...");
   if (buildProcess) {
     buildProcess.kill();
   }
   watcher.close().then(() => {
-    console.log('👋 File watcher stopped');
+    console.log("👋 File watcher stopped");
     process.exit(0);
   });
 });
 
-console.log('Press Ctrl+C to stop');
+console.log("Press Ctrl+C to stop");
