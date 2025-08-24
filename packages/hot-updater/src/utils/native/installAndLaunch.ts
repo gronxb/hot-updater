@@ -1,14 +1,10 @@
-import {
-  enrichNativeBuildSchemeOptions,
-  installAndLaunchAndroid,
-} from "@hot-updater/android-helper";
 import type { NativeBuildArgs, Platform } from "@hot-updater/plugin-core";
 
 export async function installAndLaunch({
-  config,
+  // config,
   platform,
-  scheme,
-  buildArtifactPath,
+  // scheme,
+  // buildArtifactPath,
 }: {
   platform: Platform;
   scheme: string;
@@ -16,11 +12,10 @@ export async function installAndLaunch({
   buildArtifactPath: string;
 }) {
   if (platform === "android") {
-    const schemeConfig = enrichAndroidNativeBuildSchemeOptions(
-      config.android[scheme]!,
-      {},
-    );
-    await installAndLaunchAndroid({ schemeConfig, buildArtifactPath });
+    // await installAndLaunchAndroid({
+    //   schemeConfig: config.android[scheme]!,
+    //   buildArtifactPath,
+    // });
   } else if (platform === "ios") {
     // await installAndLaunchIOS({ schemeConfig: config.ios[scheme]! });
   }
