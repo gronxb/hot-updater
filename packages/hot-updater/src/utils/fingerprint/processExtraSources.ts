@@ -7,21 +7,16 @@ import fg from "fast-glob";
  * Processes extra source files and directories for fingerprinting.
  * @param extraSources Array of file paths, directory paths, or glob patterns
  * @param cwd Current working directory for resolving paths
- * @param ignorePaths Optional array of paths to ignore
  * @returns Array of processed sources with their contents or directory information
  */
-export function processExtraSources(
-  extraSources: string[],
-  cwd: string,
-  ignorePaths?: string[],
-) {
+export function processExtraSources(extraSources: string[], cwd: string) {
   const processedSources: Array<HashSourceDir | HashSourceContents> = [];
 
   for (const source of extraSources) {
     try {
       const matches = fg.globSync(source, {
         cwd,
-        ignore: ignorePaths ?? [],
+        ignore: [],
         absolute: true,
         onlyFiles: false,
       });
@@ -29,6 +24,7 @@ export function processExtraSources(
       for (const absolutePath of matches) {
         if (fs.existsSync(absolutePath)) {
           const stats = fs.statSync(absolutePath);
+
           if (stats.isDirectory()) {
             processedSources.push({
               type: "dir",

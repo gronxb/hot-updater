@@ -7,7 +7,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "785b4ec68f68d50277d945f19af08d2f5e33a494"
+        "hash": null
       },
       {
         "type": "dir",
@@ -15,7 +15,227 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "3de4f5789dd82605493460081b817533fc2bb9bd"
+        "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302",
+        "debugInfo": {
+          "path": "node_modules/@hot-updater/react-native",
+          "children": [
+            {
+              "path": "node_modules/@hot-updater/react-native/android",
+              "children": [
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/build.gradle",
+                  "hash": "1bcd0d0602aa17bbd1929d0526474a10dc8acdfe"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/proguard-rules.pro",
+                  "hash": "62e423236bd393540d4876356b997ab01325fab6"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/react-native-helpers.gradle",
+                  "hash": "fa2094af6b8dd1d41aec725e16baee598b5ccf48"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/src",
+                  "children": [
+                    {
+                      "path": "node_modules/@hot-updater/react-native/android/src/main",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/main/java",
+                          "children": [
+                            {
+                              "path": "node_modules/@hot-updater/react-native/android/src/main/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/BundleFileStorageService.kt",
+                                      "hash": "19f375413a5397e62aab5998ad94ca68ed19cf19"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/FileManagerService.kt",
+                                      "hash": "69860dcb3f4ce5e6dafb06f27dddffe1fa62a515"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdater.kt",
+                                      "hash": "5c1b6b66f8c985c578f77a726bc84660f70c3c4f"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterFactory.kt",
+                                      "hash": "a0795085543e8a8f4ac39c81f3a088feaf8104ad"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterImpl.kt",
+                                      "hash": "ac2db7ebcdadcfd58a459c4ea41b8f98e89660ca"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HttpDownloadService.kt",
+                                      "hash": "e8976edd0158c5c37f8e7f92c999f03e9583fe8c"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ReactIntegrationManagerBase.kt",
+                                      "hash": "edc166023f86025e71584993c7f5b38654fbce41"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/VersionedPreferencesService.kt",
+                                      "hash": "8b5b0ea79da48638f801babfc2152fa49b8dce2b"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ZipFileUnzipService.kt",
+                                      "hash": "5b45a2f1429666550afcea9f3831bdbf70d286a0"
+                                    }
+                                  ],
+                                  "hash": "d807b042c986582a889ec71872f980d147bc3691"
+                                }
+                              ],
+                              "hash": "8af4b359fa44648876246583510ddb791227736e"
+                            }
+                          ],
+                          "hash": "4f34c70d744898ddaeccf8fe739583d6018dcf4f"
+                        }
+                      ],
+                      "hash": "5fce12e2bd520b5e17226efd33e1658313c2deba"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/android/src/newarch",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterModule.kt",
+                          "hash": "f5e46ef5f252a9a1cc54b731aef343fb51a2cd99"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterPackage.kt",
+                          "hash": "362b4fb88b53fdfd20cde8bb5a171c5e045f25fe"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterSpec.kt",
+                          "hash": "e7c1f793e0c67767bdac1bc8ef25e49525f31f70"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/ReactIntegrationManager.kt",
+                          "hash": "4321f2ca0cc1d911dceddb810067a943a0c20c34"
+                        }
+                      ],
+                      "hash": "ae7d694a77faccc785daf0d3f7bf9c9d85928046"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/android/src/oldarch",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterModule.kt",
+                          "hash": "e80ac3548cc72fc99cbb475a98c8723fb3c2da02"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterPackage.kt",
+                          "hash": "f219ec620b72d4c642c81b3b8833d82f8689abba"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterSpec.kt",
+                          "hash": "eb5d97f03d4c99665f97b9742250d4a93ce13e9c"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/ReactIntegrationManager.kt",
+                          "hash": "223dbe01597f14f8ce760ef3962e336af4dd37a9"
+                        }
+                      ],
+                      "hash": "1c1363c598bdc3e9f9c8d48b8a88fe4f0e76034d"
+                    }
+                  ],
+                  "hash": "ed5bee2f8e35017745f1aca14e0f13715cac5785"
+                }
+              ],
+              "hash": "3eaacd4c10b76bbc6f00c7fe9eaf023b3bfbd6d4"
+            },
+            {
+              "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
+              "hash": "55efc88739f506382be3986a964d4d4da8e9c6c9"
+            },
+            {
+              "path": "node_modules/@hot-updater/react-native/ios",
+              "children": [
+                {
+                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater",
+                  "children": [
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/BundleFileStorageService.swift",
+                          "hash": "ddc7d630f5f11fd1ab2b2e3fd610b5454a53d00b"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/FileManagerService.swift",
+                          "hash": "ccc36d93d408c4324b4ba6a60259ed7a3a1b07f5"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdater-Bridging-Header.h",
+                          "hash": "3250415134e6b9ef79bdf41a4ee947674c31e155"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdater.mm",
+                          "hash": "6955da4e018f3e76f0432d81e728b0de8c71fffb"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdaterFactory.swift",
+                          "hash": "e8067bae98618e56ef1db68fd9463b07468f6096"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdaterImpl.swift",
+                          "hash": "7980d5433ee53710653536b1b9eae1a2ddc42db9"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/NotificationExtension.swift",
+                          "hash": "47d7a97efcbe1b0c1bfe0bcb25143516a6b54d6c"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/SSZipArchiveUnzipService.swift",
+                          "hash": "bdc93a9de82021ae4f8a6dfe13b74e0fc3531cf0"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/URLSessionDownloadService.swift",
+                          "hash": "96384268518ed3640573dd3d055e9c212384680f"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/VersionedPreferencesService.swift",
+                          "hash": "11ede903c1b4e7d8caff8df2785e770c2d0451bb"
+                        }
+                      ],
+                      "hash": "b85a6dc3b6c82bab7fc6c40d68ed0b16e5d1c9e7"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
+                      "hash": "e0a68f6c46b83a1dd62381b739dc7cf5f49a8a38"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Public",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Public/HotUpdater.h",
+                          "hash": "17f565e3f5954879bfc018f1da69d38c6cdcc59c"
+                        }
+                      ],
+                      "hash": "4d04b281d365dee4706a25a68869356eccb77547"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/TempTest.swift",
+                          "hash": "adeb43fe8e8c510cc48a779ce0038d83b8969a7d"
+                        }
+                      ],
+                      "hash": "70e11214e1f054d0a80d669f5d6e1c34b22d8f05"
+                    }
+                  ],
+                  "hash": "a494c3b93e1b0df15ba72396cf30dbf656f82b93"
+                }
+              ],
+              "hash": "957a29d9127f771aed8d176c2ad7a4d6d6a8f579"
+            }
+          ],
+          "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302"
+        }
       },
       {
         "type": "dir",
@@ -23,7 +243,431 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "11fba8438dbd63513825020dd0062b2fa55bb83e"
+        "hash": "e031acae2aadfce18f9e0b4c5e91a8f6dfc75c09",
+        "debugInfo": {
+          "path": "node_modules/react-native-safe-area-context",
+          "children": [
+            {
+              "path": "node_modules/react-native-safe-area-context/android",
+              "children": [
+                {
+                  "path": "node_modules/react-native-safe-area-context/android/build.gradle",
+                  "hash": "c65eb04b6cb7da5a7924d049f46882e14e2a3c5e"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/android/spotless.gradle",
+                  "hash": "f13a50472ffc1035496bb7b5c8e679871effcfd1"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/android/src",
+                  "children": [
+                    {
+                      "path": "node_modules/react-native-safe-area-context/android/src/fabric",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/fabric/java",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave/safeareacontext",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave/safeareacontext/InsetsChangeEvent.kt",
+                                          "hash": "48fd7195b8bf66b5e3127ffb15587a7d70296ed5"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave/safeareacontext/UIManagerHelperCompat.kt",
+                                          "hash": "b85d8d2ea8081d631e16723e9e4bb45c5689142d"
+                                        }
+                                      ],
+                                      "hash": "9b41d364f8edc53674546c18073bb2ab64289976"
+                                    }
+                                  ],
+                                  "hash": "6cd9728e36073bfa06b33ef181bafca5700852f5"
+                                }
+                              ],
+                              "hash": "288681ad0ee1ae249a9a9217da18bef774283fc0"
+                            }
+                          ],
+                          "hash": "82605d2f609d77366693992ffc62af6ef9082a73"
+                        }
+                      ],
+                      "hash": "5b7fcb54aaa3cd0fb6833ef456344e9c0193a082"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/android/src/main",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/main/java",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/main/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/EdgeInsets.kt",
+                                          "hash": "5fc66421c3a6e82540f0331ca4fecd7bc1a3b108"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/Rect.kt",
+                                          "hash": "dc9fa6e50eada0c99f4623653232ad1f50f852b5"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaContextModule.kt",
+                                          "hash": "17be668ba79a61bced2c1f32390f516db41ba9f6"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaContextPackage.kt",
+                                          "hash": "5d9b552385f21d59327f005438a5b18218aa789c"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaProvider.kt",
+                                          "hash": "a88ae72b3d0da521c03d01c3d960d2d7d8c7b329"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaProviderManager.kt",
+                                          "hash": "9e35a8c8ed3cfa5fafc2296e503d7809aae71c45"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaUtils.kt",
+                                          "hash": "fc7ea75445ad983b032eb6b495d8200129ac40d4"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaView.kt",
+                                          "hash": "ff1054b7a5293e161b2740b958834034b1a65533"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewEdges.kt",
+                                          "hash": "779e686535519d4524cf942212930d5302da0dca"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewLocalData.kt",
+                                          "hash": "8af7ef906b5ce567273d54895df9ef456f9b340a"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewManager.kt",
+                                          "hash": "75e0135378f507204d645f119bd1df557715b498"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewMode.kt",
+                                          "hash": "d38badb9d70625b12f5c7ba3baa3d027b0603f6a"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewShadowNode.kt",
+                                          "hash": "4fdfe024ed4cb221837afa9008047f030968835e"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SerializationUtils.kt",
+                                          "hash": "073b88ec5f57125d9091abe303c455124777cee5"
+                                        }
+                                      ],
+                                      "hash": "97b0b14a89d38c1377406b3671d4ca8518558fcd"
+                                    }
+                                  ],
+                                  "hash": "7c0a97caa3653154872cc7ea08e30ba6e1408ff7"
+                                }
+                              ],
+                              "hash": "748d3a71b0626dfe87d9da353f36592627b6c7c1"
+                            }
+                          ],
+                          "hash": "47928e93a85a9f434fe5ad61180d4c1b0a629bb3"
+                        },
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/main/jni",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt",
+                              "hash": "d1c4318590b63c4c369a460deba1e36c4d0061b8"
+                            },
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/main/jni/safeareacontext.h",
+                              "hash": "e174e9109b93fcdf05b8000a216aa15dca2b7d8f"
+                            }
+                          ],
+                          "hash": "75301d1c17281162eb24d71f21a16ca53bcba541"
+                        }
+                      ],
+                      "hash": "60580f1a5b43012c5620e5a571e303b050c97a9c"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/android/src/paper",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers",
+                                          "children": [
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaProviderManagerDelegate.java",
+                                              "hash": "51e67cfa1d8fd00a0fd2a1d8895428a8ccdec75b"
+                                            },
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaProviderManagerInterface.java",
+                                              "hash": "f85a6c18d0f3f62f62fdb3db8d134d492f1ac41b"
+                                            },
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaViewManagerDelegate.java",
+                                              "hash": "6c99c4afd68cba2852c82b9ff76292a2c98b405a"
+                                            },
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaViewManagerInterface.java",
+                                              "hash": "2b83fbb53292c4c1bcbfefa1beee8955e5be6dd1"
+                                            }
+                                          ],
+                                          "hash": "c524c055cb7df0187fdf57e7e7349b86f8a847cb"
+                                        }
+                                      ],
+                                      "hash": "7e71d5b6c258f6ba39d0600a1d3678267c68cdf3"
+                                    }
+                                  ],
+                                  "hash": "05d863a76e7f374eaed6b46b9fc69f990822ab2e"
+                                },
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext/InsetsChangeEvent.kt",
+                                          "hash": "5f3c5312d2790be1061f174b0e241d1e7640bd67"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext/NativeSafeAreaContextSpec.java",
+                                          "hash": "6af9152a164ec13dbc0214319e0f974aa7dc2d1c"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext/UIManagerHelperCompat.kt",
+                                          "hash": "fe27843e12cb93fc796d63154c021b9aae71d11b"
+                                        }
+                                      ],
+                                      "hash": "2d71927095225b46409ccf5ed0e8df54bbbf4b3d"
+                                    }
+                                  ],
+                                  "hash": "2e235a3c68e2a62214073a2c6b8ae72b417dbeca"
+                                }
+                              ],
+                              "hash": "2ce8df28719ef2bc666b9a6f32114373561d8949"
+                            }
+                          ],
+                          "hash": "dc6f5f26bbc4d6a487e277dcc6896ba7ee81f994"
+                        }
+                      ],
+                      "hash": "cc8e28811027625fce15e328444f68aeb317c7ce"
+                    }
+                  ],
+                  "hash": "6fc5333f4d8b70cfceb282b8eedc8255ab194089"
+                }
+              ],
+              "hash": "31c4c77b37508fa58d1d9ce6651b816e3bad4eb5"
+            },
+            {
+              "path": "node_modules/react-native-safe-area-context/common",
+              "children": [
+                {
+                  "path": "node_modules/react-native-safe-area-context/common/cpp",
+                  "children": [
+                    {
+                      "path": "node_modules/react-native-safe-area-context/common/cpp/react",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewComponentDescriptor.h",
+                                      "hash": "515155faa66bbc6eb85540f0998cfbbfb89ed97c"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp",
+                                      "hash": "5ebc3af7485bb4432acde133d8af753878b88d88"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h",
+                                      "hash": "3ac2c3d44c3c7b8fa9e059291dcd761573ea23cf"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewState.cpp",
+                                      "hash": "b3f3b72847c89402cc2e21fb97bbdafb39c9eb58"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewState.h",
+                                      "hash": "52d4f23ce8fe9271d9142b0b04d19828469769f1"
+                                    }
+                                  ],
+                                  "hash": "377907208afb1b8e6fa9a8e20ba7d64dad76bf74"
+                                }
+                              ],
+                              "hash": "ccc703dc25762777291565cb260b0a55e5517d87"
+                            }
+                          ],
+                          "hash": "a1752442766fefa5d30f7575c82f7cc6f7dc55aa"
+                        }
+                      ],
+                      "hash": "684de46ea7e0f8ce6c1d8de32707a9f4f841f140"
+                    }
+                  ],
+                  "hash": "7aecf6f656062812532b693c569361592e8b53ce"
+                }
+              ],
+              "hash": "188c79c7598679dc27bf5fedcf11a07c8c87e63f"
+            },
+            {
+              "path": "node_modules/react-native-safe-area-context/ios",
+              "children": [
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/Fabric",
+                  "children": [
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaProviderComponentView.h",
+                      "hash": "e8760f5b55c625b5aa8fac6290830206c6df7923"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaProviderComponentView.mm",
+                      "hash": "4b36d632b45790a650c187a7cbeb308122ffb2a6"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaViewComponentView.h",
+                      "hash": "5b5dd8ae9b3506e1431f297c7c82dff667a4af9d"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaViewComponentView.mm",
+                      "hash": "3d9d93a33d7442252382d209a3487e120b6d5deb"
+                    }
+                  ],
+                  "hash": "608fa6fe49d190edf692928541cba2b1e41007cb"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCOnInsetsChangeEvent.h",
+                  "hash": "3764a963848a28cff14c6b4b192885c056743a21"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCOnInsetsChangeEvent.m",
+                  "hash": "0d1cd342812a4a17782f3117be6a2841bc44ede6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaContext.h",
+                  "hash": "82676ac63bd000261d26419f1a44fb752dff64db"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaContext.mm",
+                  "hash": "2c95bd762b47f1d9814cd30006afc0c43d914de6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProvider.h",
+                  "hash": "d35914b7796aeeaea1f131cda58ffb42714fffbb"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProvider.m",
+                  "hash": "f39079a1dee7f529db7f68fa7e2ecfcfbac982a4"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProviderManager.h",
+                  "hash": "2a915af28a51b974bf2a166cf874d8dd08c83cd6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProviderManager.m",
+                  "hash": "4d2b5f6829b54626087e172eb1d05fd46c3e24c8"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaShadowView.h",
+                  "hash": "694b0a7bd38e64461aa5aa37d40c42dd5fa9dcf0"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaShadowView.m",
+                  "hash": "0f01fb1cffe1c2814abdae21b03009909763b1e1"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaUtils.h",
+                  "hash": "2f109b2dd0f43650ece0cb91d1f0918a6ec84b86"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaUtils.m",
+                  "hash": "7e94836fff57a7172ace31c32c4cb75ba39d3132"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaView.h",
+                  "hash": "35c24e47b00156b6ed7eda5b59b84e114cd46702"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaView.m",
+                  "hash": "79bf18365cf1fb56f14704946c005e1cfea8b1f6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdgeMode.h",
+                  "hash": "687137b2e5822053c79e057696dc880d87f68b1e"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdgeMode.m",
+                  "hash": "0006e9e1e11297a06be677440b2596a6c902ac9e"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdges.h",
+                  "hash": "64c7d7fb6e4ce4772243c3a3667e03047b2ae238"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdges.m",
+                  "hash": "93968c436e1ee5b91fedc0d548876a6e4a004796"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewLocalData.h",
+                  "hash": "4b35d60522a569daaf57d315cc086cf0ff26ca00"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewLocalData.m",
+                  "hash": "1b9d8df39513ce79841835b6b9eb2fc60876a84b"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewManager.h",
+                  "hash": "2398015a60993535adbcee089d7800279d369817"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewManager.m",
+                  "hash": "b26449077c8f0d1b2d5a4f20ad9a65bf2c3922c9"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewMode.h",
+                  "hash": "2cf999fb76a84cba519aca21ab87c6fbfa60fc2c"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewMode.m",
+                  "hash": "f0534b50c6299da7ee011d5b7369ab0720bb04e6"
+                }
+              ],
+              "hash": "c044599e861f888edddd4b0c3254b14742aec27e"
+            },
+            {
+              "path": "node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec",
+              "hash": "fef1ca82be2c4f1107c5e284728b8c0327d6743e"
+            }
+          ],
+          "hash": "e031acae2aadfce18f9e0b4c5e91a8f6dfc75c09"
+        }
       },
       {
         "type": "contents",
@@ -32,16 +676,10 @@
         "reasons": [
           "expoAutolinkingIos"
         ],
-        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-      },
-      {
-        "type": "contents",
-        "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.20.1\"}",
-        "reasons": [
-          "expoConfig"
-        ],
-        "hash": "dab588d33426169d273b7251c5523ca69592261c"
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f",
+        "debugInfo": {
+          "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
+        }
       },
       {
         "type": "contents",
@@ -50,19 +688,25 @@
         "reasons": [
           "package:react-native"
         ],
-        "hash": "cbec4d5b6c0b5eea0f0d3a5064fdf2b0418e5750"
+        "hash": "cbec4d5b6c0b5eea0f0d3a5064fdf2b0418e5750",
+        "debugInfo": {
+          "hash": "cbec4d5b6c0b5eea0f0d3a5064fdf2b0418e5750"
+        }
       },
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.1\",\"configurations\":[],\"scriptPhases\":[]}}},\"react-native-safe-area-context\":{\"root\":\"node_modules/react-native-safe-area-context\",\"name\":\"react-native-safe-area-context\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec\",\"version\":\"5.6.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.6\",\"configurations\":[],\"scriptPhases\":[]}}},\"react-native-safe-area-context\":{\"root\":\"node_modules/react-native-safe-area-context\",\"name\":\"react-native-safe-area-context\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec\",\"version\":\"5.6.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "7f81e9184e9dbdd31f46ce117875a8fafc138f15"
+        "hash": "aa8cbf2228a7c0426bed4845987704af98d3a1d7",
+        "debugInfo": {
+          "hash": "aa8cbf2228a7c0426bed4845987704af98d3a1d7"
+        }
       }
     ],
-    "hash": "b8af4c144ab46aa518f43233480a92e17df38086"
+    "hash": "612d74d5f5dc0ed0b3fe85f91ca52898ca089de9"
   },
   "android": {
     "sources": [
@@ -72,7 +716,73 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "0db4086086f8dd87ff656497330649d396d31a03"
+        "hash": "84f889bfb89a0a733d06d5c73a5da98cc8e59ba9",
+        "debugInfo": {
+          "path": "android",
+          "children": [
+            {
+              "path": "android/app",
+              "children": [
+                {
+                  "path": "android/app/build.gradle",
+                  "hash": "b9c47018a8c61a51a06851ef8df03b9f9d27bc06"
+                },
+                {
+                  "path": "android/app/proguard-rules.pro",
+                  "hash": "eed46b399dc223622453e910293a06eb159d87e0"
+                },
+                {
+                  "path": "android/app/src",
+                  "children": [
+                    {
+                      "path": "android/app/src/main",
+                      "children": [
+                        {
+                          "path": "android/app/src/main/java",
+                          "children": [
+                            {
+                              "path": "android/app/src/main/java/com",
+                              "children": [
+                                {
+                                  "path": "android/app/src/main/java/com/hotupdaterexample",
+                                  "children": [
+                                    {
+                                      "path": "android/app/src/main/java/com/hotupdaterexample/MainActivity.kt",
+                                      "hash": "6a9b4c3bc6d47954726bb7b16f860de344a48fbf"
+                                    },
+                                    {
+                                      "path": "android/app/src/main/java/com/hotupdaterexample/MainApplication.kt",
+                                      "hash": "48dc10d57fbe1bfd720022e27f46c817cff7b629"
+                                    }
+                                  ],
+                                  "hash": "7e600e013bc7e64022e01b36329a9d384b0000bd"
+                                }
+                              ],
+                              "hash": "66698b34cd4d15f876722c1d7510de039b885a0a"
+                            }
+                          ],
+                          "hash": "cfcd8a231a7bd12392a01bb1bfdd7f6165639e7f"
+                        }
+                      ],
+                      "hash": "af0b83656cc76a7e6fa7a3abd5b2653c843c0a48"
+                    }
+                  ],
+                  "hash": "8b61c2ec11bdfb0811b435e60d5a1cddf2a436d2"
+                }
+              ],
+              "hash": "9a9cd2ec1d66265a0394de56bd186e002c24c0b9"
+            },
+            {
+              "path": "android/build.gradle",
+              "hash": "a1c850f3f4245bb04f26180089ddbfba56f3fbe6"
+            },
+            {
+              "path": "android/settings.gradle",
+              "hash": "167754763aba7868fb01737abedc7f98b423ae07"
+            }
+          ],
+          "hash": "84f889bfb89a0a733d06d5c73a5da98cc8e59ba9"
+        }
       },
       {
         "type": "dir",
@@ -80,7 +790,227 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "3de4f5789dd82605493460081b817533fc2bb9bd"
+        "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302",
+        "debugInfo": {
+          "path": "node_modules/@hot-updater/react-native",
+          "children": [
+            {
+              "path": "node_modules/@hot-updater/react-native/android",
+              "children": [
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/build.gradle",
+                  "hash": "1bcd0d0602aa17bbd1929d0526474a10dc8acdfe"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/proguard-rules.pro",
+                  "hash": "62e423236bd393540d4876356b997ab01325fab6"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/react-native-helpers.gradle",
+                  "hash": "fa2094af6b8dd1d41aec725e16baee598b5ccf48"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/src",
+                  "children": [
+                    {
+                      "path": "node_modules/@hot-updater/react-native/android/src/main",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/main/java",
+                          "children": [
+                            {
+                              "path": "node_modules/@hot-updater/react-native/android/src/main/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/BundleFileStorageService.kt",
+                                      "hash": "19f375413a5397e62aab5998ad94ca68ed19cf19"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/FileManagerService.kt",
+                                      "hash": "69860dcb3f4ce5e6dafb06f27dddffe1fa62a515"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdater.kt",
+                                      "hash": "5c1b6b66f8c985c578f77a726bc84660f70c3c4f"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterFactory.kt",
+                                      "hash": "a0795085543e8a8f4ac39c81f3a088feaf8104ad"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterImpl.kt",
+                                      "hash": "ac2db7ebcdadcfd58a459c4ea41b8f98e89660ca"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HttpDownloadService.kt",
+                                      "hash": "e8976edd0158c5c37f8e7f92c999f03e9583fe8c"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ReactIntegrationManagerBase.kt",
+                                      "hash": "edc166023f86025e71584993c7f5b38654fbce41"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/VersionedPreferencesService.kt",
+                                      "hash": "8b5b0ea79da48638f801babfc2152fa49b8dce2b"
+                                    },
+                                    {
+                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ZipFileUnzipService.kt",
+                                      "hash": "5b45a2f1429666550afcea9f3831bdbf70d286a0"
+                                    }
+                                  ],
+                                  "hash": "d807b042c986582a889ec71872f980d147bc3691"
+                                }
+                              ],
+                              "hash": "8af4b359fa44648876246583510ddb791227736e"
+                            }
+                          ],
+                          "hash": "4f34c70d744898ddaeccf8fe739583d6018dcf4f"
+                        }
+                      ],
+                      "hash": "5fce12e2bd520b5e17226efd33e1658313c2deba"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/android/src/newarch",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterModule.kt",
+                          "hash": "f5e46ef5f252a9a1cc54b731aef343fb51a2cd99"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterPackage.kt",
+                          "hash": "362b4fb88b53fdfd20cde8bb5a171c5e045f25fe"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterSpec.kt",
+                          "hash": "e7c1f793e0c67767bdac1bc8ef25e49525f31f70"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/ReactIntegrationManager.kt",
+                          "hash": "4321f2ca0cc1d911dceddb810067a943a0c20c34"
+                        }
+                      ],
+                      "hash": "ae7d694a77faccc785daf0d3f7bf9c9d85928046"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/android/src/oldarch",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterModule.kt",
+                          "hash": "e80ac3548cc72fc99cbb475a98c8723fb3c2da02"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterPackage.kt",
+                          "hash": "f219ec620b72d4c642c81b3b8833d82f8689abba"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterSpec.kt",
+                          "hash": "eb5d97f03d4c99665f97b9742250d4a93ce13e9c"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/ReactIntegrationManager.kt",
+                          "hash": "223dbe01597f14f8ce760ef3962e336af4dd37a9"
+                        }
+                      ],
+                      "hash": "1c1363c598bdc3e9f9c8d48b8a88fe4f0e76034d"
+                    }
+                  ],
+                  "hash": "ed5bee2f8e35017745f1aca14e0f13715cac5785"
+                }
+              ],
+              "hash": "3eaacd4c10b76bbc6f00c7fe9eaf023b3bfbd6d4"
+            },
+            {
+              "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
+              "hash": "55efc88739f506382be3986a964d4d4da8e9c6c9"
+            },
+            {
+              "path": "node_modules/@hot-updater/react-native/ios",
+              "children": [
+                {
+                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater",
+                  "children": [
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/BundleFileStorageService.swift",
+                          "hash": "ddc7d630f5f11fd1ab2b2e3fd610b5454a53d00b"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/FileManagerService.swift",
+                          "hash": "ccc36d93d408c4324b4ba6a60259ed7a3a1b07f5"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdater-Bridging-Header.h",
+                          "hash": "3250415134e6b9ef79bdf41a4ee947674c31e155"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdater.mm",
+                          "hash": "6955da4e018f3e76f0432d81e728b0de8c71fffb"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdaterFactory.swift",
+                          "hash": "e8067bae98618e56ef1db68fd9463b07468f6096"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/HotUpdaterImpl.swift",
+                          "hash": "7980d5433ee53710653536b1b9eae1a2ddc42db9"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/NotificationExtension.swift",
+                          "hash": "47d7a97efcbe1b0c1bfe0bcb25143516a6b54d6c"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/SSZipArchiveUnzipService.swift",
+                          "hash": "bdc93a9de82021ae4f8a6dfe13b74e0fc3531cf0"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/URLSessionDownloadService.swift",
+                          "hash": "96384268518ed3640573dd3d055e9c212384680f"
+                        },
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/VersionedPreferencesService.swift",
+                          "hash": "11ede903c1b4e7d8caff8df2785e770c2d0451bb"
+                        }
+                      ],
+                      "hash": "b85a6dc3b6c82bab7fc6c40d68ed0b16e5d1c9e7"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
+                      "hash": "e0a68f6c46b83a1dd62381b739dc7cf5f49a8a38"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Public",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Public/HotUpdater.h",
+                          "hash": "17f565e3f5954879bfc018f1da69d38c6cdcc59c"
+                        }
+                      ],
+                      "hash": "4d04b281d365dee4706a25a68869356eccb77547"
+                    },
+                    {
+                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test",
+                      "children": [
+                        {
+                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/TempTest.swift",
+                          "hash": "adeb43fe8e8c510cc48a779ce0038d83b8969a7d"
+                        }
+                      ],
+                      "hash": "70e11214e1f054d0a80d669f5d6e1c34b22d8f05"
+                    }
+                  ],
+                  "hash": "a494c3b93e1b0df15ba72396cf30dbf656f82b93"
+                }
+              ],
+              "hash": "957a29d9127f771aed8d176c2ad7a4d6d6a8f579"
+            }
+          ],
+          "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302"
+        }
       },
       {
         "type": "dir",
@@ -88,7 +1018,431 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "11fba8438dbd63513825020dd0062b2fa55bb83e"
+        "hash": "e031acae2aadfce18f9e0b4c5e91a8f6dfc75c09",
+        "debugInfo": {
+          "path": "node_modules/react-native-safe-area-context",
+          "children": [
+            {
+              "path": "node_modules/react-native-safe-area-context/android",
+              "children": [
+                {
+                  "path": "node_modules/react-native-safe-area-context/android/build.gradle",
+                  "hash": "c65eb04b6cb7da5a7924d049f46882e14e2a3c5e"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/android/spotless.gradle",
+                  "hash": "f13a50472ffc1035496bb7b5c8e679871effcfd1"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/android/src",
+                  "children": [
+                    {
+                      "path": "node_modules/react-native-safe-area-context/android/src/fabric",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/fabric/java",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave/safeareacontext",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave/safeareacontext/InsetsChangeEvent.kt",
+                                          "hash": "48fd7195b8bf66b5e3127ffb15587a7d70296ed5"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/fabric/java/com/th3rdwave/safeareacontext/UIManagerHelperCompat.kt",
+                                          "hash": "b85d8d2ea8081d631e16723e9e4bb45c5689142d"
+                                        }
+                                      ],
+                                      "hash": "9b41d364f8edc53674546c18073bb2ab64289976"
+                                    }
+                                  ],
+                                  "hash": "6cd9728e36073bfa06b33ef181bafca5700852f5"
+                                }
+                              ],
+                              "hash": "288681ad0ee1ae249a9a9217da18bef774283fc0"
+                            }
+                          ],
+                          "hash": "82605d2f609d77366693992ffc62af6ef9082a73"
+                        }
+                      ],
+                      "hash": "5b7fcb54aaa3cd0fb6833ef456344e9c0193a082"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/android/src/main",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/main/java",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/main/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/EdgeInsets.kt",
+                                          "hash": "5fc66421c3a6e82540f0331ca4fecd7bc1a3b108"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/Rect.kt",
+                                          "hash": "dc9fa6e50eada0c99f4623653232ad1f50f852b5"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaContextModule.kt",
+                                          "hash": "17be668ba79a61bced2c1f32390f516db41ba9f6"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaContextPackage.kt",
+                                          "hash": "5d9b552385f21d59327f005438a5b18218aa789c"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaProvider.kt",
+                                          "hash": "a88ae72b3d0da521c03d01c3d960d2d7d8c7b329"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaProviderManager.kt",
+                                          "hash": "9e35a8c8ed3cfa5fafc2296e503d7809aae71c45"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaUtils.kt",
+                                          "hash": "fc7ea75445ad983b032eb6b495d8200129ac40d4"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaView.kt",
+                                          "hash": "ff1054b7a5293e161b2740b958834034b1a65533"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewEdges.kt",
+                                          "hash": "779e686535519d4524cf942212930d5302da0dca"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewLocalData.kt",
+                                          "hash": "8af7ef906b5ce567273d54895df9ef456f9b340a"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewManager.kt",
+                                          "hash": "75e0135378f507204d645f119bd1df557715b498"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewMode.kt",
+                                          "hash": "d38badb9d70625b12f5c7ba3baa3d027b0603f6a"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewShadowNode.kt",
+                                          "hash": "4fdfe024ed4cb221837afa9008047f030968835e"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SerializationUtils.kt",
+                                          "hash": "073b88ec5f57125d9091abe303c455124777cee5"
+                                        }
+                                      ],
+                                      "hash": "97b0b14a89d38c1377406b3671d4ca8518558fcd"
+                                    }
+                                  ],
+                                  "hash": "7c0a97caa3653154872cc7ea08e30ba6e1408ff7"
+                                }
+                              ],
+                              "hash": "748d3a71b0626dfe87d9da353f36592627b6c7c1"
+                            }
+                          ],
+                          "hash": "47928e93a85a9f434fe5ad61180d4c1b0a629bb3"
+                        },
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/main/jni",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt",
+                              "hash": "d1c4318590b63c4c369a460deba1e36c4d0061b8"
+                            },
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/main/jni/safeareacontext.h",
+                              "hash": "e174e9109b93fcdf05b8000a216aa15dca2b7d8f"
+                            }
+                          ],
+                          "hash": "75301d1c17281162eb24d71f21a16ca53bcba541"
+                        }
+                      ],
+                      "hash": "60580f1a5b43012c5620e5a571e303b050c97a9c"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/android/src/paper",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers",
+                                          "children": [
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaProviderManagerDelegate.java",
+                                              "hash": "51e67cfa1d8fd00a0fd2a1d8895428a8ccdec75b"
+                                            },
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaProviderManagerInterface.java",
+                                              "hash": "f85a6c18d0f3f62f62fdb3db8d134d492f1ac41b"
+                                            },
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaViewManagerDelegate.java",
+                                              "hash": "6c99c4afd68cba2852c82b9ff76292a2c98b405a"
+                                            },
+                                            {
+                                              "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/facebook/react/viewmanagers/RNCSafeAreaViewManagerInterface.java",
+                                              "hash": "2b83fbb53292c4c1bcbfefa1beee8955e5be6dd1"
+                                            }
+                                          ],
+                                          "hash": "c524c055cb7df0187fdf57e7e7349b86f8a847cb"
+                                        }
+                                      ],
+                                      "hash": "7e71d5b6c258f6ba39d0600a1d3678267c68cdf3"
+                                    }
+                                  ],
+                                  "hash": "05d863a76e7f374eaed6b46b9fc69f990822ab2e"
+                                },
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext",
+                                      "children": [
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext/InsetsChangeEvent.kt",
+                                          "hash": "5f3c5312d2790be1061f174b0e241d1e7640bd67"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext/NativeSafeAreaContextSpec.java",
+                                          "hash": "6af9152a164ec13dbc0214319e0f974aa7dc2d1c"
+                                        },
+                                        {
+                                          "path": "node_modules/react-native-safe-area-context/android/src/paper/java/com/th3rdwave/safeareacontext/UIManagerHelperCompat.kt",
+                                          "hash": "fe27843e12cb93fc796d63154c021b9aae71d11b"
+                                        }
+                                      ],
+                                      "hash": "2d71927095225b46409ccf5ed0e8df54bbbf4b3d"
+                                    }
+                                  ],
+                                  "hash": "2e235a3c68e2a62214073a2c6b8ae72b417dbeca"
+                                }
+                              ],
+                              "hash": "2ce8df28719ef2bc666b9a6f32114373561d8949"
+                            }
+                          ],
+                          "hash": "dc6f5f26bbc4d6a487e277dcc6896ba7ee81f994"
+                        }
+                      ],
+                      "hash": "cc8e28811027625fce15e328444f68aeb317c7ce"
+                    }
+                  ],
+                  "hash": "6fc5333f4d8b70cfceb282b8eedc8255ab194089"
+                }
+              ],
+              "hash": "31c4c77b37508fa58d1d9ce6651b816e3bad4eb5"
+            },
+            {
+              "path": "node_modules/react-native-safe-area-context/common",
+              "children": [
+                {
+                  "path": "node_modules/react-native-safe-area-context/common/cpp",
+                  "children": [
+                    {
+                      "path": "node_modules/react-native-safe-area-context/common/cpp/react",
+                      "children": [
+                        {
+                          "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer",
+                          "children": [
+                            {
+                              "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components",
+                              "children": [
+                                {
+                                  "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext",
+                                  "children": [
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewComponentDescriptor.h",
+                                      "hash": "515155faa66bbc6eb85540f0998cfbbfb89ed97c"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp",
+                                      "hash": "5ebc3af7485bb4432acde133d8af753878b88d88"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h",
+                                      "hash": "3ac2c3d44c3c7b8fa9e059291dcd761573ea23cf"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewState.cpp",
+                                      "hash": "b3f3b72847c89402cc2e21fb97bbdafb39c9eb58"
+                                    },
+                                    {
+                                      "path": "node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewState.h",
+                                      "hash": "52d4f23ce8fe9271d9142b0b04d19828469769f1"
+                                    }
+                                  ],
+                                  "hash": "377907208afb1b8e6fa9a8e20ba7d64dad76bf74"
+                                }
+                              ],
+                              "hash": "ccc703dc25762777291565cb260b0a55e5517d87"
+                            }
+                          ],
+                          "hash": "a1752442766fefa5d30f7575c82f7cc6f7dc55aa"
+                        }
+                      ],
+                      "hash": "684de46ea7e0f8ce6c1d8de32707a9f4f841f140"
+                    }
+                  ],
+                  "hash": "7aecf6f656062812532b693c569361592e8b53ce"
+                }
+              ],
+              "hash": "188c79c7598679dc27bf5fedcf11a07c8c87e63f"
+            },
+            {
+              "path": "node_modules/react-native-safe-area-context/ios",
+              "children": [
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/Fabric",
+                  "children": [
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaProviderComponentView.h",
+                      "hash": "e8760f5b55c625b5aa8fac6290830206c6df7923"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaProviderComponentView.mm",
+                      "hash": "4b36d632b45790a650c187a7cbeb308122ffb2a6"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaViewComponentView.h",
+                      "hash": "5b5dd8ae9b3506e1431f297c7c82dff667a4af9d"
+                    },
+                    {
+                      "path": "node_modules/react-native-safe-area-context/ios/Fabric/RNCSafeAreaViewComponentView.mm",
+                      "hash": "3d9d93a33d7442252382d209a3487e120b6d5deb"
+                    }
+                  ],
+                  "hash": "608fa6fe49d190edf692928541cba2b1e41007cb"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCOnInsetsChangeEvent.h",
+                  "hash": "3764a963848a28cff14c6b4b192885c056743a21"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCOnInsetsChangeEvent.m",
+                  "hash": "0d1cd342812a4a17782f3117be6a2841bc44ede6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaContext.h",
+                  "hash": "82676ac63bd000261d26419f1a44fb752dff64db"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaContext.mm",
+                  "hash": "2c95bd762b47f1d9814cd30006afc0c43d914de6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProvider.h",
+                  "hash": "d35914b7796aeeaea1f131cda58ffb42714fffbb"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProvider.m",
+                  "hash": "f39079a1dee7f529db7f68fa7e2ecfcfbac982a4"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProviderManager.h",
+                  "hash": "2a915af28a51b974bf2a166cf874d8dd08c83cd6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaProviderManager.m",
+                  "hash": "4d2b5f6829b54626087e172eb1d05fd46c3e24c8"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaShadowView.h",
+                  "hash": "694b0a7bd38e64461aa5aa37d40c42dd5fa9dcf0"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaShadowView.m",
+                  "hash": "0f01fb1cffe1c2814abdae21b03009909763b1e1"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaUtils.h",
+                  "hash": "2f109b2dd0f43650ece0cb91d1f0918a6ec84b86"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaUtils.m",
+                  "hash": "7e94836fff57a7172ace31c32c4cb75ba39d3132"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaView.h",
+                  "hash": "35c24e47b00156b6ed7eda5b59b84e114cd46702"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaView.m",
+                  "hash": "79bf18365cf1fb56f14704946c005e1cfea8b1f6"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdgeMode.h",
+                  "hash": "687137b2e5822053c79e057696dc880d87f68b1e"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdgeMode.m",
+                  "hash": "0006e9e1e11297a06be677440b2596a6c902ac9e"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdges.h",
+                  "hash": "64c7d7fb6e4ce4772243c3a3667e03047b2ae238"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewEdges.m",
+                  "hash": "93968c436e1ee5b91fedc0d548876a6e4a004796"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewLocalData.h",
+                  "hash": "4b35d60522a569daaf57d315cc086cf0ff26ca00"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewLocalData.m",
+                  "hash": "1b9d8df39513ce79841835b6b9eb2fc60876a84b"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewManager.h",
+                  "hash": "2398015a60993535adbcee089d7800279d369817"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewManager.m",
+                  "hash": "b26449077c8f0d1b2d5a4f20ad9a65bf2c3922c9"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewMode.h",
+                  "hash": "2cf999fb76a84cba519aca21ab87c6fbfa60fc2c"
+                },
+                {
+                  "path": "node_modules/react-native-safe-area-context/ios/RNCSafeAreaViewMode.m",
+                  "hash": "f0534b50c6299da7ee011d5b7369ab0720bb04e6"
+                }
+              ],
+              "hash": "c044599e861f888edddd4b0c3254b14742aec27e"
+            },
+            {
+              "path": "node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec",
+              "hash": "fef1ca82be2c4f1107c5e284728b8c0327d6743e"
+            }
+          ],
+          "hash": "e031acae2aadfce18f9e0b4c5e91a8f6dfc75c09"
+        }
       },
       {
         "type": "contents",
@@ -97,16 +1451,10 @@
         "reasons": [
           "expoAutolinkingAndroid"
         ],
-        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-      },
-      {
-        "type": "contents",
-        "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.20.1\"}",
-        "reasons": [
-          "expoConfig"
-        ],
-        "hash": "dab588d33426169d273b7251c5523ca69592261c"
+        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f",
+        "debugInfo": {
+          "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
+        }
       },
       {
         "type": "contents",
@@ -115,7 +1463,10 @@
         "reasons": [
           "package:react-native"
         ],
-        "hash": "cbec4d5b6c0b5eea0f0d3a5064fdf2b0418e5750"
+        "hash": "cbec4d5b6c0b5eea0f0d3a5064fdf2b0418e5750",
+        "debugInfo": {
+          "hash": "cbec4d5b6c0b5eea0f0d3a5064fdf2b0418e5750"
+        }
       },
       {
         "type": "contents",
@@ -124,9 +1475,12 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "2281fd4bf2f5df3d74410475b29e306b1d40b883"
+        "hash": "2281fd4bf2f5df3d74410475b29e306b1d40b883",
+        "debugInfo": {
+          "hash": "2281fd4bf2f5df3d74410475b29e306b1d40b883"
+        }
       }
     ],
-    "hash": "fae0704f8afda3b649b25a4f6d5cd5c879f8f0fd"
+    "hash": "e551cf117fc1ea85209bc88377af1ffa3997a9fc"
   }
 }

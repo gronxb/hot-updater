@@ -13,94 +13,169 @@ describe("nativeFingerprint", () => {
       example: "rn-77",
     });
     rootDir = mockedProject.rootDir;
+
+    // Create MainActivity.kt file for testing
+    const mainActivityPath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "java",
+      "com",
+      "hotupdaterexample",
+    );
+    await fs.promises.mkdir(mainActivityPath, { recursive: true });
+
+    const mainActivityContent = `package com.hotupdaterexample
+
+import com.facebook.react.ReactActivity
+import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
+import com.facebook.react.defaults.DefaultReactActivityDelegate
+
+class MainActivity : ReactActivity() {
+  override fun getMainComponentName(): String = "HotUpdaterExample"
+
+  override fun createReactActivityDelegate(): ReactActivityDelegate =
+    DefaultReactActivityDelegate(
+      this,
+      mainComponentName,
+      DefaultNewArchitectureEntryPoint.getFabricEnabled()
+    )
+}`;
+
+    fs.writeFileSync(
+      path.join(mainActivityPath, "MainActivity.kt"),
+      mainActivityContent,
+      { encoding: "utf-8" },
+    );
   }, 5000);
 
-  const changePackageJsonVersion = () => {
+  const changeTestKtFile = () => {
     // change content
-    const packageJsonFilePath = path.join(rootDir, "package.json");
-    const packageJsonFileContent = JSON.parse(
-      fs.readFileSync(packageJsonFilePath, { encoding: "utf-8" }),
+    const testKtFilePath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "java",
+      "com",
+      "hotupdaterexample",
+      "MainActivity.kt",
     );
-    packageJsonFileContent.version = `${packageJsonFileContent.version}-alpha01`;
-    fs.writeFileSync(
-      packageJsonFilePath,
-      JSON.stringify(packageJsonFileContent),
+    const testKtFileContent = fs.readFileSync(testKtFilePath, {
+      encoding: "utf-8",
+    });
+    const modifiedContent = testKtFileContent.replace(
+      "class MainActivity",
+      "class MainActivityModified",
     );
+    fs.writeFileSync(testKtFilePath, modifiedContent);
   };
 
-  const changePackageJsonMiscellaneous = () => {
+  const changeTestKtFileMiscellaneous = () => {
     // change content
-    const packageJsonFilePath = path.join(rootDir, "package.json");
-    const packageJsonFileContent = JSON.parse(
-      fs.readFileSync(packageJsonFilePath, { encoding: "utf-8" }),
+    const testKtFilePath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "java",
+      "com",
+      "hotupdaterexample",
+      "MainActivity.kt",
     );
-    packageJsonFileContent.scripts.hello = "echo 'hello'";
-    fs.writeFileSync(
-      packageJsonFilePath,
-      JSON.stringify(packageJsonFileContent),
-    );
+    const testKtFileContent = fs.readFileSync(testKtFilePath, {
+      encoding: "utf-8",
+    });
+    const modifiedContent = `${testKtFileContent}\n// Added comment`;
+    fs.writeFileSync(testKtFilePath, modifiedContent);
   };
 
-  it("fingerprint changed if package.json modified", async () => {
+  it("fingerprint changed if MainActivity.kt modified", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: [],
     });
 
     // change content
-    changePackageJsonVersion();
+    changeTestKtFile();
 
     const fingerprintAfter = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: [],
     });
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
-  it("fingerprint chnaged though package.json is ignored because of expo config hash", async () => {
+  it("fingerprint not changed if MainActivity.kt is not modified", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: ["package.json"],
     });
 
-    changePackageJsonVersion();
+    // Don't change content, just read the file
+    const testKtFilePath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "java",
+      "com",
+      "hotupdaterexample",
+      "MainActivity.kt",
+    );
+    fs.readFileSync(testKtFilePath, { encoding: "utf-8" });
 
     const fingerprintAfter = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: ["package.json"],
-    });
-
-    expect(fingerprintBefore).not.toEqual(fingerprintAfter);
-  });
-
-  it("fingerprint not changed if package.json is ignored and miscellaneous changed", async () => {
-    const fingerprintBefore = await nativeFingerprint(rootDir, {
-      platform: "ios",
-      extraSources: [],
-      ignorePaths: ["package.json"],
-    });
-
-    changePackageJsonMiscellaneous();
-
-    const fingerprintAfter = await nativeFingerprint(rootDir, {
-      platform: "ios",
-      extraSources: [],
-      ignorePaths: ["package.json"],
     });
 
     expect(fingerprintBefore).toEqual(fingerprintAfter);
   });
 
+  it("fingerprint changed if MainActivity.kt has significant changes", async () => {
+    const fingerprintBefore = await nativeFingerprint(rootDir, {
+      platform: "android",
+      extraSources: [],
+    });
+
+    changeTestKtFile();
+
+    const fingerprintAfter = await nativeFingerprint(rootDir, {
+      platform: "android",
+      extraSources: [],
+    });
+
+    expect(fingerprintBefore).not.toEqual(fingerprintAfter);
+  });
+
+  it("fingerprint changed if MainActivity.kt has minor changes", async () => {
+    const fingerprintBefore = await nativeFingerprint(rootDir, {
+      platform: "android",
+      extraSources: [],
+    });
+
+    changeTestKtFileMiscellaneous();
+
+    const fingerprintAfter = await nativeFingerprint(rootDir, {
+      platform: "android",
+      extraSources: [],
+    });
+
+    expect(fingerprintBefore).not.toEqual(fingerprintAfter);
+  });
+
   it("fingerprint changed if extraSources changed", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "ios",
-      extraSources: [".tmp"],
-      ignorePaths: [],
+      extraSources: [],
     });
 
     fs.writeFileSync(path.resolve(rootDir, ".tmp"), "test", {
@@ -110,7 +185,6 @@ describe("nativeFingerprint", () => {
     const fingerprintAfter = await nativeFingerprint(rootDir, {
       platform: "ios",
       extraSources: [".tmp"],
-      ignorePaths: [],
     });
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
