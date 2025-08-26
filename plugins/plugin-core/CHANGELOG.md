@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.20.6
+
+### Patch Changes
+
+- 6a905d8: fix(aws): widen invalidation scope when targetAppVersion covers a broader range
+  - @hot-updater/core@0.20.6
+
 ## 0.20.5
 
 ### Patch Changes
