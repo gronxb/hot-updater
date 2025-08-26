@@ -1,5 +1,14 @@
 # @hot-updater/postgres
 
+## 0.20.7
+
+### Patch Changes
+
+- a92992c: chore(tsdown): failOnWarn true
+- Updated dependencies [a92992c]
+  - @hot-updater/plugin-core@0.20.7
+  - @hot-updater/core@0.20.7
+
 ## 0.20.6
 
 ### Patch Changes

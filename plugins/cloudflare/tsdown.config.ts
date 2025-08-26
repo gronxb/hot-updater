@@ -5,6 +5,7 @@ export default defineConfig([
     entry: ["src/index.ts", "src/utils/index.ts"],
     format: ["esm", "cjs"],
     dts: true,
+    failOnWarn: true,
   },
   {
     entry: ["iac/index.ts"],
@@ -12,5 +13,6 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/cloudflare"],
+    failOnWarn: true,
   },
 ]);
