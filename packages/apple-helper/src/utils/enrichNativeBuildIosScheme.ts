@@ -1,5 +1,4 @@
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
-import type { AppleDevice } from "./deviceManager";
 
 /**
  * Validated scheme filled nullish values with default values.
@@ -15,12 +14,9 @@ export type EnrichedNativeBuildIosScheme = NativeBuildIosScheme &
       | "verbose"
       | "destination"
     >
-  > & {
-    device: AppleDevice;
-  };
-export const enrichNativeBuildSchemeOptions = async (
+  >;
+export const enrichNativeBuildIosScheme = async (
   scheme: NativeBuildIosScheme,
-  { device }: { device: AppleDevice },
 ): Promise<EnrichedNativeBuildIosScheme> => {
   return {
     platform: "ios",
@@ -30,6 +26,5 @@ export const enrichNativeBuildSchemeOptions = async (
     verbose: false,
     destination: [],
     ...scheme,
-    device,
   };
 };

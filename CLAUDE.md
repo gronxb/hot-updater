@@ -24,8 +24,8 @@ The system is built around three plugin types:
 
 ### Reference Projects
 When working on helper packages, reference these external projects:
-- **Android Helper**: Reference `/Users/mj/Desktop/rnef/packages/platform-android` (can be referred to as "rnef" or "rock" in prompts)
-- **Apple Helper**: Reference `/Users/mj/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
+- **Android Helper**: Reference `~/Desktop/rnef/packages/platform-android` (can be referred to as "rnef" or "rock" in prompts)
+- **Apple Helper**: Reference `~/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
 
 ### Configuration
 Projects use `hot-updater.config.ts` files that define build, storage, and database plugins using the `defineConfig()` function.

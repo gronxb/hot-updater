@@ -5,17 +5,20 @@ import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
+import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 
 export const createIosNativeBuild = async ({
-  schemeConfig,
+  schemeConfig: _schemeConfig,
 }: {
   schemeConfig: NativeBuildIosScheme;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
+  const schemeConfig = await enrichNativeBuildIosScheme(_schemeConfig);
+
   const { archivePath } = await archiveXcodeProject({
-    platform: schemeConfig.platform ?? "ios",
+    platform: schemeConfig.platform,
     schemeConfig,
     sourceDir: iosProjectRoot,
   });

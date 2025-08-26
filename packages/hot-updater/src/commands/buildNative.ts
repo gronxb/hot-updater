@@ -2,7 +2,7 @@ import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
-import { createAndroidNativeBuild } from "@hot-updater/android-helper";
+import { buildAndroid } from "@hot-updater/android-helper";
 import { createIosNativeBuild } from "@hot-updater/apple-helper";
 import type { Platform } from "@hot-updater/core";
 import { getCwd } from "@hot-updater/plugin-core";
@@ -73,7 +73,7 @@ export const buildNative = async (options: NativeBuildOptions) => {
     const builder =
       platform === "android"
         ? () =>
-            createAndroidNativeBuild({
+            buildAndroid({
               schemeConfig: config.nativeBuild.android[scheme]!,
             })
         : () =>

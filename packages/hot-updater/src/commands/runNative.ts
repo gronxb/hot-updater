@@ -1,10 +1,7 @@
-import { createNativeBuild } from "@/utils/native/createNativeBuild";
-import { installAndLaunch } from "@/utils/native/installAndLaunch";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
-import { createAndroidNativeBuild } from "@hot-updater/android-helper";
-import { createIosNativeBuild } from "@hot-updater/apple-helper";
+import { runAndroid } from "@hot-updater/android-helper";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import type { NativeBuildOptions } from "./buildNative";
@@ -20,11 +17,21 @@ export const runNative = async (options: NativeRunOptions) => {
     p.log.error("preparing native build failed");
     return;
   }
+  const { config, outputPath, platform, scheme } = preparedConfig;
 
-  const { outputPath, platform, config, scheme } = preparedConfig;
   const cwd = getCwd();
-
   const buildPlugin = await config.build({ cwd });
+
+  const cleanup = (e: unknown): never => {
+    if (e instanceof ExecaError) {
+      console.error(e);
+    } else if (e instanceof Error) {
+      p.log.error(e.stack ?? e.message);
+    } else {
+      console.error(e);
+    }
+    process.exit(1);
+  };
 
   try {
     const taskRef: {
@@ -33,68 +40,36 @@ export const runNative = async (options: NativeRunOptions) => {
         buildDirectory: string | null;
         buildArtifactPath: string | null;
       };
+      storageUri: string | null;
     } = {
       buildResult: {
         buildArtifactPath: null,
         stdout: null,
         buildDirectory: null,
       },
+      storageUri: null,
     };
 
+    p.log.info(`📦 Building Native (${buildPlugin.name}) Started`);
+
     if (platform === "android") {
+      await runAndroid({
+        schemeConfig: config.nativeBuild.android[scheme]!,
+        deviceOption: options.device,
+        interactive: options.interactive,
+      });
+    } else if (platform === "ios") {
     }
 
-    await p.tasks([
-      {
-        title: `📦 Building Native (${buildPlugin.name})`,
-        task: async () => {
-          const builder =
-            platform === "android"
-              ? () =>
-                  createAndroidNativeBuild({
-                    schemeConfig: config.nativeBuild.android[scheme]!,
-                  })
-              : () =>
-                  createIosNativeBuild({
-                    schemeConfig: config.nativeBuild.ios[scheme]!,
-                  });
-
-          const { buildDirectory, buildArtifactPath } = await createNativeBuild(
-            {
-              buildPlugin,
-              platform,
-              outputPath,
-              builder,
-            },
-          );
-          // @ts-ignore
-          await installAndLaunch({ buildArtifactPath });
-          taskRef.buildResult.buildArtifactPath = buildArtifactPath;
-          taskRef.buildResult.buildDirectory = buildDirectory;
-
-          return `Build Complete (${buildPlugin.name})`;
-        },
-      },
-      {
-        title: "Install Artifact",
-        task: async () => {
-          return "Install Complete";
-        },
-      },
-    ]);
+    // taskRef.buildResult.buildArtifactPath = buildArtifactPath;
+    // taskRef.buildResult.buildDirectory = buildDirectory;
 
     if (taskRef.buildResult.stdout) {
-      p.log.success(taskRef.buildResult.stdout);
+      p.log.info(taskRef.buildResult.stdout);
     }
+
+    p.log.success(`📦 Build Complete (${buildPlugin.name})`);
   } catch (e) {
-    // await databasePlugin.onUnmount?.();
-    if (e instanceof ExecaError) {
-      console.error(e);
-    } else if (e instanceof Error) {
-      p.log.error(e.stack ?? e.message);
-    } else {
-      console.error(e);
-    }
+    cleanup(e);
   }
-  // await installAndLaunchApp(platform, outputPath, config);
 };
