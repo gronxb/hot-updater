@@ -7,7 +7,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "3c47db19a3b71cb01b1d2989378bfe67981b56d5"
+        "hash": null
       },
       {
         "type": "dir",
@@ -15,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "6896c5df1123801db7d7d33f883b0501df11643b"
+        "hash": "797a6bea4c5e7e16508a5999e4c6c7d54be57772"
       },
       {
         "type": "contents",
@@ -25,15 +25,6 @@
           "expoAutolinkingIos"
         ],
         "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-      },
-      {
-        "type": "contents",
-        "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.17.0\"}",
-        "reasons": [
-          "expoConfig"
-        ],
-        "hash": "a21a7cadb7b6d54735c2a3579f568b3cf7faf1a7"
       },
       {
         "type": "contents",
@@ -47,14 +38,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.2\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.6\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "22abbf2aa4d3b4e44198b674b20eb039ccdc562f"
+        "hash": "78f5b3a3934fa12266a6c181db4d47bb5fcbd03b"
       }
     ],
-    "hash": "9cdc6d63dec269492c1f8284435d75fca8b60ed4"
+    "hash": "023c97e382a48a2cfd540184d4868cfba770271f"
   },
   "android": {
     "sources": [
@@ -64,7 +55,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "277938a921f0373777f8dee84616f5ea86a4cb2c"
+        "hash": "91eeeef7df9a53be71e92f1525098acc8564e070"
       },
       {
         "type": "dir",
@@ -72,7 +63,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "6896c5df1123801db7d7d33f883b0501df11643b"
+        "hash": "797a6bea4c5e7e16508a5999e4c6c7d54be57772"
       },
       {
         "type": "contents",
@@ -82,15 +73,6 @@
           "expoAutolinkingAndroid"
         ],
         "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-      },
-      {
-        "type": "contents",
-        "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.17.0\"}",
-        "reasons": [
-          "expoConfig"
-        ],
-        "hash": "a21a7cadb7b6d54735c2a3579f568b3cf7faf1a7"
       },
       {
         "type": "contents",
@@ -111,6 +93,6 @@
         "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
       }
     ],
-    "hash": "bb5fd08dab6a726a0390b980d52949e27e68df47"
+    "hash": "d9800ea075445d5ae116c068adc48033437c2447"
   }
 }

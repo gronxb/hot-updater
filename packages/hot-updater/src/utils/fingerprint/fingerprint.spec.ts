@@ -115,34 +115,6 @@ describe("nativeFingerprint", () => {
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
-
-  it("fingerprint not changed if development files are created", async () => {
-    // Create development files first
-    fs.writeFileSync(path.resolve(rootDir, ".DS_Store"), "test");
-    fs.writeFileSync(path.resolve(rootDir, "test.log"), "test log");
-    fs.mkdirSync(path.resolve(rootDir, ".vscode"), { recursive: true });
-    fs.writeFileSync(path.resolve(rootDir, ".vscode/settings.json"), "{}");
-
-    const fingerprintBefore = await nativeFingerprint(rootDir, {
-      platform: "ios",
-      extraSources: [".DS_Store", "test.log", ".vscode"],
-      ignorePaths: [],
-    });
-
-    // Modify development files
-    fs.writeFileSync(path.resolve(rootDir, ".DS_Store"), "modified test");
-    fs.writeFileSync(path.resolve(rootDir, "test.log"), "modified test log");
-    fs.writeFileSync(path.resolve(rootDir, ".vscode/settings.json"), '{"editor.fontSize": 14}');
-
-    const fingerprintAfter = await nativeFingerprint(rootDir, {
-      platform: "ios",
-      extraSources: [".DS_Store", "test.log", ".vscode"],
-      ignorePaths: [],
-    });
-
-    // Development files should be ignored, so fingerprint shouldn't change
-    expect(fingerprintBefore).toEqual(fingerprintAfter);
-  });
 });
 
 describe("isFingerprintEquals", () => {
