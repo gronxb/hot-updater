@@ -8,7 +8,7 @@ PODS:
   - hermes-engine (0.77.0):
     - hermes-engine/Pre-built (= 0.77.0)
   - hermes-engine/Pre-built (0.77.0)
-  - HotUpdater (0.17.0):
+  - HotUpdater (0.20.0):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1746,7 +1746,7 @@ SPEC CHECKSUMS:
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: eb93e2f488219332457c3c4eafd2738ddc7e80b8
   hermes-engine: 1f783c3d53940aed0d2c84586f0b7a85ab7827ef
-  HotUpdater: 29f9d0ddf3c0d20144c7be370efaad1e129b322a
+  HotUpdater: 61d03d51260a4ea3ce3f5222e6d0b533cc32d0d9
   RCT-Folly: 36fe2295e44b10d831836cc0d1daec5f8abcf809
   RCTDeprecation: f5c19ebdb8804b53ed029123eb69914356192fc8
   RCTRequired: 6ae6cebe470486e0e0ce89c1c0eabb998e7c51f4
@@ -1807,8 +1807,8 @@ SPEC CHECKSUMS:
   ReactCommon: 6014af4276bb2debc350e2620ef1bd856b4d981c
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   SSZipArchive: 62d4947b08730e4cda640473b0066d209ff033c9
-  Yoga: 78d74e245ed67bb94275a1316cdc170b9b7fe884
+  Yoga: c0d8564af14a858f962607cd7306539cb2ace926
 
 PODFILE CHECKSUM: 7749f735803aa87a6f6b30dc02bd670231c05b9b
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.15.2
