@@ -6,17 +6,19 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
+    failOnWarn: true,
   },
   {
     entry: ["firebase/functions/index.ts"],
     format: ["cjs"],
     dts: false,
-    publicDir: {
+    copy: {
       from: "firebase/public",
       to: "dist/firebase",
     },
     outDir: "dist/firebase/functions",
     external: ["firebase-functions", "firebase-admin"],
+    failOnWarn: true,
     noExternal: ["@hot-updater/core", "@hot-updater/js"],
   },
   {
@@ -25,5 +27,6 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/firebase"],
+    failOnWarn: true,
   },
 ]);
