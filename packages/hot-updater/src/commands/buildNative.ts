@@ -1,10 +1,9 @@
-import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import { buildAndroid } from "@hot-updater/android-helper";
 import { buildIos } from "@hot-updater/apple-helper";
-import { getCwd, type Platform} from "@hot-updater/plugin-core";
+import { type Platform, getCwd } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
 export interface NativeBuildOptions {
@@ -15,31 +14,24 @@ export interface NativeBuildOptions {
   scheme?: string;
 }
 
-export const buildNative = async (options: NativeBuildOptions) => {
+export const buildAndroidNative = async (
+  options: Omit<NativeBuildOptions, "platform">,
+) => {
   printBanner();
-  const preparedConfig = await prepareNativeBuild(options);
+  const preparedConfig = await prepareNativeBuild({
+    ...options,
+    platform: "android",
+  });
   if (!preparedConfig) {
     p.log.error("preparing native build failed");
     return;
   }
-  const { config, outputPath, platform, scheme } = preparedConfig;
+  const { config, scheme } = preparedConfig;
 
   const cwd = getCwd();
-  // TODO: store and upload in your mind
-  const [buildPlugin /* storagePlugin, databasePlugin */] = await Promise.all([
-    config.build({
-      cwd,
-    }),
-    // config.storage({
-    //   cwd,
-    // }),
-    // config.database({
-    //   cwd,
-    // }),
-  ]);
+  const buildPlugin = await config.build({ cwd });
 
-  const cleanup = (e: unknown): never => {
-    // await databasePlugin.onUnmount?.();
+  const catchError = (e: unknown): never => {
     if (e instanceof ExecaError) {
       console.error(e);
     } else if (e instanceof Error) {
@@ -51,51 +43,55 @@ export const buildNative = async (options: NativeBuildOptions) => {
   };
 
   try {
-    const taskRef: {
-      buildResult: {
-        stdout: string | null;
-        buildDirectory: string | null;
-        buildArtifactPath: string | null;
-      };
-      storageUri: string | null;
-    } = {
-      buildResult: {
-        buildArtifactPath: null,
-        stdout: null,
-        buildDirectory: null,
-      },
-      storageUri: null,
-    };
-
-    p.log.info(`📦 Building Native (${buildPlugin.name}) Started`);
-
-    const builder =
-      platform === "android"
-        ? () =>
-            buildAndroid({
-              schemeConfig: config.nativeBuild.android[scheme]!,
-            })
-        : () =>
-            buildIos({
-              schemeConfig: config.nativeBuild.ios[scheme]!,
-            });
-
-    const { buildDirectory, buildArtifactPath } = await createNativeBuild({
-      buildPlugin,
-      platform,
-      outputPath,
-      builder,
+    p.log.info(`📦 Building Android (${buildPlugin.name}) Started`);
+    await buildPlugin.nativeBuild?.prebuild?.({ platform: "android" });
+    await buildAndroid({
+      schemeConfig: config.nativeBuild.android[scheme]!,
     });
-
-    taskRef.buildResult.buildArtifactPath = buildArtifactPath;
-    taskRef.buildResult.buildDirectory = buildDirectory;
-
-    if (taskRef.buildResult.stdout) {
-      p.log.info(taskRef.buildResult.stdout);
-    }
-
-    p.log.success(`📦 Build Complete (${buildPlugin.name})`);
+    await buildPlugin.nativeBuild?.postbuild?.({ platform: "android" });
+    p.log.success(`📦 Android Build Complete (${buildPlugin.name})`);
   } catch (e) {
-    cleanup(e);
+    catchError(e);
+  }
+};
+
+export const buildIosNative = async (
+  options: Omit<NativeBuildOptions, "platform">,
+) => {
+  printBanner();
+  const preparedConfig = await prepareNativeBuild({
+    ...options,
+    platform: "ios",
+  });
+  if (!preparedConfig) {
+    p.log.error("preparing native build failed");
+    return;
+  }
+  const { config, scheme } = preparedConfig;
+
+  const cwd = getCwd();
+  const buildPlugin = await config.build({ cwd });
+
+  const catchError = (e: unknown): never => {
+    if (e instanceof ExecaError) {
+      console.error(e);
+    } else if (e instanceof Error) {
+      p.log.error(e.stack ?? e.message);
+    } else {
+      console.error(e);
+    }
+    process.exit(1);
+  };
+
+  try {
+    p.log.info(`📦 Building iOS (${buildPlugin.name}) Started`);
+    await buildPlugin.nativeBuild?.prebuild?.({ platform: "ios" });
+    await buildIos({
+      schemeConfig: config.nativeBuild.ios[scheme]!,
+    });
+    await buildPlugin.nativeBuild?.postbuild?.({ platform: "ios" });
+    p.log.success(`📦 iOS Build Complete (${buildPlugin.name})`);
+  } catch (e) {
+    catchError(e);
   }
 };

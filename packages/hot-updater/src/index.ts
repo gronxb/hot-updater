@@ -14,22 +14,25 @@ import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
-import {
-  type NativeBuildOptions,
-  type NativeRunOptions,
-  banner,
-  log,
-} from "@hot-updater/plugin-core";
+import { banner, log } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
-import { buildNative } from "./commands/buildNative";
+import {
+  type NativeBuildOptions,
+  buildAndroidNative,
+  buildIosNative,
+} from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
-import { runNative } from "./commands/runNative";
+import {
+  type NativeRunOptions,
+  runAndroidNative,
+  runIosNative,
+} from "./commands/runNative";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -141,12 +144,10 @@ program
     log.info(`iOS version: ${iosVersion}`);
   });
 
-// developing command groups
 if (process.env["NODE_ENV"] === "development") {
   program
-    .command("build:native")
-    .description("build a new native artifact and deploy")
-    .addOption(platformCommandOption)
+    .command("build:android")
+    .description("build a new Android native artifact")
     .addOption(nativeBuildOutputCommandOption)
     .addOption(interactiveCommandOption)
     .addOption(nativeBuildSchemeCommandOption)
@@ -156,14 +157,29 @@ if (process.env["NODE_ENV"] === "development") {
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: NativeBuildOptions) => {
-      await buildNative(options);
+    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+      buildAndroidNative(options);
     });
 
   program
-    .command("run:native")
-    .description("build a new native artifact and run to device or simulator")
-    .addOption(platformCommandOption)
+    .command("build:ios")
+    .description("build a new iOS native artifact")
+    .addOption(nativeBuildOutputCommandOption)
+    .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
+    .addOption(
+      new Option(
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+      ),
+    )
+    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+      buildIosNative(options);
+    });
+
+  program
+    .command("run:android")
+    .description("build and run Android app to device or emulator")
     .addOption(nativeBuildOutputCommandOption)
     .addOption(interactiveCommandOption)
     .addOption(nativeBuildSchemeCommandOption)
@@ -174,8 +190,25 @@ if (process.env["NODE_ENV"] === "development") {
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: NativeRunOptions) => {
-      await runNative(options);
+    .action(async (options: Omit<NativeRunOptions, "platform">) => {
+      runAndroidNative(options);
+    });
+
+  program
+    .command("run:ios")
+    .description("build and run iOS app to device or simulator")
+    .addOption(nativeBuildOutputCommandOption)
+    .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
+    .addOption(deviceCommandOption)
+    .addOption(
+      new Option(
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+      ),
+    )
+    .action(async (options: Omit<NativeRunOptions, "platform">) => {
+      runIosNative(options);
     });
 }
 

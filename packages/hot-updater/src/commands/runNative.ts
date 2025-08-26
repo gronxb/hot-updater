@@ -1,26 +1,27 @@
+import type { NativeBuildOptions } from "@/commands/buildNative";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import { runAndroid } from "@hot-updater/android-helper";
-import { getCwd} from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
-import type {NativeBuildOptions} from "@/commands/buildNative";
 
 export interface NativeRunOptions extends NativeBuildOptions {
   device?: string | boolean;
 }
 
-export const runNative = async (options: NativeRunOptions) => {
+export const runAndroidNative = async (
+  options: Omit<NativeRunOptions, "platform">,
+) => {
   printBanner();
-  const preparedConfig = await prepareNativeBuild(options);
+  const preparedConfig = await prepareNativeBuild({
+    ...options,
+    platform: "android",
+  });
   if (!preparedConfig) {
     p.log.error("preparing native build failed");
     return;
   }
-  const { config, outputPath, platform, scheme } = preparedConfig;
-
-  const cwd = getCwd();
-  const buildPlugin = await config.build({ cwd });
+  const { config, scheme } = preparedConfig;
 
   const cleanup = (e: unknown): never => {
     if (e instanceof ExecaError) {
@@ -34,41 +35,52 @@ export const runNative = async (options: NativeRunOptions) => {
   };
 
   try {
-    const taskRef: {
-      buildResult: {
-        stdout: string | null;
-        buildDirectory: string | null;
-        buildArtifactPath: string | null;
-      };
-      storageUri: string | null;
-    } = {
-      buildResult: {
-        buildArtifactPath: null,
-        stdout: null,
-        buildDirectory: null,
-      },
-      storageUri: null,
-    };
+    p.log.info("📦 Running Android Started");
 
-    p.log.info(`📦 Building Native (${buildPlugin.name}) Started`);
+    await runAndroid({
+      schemeConfig: config.nativeBuild.android[scheme]!,
+      deviceOption: options.device,
+      interactive: options.interactive,
+    });
 
-    if (platform === "android") {
-      await runAndroid({
-        schemeConfig: config.nativeBuild.android[scheme]!,
-        deviceOption: options.device,
-        interactive: options.interactive,
-      });
-    } else if (platform === "ios") {
+    p.log.success("📦 Android Run Complete");
+  } catch (e) {
+    cleanup(e);
+  }
+};
+
+export const runIosNative = async (
+  options: Omit<NativeRunOptions, "platform">,
+) => {
+  printBanner();
+  const preparedConfig = await prepareNativeBuild({
+    ...options,
+    platform: "ios",
+  });
+  if (!preparedConfig) {
+    p.log.error("preparing native build failed");
+    return;
+  }
+  const { config, scheme } = preparedConfig;
+
+  const cleanup = (e: unknown): never => {
+    if (e instanceof ExecaError) {
+      console.error(e);
+    } else if (e instanceof Error) {
+      p.log.error(e.stack ?? e.message);
+    } else {
+      console.error(e);
     }
+    process.exit(1);
+  };
 
-    // taskRef.buildResult.buildArtifactPath = buildArtifactPath;
-    // taskRef.buildResult.buildDirectory = buildDirectory;
+  try {
+    p.log.info("📦 Running iOS Started");
 
-    if (taskRef.buildResult.stdout) {
-      p.log.info(taskRef.buildResult.stdout);
-    }
+    // TODO: iOS run implementation needed
+    p.log.info("iOS run not implemented yet");
 
-    p.log.success(`📦 Build Complete (${buildPlugin.name})`);
+    p.log.success("📦 iOS Run Complete");
   } catch (e) {
     cleanup(e);
   }
