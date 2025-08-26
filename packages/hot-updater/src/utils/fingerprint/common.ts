@@ -26,12 +26,44 @@ export function getFingerprintOptions(
   return {
     platforms: [platform],
     ignorePaths: [
+      // Platform specific files that change frequently but don't affect compatibility
       "**/android/**/strings.xml",
       "**/ios/**/*.plist",
-      "**/.gitignore",
+      
+      // Development environment files
+      "**/.DS_Store",
+      "**/Thumbs.db",
+      "**/*.log",
+      
+      // Build artifacts
+      "**/build/",
+      "**/dist/",
+      "**/node_modules/.cache/",
+      
+      // IDE settings
+      "**/.vscode/",
+      "**/.idea/",
+      "**/*.swp",
+      "**/*.swo",
+      
+      // Temporary files
+      "**/tmp/",
+      "**/temp/",
+      "**/.tmp/",
+      
+      // User-provided ignore paths
       ...options.ignorePaths,
     ],
-    sourceSkips: SourceSkips.GitIgnore | SourceSkips.PackageJsonScriptsAll,
+    sourceSkips:
+      SourceSkips.GitIgnore |
+      SourceSkips.PackageJsonScriptsAll |
+      SourceSkips.ExpoConfigVersions |
+      SourceSkips.ExpoConfigNames |
+      SourceSkips.ExpoConfigRuntimeVersionIfString |
+      SourceSkips.ExpoConfigAssets |
+      SourceSkips.ExpoConfigExtraSection |
+      SourceSkips.ExpoConfigEASProject |
+      SourceSkips.ExpoConfigSchemes,
     extraSources: processExtraSources(
       options.extraSources,
       path,
