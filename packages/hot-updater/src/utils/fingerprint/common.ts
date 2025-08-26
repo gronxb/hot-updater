@@ -18,7 +18,24 @@ export const ensureFingerprintConfig = async () => {
   return config.fingerprint;
 };
 
-export function getFingerprintOptions(
+/**
+ * Utility function that takes an array of extensions and generates glob patterns to allow those extensions.
+ * @param extensions Array of allowed extensions (e.g., ["*.swift", "*.kt", "*.java"])
+ * @returns Array of glob patterns
+ */
+function allowExtensions(extensions: string[]): string[] {
+  return extensions.map((ext) => `!**/${ext}`);
+}
+
+/**
+ * Utility function that returns the default ignore paths.
+ * @returns Array of default ignore paths
+ */
+function getDefaultIgnorePaths(): string[] {
+  return ["**/*", "**/.build/**/*", "**/build/"];
+}
+
+export function getOtaFingerprintOptions(
   platform: "ios" | "android",
   path: string,
   options: FingerprintOptions,
@@ -26,37 +43,42 @@ export function getFingerprintOptions(
   return {
     platforms: [platform],
     ignorePaths: [
-      // Platform specific files that change frequently but don't affect compatibility
-      "**/android/**/strings.xml",
-      "**/ios/**/*.plist",
-      
-      // Development environment files
-      "**/.DS_Store",
-      "**/Thumbs.db",
-      "**/*.log",
-      
-      // Build artifacts
-      "**/build/",
-      "**/dist/",
-      "**/node_modules/.cache/",
-      
-      // IDE settings
-      "**/.vscode/",
-      "**/.idea/",
-      "**/*.swp",
-      "**/*.swo",
-      
-      // Temporary files
-      "**/tmp/",
-      "**/temp/",
-      "**/.tmp/",
-      
+      ...getDefaultIgnorePaths(),
+      // Native code and build configuration files
+      ...allowExtensions([
+        // iOS native code
+        "*.swift",
+        "*.h",
+        "*.m",
+        "*.mm",
+
+        // Android native code
+        "*.kt",
+        "*.java",
+
+        // C/C++ native code
+        "*.cpp",
+        "*.hpp",
+        "*.c",
+        "*.cc",
+        "*.cxx",
+
+        // Build configuration files
+        "*.podspec",
+        "*.gradle",
+        "CMakeLists.txt",
+        "Android.mk",
+        "Application.mk",
+      ]),
+
       // User-provided ignore paths
       ...options.ignorePaths,
     ],
     sourceSkips:
       SourceSkips.GitIgnore |
       SourceSkips.PackageJsonScriptsAll |
+      SourceSkips.PackageJsonAndroidAndIosScriptsIfNotContainRun |
+      SourceSkips.ExpoConfigAll |
       SourceSkips.ExpoConfigVersions |
       SourceSkips.ExpoConfigNames |
       SourceSkips.ExpoConfigRuntimeVersionIfString |

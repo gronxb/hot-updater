@@ -7,7 +7,7 @@ import {
   type FingerprintOptions,
   type FingerprintResult,
   ensureFingerprintConfig,
-  getFingerprintOptions,
+  getOtaFingerprintOptions,
 } from "./common";
 
 export * from "./common";
@@ -23,7 +23,7 @@ export async function nativeFingerprint(
   const platform = options.platform;
   return createFingerprintAsync(
     path,
-    getFingerprintOptions(platform, path, options),
+    getOtaFingerprintOptions(platform, path, options),
   );
 }
 

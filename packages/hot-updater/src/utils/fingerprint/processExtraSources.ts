@@ -23,35 +23,35 @@ export function processExtraSources(
     "**/.DS_Store",
     "**/Thumbs.db",
     "**/*.log",
-    
-    // Build artifacts  
+
+    // Build artifacts
     "**/build/**",
     "**/dist/**",
     "**/node_modules/.cache/**",
-    
+
     // IDE settings
     "**/.vscode/**",
     "**/.idea/**",
     "**/*.swp",
     "**/*.swo",
-    
+
     // Temporary files
     "**/tmp/**",
     "**/temp/**",
     "**/.tmp/**",
-    
+
     // Test files (usually don't affect native compatibility)
     "**/__tests__/**",
     "**/*.test.*",
     "**/*.spec.*",
     "**/jest.config.*",
-    
+
     // Documentation
     "**/README*",
     "**/CHANGELOG*",
     "**/docs/**",
     "**/*.md",
-    
+
     // Linting and formatting
     "**/.eslintrc*",
     "**/.prettierrc*",
@@ -76,12 +76,13 @@ export function processExtraSources(
       for (const absolutePath of matches) {
         if (fs.existsSync(absolutePath)) {
           const stats = fs.statSync(absolutePath);
-          
+
           // Skip if file is too large (likely binary or generated)
-          if (!stats.isDirectory() && stats.size > 1024 * 1024) { // 1MB
+          if (!stats.isDirectory() && stats.size > 1024 * 1024) {
+            // 1MB
             continue;
           }
-          
+
           if (stats.isDirectory()) {
             processedSources.push({
               type: "dir",
@@ -100,7 +101,9 @@ export function processExtraSources(
               });
             } catch (readError) {
               // Skip files that can't be read as text (likely binary)
-              console.warn(`Skipping binary or unreadable file: ${absolutePath}`);
+              console.warn(
+                `Skipping binary or unreadable file: ${absolutePath}`,
+              );
             }
           }
         }

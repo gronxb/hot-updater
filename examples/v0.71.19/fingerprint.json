@@ -7,7 +7,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "1fde6a72e2208f4058f9b53285868fa596641768"
+        "hash": null
       },
       {
         "type": "dir",
@@ -15,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "6896c5df1123801db7d7d33f883b0501df11643b"
+        "hash": "797a6bea4c5e7e16508a5999e4c6c7d54be57772"
       },
       {
         "type": "dir",
@@ -23,7 +23,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "c1dad5d9f5a9eaec76f903bbbeabe6fb442f613f"
+        "hash": "22d82e38fa616b26740398b0153e8245200e56e9"
       },
       {
         "type": "contents",
@@ -33,15 +33,6 @@
           "expoAutolinkingIos"
         ],
         "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-      },
-      {
-        "type": "contents",
-        "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.17.0\"}",
-        "reasons": [
-          "expoConfig"
-        ],
-        "hash": "a21a7cadb7b6d54735c2a3579f568b3cf7faf1a7"
       },
       {
         "type": "contents",
@@ -55,14 +46,14 @@
       {
         "type": "contents",
         "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.2\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.6\",\"configurations\":[],\"scriptPhases\":[]}}},\"@sentry/react-native\":{\"root\":\"node_modules/@sentry/react-native\",\"name\":\"@sentry/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@sentry/react-native/RNSentry.podspec\",\"version\":\"6.10.0\",\"configurations\":[],\"scriptPhases\":[]}}}}",
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "d5cd37e675df448fd296291c5e2916f1b2102310"
+        "hash": "6b856676006b2b90fdc78a067b38414d3e5ca02c"
       }
     ],
-    "hash": "1c9206a1c0b704db61be37b506c24a5809198024"
+    "hash": "41e5c25d6541945e0e99180e7d8739faeebdd2df"
   },
   "android": {
     "sources": [
@@ -72,7 +63,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "766357d06badad0c4e76d68835e9b9aa6657ba62"
+        "hash": "e6acddb3584429da061168591094afd2cb74122c"
       },
       {
         "type": "dir",
@@ -80,7 +71,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "6896c5df1123801db7d7d33f883b0501df11643b"
+        "hash": "797a6bea4c5e7e16508a5999e4c6c7d54be57772"
       },
       {
         "type": "dir",
@@ -88,7 +79,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "c1dad5d9f5a9eaec76f903bbbeabe6fb442f613f"
+        "hash": "22d82e38fa616b26740398b0153e8245200e56e9"
       },
       {
         "type": "contents",
@@ -98,15 +89,6 @@
           "expoAutolinkingAndroid"
         ],
         "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-      },
-      {
-        "type": "contents",
-        "id": "expoConfig",
-        "contents": "{\"displayName\":\"HotUpdaterExample\",\"name\":\"HotUpdaterExample\",\"platforms\":[\"android\",\"ios\",\"web\"],\"sdkVersion\":\"52.0.0\",\"slug\":\"hotupdaterexample\",\"version\":\"0.17.0\"}",
-        "reasons": [
-          "expoConfig"
-        ],
-        "hash": "a21a7cadb7b6d54735c2a3579f568b3cf7faf1a7"
       },
       {
         "type": "contents",
@@ -127,6 +109,6 @@
         "hash": "7961d46443579db53da6a55eaf046e4d2b27edc3"
       }
     ],
-    "hash": "c0bd5195bfb2e0788d2c82b06a82bd278f73653c"
+    "hash": "759fdc744fe25ea34602ec2780bd333695c66f2f"
   }
 }
