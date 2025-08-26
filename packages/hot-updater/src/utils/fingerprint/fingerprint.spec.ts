@@ -13,6 +13,43 @@ describe("nativeFingerprint", () => {
       example: "rn-77",
     });
     rootDir = mockedProject.rootDir;
+
+    // Create MainActivity.kt file for testing
+    const mainActivityPath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "java",
+      "com",
+      "hotupdaterexample",
+    );
+    await fs.promises.mkdir(mainActivityPath, { recursive: true });
+
+    const mainActivityContent = `package com.hotupdaterexample
+
+import com.facebook.react.ReactActivity
+import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
+import com.facebook.react.defaults.DefaultReactActivityDelegate
+
+class MainActivity : ReactActivity() {
+  override fun getMainComponentName(): String = "HotUpdaterExample"
+
+  override fun createReactActivityDelegate(): ReactActivityDelegate =
+    DefaultReactActivityDelegate(
+      this,
+      mainComponentName,
+      DefaultNewArchitectureEntryPoint.getFabricEnabled()
+    )
+}`;
+
+    fs.writeFileSync(
+      path.join(mainActivityPath, "MainActivity.kt"),
+      mainActivityContent,
+      { encoding: "utf-8" },
+    );
   }, 5000);
 
   const changeTestKtFile = () => {
@@ -23,17 +60,17 @@ describe("nativeFingerprint", () => {
       "app",
       "src",
       "main",
-      "kotlin",
+      "java",
       "com",
-      "example",
-      "Test.kt",
+      "hotupdaterexample",
+      "MainActivity.kt",
     );
     const testKtFileContent = fs.readFileSync(testKtFilePath, {
       encoding: "utf-8",
     });
     const modifiedContent = testKtFileContent.replace(
-      "class Test",
-      "class TestModified",
+      "class MainActivity",
+      "class MainActivityModified",
     );
     fs.writeFileSync(testKtFilePath, modifiedContent);
   };
@@ -46,10 +83,10 @@ describe("nativeFingerprint", () => {
       "app",
       "src",
       "main",
-      "kotlin",
+      "java",
       "com",
-      "example",
-      "Test.kt",
+      "hotupdaterexample",
+      "MainActivity.kt",
     );
     const testKtFileContent = fs.readFileSync(testKtFilePath, {
       encoding: "utf-8",
@@ -58,7 +95,7 @@ describe("nativeFingerprint", () => {
     fs.writeFileSync(testKtFilePath, modifiedContent);
   };
 
-  it("fingerprint changed if Test.kt modified", async () => {
+  it("fingerprint changed if MainActivity.kt modified", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
@@ -77,7 +114,7 @@ describe("nativeFingerprint", () => {
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
-  it("fingerprint changed though Test.kt is ignored because of native code hash", async () => {
+  it("fingerprint changed though MainActivity.kt is ignored because of native code hash", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
@@ -95,7 +132,7 @@ describe("nativeFingerprint", () => {
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
-  it("fingerprint not changed if Test.kt is ignored and miscellaneous changed", async () => {
+  it("fingerprint not changed if MainActivity.kt is ignored and miscellaneous changed", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
