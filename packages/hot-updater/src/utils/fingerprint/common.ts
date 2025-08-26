@@ -66,9 +66,23 @@ export function getOtaFingerprintOptions(
         // Build configuration files
         "*.podspec",
         "*.gradle",
+        "*.kts", // Kotlin Script (Gradle build scripts)
         "CMakeLists.txt",
         "Android.mk",
         "Application.mk",
+
+        // Additional native code and build files
+        "*.pro", // ProGuard rules
+        "*.mk", // Makefiles
+        "*.cmake", // CMake files
+        "*.ninja", // Ninja build files
+        "Makefile", // Makefile (no extension)
+        "*.bazel", // Bazel build files
+        "*.buck", // Buck build files
+        "BUILD", // Bazel BUILD files
+        "WORKSPACE", // Bazel WORKSPACE files
+        "BUILD.bazel", // Bazel BUILD files with extension
+        "WORKSPACE.bazel", // Bazel WORKSPACE files with extension
       ]),
 
       // User-provided ignore paths

@@ -15,7 +15,7 @@
         "reasons": [
           "rncoreAutolinkingIos"
         ],
-        "hash": "96c5db68080173494e529963fc2ead43dfd22455",
+        "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -25,6 +25,10 @@
                 {
                   "path": "node_modules/@hot-updater/react-native/android/build.gradle",
                   "hash": "1bcd0d0602aa17bbd1929d0526474a10dc8acdfe"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/proguard-rules.pro",
+                  "hash": "62e423236bd393540d4876356b997ab01325fab6"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/react-native-helpers.gradle",
@@ -141,7 +145,7 @@
                   "hash": "ed5bee2f8e35017745f1aca14e0f13715cac5785"
                 }
               ],
-              "hash": "0051b44c0e4f8e1097007c2bdfd71f5b8d39ec1e"
+              "hash": "3eaacd4c10b76bbc6f00c7fe9eaf023b3bfbd6d4"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -153,308 +157,6 @@
                 {
                   "path": "node_modules/@hot-updater/react-native/ios/HotUpdater",
                   "children": [
-                    {
-                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build",
-                      "children": [
-                        {
-                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx",
-                          "children": [
-                            {
-                              "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug",
-                              "children": [
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build",
-                                  "children": [
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build/DerivedSources",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build/DerivedSources/resource_bundle_accessor.h",
-                                          "hash": "c4603818a21e5c9dd8949c19744e8c64e32199a7"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build/DerivedSources/resource_bundle_accessor.m",
-                                          "hash": "7b26bc0842e0cd5336301b64998e19ae9c31fe74"
-                                        }
-                                      ],
-                                      "hash": "4f4adff1b165d7e32af6d36d146ab39e53bc7da4"
-                                    }
-                                  ],
-                                  "hash": "83da4c70232aeace0374dc87cfef19d6d6d569fb"
-                                }
-                              ],
-                              "hash": "908e8459135cf9218ecfb3d79210bac89a7ca651"
-                            }
-                          ],
-                          "hash": "f2e88a07e777a40c8058140154996efa49e36863"
-                        },
-                        {
-                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts",
-                          "children": [
-                            {
-                              "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive",
-                              "children": [
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example",
-                                  "children": [
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/AppDelegate.h",
-                                          "hash": "a476ea14f36d6bd26389e1cf191c895e013467f0"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/AppDelegate.m",
-                                          "hash": "f28265b22de3b1da13d75943eb054fe9bf47d9c1"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/main.m",
-                                          "hash": "f88eecd95d25c56338a529250828d300823909c6"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/ViewController.h",
-                                          "hash": "e1638e64411ba6cf99e6f2bf42cb20a946af79ca"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/ViewController.m",
-                                          "hash": "7bd77025bce3887664af3b22282be801fdf4fc18"
-                                        }
-                                      ],
-                                      "hash": "4cfd115a0585e39cf5baec0749df10ebfe716df6"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CancelDelegate.h",
-                                          "hash": "206cf8cb66d66a501d41ecf01f575a73b5d8e38e"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CancelDelegate.m",
-                                          "hash": "d263c37f37e726ffc89f8dd54f13efb2a0651ff0"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CollectingDelegate.h",
-                                          "hash": "4107e746d5754d6dd5e35f8ccc46bf7a0fc93c05"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CollectingDelegate.m",
-                                          "hash": "f44cc9071832fa1bee094bc91b3d885efe7c6d43"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/ProgressDelegate.h",
-                                          "hash": "f7ee0136aaec022963af030f0c1cb8bb886e0dee"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/ProgressDelegate.m",
-                                          "hash": "a5244814ea179b942b14aa595cb024a3ac0df955"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/SSZipArchiveTests.m",
-                                          "hash": "36857e1048df0e47d86660b73a87bc067c386e42"
-                                        }
-                                      ],
-                                      "hash": "4ba63f8bdd513972d618ae234244d55fc1379e0a"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample/AppDelegate.swift",
-                                          "hash": "2dd11485e4304653b79e65b176f11c27c3b32dad"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample/ViewController.swift",
-                                          "hash": "b45d42eebeff479c2710b6d99867832bcbeb41f7"
-                                        }
-                                      ],
-                                      "hash": "1754bca1fa2442bd22d6fd76675c81b69003309f"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample_macOS",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample_macOS/AppDelegate.swift",
-                                          "hash": "89dcd8cf6e5d3ee5276809da5d4a48d74007e74f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample_macOS/ViewController.swift",
-                                          "hash": "14dacb70e90c2710342a1e089cffddf20eab9a8c"
-                                        }
-                                      ],
-                                      "hash": "e5b12d664bff4330c6e6c7bf47fb0a3dfd6a48c8"
-                                    }
-                                  ],
-                                  "hash": "137d182eb0a352e64b09633aac54cbf74ea55e45"
-                                },
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Package.swift",
-                                  "hash": "b219cfbc99952fc9252521397e53b4ebb5464e0c"
-                                },
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive",
-                                  "children": [
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/include",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/include/ZipArchive.h",
-                                          "hash": "923ab752da20623d3e05bdb6d7523ea80c1fc0cc"
-                                        }
-                                      ],
-                                      "hash": "0663062706fcef2e9c454364821dc607a5b71acd"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_compat.c",
-                                          "hash": "22553315a9a23d2d290a7a1aadf3101aa22703bf"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_compat.h",
-                                          "hash": "fd39cc63070f10aa35edae0aea58e1176a6e276e"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_crypt_apple.c",
-                                          "hash": "9e46f17e5ca7a2a4c0571df3a23f2915dab27457"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_crypt.c",
-                                          "hash": "04366591bda0ee175b1bb0f4007118dd7f4dc7a2"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_crypt.h",
-                                          "hash": "eced367006a62873d41b4ae90e89f9eb448b8f8f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_os_posix.c",
-                                          "hash": "5e8ea7911b3b437563181b3b6ce1c694a1acdad9"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_os.c",
-                                          "hash": "22ba19773b3e23c42c239ecf63ed0ab47f39f3a1"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_os.h",
-                                          "hash": "3b179f53e736bc294835b067511fb224740b0bf4"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_buf.c",
-                                          "hash": "f219e6bdb25898ec99eccd5d1334cf021b63c201"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_buf.h",
-                                          "hash": "fcde93dec0b42eb8155e9985c0312f6a7e910f68"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_mem.c",
-                                          "hash": "efa6c2af0e24f0e5041aa3bcabf38a9bc65514bf"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_mem.h",
-                                          "hash": "0c2ce995c92cdcd6c849ca097b3c6f332dffd6cb"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_os_posix.c",
-                                          "hash": "11a1e0ef668bf6698d91edd18e4ea847a631f3b6"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_os.h",
-                                          "hash": "a9778559645c3c6f184f7c57a15cffc022bdd60f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_pkcrypt.c",
-                                          "hash": "56003dc3a56d12d148216587a14f4a0434d62610"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_pkcrypt.h",
-                                          "hash": "bad67192355be0004619e4cf0e40fe54f25dbfd5"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_split.c",
-                                          "hash": "30b72ee629e635186576ddef14d4e2480cccf238"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_split.h",
-                                          "hash": "2db0e42ac01a01e8a4832799830ef8805ce6775f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_wzaes.c",
-                                          "hash": "b8fb192284796662d33811e8a7c92a2955505b80"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_wzaes.h",
-                                          "hash": "5bfa2befacc13c003e27c687f1b3c995868da257"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_zlib.c",
-                                          "hash": "b796c9d41b6e2da05d907b753cbf8b057caa6810"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_zlib.h",
-                                          "hash": "a4db859717fd1deb56acf13530c5a17d53cf06a6"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm.c",
-                                          "hash": "f7d7bc6c246e8b3b9d3d8163e48eb736c2cae6ae"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm.h",
-                                          "hash": "e9eae0bf702c2ad6d613f2b3ad7b59f283405782"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip_rw.c",
-                                          "hash": "43d29b146f7d47b88acdc817e7ab791045553ada"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip_rw.h",
-                                          "hash": "f70bdf58dae6aba97c971ed70a81d15e3a9e0859"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip.c",
-                                          "hash": "a09e960531285ed0e02e31a904cb20bfffc3621b"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip.h",
-                                          "hash": "9a5c0fdff7bee58be7d81b1b5b833915e860af10"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz.h",
-                                          "hash": "1aba8715e9b588125062858a33b5faa03523dddb"
-                                        }
-                                      ],
-                                      "hash": "38df2bbd05faa01aa3e71709cc320a819cf1957c"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/SSZipArchive.h",
-                                      "hash": "34662fbbef2b36e17829d464a11b3d5905374899"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/SSZipArchive.m",
-                                      "hash": "cef6f69990c362708b5e62486d2ad13bb11b7c04"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/SSZipCommon.h",
-                                      "hash": "44871be41fa577e27926d025e02c4feda7baaa2d"
-                                    }
-                                  ],
-                                  "hash": "4367b53d15dc2968eb57bc78c12ab412b6d94e1b"
-                                },
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive.podspec",
-                                  "hash": "1f8c2b6e3f39dcd9f3d0e7f4dd0c726926cc986d"
-                                }
-                              ],
-                              "hash": "a5582816bee416d73e5476022223bccab74ecb7d"
-                            }
-                          ],
-                          "hash": "45d02185b1e9c8530ac9665b0234d7513b8bf94a"
-                        }
-                      ],
-                      "hash": "a2f7d2052cda38f2430ceab18384ca54d7ff9ddc"
-                    },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal",
                       "children": [
@@ -526,13 +228,13 @@
                       "hash": "70e11214e1f054d0a80d669f5d6e1c34b22d8f05"
                     }
                   ],
-                  "hash": "7125872853cf1866528509572634ba274fa98445"
+                  "hash": "a494c3b93e1b0df15ba72396cf30dbf656f82b93"
                 }
               ],
-              "hash": "81c7c9627852c949693d5d2d2d1b3ff2d4e8a985"
+              "hash": "957a29d9127f771aed8d176c2ad7a4d6d6a8f579"
             }
           ],
-          "hash": "96c5db68080173494e529963fc2ead43dfd22455"
+          "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302"
         }
       },
       {
@@ -1004,7 +706,7 @@
         }
       }
     ],
-    "hash": "3134536109180ee334929282818b84591ddcc021"
+    "hash": "612d74d5f5dc0ed0b3fe85f91ca52898ca089de9"
   },
   "android": {
     "sources": [
@@ -1014,7 +716,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "b45bd9b9d8acc2ffe7c5561259651ca994a508ce",
+        "hash": "84f889bfb89a0a733d06d5c73a5da98cc8e59ba9",
         "debugInfo": {
           "path": "android",
           "children": [
@@ -1024,6 +726,10 @@
                 {
                   "path": "android/app/build.gradle",
                   "hash": "b9c47018a8c61a51a06851ef8df03b9f9d27bc06"
+                },
+                {
+                  "path": "android/app/proguard-rules.pro",
+                  "hash": "eed46b399dc223622453e910293a06eb159d87e0"
                 },
                 {
                   "path": "android/app/src",
@@ -1064,7 +770,7 @@
                   "hash": "8b61c2ec11bdfb0811b435e60d5a1cddf2a436d2"
                 }
               ],
-              "hash": "d4bacde452ff43359c384228a90f15bb81c190af"
+              "hash": "9a9cd2ec1d66265a0394de56bd186e002c24c0b9"
             },
             {
               "path": "android/build.gradle",
@@ -1075,7 +781,7 @@
               "hash": "167754763aba7868fb01737abedc7f98b423ae07"
             }
           ],
-          "hash": "b45bd9b9d8acc2ffe7c5561259651ca994a508ce"
+          "hash": "84f889bfb89a0a733d06d5c73a5da98cc8e59ba9"
         }
       },
       {
@@ -1084,7 +790,7 @@
         "reasons": [
           "rncoreAutolinkingAndroid"
         ],
-        "hash": "96c5db68080173494e529963fc2ead43dfd22455",
+        "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -1094,6 +800,10 @@
                 {
                   "path": "node_modules/@hot-updater/react-native/android/build.gradle",
                   "hash": "1bcd0d0602aa17bbd1929d0526474a10dc8acdfe"
+                },
+                {
+                  "path": "node_modules/@hot-updater/react-native/android/proguard-rules.pro",
+                  "hash": "62e423236bd393540d4876356b997ab01325fab6"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/react-native-helpers.gradle",
@@ -1210,7 +920,7 @@
                   "hash": "ed5bee2f8e35017745f1aca14e0f13715cac5785"
                 }
               ],
-              "hash": "0051b44c0e4f8e1097007c2bdfd71f5b8d39ec1e"
+              "hash": "3eaacd4c10b76bbc6f00c7fe9eaf023b3bfbd6d4"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -1222,308 +932,6 @@
                 {
                   "path": "node_modules/@hot-updater/react-native/ios/HotUpdater",
                   "children": [
-                    {
-                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build",
-                      "children": [
-                        {
-                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx",
-                          "children": [
-                            {
-                              "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug",
-                              "children": [
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build",
-                                  "children": [
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build/DerivedSources",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build/DerivedSources/resource_bundle_accessor.h",
-                                          "hash": "c4603818a21e5c9dd8949c19744e8c64e32199a7"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/arm64-apple-macosx/debug/ZipArchive.build/DerivedSources/resource_bundle_accessor.m",
-                                          "hash": "7b26bc0842e0cd5336301b64998e19ae9c31fe74"
-                                        }
-                                      ],
-                                      "hash": "4f4adff1b165d7e32af6d36d146ab39e53bc7da4"
-                                    }
-                                  ],
-                                  "hash": "83da4c70232aeace0374dc87cfef19d6d6d569fb"
-                                }
-                              ],
-                              "hash": "908e8459135cf9218ecfb3d79210bac89a7ca651"
-                            }
-                          ],
-                          "hash": "f2e88a07e777a40c8058140154996efa49e36863"
-                        },
-                        {
-                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts",
-                          "children": [
-                            {
-                              "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive",
-                              "children": [
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example",
-                                  "children": [
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/AppDelegate.h",
-                                          "hash": "a476ea14f36d6bd26389e1cf191c895e013467f0"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/AppDelegate.m",
-                                          "hash": "f28265b22de3b1da13d75943eb054fe9bf47d9c1"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/main.m",
-                                          "hash": "f88eecd95d25c56338a529250828d300823909c6"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/ViewController.h",
-                                          "hash": "e1638e64411ba6cf99e6f2bf42cb20a946af79ca"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExample/ViewController.m",
-                                          "hash": "7bd77025bce3887664af3b22282be801fdf4fc18"
-                                        }
-                                      ],
-                                      "hash": "4cfd115a0585e39cf5baec0749df10ebfe716df6"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CancelDelegate.h",
-                                          "hash": "206cf8cb66d66a501d41ecf01f575a73b5d8e38e"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CancelDelegate.m",
-                                          "hash": "d263c37f37e726ffc89f8dd54f13efb2a0651ff0"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CollectingDelegate.h",
-                                          "hash": "4107e746d5754d6dd5e35f8ccc46bf7a0fc93c05"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/CollectingDelegate.m",
-                                          "hash": "f44cc9071832fa1bee094bc91b3d885efe7c6d43"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/ProgressDelegate.h",
-                                          "hash": "f7ee0136aaec022963af030f0c1cb8bb886e0dee"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/ProgressDelegate.m",
-                                          "hash": "a5244814ea179b942b14aa595cb024a3ac0df955"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/ObjectiveCExampleTests/SSZipArchiveTests.m",
-                                          "hash": "36857e1048df0e47d86660b73a87bc067c386e42"
-                                        }
-                                      ],
-                                      "hash": "4ba63f8bdd513972d618ae234244d55fc1379e0a"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample/AppDelegate.swift",
-                                          "hash": "2dd11485e4304653b79e65b176f11c27c3b32dad"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample/ViewController.swift",
-                                          "hash": "b45d42eebeff479c2710b6d99867832bcbeb41f7"
-                                        }
-                                      ],
-                                      "hash": "1754bca1fa2442bd22d6fd76675c81b69003309f"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample_macOS",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample_macOS/AppDelegate.swift",
-                                          "hash": "89dcd8cf6e5d3ee5276809da5d4a48d74007e74f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Example/SwiftExample_macOS/ViewController.swift",
-                                          "hash": "14dacb70e90c2710342a1e089cffddf20eab9a8c"
-                                        }
-                                      ],
-                                      "hash": "e5b12d664bff4330c6e6c7bf47fb0a3dfd6a48c8"
-                                    }
-                                  ],
-                                  "hash": "137d182eb0a352e64b09633aac54cbf74ea55e45"
-                                },
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/Package.swift",
-                                  "hash": "b219cfbc99952fc9252521397e53b4ebb5464e0c"
-                                },
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive",
-                                  "children": [
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/include",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/include/ZipArchive.h",
-                                          "hash": "923ab752da20623d3e05bdb6d7523ea80c1fc0cc"
-                                        }
-                                      ],
-                                      "hash": "0663062706fcef2e9c454364821dc607a5b71acd"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip",
-                                      "children": [
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_compat.c",
-                                          "hash": "22553315a9a23d2d290a7a1aadf3101aa22703bf"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_compat.h",
-                                          "hash": "fd39cc63070f10aa35edae0aea58e1176a6e276e"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_crypt_apple.c",
-                                          "hash": "9e46f17e5ca7a2a4c0571df3a23f2915dab27457"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_crypt.c",
-                                          "hash": "04366591bda0ee175b1bb0f4007118dd7f4dc7a2"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_crypt.h",
-                                          "hash": "eced367006a62873d41b4ae90e89f9eb448b8f8f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_os_posix.c",
-                                          "hash": "5e8ea7911b3b437563181b3b6ce1c694a1acdad9"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_os.c",
-                                          "hash": "22ba19773b3e23c42c239ecf63ed0ab47f39f3a1"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_os.h",
-                                          "hash": "3b179f53e736bc294835b067511fb224740b0bf4"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_buf.c",
-                                          "hash": "f219e6bdb25898ec99eccd5d1334cf021b63c201"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_buf.h",
-                                          "hash": "fcde93dec0b42eb8155e9985c0312f6a7e910f68"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_mem.c",
-                                          "hash": "efa6c2af0e24f0e5041aa3bcabf38a9bc65514bf"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_mem.h",
-                                          "hash": "0c2ce995c92cdcd6c849ca097b3c6f332dffd6cb"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_os_posix.c",
-                                          "hash": "11a1e0ef668bf6698d91edd18e4ea847a631f3b6"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_os.h",
-                                          "hash": "a9778559645c3c6f184f7c57a15cffc022bdd60f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_pkcrypt.c",
-                                          "hash": "56003dc3a56d12d148216587a14f4a0434d62610"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_pkcrypt.h",
-                                          "hash": "bad67192355be0004619e4cf0e40fe54f25dbfd5"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_split.c",
-                                          "hash": "30b72ee629e635186576ddef14d4e2480cccf238"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_split.h",
-                                          "hash": "2db0e42ac01a01e8a4832799830ef8805ce6775f"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_wzaes.c",
-                                          "hash": "b8fb192284796662d33811e8a7c92a2955505b80"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_wzaes.h",
-                                          "hash": "5bfa2befacc13c003e27c687f1b3c995868da257"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_zlib.c",
-                                          "hash": "b796c9d41b6e2da05d907b753cbf8b057caa6810"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm_zlib.h",
-                                          "hash": "a4db859717fd1deb56acf13530c5a17d53cf06a6"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm.c",
-                                          "hash": "f7d7bc6c246e8b3b9d3d8163e48eb736c2cae6ae"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_strm.h",
-                                          "hash": "e9eae0bf702c2ad6d613f2b3ad7b59f283405782"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip_rw.c",
-                                          "hash": "43d29b146f7d47b88acdc817e7ab791045553ada"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip_rw.h",
-                                          "hash": "f70bdf58dae6aba97c971ed70a81d15e3a9e0859"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip.c",
-                                          "hash": "a09e960531285ed0e02e31a904cb20bfffc3621b"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz_zip.h",
-                                          "hash": "9a5c0fdff7bee58be7d81b1b5b833915e860af10"
-                                        },
-                                        {
-                                          "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/minizip/mz.h",
-                                          "hash": "1aba8715e9b588125062858a33b5faa03523dddb"
-                                        }
-                                      ],
-                                      "hash": "38df2bbd05faa01aa3e71709cc320a819cf1957c"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/SSZipArchive.h",
-                                      "hash": "34662fbbef2b36e17829d464a11b3d5905374899"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/SSZipArchive.m",
-                                      "hash": "cef6f69990c362708b5e62486d2ad13bb11b7c04"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive/SSZipCommon.h",
-                                      "hash": "44871be41fa577e27926d025e02c4feda7baaa2d"
-                                    }
-                                  ],
-                                  "hash": "4367b53d15dc2968eb57bc78c12ab412b6d94e1b"
-                                },
-                                {
-                                  "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/.build/checkouts/ZipArchive/SSZipArchive.podspec",
-                                  "hash": "1f8c2b6e3f39dcd9f3d0e7f4dd0c726926cc986d"
-                                }
-                              ],
-                              "hash": "a5582816bee416d73e5476022223bccab74ecb7d"
-                            }
-                          ],
-                          "hash": "45d02185b1e9c8530ac9665b0234d7513b8bf94a"
-                        }
-                      ],
-                      "hash": "a2f7d2052cda38f2430ceab18384ca54d7ff9ddc"
-                    },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal",
                       "children": [
@@ -1595,13 +1003,13 @@
                       "hash": "70e11214e1f054d0a80d669f5d6e1c34b22d8f05"
                     }
                   ],
-                  "hash": "7125872853cf1866528509572634ba274fa98445"
+                  "hash": "a494c3b93e1b0df15ba72396cf30dbf656f82b93"
                 }
               ],
-              "hash": "81c7c9627852c949693d5d2d2d1b3ff2d4e8a985"
+              "hash": "957a29d9127f771aed8d176c2ad7a4d6d6a8f579"
             }
           ],
-          "hash": "96c5db68080173494e529963fc2ead43dfd22455"
+          "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302"
         }
       },
       {
@@ -2073,6 +1481,6 @@
         }
       }
     ],
-    "hash": "5051943ebcbab6186303c1acebbafbe6746fbe63"
+    "hash": "e551cf117fc1ea85209bc88377af1ffa3997a9fc"
   }
 }
