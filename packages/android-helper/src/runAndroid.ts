@@ -15,7 +15,6 @@ import {
   selectAndroidTargetDevice,
 } from "./utils/selectAndroidTargetDevice";
 import { tryInstallAppOnDevice } from "./utils/tryInstallAppOnDevice";
-import { tryLaunchAppOnDevice } from "./utils/tryLaunchAppOnDevice";
 
 export const runAndroid = async ({
   schemeConfig: _schemeConfig,
@@ -58,7 +57,7 @@ export const runAndroid = async ({
         tasks,
         androidProjectPath,
       });
-      await runOnDevice(device, schemeConfig);
+      // await runOnDevice(device, schemeConfig);
       p.outro("Success 🎉");
       return result;
     }
@@ -66,12 +65,12 @@ export const runAndroid = async ({
     // No specific device selected
     const connectedDevices = await Adb.getDevices();
     if (connectedDevices.length === 0) {
-      if (interactive) {
-        await selectAndLaunchDevice();
-      } else {
-        p.log.info("No devices found. Launching first available emulator.");
-        await tryLaunchEmulator();
-      }
+      // if (interactive) {
+      //   await selectAndLaunchDevice();
+      // } else {
+      //   p.log.info("No devices found. Launching first available emulator.");
+      //   await tryLaunchEmulator();
+      // }
     }
 
     const result = await runGradle({
@@ -106,23 +105,23 @@ async function runOnDevice({
   loader.start("Installing the app");
   await tryInstallAppOnDevice({ apkPath, device });
   loader.message("Launching the app");
-  const { applicationIdWithSuffix } = await tryLaunchAppOnDevice({
-    device: {
-      connected,
-      deviceId,
-      readableName,
-      type,
-    },
-  });
-  if (applicationIdWithSuffix) {
-    loader.stop(
-      `Installed and launched the app on ${color.bold(device.readableName)}`,
-    );
-  } else {
-    loader.stop(
-      `Failed: installing and launching the app on ${color.bold(
-        device.readableName,
-      )}`,
-    );
-  }
+  // const { applicationIdWithSuffix } = await tryLaunchAppOnDevice({
+  //   device: {
+  //     connected,
+  //     deviceId,
+  //     readableName,
+  //     type,
+  //   },
+  // });
+  // if (applicationIdWithSuffix) {
+  //   loader.stop(
+  //     `Installed and launched the app on ${color.bold(device.readableName)}`,
+  //   );
+  // } else {
+  //   loader.stop(
+  //     `Failed: installing and launching the app on ${color.bold(
+  //       device.readableName,
+  //     )}`,
+  //   );
+  // }
 }

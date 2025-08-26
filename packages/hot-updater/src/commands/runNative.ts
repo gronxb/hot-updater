@@ -1,17 +1,14 @@
-import type { NativeBuildOptions } from "@/commands/buildNative";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
-import { runAndroid } from "@hot-updater/android-helper";
+import {
+  type AndroidNativeRunOptions,
+  runAndroid,
+} from "@hot-updater/android-helper";
+import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { ExecaError } from "execa";
 
-export interface NativeRunOptions extends NativeBuildOptions {
-  device?: string | boolean;
-}
-
-export const runAndroidNative = async (
-  options: Omit<NativeRunOptions, "platform">,
-) => {
+export const runAndroidNative = async (options: AndroidNativeRunOptions) => {
   printBanner();
   const preparedConfig = await prepareNativeBuild({
     ...options,
@@ -22,17 +19,6 @@ export const runAndroidNative = async (
     return;
   }
   const { config, scheme } = preparedConfig;
-
-  const cleanup = (e: unknown): never => {
-    if (e instanceof ExecaError) {
-      console.error(e);
-    } else if (e instanceof Error) {
-      p.log.error(e.stack ?? e.message);
-    } else {
-      console.error(e);
-    }
-    process.exit(1);
-  };
 
   try {
     p.log.info("📦 Running Android Started");
@@ -49,9 +35,7 @@ export const runAndroidNative = async (
   }
 };
 
-export const runIosNative = async (
-  options: Omit<NativeRunOptions, "platform">,
-) => {
+export const runIosNative = async (options: IosNativeRunOptions) => {
   printBanner();
   const preparedConfig = await prepareNativeBuild({
     ...options,
@@ -61,18 +45,6 @@ export const runIosNative = async (
     p.log.error("preparing native build failed");
     return;
   }
-  const { config, scheme } = preparedConfig;
-
-  const cleanup = (e: unknown): never => {
-    if (e instanceof ExecaError) {
-      console.error(e);
-    } else if (e instanceof Error) {
-      p.log.error(e.stack ?? e.message);
-    } else {
-      console.error(e);
-    }
-    process.exit(1);
-  };
 
   try {
     p.log.info("📦 Running iOS Started");
@@ -84,4 +56,15 @@ export const runIosNative = async (
   } catch (e) {
     cleanup(e);
   }
+};
+
+const cleanup = (e: unknown): never => {
+  if (e instanceof ExecaError) {
+    console.error(e);
+  } else if (e instanceof Error) {
+    p.log.error(e.stack ?? e.message);
+  } else {
+    console.error(e);
+  }
+  process.exit(1);
 };

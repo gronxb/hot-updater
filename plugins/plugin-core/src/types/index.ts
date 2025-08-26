@@ -321,3 +321,10 @@ export type ConfigInput = {
   storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
   database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;
 };
+
+export interface NativeBuildOptions {
+  outputPath?: string;
+  interactive: boolean;
+  message?: string;
+  scheme?: string;
+}

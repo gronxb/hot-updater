@@ -1,4 +1,11 @@
 import path from "path";
+import {
+  createAndInjectFingerprintFiles,
+  isFingerprintEquals,
+  readLocalFingerprint,
+} from "@/utils/fingerprint";
+import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
+import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import * as p from "@clack/prompts";
 import {
   type ConfigResponse,
@@ -9,42 +16,18 @@ import {
 } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 
-import { getPlatform } from "@/prompts/getPlatform";
-import {
-  createAndInjectFingerprintFiles,
-  isFingerprintEquals,
-  readLocalFingerprint,
-} from "@/utils/fingerprint";
-import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
-import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-
-export async function prepareNativeBuild(options: NativeBuildOptions): Promise<{
+export async function prepareNativeBuild(
+  options: NativeBuildOptions & { platform: Platform },
+): Promise<{
   outputPath: string;
   config: ConfigResponse;
-  platform: Platform;
   scheme: string;
 } | null> {
   const cwd = getCwd();
+  const platform = options.platform;
 
   if (!options.scheme && !options.interactive) {
     p.log.error("required option '-s, --scheme <scheme>' not specified");
-    return null;
-  }
-
-  const platform: Platform | null | symbol =
-    options.platform ??
-    (options.interactive
-      ? await getPlatform("Which platform do you want to deploy?")
-      : null);
-
-  if (p.isCancel(platform)) {
-    return null;
-  }
-
-  if (!platform) {
-    p.log.error(
-      "Platform not found. -p <ios | android> or --platform <ios | android>",
-    );
     return null;
   }
 
@@ -139,5 +122,5 @@ export async function prepareNativeBuild(options: NativeBuildOptions): Promise<{
     ? artifactResultStorePath
     : path.join(cwd, artifactResultStorePath);
 
-  return { outputPath: resolvedOutputPath, config, platform, scheme };
+  return { outputPath: resolvedOutputPath, config, scheme };
 }

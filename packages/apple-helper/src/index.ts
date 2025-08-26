@@ -1,7 +1,6 @@
-// Main build and install functions (Primary exports)
 export { buildIos } from "./buildIos";
+export type { IosNativeRunOptions } from "./types";
 
-// Essential types
 export type {
   AppleDevice,
   DeviceState,
