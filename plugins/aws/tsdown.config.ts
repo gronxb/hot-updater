@@ -6,11 +6,13 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
+    failOnWarn: true,
   },
   {
     entry: ["lambda/index.ts"],
     format: ["cjs"],
     outDir: "dist/lambda",
+    failOnWarn: true,
   },
   {
     entry: ["iac/index.ts"],
@@ -18,5 +20,6 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/aws"],
+    failOnWarn: true,
   },
 ]);
