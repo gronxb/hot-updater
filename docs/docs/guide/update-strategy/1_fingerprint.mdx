@@ -221,3 +221,26 @@ export default defineConfig({
   }
 }
 ```
+
+
+## Endpoint Testing
+
+You can test if the update check endpoint, configured via the `hot-updater init` command, is working correctly. When using the `fingerprint` strategy, the endpoint format is typically:
+
+*   `GET /check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+
+Example of testing with `curl`:
+
+```bash
+curl "https://your-update-endpoint.com/check-update/fingerprint/ios/11142b9062165fa48665f5efa095dd94e9e45eb0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
+```
+
+**Request Parameter Descriptions:**
+
+*   `:platform`: The platform, such as `ios` or `android`.
+*   `:fingerprintHash`: The current fingerprint hash of the client app.
+*   `:channel`: The channel name you want to check for updates (e.g., `default`, `staging`).
+*   `:minBundleId`: The minimum bundle ID supported by the client (this value is updated when the native app is rebuilt. If unknown for testing, you can use `00000000-0000-0000-0000-000000000000`).
+*   `:bundleId`: The client's current bundle ID.
+
+This request allows you to verify if an update is available for a specific fingerprint hash and channel.
