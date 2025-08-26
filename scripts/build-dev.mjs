@@ -11,7 +11,7 @@ const rootDir = path.resolve(__dirname, "..");
 
 let buildProcess = null;
 let debounceTimeout = null;
-const DEBOUNCE_DELAY = 300; // 300ms delay
+const DEBOUNCE_DELAY = 1000; // 1s delay
 
 const runBuild = async () => {
   // Cancel existing build if running
@@ -40,7 +40,7 @@ const runBuild = async () => {
   }
 };
 
-const debouncedRunBuild = (filePath) => {
+const debouncedRunBuild = () => {
   // Clear existing timeout
   if (debounceTimeout) {
     clearTimeout(debounceTimeout);
@@ -98,17 +98,17 @@ watcher.on("ready", () => {
 
 watcher.on("change", (filePath) => {
   p.log.info(picocolors.blueBright(`📝 Changed: ${filePath}`));
-  debouncedRunBuild(filePath);
+  debouncedRunBuild();
 });
 
 watcher.on("add", (filePath) => {
   p.log.info(picocolors.greenBright(`➕ Added: ${filePath}`));
-  debouncedRunBuild(filePath);
+  debouncedRunBuild();
 });
 
 watcher.on("unlink", (filePath) => {
   p.log.info(picocolors.red(`➖ Removed: ${filePath}`));
-  debouncedRunBuild(filePath);
+  debouncedRunBuild();
 });
 
 watcher.on("error", (error) => {
