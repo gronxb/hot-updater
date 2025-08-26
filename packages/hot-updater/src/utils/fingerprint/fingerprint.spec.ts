@@ -99,7 +99,6 @@ class MainActivity : ReactActivity() {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
-      ignorePaths: [],
     });
 
     // change content
@@ -108,17 +107,43 @@ class MainActivity : ReactActivity() {
     const fingerprintAfter = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
-      ignorePaths: [],
     });
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
-  it("fingerprint changed though MainActivity.kt is ignored because of native code hash", async () => {
+  it("fingerprint not changed if MainActivity.kt is not modified", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
-      ignorePaths: ["**/*.kt"],
+    });
+
+    // Don't change content, just read the file
+    const testKtFilePath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "java",
+      "com",
+      "hotupdaterexample",
+      "MainActivity.kt",
+    );
+    fs.readFileSync(testKtFilePath, { encoding: "utf-8" });
+
+    const fingerprintAfter = await nativeFingerprint(rootDir, {
+      platform: "android",
+      extraSources: [],
+    });
+
+    expect(fingerprintBefore).toEqual(fingerprintAfter);
+  });
+
+  it("fingerprint changed if MainActivity.kt has significant changes", async () => {
+    const fingerprintBefore = await nativeFingerprint(rootDir, {
+      platform: "android",
+      extraSources: [],
     });
 
     changeTestKtFile();
@@ -126,17 +151,15 @@ class MainActivity : ReactActivity() {
     const fingerprintAfter = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
-      ignorePaths: ["**/*.kt"],
     });
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
-  it("fingerprint not changed if MainActivity.kt is ignored and miscellaneous changed", async () => {
+  it("fingerprint changed if MainActivity.kt has minor changes", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
-      ignorePaths: ["**/*.kt"],
     });
 
     changeTestKtFileMiscellaneous();
@@ -144,17 +167,15 @@ class MainActivity : ReactActivity() {
     const fingerprintAfter = await nativeFingerprint(rootDir, {
       platform: "android",
       extraSources: [],
-      ignorePaths: ["**/*.kt"],
     });
 
-    expect(fingerprintBefore).toEqual(fingerprintAfter);
+    expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
   it("fingerprint changed if extraSources changed", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
       platform: "ios",
-      extraSources: [".tmp"],
-      ignorePaths: [],
+      extraSources: [],
     });
 
     fs.writeFileSync(path.resolve(rootDir, ".tmp"), "test", {
@@ -164,7 +185,6 @@ class MainActivity : ReactActivity() {
     const fingerprintAfter = await nativeFingerprint(rootDir, {
       platform: "ios",
       extraSources: [".tmp"],
-      ignorePaths: [],
     });
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);

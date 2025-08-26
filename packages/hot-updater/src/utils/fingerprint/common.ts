@@ -44,7 +44,6 @@ export function getOtaFingerprintOptions(
     platforms: [platform],
     ignorePaths: [
       ...getDefaultIgnorePaths(),
-      // Native code and build configuration files
       ...allowExtensions([
         // iOS native code
         "*.swift",
@@ -84,9 +83,6 @@ export function getOtaFingerprintOptions(
         "BUILD.bazel", // Bazel BUILD files with extension
         "WORKSPACE.bazel", // Bazel WORKSPACE files with extension
       ]),
-
-      // User-provided ignore paths
-      ...options.ignorePaths,
     ],
     sourceSkips:
       SourceSkips.GitIgnore |
@@ -100,24 +96,18 @@ export function getOtaFingerprintOptions(
       SourceSkips.ExpoConfigExtraSection |
       SourceSkips.ExpoConfigEASProject |
       SourceSkips.ExpoConfigSchemes,
-    extraSources: processExtraSources(
-      options.extraSources,
-      path,
-      options.ignorePaths,
-    ),
+    extraSources: processExtraSources(options.extraSources ?? [], path),
     debug: options.debug,
   };
 }
 
 export type FingerprintSources = {
   extraSources: string[];
-  ignorePaths: string[];
 };
 
 export type FingerprintOptions = {
   platform: "ios" | "android";
-  extraSources: string[];
-  ignorePaths: string[];
+  extraSources?: string[];
   debug?: boolean;
 };
 

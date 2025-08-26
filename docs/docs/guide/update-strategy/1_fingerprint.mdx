@@ -25,7 +25,7 @@ export default defineConfig({
 });
 ```
 
-The fingerprint configuration also helps determine when builds should be cached and invalidated in non-standard settings, such as when you have git submodules in your project:
+The fingerprint configuration allows you to include additional sources and enable debug mode:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -34,8 +34,8 @@ export default defineConfig({
   // ... other configurations
   updateStrategy: "fingerprint",
   fingerprint: {
-    extraSources: ["./git-submodule"], // Add extra sources to include in fingerprint calculation
-    ignorePaths: ["./temp"], // Ignore paths during fingerprint calculation
+    extraSources: ["resources/**", ".gitignore", "./git-submodule"], // Additional sources to include in fingerprint
+    debug: true, // Enable debug mode for detailed fingerprint information
   },
 });
 ```
