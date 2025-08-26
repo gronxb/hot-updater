@@ -12,6 +12,7 @@ import {
 
 export * from "./common";
 export * from "./diff";
+export * from "./dualFingerprint";
 
 /**
  * Calculates the fingerprint of the native parts project of the project.

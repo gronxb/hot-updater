@@ -6,6 +6,7 @@ import {
   NIL_UUID,
   type UpdateInfo,
   type UpdateStatus,
+  isOtaCompatible,
 } from "@hot-updater/core";
 import { semverSatisfies } from "./semverSatisfies";
 
@@ -159,7 +160,7 @@ const fingerprintStrategy = async (
       b.platform !== platform ||
       b.channel !== channel ||
       !b.fingerprintHash ||
-      b.fingerprintHash !== fingerprintHash ||
+      !isOtaCompatible(b.fingerprintHash, fingerprintHash) ||
       !b.enabled ||
       (minBundleId && b.id.localeCompare(minBundleId) < 0)
     ) {

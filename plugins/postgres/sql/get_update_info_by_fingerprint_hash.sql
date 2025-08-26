@@ -34,7 +34,7 @@ BEGIN
           AND b.id >= bundle_id
           AND b.id > min_bundle_id
           AND b.channel = target_channel
-          AND b.fingerprint_hash = target_fingerprint_hash
+          AND SUBSTRING(b.fingerprint_hash, 1, 20) = SUBSTRING(target_fingerprint_hash, 1, 20)
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -51,7 +51,7 @@ BEGIN
           AND b.id < bundle_id
           AND b.id > min_bundle_id
           AND b.channel = target_channel
-          AND b.fingerprint_hash = target_fingerprint_hash
+          AND SUBSTRING(b.fingerprint_hash, 1, 20) = SUBSTRING(target_fingerprint_hash, 1, 20)
         ORDER BY b.id DESC
         LIMIT 1
     ),

@@ -6,6 +6,7 @@ import type {
   UpdateInfo,
   UpdateStatus,
 } from "@hot-updater/core";
+import { isOtaCompatible } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import type { Firestore } from "firebase-admin/firestore";
 
@@ -82,42 +83,53 @@ const fingerprintStrategy = async (
       return null;
     }
 
+    // Note: Firebase doesn't support substring queries, so we fetch all enabled bundles
+    // and filter by OTA fingerprint compatibility in memory
     const baseQuery = db
       .collection("bundles")
       .where("platform", "==", platform)
       .where("channel", "==", channel)
       .where("enabled", "==", true)
-      .where("id", ">=", minBundleId)
-      .where("fingerprint_hash", "==", fingerprintHash);
+      .where("id", ">=", minBundleId);
 
     let updateCandidate: Bundle | null = null;
     let rollbackCandidate: Bundle | null = null;
 
     if (bundleId === NIL_UUID) {
-      const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
-      if (!snap.empty) {
-        const data = snap.docs[0].data();
-        updateCandidate = convertToBundle(data);
+      const snap = await baseQuery.orderBy("id", "desc").get();
+      // Filter by OTA fingerprint compatibility
+      for (const doc of snap.docs) {
+        const data = doc.data();
+        if (isOtaCompatible(data.fingerprint_hash, fingerprintHash)) {
+          updateCandidate = convertToBundle(data);
+          break;
+        }
       }
     } else {
       const updateSnap = await baseQuery
         .where("id", ">=", bundleId)
         .orderBy("id", "desc")
-        .limit(1)
         .get();
-      if (!updateSnap.empty) {
-        const data = updateSnap.docs[0].data();
-        updateCandidate = convertToBundle(data);
+      // Filter by OTA fingerprint compatibility
+      for (const doc of updateSnap.docs) {
+        const data = doc.data();
+        if (isOtaCompatible(data.fingerprint_hash, fingerprintHash)) {
+          updateCandidate = convertToBundle(data);
+          break;
+        }
       }
 
       const rollbackSnap = await baseQuery
         .where("id", "<", bundleId)
         .orderBy("id", "desc")
-        .limit(1)
         .get();
-      if (!rollbackSnap.empty) {
-        const data = rollbackSnap.docs[0].data();
-        rollbackCandidate = convertToBundle(data);
+      // Filter by OTA fingerprint compatibility
+      for (const doc of rollbackSnap.docs) {
+        const data = doc.data();
+        if (isOtaCompatible(data.fingerprint_hash, fingerprintHash)) {
+          rollbackCandidate = convertToBundle(data);
+          break;
+        }
       }
     }
 

@@ -8,8 +8,11 @@ The "Fingerprint" update strategy in `hot-updater` leverages Expo's [`@expo/fing
 
 ## Core Concepts
 
-*   **Fingerprint**: This is a hash value (e.g., `8b47da71b3b7cf7fa7fd0ad4938207d01d584430`) representing the current state of your project's native code. It's calculated every time the CLI is run. It changes whenever there are modifications to native dependencies, direct native code edits, or Expo SDK updates.
-*   **Role**: When you run the `hot-updater deploy` command, `hot-updater` compares the stored fingerprint hash. It then ensures that updates are only sent to clients whose native version is compatible with the JavaScript bundle being deployed.
+*   **Dual-Part Fingerprint**: The fingerprint system uses a 160-bit hash split into two parts:
+    - **OTA Fingerprint (80 bits)**: The first half of the hash, used for determining OTA update compatibility
+    - **Caching Part (80 bits)**: The second half, used for native build caching and isolation
+*   **Native Fingerprint**: The full 160-bit hash (e.g., `8b47da71b3b7cf7fa7fd0ad4938207d01d584430`) representing the complete state of your project's native code. It changes with any modifications to native dependencies, direct native code edits, or Expo SDK updates.
+*   **OTA Compatibility**: Updates are matched based on the OTA fingerprint (first 80 bits). This means multiple native builds with the same OTA fingerprint but different caching parts can receive the same updates, providing flexibility while maintaining compatibility.
 *   **Automatic Injection**: Each time `hot-updater` builds and deploys a JavaScript bundle, it automatically injects the current project's fingerprint hash into that bundle. The client application uses this injected fingerprint to verify compatibility with its own native code.
 
 ## Configuration
@@ -141,6 +144,18 @@ This configuration is particularly useful when:
   }
 }
 ```
+
+### Understanding Fingerprint Compatibility
+
+The fingerprint hash is divided into two parts:
+- **OTA part** (first 20 hex characters): `11142b9062165fa48665` - Used for update compatibility
+- **Caching part** (last 20 hex characters): `f5efa095dd94e9e45eb0` - Used for build caching
+
+Two builds are OTA-compatible if their OTA parts match, even if their caching parts differ. For example:
+- Build A: `11142b9062165fa48665f5efa095dd94e9e45eb0`
+- Build B: `11142b9062165fa48665abcdef1234567890fedc`
+
+These builds share the same OTA part (`11142b9062165fa48665`) and can receive the same updates, despite having different caching parts.
 
 ## Endpoint Testing
 
