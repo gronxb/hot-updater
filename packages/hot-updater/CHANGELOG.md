@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.20.8
+
+### Patch Changes
+
+- ad7c999: feat(fingerprint): calculate OTA fingerprint only in native module
+- Updated dependencies [ad7c999]
+  - @hot-updater/plugin-core@0.20.8
+  - @hot-updater/console@0.20.8
+  - @hot-updater/aws@0.20.8
+  - @hot-updater/cloudflare@0.20.8
+  - @hot-updater/firebase@0.20.8
+  - @hot-updater/supabase@0.20.8
+  - @hot-updater/core@0.20.8
+
 ## 0.20.7
 
 ### Patch Changes
