@@ -1,8 +1,8 @@
 import { orderBy } from "es-toolkit";
+import semver from "semver";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import type { Bundle, DatabasePluginHooks } from "./types";
-
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
   _oldUpdateJsonKey?: string;
@@ -12,6 +12,14 @@ interface BundleWithUpdateJsonKey extends Bundle {
 function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   const { _updateJsonKey, _oldUpdateJsonKey, ...pureBundle } = bundle;
   return pureBundle;
+}
+
+// Helper function to check if a version string is an exact version (not a range)
+function isExactVersion(version: string | null | undefined): boolean {
+  if (!version) return false;
+  // semver.valid() returns the cleaned version string if it's a valid exact version
+  // or null if it's not a valid version (includes ranges like x, *, ~, ^)
+  return semver.valid(version) !== null;
 }
 
 /**
@@ -274,9 +282,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                 `${apiBasePath}/fingerprint/${data.platform}/${data.fingerprintHash}/${data.channel}/*`,
               );
             } else if (data.targetAppVersion) {
-              pathsToInvalidate.add(
-                `${apiBasePath}/app-version/${data.platform}/${data.targetAppVersion}/${data.channel}/*`,
-              );
+              if (!isExactVersion(data.targetAppVersion)) {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${data.platform}/*`,
+                );
+              } else {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${data.platform}/${data.targetAppVersion}/${data.channel}/*`,
+                );
+              }
             }
             continue;
           }
@@ -307,9 +321,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                 `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
               );
             } else if (bundle.targetAppVersion) {
-              pathsToInvalidate.add(
-                `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
-              );
+              if (!isExactVersion(bundle.targetAppVersion)) {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${bundle.platform}/*`,
+                );
+              } else {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                );
+              }
             }
             continue;
           }
@@ -386,23 +406,52 @@ export const createBlobDatabasePlugin = <TContext = object>({
 
                 // Invalidate app-version paths for both old and new channels
                 if (bundle.targetAppVersion) {
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${oldChannel}/*`,
-                  );
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${newChannel}/*`,
-                  );
+                  if (!isExactVersion(bundle.targetAppVersion)) {
+                    pathsToInvalidate.add(
+                      `${apiBasePath}/app-version/${bundle.platform}/*`,
+                    );
+                  } else {
+                    pathsToInvalidate.add(
+                      `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${oldChannel}/*`,
+                    );
+                    pathsToInvalidate.add(
+                      `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${newChannel}/*`,
+                    );
+                  }
                 }
               }
 
-              if (bundle.fingerprintHash) {
+              if (updatedBundle.fingerprintHash) {
                 pathsToInvalidate.add(
-                  `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+                  `${apiBasePath}/fingerprint/${bundle.platform}/${updatedBundle.fingerprintHash}/${updatedBundle.channel}/*`,
                 );
-              } else if (bundle.targetAppVersion) {
-                pathsToInvalidate.add(
-                  `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
-                );
+              } else if (updatedBundle.targetAppVersion) {
+                // Invalidate based on new targetAppVersion
+                if (!isExactVersion(updatedBundle.targetAppVersion)) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${updatedBundle.platform}/*`,
+                  );
+                } else {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${updatedBundle.platform}/${updatedBundle.targetAppVersion}/${updatedBundle.channel}/*`,
+                  );
+                }
+
+                // Also invalidate old targetAppVersion path if it changed
+                if (
+                  bundle.targetAppVersion &&
+                  bundle.targetAppVersion !== updatedBundle.targetAppVersion
+                ) {
+                  if (!isExactVersion(bundle.targetAppVersion)) {
+                    pathsToInvalidate.add(
+                      `${apiBasePath}/app-version/${bundle.platform}/*`,
+                    );
+                  } else {
+                    pathsToInvalidate.add(
+                      `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                    );
+                  }
+                }
               }
               continue;
             }
@@ -419,14 +468,37 @@ export const createBlobDatabasePlugin = <TContext = object>({
             );
 
             pathsToInvalidate.add(`/${currentKey}`);
-            if (bundle.fingerprintHash) {
+            if (updatedBundle.fingerprintHash) {
               pathsToInvalidate.add(
-                `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
+                `${apiBasePath}/fingerprint/${updatedBundle.platform}/${updatedBundle.fingerprintHash}/${updatedBundle.channel}/*`,
               );
-            } else if (bundle.targetAppVersion) {
-              pathsToInvalidate.add(
-                `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
-              );
+            } else if (updatedBundle.targetAppVersion) {
+              // Invalidate based on new targetAppVersion
+              if (!isExactVersion(updatedBundle.targetAppVersion)) {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${updatedBundle.platform}/*`,
+                );
+              } else {
+                pathsToInvalidate.add(
+                  `${apiBasePath}/app-version/${updatedBundle.platform}/${updatedBundle.targetAppVersion}/${updatedBundle.channel}/*`,
+                );
+              }
+
+              // Also invalidate old targetAppVersion path if it changed
+              if (
+                bundle.targetAppVersion &&
+                bundle.targetAppVersion !== updatedBundle.targetAppVersion
+              ) {
+                if (!isExactVersion(bundle.targetAppVersion)) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${bundle.platform}/*`,
+                  );
+                } else {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                  );
+                }
+              }
             }
           }
         }
