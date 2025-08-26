@@ -10,6 +10,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 
 let buildProcess = null;
+let debounceTimeout = null;
+const DEBOUNCE_DELAY = 300; // 300ms delay
 
 const runBuild = async () => {
   // Cancel existing build if running
@@ -36,6 +38,19 @@ const runBuild = async () => {
   } catch (error) {
     buildProcess = null;
   }
+};
+
+const debouncedRunBuild = (filePath) => {
+  // Clear existing timeout
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
+  }
+
+  // Set new timeout
+  debounceTimeout = setTimeout(() => {
+    runBuild();
+    debounceTimeout = null;
+  }, DEBOUNCE_DELAY);
 };
 
 const watchPaths = ["docs", "packages", "plugins"];
@@ -83,17 +98,17 @@ watcher.on("ready", () => {
 
 watcher.on("change", (filePath) => {
   p.log.info(picocolors.blueBright(`📝 Changed: ${filePath}`));
-  runBuild();
+  debouncedRunBuild(filePath);
 });
 
 watcher.on("add", (filePath) => {
   p.log.info(picocolors.greenBright(`➕ Added: ${filePath}`));
-  runBuild();
+  debouncedRunBuild(filePath);
 });
 
 watcher.on("unlink", (filePath) => {
   p.log.info(picocolors.red(`➖ Removed: ${filePath}`));
-  runBuild();
+  debouncedRunBuild(filePath);
 });
 
 watcher.on("error", (error) => {
@@ -104,6 +119,9 @@ process.on("SIGINT", () => {
   p.log.warn("\n🛑 Stopping file watcher...");
   if (buildProcess) {
     buildProcess.kill();
+  }
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
   }
   watcher.close().then(() => {
     p.outro("👋 File watcher stopped");
