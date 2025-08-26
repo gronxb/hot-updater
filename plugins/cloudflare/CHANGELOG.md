@@ -1,5 +1,14 @@
 # @hot-updater/cloudflare
 
+## 0.20.8
+
+### Patch Changes
+
+- Updated dependencies [ad7c999]
+  - @hot-updater/plugin-core@0.20.8
+  - @hot-updater/core@0.20.8
+  - @hot-updater/js@0.20.8
+
 ## 0.20.7
 
 ### Patch Changes
