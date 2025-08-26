@@ -15,44 +15,61 @@ describe("nativeFingerprint", () => {
     rootDir = mockedProject.rootDir;
   }, 5000);
 
-  const changePackageJsonVersion = () => {
+  const changeTestKtFile = () => {
     // change content
-    const packageJsonFilePath = path.join(rootDir, "package.json");
-    const packageJsonFileContent = JSON.parse(
-      fs.readFileSync(packageJsonFilePath, { encoding: "utf-8" }),
+    const testKtFilePath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "kotlin",
+      "com",
+      "example",
+      "Test.kt",
     );
-    packageJsonFileContent.version = `${packageJsonFileContent.version}-alpha01`;
-    fs.writeFileSync(
-      packageJsonFilePath,
-      JSON.stringify(packageJsonFileContent),
+    const testKtFileContent = fs.readFileSync(testKtFilePath, {
+      encoding: "utf-8",
+    });
+    const modifiedContent = testKtFileContent.replace(
+      "class Test",
+      "class TestModified",
     );
+    fs.writeFileSync(testKtFilePath, modifiedContent);
   };
 
-  const changePackageJsonMiscellaneous = () => {
+  const changeTestKtFileMiscellaneous = () => {
     // change content
-    const packageJsonFilePath = path.join(rootDir, "package.json");
-    const packageJsonFileContent = JSON.parse(
-      fs.readFileSync(packageJsonFilePath, { encoding: "utf-8" }),
+    const testKtFilePath = path.join(
+      rootDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "kotlin",
+      "com",
+      "example",
+      "Test.kt",
     );
-    packageJsonFileContent.scripts.hello = "echo 'hello'";
-    fs.writeFileSync(
-      packageJsonFilePath,
-      JSON.stringify(packageJsonFileContent),
-    );
+    const testKtFileContent = fs.readFileSync(testKtFilePath, {
+      encoding: "utf-8",
+    });
+    const modifiedContent = `${testKtFileContent}\n// Added comment`;
+    fs.writeFileSync(testKtFilePath, modifiedContent);
   };
 
-  it("fingerprint changed if package.json modified", async () => {
+  it("fingerprint changed if Test.kt modified", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
       ignorePaths: [],
     });
 
     // change content
-    changePackageJsonVersion();
+    changeTestKtFile();
 
     const fingerprintAfter = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
       ignorePaths: [],
     });
@@ -60,37 +77,37 @@ describe("nativeFingerprint", () => {
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
-  it("fingerprint chnaged though package.json is ignored because of expo config hash", async () => {
+  it("fingerprint changed though Test.kt is ignored because of native code hash", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: ["package.json"],
+      ignorePaths: ["**/*.kt"],
     });
 
-    changePackageJsonVersion();
+    changeTestKtFile();
 
     const fingerprintAfter = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: ["package.json"],
+      ignorePaths: ["**/*.kt"],
     });
 
     expect(fingerprintBefore).not.toEqual(fingerprintAfter);
   });
 
-  it("fingerprint not changed if package.json is ignored and miscellaneous changed", async () => {
+  it("fingerprint not changed if Test.kt is ignored and miscellaneous changed", async () => {
     const fingerprintBefore = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: ["package.json"],
+      ignorePaths: ["**/*.kt"],
     });
 
-    changePackageJsonMiscellaneous();
+    changeTestKtFileMiscellaneous();
 
     const fingerprintAfter = await nativeFingerprint(rootDir, {
-      platform: "ios",
+      platform: "android",
       extraSources: [],
-      ignorePaths: ["package.json"],
+      ignorePaths: ["**/*.kt"],
     });
 
     expect(fingerprintBefore).toEqual(fingerprintAfter);
