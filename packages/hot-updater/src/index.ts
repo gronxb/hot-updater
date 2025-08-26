@@ -14,17 +14,22 @@ import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
-import { banner, log } from "@hot-updater/plugin-core";
+import {
+  type NativeBuildOptions,
+  type NativeRunOptions,
+  banner,
+  log,
+} from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
-import { type NativeBuildOptions, buildNative } from "./commands/buildNative";
+import { buildNative } from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
-import { type NativeRunOptions, runNative } from "./commands/runNative";
+import { runNative } from "./commands/runNative";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -152,7 +157,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: NativeBuildOptions) => {
-      buildNative(options);
+      await buildNative(options);
     });
 
   program
@@ -170,7 +175,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: NativeRunOptions) => {
-      runNative(options);
+      await runNative(options);
     });
 }
 

@@ -2,9 +2,9 @@ import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import { runAndroid } from "@hot-updater/android-helper";
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd} from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
-import type { NativeBuildOptions } from "./buildNative";
+import type {NativeBuildOptions} from "@/commands/buildNative";
 
 export interface NativeRunOptions extends NativeBuildOptions {
   device?: string | boolean;

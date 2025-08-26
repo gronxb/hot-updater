@@ -7,7 +7,7 @@ import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 
-export const createIosNativeBuild = async ({
+export const buildIos = async ({
   schemeConfig: _schemeConfig,
 }: {
   schemeConfig: NativeBuildIosScheme;

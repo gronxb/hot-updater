@@ -2,6 +2,7 @@ import path from "path";
 import * as p from "@clack/prompts";
 import {
   type ConfigResponse,
+  type NativeBuildOptions,
   type Platform,
   getCwd,
   loadConfig,
@@ -16,8 +17,6 @@ import {
 } from "@/utils/fingerprint";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-
-import type { NativeBuildOptions } from "@/commands/buildNative";
 
 export async function prepareNativeBuild(options: NativeBuildOptions): Promise<{
   outputPath: string;

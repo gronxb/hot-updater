@@ -1,5 +1,5 @@
 // Main build and install functions (Primary exports)
-export { createIosNativeBuild } from "./createIosNativeBuild";
+export { buildIos } from "./buildIos";
 
 // Essential types
 export type {

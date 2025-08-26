@@ -3,9 +3,8 @@ import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import { buildAndroid } from "@hot-updater/android-helper";
-import { createIosNativeBuild } from "@hot-updater/apple-helper";
-import type { Platform } from "@hot-updater/core";
-import { getCwd } from "@hot-updater/plugin-core";
+import { buildIos } from "@hot-updater/apple-helper";
+import { getCwd, type Platform} from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
 export interface NativeBuildOptions {
@@ -77,7 +76,7 @@ export const buildNative = async (options: NativeBuildOptions) => {
               schemeConfig: config.nativeBuild.android[scheme]!,
             })
         : () =>
-            createIosNativeBuild({
+            buildIos({
               schemeConfig: config.nativeBuild.ios[scheme]!,
             });
 

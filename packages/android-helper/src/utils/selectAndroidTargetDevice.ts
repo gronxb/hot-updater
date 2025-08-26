@@ -48,17 +48,17 @@ export const selectAndroidTargetDevice = async ({
   return { device: undefined };
 };
 
-function matchingDevice(devices: Array<AndroidDevice>, deviceArg: string) {
+const matchingDevice = (devices: Array<AndroidDevice>, deviceArg: string) => {
   const deviceByName = devices.find(
     (device) => device.readableName === deviceArg,
   );
   const deviceById = devices.find((d) => d.deviceId === deviceArg);
   return deviceByName || deviceById;
-}
+};
 /**
  * List all Android devices and emulators (connected and available)
  */
-async function listAndroidDevices() {
+export const listAndroidDevices = async (): Promise<AndroidDevice[]> => {
   const devices = await Adb.getDevices();
 
   let allDevices: Array<AndroidDevice> = [];
@@ -101,4 +101,4 @@ async function listAndroidDevices() {
   }
 
   return allDevices;
-}
+};
