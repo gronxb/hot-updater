@@ -140,6 +140,8 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
       /^\s*override fun getJSBundleFile\(\): String\?\s*\{[\s\S]*?^\s*\}/gm;
     const kotlinHermesAnchor =
       "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED";
+    const kotlinNewArchAnchor =
+      "override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED";
     const kotlinNewMethod = `
           override fun getJSBundleFile(): String? {
               return HotUpdater.getJSBundleFile(applicationContext)
@@ -178,6 +180,11 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
           contents = contents.replace(
             kotlinHermesAnchor,
             `${kotlinHermesAnchor}\n${kotlinNewMethod}`,
+          );
+        } else if (contents.includes(kotlinNewArchAnchor)) {
+          contents = contents.replace(
+            kotlinNewArchAnchor,
+            `${kotlinNewArchAnchor}\n${kotlinNewMethod}`
           );
         } else {
           // Fallback: Add before the closing brace of the object if anchor not found
