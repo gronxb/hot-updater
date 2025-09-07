@@ -1,10 +1,7 @@
-import os from "os";
-import path from "path";
 import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-
-const getTmpResultDir = () => path.join(os.tmpdir(), "export");
+import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 
 export const exportXcodeArchive = async ({
   archivePath,
@@ -15,7 +12,7 @@ export const exportXcodeArchive = async ({
   schemeConfig: NativeBuildIosScheme;
   archivePath: string;
 }): Promise<{ exportPath: string }> => {
-  const exportPath = path.join(getTmpResultDir(), "export");
+  const exportPath = await createRandomTmpDir();
   const exportArgs = prepareExportArgs({
     archivePath,
     exportPath,

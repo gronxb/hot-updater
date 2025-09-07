@@ -1,5 +1,3 @@
-import fs from "fs";
-import os from "os";
 import path from "path";
 import * as p from "@clack/prompts";
 import type {
@@ -8,6 +6,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import { installPodsIfNeeded } from "../utils/cocoapods";
+import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import {
   getDefaultDestination,
   resolveDestinations,
@@ -17,8 +16,6 @@ import {
   discoverXcodeProject,
 } from "../utils/projectInfo";
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
-
-const getTmpResultDir = () => path.join(os.tmpdir(), "archive");
 
 export const archiveXcodeProject = async ({
   sourceDir,
@@ -35,11 +32,10 @@ export const archiveXcodeProject = async ({
     await installPodsIfNeeded(sourceDir);
   }
 
-  const tmpResultDir = getTmpResultDir();
-  await fs.promises.mkdir(tmpResultDir, { recursive: true });
+  const tmpDir = await createRandomTmpDir();
 
   const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
-  const archivePath = path.join(tmpResultDir, archiveName);
+  const archivePath = path.join(tmpDir, archiveName);
 
   const archiveArgs = prepareArchiveArgs({
     archivePath,
