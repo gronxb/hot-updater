@@ -184,7 +184,7 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
         } else if (contents.includes(kotlinNewArchAnchor)) {
           contents = contents.replace(
             kotlinNewArchAnchor,
-            `${kotlinNewArchAnchor}\n${kotlinNewMethod}`
+            `${kotlinNewArchAnchor}\n${kotlinNewMethod}`,
           );
         } else {
           // Fallback: Add before the closing brace of the object if anchor not found
