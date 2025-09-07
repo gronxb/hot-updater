@@ -1,5 +1,17 @@
 # @hot-updater/core
 
+## 0.20.9
+
+## 0.20.8
+
+## 0.20.7
+
+### Patch Changes
+
+- a92992c: chore(tsdown): failOnWarn true
+
+## 0.20.6
+
 ## 0.20.5
 
 ## 0.20.4

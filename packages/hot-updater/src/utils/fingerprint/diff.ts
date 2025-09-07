@@ -6,7 +6,7 @@ import picocolors from "picocolors";
 import {
   type FingerprintOptions,
   type FingerprintResult,
-  getFingerprintOptions,
+  getOtaFingerprintOptions,
 } from "./common";
 
 export async function getFingerprintDiff(
@@ -17,7 +17,7 @@ export async function getFingerprintDiff(
   return await diffFingerprintChangesAsync(
     oldFingerprint,
     projectPath,
-    getFingerprintOptions(options.platform, projectPath, options),
+    getOtaFingerprintOptions(options.platform, projectPath, options),
   );
 }
 

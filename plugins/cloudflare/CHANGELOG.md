@@ -1,5 +1,42 @@
 # @hot-updater/cloudflare
 
+## 0.20.9
+
+### Patch Changes
+
+- 5cbea75: chore: overrides bump devalue 5.3.2
+  - @hot-updater/core@0.20.9
+  - @hot-updater/js@0.20.9
+  - @hot-updater/plugin-core@0.20.9
+
+## 0.20.8
+
+### Patch Changes
+
+- Updated dependencies [ad7c999]
+  - @hot-updater/plugin-core@0.20.8
+  - @hot-updater/core@0.20.8
+  - @hot-updater/js@0.20.8
+
+## 0.20.7
+
+### Patch Changes
+
+- a92992c: chore(tsdown): failOnWarn true
+- Updated dependencies [a92992c]
+  - @hot-updater/plugin-core@0.20.7
+  - @hot-updater/core@0.20.7
+  - @hot-updater/js@0.20.7
+
+## 0.20.6
+
+### Patch Changes
+
+- Updated dependencies [6a905d8]
+  - @hot-updater/plugin-core@0.20.6
+  - @hot-updater/core@0.20.6
+  - @hot-updater/js@0.20.6
+
 ## 0.20.5
 
 ### Patch Changes

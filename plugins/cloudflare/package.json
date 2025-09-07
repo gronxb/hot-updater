@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/cloudflare",
   "type": "module",
-  "version": "0.20.5",
+  "version": "0.20.9",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -52,8 +52,8 @@
   },
   "devDependencies": {
     "@clack/prompts": "catalog:",
-    "@cloudflare/vitest-pool-workers": "^0.8.26",
-    "@cloudflare/workers-types": "^4.20250507.0",
+    "@cloudflare/vitest-pool-workers": "^0.8.70",
+    "@cloudflare/workers-types": "^4.20250828.1",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "dayjs": "^1.11.13",

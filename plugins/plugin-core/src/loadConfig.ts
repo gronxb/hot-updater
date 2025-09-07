@@ -76,7 +76,6 @@ const getDefaultConfig = (): ConfigInput => {
     updateStrategy: "appVersion",
     fingerprint: {
       extraSources: [],
-      ignorePaths: [],
     },
     console: {
       port: 1422,

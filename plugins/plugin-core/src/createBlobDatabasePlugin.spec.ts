@@ -1289,4 +1289,320 @@ describe("blobDatabase plugin", () => {
     expect(allPaths).toContain(expectedOldAppVersionPath);
     expect(allPaths).toContain(expectedNewAppVersionPath);
   });
+
+  it("should invalidate CloudFront paths for semver pattern when appending bundle", async () => {
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "3.0.x",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    await plugin.appendBundle(newBundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+  });
+
+  it("should invalidate CloudFront paths for exact app version when appending bundle", async () => {
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "3.0.1",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    await plugin.appendBundle(newBundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    console.log(invalidatedPaths);
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/3.0.1/production/*",
+    );
+  });
+
+  it("should invalidate exact app version path when changing from semver to exact", async () => {
+    // Initial: semver target app version
+    const initialBundle = createBundleJson(
+      "production",
+      "ios",
+      "3.0.x",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations and seed initial state
+    cloudfrontInvalidations.length = 0;
+    await plugin.appendBundle(initialBundle);
+    await plugin.commitBundle();
+
+    // Clear invalidations for the update scenario
+    cloudfrontInvalidations.length = 0;
+
+    // Update: change to an exact app version
+    await plugin.updateBundle("cloudfront-new-test", {
+      targetAppVersion: "3.0.1",
+    });
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/3.0.1/production/*",
+    );
+  });
+
+  it("should invalidate platform-wide app-version path when changing from exact to semver", async () => {
+    // Initial: exact target app version
+    const initialBundle = createBundleJson(
+      "production",
+      "ios",
+      "3.0.1",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations and seed initial state
+    cloudfrontInvalidations.length = 0;
+    await plugin.appendBundle(initialBundle);
+    await plugin.commitBundle();
+
+    // Clear invalidations for the update scenario
+    cloudfrontInvalidations.length = 0;
+
+    // Update: change to a semver pattern
+    await plugin.updateBundle("cloudfront-new-test", {
+      targetAppVersion: "3.0.x",
+    });
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+  });
+
+  it("should invalidate CloudFront paths for semver pattern when appending bundle", async () => {
+    const newBundle = createBundleJson(
+      "production",
+      "android",
+      "3.0.x",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    await plugin.appendBundle(newBundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/*",
+    );
+  });
+
+  it("should invalidate CloudFront paths for exact app version when appending bundle", async () => {
+    const newBundle = createBundleJson(
+      "production",
+      "android",
+      "3.0.1",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    await plugin.appendBundle(newBundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    console.log(invalidatedPaths);
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/3.0.1/production/*",
+    );
+  });
+
+  it("should invalidate exact app version path when changing from semver to exact", async () => {
+    // Initial: semver target app version
+    const initialBundle = createBundleJson(
+      "production",
+      "android",
+      "3.0.x",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations and seed initial state
+    cloudfrontInvalidations.length = 0;
+    await plugin.appendBundle(initialBundle);
+    await plugin.commitBundle();
+
+    // Clear invalidations for the update scenario
+    cloudfrontInvalidations.length = 0;
+
+    // Update: change to an exact app version
+    await plugin.updateBundle("cloudfront-new-test", {
+      targetAppVersion: "3.0.1",
+    });
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/3.0.1/production/*",
+    );
+  });
+
+  it("should invalidate platform-wide app-version path when changing from exact to semver", async () => {
+    // Initial: exact target app version
+    const initialBundle = createBundleJson(
+      "production",
+      "android",
+      "3.0.1",
+      "cloudfront-new-test",
+    );
+
+    // Clear previous invalidations and seed initial state
+    cloudfrontInvalidations.length = 0;
+    await plugin.appendBundle(initialBundle);
+    await plugin.commitBundle();
+
+    // Clear invalidations for the update scenario
+    cloudfrontInvalidations.length = 0;
+
+    // Update: change to a semver pattern
+    await plugin.updateBundle("cloudfront-new-test", {
+      targetAppVersion: "3.0.x",
+    });
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/*",
+    );
+  });
+
+  it("should invalidate CloudFront paths for semver pattern when deleting bundle (ios)", async () => {
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "3.0.x",
+      "cloudfront-delete-semver-ios",
+    );
+
+    // Add bundle first
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Delete the bundle
+    await plugin.deleteBundle(bundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+  });
+
+  it("should invalidate CloudFront paths for exact app version when deleting bundle (ios)", async () => {
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "3.0.1",
+      "cloudfront-delete-exact-ios",
+    );
+
+    // Add bundle first
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Delete the bundle
+    await plugin.deleteBundle(bundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/3.0.1/production/*",
+    );
+  });
+
+  it("should invalidate CloudFront paths for semver pattern when deleting bundle (android)", async () => {
+    const bundle = createBundleJson(
+      "production",
+      "android",
+      "3.0.x",
+      "cloudfront-delete-semver-android",
+    );
+
+    // Add bundle first
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Delete the bundle
+    await plugin.deleteBundle(bundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/*",
+    );
+  });
+
+  it("should invalidate CloudFront paths for exact app version when deleting bundle (android)", async () => {
+    const bundle = createBundleJson(
+      "production",
+      "android",
+      "3.0.1",
+      "cloudfront-delete-exact-android",
+    );
+
+    // Add bundle first
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    // Delete the bundle
+    await plugin.deleteBundle(bundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/3.0.1/production/*",
+    );
+  });
 });
