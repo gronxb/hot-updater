@@ -1,5 +1,14 @@
 # @hot-updater/cloudflare
 
+## 0.20.9
+
+### Patch Changes
+
+- 5cbea75: chore: overrides bump devalue 5.3.2
+  - @hot-updater/core@0.20.9
+  - @hot-updater/js@0.20.9
+  - @hot-updater/plugin-core@0.20.9
+
 ## 0.20.8
 
 ### Patch Changes
