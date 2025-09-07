@@ -15,11 +15,11 @@ export const createNativeBuild = async ({
   outputPath: string;
   buildPlugin: BuildPlugin;
   builder: () => Promise<{ buildDirectory: string; buildArtifactPath: string }>;
-}): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+}): Promise<void> => {
   // run prebuild hook
   await buildPlugin.nativeBuild?.prebuild?.({ platform });
 
-  const { buildArtifactPath, buildDirectory } = await builder();
+  const { buildDirectory } = await builder();
 
   // run postbuild hook
   await buildPlugin.nativeBuild?.postbuild?.({ platform });
@@ -37,6 +37,4 @@ export const createNativeBuild = async ({
   p.log.info(
     `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), outputPath))}.`,
   );
-
-  return { buildArtifactPath, buildDirectory };
 };

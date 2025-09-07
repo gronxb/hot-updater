@@ -24,17 +24,18 @@ export const buildIos = async ({
     sourceDir: iosProjectRoot,
   });
 
+  const buildDirectory = path.dirname(archivePath);
   // Extract .app from xcarchive if present
   const appFromArchive = extractAppFromXcarchive(archivePath);
-  console.log(
-    archivePath,
-    appFromArchive,
-    path.join(path.dirname(archivePath), path.basename(appFromArchive || "")),
-  );
+
   if (appFromArchive) {
-    await fs.promises.cp(appFromArchive, path.dirname(archivePath), {
-      recursive: true,
-    });
+    await fs.promises.cp(
+      appFromArchive,
+      path.join(buildDirectory, path.basename(appFromArchive)),
+      {
+        recursive: true,
+      },
+    );
     p.log.success(".app extracted from .xcarchive");
   }
 
@@ -62,7 +63,7 @@ export const buildIos = async ({
 
   // If no export options or IPA not found, return archive path
   return {
-    buildDirectory: path.dirname(archivePath),
+    buildDirectory,
     buildArtifactPath: archivePath,
   };
 };
