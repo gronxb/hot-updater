@@ -4,7 +4,7 @@ import * as p from "@clack/prompts";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
-const getTmpResultDir = () => path.join(os.tmpdir(), "archive");
+const getTmpResultDir = () => path.join(os.tmpdir(), "export");
 
 export const exportXcodeArchive = async ({
   archivePath,
