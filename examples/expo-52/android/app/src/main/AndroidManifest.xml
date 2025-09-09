@@ -26,6 +26,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="com.anonymous.expo52"/>
         <data android:scheme="exp+expo-52"/>
+        <data android:scheme="com.expo52"/>
       </intent-filter>
     </activity>
   </application>

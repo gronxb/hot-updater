@@ -1,4 +1,4 @@
-package com.anonymous.expo52
+package com.expo52
 
 import android.app.Application
 import android.content.res.Configuration

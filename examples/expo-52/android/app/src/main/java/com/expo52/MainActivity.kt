@@ -1,4 +1,4 @@
-package com.anonymous.expo52
+package com.expo52
 
 import android.os.Build
 import android.os.Bundle
