@@ -41,6 +41,7 @@ export function getOtaFingerprintOptions(
   options: FingerprintOptions,
 ): Options {
   return {
+    useRNCoreAutolinkingFromExpo: false,
     platforms: [platform],
     ignorePaths: [
       ...getDefaultIgnorePaths(),
