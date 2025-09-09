@@ -2,14 +2,6 @@
   "ios": {
     "sources": [
       {
-        "type": "file",
-        "filePath": "eas.json",
-        "reasons": [
-          "easBuild"
-        ],
-        "hash": null
-      },
-      {
         "type": "dir",
         "filePath": "../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_d9c2bf47032dcb04803c8ad62050c5a4/node_modules/expo-asset/ios",
         "reasons": [
@@ -6649,14 +6641,6 @@
   "android": {
     "sources": [
       {
-        "type": "file",
-        "filePath": "eas.json",
-        "reasons": [
-          "easBuild"
-        ],
-        "hash": null
-      },
-      {
         "type": "dir",
         "filePath": "../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.26.0_@babel+preset-env@7.26.0_@babel+core@_d9c2bf47032dcb04803c8ad62050c5a4/node_modules/expo-asset/android",
         "reasons": [
@@ -10500,7 +10484,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "9003f0bc695b5b92ddb58ce49cb59592d7a8a6ad",
+        "hash": "67da268a775c9675d2f7a301be861682933bfd21",
         "debugInfo": {
           "path": "android",
           "children": [
@@ -10509,7 +10493,7 @@
               "children": [
                 {
                   "path": "android/app/build.gradle",
-                  "hash": "df7cd22458f15799196e0ac56a2e846eaeda7e92"
+                  "hash": "fc9e7924922db7802986c0ee4eca0fcdd73b3735"
                 },
                 {
                   "path": "android/app/proguard-rules.pro",
@@ -10528,39 +10512,33 @@
                               "path": "android/app/src/main/java/com",
                               "children": [
                                 {
-                                  "path": "android/app/src/main/java/com/anonymous",
+                                  "path": "android/app/src/main/java/com/expo52",
                                   "children": [
                                     {
-                                      "path": "android/app/src/main/java/com/anonymous/expo52",
-                                      "children": [
-                                        {
-                                          "path": "android/app/src/main/java/com/anonymous/expo52/MainActivity.kt",
-                                          "hash": "687f68190ccd0e5aaa93f536ae15a13c60283af3"
-                                        },
-                                        {
-                                          "path": "android/app/src/main/java/com/anonymous/expo52/MainApplication.kt",
-                                          "hash": "b41e8186543e95dae5a1f72feb3ee35fc87fc795"
-                                        }
-                                      ],
-                                      "hash": "a63f91ec89a4c2b3794d242a7b52beb9a2ca8781"
+                                      "path": "android/app/src/main/java/com/expo52/MainActivity.kt",
+                                      "hash": "285b7c6a374e524e67f9931b301662cc2c95cfa6"
+                                    },
+                                    {
+                                      "path": "android/app/src/main/java/com/expo52/MainApplication.kt",
+                                      "hash": "6cfefa793ab87b5a0183583d32da0c587cf60c50"
                                     }
                                   ],
-                                  "hash": "ad7a77191c2576c2d9cf73a58eb116645a24403b"
+                                  "hash": "56e8778e717d895b1dc6b8c7802a0a04b2f4d243"
                                 }
                               ],
-                              "hash": "967762927b1b3b7e6b65317f71b81f55dd206051"
+                              "hash": "11c5537ae4713ceac5a476ae87a02843762a648d"
                             }
                           ],
-                          "hash": "3fc19cf14124c6cda3bad8c11143107db0322a64"
+                          "hash": "d3b9885bf9b75b0530cdda8ef7dbf8ead84078d0"
                         }
                       ],
-                      "hash": "94827ccd014b5f24e090a074fd577b2f03082f2a"
+                      "hash": "1570607c064a69788c39d265d8a4a8bc79e8cf6d"
                     }
                   ],
-                  "hash": "6858ae575b008394e7823b21922283fddc2e6df6"
+                  "hash": "98c7dda342899a5a97f2510251e1046f07399aa2"
                 }
               ],
-              "hash": "89f31207ba757c72368a9b43a619c4fb4c578cbe"
+              "hash": "0e05c5d566f4252068b7f13b35298d89423b5fa7"
             },
             {
               "path": "android/build.gradle",
@@ -10568,10 +10546,10 @@
             },
             {
               "path": "android/settings.gradle",
-              "hash": "3417a521fc278c923dc21aa1dbc9800063da8052"
+              "hash": "60fa262c3319e946789f148afe029734aa005ac8"
             }
           ],
-          "hash": "9003f0bc695b5b92ddb58ce49cb59592d7a8a6ad"
+          "hash": "67da268a775c9675d2f7a301be861682933bfd21"
         }
       },
       {
@@ -11081,6 +11059,6 @@
         }
       }
     ],
-    "hash": "606b53eff65c162846ce5af3e2394fe7d0c2d297"
+    "hash": "03b94c8f57dffecffd6ac69deae9dd73bc36cc3e"
   }
 }
