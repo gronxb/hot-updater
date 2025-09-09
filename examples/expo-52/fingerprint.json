@@ -10484,73 +10484,7 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "67da268a775c9675d2f7a301be861682933bfd21",
-        "debugInfo": {
-          "path": "android",
-          "children": [
-            {
-              "path": "android/app",
-              "children": [
-                {
-                  "path": "android/app/build.gradle",
-                  "hash": "fc9e7924922db7802986c0ee4eca0fcdd73b3735"
-                },
-                {
-                  "path": "android/app/proguard-rules.pro",
-                  "hash": "60cef4170db1a5e14926a9d832dc5400441b6eae"
-                },
-                {
-                  "path": "android/app/src",
-                  "children": [
-                    {
-                      "path": "android/app/src/main",
-                      "children": [
-                        {
-                          "path": "android/app/src/main/java",
-                          "children": [
-                            {
-                              "path": "android/app/src/main/java/com",
-                              "children": [
-                                {
-                                  "path": "android/app/src/main/java/com/expo52",
-                                  "children": [
-                                    {
-                                      "path": "android/app/src/main/java/com/expo52/MainActivity.kt",
-                                      "hash": "285b7c6a374e524e67f9931b301662cc2c95cfa6"
-                                    },
-                                    {
-                                      "path": "android/app/src/main/java/com/expo52/MainApplication.kt",
-                                      "hash": "6cfefa793ab87b5a0183583d32da0c587cf60c50"
-                                    }
-                                  ],
-                                  "hash": "56e8778e717d895b1dc6b8c7802a0a04b2f4d243"
-                                }
-                              ],
-                              "hash": "11c5537ae4713ceac5a476ae87a02843762a648d"
-                            }
-                          ],
-                          "hash": "d3b9885bf9b75b0530cdda8ef7dbf8ead84078d0"
-                        }
-                      ],
-                      "hash": "1570607c064a69788c39d265d8a4a8bc79e8cf6d"
-                    }
-                  ],
-                  "hash": "98c7dda342899a5a97f2510251e1046f07399aa2"
-                }
-              ],
-              "hash": "0e05c5d566f4252068b7f13b35298d89423b5fa7"
-            },
-            {
-              "path": "android/build.gradle",
-              "hash": "d1256ec6e53982506f9926ee8376ec06fcaac1c1"
-            },
-            {
-              "path": "android/settings.gradle",
-              "hash": "60fa262c3319e946789f148afe029734aa005ac8"
-            }
-          ],
-          "hash": "67da268a775c9675d2f7a301be861682933bfd21"
-        }
+        "hash": null
       },
       {
         "type": "dir",
@@ -11059,6 +10993,6 @@
         }
       }
     ],
-    "hash": "03b94c8f57dffecffd6ac69deae9dd73bc36cc3e"
+    "hash": "7df4528777dcd65b2f33d9cf888e32afd1a572cc"
   }
 }

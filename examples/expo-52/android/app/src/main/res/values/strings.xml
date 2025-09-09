@@ -3,5 +3,5 @@
   <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
   <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
   <string name="hot_updater_channel" moduleConfig="true">production</string>
-  <string name="hot_updater_fingerprint_hash" moduleConfig="true">03b94c8f57dffecffd6ac69deae9dd73bc36cc3e</string>
+  <string name="hot_updater_fingerprint_hash" moduleConfig="true">7df4528777dcd65b2f33d9cf888e32afd1a572cc</string>
 </resources>
