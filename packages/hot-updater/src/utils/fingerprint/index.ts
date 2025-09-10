@@ -53,6 +53,7 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
   });
 };
 
+
 export const createAndInjectFingerprintFiles = async ({
   platform,
 }: { platform?: Platform } = {}) => {
