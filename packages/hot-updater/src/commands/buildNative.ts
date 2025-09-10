@@ -6,7 +6,7 @@ import { getPlatform } from "@/prompts/getPlatform";
 
 import path from "path";
 import {
-  createAndInjectFingerprintFiles,
+  createFingerprintJson,
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
@@ -79,8 +79,9 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     s.start(`Fingerprinting (${platform})`);
 
     // generate fingerprint.json automatically
-    const generatedFingerprint = (await createAndInjectFingerprintFiles())
-      .fingerprint[platform];
+    const generatedFingerprint = (await createFingerprintJson()).fingerprint[
+      platform
+    ];
 
     s.stop(`Fingerprint(${platform}): ${generatedFingerprint}`);
 

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import {
   type FingerprintResult,
-  createAndInjectFingerprintFiles,
+  createFingerprintJson,
   generateFingerprints,
   isFingerprintEquals,
   readLocalFingerprint,
@@ -89,8 +89,6 @@ export const handleCreateFingerprint = async () => {
       android: FingerprintResult;
       ios: FingerprintResult;
     };
-    androidPaths: string[];
-    iosPaths: string[];
   } | null = null;
 
   const s = p.spinner();
@@ -98,7 +96,7 @@ export const handleCreateFingerprint = async () => {
 
   try {
     localFingerprint = await readLocalFingerprint();
-    result = await createAndInjectFingerprintFiles();
+    result = await createFingerprintJson();
 
     if (!isFingerprintEquals(localFingerprint, result.fingerprint)) {
       diffChanged = true;
@@ -113,20 +111,6 @@ export const handleCreateFingerprint = async () => {
   }
 
   if (diffChanged && result) {
-    if (result.androidPaths.length > 0) {
-      p.log.info(picocolors.bold("Changed Android paths:"));
-      for (const path of result.androidPaths) {
-        p.log.info(`  ${picocolors.green(path)}`);
-      }
-    }
-
-    if (result.iosPaths.length > 0) {
-      p.log.info(picocolors.bold("Changed iOS paths:"));
-      for (const path of result.iosPaths) {
-        p.log.info(`  ${picocolors.green(path)}`);
-      }
-    }
-
     p.log.success(
       picocolors.bold(
         `${picocolors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
