@@ -53,35 +53,7 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
   });
 };
 
-export const createFingerprintJson = async ({
-  platform,
-}: { platform?: Platform } = {}) => {
-  const localFingerprint = await readLocalFingerprint();
-  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
-  const newFingerprint = await generateFingerprints();
-
-  if (!localFingerprint || !platform) {
-    await fs.promises.writeFile(
-      FINGERPRINT_FILE_PATH,
-      JSON.stringify(newFingerprint, null, 2),
-    );
-  } else {
-    const nextFingerprints = {
-      android: localFingerprint.android || newFingerprint.android,
-      ios: localFingerprint.ios || newFingerprint.ios,
-      [platform]: newFingerprint[platform],
-    } satisfies Record<Platform, FingerprintResult>;
-
-    await fs.promises.writeFile(
-      FINGERPRINT_FILE_PATH,
-      JSON.stringify(nextFingerprints, null, 2),
-    );
-  }
-
-  return {
-    fingerprint: newFingerprint,
-  };
-};
+// createFingerprintJson was deprecated in favor of createAndInjectFingerprintFiles.
 
 export const createAndInjectFingerprintFiles = async ({
   platform,
