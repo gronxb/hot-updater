@@ -78,7 +78,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
     }
     s.start(`Fingerprinting (${platform})`);
 
-    // generate fingerprint.json automatically and inject to native config files
+    // generate fingerprint.json automatically
     const generatedFingerprint = (
       await createAndInjectFingerprintFiles()
     ).fingerprint[platform];
