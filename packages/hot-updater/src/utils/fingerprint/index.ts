@@ -53,7 +53,6 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
   });
 };
 
-// createFingerprintJson was deprecated in favor of createAndInjectFingerprintFiles.
 
 export const createAndInjectFingerprintFiles = async ({
   platform,
