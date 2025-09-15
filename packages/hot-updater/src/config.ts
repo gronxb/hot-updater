@@ -14,4 +14,5 @@ export {
   generateFingerprint,
   createAndInjectFingerprintFiles,
   readLocalFingerprint,
+  createFingerprintJSON,
 } from "./utils/fingerprint";
