@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.20.11
+
+### Patch Changes
+
+- cb9c05b: feat(fingerprint): bring back ignorePaths
+  - @hot-updater/core@0.20.11
+
 ## 0.20.10
 
 ### Patch Changes
