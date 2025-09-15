@@ -8,19 +8,19 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import { createAndInjectFingerprintFiles } from "hot-updater";
+import { createFingerprintJSON, generateFingerprints } from "hot-updater";
 import pkg from "../../package.json";
 
-let fingerprintCache: Awaited<
-  ReturnType<typeof createAndInjectFingerprintFiles>
-> | null = null;
+let fingerprintCache: Awaited<ReturnType<typeof generateFingerprints>> | null =
+  null;
 
 const getFingerprint = async () => {
   if (fingerprintCache) {
     return fingerprintCache;
   }
 
-  fingerprintCache = await createAndInjectFingerprintFiles();
+  fingerprintCache = await generateFingerprints();
+  await createFingerprintJSON(fingerprintCache);
   return fingerprintCache;
 };
 
@@ -264,7 +264,7 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { fingerprint } = await getFingerprint();
+        const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.ios.hash;
       }
 
@@ -280,7 +280,7 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { fingerprint } = await getFingerprint();
+        const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.android.hash;
       }
 
