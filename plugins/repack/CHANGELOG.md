@@ -1,5 +1,17 @@
 # @hot-updater/repack
 
+## 0.20.10
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.20.10
+
+## 0.20.9
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.20.9
+
 ## 0.20.8
 
 ### Patch Changes
