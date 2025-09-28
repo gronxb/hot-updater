@@ -7,7 +7,7 @@ import {
   type FingerprintOptions,
   type FingerprintResult,
   ensureFingerprintConfig,
-  getFingerprintOptions,
+  getOtaFingerprintOptions,
 } from "./common";
 
 export * from "./common";
@@ -23,7 +23,7 @@ export async function nativeFingerprint(
   const platform = options.platform;
   return createFingerprintAsync(
     path,
-    getFingerprintOptions(platform, path, options),
+    getOtaFingerprintOptions(platform, path, options),
   );
 }
 
@@ -57,17 +57,13 @@ export const createAndInjectFingerprintFiles = async ({
   platform,
 }: { platform?: Platform } = {}) => {
   const localFingerprint = await readLocalFingerprint();
-  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
   const newFingerprint = await generateFingerprints();
 
   const androidPaths: string[] = [];
   const iosPaths: string[] = [];
   // replace whole file if and only if platform argument is none or fingerprint file doesn't exist
   if (!localFingerprint || !platform) {
-    await fs.promises.writeFile(
-      FINGERPRINT_FILE_PATH,
-      JSON.stringify(newFingerprint, null, 2),
-    );
+    await createFingerprintJSON(newFingerprint);
     const { paths: _androidPaths } = await setFingerprintHash(
       "android",
       newFingerprint.android.hash,
@@ -87,10 +83,7 @@ export const createAndInjectFingerprintFiles = async ({
       [platform]: newFingerprint[platform],
     } satisfies Record<Platform, FingerprintResult>;
 
-    await fs.promises.writeFile(
-      FINGERPRINT_FILE_PATH,
-      JSON.stringify(nextFingerprints, null, 2),
-    );
+    await createFingerprintJSON(nextFingerprints);
     const { paths: _platformPaths } = await setFingerprintHash(
       platform,
       newFingerprint[platform].hash,
@@ -110,6 +103,18 @@ export const createAndInjectFingerprintFiles = async ({
     androidPaths,
     iosPaths,
   };
+};
+
+export const createFingerprintJSON = async (fingerprint: {
+  ios: FingerprintResult;
+  android: FingerprintResult;
+}) => {
+  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
+  await fs.promises.writeFile(
+    FINGERPRINT_FILE_PATH,
+    JSON.stringify(fingerprint, null, 2),
+  );
+  return fingerprint;
 };
 
 export const readLocalFingerprint = async (): Promise<{

@@ -291,6 +291,7 @@ export type ConfigInput = {
   fingerprint?: {
     /**
      * The extra sources to be included in the fingerprint.
+     * @example ["resources/**", ".gitignore"]
      */
     extraSources?: string[];
     /**

@@ -8,19 +8,19 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import { createAndInjectFingerprintFiles } from "hot-updater";
+import { createFingerprintJSON, generateFingerprints } from "hot-updater";
 import pkg from "../../package.json";
 
-let fingerprintCache: Awaited<
-  ReturnType<typeof createAndInjectFingerprintFiles>
-> | null = null;
+let fingerprintCache: Awaited<ReturnType<typeof generateFingerprints>> | null =
+  null;
 
 const getFingerprint = async () => {
   if (fingerprintCache) {
     return fingerprintCache;
   }
 
-  fingerprintCache = await createAndInjectFingerprintFiles();
+  fingerprintCache = await generateFingerprints();
+  await createFingerprintJSON(fingerprintCache);
   return fingerprintCache;
 };
 
@@ -140,6 +140,8 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
       /^\s*override fun getJSBundleFile\(\): String\?\s*\{[\s\S]*?^\s*\}/gm;
     const kotlinHermesAnchor =
       "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED";
+    const kotlinNewArchAnchor =
+      "override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED";
     const kotlinNewMethod = `
           override fun getJSBundleFile(): String? {
               return HotUpdater.getJSBundleFile(applicationContext)
@@ -178,6 +180,11 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
           contents = contents.replace(
             kotlinHermesAnchor,
             `${kotlinHermesAnchor}\n${kotlinNewMethod}`,
+          );
+        } else if (contents.includes(kotlinNewArchAnchor)) {
+          contents = contents.replace(
+            kotlinNewArchAnchor,
+            `${kotlinNewArchAnchor}\n${kotlinNewMethod}`,
           );
         } else {
           // Fallback: Add before the closing brace of the object if anchor not found
@@ -257,7 +264,7 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { fingerprint } = await getFingerprint();
+        const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.ios.hash;
       }
 
@@ -273,7 +280,7 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { fingerprint } = await getFingerprint();
+        const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.android.hash;
       }
 

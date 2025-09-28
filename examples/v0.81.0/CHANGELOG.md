@@ -1,5 +1,44 @@
 # @hot-updater/example-react-native-v81
 
+## 0.20.11
+
+### Patch Changes
+
+- Updated dependencies [afb3a6e]
+  - @hot-updater/react-native@0.20.11
+
+## 0.20.10
+
+### Patch Changes
+
+- @hot-updater/react-native@0.20.10
+
+## 0.20.9
+
+### Patch Changes
+
+- Updated dependencies [a174bc5]
+  - @hot-updater/react-native@0.20.9
+
+## 0.20.8
+
+### Patch Changes
+
+- ad7c999: feat(fingerprint): calculate OTA fingerprint only in native module
+  - @hot-updater/react-native@0.20.8
+
+## 0.20.7
+
+### Patch Changes
+
+- @hot-updater/react-native@0.20.7
+
+## 0.20.6
+
+### Patch Changes
+
+- @hot-updater/react-native@0.20.6
+
 ## 0.20.5
 
 ### Patch Changes

@@ -1,5 +1,87 @@
 # hot-updater
 
+## 0.20.11
+
+### Patch Changes
+
+- afb3a6e: fix(fingerprint): separate fingerprint generation for cng
+- cb9c05b: feat(fingerprint): bring back ignorePaths
+- Updated dependencies [cb9c05b]
+  - @hot-updater/plugin-core@0.20.11
+  - @hot-updater/console@0.20.11
+  - @hot-updater/aws@0.20.11
+  - @hot-updater/cloudflare@0.20.11
+  - @hot-updater/firebase@0.20.11
+  - @hot-updater/supabase@0.20.11
+  - @hot-updater/core@0.20.11
+
+## 0.20.10
+
+### Patch Changes
+
+- 6b5435c: Ignore android/ios folder changes in fingerprint to avoid mismatch after prebuild
+  - @hot-updater/console@0.20.10
+  - @hot-updater/core@0.20.10
+  - @hot-updater/aws@0.20.10
+  - @hot-updater/cloudflare@0.20.10
+  - @hot-updater/firebase@0.20.10
+  - @hot-updater/plugin-core@0.20.10
+  - @hot-updater/supabase@0.20.10
+
+## 0.20.9
+
+### Patch Changes
+
+- Updated dependencies [5cbea75]
+  - @hot-updater/cloudflare@0.20.9
+  - @hot-updater/console@0.20.9
+  - @hot-updater/core@0.20.9
+  - @hot-updater/aws@0.20.9
+  - @hot-updater/firebase@0.20.9
+  - @hot-updater/plugin-core@0.20.9
+  - @hot-updater/supabase@0.20.9
+
+## 0.20.8
+
+### Patch Changes
+
+- ad7c999: feat(fingerprint): calculate OTA fingerprint only in native module
+- Updated dependencies [ad7c999]
+  - @hot-updater/plugin-core@0.20.8
+  - @hot-updater/console@0.20.8
+  - @hot-updater/aws@0.20.8
+  - @hot-updater/cloudflare@0.20.8
+  - @hot-updater/firebase@0.20.8
+  - @hot-updater/supabase@0.20.8
+  - @hot-updater/core@0.20.8
+
+## 0.20.7
+
+### Patch Changes
+
+- a92992c: chore(tsdown): failOnWarn true
+- Updated dependencies [a92992c]
+  - @hot-updater/plugin-core@0.20.7
+  - @hot-updater/cloudflare@0.20.7
+  - @hot-updater/console@0.20.7
+  - @hot-updater/firebase@0.20.7
+  - @hot-updater/supabase@0.20.7
+  - @hot-updater/core@0.20.7
+  - @hot-updater/aws@0.20.7
+
+## 0.20.6
+
+### Patch Changes
+
+- Updated dependencies [6a905d8]
+  - @hot-updater/plugin-core@0.20.6
+  - @hot-updater/console@0.20.6
+  - @hot-updater/aws@0.20.6
+  - @hot-updater/cloudflare@0.20.6
+  - @hot-updater/firebase@0.20.6
+  - @hot-updater/supabase@0.20.6
+  - @hot-updater/core@0.20.6
+
 ## 0.20.5
 
 ### Patch Changes

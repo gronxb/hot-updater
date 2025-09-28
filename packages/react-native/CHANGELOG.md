@@ -1,5 +1,67 @@
 # @hot-updater/react-native
 
+## 0.20.11
+
+### Patch Changes
+
+- afb3a6e: fix(fingerprint): separate fingerprint generation for cng
+- Updated dependencies [afb3a6e]
+- Updated dependencies [cb9c05b]
+  - hot-updater@0.20.11
+  - @hot-updater/plugin-core@0.20.11
+  - @hot-updater/core@0.20.11
+  - @hot-updater/js@0.20.11
+
+## 0.20.10
+
+### Patch Changes
+
+- Updated dependencies [6b5435c]
+  - hot-updater@0.20.10
+  - @hot-updater/core@0.20.10
+  - @hot-updater/js@0.20.10
+  - @hot-updater/plugin-core@0.20.10
+
+## 0.20.9
+
+### Patch Changes
+
+- a174bc5: Fix native code generation for Android when using Expo 54
+  - hot-updater@0.20.9
+  - @hot-updater/core@0.20.9
+  - @hot-updater/js@0.20.9
+  - @hot-updater/plugin-core@0.20.9
+
+## 0.20.8
+
+### Patch Changes
+
+- Updated dependencies [ad7c999]
+  - hot-updater@0.20.8
+  - @hot-updater/plugin-core@0.20.8
+  - @hot-updater/core@0.20.8
+  - @hot-updater/js@0.20.8
+
+## 0.20.7
+
+### Patch Changes
+
+- Updated dependencies [a92992c]
+  - hot-updater@0.20.7
+  - @hot-updater/plugin-core@0.20.7
+  - @hot-updater/core@0.20.7
+  - @hot-updater/js@0.20.7
+
+## 0.20.6
+
+### Patch Changes
+
+- Updated dependencies [6a905d8]
+  - @hot-updater/plugin-core@0.20.6
+  - hot-updater@0.20.6
+  - @hot-updater/core@0.20.6
+  - @hot-updater/js@0.20.6
+
 ## 0.20.5
 
 ### Patch Changes

@@ -6,6 +6,7 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
+    failOnWarn: true,
   },
   {
     entry: ["iac/index.ts"],
@@ -13,5 +14,6 @@ export default defineConfig([
     dts: true,
     outDir: "dist/iac",
     external: ["@hot-updater/supabase"],
+    failOnWarn: true,
   },
 ]);

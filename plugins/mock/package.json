@@ -2,7 +2,7 @@
   "name": "@hot-updater/mock",
   "private": true,
   "type": "module",
-  "version": "0.20.5",
+  "version": "0.20.11",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",

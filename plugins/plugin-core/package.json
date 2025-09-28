@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/plugin-core",
-  "version": "0.20.5",
+  "version": "0.20.11",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -51,11 +51,13 @@
     "cosmiconfig": "9.0.0",
     "cosmiconfig-typescript-loader": "5.0.0",
     "fast-glob": "3.3.3",
-    "oxc-transform": "0.82.1"
+    "oxc-transform": "0.82.1",
+    "semver": "^7.7.2"
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:*",
     "@types/node": "catalog:",
+    "@types/semver": "^7.5.8",
     "boxen": "^8.0.1",
     "es-toolkit": "^1.32.0",
     "jszip": "^3.10.1",

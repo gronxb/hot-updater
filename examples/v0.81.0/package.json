@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/example-react-native-v81",
-  "version": "0.20.5",
+  "version": "0.20.11",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -8,7 +8,8 @@
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest",
-    "pod-install": "cd ios && bundle install && RCT_USE_PREBUILT_RNCORE=1 RCT_USE_RN_DEP=1 bundle exec pod install && cd .."
+    "pod-install": "cd ios && bundle install && RCT_USE_PREBUILT_RNCORE=1 RCT_USE_RN_DEP=1 bundle exec pod install && cd ..",
+    "fingerprint:create": "hot-updater fingerprint create"
   },
   "dependencies": {
     "@hot-updater/react-native": "workspace:*",
