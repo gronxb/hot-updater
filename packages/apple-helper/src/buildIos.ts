@@ -17,18 +17,21 @@ export const buildIos = async ({
 
   const schemeConfig = await enrichNativeBuildIosScheme(_schemeConfig);
 
+  // archivePath is the .xcarchive file path
   const { archivePath } = await archiveXcodeProject({
     platform: schemeConfig.platform,
     schemeConfig,
     sourceDir: iosProjectRoot,
   });
 
+  const buildDirectory = path.dirname(archivePath);
   // Extract .app from xcarchive if present
   const appFromArchive = extractAppFromXcarchive(archivePath);
+
   if (appFromArchive) {
     await fs.promises.cp(
       appFromArchive,
-      path.join(path.dirname(archivePath), path.basename(appFromArchive)),
+      path.join(buildDirectory, path.basename(appFromArchive)),
       {
         recursive: true,
       },
@@ -60,7 +63,7 @@ export const buildIos = async ({
 
   // If no export options or IPA not found, return archive path
   return {
-    buildDirectory: path.dirname(archivePath),
+    buildDirectory,
     buildArtifactPath: archivePath,
   };
 };
@@ -69,7 +72,7 @@ const extractAppFromXcarchive = (archivePath: string) => {
   const productsPath = path.join(archivePath, "Products", "Applications");
 
   if (!fs.existsSync(productsPath)) {
-    return null;
+    return;
   }
 
   const files = fs.readdirSync(productsPath);

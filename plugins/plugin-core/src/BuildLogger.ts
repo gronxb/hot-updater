@@ -92,7 +92,7 @@ export class BuildLogger {
       if (pattern instanceof RegExp) {
         return pattern.test(trimmed);
       }
-      return trimmed.toLowerCase().trim().startsWith(pattern.toLowerCase());
+      return trimmed.toLowerCase().trim().includes(pattern.toLowerCase());
     });
   }
 }
