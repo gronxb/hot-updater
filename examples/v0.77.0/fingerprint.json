@@ -13,7 +13,7 @@
         "type": "dir",
         "filePath": "node_modules/@hot-updater/react-native",
         "reasons": [
-          "rncoreAutolinkingIos"
+          "rncoreAutolinking"
         ],
         "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302"
       },
@@ -37,15 +37,15 @@
       },
       {
         "type": "contents",
-        "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.9\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "id": "rncoreAutolinkingConfig",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.11\",\"configurations\":[],\"scriptPhases\":[]},\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null,\"isPureCxxDependency\":false}}}}",
         "reasons": [
-          "rncoreAutolinkingIos"
+          "rncoreAutolinking"
         ],
-        "hash": "557b37089d2b494ee51b8868b9c7242035f253b8"
+        "hash": "ac30d048d269f86ea537d182001cd82a22418bd2"
       }
     ],
-    "hash": "1411d750f3a22e0cc5fa4359c734fa006620633d"
+    "hash": "3be59d1f7daeadd64e35bc7c513330bdcf32e471"
   },
   "android": {
     "sources": [
@@ -55,13 +55,13 @@
         "reasons": [
           "bareNativeDir"
         ],
-        "hash": "f7c0bf5300740205d4b94eea6a204b6fbb25742b"
+        "hash": null
       },
       {
         "type": "dir",
         "filePath": "node_modules/@hot-updater/react-native",
         "reasons": [
-          "rncoreAutolinkingAndroid"
+          "rncoreAutolinking"
         ],
         "hash": "7a171b9fee9c6ae79dc0210ed01312d29ee0a302"
       },
@@ -85,14 +85,14 @@
       },
       {
         "type": "contents",
-        "id": "rncoreAutolinkingConfig:android",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
+        "id": "rncoreAutolinkingConfig",
+        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"0.20.11\",\"configurations\":[],\"scriptPhases\":[]},\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null,\"isPureCxxDependency\":false}}}}",
         "reasons": [
-          "rncoreAutolinkingAndroid"
+          "rncoreAutolinking"
         ],
-        "hash": "4948fbb8b986a8115b8fa146586b60a292b28330"
+        "hash": "ac30d048d269f86ea537d182001cd82a22418bd2"
       }
     ],
-    "hash": "65e5c02d4087dee9f53294dbe5aebcd1d67251c7"
+    "hash": "68031a487b94f3b284ed2c451eba816eb6e05152"
   }
 }
