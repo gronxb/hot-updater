@@ -24,3 +24,13 @@ export const deviceCommandOption = new Option(
   "-d, --device [deviceName | deviceId]",
   "specify the ADB device name or use default",
 );
+
+export const portCommandOption = new Option(
+  "--port <port>",
+  "specify the port number",
+);
+
+export const appIdSuffixCommandOption = new Option(
+  "--app-id-suffix <appIdSuffix>",
+  "specify the app ID suffix",
+);

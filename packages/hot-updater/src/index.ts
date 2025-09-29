@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import {
+  appIdSuffixCommandOption,
   deviceCommandOption,
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
+  portCommandOption,
 } from "@/commandOptions";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
@@ -14,6 +16,8 @@ import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
+import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
+import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { type NativeBuildOptions, banner, log } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
@@ -24,11 +28,7 @@ import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
-import {
-  type NativeRunOptions,
-  runAndroidNative,
-  runIosNative,
-} from "./commands/runNative";
+import { runAndroidNative, runIosNative } from "./commands/runNative";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -180,13 +180,15 @@ if (process.env["NODE_ENV"] === "development") {
     .addOption(interactiveCommandOption)
     .addOption(nativeBuildSchemeCommandOption)
     .addOption(deviceCommandOption)
+    .addOption(portCommandOption)
+    .addOption(appIdSuffixCommandOption)
     .addOption(
       new Option(
         "-m, --message <message>",
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: Omit<NativeRunOptions, "platform">) => {
+    .action(async (options: AndroidNativeRunOptions) => {
       runAndroidNative(options);
     });
 
@@ -203,7 +205,7 @@ if (process.env["NODE_ENV"] === "development") {
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: Omit<NativeRunOptions, "platform">) => {
+    .action(async (options: IosNativeRunOptions) => {
       runIosNative(options);
     });
 }
