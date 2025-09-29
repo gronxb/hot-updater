@@ -17,7 +17,7 @@ export const selectAndroidTargetDevice = async ({
     );
     process.exit(1);
   }
-  if (deviceOption === true) {
+  if (deviceOption === true || interactive) {
     // if user want to select device manually but not available
     if (!availableDevices.length) {
       p.log.error("you passed -d option but there is no attached adb devices.");
@@ -59,7 +59,7 @@ const matchingDevice = (devices: Array<AndroidDevice>, deviceArg: string) => {
  * List all Android devices and emulators (connected and available)
  */
 export const listAndroidDevices = async (): Promise<AndroidDevice[]> => {
-  const devices = await Adb.getDevices();
+  const devices = await Adb.getConnectedDevices();
 
   let allDevices: Array<AndroidDevice> = [];
 

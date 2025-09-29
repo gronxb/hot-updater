@@ -38,7 +38,7 @@ const parseDevicesResult = ({ result }: { result: string }): string[] => {
  * Executes the commands needed to get a list of devices from ADB
  */
 // Get list of connected Android devices using adb
-const getDevices = async (): Promise<string[]> => {
+const getConnectedDevices = async (): Promise<string[]> => {
   const adbPath = getAdbPath();
   try {
     const { stdout } = await execa(adbPath, ["devices"], { stdio: "pipe" });
@@ -72,10 +72,6 @@ async function tryRunAdbReverse(packagerPort: number | string, device: string) {
     // Original cause: (error as ExecaError).stderr
   }
 }
-
-const userRegex = new RegExp(
-  /^\s*UserInfo\{(?<userId>\d+):(?<userName>.*):(?<userFlags>[0-9a-f]*)}/,
-);
 
 // Device information functions
 /**
@@ -128,7 +124,7 @@ const isEmulatorBooted = async (device: string) => {
 
 export const Adb = {
   getAdbPath,
-  getDevices,
+  getConnectedDevices,
   tryRunAdbReverse,
   getEmulatorName,
   getPhoneName,

@@ -48,7 +48,7 @@ const launchEmulator = async (
 
   return new Promise<string>((resolve, reject) => {
     const bootCheckInterval = setInterval(async () => {
-      const devices = await Adb.getDevices();
+      const devices = await Adb.getConnectedDevices();
       const connected = port
         ? devices.find((d) => d.includes(`${port}`))
         : false;
@@ -96,7 +96,7 @@ const getAvailableDevicePort = async (
   /**
    * The default value is 5554 for the first virtual device instance running on your machine. A virtual device normally occupies a pair of adjacent ports: a console port and an adb port. The console of the first virtual device running on a particular machine uses console port 5554 and adb port 5555. Subsequent instances use port numbers increasing by two. For example, 5556/5557, 5558/5559, and so on. The range is 5554 to 5682, allowing for 64 concurrent virtual devices.
    */
-  const devices = await Adb.getDevices();
+  const devices = await Adb.getConnectedDevices();
   if (port > 5682) {
     throw new Error("Failed to launch emulator");
   }

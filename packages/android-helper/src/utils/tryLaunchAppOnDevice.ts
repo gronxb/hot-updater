@@ -1,5 +1,3 @@
-// highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
-
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import type { AndroidDevice } from "../types";
@@ -12,7 +10,7 @@ export async function tryLaunchAppOnDevice({
   device,
   androidProject,
   args,
-}: { device: AndroidDevice; androidProject: any; args: {} }) {
+}: { device: AndroidDevice; androidProject: any; args: { port?: string } }) {
   if (!device.deviceId) {
     p.log.warn(
       `No device with id "${device.deviceId}", skipping launching the app.`,
