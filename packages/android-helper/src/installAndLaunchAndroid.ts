@@ -13,7 +13,7 @@ export const installAndLaunchAndroid = async ({
   schemeConfig: RequiredDeep<NativeBuildAndroidScheme>;
   buildArtifactPath: string;
 }) => {
-  const devices = await Adb.getDevices();
+  const devices = await Adb.getConnectedDevices();
   if (devices.length === 0) {
     p.log.error("No Android devices found.");
     return;
