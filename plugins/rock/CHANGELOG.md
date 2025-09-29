@@ -1,5 +1,11 @@
 # @hot-updater/rnef
 
+## 0.20.10
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.20.10
+
 ## 0.20.9
 
 ### Patch Changes

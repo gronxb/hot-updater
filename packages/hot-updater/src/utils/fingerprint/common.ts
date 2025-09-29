@@ -41,6 +41,7 @@ export function getOtaFingerprintOptions(
   options: FingerprintOptions,
 ): Options {
   return {
+    useRNCoreAutolinkingFromExpo: false,
     platforms: [platform],
     ignorePaths: [
       ...getDefaultIgnorePaths(),
@@ -83,6 +84,10 @@ export function getOtaFingerprintOptions(
         "BUILD.bazel", // Bazel BUILD files with extension
         "WORKSPACE.bazel", // Bazel WORKSPACE files with extension
       ]),
+      // base paths (target CNG)
+      "android/**/*",
+      "ios/**/*",
+      ...(options.ignorePaths ?? []),
     ],
     sourceSkips:
       SourceSkips.GitIgnore |
@@ -108,6 +113,7 @@ export type FingerprintSources = {
 export type FingerprintOptions = {
   platform: "ios" | "android";
   extraSources?: string[];
+  ignorePaths?: string[];
   debug?: boolean;
 };
 

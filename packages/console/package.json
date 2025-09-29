@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.20.9",
+  "version": "0.20.10",
   "files": [
     "dist",
     "package.json"
@@ -62,5 +62,16 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "solid-icons": "^1.1.0"
+  },
+  "description": "React Native OTA solution for self-hosted",
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
   }
 }

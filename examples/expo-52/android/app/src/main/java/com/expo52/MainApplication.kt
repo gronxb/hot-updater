@@ -1,4 +1,4 @@
-package com.anonymous.expo52
+package com.expo52
 
 import android.app.Application
 import android.content.res.Configuration
@@ -39,7 +39,6 @@ class MainApplication : Application(), ReactApplication {
           override fun getJSBundleFile(): String? {
               return HotUpdater.getJSBundleFile(applicationContext)
           }
-
       }
   )
 
