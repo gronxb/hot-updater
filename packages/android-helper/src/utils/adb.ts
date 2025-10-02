@@ -52,28 +52,24 @@ const getConnectedDevices = async (): Promise<string[]> => {
  * Runs ADB reverse tcp:8081 tcp:8081 to allow loading the jsbundle from the packager
  * Set up port forwarding from device to development server using adb reverse
  */
-async function tryRunAdbReverse(packagerPort: number | string = 8081, device: string) {
+async function tryRunAdbReverse({
+  port = 8081,
+  deviceId,
+}: { port?: number | string; deviceId: string }) {
   try {
     const adbPath = getAdbPath();
-    const adbArgs = [
-      "-s",
-      device,
-      "reverse",
-      `tcp:${packagerPort}`,
-      `tcp:${packagerPort}`,
-    ];
+    const adbArgs = ["-s", deviceId, "reverse", `tcp:${port}`, `tcp:${port}`];
 
-    p.log.info(`Connecting "${device}" to the development server`);
+    p.log.info(`Connecting "${deviceId}" to the development server`);
     await execa(adbPath, adbArgs);
   } catch (error) {
     throw new Error(
-      `Failed to connect "${device}" to development server using "adb reverse"`,
+      `Failed to connect "${deviceId}" to development server using "adb reverse"`,
     );
     // Original cause: (error as ExecaError).stderr
   }
 }
 
-// Device information functions
 /**
  * Get name of Android emulator
  */

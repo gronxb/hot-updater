@@ -3,9 +3,6 @@ import { execa } from "execa";
 import type { AndroidDevice } from "../types";
 import { Adb } from "./adb";
 
-/**
- * Try to launch app on Android device
- */
 export async function tryLaunchAppOnDevice({
   device,
   port,
@@ -27,7 +24,7 @@ export async function tryLaunchAppOnDevice({
   }
 
   const deviceId = device.deviceId;
-  await Adb.tryRunAdbReverse(port, deviceId);
+  await Adb.tryRunAdbReverse({ deviceId, port });
 
   const activity = mainActivity || ".MainActivity";
 
@@ -39,7 +36,6 @@ export async function tryLaunchAppOnDevice({
         ? [packageName, activity].join("")
         : [packageName, activity].filter(Boolean).join(".");
 
-  // Here we're using the same flags as Android Studio to launch the app
   const adbArgs = [
     "shell",
     "am",
