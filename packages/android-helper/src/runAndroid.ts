@@ -5,7 +5,7 @@ import {
   generateMinBundleId,
   getCwd,
 } from "@hot-updater/plugin-core";
-import type { AndroidDevice } from "./types";
+import type { AndroidNativeRunOptions } from "./types";
 import { Adb } from "./utils/adb";
 import { Emulator } from "./utils/emulator";
 import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
@@ -15,16 +15,17 @@ import {
   selectAndroidTargetDevice,
 } from "./utils/selectAndroidTargetDevice";
 import { tryInstallAppOnDevice } from "./utils/tryInstallAppOnDevice";
+import { tryLaunchAppOnDevice } from "./utils/tryLaunchAppOnDevice";
 
 export const runAndroid = async ({
   schemeConfig: _schemeConfig,
-  deviceOption,
-  interactive,
+  runOption,
 }: {
   schemeConfig: NativeBuildAndroidScheme;
-  deviceOption?: string | boolean;
-  interactive: boolean;
+  runOption: AndroidNativeRunOptions;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+  const { interactive, device: deviceOption } = runOption;
+
   const androidProjectPath = path.join(getCwd(), "android");
   const bundleId = generateMinBundleId();
 
@@ -33,7 +34,7 @@ export const runAndroid = async ({
   });
 
   if (schemeConfig.aab) {
-    p.log.error("aab scheme can't not be build");
+    p.log.error("aab scheme can't not be run");
     process.exit(1);
   }
 
@@ -50,21 +51,8 @@ export const runAndroid = async ({
       }
     }
 
-    if (device.deviceId) {
-      const task = `assemble${schemeConfig.variant}`;
-      const result = await runGradle({
-        args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
-        appModuleName: schemeConfig.appModuleName,
-        tasks: [task],
-        androidProjectPath,
-      });
-      await runOnDevice({
-        device,
-        apkPath: result.buildArtifactPath,
-        // tasks: [],
-      });
-      p.outro("Success 🎉");
-      return result;
+    if (!device.deviceId) {
+      throw new Error("Failed to run on any device");
     }
   } else {
     // No specific device selected
@@ -73,61 +61,38 @@ export const runAndroid = async ({
       p.log.info("No devices found. Launching first available emulator.");
       await Emulator.tryLaunchEmulator();
     }
-
-    const task = `install${schemeConfig.variant}`;
-    const result = await runGradle({
-      args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
-      appModuleName: schemeConfig.appModuleName,
-      tasks: [task],
-      androidProjectPath,
-    });
-
-    // Run on all available devices
-    const allDevices = await listAndroidDevices();
-    for (const device of allDevices.filter((d) => d.connected)) {
-      await runOnDevice({
-        device,
-        apkPath: result.buildArtifactPath,
-        // tasks: [],
-      });
-    }
-
-    return result;
   }
 
-  throw new Error("Failed to run on any device");
-};
+  const task = device
+    ? `assemble${schemeConfig.variant}`
+    : `install${schemeConfig.variant}`;
 
-async function runOnDevice({
-  device,
-  tasks,
-  apkPath,
-}: {
-  device: AndroidDevice;
-  tasks: string[];
-  apkPath: string;
-}) {
-  const loader = p.spinner();
-  loader.start("Installing the app");
-  await tryInstallAppOnDevice({ apkPath, device });
-  loader.message("Launching the app");
-  const { applicationIdWithSuffix } = await tryLaunchAppOnDevice({
-    device: {
-      connected,
-      deviceId,
-      readableName,
-      type,
-    },
+  const result = await runGradle({
+    args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
+    appModuleName: schemeConfig.appModuleName,
+    tasks: [task],
+    androidProjectPath,
   });
-  if (applicationIdWithSuffix) {
-    loader.stop(
-      `Installed and launched the app on ${color.bold(device.readableName)}`,
-    );
-  } else {
-    loader.stop(
-      `Failed: installing and launching the app on ${color.bold(
-        device.readableName,
-      )}`,
-    );
+
+  // Install and launch on target devices
+  const targetDevices = device
+    ? [device]
+    : (await listAndroidDevices()).filter((d) => d.connected);
+
+  for (const targetDevice of targetDevices) {
+    await tryInstallAppOnDevice({
+      apkPath: result.buildArtifactPath,
+      device: targetDevice,
+    });
+    await tryLaunchAppOnDevice({
+      applicationId: schemeConfig.applicationId,
+      device: targetDevice,
+      mainActivity: runOption.mainActivity,
+      packageName: schemeConfig.packageName,
+      port: runOption.port,
+    });
   }
-}
+
+  p.outro("Success 🎉");
+  return result;
+};
