@@ -92,6 +92,13 @@ export interface NativeBuildAndroidScheme {
    * Android application package name.
    */
   packageName: string;
+
+  /**
+   * Android application ID.
+   *
+   * @default same as packageName
+   */
+  applicationId?: string;
 }
 
 export type IosBuildDestination =

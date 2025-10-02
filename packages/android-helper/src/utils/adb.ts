@@ -52,7 +52,7 @@ const getConnectedDevices = async (): Promise<string[]> => {
  * Runs ADB reverse tcp:8081 tcp:8081 to allow loading the jsbundle from the packager
  * Set up port forwarding from device to development server using adb reverse
  */
-async function tryRunAdbReverse(packagerPort: number | string, device: string) {
+async function tryRunAdbReverse(packagerPort: number | string = 8081, device: string) {
   try {
     const adbPath = getAdbPath();
     const adbArgs = [

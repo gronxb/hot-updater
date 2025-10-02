@@ -25,8 +25,7 @@ export const runAndroidNative = async (options: AndroidNativeRunOptions) => {
 
     await runAndroid({
       schemeConfig: config.nativeBuild.android[scheme]!,
-      deviceOption: options.device,
-      interactive: options.interactive,
+      runOption: options,
     });
 
     p.log.success("📦 Android Run Complete");

@@ -8,9 +8,17 @@ import { Adb } from "./adb";
  */
 export async function tryLaunchAppOnDevice({
   device,
-  androidProject,
-  args,
-}: { device: AndroidDevice; androidProject: any; args: { port?: string } }) {
+  port,
+  mainActivity,
+  applicationId,
+  packageName,
+}: {
+  device: AndroidDevice;
+  port?: string;
+  mainActivity?: string;
+  applicationId: string;
+  packageName: string;
+}) {
   if (!device.deviceId) {
     p.log.warn(
       `No device with id "${device.deviceId}", skipping launching the app.`,
@@ -19,16 +27,9 @@ export async function tryLaunchAppOnDevice({
   }
 
   const deviceId = device.deviceId;
-  await Adb.tryRunAdbReverse(args.port, deviceId);
+  await Adb.tryRunAdbReverse(port, deviceId);
 
-  const { appId, appIdSuffix } = args;
-  const { packageName, mainActivity, applicationId } = androidProject;
-
-  const applicationIdWithSuffix = [appId || applicationId, appIdSuffix]
-    .filter(Boolean)
-    .join(".");
-
-  const activity = args.mainActivity ?? mainActivity;
+  const activity = mainActivity || ".MainActivity";
 
   const activityToLaunch =
     activity.startsWith(packageName) ||
@@ -44,7 +45,7 @@ export async function tryLaunchAppOnDevice({
     "am",
     "start",
     "-n",
-    `${applicationIdWithSuffix}/${activityToLaunch}`,
+    `${applicationId}/${activityToLaunch}`,
     "-a",
     "android.intent.action.MAIN",
     "-c",
@@ -60,7 +61,7 @@ export async function tryLaunchAppOnDevice({
   try {
     await execa(adbPath, adbArgs);
     loader.stop(
-      `Launched the app on ${device.readableName} (id: ${deviceId}) and listening on port ${args.port}.`,
+      `Launched the app on ${device.readableName} (id: ${deviceId}) and listening on port ${port}.`,
     );
   } catch (error) {
     loader.stop("Failed to launch the app.", 1);

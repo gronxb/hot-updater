@@ -14,6 +14,7 @@ export const enrichNativeBuildAndroidScheme = async ({
     aab: true,
     variant: "Release",
     appModuleName: "app",
+    applicationId: schemeConfig.packageName,
     ...schemeConfig,
   };
 };

@@ -14,7 +14,6 @@ export type AndroidUser = {
 
 export interface AndroidNativeRunOptions extends NativeBuildOptions {
   device?: string | boolean;
-  appIdSuffix?: string;
   port?: string;
   mainActivity?: string;
   user?: string;
