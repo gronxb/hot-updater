@@ -206,10 +206,9 @@ class HotUpdaterImpl(
             val reactApplication = reactIntegrationManager.getReactApplication(application)
             val bundleURL = getJSBundleFile()
 
-            reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
-
             // Perform reload (suspends until safe to reload on new arch)
             withContext(Dispatchers.Main) {
+                reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
                 reactIntegrationManager.reload(reactApplication)
             }
         } catch (e: Exception) {
