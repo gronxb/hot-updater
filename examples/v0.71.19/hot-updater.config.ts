@@ -24,5 +24,5 @@ export default defineConfig({
     cloudfrontDistributionId:
       process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion",
 });
