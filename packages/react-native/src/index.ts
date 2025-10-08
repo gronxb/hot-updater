@@ -121,7 +121,7 @@ export const HotUpdater = {
    *
    * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
    * if (updateInfo.shouldForceUpdate) {
-   *   HotUpdater.reload();
+   *   await HotUpdater.reload();
    * }
    * ```
    */
@@ -152,7 +152,7 @@ export const HotUpdater = {
    * });
    *
    * if(result.status !== "UP_TO_DATE" && result.shouldForceUpdate) {
-   *   HotUpdater.reload();
+   *   await HotUpdater.reload();
    * }
    * ```
    *
@@ -188,7 +188,7 @@ export const HotUpdater = {
    *   fileUrl: updateInfo.fileUrl
    * });
    * if (updateInfo.shouldForceUpdate) {
-   *   HotUpdater.reload();
+   *   await HotUpdater.reload();
    * }
    * ```
    */

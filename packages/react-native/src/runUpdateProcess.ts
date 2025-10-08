@@ -43,7 +43,7 @@ export interface RunUpdateProcessOptions extends CheckForUpdateOptions {
  * });
  *
  * if(result.status !== "UP_TO_DATE" && result.shouldForceUpdate) {
- *   HotUpdater.reload();
+ *   await HotUpdater.reload();
  * }
  * ```
  *

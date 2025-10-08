@@ -20,10 +20,12 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload() {
-        try {
-            HotUpdater.reload(mReactApplicationContext)
-        } catch (e: Exception) {
-            Log.d("HotUpdater", "Failed to reload", e)
+        (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
+            try {
+                HotUpdater.reload(mReactApplicationContext)
+            } catch (e: Exception) {
+                Log.d("HotUpdater", "Failed to reload", e)
+            }
         }
     }
 

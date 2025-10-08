@@ -2,9 +2,9 @@ package com.hotupdater
 
 import android.app.Activity
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Core implementation class for HotUpdater functionality
@@ -198,7 +198,7 @@ class HotUpdaterImpl(
      * Reloads the React Native application
      * @param activity Current activity (optional)
      */
-    fun reload(activity: Activity? = null) {
+    suspend fun reload(activity: Activity? = null) {
         val reactIntegrationManager = ReactIntegrationManager(context)
         val application = activity?.application ?: return
 
@@ -208,7 +208,8 @@ class HotUpdaterImpl(
 
             reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
 
-            Handler(Looper.getMainLooper()).post {
+            // Perform reload (suspends until safe to reload on new arch)
+            withContext(Dispatchers.Main) {
                 reactIntegrationManager.reload(reactApplication)
             }
         } catch (e: Exception) {
