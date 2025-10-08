@@ -21,7 +21,7 @@ class HotUpdaterModule internal constructor(
         (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
             try {
                 HotUpdater.reload(mReactApplicationContext)
-                promise.resolve(Unit)
+                promise.resolve(null)
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to reload", e)
                 promise.reject("reload", e)

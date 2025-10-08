@@ -19,12 +19,14 @@ class HotUpdaterModule internal constructor(
     override fun getName(): String = NAME
 
     @ReactMethod
-    override fun reload() {
+    override fun reload(promise: Promise) {
         (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
             try {
                 HotUpdater.reload(mReactApplicationContext)
+                promise.resolve(null)
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to reload", e)
+                promise.reject("reload", e)
             }
         }
     }
