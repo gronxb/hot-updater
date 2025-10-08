@@ -1,8 +1,6 @@
 package com.hotupdater
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactInstanceEventListener
@@ -117,20 +115,18 @@ class ReactIntegrationManager(
             // If already initialized, return immediately
             if (reactHost.currentReactContext != null) return true
 
-            // Wait for initialization and ensure host starts (idempotent)
-            suspendCancellableCoroutine { cont ->
+            // Wait for initialization; MainApplication handles starting the host
+            suspendCancellableCoroutine { continuation ->
                 val listener =
                     object : ReactInstanceEventListener {
                         override fun onReactContextInitialized(context: ReactContext) {
                             reactHost.removeReactInstanceEventListener(this)
-                            if (cont.isActive) cont.resume(Unit)
+                            if (continuation.isActive) continuation.resume(Unit)
                         }
                     }
 
                 reactHost.addReactInstanceEventListener(listener)
-                cont.invokeOnCancellation { reactHost.removeReactInstanceEventListener(listener) }
-
-                Handler(Looper.getMainLooper()).post { reactHost.start() }
+                continuation.invokeOnCancellation { reactHost.removeReactInstanceEventListener(listener) }
             }
             false
         } catch (e: Exception) {
