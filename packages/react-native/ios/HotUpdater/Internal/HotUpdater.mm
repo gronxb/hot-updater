@@ -180,7 +180,10 @@ RCT_EXPORT_MODULE();
 #pragma mark - React Native Exports (Slimmed Down)
 
 // Keep reload logic here as it interacts with RN Bridge
-RCT_EXPORT_METHOD(reload) {
+RCT_EXPORT_METHOD(reload:
+    resolve:(RCTPromiseResolveBlock)resolve
+    reject:(RCTPromiseRejectBlock)reject
+) {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         // Get bundleURL using static instance
@@ -198,6 +201,10 @@ RCT_EXPORT_METHOD(reload) {
              RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
         }
         RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+        resolve(nil);
+    } @catch (NSException *exception) {
+        RCTLogError(@"[HotUpdater.mm] Failed to reload: %@", exception);
+        reject(@"RELOAD_ERROR", exception.description, exception);
     });
 }
 
