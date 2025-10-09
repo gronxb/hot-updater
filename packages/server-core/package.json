@@ -1,8 +1,8 @@
 {
-  "name": "@hot-updater/backend-core",
+  "name": "@hot-updater/server-core",
   "version": "0.20.12",
   "type": "module",
-  "description": "Backend core utilities for Hot Updater (fumadb ORM, schema, and DB helpers)",
+  "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
   "main": "dist/index.cjs",
   "module": "dist/index.js",
