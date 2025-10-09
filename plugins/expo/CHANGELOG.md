@@ -1,5 +1,12 @@
 # @hot-updater/expo
 
+## 0.20.12
+
+### Patch Changes
+
+- @hot-updater/bare@0.20.12
+- @hot-updater/plugin-core@0.20.12
+
 ## 0.20.11
 
 ### Patch Changes
