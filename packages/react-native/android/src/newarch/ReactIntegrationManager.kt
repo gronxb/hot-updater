@@ -110,8 +110,10 @@ class ReactIntegrationManager(
      */
     suspend fun waitForReactContextInitialized(application: ReactApplication): Boolean {
         return try {
+            val reactHost = application.reactHost ?: return true
+
             // If already initialized, return immediately
-            if (application.reactHost?.currentReactContext != null) return true
+            if (reactHost.currentReactContext != null) return true
 
             // Wait for initialization; MainApplication handles starting the host
             suspendCancellableCoroutine { continuation ->
