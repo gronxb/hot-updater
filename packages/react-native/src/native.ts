@@ -87,7 +87,9 @@ export async function updateBundle(
   if (existing) return existing;
 
   const targetFileUrl =
-    typeof paramsOrBundleId === "string" ? fileUrl ?? null : paramsOrBundleId.fileUrl;
+    typeof paramsOrBundleId === "string"
+      ? (fileUrl ?? null)
+      : paramsOrBundleId.fileUrl;
 
   const promise = (async () => {
     try {
