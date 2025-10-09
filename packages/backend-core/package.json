@@ -1,0 +1,45 @@
+{
+  "name": "@hot-updater/backend-core",
+  "version": "0.20.12",
+  "type": "module",
+  "description": "Backend core utilities for Hot Updater (fumadb ORM, schema, and DB helpers)",
+  "sideEffects": false,
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./src": {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "fumadb": "^0.1.1",
+    "semver": "^7.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/semver": "^7.5.8"
+  }
+}

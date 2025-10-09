@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
+import { filterCompatibleAppVersions } from "@hot-updater/backend-core/src";
 
 describe("filterCompatibleAppVersions", () => {
   it("should filter and sort compatible versions", () => {

@@ -6,12 +6,13 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { fumadb } from "fumadb";
 import type { InferFumaDB } from "fumadb";
+import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
 import { v1 } from "../schema/v1";
 import type { PaginationInfo } from "../types";
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
+
 export const HotUpdaterDB = fumadb({
   namespace: "hot-updater",
   schemas: [v1],
@@ -23,7 +24,6 @@ export type HotUpdaterAPI = ReturnType<typeof hotUpdater>;
 export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
   return {
     async getBundleById(id: string) {
-      // get schema version
       const version = await client.version();
       const orm = client.orm(version);
       const result = await orm.findFirst("bundles", {
@@ -96,7 +96,6 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         minBundleId = NIL_UUID,
         channel = "production",
       }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
-        // 1) Load distinct target_app_version list for platform to compute semver-compatible versions
         const versionRows = await orm.findMany("bundles", {
           select: ["target_app_version"],
           where: (b) => b.and(b("platform", "=", platform)),
@@ -113,11 +112,6 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
           appVersion,
         );
 
-        // Early exit: if nothing compatible, decide rollback/null by minBundleId rule
-        // But still need to check whether current bundle exists; we'll continue with general logic
-
-        // 2) Fetch candidates (enabled, platform, id >= minBundleId, channel)
-        //    then filter by compatible target versions in memory for safety.
         const baseRows =
           compatibleVersions.length === 0
             ? []
@@ -135,7 +129,6 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
                   b.and(
                     b("enabled", "=", true),
                     b("platform", "=", platform),
-                    // id >= minBundleId
                     b("id", ">=", minBundleId ?? NIL_UUID),
                     b("channel", "=", channel),
                     b.isNotNull("target_app_version"),
@@ -148,12 +141,10 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
             : false,
         );
 
-        // 3) From candidates, compute latest/update/rollback/current in-memory by id ordering
         const byIdDesc = (a: { id: string }, b: { id: string }) =>
           b.id.localeCompare(a.id);
         const sorted = (candidates ?? []).slice().sort(byIdDesc);
 
-        // Find refs
         const latestCandidate = sorted[0] ?? null;
         const currentBundle = sorted.find((b) => b.id === bundleId);
         const updateCandidate =
@@ -198,7 +189,6 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         minBundleId = NIL_UUID,
         channel = "production",
       }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
-        // Fetch candidates (enabled, platform, id >= minBundleId, channel, fingerprint hash matched)
         const candidates = await orm.findMany("bundles", {
           select: [
             "id",
@@ -269,7 +259,6 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
       return null;
     },
 
-    // -- CRUD & listing helpers (used by DatabasePlugin implementations) --
     async getChannels(): Promise<string[]> {
       const version = await client.version();
       const orm = client.orm(version);
@@ -406,3 +395,4 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
 
 // You can create a concrete client in your runtime and pass it to
 // hotUpdater(HotUpdaterDB.client(kyselyAdapter({...})))
+

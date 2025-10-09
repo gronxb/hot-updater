@@ -11,3 +11,4 @@ export const semverSatisfies = (
 
   return semver.satisfies(currentCoerce.version, targetAppVersion);
 };
+

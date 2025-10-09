@@ -20,3 +20,4 @@ export const v1 = schema({
   },
   relations: {},
 });
+

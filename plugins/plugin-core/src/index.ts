@@ -7,7 +7,7 @@ export * from "./createDatabasePlugin";
 export * from "./createStorageKeyBuilder";
 export * from "./createZip";
 export * from "./cwd";
-export * from "./db";
+export * from "@hot-updater/backend-core";
 export * from "./generateMinBundleId";
 export * from "./loadConfig";
 export * from "./log";
