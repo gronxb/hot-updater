@@ -3,9 +3,9 @@ import {
   type Bundle,
   type ConfigResponse,
   type DatabasePlugin,
-  type StoragePlugin,
   getCwd,
   loadConfig,
+  type StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { Hono } from "hono";
 import typia from "typia";

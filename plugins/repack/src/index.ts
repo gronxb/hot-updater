@@ -1,6 +1,6 @@
+import type { Compiler, RspackPluginInstance } from "@rspack/core";
 import fs from "fs";
 import path from "path";
-import type { Compiler, RspackPluginInstance } from "@rspack/core";
 import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 

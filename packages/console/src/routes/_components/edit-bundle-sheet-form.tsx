@@ -1,3 +1,10 @@
+import type { Bundle } from "@hot-updater/plugin-core";
+import { createForm } from "@tanstack/solid-form";
+import { useQueryClient } from "@tanstack/solid-query";
+import { LoaderCircle } from "lucide-solid";
+import semverValid from "semver/ranges/valid";
+import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
+import { createMemo, createSignal, Show } from "solid-js";
 import { Button } from "@/components/ui/button";
 import {
   Switch,
@@ -11,15 +18,8 @@ import {
   TextFieldLabel,
 } from "@/components/ui/text-field";
 import { showToast } from "@/components/ui/toast";
-import { api, createConfigQuery } from "@/lib/api";
+import { api, useConfigQuery } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { Bundle } from "@hot-updater/plugin-core";
-import { createForm } from "@tanstack/solid-form";
-import { useQueryClient } from "@tanstack/solid-query";
-import { LoaderCircle } from "lucide-solid";
-import semverValid from "semver/ranges/valid";
-import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
-import { Show, createMemo, createSignal } from "solid-js";
 
 export interface EditBundleSheetFormProps {
   bundle: Bundle;
@@ -31,7 +31,7 @@ export const EditBundleSheetForm = ({
   onEditSuccess,
 }: EditBundleSheetFormProps) => {
   const queryClient = useQueryClient();
-  const config = createConfigQuery();
+  const config = useConfigQuery();
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const gitUrl = createMemo(() => config.data?.console?.gitUrl ?? null);

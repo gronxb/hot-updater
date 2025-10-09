@@ -1,10 +1,9 @@
-import fs from "fs";
 import * as p from "@clack/prompts";
-import * as semver from "semver";
-
 import { getCwd } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
+import fs from "fs";
 import { readPackageUp } from "read-package-up";
+import * as semver from "semver";
 
 interface PackageJson {
   dependencies?: Record<string, string>;

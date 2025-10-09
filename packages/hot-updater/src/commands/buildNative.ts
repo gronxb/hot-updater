@@ -1,10 +1,11 @@
-import fs from "fs";
 import * as p from "@clack/prompts";
-import { type Platform, getCwd, loadConfig } from "@hot-updater/plugin-core";
-
-import { getPlatform } from "@/prompts/getPlatform";
+import { getCwd, loadConfig, type Platform } from "@hot-updater/plugin-core";
+import { ExecaError } from "execa";
+import fs from "fs";
 
 import path from "path";
+import picocolors from "picocolors";
+import { getPlatform } from "@/prompts/getPlatform";
 import {
   createAndInjectFingerprintFiles,
   isFingerprintEquals,
@@ -14,8 +15,6 @@ import { runNativeBuild } from "@/utils/nativeBuild/runNativeBuild";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { ExecaError } from "execa";
-import picocolors from "picocolors";
 
 export interface NativeBuildOptions {
   outputPath?: string;

@@ -1,21 +1,17 @@
-import type { RpcType } from "@/src-server/rpc";
 import { hc } from "hono/client";
+import type { RpcType } from "@/src-server/rpc";
 
 export const api = hc<RpcType>("/rpc");
 
-import {
-  createMutation,
-  createQuery,
-  useQueryClient,
-} from "@tanstack/solid-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/solid-query";
 import type { Accessor } from "solid-js";
 
 const DEFAULT_CHANNEL = "production";
 
-export const createBundlesQuery = (
+export const useBundlesQuery = (
   query: Accessor<Parameters<typeof api.bundles.$get>[0]["query"]>,
 ) =>
-  createQuery(() => ({
+  useQuery(() => ({
     queryKey: ["bundles", query()],
     queryFn: async () => {
       const res = await api.bundles.$get({ query: query() });
@@ -25,8 +21,8 @@ export const createBundlesQuery = (
     staleTime: Number.POSITIVE_INFINITY,
   }));
 
-export const createBundleQuery = (bundleId: string) =>
-  createQuery(() => ({
+export const useBundleQuery = (bundleId: string) =>
+  useQuery(() => ({
     queryKey: ["bundle", bundleId],
     queryFn: () => {
       return api.bundles[":bundleId"]
@@ -39,16 +35,16 @@ export const createBundleQuery = (bundleId: string) =>
     staleTime: Number.POSITIVE_INFINITY,
   }));
 
-export const createConfigQuery = () =>
-  createQuery(() => ({
+export const useConfigQuery = () =>
+  useQuery(() => ({
     queryKey: ["config"],
     queryFn: () => api.config.$get().then((res) => res.json()),
     staleTime: Number.POSITIVE_INFINITY,
     retryOnMount: false,
   }));
 
-export const createChannelsQuery = () =>
-  createQuery(() => ({
+export const useChannelsQuery = () =>
+  useQuery(() => ({
     queryKey: ["channels"],
     queryFn: () => api.channels.$get().then((res) => res.json()),
     staleTime: Number.POSITIVE_INFINITY,
@@ -69,10 +65,10 @@ export const createChannelsQuery = () =>
     },
   }));
 
-export const createBundleDeleteMutation = () => {
+export const useBundleDeleteMutation = () => {
   const queryClient = useQueryClient();
 
-  return createMutation<{ success: boolean }, Error, string>(() => ({
+  return useMutation<{ success: boolean }, Error, string>(() => ({
     mutationFn: async (bundleId: string) => {
       const response = await api.bundles[":bundleId"].$delete({
         param: { bundleId },

@@ -1,8 +1,8 @@
-import path from "path";
 import { XcodeProject } from "@bacons/xcode";
 import { getCwd } from "@hot-updater/plugin-core";
 import fg from "fast-glob";
 import fs from "fs/promises";
+import path from "path";
 import plist from "plist";
 import semverValid from "semver/ranges/valid";
 import { getIosAppTargetDirectoryName } from "../getIosAppTargetDirectoryName";

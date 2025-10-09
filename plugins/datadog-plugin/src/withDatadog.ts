@@ -1,8 +1,8 @@
+import type { BasePluginArgs, BuildPlugin } from "@hot-updater/plugin-core";
+import { execa } from "execa";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import type { BasePluginArgs, BuildPlugin } from "@hot-updater/plugin-core";
-import { execa } from "execa";
 
 const ensureFilePath = (
   files: string[],

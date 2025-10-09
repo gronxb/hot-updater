@@ -1,9 +1,8 @@
-import fs from "fs";
-import path from "path";
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
-
 import type * as babelTypes from "@babel/types";
+import fs from "fs";
+import path from "path";
 import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 

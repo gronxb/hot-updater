@@ -1,5 +1,5 @@
+import { randomUUID } from "crypto";
 import fs from "fs";
-import { randomUUID } from "node:crypto";
 import os from "os";
 import path from "path";
 import { getPnpmWorkspaces } from "workspace-tools";

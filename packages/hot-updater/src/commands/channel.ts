@@ -1,6 +1,6 @@
-import { getChannel, setChannel } from "@/utils/setChannel";
 import * as p from "@clack/prompts";
 import picocolors from "picocolors";
+import { getChannel, setChannel } from "@/utils/setChannel";
 
 export const handleChannel = async () => {
   const androidChannel = await getChannel("android");

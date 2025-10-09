@@ -13,10 +13,9 @@ import { runUpdateProcess } from "./runUpdateProcess";
 import { hotUpdaterStore } from "./store";
 import { wrap } from "./wrap";
 
-export type { HotUpdaterOptions } from "./wrap";
 export type { HotUpdaterEvent } from "./native";
-
 export * from "./store";
+export type { HotUpdaterOptions } from "./wrap";
 
 addListener("onProgress", ({ progress }) => {
   hotUpdaterStore.setState({

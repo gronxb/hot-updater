@@ -1,4 +1,3 @@
-import path from "path";
 import {
   type BasePluginArgs,
   type BuildPlugin,
@@ -7,6 +6,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
+import path from "path";
 import { compileHermes } from "./hermes";
 
 interface RunBundleArgs {

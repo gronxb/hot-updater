@@ -30,7 +30,7 @@ export const withSignedUrl = async <
     return null;
   }
 
-  const { storageUri, ...rest } = data;
+  const { storageUri: _, ...rest } = data;
   if (data.id === NIL_UUID || !data.storageUri) {
     return { ...rest, fileUrl: null };
   }
