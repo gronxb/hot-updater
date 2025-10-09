@@ -362,11 +362,7 @@ export class S3Migrator {
     return { applied, pending };
   }
 
-  async migrate({
-    dryRun,
-  }: {
-    dryRun: boolean;
-  }): Promise<void> {
+  async migrate({ dryRun }: { dryRun: boolean }): Promise<void> {
     await this.loadMigrationRecords();
 
     for (const migration of this.migrations) {

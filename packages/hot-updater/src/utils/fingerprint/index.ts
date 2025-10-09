@@ -55,7 +55,9 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
 
 export const createAndInjectFingerprintFiles = async ({
   platform,
-}: { platform?: Platform } = {}) => {
+}: {
+  platform?: Platform;
+} = {}) => {
   const localFingerprint = await readLocalFingerprint();
   const newFingerprint = await generateFingerprints();
 

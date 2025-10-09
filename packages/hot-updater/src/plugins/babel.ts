@@ -33,7 +33,9 @@ const getBundleId = () => {
 
 export default function ({
   types: t,
-}: { types: typeof babelTypes }): PluginObj {
+}: {
+  types: typeof babelTypes;
+}): PluginObj {
   const bundleId = getBundleId();
   return {
     name: "hot-updater-babel-plugin",

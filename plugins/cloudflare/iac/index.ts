@@ -145,11 +145,7 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({
-  build,
-}: {
-  build: BuildType;
-}) => {
+export const runInit = async ({ build }: { build: BuildType }) => {
   const cwd = getCwd();
 
   let auth = getWranglerLoginAuthToken();

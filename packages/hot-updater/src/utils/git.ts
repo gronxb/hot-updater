@@ -25,7 +25,10 @@ export const getLatestGitCommit = async (): Promise<Commit | null> => {
 export const appendToProjectRootGitignore = ({
   cwd,
   globLines,
-}: { cwd?: string; globLines: string[] }): boolean => {
+}: {
+  cwd?: string;
+  globLines: string[];
+}): boolean => {
   if (!globLines.length) {
     return false;
   }

@@ -28,11 +28,7 @@ const checkIfAwsCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({
-  build,
-}: {
-  build: BuildType;
-}) => {
+export const runInit = async ({ build }: { build: BuildType }) => {
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
   if (!isAwsCliInstalled) {
     p.log.error(
