@@ -1,20 +1,12 @@
-import * as Sentry from "@sentry/react-native";
-
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
+import { HOT_UPDATER_SENTRY_DSN, HOT_UPDATER_SUPABASE_URL } from "@env";
 import {
-  HotUpdater,
   getUpdateSource,
+  HotUpdater,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
+import * as Sentry from "@sentry/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Button,
   Image,
@@ -24,8 +16,6 @@ import {
   Text,
   View,
 } from "react-native";
-
-import { HOT_UPDATER_SENTRY_DSN, HOT_UPDATER_SUPABASE_URL } from "@env";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);

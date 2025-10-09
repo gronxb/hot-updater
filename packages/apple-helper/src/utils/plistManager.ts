@@ -86,7 +86,7 @@ export const setKeyInPlist = async (
 ): Promise<void> => {
   try {
     await plistBuddy(plistPath, `Set:${key} ${value}`, {});
-  } catch (error) {
+  } catch (_error) {
     // If key doesn't exist, try to add it
     try {
       await plistBuddy(plistPath, `Add:${key} ${type} ${value}`, {});

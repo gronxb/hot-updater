@@ -1,6 +1,6 @@
 import type { Bundle, Platform } from "@hot-updater/core";
 
-export type { Platform, Bundle } from "@hot-updater/core";
+export type { Bundle, Platform } from "@hot-updater/core";
 
 export * from "./utils";
 

@@ -1,8 +1,8 @@
-import * as fs from "fs";
-import * as path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import { XMLParser } from "fast-xml-parser";
+import fs from "fs";
+import path from "path";
 
 /**
  * Xcode project information
@@ -141,7 +141,7 @@ export const getProjectInfo = async (
           location.endsWith(".xcodeproj"), // Only project files
       );
 
-    let info: ProjectInfo | undefined = undefined;
+    let info: ProjectInfo | undefined;
 
     for (const location of locations) {
       try {

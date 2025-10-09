@@ -1,4 +1,13 @@
+import * as p from "@clack/prompts";
+import {
+  type ConfigResponse,
+  getCwd,
+  loadConfig,
+  type NativeBuildOptions,
+  type Platform,
+} from "@hot-updater/plugin-core";
 import path from "path";
+import picocolors from "picocolors";
 import {
   createAndInjectFingerprintFiles,
   isFingerprintEquals,
@@ -6,15 +15,6 @@ import {
 } from "@/utils/fingerprint";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import * as p from "@clack/prompts";
-import {
-  type ConfigResponse,
-  type NativeBuildOptions,
-  type Platform,
-  getCwd,
-  loadConfig,
-} from "@hot-updater/plugin-core";
-import picocolors from "picocolors";
 
 export async function prepareNativeBuild(
   options: NativeBuildOptions & { platform: Platform },

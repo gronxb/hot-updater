@@ -1,6 +1,6 @@
-import crypto from "crypto";
 import { ParameterNotFound, SSM } from "@aws-sdk/client-ssm";
 import * as p from "@clack/prompts";
+import crypto from "crypto";
 import type { AwsRegion } from "./regionLocationMap";
 
 export class SSMKeyPairManager {

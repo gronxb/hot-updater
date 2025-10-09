@@ -1,8 +1,8 @@
-import fs from "fs";
-import path from "path";
 import * as p from "@clack/prompts";
 import { getCwd } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import fs from "fs";
+import path from "path";
 
 export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
   const podfilePath = path.join(sourceDir, "Podfile");
@@ -55,7 +55,7 @@ const checkShouldUseBundler = async (gemfilePath: string): Promise<boolean> => {
 
     const gemfileContent = await fs.promises.readFile(gemfilePath, "utf-8");
     return gemfileContent.includes("cocoapods");
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 };

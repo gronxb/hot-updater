@@ -10,7 +10,11 @@ const buildDestinationString = ({
   deviceType,
   platform,
   useGeneric,
-}: { platform: ApplePlatform; deviceType: DeviceType; useGeneric: boolean }) =>
+}: {
+  platform: ApplePlatform;
+  deviceType: DeviceType;
+  useGeneric: boolean;
+}) =>
   `${useGeneric ? "generic/" : ""}${deviceType === "device" ? platformConfigs[platform].deviceDestination : platformConfigs[platform].simulatorDestination}`;
 
 /**
@@ -19,7 +23,10 @@ const buildDestinationString = ({
 const resolveDestination = ({
   destination,
   useGeneric,
-}: { destination: IosBuildDestination; useGeneric: boolean }): string => {
+}: {
+  destination: IosBuildDestination;
+  useGeneric: boolean;
+}): string => {
   if (typeof destination === "object") {
     // Handle device with specific id or name
     if ("id" in destination) {
@@ -94,7 +101,10 @@ const resolveDestination = ({
 export const resolveDestinations = ({
   destinations,
   useGeneric,
-}: { destinations: IosBuildDestination[]; useGeneric: boolean }): string[] => {
+}: {
+  destinations: IosBuildDestination[];
+  useGeneric: boolean;
+}): string[] => {
   return destinations.map((destination) =>
     resolveDestination({ destination, useGeneric }),
   );

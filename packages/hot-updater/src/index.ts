@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import * as p from "@clack/prompts";
+import { Command, Option } from "@commander-js/extra-typings";
+import { banner, log } from "@hot-updater/plugin-core";
+import picocolors from "picocolors";
+import semverValid from "semver/ranges/valid";
 import {
   appIdSuffixCommandOption,
   deviceCommandOption,
@@ -14,14 +19,6 @@ import { init } from "@/commands/init";
 import { version } from "@/packageJson";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import * as p from "@clack/prompts";
-import { Command, Option } from "@commander-js/extra-typings";
-import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
-import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { type NativeBuildOptions, banner, log } from "@hot-updater/plugin-core";
-import picocolors from "picocolors";
-import semverValid from "semver/ranges/valid";
-import { buildAndroidNative, buildIosNative } from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -189,7 +186,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: AndroidNativeRunOptions) => {
-      runAndroidNative(options);
+      await runAndroidNative(options);
     });
 
   program
@@ -206,7 +203,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: IosNativeRunOptions) => {
-      runIosNative(options);
+      await runIosNative(options);
     });
 }
 

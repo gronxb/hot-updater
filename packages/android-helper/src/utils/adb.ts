@@ -1,7 +1,7 @@
 import os from "node:os";
-import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
+import path from "path";
 import type { AndroidUser } from "../types";
 
 /**
@@ -55,14 +55,17 @@ const getConnectedDevices = async (): Promise<string[]> => {
 async function tryRunAdbReverse({
   port = 8081,
   deviceId,
-}: { port?: number | string; deviceId: string }) {
+}: {
+  port?: number | string;
+  deviceId: string;
+}) {
   try {
     const adbPath = getAdbPath();
     const adbArgs = ["-s", deviceId, "reverse", `tcp:${port}`, `tcp:${port}`];
 
     p.log.info(`Connecting "${deviceId}" to the development server`);
     await execa(adbPath, adbArgs);
-  } catch (error) {
+  } catch (_error) {
     throw new Error(
       `Failed to connect "${deviceId}" to development server using "adb reverse"`,
     );

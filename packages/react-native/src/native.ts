@@ -95,10 +95,8 @@ export const getAppVersion = (): string | null => {
 /**
  * Reloads the app.
  */
-export const reload = () => {
-  requestAnimationFrame(() => {
-    HotUpdaterNative.reload();
-  });
+export const reload = async () => {
+  await HotUpdaterNative.reload();
 };
 
 /**

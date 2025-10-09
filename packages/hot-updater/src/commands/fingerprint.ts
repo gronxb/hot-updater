@@ -1,8 +1,11 @@
+import * as p from "@clack/prompts";
+import { getCwd, loadConfig } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
+import picocolors from "picocolors";
 import {
-  type FingerprintResult,
   createAndInjectFingerprintFiles,
+  type FingerprintResult,
   generateFingerprints,
   isFingerprintEquals,
   readLocalFingerprint,
@@ -11,9 +14,6 @@ import {
   getFingerprintDiff,
   showFingerprintDiff,
 } from "@/utils/fingerprint/diff";
-import * as p from "@clack/prompts";
-import { getCwd, loadConfig } from "@hot-updater/plugin-core";
-import picocolors from "picocolors";
 
 export const handleFingerprint = async () => {
   const s = p.spinner();
@@ -50,7 +50,7 @@ export const handleFingerprint = async () => {
         ...fingerprintConfig,
       });
       showFingerprintDiff(diff, "iOS");
-    } catch (error) {
+    } catch {
       p.log.warn("Could not generate fingerprint diff");
     }
 
@@ -68,7 +68,7 @@ export const handleFingerprint = async () => {
         ...fingerprintConfig,
       });
       showFingerprintDiff(diff, "Android");
-    } catch (error) {
+    } catch {
       p.log.warn("Could not generate fingerprint diff");
     }
 
@@ -165,7 +165,7 @@ export const handleCreateFingerprint = async () => {
           );
           showFingerprintDiff(androidDiff, "Android");
         }
-      } catch (error) {
+      } catch {
         p.log.warn("Could not generate fingerprint diff");
       }
     }

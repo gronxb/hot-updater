@@ -39,7 +39,7 @@ export const verifyJwtToken = async ({
       return { valid: false, error: "Token does not match requested file" };
     }
     return { valid: true, key };
-  } catch (error) {
+  } catch {
     return { valid: false, error: "Invalid or expired token" };
   }
 };

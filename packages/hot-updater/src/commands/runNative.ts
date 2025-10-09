@@ -1,5 +1,3 @@
-import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
-import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import {
   type AndroidNativeRunOptions,
@@ -7,6 +5,8 @@ import {
 } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { ExecaError } from "execa";
+import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
+import { printBanner } from "@/utils/printBanner";
 
 export const runAndroidNative = async (options: AndroidNativeRunOptions) => {
   printBanner();

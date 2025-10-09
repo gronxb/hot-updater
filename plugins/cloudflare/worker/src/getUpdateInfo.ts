@@ -1,5 +1,3 @@
-import { filterCompatibleAppVersions } from "@hot-updater/js";
-
 import {
   type AppVersionGetBundlesArgs,
   type FingerprintGetBundlesArgs,
@@ -8,6 +6,7 @@ import {
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
+import { filterCompatibleAppVersions } from "@hot-updater/js";
 
 const appVersionStrategy = async (
   DB: D1Database,

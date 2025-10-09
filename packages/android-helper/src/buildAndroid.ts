@@ -1,9 +1,9 @@
-import path from "path";
 import {
-  type NativeBuildAndroidScheme,
   generateMinBundleId,
   getCwd,
+  type NativeBuildAndroidScheme,
 } from "@hot-updater/plugin-core";
+import path from "path";
 import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 import { runGradle } from "./utils/gradle";
 

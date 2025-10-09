@@ -1,4 +1,3 @@
-import path from "path";
 import {
   type CosmiconfigResult,
   cosmiconfig,
@@ -7,6 +6,7 @@ import {
 import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
+import path from "path";
 import { getCwd } from "./cwd.js";
 import type { ConfigInput, Platform } from "./types";
 import type { RequiredDeep } from "./types/utils.js";
@@ -37,7 +37,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
       // Convert to relative paths from project root
       infoPlistPaths = plistFiles.map((file: string) => `ios/${file}`);
     }
-  } catch (error) {
+  } catch {
     // Keep fallback value if glob fails
   }
 
@@ -56,7 +56,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
         path.join("android", file),
       );
     }
-  } catch (error) {
+  } catch {
     // Keep fallback value if glob fails
   }
 

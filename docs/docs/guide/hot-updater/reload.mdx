@@ -22,7 +22,7 @@ import { Button, Text, View } from "react-native";
 function App() {
   const handleReload = () => {
     // Immediately reapply if there is a downloaded bundle
-    HotUpdater.reload(); // [!code hl]
+    await HotUpdater.reload(); // [!code hl]
   }
 
   return (

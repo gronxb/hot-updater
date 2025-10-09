@@ -4,7 +4,7 @@ import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
  * Builds an iOS app without archiving
  */
 export const buildXcodeProject = async (
-  sourceDir: string,
+  _sourceDir: string,
   { scheme: { installPods } }: { scheme: NativeBuildIosScheme },
 ): Promise<void> => {
   // const xcodeProject = await discoverXcodeProject(sourceDir);

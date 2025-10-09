@@ -1,7 +1,7 @@
 import type { AppUpdateInfo, UpdateBundleParams } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
-import { type UpdateSource, fetchUpdateInfo } from "./fetchUpdateInfo";
+import { fetchUpdateInfo, type UpdateSource } from "./fetchUpdateInfo";
 import {
   getAppVersion,
   getBundleId,

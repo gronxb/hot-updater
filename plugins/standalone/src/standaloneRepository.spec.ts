@@ -1,5 +1,5 @@
 import type { BasePluginArgs, Bundle } from "@hot-updater/plugin-core";
-import { http, HttpResponse } from "msw";
+import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
   afterAll,
@@ -136,8 +136,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       http.get("http://localhost/bundles", () => {
         return HttpResponse.json([]);
       }),
-      http.post("http://localhost/bundles", async ({ request }) => {
-        const body = await request.json();
+      http.post("http://localhost/bundles", async () => {
         return HttpResponse.json({ success: true });
       }),
     );
@@ -185,8 +184,14 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     server.use(
       http.get("http://localhost/bundles", ({ request }) => {
         const url = new URL(request.url);
-        const limit = Number.parseInt(url.searchParams.get("limit") || "20");
-        const offset = Number.parseInt(url.searchParams.get("offset") || "0");
+        const limit = Number.parseInt(
+          url.searchParams.get("limit") || "20",
+          10,
+        );
+        const offset = Number.parseInt(
+          url.searchParams.get("offset") || "0",
+          10,
+        );
 
         const paginatedData = allBundles.slice(offset, offset + limit);
         return HttpResponse.json(paginatedData, {

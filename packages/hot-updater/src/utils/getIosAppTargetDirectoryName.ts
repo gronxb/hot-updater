@@ -1,6 +1,6 @@
-import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
 import fg from "fast-glob";
+import path from "path";
 
 export const getIosAppTargetDirectoryName = () => {
   const iosDirectory = path.join(getCwd(), "ios");

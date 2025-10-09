@@ -1,7 +1,7 @@
+import * as p from "@clack/prompts";
+import { getCwd, type NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
-import * as p from "@clack/prompts";
-import { type NativeBuildIosScheme, getCwd } from "@hot-updater/plugin-core";
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";

@@ -1,11 +1,11 @@
-import { createNativeBuild } from "@/utils/native/createNativeBuild";
-import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
-import { printBanner } from "@/utils/printBanner";
 import * as p from "@clack/prompts";
 import { buildAndroid } from "@hot-updater/android-helper";
 import { buildIos } from "@hot-updater/apple-helper";
-import { type NativeBuildOptions, getCwd } from "@hot-updater/plugin-core";
+import { getCwd, type NativeBuildOptions } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
+import { createNativeBuild } from "@/utils/native/createNativeBuild";
+import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
+import { printBanner } from "@/utils/printBanner";
 
 export const buildAndroidNative = async (options: NativeBuildOptions) => {
   printBanner();

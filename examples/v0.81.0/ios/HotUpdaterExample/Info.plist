@@ -23,7 +23,7 @@
 		<key>CFBundleVersion</key>
 		<string>$(CURRENT_PROJECT_VERSION)</string>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>612d74d5f5dc0ed0b3fe85f91ca52898ca089de9</string>
+		<string>d08ce02ff0286116d945a7b77222e9a353731731</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>NSAppTransportSecurity</key>
@@ -52,6 +52,6 @@
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
 		<key>HOT_UPDATER_CHANNEL</key>
-		<string>prod</string>
+		<string>production</string>
 	</dict>
 </plist>

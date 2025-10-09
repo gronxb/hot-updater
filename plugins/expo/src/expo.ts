@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import { compileHermes } from "@hot-updater/bare";
 import {
   type BasePluginArgs,
@@ -8,6 +6,8 @@ import {
   log,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
+import fs from "fs";
+import path from "path";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 

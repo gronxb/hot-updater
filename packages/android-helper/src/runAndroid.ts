@@ -1,10 +1,10 @@
-import path from "path";
 import * as p from "@clack/prompts";
 import {
-  type NativeBuildAndroidScheme,
   generateMinBundleId,
   getCwd,
+  type NativeBuildAndroidScheme,
 } from "@hot-updater/plugin-core";
+import path from "path";
 import type { AndroidNativeRunOptions } from "./types";
 import { Adb } from "./utils/adb";
 import { Emulator } from "./utils/emulator";

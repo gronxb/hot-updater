@@ -1,13 +1,13 @@
-import path from "path";
 import {
   type BasePluginArgs,
+  createStorageKeyBuilder,
   type StoragePlugin,
   type StoragePluginHooks,
-  createStorageKeyBuilder,
 } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 import fs from "fs/promises";
 import mime from "mime";
+import path from "path";
 
 export interface FirebaseStorageConfig extends admin.AppOptions {
   storageBucket: string;
@@ -23,7 +23,7 @@ export const firebaseStorage =
     let app: admin.app.App;
     try {
       app = admin.app();
-    } catch (e) {
+    } catch {
       app = admin.initializeApp(config);
     }
     const bucket = app.storage().bucket(config.storageBucket);

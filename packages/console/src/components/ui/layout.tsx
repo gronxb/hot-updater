@@ -1,5 +1,5 @@
-import logo from "@/assets/logo.png";
 import type { JSX } from "solid-js";
+import logo from "@/assets/logo.png";
 
 export default function Layout({ children }: { children: JSX.Element }) {
   return (

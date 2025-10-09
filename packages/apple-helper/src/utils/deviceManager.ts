@@ -1,9 +1,9 @@
-import fs from "fs";
 import os from "node:os";
-import path from "path";
 import * as p from "@clack/prompts";
 import type { ApplePlatform } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import fs from "fs";
+import path from "path";
 import type { DeviceType } from "./destination";
 
 export type DeviceState = "Booted" | "Shutdown";

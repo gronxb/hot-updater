@@ -1,8 +1,8 @@
-import fs from "fs";
-import path from "path";
 import * as p from "@clack/prompts";
 import type { Platform } from "@hot-updater/core";
 import { type BuildPlugin, getCwd } from "@hot-updater/plugin-core";
+import fs from "fs";
+import path from "path";
 import picocolors from "picocolors";
 
 export const createNativeBuild = async ({

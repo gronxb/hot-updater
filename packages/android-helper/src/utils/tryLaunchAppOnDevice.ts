@@ -59,7 +59,7 @@ export async function tryLaunchAppOnDevice({
     loader.stop(
       `Launched the app on ${device.readableName} (id: ${deviceId}) and listening on port ${port}.`,
     );
-  } catch (error) {
+  } catch (_error) {
     loader.stop("Failed to launch the app.", 1);
     throw new Error(`Failed to launch the app on ${device.readableName}`);
     // Original cause: (error as ExecaError).stderr

@@ -8,7 +8,7 @@ import xdgAppPaths from "xdg-app-paths";
 const isDirectory = (configPath: string) => {
   try {
     return fs.statSync(configPath).isDirectory();
-  } catch (error) {
+  } catch {
     return false;
   }
 };
@@ -37,7 +37,7 @@ export const getWranglerLoginAuthToken = (): {
       "utf8",
     );
     return toml.parse(wranglerConfig);
-  } catch (error) {
+  } catch {
     return null;
   }
 };

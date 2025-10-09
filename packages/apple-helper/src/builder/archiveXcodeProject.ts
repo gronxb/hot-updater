@@ -1,10 +1,10 @@
-import path from "path";
 import * as p from "@clack/prompts";
 import type {
   ApplePlatform,
   NativeBuildIosScheme,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
+import path from "path";
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import {
@@ -12,8 +12,8 @@ import {
   resolveDestinations,
 } from "../utils/destination";
 import {
-  type XcodeProjectInfo,
   discoverXcodeProject,
+  type XcodeProjectInfo,
 } from "../utils/projectInfo";
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
 
