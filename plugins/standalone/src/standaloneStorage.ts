@@ -1,4 +1,3 @@
-import path from "path";
 import type {
   BasePluginArgs,
   StoragePlugin,
@@ -6,6 +5,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
+import path from "path";
 import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {
@@ -14,10 +14,10 @@ export interface StorageRoutes {
 }
 
 const defaultRoutes: StorageRoutes = {
-  uploadBundle: (bundleId: string, bundlePath: string) => ({
+  uploadBundle: (_bundleId: string, _bundlePath: string) => ({
     path: "/uploadBundle",
   }),
-  deleteBundle: (bundleId: string) => ({
+  deleteBundle: (_bundleId: string) => ({
     path: "/deleteBundle",
   }),
 };

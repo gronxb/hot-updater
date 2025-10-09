@@ -1,8 +1,8 @@
-import path from "path";
-import { fileURLToPath } from "url";
 import dayjs from "dayjs";
 import fs from "fs/promises";
+import path from "path";
 import pc from "picocolors";
+import { fileURLToPath } from "url";
 
 /**
  * Find markers in the format '-- HotUpdater.xxxx' from content and

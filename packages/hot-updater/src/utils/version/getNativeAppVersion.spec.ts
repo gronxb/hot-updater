@@ -1,13 +1,13 @@
 // __tests__/getNativeAppVersion.test.ts
-import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
-import { getNativeAppVersion } from "./getNativeAppVersion";
 
-import path from "path";
 import { XcodeProject } from "@bacons/xcode";
 import { getCwd } from "@hot-updater/plugin-core";
 import fg from "fast-glob";
 import fs from "fs/promises";
+import path from "path";
 import plist from "plist";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { getNativeAppVersion } from "./getNativeAppVersion";
 
 vi.mock("fs/promises");
 vi.mock("path");

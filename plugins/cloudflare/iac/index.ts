@@ -1,20 +1,20 @@
-import crypto from "crypto";
-import path from "path";
 import * as p from "@clack/prompts";
 import {
   type BuildType,
   ConfigBuilder,
-  type ProviderConfig,
   copyDirToTmp,
   getCwd,
   link,
   makeEnv,
+  type ProviderConfig,
   transformTemplate,
 } from "@hot-updater/plugin-core";
 import { Cloudflare } from "cloudflare";
+import crypto from "crypto";
 import dayjs from "dayjs";
 import { execa } from "execa";
 import fs from "fs/promises";
+import path from "path";
 import { createWrangler } from "../src/utils/createWrangler";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
@@ -145,11 +145,7 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({
-  build,
-}: {
-  build: BuildType;
-}) => {
+export const runInit = async ({ build }: { build: BuildType }) => {
   const cwd = getCwd();
 
   let auth = getWranglerLoginAuthToken();

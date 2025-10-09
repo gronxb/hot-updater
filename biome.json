@@ -1,24 +1,23 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "$schema": "https://biomejs.dev/schemas/2.2.5/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "files": {
-    "ignore": [
-      "**/lib/**",
-      "**/package.json",
-      "**/dist/**",
-      "**/build/**",
-      "node_modules/**",
-      "**/*.js",
-      "**/ios/**",
-      "**/android/**"
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "!packages/react-native/lib",
+      "!**/package.json",
+      "!**/dist",
+      "!**/build",
+      "!**/node_modules",
+      "!**/*.js",
+      "!**/ios",
+      "!**/android"
     ]
   },
   "formatter": {
     "enabled": true,
     "formatWithErrors": false,
-    "ignore": [],
     "attributePosition": "auto",
     "indentStyle": "space",
     "indentWidth": 2,
@@ -46,6 +45,9 @@
     "rules": {
       "a11y": {
         "useKeyWithClickEvents": "off"
+      },
+      "nursery": {
+        "noFloatingPromises": "error"
       },
       "suspicious": {
         "noExplicitAny": "off",

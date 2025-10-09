@@ -1,10 +1,9 @@
 import * as p from "@clack/prompts";
-
-import { version } from "@/packageJson";
-import { getPackageManager } from "@/utils/getPackageManager";
 import { getCwd } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { readPackageUp } from "read-package-up";
+import { version } from "@/packageJson";
+import { getPackageManager } from "@/utils/getPackageManager";
 
 const ensurePackageVersion = (pkg: string) => {
   if (pkg === "hot-updater" || pkg.startsWith("@hot-updater/")) {

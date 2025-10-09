@@ -1,3 +1,9 @@
+import type { Bundle } from "@hot-updater/plugin-core";
+import { CloseButton as AlertDialogCloseButton } from "@kobalte/core/alert-dialog";
+import { useSearchParams } from "@solidjs/router";
+import { useQueryClient } from "@tanstack/solid-query";
+import { Hash } from "lucide-solid";
+import { createSignal, Show } from "solid-js";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -26,14 +32,8 @@ import {
 } from "@/components/ui/switch";
 import { TextField, TextFieldLabel } from "@/components/ui/text-field";
 import { showToast } from "@/components/ui/toast";
-import { api, createChannelsQuery } from "@/lib/api";
+import { api, useChannelsQuery } from "@/lib/api";
 import { createUUIDv7WithSameTimestamp } from "@/lib/extract-timestamp-from-uuidv7";
-import type { Bundle } from "@hot-updater/plugin-core";
-import { CloseButton as AlertDialogCloseButton } from "@kobalte/core/alert-dialog";
-import { useSearchParams } from "@solidjs/router";
-import { useQueryClient } from "@tanstack/solid-query";
-import { Hash } from "lucide-solid";
-import { Show, createSignal } from "solid-js";
 
 export interface PromoteChannelDialogProps {
   bundle: Bundle;
@@ -41,7 +41,7 @@ export interface PromoteChannelDialogProps {
 
 export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
   const queryClient = useQueryClient();
-  const channels = createChannelsQuery();
+  const channels = useChannelsQuery();
   const [, setSearchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [selectedChannel, setSelectedChannel] = createSignal(bundle.channel);

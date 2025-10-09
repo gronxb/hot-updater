@@ -1,7 +1,7 @@
-import fs from "fs";
-import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import fs from "fs";
+import path from "path";
 import type { ConfigParser } from "./configParser";
 
 interface StringElement {

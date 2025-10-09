@@ -86,12 +86,12 @@ afterEach(() => {
 });
 
 describe("blobDatabase plugin", () => {
-  async function listObjects(context: any, prefix: string): Promise<string[]> {
+  async function listObjects(_context: any, prefix: string): Promise<string[]> {
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
     return keys;
   }
 
-  async function loadObject<T>(context: any, path: string): Promise<T | null> {
+  async function loadObject<T>(_context: any, path: string): Promise<T | null> {
     const data = fakeStore[path];
     if (data) {
       return JSON.parse(data);
@@ -100,18 +100,18 @@ describe("blobDatabase plugin", () => {
   }
 
   async function uploadObject<T>(
-    context: any,
+    _context: any,
     path: string,
     data: T,
   ): Promise<void> {
     fakeStore[path] = JSON.stringify(data);
   }
 
-  async function deleteObject(context: any, path: string): Promise<void> {
+  async function deleteObject(_context: any, path: string): Promise<void> {
     delete fakeStore[path];
   }
 
-  async function invalidatePaths(context: any, paths: string[]) {
+  async function invalidatePaths(_context: any, paths: string[]) {
     cloudfrontInvalidations.push({ paths });
   }
 

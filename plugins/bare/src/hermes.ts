@@ -1,6 +1,6 @@
+import { execa } from "execa";
 import fs from "fs";
 import path from "path";
-import { execa } from "execa";
 
 /**
  * Returns the Hermes OS binary folder name for the current platform.
@@ -37,7 +37,7 @@ function getReactNativePackagePath(cwd: string): string {
         paths: [cwd],
       }),
     );
-  } catch (error) {
+  } catch {
     return path.join("node_modules", "react-native");
   }
 }

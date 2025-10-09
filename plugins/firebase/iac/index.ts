@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import * as p from "@clack/prompts";
 import {
   type BuildType,
@@ -10,6 +8,8 @@ import {
 } from "@hot-updater/plugin-core";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
+import fs from "fs";
+import path from "path";
 import { initFirebaseUser, setEnv } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -237,7 +237,7 @@ const checkIfGcloudCliInstalled = async () => {
       shell: true,
     });
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 };
@@ -418,7 +418,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
             p.log.success(
               "IAM Service Account Token Creator role has been added to the service account",
             );
-          } catch (err) {
+          } catch {
             p.log.error(
               "Please go to the following link to add the IAM Service Account Token Creator role to the service account",
             );

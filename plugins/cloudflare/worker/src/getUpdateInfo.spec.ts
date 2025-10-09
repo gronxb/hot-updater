@@ -1,9 +1,8 @@
+import { env } from "cloudflare:test";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { beforeAll, beforeEach, describe, inject } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromWorker } from "./getUpdateInfo";
-
-import { env } from "cloudflare:test";
 
 declare module "vitest" {
   // biome-ignore lint/suspicious/noExportsInTest: <explanation>

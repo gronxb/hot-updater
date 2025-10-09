@@ -1,3 +1,21 @@
+import type { Bundle } from "@hot-updater/core";
+
+import {
+  type ColumnDef,
+  createSolidTable,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  type PaginationState,
+  type Row,
+} from "@tanstack/solid-table";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  splitProps,
+} from "solid-js";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -6,24 +24,6 @@ import {
   NavigationMenuLink,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
-
-import {
-  type ColumnDef,
-  type PaginationState,
-  type Row,
-  createSolidTable,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-} from "@tanstack/solid-table";
-import {
-  For,
-  createEffect,
-  createMemo,
-  createSignal,
-  splitProps,
-} from "solid-js";
-
 import {
   Pagination,
   PaginationEllipsis,
@@ -41,8 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useFilter } from "@/hooks/useFilter";
-import { createBundlesQuery, createChannelsQuery } from "@/lib/api";
-import type { Bundle } from "@hot-updater/core";
+import { useBundlesQuery, useChannelsQuery } from "@/lib/api";
 
 interface DataTableProps {
   columns: ColumnDef<Bundle>[];
@@ -68,7 +67,7 @@ export function DataTable(props: DataTableProps) {
     offset: (pagination().pageIndex * pagination().pageSize).toString(),
   }));
 
-  const bundlesQuery = createBundlesQuery(query);
+  const bundlesQuery = useBundlesQuery(query);
 
   const bundlesResponse = createMemo(
     () => bundlesQuery.data ?? { data: [], pagination: null },
@@ -104,7 +103,7 @@ export function DataTable(props: DataTableProps) {
     local.onRowClick(row.original);
   };
 
-  const channels = createChannelsQuery();
+  const channels = useChannelsQuery();
 
   createEffect(() => {
     if (channels.isFetched && channels.data && channelFilter() === null) {

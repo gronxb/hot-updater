@@ -1,9 +1,9 @@
-import crypto from "crypto";
 import {
   CloudFront,
   type DistributionConfig,
 } from "@aws-sdk/client-cloudfront";
 import * as p from "@clack/prompts";
+import crypto from "crypto";
 import { delay, merge } from "es-toolkit";
 import type { AwsRegion } from "./regionLocationMap";
 
@@ -120,7 +120,7 @@ export class CloudFrontManager {
         });
         oacId = createOacResp.OriginAccessControl?.Id!;
       }
-    } catch (error) {
+    } catch {
       throw new Error("Failed to get or create Origin Access Control");
     }
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
@@ -508,7 +508,7 @@ export class CloudFrontManager {
                   return "CloudFront distribution deployment completed.";
                 }
                 throw new Error("Retry");
-              } catch (err) {
+              } catch (_err) {
                 if (retryCount++ >= 5) {
                   message(
                     `CloudFront distribution is still in progress. This may take a few minutes. (${retryCount})`,

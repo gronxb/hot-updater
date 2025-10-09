@@ -1,5 +1,5 @@
-import path from "path";
 import fs from "fs/promises";
+import path from "path";
 import { getCwd } from "./cwd";
 
 export const copyDirToTmp = async (dir: string, childDirname?: string) => {
@@ -12,7 +12,7 @@ export const copyDirToTmp = async (dir: string, childDirname?: string) => {
   // Remove existing tmpDir if it exists to avoid ENOTDIR error
   try {
     await fs.rm(tmpDir, { recursive: true, force: true });
-  } catch (err) {
+  } catch {
     // Ignore errors if directory doesn't exist
   }
 

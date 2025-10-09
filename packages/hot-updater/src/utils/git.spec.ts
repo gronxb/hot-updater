@@ -1,6 +1,6 @@
+import { mockReactNativeProjectRoot } from "@hot-updater/plugin-core/test-utils";
 import fs from "fs";
 import path from "path";
-import { mockReactNativeProjectRoot } from "@hot-updater/plugin-core/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
 import { appendToProjectRootGitignore } from "./git";
 
