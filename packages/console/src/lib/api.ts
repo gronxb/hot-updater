@@ -1,22 +1,18 @@
-import type { RpcType } from '@/src-server/rpc';
-import { hc } from 'hono/client';
+import { hc } from "hono/client";
+import type { RpcType } from "@/src-server/rpc";
 
-export const api = hc<RpcType>('/rpc');
+export const api = hc<RpcType>("/rpc");
 
-import {
-  createMutation,
-  createQuery,
-  useQueryClient,
-} from '@tanstack/solid-query';
-import type { Accessor } from 'solid-js';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/solid-query";
+import type { Accessor } from "solid-js";
 
-const DEFAULT_CHANNEL = 'production';
+const DEFAULT_CHANNEL = "production";
 
-export const createBundlesQuery = (
-  query: Accessor<Parameters<typeof api.bundles.$get>[0]['query']>,
+export const useBundlesQuery = (
+  query: Accessor<Parameters<typeof api.bundles.$get>[0]["query"]>,
 ) =>
-  createQuery(() => ({
-    queryKey: ['bundles', query()],
+  useQuery(() => ({
+    queryKey: ["bundles", query()],
     queryFn: async () => {
       const res = await api.bundles.$get({ query: query() });
       return res.json();
@@ -25,11 +21,11 @@ export const createBundlesQuery = (
     staleTime: Number.POSITIVE_INFINITY,
   }));
 
-export const createBundleQuery = (bundleId: string) =>
-  createQuery(() => ({
-    queryKey: ['bundle', bundleId],
+export const useBundleQuery = (bundleId: string) =>
+  useQuery(() => ({
+    queryKey: ["bundle", bundleId],
     queryFn: () => {
-      return api.bundles[':bundleId']
+      return api.bundles[":bundleId"]
         .$get({ param: { bundleId } })
         .then((res) => res.json());
     },
@@ -39,17 +35,17 @@ export const createBundleQuery = (bundleId: string) =>
     staleTime: Number.POSITIVE_INFINITY,
   }));
 
-export const createConfigQuery = () =>
-  createQuery(() => ({
-    queryKey: ['config'],
+export const useConfigQuery = () =>
+  useQuery(() => ({
+    queryKey: ["config"],
     queryFn: () => api.config.$get().then((res) => res.json()),
     staleTime: Number.POSITIVE_INFINITY,
     retryOnMount: false,
   }));
 
-export const createChannelsQuery = () =>
-  createQuery(() => ({
-    queryKey: ['channels'],
+export const useChannelsQuery = () =>
+  useQuery(() => ({
+    queryKey: ["channels"],
     queryFn: () => api.channels.$get().then((res) => res.json()),
     staleTime: Number.POSITIVE_INFINITY,
     retryOnMount: false,
@@ -69,12 +65,12 @@ export const createChannelsQuery = () =>
     },
   }));
 
-export const createBundleDeleteMutation = () => {
+export const useBundleDeleteMutation = () => {
   const queryClient = useQueryClient();
 
-  return createMutation<{ success: boolean }, Error, string>(() => ({
+  return useMutation<{ success: boolean }, Error, string>(() => ({
     mutationFn: async (bundleId: string) => {
-      const response = await api.bundles[':bundleId'].$delete({
+      const response = await api.bundles[":bundleId"].$delete({
         param: { bundleId },
       });
       if (!response.ok) {
@@ -83,7 +79,7 @@ export const createBundleDeleteMutation = () => {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bundles'] });
+      queryClient.invalidateQueries({ queryKey: ["bundles"] });
     },
   }));
 };

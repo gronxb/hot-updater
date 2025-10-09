@@ -2,6 +2,7 @@ import type { HttpsFunction } from "firebase-functions/v2/https";
 import { onRequest } from "firebase-functions/v2/https";
 import type { Hono } from "hono";
 import type { BlankEnv, BlankSchema } from "hono/types";
+
 interface RegionOptions {
   region: string;
 }

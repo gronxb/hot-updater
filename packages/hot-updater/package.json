@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.20.10",
+  "version": "0.20.12",
   "bin": {
     "hot-updater": "./dist/index.js"
   },

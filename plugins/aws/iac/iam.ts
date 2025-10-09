@@ -42,7 +42,7 @@ export class IAMManager {
         );
         return existingRole.Arn;
       }
-    } catch (error) {
+    } catch {
       // Role does not exist so create it
       try {
         const createRoleResp = await iamClient.createRole({

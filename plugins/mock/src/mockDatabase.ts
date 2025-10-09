@@ -1,8 +1,8 @@
 import {
   type Bundle,
-  type DatabasePluginHooks,
   calculatePagination,
   createDatabasePlugin,
+  type DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
 

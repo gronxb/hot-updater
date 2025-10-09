@@ -13,10 +13,9 @@ import { runUpdateProcess } from "./runUpdateProcess";
 import { hotUpdaterStore } from "./store";
 import { wrap } from "./wrap";
 
-export type { HotUpdaterOptions } from "./wrap";
 export type { HotUpdaterEvent } from "./native";
-
 export * from "./store";
+export type { HotUpdaterOptions } from "./wrap";
 
 addListener("onProgress", ({ progress }) => {
   hotUpdaterStore.setState({
@@ -121,7 +120,7 @@ export const HotUpdater = {
    *
    * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
    * if (updateInfo.shouldForceUpdate) {
-   *   HotUpdater.reload();
+   *   await HotUpdater.reload();
    * }
    * ```
    */
@@ -152,7 +151,7 @@ export const HotUpdater = {
    * });
    *
    * if(result.status !== "UP_TO_DATE" && result.shouldForceUpdate) {
-   *   HotUpdater.reload();
+   *   await HotUpdater.reload();
    * }
    * ```
    *
@@ -188,7 +187,7 @@ export const HotUpdater = {
    *   fileUrl: updateInfo.fileUrl
    * });
    * if (updateInfo.shouldForceUpdate) {
-   *   HotUpdater.reload();
+   *   await HotUpdater.reload();
    * }
    * ```
    */

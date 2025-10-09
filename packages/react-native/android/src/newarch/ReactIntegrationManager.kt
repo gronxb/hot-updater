@@ -3,9 +3,14 @@ package com.hotupdater
 import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactInstanceEventListener
 import com.facebook.react.bridge.JSBundleLoader
+import com.facebook.react.bridge.ReactContext
 import com.facebook.react.common.LifecycleState
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.lang.reflect.Field
+import kotlin.coroutines.resume
 
 class ReactIntegrationManager(
     context: Context,
@@ -61,12 +66,16 @@ class ReactIntegrationManager(
     }
 
     /**
-     * Reload the React Native application.
+     * Reload the React Native application, ensuring ReactContext is initialized first.
+     * Caller should run this on main thread.
      */
-    public fun reload(application: ReactApplication) {
+    public suspend fun reload(application: ReactApplication) {
         try {
             val reactHost = application.reactHost
             if (reactHost != null) {
+                // Ensure initialized; if not, start and wait
+                waitForReactContextInitialized(reactHost)
+
                 val activity = reactHost.currentReactContext?.currentActivity
                 if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
                     reactHost.onHostResume(activity)
@@ -93,6 +102,35 @@ class ReactIntegrationManager(
             }
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload: ${e.message}")
+        }
+    }
+
+    /**
+     * Waits until ReactContext is initialized.
+     * @return true if ReactContext was already initialized; false if we waited for it.
+     */
+    suspend fun waitForReactContextInitialized(reactHost: ReactHost): Boolean {
+        return try {
+            // If already initialized, return immediately
+            if (reactHost.currentReactContext != null) return true
+
+            // Wait for initialization; MainApplication handles starting the host
+            suspendCancellableCoroutine { continuation ->
+                val listener =
+                    object : ReactInstanceEventListener {
+                        override fun onReactContextInitialized(context: ReactContext) {
+                            reactHost.removeReactInstanceEventListener(this)
+                            if (continuation.isActive) continuation.resume(Unit)
+                        }
+                    }
+
+                reactHost.addReactInstanceEventListener(listener)
+                continuation.invokeOnCancellation { reactHost.removeReactInstanceEventListener(listener) }
+            }
+            false
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "waitForReactContextInitialized failed: ${e.message}")
+            true
         }
     }
 }

@@ -1,5 +1,32 @@
 # hot-updater
 
+## 0.20.12
+
+### Patch Changes
+
+- @hot-updater/console@0.20.12
+- @hot-updater/core@0.20.12
+- @hot-updater/aws@0.20.12
+- @hot-updater/cloudflare@0.20.12
+- @hot-updater/firebase@0.20.12
+- @hot-updater/plugin-core@0.20.12
+- @hot-updater/supabase@0.20.12
+
+## 0.20.11
+
+### Patch Changes
+
+- afb3a6e: fix(fingerprint): separate fingerprint generation for cng
+- cb9c05b: feat(fingerprint): bring back ignorePaths
+- Updated dependencies [cb9c05b]
+  - @hot-updater/plugin-core@0.20.11
+  - @hot-updater/console@0.20.11
+  - @hot-updater/aws@0.20.11
+  - @hot-updater/cloudflare@0.20.11
+  - @hot-updater/firebase@0.20.11
+  - @hot-updater/supabase@0.20.11
+  - @hot-updater/core@0.20.11
+
 ## 0.20.10
 
 ### Patch Changes

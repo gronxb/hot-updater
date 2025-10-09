@@ -1,5 +1,5 @@
+import { randomUUID } from "crypto";
 import fs from "fs";
-import { randomUUID } from "node:crypto";
 import os from "os";
 import path from "path";
 import { getPnpmWorkspaces } from "workspace-tools";
@@ -33,7 +33,9 @@ const REQUIRED_FILES = [
 
 export const mockReactNativeProjectRoot = async ({
   example,
-}: { example: Example }): Promise<MockedReactNativeProjectRoot> => {
+}: {
+  example: Example;
+}): Promise<MockedReactNativeProjectRoot> => {
   const rootDir = path.resolve(os.tmpdir(), ".hot-updater", randomUUID());
   const workspace = resolveWorkspaceInfoFromExample(example);
 

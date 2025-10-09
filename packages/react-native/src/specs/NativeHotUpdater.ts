@@ -8,7 +8,7 @@ export interface UpdateBundleParams {
 
 export interface Spec extends TurboModule {
   // Methods
-  reload(): void;
+  reload(): Promise<void>;
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
   // EventEmitter

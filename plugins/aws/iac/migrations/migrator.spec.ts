@@ -74,7 +74,7 @@ describe("S3Migration", () => {
   });
 
   it("should retrieve keys with a given prefix", async () => {
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     const keys = await testMigration.getKeys("prefix/");
     expect(keys).toEqual(["file1.txt", "file2.txt"]);
     // Verify that send was called with a ListObjectsV2Command.
@@ -82,7 +82,7 @@ describe("S3Migration", () => {
   });
 
   it("should read file content", async () => {
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     const content = await testMigration.readFile("file.txt");
     expect(content).toEqual("file content");
     // Verify that send was called with a GetObjectCommand.
@@ -90,24 +90,22 @@ describe("S3Migration", () => {
   });
 
   it("should backup a file before updating", async () => {
-    // @ts-ignore ignore protected method
     const doUpdateSpy = vi.spyOn(testMigration as any, "doUpdateFile");
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     await testMigration.backupFile("file.txt");
     const expectedBackupKey = `backup/${testMigration.name}/file.txt`;
     expect(doUpdateSpy).toHaveBeenCalledWith(expectedBackupKey, "file content");
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     expect(testMigration.backupMapping.get("file.txt")).toEqual(
       expectedBackupKey,
     );
   });
 
   it("should update a file and backup the original if it exists", async () => {
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     const backupSpy = vi.spyOn(testMigration, "backupFile");
-    // @ts-ignore ignore protected method
     const doUpdateSpy = vi.spyOn(testMigration as any, "doUpdateFile");
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     await testMigration.updateFile("file.txt", "updated content");
     // Expect backup to have been performed.
     expect(backupSpy).toHaveBeenCalled();
@@ -118,9 +116,9 @@ describe("S3Migration", () => {
   });
 
   it("should move a file (backup, copy, then delete source)", async () => {
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     const backupSpy = vi.spyOn(testMigration, "backupFile");
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     await testMigration.moveFile("source.txt", "dest.txt");
     // The source file should be backed up before moving.
     expect(backupSpy).toHaveBeenCalledWith("source.txt");
@@ -130,15 +128,15 @@ describe("S3Migration", () => {
   });
 
   it("should rollback files from backups", async () => {
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     testMigration.backupMapping.set(
       "file1.txt",
       `backup/${testMigration.name}/file1.txt`,
     );
     // Override readFile to return a specific content for the backup file.
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     vi.spyOn(testMigration, "readFile").mockImplementation(
-      // @ts-ignore ignore protected method
+      // @ts-expect-error ignore protected method
       async (key: string) => {
         if (key === `backup/${testMigration.name}/file1.txt`)
           return "original content";
@@ -153,31 +151,29 @@ describe("S3Migration", () => {
 
   it("should clean up backup files and clear backup mapping", async () => {
     // Set a backup mapping.
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     testMigration.backupMapping.set(
       "file1.txt",
       `backup/${testMigration.name}/file1.txt`,
     );
     // Spy on deleteBackupFile.
-    // @ts-ignore ignore protected method
     const deleteBackupSpy = vi
-      // @ts-ignore ignore protected method
+      // @ts-expect-error ignore protected method
       .spyOn(testMigration, "deleteBackupFile")
-      // @ts-ignore ignore protected method
+      // @ts-expect-error ignore protected method
       .mockImplementation(async () => {});
-    // @ts-ignore ignore protected method
     await testMigration.cleanupBackups();
     expect(deleteBackupSpy).toHaveBeenCalledWith(
       `backup/${testMigration.name}/file1.txt`,
     );
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     expect(testMigration.backupMapping.size).toEqual(0);
   });
 
   it("should log dry run messages when in dry-run mode", async () => {
     testMigration.dryRun = true;
     const logSpy = vi.spyOn(console, "log");
-    // @ts-ignore ignore protected method
+    // @ts-expect-error ignore protected method
     await testMigration.updateFile("file.txt", "dry run content");
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("[DRY RUN]"));
   });

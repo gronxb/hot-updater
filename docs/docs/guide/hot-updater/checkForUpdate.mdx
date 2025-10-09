@@ -48,7 +48,7 @@ async function checkForAppUpdate() {
     // });
 
     if (updateInfo.shouldForceUpdate) {
-      HotUpdater.reload();
+      await HotUpdater.reload();
     }
     return updateInfo;
   } catch (error) {

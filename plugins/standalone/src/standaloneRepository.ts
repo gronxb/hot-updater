@@ -92,7 +92,7 @@ export const standaloneRepository = (
           }
 
           return (await response.json()) as Bundle;
-        } catch (error) {
+        } catch {
           return null;
         }
       },
@@ -164,7 +164,7 @@ export const standaloneRepository = (
             if (contentType?.includes("application/json")) {
               try {
                 await response.json();
-              } catch (jsonError) {
+              } catch (_jsonError) {
                 if (!response.ok) {
                   throw new Error("Failed to parse response");
                 }

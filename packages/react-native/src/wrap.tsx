@@ -1,5 +1,4 @@
-import React from "react";
-import { useEffect, useLayoutEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
@@ -117,7 +116,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
 
           if (reloadOnForceUpdate) {
-            reload();
+            await reload();
           }
 
           restOptions.onUpdateProcessCompleted?.({

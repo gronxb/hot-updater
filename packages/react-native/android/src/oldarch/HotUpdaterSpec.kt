@@ -13,5 +13,5 @@ abstract class HotUpdaterSpec internal constructor(
         promise: Promise,
     )
 
-    abstract fun reload()
+    abstract fun reload(promise: Promise)
 }

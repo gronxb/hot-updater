@@ -1,8 +1,8 @@
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Route, Router } from "@solidjs/router";
 import "./App.css";
-import Layout from "@/components/ui/layout";
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
+import Layout from "@/components/ui/layout";
 import { Toaster } from "./components/ui/toast";
 import Home from "./routes";
 

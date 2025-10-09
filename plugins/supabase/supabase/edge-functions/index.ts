@@ -1,10 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import semver from "npm:semver@7.7.1";
 import { Hono } from "jsr:@hono/hono";
 import {
-  type SupabaseClient,
   createClient,
+  type SupabaseClient,
 } from "jsr:@supabase/supabase-js@2.49.4";
+import semver from "npm:semver@7.7.1";
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";

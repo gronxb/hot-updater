@@ -1,6 +1,6 @@
+import { getCwd } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
-import { getCwd } from "@hot-updater/plugin-core";
 import plist from "plist";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IosConfigParser } from "./iosParser";

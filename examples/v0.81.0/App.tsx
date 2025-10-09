@@ -5,17 +5,14 @@
  * @format
  */
 
+import { HOT_UPDATER_SUPABASE_URL } from "@env";
 import {
-  HotUpdater,
   getUpdateSource,
+  HotUpdater,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
-
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
-
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -85,8 +82,8 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        // source={require("./src/logo.png")}
-        source={require("./src/test/_image.png")}
+        source={require("./src/logo.png")}
+        // source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />

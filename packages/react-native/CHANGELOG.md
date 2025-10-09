@@ -1,5 +1,28 @@
 # @hot-updater/react-native
 
+## 0.20.12
+
+### Patch Changes
+
+- 26be35b: fix: prevent re-download in js side
+- f09a7ce: fix(android): await reload on ReactContextInitialized
+  - hot-updater@0.20.12
+  - @hot-updater/core@0.20.12
+  - @hot-updater/js@0.20.12
+  - @hot-updater/plugin-core@0.20.12
+
+## 0.20.11
+
+### Patch Changes
+
+- afb3a6e: fix(fingerprint): separate fingerprint generation for cng
+- Updated dependencies [afb3a6e]
+- Updated dependencies [cb9c05b]
+  - hot-updater@0.20.11
+  - @hot-updater/plugin-core@0.20.11
+  - @hot-updater/core@0.20.11
+  - @hot-updater/js@0.20.11
+
 ## 0.20.10
 
 ### Patch Changes

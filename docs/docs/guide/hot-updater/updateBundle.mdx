@@ -49,7 +49,7 @@ async function applyAppUpdate(updateInfo: UpdateInfo) {
 
 
     if (updateInfo.shouldForceUpdate) {
-      HotUpdater.reload();
+      await HotUpdater.reload();
     }
 
     console.log("Update applied successfully");

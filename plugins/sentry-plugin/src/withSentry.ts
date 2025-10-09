@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import {
   type BasePluginArgs,
   type BuildPlugin,
@@ -7,6 +5,8 @@ import {
 } from "@hot-updater/plugin-core";
 import type { SentryCliOptions } from "@sentry/cli";
 import SentryCli from "@sentry/cli";
+import fs from "fs";
+import path from "path";
 
 const injectDebugIdToHbcMap = (
   jsCodePath: string,

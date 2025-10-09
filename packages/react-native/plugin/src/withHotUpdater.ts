@@ -8,19 +8,19 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import { createAndInjectFingerprintFiles } from "hot-updater";
+import { createFingerprintJSON, generateFingerprints } from "hot-updater";
 import pkg from "../../package.json";
 
-let fingerprintCache: Awaited<
-  ReturnType<typeof createAndInjectFingerprintFiles>
-> | null = null;
+let fingerprintCache: Awaited<ReturnType<typeof generateFingerprints>> | null =
+  null;
 
 const getFingerprint = async () => {
   if (fingerprintCache) {
     return fingerprintCache;
   }
 
-  fingerprintCache = await createAndInjectFingerprintFiles();
+  fingerprintCache = await generateFingerprints();
+  await createFingerprintJSON(fingerprintCache);
   return fingerprintCache;
 };
 
@@ -151,7 +151,6 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
     const javaImportAnchor = "import com.facebook.react.ReactApplication;";
     const javaReactNativeHostAnchor = "new DefaultReactNativeHost"; // Part of the instantiation
     const javaMethodCheck = "HotUpdater.Companion.getJSBundleFile"; // Unique part of the method body
-    const javaMethodSignature = "protected String getJSBundleFile()";
     // Regex to find an existing getJSBundleFile override (non-greedy)
     const javaExistingMethodRegex =
       /^\s*@Override\s+protected String getJSBundleFile\(\)\s*\{[\s\S]*?^\s*\}/gm;
@@ -264,7 +263,7 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { fingerprint } = await getFingerprint();
+        const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.ios.hash;
       }
 
@@ -280,7 +279,7 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
-        const { fingerprint } = await getFingerprint();
+        const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.android.hash;
       }
 

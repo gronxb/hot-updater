@@ -1,5 +1,5 @@
-import path from "path";
 import fs from "fs/promises";
+import path from "path";
 
 export const prepareSql = async () => {
   const files = await fs.readdir(__dirname);

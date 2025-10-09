@@ -32,12 +32,7 @@ export const makeEnv = async (
           const nextLine = (lines[i + 1] ?? "").trim();
           if (nextLine && !nextLine.startsWith("#") && nextLine.includes("=")) {
             const [possibleKey = ""] = nextLine.split("=");
-            if (
-              Object.prototype.hasOwnProperty.call(
-                newEnvVars,
-                possibleKey.trim(),
-              )
-            ) {
+            if (Object.hasOwn(newEnvVars, possibleKey.trim())) {
               // Skip the current comment line if the following key is being updated
               continue;
             }
@@ -51,7 +46,7 @@ export const makeEnv = async (
       if (trimmedLine.includes("=")) {
         const [keyPart] = line.split("=");
         const key = keyPart?.trim() ?? "";
-        if (Object.prototype.hasOwnProperty.call(newEnvVars, key)) {
+        if (Object.hasOwn(newEnvVars, key)) {
           processedKeys.add(key);
           const newValue = newEnvVars[key];
           if (typeof newValue === "object" && newValue !== null) {

@@ -36,7 +36,7 @@ export const firebaseDatabase = (
         let app: admin.app.App;
         try {
           app = admin.app();
-        } catch (e) {
+        } catch {
           app = admin.initializeApp(config);
         }
 
