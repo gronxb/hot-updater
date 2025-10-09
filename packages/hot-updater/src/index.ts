@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
-import { banner, log } from "@hot-updater/plugin-core";
+import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
+import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
+import { banner, log, type NativeBuildOptions } from "@hot-updater/plugin-core";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import {
@@ -19,6 +21,7 @@ import { init } from "@/commands/init";
 import { version } from "@/packageJson";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+import { buildAndroidNative, buildIosNative } from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -151,7 +154,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: Omit<NativeBuildOptions, "platform">) => {
-      buildAndroidNative(options);
+      await buildAndroidNative(options);
     });
 
   program
@@ -167,7 +170,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: Omit<NativeBuildOptions, "platform">) => {
-      buildIosNative(options);
+      await buildIosNative(options);
     });
 
   program
