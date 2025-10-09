@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.20.12
+
+### Patch Changes
+
+- 26be35b: fix: prevent re-download in js side
+- f09a7ce: fix(android): await reload on ReactContextInitialized
+  - hot-updater@0.20.12
+  - @hot-updater/core@0.20.12
+  - @hot-updater/js@0.20.12
+  - @hot-updater/plugin-core@0.20.12
+
 ## 0.20.11
 
 ### Patch Changes
