@@ -1,20 +1,19 @@
 import * as p from "@clack/prompts";
-import { delay } from "es-toolkit";
-import { ExecaError, execa } from "execa";
-import { type SupabaseApi, supabaseApi } from "./supabaseApi";
-
-import path from "path";
 import {
   type BuildType,
   ConfigBuilder,
-  type ProviderConfig,
   copyDirToTmp,
   link,
   makeEnv,
+  type ProviderConfig,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/plugin-core";
+import { delay } from "es-toolkit";
+import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
+import path from "path";
+import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 
 const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
@@ -162,7 +161,7 @@ export const selectBucket = async (
 
             buckets = await api.listBuckets();
             return `Retrieved ${buckets.length} buckets`;
-          } catch (err) {
+          } catch {
             retryCount++;
             await delay(1000);
           }

@@ -1,4 +1,3 @@
-import fs from "fs";
 import { fromSSO } from "@aws-sdk/credential-providers";
 import * as p from "@clack/prompts";
 import {
@@ -8,6 +7,7 @@ import {
   transformTemplate,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
+import fs from "fs";
 import picocolors from "picocolors";
 import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
@@ -17,13 +17,13 @@ import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpda
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
-import { SOURCE_TEMPLATE, getConfigTemplate } from "./templates";
+import { getConfigTemplate, SOURCE_TEMPLATE } from "./templates";
 
 const checkIfAwsCliInstalled = async () => {
   try {
     await execa("aws", ["--version"]);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 };
@@ -39,7 +39,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   let credentials:
     | { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
-    | undefined = undefined;
+    | undefined;
 
   // Select: AWS login mode
   const mode = await p.select({

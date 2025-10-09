@@ -27,7 +27,7 @@ async function waitForEmulator(
       await firestore.listCollections();
       console.log(`Firebase emulator ready after ${retries + 1} attempt(s)`);
       return true;
-    } catch (error) {
+    } catch {
       console.log(
         `Waiting for emulator to start (attempt ${retries + 1}/${maxRetries})...`,
       );
@@ -44,7 +44,7 @@ export async function setup() {
   try {
     await fkill(":8080");
     console.log("Killed existing emulator process");
-  } catch (error) {
+  } catch {
     console.log("No existing emulator process found");
   }
 

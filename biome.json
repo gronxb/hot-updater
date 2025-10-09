@@ -5,14 +5,13 @@
     "includes": [
       "**/*.ts",
       "**/*.tsx",
-      "!**/lib/**",
       "!**/package.json",
-      "!**/dist/**",
-      "!**/build/**",
-      "!**/node_modules/**",
+      "!**/dist",
+      "!**/build",
+      "!**/node_modules",
       "!**/*.js",
-      "!**/ios/**",
-      "!**/android/**"
+      "!**/ios",
+      "!**/android"
     ]
   },
   "formatter": {

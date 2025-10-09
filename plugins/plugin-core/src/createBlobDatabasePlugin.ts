@@ -3,6 +3,7 @@ import semver from "semver";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import type { Bundle, DatabasePluginHooks } from "./types";
+
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
   _oldUpdateJsonKey?: string;
@@ -170,7 +171,7 @@ export const createBlobDatabasePlugin = <TContext = object>({
         : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
       : platform
         ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
-        : /^[^\/]+\/[^\/]+\/[^\/]+\/update\.json$/;
+        : /^[^/]+\/[^/]+\/[^/]+\/update\.json$/;
 
     return listObjects(context, prefix).then((keys) =>
       keys.filter((key) => pattern.test(key)),

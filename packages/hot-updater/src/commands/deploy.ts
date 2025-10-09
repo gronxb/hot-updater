@@ -1,5 +1,16 @@
+import * as p from "@clack/prompts";
+import {
+  createZipTargetFiles,
+  getCwd,
+  loadConfig,
+  type Platform,
+} from "@hot-updater/plugin-core";
 import fs from "fs";
+import isPortReachable from "is-port-reachable";
+import open from "open";
 import path from "path";
+import picocolors from "picocolors";
+import semverValid from "semver/ranges/valid";
 import { getPlatform } from "@/prompts/getPlatform";
 import {
   isFingerprintEquals,
@@ -18,17 +29,6 @@ import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import * as p from "@clack/prompts";
-import {
-  type Platform,
-  createZipTargetFiles,
-  getCwd,
-  loadConfig,
-} from "@hot-updater/plugin-core";
-import isPortReachable from "is-port-reachable";
-import open from "open";
-import picocolors from "picocolors";
-import semverValid from "semver/ranges/valid";
 import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
@@ -115,7 +115,7 @@ export const deploy = async (options: DeployOptions) => {
             ...config.fingerprint,
           });
           showFingerprintDiff(diff, platform === "ios" ? "iOS" : "Android");
-        } catch (error) {
+        } catch {
           p.log.warn("Could not generate fingerprint diff");
         }
       }
@@ -352,11 +352,11 @@ export const deploy = async (options: DeployOptions) => {
         });
         if (!p.isCancel(result) && result) {
           await openConsole(port, () => {
-            open(url);
+            void open(url);
           });
         }
       } else {
-        open(url);
+        void open(url);
       }
 
       p.note(note);

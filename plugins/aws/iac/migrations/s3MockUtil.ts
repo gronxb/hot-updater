@@ -34,7 +34,7 @@ export function setupS3Mock() {
 
     if (command instanceof GetObjectCommand) {
       const key = command.input.Key;
-      if (key && Object.prototype.hasOwnProperty.call(fakeBucket, key)) {
+      if (key && Object.hasOwn(fakeBucket, key)) {
         return {
           Body: {
             transformToString: async () => fakeBucket[key],
@@ -49,10 +49,7 @@ export function setupS3Mock() {
       const copySource = command.input.CopySource || "";
       const sourceKey = copySource.substring(copySource.indexOf("/") + 1);
       const destKey = command.input.Key;
-      if (
-        destKey &&
-        Object.prototype.hasOwnProperty.call(fakeBucket, sourceKey)
-      ) {
+      if (destKey && Object.hasOwn(fakeBucket, sourceKey)) {
         fakeBucket[destKey] = fakeBucket[sourceKey];
       } else {
         throw new Error("Source key not found");
@@ -61,7 +58,7 @@ export function setupS3Mock() {
     }
     if (command instanceof DeleteObjectCommand) {
       const key = command.input.Key;
-      if (key && Object.prototype.hasOwnProperty.call(fakeBucket, key)) {
+      if (key && Object.hasOwn(fakeBucket, key)) {
         delete fakeBucket[key];
       } else {
         console.warn(`Key ${key} not found during deletion, ignoring.`);

@@ -1,13 +1,13 @@
-import fs from "fs";
 import * as p from "@clack/prompts";
 import {
   type BuildType,
   ConfigBuilder,
-  type ProviderConfig,
   link,
   makeEnv,
+  type ProviderConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
+import fs from "fs";
 
 const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
@@ -105,7 +105,7 @@ const listProjects = async (): Promise<
     );
     const projectsJson = JSON.parse(projects.stdout);
     return projectsJson?.result ?? [];
-  } catch (err) {
+  } catch {
     return [];
   }
 };
@@ -221,7 +221,7 @@ export const initFirebaseUser = async (
     if (indexes.exitCode !== 0) {
       throw new Error(indexes.stderr);
     }
-  } catch (err) {
+  } catch {
     // Create firestore database if it doesn't exist
     await execa(
       "gcloud",

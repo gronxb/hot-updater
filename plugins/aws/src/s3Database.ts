@@ -118,7 +118,7 @@ async function invalidateCloudFront(
     return;
   }
 
-  const timestamp = new Date().getTime();
+  const timestamp = Date.now();
   await client.send(
     new CreateInvalidationCommand({
       DistributionId: distributionId,

@@ -1,16 +1,14 @@
-import path from "path";
-import { createWrangler } from "./utils/createWrangler";
-
-import mime from "mime";
-
 import {
   type BasePluginArgs,
+  createStorageKeyBuilder,
   type StoragePlugin,
   type StoragePluginHooks,
-  createStorageKeyBuilder,
 } from "@hot-updater/plugin-core";
-
 import { ExecaError } from "execa";
+
+import mime from "mime";
+import path from "path";
+import { createWrangler } from "./utils/createWrangler";
 
 export interface R2StorageConfig {
   cloudflareApiToken: string;
@@ -50,7 +48,7 @@ export const r2Storage =
           return {
             storageUri: `r2://${bucketName}/${Key}`,
           };
-        } catch (error) {
+        } catch {
           throw new Error("Can not delete bundle");
         }
       },

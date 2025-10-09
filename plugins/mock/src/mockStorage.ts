@@ -1,11 +1,7 @@
-import type {
-  BasePluginArgs,
-  StoragePlugin,
-  StoragePluginHooks,
-} from "@hot-updater/plugin-core";
+import type { BasePluginArgs, StoragePlugin } from "@hot-updater/plugin-core";
 
 export const mockStorage =
-  (_: any, hooks?: StoragePluginHooks) =>
+  (_: any) =>
   (_: BasePluginArgs): StoragePlugin => {
     return {
       name: "mock",

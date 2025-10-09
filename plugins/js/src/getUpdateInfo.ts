@@ -80,7 +80,7 @@ const appVersionStrategy = async (
   let latestCandidate: Bundle | null = null;
   let updateCandidate: Bundle | null = null;
   let rollbackCandidate: Bundle | null = null;
-  let currentBundle: Bundle | undefined = undefined;
+  let currentBundle: Bundle | undefined;
 
   for (const b of candidateBundles) {
     // Latest bundle (bundle with the largest ID)
@@ -182,7 +182,7 @@ const fingerprintStrategy = async (
   let latestCandidate: Bundle | null = null;
   let updateCandidate: Bundle | null = null;
   let rollbackCandidate: Bundle | null = null;
-  let currentBundle: Bundle | undefined = undefined;
+  let currentBundle: Bundle | undefined;
 
   for (const b of candidateBundles) {
     // Latest bundle (bundle with the largest ID)

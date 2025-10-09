@@ -59,7 +59,7 @@ export abstract class S3Migration {
   // Retrieves all object keys that start with the specified prefix
   protected async getKeys(prefix: string): Promise<string[]> {
     const keys: string[] = [];
-    let continuationToken: string | undefined = undefined;
+    let continuationToken: string | undefined;
     do {
       const command: ListObjectsV2Command = new ListObjectsV2Command({
         Bucket: this.bucketName,

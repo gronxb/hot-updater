@@ -1,6 +1,6 @@
-import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
+import path from "path";
 import semverValid from "semver/ranges/valid";
 
 const getAndroidVersionFromAppBuildGradle = async (): Promise<
@@ -14,7 +14,7 @@ const getAndroidVersionFromAppBuildGradle = async (): Promise<
       /versionName\s+['"]([^"]+)['"]/,
     );
     return versionNameMatch?.[1] ?? null;
-  } catch (error) {
+  } catch {
     return null;
   }
 };
