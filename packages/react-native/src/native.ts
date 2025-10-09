@@ -34,6 +34,11 @@ export type UpdateParams = UpdateBundleParams & {
   status: UpdateStatus;
 };
 
+// In-flight update deduplication by bundleId (session-scoped).
+const inflightUpdates = new Map<string, Promise<boolean>>();
+// Tracks the last successfully installed bundleId for this session.
+let lastInstalledBundleId: string | null = null;
+
 /**
  * Downloads files and applies them to the app.
  *
@@ -60,6 +65,11 @@ export async function updateBundle(
   const status =
     typeof paramsOrBundleId === "string" ? "UPDATE" : paramsOrBundleId.status;
 
+  // If we have already installed this bundle in this session, skip re-download.
+  if (status === "UPDATE" && lastInstalledBundleId === updateBundleId) {
+    return true;
+  }
+
   const currentBundleId = getBundleId();
 
   // updateBundleId <= currentBundleId
@@ -72,16 +82,30 @@ export async function updateBundle(
     );
   }
 
-  if (typeof paramsOrBundleId === "string") {
-    return HotUpdaterNative.updateBundle({
-      bundleId: updateBundleId,
-      fileUrl: fileUrl || null,
-    });
-  }
-  return HotUpdaterNative.updateBundle({
-    bundleId: updateBundleId,
-    fileUrl: paramsOrBundleId.fileUrl,
-  });
+  // In-flight guard: return the same promise if the same bundle is already updating.
+  const existing = inflightUpdates.get(updateBundleId);
+  if (existing) return existing;
+
+  const targetFileUrl =
+    typeof paramsOrBundleId === "string" ? fileUrl ?? null : paramsOrBundleId.fileUrl;
+
+  const promise = (async () => {
+    try {
+      const ok = await HotUpdaterNative.updateBundle({
+        bundleId: updateBundleId,
+        fileUrl: targetFileUrl,
+      });
+      if (ok) {
+        lastInstalledBundleId = updateBundleId;
+      }
+      return ok;
+    } finally {
+      inflightUpdates.delete(updateBundleId);
+    }
+  })();
+
+  inflightUpdates.set(updateBundleId, promise);
+  return promise;
 }
 
 /**
