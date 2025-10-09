@@ -1,6 +1,8 @@
 package com.hotupdater
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
@@ -20,7 +22,7 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload(promise: Promise) {
-        (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
+        CoroutineScope(Dispatchers.Main.immediate).launch {
             try {
                 HotUpdater.reload(mReactApplicationContext)
                 promise.resolve(null)
