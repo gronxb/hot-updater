@@ -1,4 +1,3 @@
-import path from "path";
 import { Lambda } from "@aws-sdk/client-lambda";
 import * as p from "@clack/prompts";
 import {
@@ -8,6 +7,7 @@ import {
   transformEnv,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
+import path from "path";
 
 export class LambdaEdgeDeployer {
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -59,7 +59,7 @@ export class LambdaEdgeDeployer {
           try {
             await createZip({ outfile: zipFilePath, targetDir: tmpDir });
             return "Compressed Lambda code to zip";
-          } catch (error) {
+          } catch {
             throw new Error(
               "Failed to create zip archive of Lambda function code",
             );

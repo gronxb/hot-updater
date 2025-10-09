@@ -1,4 +1,3 @@
-import path from "path";
 import {
   DeleteObjectsCommand,
   ListObjectsV2Command,
@@ -8,12 +7,13 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import {
   type BasePluginArgs,
+  createStorageKeyBuilder,
   type StoragePlugin,
   type StoragePluginHooks,
-  createStorageKeyBuilder,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
+import path from "path";
 
 export interface S3StorageConfig extends S3ClientConfig {
   bucketName: string;

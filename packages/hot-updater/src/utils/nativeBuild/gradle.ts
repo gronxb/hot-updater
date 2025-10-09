@@ -1,7 +1,7 @@
-import fs from "fs";
-import path from "path";
 import * as p from "@clack/prompts";
 import { ExecaError, execa } from "execa";
+import fs from "fs";
+import path from "path";
 
 export type RunGradleArgs = {
   tasks: string[];

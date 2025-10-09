@@ -1,7 +1,7 @@
-import fs from "fs";
-import path from "path";
 import { getCwd } from "@hot-updater/plugin-core";
 import { type Commit, openRepository } from "es-git";
+import fs from "fs";
+import path from "path";
 
 export const getLatestGitCommit = async (): Promise<Commit | null> => {
   try {
@@ -12,7 +12,7 @@ export const getLatestGitCommit = async (): Promise<Commit | null> => {
     }
 
     return null;
-  } catch (error) {
+  } catch {
     return null;
   }
 };
@@ -25,7 +25,10 @@ export const getLatestGitCommit = async (): Promise<Commit | null> => {
 export const appendToProjectRootGitignore = ({
   cwd,
   globLines,
-}: { cwd?: string; globLines: string[] }): boolean => {
+}: {
+  cwd?: string;
+  globLines: string[];
+}): boolean => {
   if (!globLines.length) {
     return false;
   }

@@ -1,10 +1,10 @@
+import * as p from "@clack/prompts";
+import type { BuildType } from "@hot-updater/plugin-core";
+import { ExecaError } from "execa";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { appendToProjectRootGitignore } from "@/utils/git";
 import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
 import { printBanner } from "@/utils/printBanner";
-import * as p from "@clack/prompts";
-import type { BuildType } from "@hot-updater/plugin-core";
-import { ExecaError } from "execa";
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],

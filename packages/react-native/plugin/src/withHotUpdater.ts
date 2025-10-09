@@ -151,7 +151,6 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
     const javaImportAnchor = "import com.facebook.react.ReactApplication;";
     const javaReactNativeHostAnchor = "new DefaultReactNativeHost"; // Part of the instantiation
     const javaMethodCheck = "HotUpdater.Companion.getJSBundleFile"; // Unique part of the method body
-    const javaMethodSignature = "protected String getJSBundleFile()";
     // Regex to find an existing getJSBundleFile override (non-greedy)
     const javaExistingMethodRegex =
       /^\s*@Override\s+protected String getJSBundleFile\(\)\s*\{[\s\S]*?^\s*\}/gm;

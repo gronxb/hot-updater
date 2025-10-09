@@ -1,10 +1,10 @@
-import path from "path";
 import {
-  type NativeBuildArgs,
-  type RequiredDeep,
   generateMinBundleId,
   getCwd,
+  type NativeBuildArgs,
+  type RequiredDeep,
 } from "@hot-updater/plugin-core";
+import path from "path";
 import { runGradle } from "./gradle";
 export const runAndroidNativeBuild = async ({
   config,

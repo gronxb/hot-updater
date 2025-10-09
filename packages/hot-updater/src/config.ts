@@ -10,9 +10,9 @@ export const defineConfig = (
 };
 
 export {
-  generateFingerprints,
-  generateFingerprint,
   createAndInjectFingerprintFiles,
-  readLocalFingerprint,
   createFingerprintJSON,
+  generateFingerprint,
+  generateFingerprints,
+  readLocalFingerprint,
 } from "./utils/fingerprint";
