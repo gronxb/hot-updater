@@ -3,6 +3,7 @@ package com.hotupdater
 import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceEventListener
 import com.facebook.react.bridge.JSBundleLoader
 import com.facebook.react.bridge.ReactContext
@@ -73,7 +74,7 @@ class ReactIntegrationManager(
             val reactHost = application.reactHost
             if (reactHost != null) {
                 // Ensure initialized; if not, start and wait
-                waitForReactContextInitialized(application)
+                waitForReactContextInitialized(reactHost)
 
                 val activity = reactHost.currentReactContext?.currentActivity
                 if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
@@ -108,10 +109,8 @@ class ReactIntegrationManager(
      * Waits until ReactContext is initialized.
      * @return true if ReactContext was already initialized; false if we waited for it.
      */
-    suspend fun waitForReactContextInitialized(application: ReactApplication): Boolean {
+    suspend fun waitForReactContextInitialized(reactHost: ReactHost): Boolean {
         return try {
-            val reactHost = application.reactHost ?: return true
-
             // If already initialized, return immediately
             if (reactHost.currentReactContext != null) return true
 
