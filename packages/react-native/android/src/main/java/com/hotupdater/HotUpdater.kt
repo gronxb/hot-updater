@@ -68,7 +68,7 @@ class HotUpdater {
          * Reloads the React Native application
          * @param context Application context
          */
-        fun reload(context: Context) {
+        suspend fun reload(context: Context) {
             val currentActivity = getCurrentActivity(context)
             HotUpdaterFactory.getInstance(context).reload(currentActivity)
         }

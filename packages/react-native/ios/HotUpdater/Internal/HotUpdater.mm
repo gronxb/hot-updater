@@ -180,24 +180,27 @@ RCT_EXPORT_MODULE();
 #pragma mark - React Native Exports (Slimmed Down)
 
 // Keep reload logic here as it interacts with RN Bridge
-RCT_EXPORT_METHOD(reload) {
+RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Get bundleURL using static instance
-        NSURL *bundleURL = [_hotUpdaterImpl bundleURL];
-        RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
-        if (bundleURL && super.bridge) {
-            @try {
-                 // This method of setting bundleURL might be outdated depending on RN version.
-                 // Consider alternatives if this doesn't work reliably.
-                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
-            } @catch (NSException *exception) {
-                 RCTLogError(@"[HotUpdater.mm] Failed to set bundleURL on bridge: %@", exception);
+        @try {
+            // Get bundleURL using static instance
+            NSURL *bundleURL = [_hotUpdaterImpl bundleURL];
+            RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+            if (bundleURL && super.bridge) {
+                // This method of setting bundleURL might be outdated depending on RN version.
+                // Consider alternatives if this doesn't work reliably.
+                [super.bridge setValue:bundleURL forKey:@"bundleURL"];
+            } else if (!super.bridge) {
+                RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
             }
-        } else if (!super.bridge) {
-             RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
+            RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+            resolve(nil);
+        } @catch (NSError *error) {
+            RCTLogError(@"[HotUpdater.mm] Failed to reload: %@", error);
+            reject(@"RELOAD_ERROR", error.description, error);
         }
-        RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
     });
 }
 

@@ -49,7 +49,7 @@ const result = await HotUpdater.runUpdateProcess({
 // If status is UP_TO_DATE, other fields shouldForceUpdate, id will not be present.
 if(result.status !== "UP_TO_DATE" && result.shouldForceUpdate) {
   // You can handle the restart manually here
-  HotUpdater.reload();
+  await HotUpdater.reload();
 }
 ```
 

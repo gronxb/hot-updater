@@ -169,7 +169,7 @@ export default HotUpdater.wrap({
   onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {  // [!code hl]
     console.log("Bundle updated:", status, shouldForceUpdate, id, message);  // [!code hl]
     if (shouldForceUpdate) { // [!code hl]
-      HotUpdater.reload(); // [!code hl]
+      await HotUpdater.reload(); // [!code hl]
     } // [!code hl]
   },  // [!code hl]
 })(App);

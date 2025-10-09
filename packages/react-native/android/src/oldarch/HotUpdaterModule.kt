@@ -9,6 +9,8 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class HotUpdaterModule internal constructor(
@@ -19,11 +21,15 @@ class HotUpdaterModule internal constructor(
     override fun getName(): String = NAME
 
     @ReactMethod
-    override fun reload() {
-        try {
-            HotUpdater.reload(mReactApplicationContext)
-        } catch (e: Exception) {
-            Log.d("HotUpdater", "Failed to reload", e)
+    override fun reload(promise: Promise) {
+        CoroutineScope(Dispatchers.Main.immediate).launch {
+            try {
+                HotUpdater.reload(mReactApplicationContext)
+                promise.resolve(null)
+            } catch (e: Exception) {
+                Log.d("HotUpdater", "Failed to reload", e)
+                promise.reject("reload", e)
+            }
         }
     }
 

@@ -116,7 +116,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
 
           if (reloadOnForceUpdate) {
-            reload();
+            await reload();
           }
 
           restOptions.onUpdateProcessCompleted?.({
