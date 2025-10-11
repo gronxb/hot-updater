@@ -1,6 +1,6 @@
-import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
+import path from "path";
 import type { AppleDevice } from "../types";
 import { readKeyFromPlist } from "../utils/plistManager";
 

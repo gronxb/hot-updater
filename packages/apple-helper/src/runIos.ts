@@ -1,21 +1,17 @@
-import path from "path";
 import * as p from "@clack/prompts";
-import {
-  type NativeBuildIosScheme,
-  generateMinBundleId,
-  getCwd,
-} from "@hot-updater/plugin-core";
+import { getCwd, type NativeBuildIosScheme } from "@hot-updater/plugin-core";
+import path from "path";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import {
   type DeviceRunnerOptions,
   installAndLaunchOnDevice,
 } from "./runner/deviceRunner";
 import {
-  type SimulatorRunnerOptions,
   installAndLaunchOnSimulator,
+  type SimulatorRunnerOptions,
 } from "./runner/simulatorRunner";
 import type { IosNativeRunOptions } from "./types";
-import { listDevicesAndSimulators } from "./utils/deviceManager";
+import { listDevices } from "./utils/device";
 import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { selectIosTargetDevice } from "./utils/selectIosTargetDevice";
 
@@ -38,8 +34,7 @@ export const runIos = async ({
   });
 
   if (!device) {
-    const devices = await listDevicesAndSimulators("ios");
-    const simulators = devices.filter((d) => d.type === "simulator");
+    const simulators = await listDevices("ios", { deviceType: "simulator" });
 
     if (simulators.length === 0) {
       p.log.error("No simulators found. Please create a simulator in Xcode.");

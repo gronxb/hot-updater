@@ -1,7 +1,6 @@
 import * as p from "@clack/prompts";
-import { matchingDevice } from "../runner/deviceMatcher";
 import type { AppleDevice } from "../types";
-import { listBootedDevices, listDevicesAndSimulators } from "./deviceManager";
+import { listDevices, matchingDevice } from "./device";
 
 export const selectIosTargetDevice = async ({
   interactive,
@@ -10,7 +9,7 @@ export const selectIosTargetDevice = async ({
   deviceOption?: string | boolean;
   interactive: boolean;
 }): Promise<{ device?: AppleDevice }> => {
-  const availableDevices = await listDevicesAndSimulators("ios");
+  const availableDevices = await listDevices("ios");
 
   if (deviceOption === true && !interactive) {
     p.log.error(
@@ -19,7 +18,20 @@ export const selectIosTargetDevice = async ({
     process.exit(1);
   }
 
-  if (deviceOption === true || interactive) {
+  if (typeof deviceOption === "string") {
+    const matchedDevice = matchingDevice(availableDevices, deviceOption);
+
+    if (!matchedDevice) {
+      p.log.error(
+        `device '${deviceOption}' isn't included in the attached devices.`,
+      );
+      process.exit(1);
+    }
+
+    return { device: matchedDevice };
+  }
+
+  if (interactive) {
     if (!availableDevices.length) {
       p.log.error("you passed -d option but there is no attached devices.");
       process.exit(1);
@@ -41,20 +53,7 @@ export const selectIosTargetDevice = async ({
     return { device };
   }
 
-  if (typeof deviceOption === "string") {
-    const matchedDevice = matchingDevice(availableDevices, deviceOption);
-
-    if (!matchedDevice) {
-      p.log.error(
-        `device '${deviceOption}' isn't included in the attached devices.`,
-      );
-      process.exit(1);
-    }
-
-    return { device: matchedDevice };
-  }
-
-  const bootedDevices = await listBootedDevices("ios");
+  const bootedDevices = await listDevices("ios", { state: "Booted" });
   if (bootedDevices.length > 0) {
     return { device: bootedDevices[0] };
   }
