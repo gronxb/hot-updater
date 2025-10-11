@@ -1,7 +1,7 @@
 import os from "node:os";
-import path from "path";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
+import path from "path";
 
 /**
  * Get the path to adb executable from ANDROID_HOME or use system adb
