@@ -44,12 +44,16 @@ export const runIosNative = async (options: IosNativeRunOptions) => {
     p.log.error("preparing native build failed");
     return;
   }
+  const { config, scheme } = preparedConfig;
 
   try {
     p.log.info("📦 Running iOS Started");
 
-    // TODO: iOS run implementation needed
-    p.log.info("iOS run not implemented yet");
+    const { runIos } = await import("@hot-updater/apple-helper");
+    await runIos({
+      schemeConfig: config.nativeBuild.ios[scheme]!,
+      runOption: options,
+    });
 
     p.log.success("📦 iOS Run Complete");
   } catch (e) {
