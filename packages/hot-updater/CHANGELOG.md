@@ -1,5 +1,17 @@
 # hot-updater
 
+## 0.20.12
+
+### Patch Changes
+
+- @hot-updater/console@0.20.12
+- @hot-updater/core@0.20.12
+- @hot-updater/aws@0.20.12
+- @hot-updater/cloudflare@0.20.12
+- @hot-updater/firebase@0.20.12
+- @hot-updater/plugin-core@0.20.12
+- @hot-updater/supabase@0.20.12
+
 ## 0.20.11
 
 ### Patch Changes
