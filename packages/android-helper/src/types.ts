@@ -7,11 +7,6 @@ export type AndroidDevice = {
   type: "emulator" | "phone";
 };
 
-export type AndroidUser = {
-  id: string;
-  name: string;
-};
-
 export interface AndroidNativeRunOptions extends NativeBuildOptions {
   device?: string | boolean;
   port?: string;

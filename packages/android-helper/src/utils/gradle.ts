@@ -1,10 +1,10 @@
-import * as p from "@clack/prompts";
-import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
+import * as p from "@clack/prompts";
+import { ExecaError, execa } from "execa";
 import { createGradleLogger } from "./createGradleLogger";
 
-export type RunGradleArgs = {
+type RunGradleArgs = {
   tasks: string[];
   appModuleName: string;
   args: { extraParams?: string[]; port?: string | number };
