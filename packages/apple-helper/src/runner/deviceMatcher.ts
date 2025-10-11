@@ -1,9 +1,8 @@
-import type { DeviceType } from "../utils/destination";
-import type { AppleDevice } from "../utils/deviceManager";
+import type { AppleDevice, AppleDeviceType } from "../types";
 
 export interface DeviceMatchOptions {
   bootedOnly?: boolean;
-  deviceType?: DeviceType;
+  deviceType?: AppleDeviceType;
   preferDevices?: boolean;
   preferSimulators?: boolean;
 }

@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts";
 import { execa } from "execa";
-import type { AppleDevice } from "../utils/deviceManager";
+
+import type { AppleDevice } from "../types";
 
 export interface DeviceRunnerOptions {
   sourceDir?: string;

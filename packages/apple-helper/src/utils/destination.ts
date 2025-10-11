@@ -2,9 +2,8 @@ import type {
   ApplePlatform,
   IosBuildDestination,
 } from "@hot-updater/plugin-core";
+import type { AppleDeviceType } from "../types";
 import { platformConfigs } from "./platform";
-
-export type DeviceType = "device" | "simulator";
 
 const buildDestinationString = ({
   deviceType,
@@ -12,7 +11,7 @@ const buildDestinationString = ({
   useGeneric,
 }: {
   platform: ApplePlatform;
-  deviceType: DeviceType;
+  deviceType: AppleDeviceType;
   useGeneric: boolean;
 }) =>
   `${useGeneric ? "generic/" : ""}${deviceType === "device" ? platformConfigs[platform].deviceDestination : platformConfigs[platform].simulatorDestination}`;

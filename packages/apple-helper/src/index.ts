@@ -1,7 +1,8 @@
 export { buildIos } from "./buildIos";
-export type { IosNativeRunOptions } from "./types";
-
+export { runIos } from "./runIos";
 export type {
   AppleDevice,
+  AppleDeviceType,
   DeviceState,
-} from "./utils/deviceManager";
+  IosNativeRunOptions,
+} from "./types";
