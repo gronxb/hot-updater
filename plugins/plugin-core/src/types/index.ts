@@ -157,7 +157,7 @@ export interface NativeBuildIosScheme {
    *
    * @default "Release"
    */
-  configuration?: "Debug" | "Release";
+  configuration?: "Debug" | "Release" | string;
 
   /**
    * The destination for the build.

@@ -11,13 +11,26 @@ export const selectAndroidTargetDevice = async ({
   interactive: boolean;
 }): Promise<{ device?: AndroidDevice }> => {
   const availableDevices = await listAndroidDevices();
+
   if (deviceOption === true && !interactive) {
     p.log.error(
       "you can't select device manually with non-interactive cli mode(without -i option).",
     );
     process.exit(1);
   }
-  if (deviceOption === true || interactive) {
+
+  if (typeof deviceOption === "string") {
+    const matchedDevice = matchingDevice(availableDevices, deviceOption);
+    if (!matchedDevice) {
+      p.log.error(
+        `device '${deviceOption}' isn't included in the attached devices.`,
+      );
+      process.exit(1);
+    }
+    return { device: matchedDevice };
+  }
+
+  if (interactive) {
     // if user want to select device manually but not available
     if (!availableDevices.length) {
       p.log.error("you passed -d option but there is no attached adb devices.");
@@ -34,16 +47,6 @@ export const selectAndroidTargetDevice = async ({
       process.exit(1);
     }
     return { device };
-  }
-  if (typeof deviceOption === "string") {
-    const matchedDevice = matchingDevice(availableDevices, deviceOption);
-    if (!matchedDevice) {
-      p.log.error(
-        `device '${deviceOption}' isn't included in the attached devices.`,
-      );
-      process.exit(1);
-    }
-    return { device: matchedDevice };
   }
   return { device: undefined };
 };
