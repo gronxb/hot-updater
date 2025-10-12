@@ -3,7 +3,7 @@
 import * as p from "@clack/prompts";
 import { type ExecaError, execa } from "execa";
 import type { AndroidDevice } from "../types";
-import { Adb } from "./adb";
+import { Device } from "./device";
 
 export const tryInstallAppOnDevice = async ({
   device,
@@ -25,7 +25,7 @@ export const tryInstallAppOnDevice = async ({
 
   adbArgs.push(apkPath);
 
-  const adbPath = Adb.getAdbPath();
+  const adbPath = Device.getAdbPath();
   const loader = p.spinner();
   loader.start(
     `Installing the app on ${device.readableName} (id: ${deviceId})`,

@@ -11,7 +11,7 @@ import {
   type SimulatorRunnerOptions,
 } from "./runner/simulatorRunner";
 import type { IosNativeRunOptions } from "./types";
-import { listDevices } from "./utils/device";
+import { Device } from "./utils/device";
 import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { selectIosTargetDevice } from "./utils/selectIosTargetDevice";
 
@@ -34,7 +34,9 @@ export const runIos = async ({
   });
 
   if (!device) {
-    const simulators = await listDevices("ios", { deviceType: "simulator" });
+    const simulators = await Device.listDevices("ios", {
+      deviceType: "simulator",
+    });
 
     if (simulators.length === 0) {
       p.log.error("No simulators found. Please create a simulator in Xcode.");

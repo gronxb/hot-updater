@@ -6,14 +6,9 @@ import {
 } from "@hot-updater/plugin-core";
 import path from "path";
 import type { AndroidNativeRunOptions } from "./types";
-import { Adb } from "./utils/adb";
-import { Emulator } from "./utils/emulator";
+import { Device } from "./utils/device";
 import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 import { runGradle } from "./utils/gradle";
-import {
-  listAndroidDevices,
-  selectAndroidTargetDevice,
-} from "./utils/selectAndroidTargetDevice";
 import { tryInstallAppOnDevice } from "./utils/tryInstallAppOnDevice";
 import { tryLaunchAppOnDevice } from "./utils/tryLaunchAppOnDevice";
 
@@ -39,15 +34,15 @@ export const runAndroid = async ({
   }
 
   const device = (
-    await selectAndroidTargetDevice({ deviceOption, interactive })
+    await Device.selectAndroidTargetDevice({ deviceOption, interactive })
   ).device;
 
   if (device) {
     // Check if device is available, launch emulator if needed
-    if (!(await Adb.getConnectedDevices()).includes(device.deviceId || "")) {
+    if (!(await Device.getConnectedDevices()).includes(device.deviceId || "")) {
       if (device.type === "emulator") {
         p.log.info(`Launching emulator: ${device.readableName}`);
-        device.deviceId = await Emulator.tryLaunchEmulator(device.readableName);
+        device.deviceId = await Device.tryLaunchEmulator(device.readableName);
       }
     }
 
@@ -56,10 +51,10 @@ export const runAndroid = async ({
     }
   } else {
     // No specific device selected
-    const connectedDevices = await Adb.getConnectedDevices();
+    const connectedDevices = await Device.getConnectedDevices();
     if (connectedDevices.length === 0) {
       p.log.info("No devices found. Launching first available emulator.");
-      await Emulator.tryLaunchEmulator();
+      await Device.tryLaunchEmulator();
     }
   }
 
@@ -77,7 +72,7 @@ export const runAndroid = async ({
   // Install and launch on target devices
   const targetDevices = device
     ? [device]
-    : (await listAndroidDevices()).filter((d) => d.connected);
+    : (await Device.listAndroidDevices()).filter((d) => d.connected);
 
   for (const targetDevice of targetDevices) {
     await tryInstallAppOnDevice({

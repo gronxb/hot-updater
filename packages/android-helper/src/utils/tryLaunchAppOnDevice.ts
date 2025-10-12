@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import type { AndroidDevice } from "../types";
-import { Adb } from "./adb";
+import { Device } from "./device";
 
 export async function tryLaunchAppOnDevice({
   device,
@@ -24,7 +24,7 @@ export async function tryLaunchAppOnDevice({
   }
 
   const deviceId = device.deviceId;
-  await Adb.tryRunAdbReverse({ deviceId, port });
+  await Device.tryRunAdbReverse({ deviceId, port });
 
   const activity = mainActivity || ".MainActivity";
 
@@ -50,7 +50,7 @@ export async function tryLaunchAppOnDevice({
 
   adbArgs.unshift("-s", deviceId);
 
-  const adbPath = Adb.getAdbPath();
+  const adbPath = Device.getAdbPath();
   console.debug(`Running ${adbPath} ${adbArgs.join(" ")}.`);
   const loader = p.spinner();
   loader.start(`Launching the app on ${device.readableName} (id: ${deviceId})`);

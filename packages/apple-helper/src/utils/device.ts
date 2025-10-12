@@ -129,15 +129,8 @@ export interface ListDeviceOptions {
  * @param platform - Apple platform to filter by
  * @param options - Filtering options
  * @returns Array of devices filtered by options
- *
- * @example
- * ```typescript
- * const allDevices = await listDevices("ios");
- * const simulators = await listDevices("ios", { deviceType: "simulator" });
- * const bootedDevices = await listDevices("ios", { state: "Booted" });
- * ```
  */
-export const listDevices = async (
+const listDevices = async (
   platform: ApplePlatform,
   options: ListDeviceOptions = {},
 ): Promise<AppleDevice[]> => {
@@ -170,7 +163,7 @@ export const listDevices = async (
   }
 };
 
-export const matchingDevice = (
+const matchingDevice = (
   devices: AppleDevice[],
   deviceArg: string,
   options: {
@@ -202,8 +195,14 @@ export const matchingDevice = (
   return undefined;
 };
 
-export const formatDeviceName = (device: AppleDevice) => {
+const formatDeviceName = (device: AppleDevice) => {
   return device.version ? `${device.name} (${device.version})` : device.name;
+};
+
+export const Device = {
+  listDevices,
+  matchingDevice,
+  formatDeviceName,
 };
 
 // TODO: Add advanced device discovery features

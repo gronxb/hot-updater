@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import type { AppleDevice } from "../types";
-import { listDevices, matchingDevice } from "./device";
+import { Device } from "./device";
 
 export const selectIosTargetDevice = async ({
   interactive,
@@ -9,7 +9,7 @@ export const selectIosTargetDevice = async ({
   deviceOption?: string | boolean;
   interactive: boolean;
 }): Promise<{ device?: AppleDevice }> => {
-  const availableDevices = await listDevices("ios");
+  const availableDevices = await Device.listDevices("ios");
 
   if (deviceOption === true && !interactive) {
     p.log.error(
@@ -19,7 +19,7 @@ export const selectIosTargetDevice = async ({
   }
 
   if (typeof deviceOption === "string") {
-    const matchedDevice = matchingDevice(availableDevices, deviceOption);
+    const matchedDevice = Device.matchingDevice(availableDevices, deviceOption);
 
     if (!matchedDevice) {
       p.log.error(
@@ -53,7 +53,7 @@ export const selectIosTargetDevice = async ({
     return { device };
   }
 
-  const bootedDevices = await listDevices("ios", { state: "Booted" });
+  const bootedDevices = await Device.listDevices("ios", { state: "Booted" });
   if (bootedDevices.length > 0) {
     return { device: bootedDevices[0] };
   }
