@@ -74,7 +74,7 @@ export const listAndroidDevices = async (): Promise<AndroidDevice[]> => {
         connected: true,
         type: "emulator",
       };
-      allDevices = [...allDevices, emulatorData];
+      allDevices.push(emulatorData);
     } else {
       const phoneData: AndroidDevice = {
         deviceId,
@@ -82,14 +82,14 @@ export const listAndroidDevices = async (): Promise<AndroidDevice[]> => {
         type: "phone",
         connected: true,
       };
-      allDevices = [...allDevices, phoneData];
+      allDevices.push(phoneData);
     }
   }
 
-  const emulators = await Emulator.getEmulators();
+  const emulatorNames = await Emulator.getEmulatorNames();
 
   // Find not booted ones:
-  for (const emulatorName of emulators) {
+  for (const emulatorName of emulatorNames) {
     // skip those already booted
     if (allDevices.some((device) => device.readableName === emulatorName)) {
       continue;
