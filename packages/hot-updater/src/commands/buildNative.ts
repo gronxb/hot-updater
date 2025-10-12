@@ -1,17 +1,27 @@
 import * as p from "@clack/prompts";
 import { buildAndroid } from "@hot-updater/android-helper";
 import { buildIos } from "@hot-updater/apple-helper";
-import { getCwd, type NativeBuildOptions } from "@hot-updater/plugin-core";
+import {
+  getCwd,
+  type NativeBuildOptions,
+  type Platform,
+} from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 
-export const buildAndroidNative = async (options: NativeBuildOptions) => {
+const buildNativeInternal = async ({
+  options,
+  platform,
+}: {
+  options: NativeBuildOptions;
+  platform: Platform;
+}) => {
   printBanner();
   const preparedConfig = await prepareNativeBuild({
     ...options,
-    platform: "android",
+    platform,
   });
   if (!preparedConfig) {
     p.log.error("preparing native build failed");
@@ -22,50 +32,27 @@ export const buildAndroidNative = async (options: NativeBuildOptions) => {
   const cwd = getCwd();
   const buildPlugin = await config.build({ cwd });
 
+  const platformName = platform === "android" ? "Android" : "iOS";
+  const builder =
+    platform === "android"
+      ? () =>
+          buildAndroid({
+            schemeConfig: config.nativeBuild.android[scheme]!,
+          })
+      : () =>
+          buildIos({
+            schemeConfig: config.nativeBuild.ios[scheme]!,
+          });
+
   try {
-    p.log.info(`📦 Building Android (${buildPlugin.name}) Started`);
+    p.log.info(`📦 Building ${platformName} (${buildPlugin.name}) Started`);
     await createNativeBuild({
-      platform: "android",
-      builder: () =>
-        buildAndroid({
-          schemeConfig: config.nativeBuild.android[scheme]!,
-        }),
+      platform,
+      builder,
       buildPlugin,
       outputPath,
     });
-    p.log.success(`📦 Android Build Complete (${buildPlugin.name})`);
-  } catch (e) {
-    catchError(e);
-  }
-};
-
-export const buildIosNative = async (options: NativeBuildOptions) => {
-  printBanner();
-  const preparedConfig = await prepareNativeBuild({
-    ...options,
-    platform: "ios",
-  });
-  if (!preparedConfig) {
-    p.log.error("preparing native build failed");
-    return;
-  }
-  const { config, scheme, outputPath } = preparedConfig;
-
-  const cwd = getCwd();
-  const buildPlugin = await config.build({ cwd });
-
-  try {
-    p.log.info(`📦 Building iOS (${buildPlugin.name}) Started`);
-    await createNativeBuild({
-      platform: "ios",
-      builder: () =>
-        buildIos({
-          schemeConfig: config.nativeBuild.ios[scheme]!,
-        }),
-      buildPlugin,
-      outputPath,
-    });
-    p.log.success(`📦 iOS Build Complete (${buildPlugin.name})`);
+    p.log.success(`📦 ${platformName} Build Complete (${buildPlugin.name})`);
   } catch (e) {
     catchError(e);
   }
@@ -80,4 +67,12 @@ const catchError = (e: unknown): never => {
     console.error(e);
   }
   process.exit(1);
+};
+
+export const buildAndroidNative = async (options: NativeBuildOptions) => {
+  await buildNativeInternal({ options, platform: "android" });
+};
+
+export const buildIosNative = async (options: NativeBuildOptions) => {
+  await buildNativeInternal({ options, platform: "ios" });
 };
