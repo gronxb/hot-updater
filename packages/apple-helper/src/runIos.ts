@@ -13,7 +13,6 @@ import {
 import type { IosNativeRunOptions } from "./types";
 import { Device } from "./utils/device";
 import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
-import { selectIosTargetDevice } from "./utils/selectIosTargetDevice";
 
 export const runIos = async ({
   schemeConfig: _schemeConfig,
@@ -28,7 +27,8 @@ export const runIos = async ({
 
   const schemeConfig = await enrichNativeBuildIosScheme(_schemeConfig);
 
-  const { device } = await selectIosTargetDevice({
+  const device = await Device.selectTargetDevice({
+    platform: "ios",
     deviceOption,
     interactive,
   });

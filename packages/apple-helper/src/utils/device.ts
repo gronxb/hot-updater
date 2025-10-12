@@ -199,10 +199,70 @@ const formatDeviceName = (device: AppleDevice) => {
   return device.version ? `${device.name} (${device.version})` : device.name;
 };
 
+const selectTargetDevice = async ({
+  platform,
+  interactive,
+  deviceOption,
+}: {
+  platform: ApplePlatform;
+  deviceOption?: string | boolean;
+  interactive: boolean;
+}): Promise<AppleDevice | undefined> => {
+  const availableDevices = await listDevices(platform);
+
+  if (deviceOption === true && !interactive) {
+    p.log.error(
+      "you can't select device manually with non-interactive cli mode(without -i option).",
+    );
+    process.exit(1);
+  }
+
+  if (typeof deviceOption === "string") {
+    const matchedDevice = matchingDevice(availableDevices, deviceOption);
+
+    if (!matchedDevice) {
+      p.log.error(
+        `device '${deviceOption}' isn't included in the attached devices.`,
+      );
+      process.exit(1);
+    }
+
+    return matchedDevice;
+  }
+
+  if (interactive) {
+    if (!availableDevices.length) {
+      p.log.error("you passed -d option but there is no attached devices.");
+      process.exit(1);
+    }
+
+    const device = await p.select({
+      message: "Target Device",
+      options: availableDevices.map((d) => ({
+        value: d,
+        label: `${d.name} (${d.type}) - ${d.state}`,
+        hint: d.udid,
+      })),
+    });
+
+    if (p.isCancel(device)) {
+      process.exit(1);
+    }
+
+    return device;
+  }
+
+  const bootedDevices = await listDevices(platform, { state: "Booted" });
+  if (bootedDevices.length > 0) {
+    return bootedDevices[0];
+  }
+
+  return undefined;
+};
+
 export const Device = {
   listDevices,
-  matchingDevice,
-  formatDeviceName,
+  selectTargetDevice,
 };
 
 // TODO: Add advanced device discovery features

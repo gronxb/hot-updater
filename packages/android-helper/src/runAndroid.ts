@@ -5,12 +5,12 @@ import {
   type NativeBuildAndroidScheme,
 } from "@hot-updater/plugin-core";
 import path from "path";
+import { tryInstallAppOnDevice } from "./runner/tryInstallAppOnDevice";
+import { tryLaunchAppOnDevice } from "./runner/tryLaunchAppOnDevice";
 import type { AndroidNativeRunOptions } from "./types";
 import { Device } from "./utils/device";
 import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 import { runGradle } from "./utils/gradle";
-import { tryInstallAppOnDevice } from "./utils/tryInstallAppOnDevice";
-import { tryLaunchAppOnDevice } from "./utils/tryLaunchAppOnDevice";
 
 export const runAndroid = async ({
   schemeConfig: _schemeConfig,
@@ -33,9 +33,7 @@ export const runAndroid = async ({
     process.exit(1);
   }
 
-  const device = (
-    await Device.selectAndroidTargetDevice({ deviceOption, interactive })
-  ).device;
+  const device = await Device.selectTargetDevice({ deviceOption, interactive });
 
   if (device) {
     // Check if device is available, launch emulator if needed
@@ -72,7 +70,7 @@ export const runAndroid = async ({
   // Install and launch on target devices
   const targetDevices = device
     ? [device]
-    : (await Device.listAndroidDevices()).filter((d) => d.connected);
+    : (await Device.listDevices()).filter((d) => d.connected);
 
   for (const targetDevice of targetDevices) {
     await tryInstallAppOnDevice({

@@ -3,7 +3,7 @@
 import * as p from "@clack/prompts";
 import { type ExecaError, execa } from "execa";
 import type { AndroidDevice } from "../types";
-import { Device } from "./device";
+import { Device } from "../utils/device";
 
 export const tryInstallAppOnDevice = async ({
   device,

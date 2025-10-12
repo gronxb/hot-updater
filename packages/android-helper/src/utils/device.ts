@@ -289,7 +289,7 @@ const tryLaunchEmulator = async (name?: string) => {
 /**
  * List all Android devices and emulators (connected and available)
  */
-const listAndroidDevices = async (): Promise<AndroidDevice[]> => {
+const listDevices = async (): Promise<AndroidDevice[]> => {
   const devices = await getConnectedDevices();
 
   const allDevices: Array<AndroidDevice> = [];
@@ -340,14 +340,14 @@ const matchingDevice = (devices: Array<AndroidDevice>, deviceArg: string) => {
   return deviceByName || deviceById;
 };
 
-const selectAndroidTargetDevice = async ({
+const selectTargetDevice = async ({
   interactive,
   deviceOption,
 }: {
   deviceOption?: string | boolean;
   interactive: boolean;
-}): Promise<{ device?: AndroidDevice }> => {
-  const availableDevices = await listAndroidDevices();
+}): Promise<AndroidDevice | undefined> => {
+  const availableDevices = await listDevices();
 
   if (deviceOption === true && !interactive) {
     p.log.error(
@@ -364,7 +364,7 @@ const selectAndroidTargetDevice = async ({
       );
       process.exit(1);
     }
-    return { device: matchedDevice };
+    return matchedDevice;
   }
 
   if (interactive) {
@@ -382,9 +382,9 @@ const selectAndroidTargetDevice = async ({
     if (p.isCancel(device)) {
       process.exit(1);
     }
-    return { device };
+    return device;
   }
-  return { device: undefined };
+  return undefined;
 };
 
 export const Device = {
@@ -392,6 +392,6 @@ export const Device = {
   getConnectedDevices,
   tryRunAdbReverse,
   tryLaunchEmulator,
-  listAndroidDevices,
-  selectAndroidTargetDevice,
+  listDevices,
+  selectTargetDevice,
 };
