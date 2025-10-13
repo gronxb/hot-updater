@@ -54,7 +54,7 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         gitCommitHash: result.git_commit_hash ?? null,
         message: result.message ?? null,
         channel: result.channel,
-        storageUri: result.storage_uri ?? null,
+        storageUri: result.storage_uri,
         targetAppVersion: result.target_app_version ?? null,
         fingerprintHash: result.fingerprint_hash ?? null,
       };
@@ -319,7 +319,7 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
             gitCommitHash: r.git_commit_hash ?? null,
             message: r.message ?? null,
             channel: r.channel,
-            storageUri: r.storage_uri ?? null,
+            storageUri: r.storage_uri,
             targetAppVersion: r.target_app_version ?? null,
             fingerprintHash: r.fingerprint_hash ?? null,
           }),
@@ -352,10 +352,11 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         fingerprint_hash: bundle.fingerprintHash,
         metadata: bundle.metadata ?? {},
       };
+      const { id, ...updateValues } = values;
       await orm.upsert("bundles", {
-        where: (b) => b("id", "=", values.id),
+        where: (b) => b("id", "=", id),
         create: values,
-        update: values,
+        update: updateValues,
       });
     },
 
@@ -382,10 +383,11 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         fingerprint_hash: merged.fingerprintHash,
         metadata: merged.metadata ?? {},
       };
+      const { id: id2, ...updateValues2 } = values;
       await orm.upsert("bundles", {
-        where: (b) => b("id", "=", values.id),
+        where: (b) => b("id", "=", id2),
         create: values,
-        update: values,
+        update: updateValues2,
       });
     },
 
