@@ -1,4 +1,5 @@
 import type {
+  AppUpdateInfo,
   AppVersionGetBundlesArgs,
   Bundle,
   FingerprintGetBundlesArgs,
@@ -6,10 +7,9 @@ import type {
   Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
-import type { AppUpdateInfo } from "@hot-updater/core";
-import type { StoragePlugin } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/core";
+import type { StoragePlugin } from "@hot-updater/plugin-core";
+import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";

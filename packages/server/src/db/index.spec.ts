@@ -1,14 +1,15 @@
-import { PGliteDialect } from "kysely-pglite-dialect";
 import { PGlite } from "@electric-sql/pglite";
-import { describe, beforeAll, beforeEach, afterAll } from "vitest";
 import { Kysely } from "kysely";
+import { PGliteDialect } from "kysely-pglite-dialect";
+import { afterAll, beforeAll, beforeEach, describe } from "vitest";
+
 // no fs required when using FumaDB migrator
 // (no direct filesystem DDL calls; rely on FumaDB migrator)
 
-import { HotUpdaterDB, hotUpdater } from "./index";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { kyselyAdapter } from "fumadb/adapters/kysely";
+import { HotUpdaterDB, hotUpdater } from "./index";
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();

@@ -143,9 +143,8 @@ export const standaloneStorage =
         };
       },
       async getDownloadUrl(storageUri: string) {
-        const { path: routePath, headers: routeHeaders } = routes.getDownloadUrl(
-          storageUri,
-        );
+        const { path: routePath, headers: routeHeaders } =
+          routes.getDownloadUrl(storageUri);
         const response = await fetch(`${config.baseUrl}${routePath}`, {
           method: "POST",
           headers: getHeaders(routeHeaders),

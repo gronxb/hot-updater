@@ -22,7 +22,9 @@ export const mockStorage =
           }
         } catch {}
         // For mock, return a deterministic fake URL for testing
-        return { fileUrl: `https://example.invalid/download?u=${encodeURIComponent(storageUri)}` };
+        return {
+          fileUrl: `https://example.invalid/download?u=${encodeURIComponent(storageUri)}`,
+        };
       },
     };
   };

@@ -19,4 +19,3 @@ export interface PaginatedResult {
   data: Bundle[];
   pagination: PaginationInfo;
 }
-
