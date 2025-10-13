@@ -3,6 +3,7 @@ import type {
   Bundle,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
+  Platform,
   UpdateInfo,
 } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
@@ -23,7 +24,7 @@ export type HotUpdaterAPI = ReturnType<typeof hotUpdater>;
 
 export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
   return {
-    async getBundleById(id: string) {
+    async getBundleById(id: string): Promise<Bundle | null> {
       const version = await client.version();
       const orm = client.orm(version);
       const result = await orm.findFirst("bundles", {
@@ -44,9 +45,9 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         where: (b) => b.and(b.isNotNull("id"), b("id", "=", id)),
       });
       if (!result) return null;
-      return {
+      const bundle: Bundle = {
         id: result.id,
-        platform: result.platform,
+        platform: result.platform as Platform,
         shouldForceUpdate: Boolean(result.should_force_update),
         enabled: Boolean(result.enabled),
         fileHash: result.file_hash,
@@ -56,7 +57,8 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         storageUri: result.storage_uri ?? null,
         targetAppVersion: result.target_app_version ?? null,
         fingerprintHash: result.fingerprint_hash ?? null,
-      } satisfies Bundle;
+      };
+      return bundle;
     },
     async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
       const version = await client.version();
@@ -310,7 +312,7 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         .map(
           (r): Bundle => ({
             id: r.id,
-            platform: r.platform,
+            platform: r.platform as Platform,
             shouldForceUpdate: Boolean(r.should_force_update),
             enabled: Boolean(r.enabled),
             fileHash: r.file_hash,
@@ -350,7 +352,11 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         fingerprint_hash: bundle.fingerprintHash,
         metadata: bundle.metadata ?? {},
       };
-      await orm.upsert("bundles", { values, conflict: ["id"] });
+      await orm.upsert("bundles", {
+        where: (b) => b("id", "=", values.id),
+        create: values,
+        update: values,
+      });
     },
 
     async updateBundleById(
@@ -377,21 +383,16 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         metadata: merged.metadata ?? {},
       };
       await orm.upsert("bundles", {
+        where: (b) => b("id", "=", values.id),
         create: values,
         update: values,
-        conflict: ["id"],
       });
     },
 
     async deleteBundleById(bundleId: string): Promise<void> {
       const version = await client.version();
       const orm = client.orm(version);
-      await orm.delete("bundles", {
-        where: (b) => b("id", "=", bundleId),
-      });
+      await orm.deleteMany("bundles", { where: (b) => b("id", "=", bundleId) });
     },
   };
 }
-
-// You can create a concrete client in your runtime and pass it to
-// hotUpdater(HotUpdaterDB.client(kyselyAdapter({...})))

@@ -35,7 +35,10 @@
     "semver": "^7.7.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
     "@types/node": "catalog:",
-    "@types/semver": "^7.5.8"
+    "@types/semver": "^7.5.8",
+    "kysely": "^0.27.5",
+    "kysely-pglite-dialect": "^1.2.0"
   }
 }
