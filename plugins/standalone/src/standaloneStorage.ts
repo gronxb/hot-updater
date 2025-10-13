@@ -11,6 +11,7 @@ import type { RouteConfig } from "./standaloneRepository";
 export interface StorageRoutes {
   uploadBundle: (bundleId: string, bundlePath: string) => RouteConfig;
   deleteBundle: (bundleId: string) => RouteConfig;
+  getDownloadUrl: (storageUri: string) => RouteConfig;
 }
 
 const defaultRoutes: StorageRoutes = {
@@ -19,6 +20,9 @@ const defaultRoutes: StorageRoutes = {
   }),
   deleteBundle: (_bundleId: string) => ({
     path: "/deleteBundle",
+  }),
+  getDownloadUrl: (_storageUri: string) => ({
+    path: "/getDownloadUrl",
   }),
 };
 
@@ -53,6 +57,11 @@ export const standaloneStorage =
           defaultRoutes.deleteBundle(bundleId),
           config.routes?.deleteBundle?.(bundleId),
         ),
+      getDownloadUrl: (storageUri: string) =>
+        createRoute(
+          defaultRoutes.getDownloadUrl(storageUri),
+          config.routes?.getDownloadUrl?.(storageUri),
+        ),
     };
 
     const getHeaders = (routeHeaders?: Record<string, string>) => ({
@@ -62,6 +71,7 @@ export const standaloneStorage =
 
     return {
       name: "standaloneStorage",
+      supportedProtocol: "http",
       async deleteBundle(bundleId: string) {
         const { path: routePath, headers: routeHeaders } =
           routes.deleteBundle(bundleId);
@@ -130,6 +140,30 @@ export const standaloneStorage =
 
         return {
           storageUri: result.storageUri,
+        };
+      },
+      async getDownloadUrl(storageUri: string) {
+        const { path: routePath, headers: routeHeaders } = routes.getDownloadUrl(
+          storageUri,
+        );
+        const response = await fetch(`${config.baseUrl}${routePath}`, {
+          method: "POST",
+          headers: getHeaders(routeHeaders),
+          body: JSON.stringify({ storageUri }),
+        });
+
+        if (!response.ok) {
+          const error = new Error(
+            `Failed to get download URL: ${response.statusText}`,
+          );
+          console.error(error);
+          throw error;
+        }
+        const result = (await response.json()) as {
+          fileUrl: string;
+        };
+        return {
+          fileUrl: result.fileUrl,
         };
       },
     };

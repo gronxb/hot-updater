@@ -34,6 +34,7 @@ export const r2Storage =
 
     return {
       name: "r2Storage",
+      supportedProtocol: "r2",
       async deleteBundle(bundleId) {
         const Key = getStorageKey(bundleId, "bundle.zip");
         try {
@@ -85,6 +86,29 @@ export const r2Storage =
         return {
           storageUri: `r2://${bucketName}/${Key}`,
         };
+      },
+      async getDownloadUrl(storageUri: string) {
+        // Simple validation: supported protocol must match
+        const u = new URL(storageUri);
+        if (u.protocol.replace(":", "") !== "r2") {
+          throw new Error("Invalid R2 storage URI protocol");
+        }
+        const key = u.pathname.slice(1);
+        // Generate presigned URL via wrangler for the configured bucket
+        const { stdout: urlOutput } = await wrangler(
+          "r2",
+          "object",
+          "presign",
+          [bucketName, key].join("/"),
+          "--expires-in",
+          "3600",
+          "--remote",
+        );
+        const signedUrl = urlOutput?.trim();
+        if (!signedUrl) {
+          throw new Error("Failed to generate download URL");
+        }
+        return { fileUrl: signedUrl };
       },
     };
   };

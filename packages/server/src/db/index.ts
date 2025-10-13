@@ -7,6 +7,8 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
+import type { AppUpdateInfo } from "@hot-updater/core";
+import type { StoragePlugin } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
@@ -22,7 +24,25 @@ export const HotUpdaterDB = fumadb({
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
 export type HotUpdaterAPI = ReturnType<typeof hotUpdater>;
 
-export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
+export function hotUpdater(
+  client: InferFumaDB<typeof HotUpdaterDB>,
+  options?: { storagePlugins?: StoragePlugin[] },
+) {
+  const storagePlugins = options?.storagePlugins ?? [];
+
+  const resolveFileUrl = async (
+    storageUri: string | null,
+  ): Promise<string | null> => {
+    if (!storageUri) return null;
+    const url = new URL(storageUri);
+    const protocol = url.protocol.replace(":", "");
+    if (protocol === "http" || protocol === "https") return storageUri;
+    const plugin = storagePlugins.find((p) => p.supportedProtocol === protocol);
+    if (!plugin) throw new Error(`No storage plugin for protocol: ${protocol}`);
+    const { fileUrl } = await plugin.getDownloadUrl(storageUri);
+    if (!fileUrl) throw new Error("Storage plugin returned empty fileUrl");
+    return fileUrl;
+  };
   return {
     async getBundleById(id: string): Promise<Bundle | null> {
       const version = await client.version();
@@ -259,6 +279,18 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
         return fingerprintStrategy(args);
       }
       return null;
+    },
+
+    async getAppUpdateInfo(
+      args: GetBundlesArgs,
+    ): Promise<AppUpdateInfo | null> {
+      const info = await this.getUpdateInfo(args);
+      if (!info) return null;
+      const { storageUri, ...rest } = info as UpdateInfo & {
+        storageUri: string | null;
+      };
+      const fileUrl = await resolveFileUrl(storageUri ?? null);
+      return { ...rest, storageUri: storageUri ?? null, fileUrl };
     },
 
     async getChannels(): Promise<string[]> {
