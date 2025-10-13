@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/server-core",
+  "name": "@hot-updater/server",
   "version": "0.20.12",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
@@ -12,11 +12,6 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "types": "./dist/index.d.ts"
-    },
-    "./src": {
-      "import": "./src/index.ts",
-      "require": "./src/index.ts",
-      "types": "./src/index.ts"
     }
   },
   "files": [
@@ -35,6 +30,7 @@
   },
   "dependencies": {
     "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "fumadb": "^0.1.1",
     "semver": "^7.7.2"
   },

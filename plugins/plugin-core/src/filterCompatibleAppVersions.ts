@@ -18,4 +18,3 @@ export const filterCompatibleAppVersions = (
 
   return compatibleAppVersionList.sort((a, b) => b.localeCompare(a));
 };
-

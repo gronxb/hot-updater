@@ -5,13 +5,13 @@ import type {
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
+import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
 import { v1 } from "../schema/v1";
 import type { PaginationInfo } from "../types";
-import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
 
 export const HotUpdaterDB = fumadb({
   namespace: "hot-updater",
@@ -395,4 +395,3 @@ export function hotUpdater(client: InferFumaDB<typeof HotUpdaterDB>) {
 
 // You can create a concrete client in your runtime and pass it to
 // hotUpdater(HotUpdaterDB.client(kyselyAdapter({...})))
-
