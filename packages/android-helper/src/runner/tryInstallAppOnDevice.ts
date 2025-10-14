@@ -1,5 +1,3 @@
-// highly credit to https://github.com/callstack/rnef/blob/main/packages/platform-android
-
 import * as p from "@clack/prompts";
 import { type ExecaError, execa } from "execa";
 import type { AndroidDevice } from "../types";

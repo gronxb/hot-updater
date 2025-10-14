@@ -16,10 +16,6 @@ export const installAndLaunchOnSimulator = async (
   appPath: string,
   options: SimulatorRunnerOptions = {},
 ) => {
-  if (device.type !== "simulator") {
-    throw new Error("Device must be a simulator");
-  }
-
   await launchSimulator(device);
   await installOnSimulator(device, appPath, options);
 

@@ -22,7 +22,6 @@ export const runAndroid = async ({
   const { interactive, device: deviceOption } = runOption;
 
   const androidProjectPath = path.join(getCwd(), "android");
-  const bundleId = generateMinBundleId();
 
   const schemeConfig = await enrichNativeBuildAndroidScheme({
     schemeConfig: _schemeConfig,
@@ -39,7 +38,6 @@ export const runAndroid = async ({
     // Check if device is available, launch emulator if needed
     if (!(await Device.getConnectedDevices()).includes(device.deviceId || "")) {
       if (device.type === "emulator") {
-        p.log.info(`Launching emulator: ${device.readableName}`);
         device.deviceId = await Device.tryLaunchEmulator(device.readableName);
       }
     }
@@ -56,12 +54,10 @@ export const runAndroid = async ({
     }
   }
 
-  const task = device
-    ? `assemble${schemeConfig.variant}`
-    : `install${schemeConfig.variant}`;
+  const task = `assemble${schemeConfig.variant}`;
 
   const result = await runGradle({
-    args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
+    args: { extraParams: [`-PMIN_BUNDLE_ID=${generateMinBundleId()}`] },
     appModuleName: schemeConfig.appModuleName,
     tasks: [task],
     androidProjectPath,
