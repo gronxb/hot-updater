@@ -179,14 +179,6 @@ export interface NativeBuildIosScheme {
   xcconfig?: string;
 
   /**
-   * Whether to create an archive for distribution.
-   * When true, creates .xcarchive instead of .app bundle.
-   *
-   * @default false
-   */
-  archive?: boolean;
-
-  /**
    * Automatically install CocoaPods dependencies before building.
    *
    * @default true

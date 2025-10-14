@@ -10,7 +10,6 @@ export type EnrichedNativeBuildIosScheme = NativeBuildIosScheme &
       | "platform"
       | "installPods"
       | "configuration"
-      | "archive"
       | "verbose"
       | "destination"
     >
@@ -22,7 +21,6 @@ export const enrichNativeBuildIosScheme = async (
     platform: "ios",
     installPods: true,
     configuration: "Release",
-    archive: false,
     verbose: false,
     destination: [],
     ...scheme,
