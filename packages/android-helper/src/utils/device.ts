@@ -70,7 +70,6 @@ async function tryRunAdbReverse({
     throw new Error(
       `Failed to connect "${deviceId}" to development server using "adb reverse"`,
     );
-    // Original cause: (error as ExecaError).stderr
   }
 }
 
