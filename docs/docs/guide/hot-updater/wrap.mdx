@@ -208,10 +208,8 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },
-  onUpdateProcessCompleted: ({ isBundleUpdated, message }) => {
-    // if isBundleUpdated is true, `HotUpdater.reload()` or restart the app to apply the new bundle
-    // if isBundleUpdated is false, the app is up to date
-    console.log("Bundle updated:", isBundleUpdated, message);
+  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
+    console.log("Bundle updated:", status, shouldForceUpdate, id, message);
   },
 
   // If you need to show the progress while downloading the new bundle, you can use the `onProgress` option.

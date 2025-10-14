@@ -1,0 +1,41 @@
+# `HotUpdater.isUpdateDownloaded()`
+
+Returns whether an update bundle has finished downloading in the current app session and is ready to be applied on reload.
+
+- Returns `true` when the download `progress` has reached `1.0`.
+- Returns `false` while downloading or before any download starts.
+- Resets to `false` automatically when a new download starts.
+
+## Usage
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function maybeApplyUpdate() {
+  if (HotUpdater.isUpdateDownloaded()) {
+    await HotUpdater.reload();
+  }
+}
+```
+
+## Details
+
+- This value is derived from the internal `progress` state managed by `useHotUpdaterStore()`.
+- It is session-scoped: it does not persist across app restarts.
+- Use this when you need to decide whether to show a "Restart to update" UI or trigger a controlled reload.
+
+```tsx
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { Button } from "react-native";
+
+export function UpdateButton() {
+  const { progress, isUpdateDownloaded } = useHotUpdaterStore();
+  return (
+    <Button
+      title={isUpdateDownloaded ? "Restart to update" : `Updating... ${Math.round(progress * 100)}%`}
+      onPress={() => HotUpdater.reload()}
+      disabled={!isUpdateDownloaded}
+    />
+  );
+}
+```
