@@ -1,7 +1,7 @@
 import useSyncExternalStoreExports from "use-sync-external-store/shim/with-selector";
 export type HotUpdaterState = {
   progress: number;
-  isBundleUpdated: boolean;
+  isUpdateDownloaded: boolean;
 };
 
 const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
@@ -9,7 +9,7 @@ const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
 const createHotUpdaterStore = () => {
   let state: HotUpdaterState = {
     progress: 0,
-    isBundleUpdated: false,
+    isUpdateDownloaded: false,
   };
 
   const getSnapshot = () => {
@@ -25,10 +25,25 @@ const createHotUpdaterStore = () => {
   };
 
   const setState = (newState: Partial<HotUpdaterState>) => {
-    state = {
+    // Merge first, then normalize derived fields
+    const nextState: HotUpdaterState = {
       ...state,
       ...newState,
     };
+
+    // Derive `isUpdateDownloaded` from `progress` if provided.
+    // If `progress` is not provided but `isUpdateDownloaded` is,
+    // honor the explicit value.
+    if ("progress" in newState && typeof newState.progress === "number") {
+      nextState.isUpdateDownloaded = newState.progress >= 1;
+    } else if (
+      "isUpdateDownloaded" in newState &&
+      typeof newState.isUpdateDownloaded === "boolean"
+    ) {
+      nextState.isUpdateDownloaded = newState.isUpdateDownloaded;
+    }
+
+    state = nextState;
     emitChange();
   };
 
