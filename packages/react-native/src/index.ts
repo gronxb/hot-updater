@@ -52,6 +52,24 @@ export const HotUpdater = {
    */
   reload,
   /**
+   * Returns whether an update has finished downloading in this app session.
+   *
+   * When it returns true, calling `HotUpdater.reload()` (or restarting the app)
+   * will apply the downloaded update bundle.
+   *
+   * - Derived from `progress` reaching 1.0
+   * - Resets to false when a new download starts (progress < 1)
+   *
+   * @returns {boolean} True if a downloaded update is ready to apply
+   * @example
+   * ```ts
+   * if (HotUpdater.isUpdateDownloaded()) {
+   *   await HotUpdater.reload();
+   * }
+   * ```
+   */
+  isUpdateDownloaded: () => hotUpdaterStore.getSnapshot().isUpdateDownloaded,
+  /**
    * Fetches the current app version.
    */
   getAppVersion,
