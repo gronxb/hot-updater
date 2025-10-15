@@ -47,7 +47,9 @@ export function createGetUpdateInfo(
         throw new Error(`Failed to check for updates: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as
+        | { update: false }
+        | ({ update: true; fileUrl?: string } & UpdateInfo);
 
       // Step 4: Clean up via DELETE /api/bundles/:id
       for (const bundle of bundles) {
@@ -58,9 +60,13 @@ export function createGetUpdateInfo(
 
       // Return UpdateInfo or null
       if (data.update) {
-        // Remove the 'update' and 'fileUrl' fields to match UpdateInfo type
-        const { update, fileUrl, ...updateInfo } = data;
-        return updateInfo as UpdateInfo;
+        return {
+          id: data.id,
+          message: data.message,
+          shouldForceUpdate: data.shouldForceUpdate,
+          status: data.status,
+          storageUri: data.storageUri,
+        };
       }
 
       return null;
