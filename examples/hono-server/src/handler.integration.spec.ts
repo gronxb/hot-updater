@@ -2,6 +2,7 @@ import {
   cleanupServer,
   createGetUpdateInfo,
   createTestDbPath,
+  killPort,
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/server/test-utils";
@@ -24,6 +25,9 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
   const port = 13579;
 
   beforeAll(async () => {
+    // Kill any process using the port before starting
+    await killPort(port);
+
     testDbPath = createTestDbPath(projectRoot);
     await fs.mkdir(path.join(projectRoot, "data"), { recursive: true });
 
