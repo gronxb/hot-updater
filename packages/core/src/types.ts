@@ -106,6 +106,8 @@ export interface AppUpdateInfo extends UpdateInfo {
 
 export type UpdateStrategy = "fingerprint" | "appVersion";
 
+export type CompressStrategy = "zip" | "tar+brotli" | "tar+gzip";
+
 export type FingerprintGetBundlesArgs = {
   _updateStrategy: "fingerprint";
   platform: Platform;
