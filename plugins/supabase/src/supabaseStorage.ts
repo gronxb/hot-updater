@@ -55,11 +55,32 @@ export const supabaseStorage =
 
         const filename = path.basename(bundlePath);
 
+        // Detect Content-Encoding based on file extension
+        let contentEncoding: string | undefined;
+        if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+          contentEncoding = "gzip";
+        } else if (filename.endsWith(".tar.br") || filename.endsWith(".br")) {
+          contentEncoding = "br";
+        }
+
         const Key = getStorageKey(bundleId, filename);
 
-        const upload = await bucket.upload(Key, Body, {
+        const uploadOptions: {
+          contentType?: string;
+          cacheControl: string;
+          httpHeaders?: Record<string, string>;
+        } = {
           contentType: ContentType,
-        });
+          cacheControl: "max-age=31536000",
+        };
+
+        if (contentEncoding) {
+          uploadOptions.httpHeaders = {
+            "Content-Encoding": contentEncoding,
+          };
+        }
+
+        const upload = await bucket.upload(Key, Body, uploadOptions);
         if (upload.error) {
           throw upload.error;
         }

@@ -53,10 +53,19 @@ export const firebaseStorage =
           const filename = path.basename(bundlePath);
           const key = getStorageKey(bundleId, filename);
 
+          // Detect Content-Encoding based on file extension
+          let contentEncoding: string | undefined;
+          if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+            contentEncoding = "gzip";
+          } else if (filename.endsWith(".tar.br") || filename.endsWith(".br")) {
+            contentEncoding = "br";
+          }
+
           const file = bucket.file(key);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
+              ...(contentEncoding && { contentEncoding }),
             },
           });
 
