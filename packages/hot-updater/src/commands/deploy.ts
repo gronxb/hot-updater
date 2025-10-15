@@ -1,11 +1,11 @@
 import * as p from "@clack/prompts";
+import { COMPRESSION_FORMATS } from "@hot-updater/core";
 import {
   createBundleArchive,
   getCwd,
   loadConfig,
   type Platform,
 } from "@hot-updater/plugin-core";
-import { COMPRESSION_FORMATS } from "@hot-updater/core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -194,7 +194,6 @@ export const deploy = async (options: DeployOptions) => {
         return COMPRESSION_FORMATS.gzip.extension;
       case "tarBrotli":
         return COMPRESSION_FORMATS.brotli.extension;
-      case "zip":
       default:
         return COMPRESSION_FORMATS.zip.extension;
     }

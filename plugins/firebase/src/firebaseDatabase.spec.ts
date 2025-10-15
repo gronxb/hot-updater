@@ -432,7 +432,7 @@ describe("firebaseDatabase plugin", () => {
         targetAppVersion: "1.1.1",
         storageUri: "gs://test-bucket/test-key",
         fingerprintHash: null,
-        },
+      },
       {
         id: "bundleY",
         channel: "production",
@@ -445,7 +445,7 @@ describe("firebaseDatabase plugin", () => {
         targetAppVersion: "1.1.1",
         storageUri: "gs://test-bucket/test-key",
         fingerprintHash: null,
-        },
+      },
       {
         id: "bundleZ",
         channel: "staging",
@@ -458,7 +458,7 @@ describe("firebaseDatabase plugin", () => {
         targetAppVersion: "1.1.1",
         storageUri: "gs://test-bucket/test-key",
         fingerprintHash: null,
-        },
+      },
     ] as const;
 
     for (const bundle of bundlesData) {
