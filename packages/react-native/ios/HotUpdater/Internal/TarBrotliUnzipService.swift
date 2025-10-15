@@ -91,18 +91,15 @@ class TarBrotliUnzipService: UnzipService {
         let count = data.count
 
         // Create decompression stream
-        // Allocate temporary pointers to satisfy the initializer
-        let tempPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
-        defer { tempPtr.deallocate() }
-
-        var stream = compression_stream(
-            dst_ptr: tempPtr,
-            dst_size: 0,
-            src_ptr: tempPtr,
-            src_size: 0,
-            state: nil
-        )
-        compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
+        var stream = compression_stream()
+        let initStatus = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
+        guard initStatus == COMPRESSION_STATUS_OK else {
+            throw NSError(
+                domain: "TarBrotliUnzipService",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to initialize brotli decompression stream"]
+            )
+        }
         defer {
             compression_stream_destroy(&stream)
         }
