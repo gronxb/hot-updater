@@ -57,6 +57,14 @@ export const r2Storage =
 
         const filename = path.basename(bundlePath);
 
+        // Detect Content-Encoding based on file extension
+        let contentEncoding: string | undefined;
+        if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+          contentEncoding = "gzip";
+        } else if (filename.endsWith(".tar.br") || filename.endsWith(".br")) {
+          contentEncoding = "br";
+        }
+
         const Key = getStorageKey(bundleId, filename);
         try {
           const { stderr, exitCode } = await wrangler(
@@ -67,6 +75,7 @@ export const r2Storage =
             "--file",
             bundlePath,
             ...(contentType ? ["--content-type", contentType] : []),
+            ...(contentEncoding ? ["--content-encoding", contentEncoding] : []),
             "--remote",
           );
           if (exitCode !== 0 && stderr) {

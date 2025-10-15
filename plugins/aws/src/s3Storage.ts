@@ -70,6 +70,14 @@ export const s3Storage =
 
         const filename = path.basename(bundlePath);
 
+        // Detect Content-Encoding based on file extension
+        let ContentEncoding: string | undefined;
+        if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+          ContentEncoding = "gzip";
+        } else if (filename.endsWith(".tar.br") || filename.endsWith(".br")) {
+          ContentEncoding = "br";
+        }
+
         const Key = getStorageKey(bundleId, filename);
         const upload = new Upload({
           client,
@@ -79,6 +87,7 @@ export const s3Storage =
             Key,
             Body,
             CacheControl: "max-age=31536000",
+            ...(ContentEncoding && { ContentEncoding }),
           },
         });
         const response = await upload.done();

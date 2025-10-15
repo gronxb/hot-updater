@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts";
+import { COMPRESSION_FORMATS } from "@hot-updater/core";
 import {
-  createZipTargetFiles,
+  createBundleArchive,
   getCwd,
   loadConfig,
   type Platform,
@@ -186,7 +187,23 @@ export const deploy = async (options: DeployOptions) => {
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const bundlePath = path.join(normalizeOutputPath, "bundle", "bundle.zip");
+  const compressionStrategy = config.compressionStrategy ?? "zip";
+  const getFileExtension = (strategy: typeof compressionStrategy) => {
+    switch (strategy) {
+      case "tarGzip":
+        return COMPRESSION_FORMATS.gzip.extension;
+      case "tarBrotli":
+        return COMPRESSION_FORMATS.brotli.extension;
+      default:
+        return COMPRESSION_FORMATS.zip.extension;
+    }
+  };
+
+  const bundlePath = path.join(
+    normalizeOutputPath,
+    "bundle",
+    `bundle${getFileExtension(compressionStrategy)}`,
+  );
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -240,9 +257,10 @@ export const deploy = async (options: DeployOptions) => {
               )
               .map((file) => path.join(buildPath, file)),
           );
-          await createZipTargetFiles({
+          await createBundleArchive({
             outfile: bundlePath,
             targetFiles: targetFiles,
+            compressionStrategy,
           });
 
           bundleId = taskRef.buildResult.bundleId;

@@ -1,5 +1,36 @@
 export type Platform = "ios" | "android";
 
+export type CompressionStrategy = "zip" | "tarBrotli" | "tarGzip";
+
+/**
+ * Compression format detection information
+ */
+export const COMPRESSION_FORMATS = {
+  zip: {
+    magicBytes: [0x50, 0x4b, 0x03, 0x04] as const, // PK..
+    extension: ".zip",
+    description: "ZIP archive",
+  },
+  gzip: {
+    magicBytes: [0x1f, 0x8b] as const, // First two bytes
+    extension: ".tar.gz",
+    description: "GZIP compressed TAR archive",
+  },
+  tar: {
+    // TAR archives have "ustar" at offset 257
+    magicBytes: [0x75, 0x73, 0x74, 0x61, 0x72] as const, // "ustar"
+    offset: 257,
+    extension: ".tar",
+    description: "TAR archive",
+  },
+  brotli: {
+    // Brotli has no standard magic bytes, relies on metadata
+    magicBytes: null,
+    extension: ".tar.br",
+    description: "Brotli compressed TAR archive",
+  },
+} as const;
+
 export type BundleMetadata = {
   app_version?: string;
 };
