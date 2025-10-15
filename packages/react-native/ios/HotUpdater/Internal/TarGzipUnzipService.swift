@@ -82,11 +82,7 @@ class TarGzipUnzipService: UnzipService {
      */
     private func extractTarEntry(_ entry: TarEntry, to destination: String) throws {
         // Get entry info
-        guard let entryInfo = entry.info else {
-            NSLog("[TarGzipUnzipService] Skipping entry with no info")
-            return
-        }
-
+        let entryInfo = entry.info
         let entryName = entryInfo.name
 
         // Skip entries that are just markers (e.g., "./" or empty)
@@ -127,7 +123,7 @@ class TarGzipUnzipService: UnzipService {
             }
             NSLog("[TarGzipUnzipService] Created directory: \(entryName)")
 
-        case .regular, .normal:
+        case .regular:
             // Create parent directory if needed
             let parentPath = targetURL.deletingLastPathComponent().path
             if !fileManager.fileExists(atPath: parentPath) {

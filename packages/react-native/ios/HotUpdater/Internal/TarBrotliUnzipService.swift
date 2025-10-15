@@ -91,11 +91,14 @@ class TarBrotliUnzipService: UnzipService {
         let count = data.count
 
         // Create decompression stream
-        var stream = data.withUnsafeBytes { (rawBufferPointer: UnsafeRawBufferPointer) -> compression_stream in
-            var streamPtr = compression_stream()
-            compression_stream_init(&streamPtr, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
-            return streamPtr
-        }
+        var stream = compression_stream(
+            dst_ptr: nil,
+            dst_size: 0,
+            src_ptr: nil,
+            src_size: 0,
+            state: nil
+        )
+        compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
         defer {
             compression_stream_destroy(&stream)
         }
@@ -157,11 +160,7 @@ class TarBrotliUnzipService: UnzipService {
      */
     private func extractTarEntry(_ entry: TarEntry, to destination: String) throws {
         // Get entry info
-        guard let entryInfo = entry.info else {
-            NSLog("[TarBrotliUnzipService] Skipping entry with no info")
-            return
-        }
-
+        let entryInfo = entry.info
         let entryName = entryInfo.name
 
         // Skip entries that are just markers (e.g., "./" or empty)
@@ -202,7 +201,7 @@ class TarBrotliUnzipService: UnzipService {
             }
             NSLog("[TarBrotliUnzipService] Created directory: \(entryName)")
 
-        case .regular, .normal:
+        case .regular:
             // Create parent directory if needed
             let parentPath = targetURL.deletingLastPathComponent().path
             if !fileManager.fileExists(atPath: parentPath) {
