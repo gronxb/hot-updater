@@ -130,7 +130,7 @@ class TarBrotliUnzipService: UnzipService {
                 stream.dst_ptr = outputBuffer
                 stream.dst_size = bufferSize
 
-                processStatus = compression_stream_process(&stream, COMPRESSION_STREAM_FINALIZE.rawValue)
+                processStatus = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE))
 
                 switch processStatus {
                 case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:
