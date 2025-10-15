@@ -1087,6 +1087,18 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.17
         version: 0.2.17
+      '@hot-updater/aws':
+        specifier: workspace:*
+        version: link:../../plugins/aws
+      '@hot-updater/cloudflare':
+        specifier: workspace:*
+        version: link:../../plugins/cloudflare
+      '@hot-updater/firebase':
+        specifier: workspace:*
+        version: link:../../plugins/firebase
+      '@hot-updater/supabase':
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.11
