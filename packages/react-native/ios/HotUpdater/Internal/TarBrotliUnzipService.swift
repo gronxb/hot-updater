@@ -89,9 +89,14 @@ class TarBrotliUnzipService: UnzipService {
         var decompressedData = Data()
         let count = data.count
 
-        // Create compression stream with zeroed memory
-        var stream = compression_stream()
-        memset(&stream, 0, MemoryLayout<compression_stream>.size)
+        // Create compression stream with explicit nil parameters
+        var stream = compression_stream(
+            dst_ptr: nil,
+            dst_size: 0,
+            src_ptr: nil,
+            src_size: 0,
+            state: nil
+        )
 
         let status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
 
