@@ -303,6 +303,41 @@ class MainApplication : Application(), ReactApplication {
 }
 ```
 
+<Tabs>
+    <Tab label="Kotlin RN>0.82">
+```kt title=android/app/src/main/java/com/<your-app-name>/MainApplication.kt
+package com.hotupdaterexample
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList =
+        PackageList(this).packages.apply {
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          // add(MyReactNativePackage())
+        },
+      jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),
+    )
+
+  }
+
+  override fun onCreate() {
+    super.onCreate()
+    loadReactNative(this)
+  }
+}
+```
+
 </Tab>
     <Tab label="Java">
   ```java title=android/app/build.gradle
