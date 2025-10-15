@@ -1,22 +1,25 @@
 import * as p from "@clack/prompts";
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
+import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
 
 export const exportXcodeArchive = async ({
   archivePath,
-  schemeConfig,
   sourceDir,
+  exportExtraParams,
+  exportOptionsPlist,
 }: {
   sourceDir: string;
-  schemeConfig: NativeBuildIosScheme;
   archivePath: string;
+  exportOptionsPlist: string;
+  exportExtraParams?: string[];
 }): Promise<{ exportPath: string }> => {
   const exportPath = await createRandomTmpDir();
   const exportArgs = prepareExportArgs({
     archivePath,
     exportPath,
-    schemeConfig,
+    exportOptionsPlist,
+    exportExtraParams,
   });
 
   const spinner = p.spinner();
@@ -31,18 +34,20 @@ export const exportXcodeArchive = async ({
     return { exportPath };
   } catch (error) {
     spinner.stop("Export failed");
-    throw new Error(`Archive export failed: ${error}`);
+    throw prettifyXcodebuildError(error);
   }
 };
 
 const prepareExportArgs = ({
   exportPath,
   archivePath,
-  schemeConfig,
+  exportExtraParams,
+  exportOptionsPlist,
 }: {
   exportPath: string;
   archivePath: string;
-  schemeConfig: NativeBuildIosScheme;
+  exportOptionsPlist: string;
+  exportExtraParams?: string[];
 }): string[] => {
   const args = [
     "-exportArchive",
@@ -52,11 +57,9 @@ const prepareExportArgs = ({
     exportPath,
   ];
 
-  if (schemeConfig.exportExtraParams) {
-    args.push(...schemeConfig.exportExtraParams);
+  if (exportExtraParams) {
+    args.push(...exportExtraParams);
   }
-  if (schemeConfig.exportOptionsPlist) {
-    args.push("-exportOptionsPlist", schemeConfig.exportOptionsPlist);
-  }
+  args.push("-exportOptionsPlist", exportOptionsPlist);
   return args;
 };

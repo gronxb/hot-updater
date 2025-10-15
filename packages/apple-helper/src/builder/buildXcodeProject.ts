@@ -11,6 +11,7 @@ import {
   type XcodeProjectInfo,
 } from "../utils/projectInfo";
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
+import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
 
 export const buildXcodeProject = async ({
   sourceDir,
@@ -86,7 +87,7 @@ Command        xcodebuild ${buildArgs.join(" ")}
     });
   } catch (error) {
     logger.stop("Build failed", false);
-    throw new Error(`Xcode build failed: ${error}`);
+    throw prettifyXcodebuildError(error);
   }
 };
 

@@ -5,6 +5,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import path from "path";
+
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import {
@@ -16,6 +17,7 @@ import {
   type XcodeProjectInfo,
 } from "../utils/projectInfo";
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
+import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
 
 export const archiveXcodeProject = async ({
   sourceDir,
@@ -69,7 +71,7 @@ Command    xcodebuild ${archiveArgs.join(" ")}
     return { archivePath };
   } catch (error) {
     logger.stop("Archive failed", false);
-    throw new Error(`Xcode archive failed: ${error}`);
+    throw prettifyXcodebuildError(error);
   }
 };
 
@@ -113,6 +115,7 @@ const prepareArchiveArgs = ({
   if (resolvedDestinations.length === 0) {
     resolvedDestinations.push(
       getDefaultDestination({
+        deviceType: "device",
         platform,
         useGeneric: true,
       }),

@@ -10,7 +10,7 @@ export const createXcodebuildLogger = () =>
       "The following build commands failed:",
     ],
     progressMapping: [
-      [["[CP-User] [RN]Check rncore", "React-Fabric"], 10],
+      [["[CP-User] [RN]Check rncore"], 10],
       [["[CP-User] [Hermes] Replace Hermes"], 35],
       [["[CP-User] [RN]Check FBReactNativeSpec"], 53],
       [["React-FabricComponents"], 66],
