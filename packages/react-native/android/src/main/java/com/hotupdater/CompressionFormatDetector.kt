@@ -85,15 +85,13 @@ object CompressionFormatDetector {
      * @param format The compression format
      * @return UnzipService instance or null if format is unknown
      */
-    fun getUnzipService(format: CompressionFormat): UnzipService? {
-        return when (format) {
-            CompressionFormat.ZIP -> ZipFileUnzipService()
-            CompressionFormat.TAR_GZIP -> TarGzipUnzipService()
-            CompressionFormat.TAR_BROTLI -> TarBrotliUnzipService()
-            CompressionFormat.UNKNOWN -> {
-                Log.e("CompressionFormatDetector", "Cannot create UnzipService for UNKNOWN format")
-                null
-            }
+    fun getUnzipService(format: CompressionFormat): UnzipService? = when (format) {
+        CompressionFormat.ZIP -> ZipFileUnzipService()
+        CompressionFormat.TAR_GZIP -> TarGzipUnzipService()
+        CompressionFormat.TAR_BROTLI -> TarBrotliUnzipService()
+        CompressionFormat.UNKNOWN -> {
+            Log.e("CompressionFormatDetector", "Cannot create UnzipService for UNKNOWN format")
+            null
         }
     }
 
