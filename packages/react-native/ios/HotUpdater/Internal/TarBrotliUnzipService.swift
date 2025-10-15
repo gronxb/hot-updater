@@ -89,8 +89,13 @@ class TarBrotliUnzipService: UnzipService {
         var decompressedData = Data()
         let count = data.count
 
-        // Create decompression stream with proper initialization
-        var stream = compression_stream()
+        // Create compression stream using unsafeBitCast from zeroed memory
+        var stream: compression_stream = withUnsafePointer(to: UInt(0)) { ptr in
+            return ptr.withMemoryRebound(to: compression_stream.self, capacity: 1) { streamPtr in
+                return streamPtr.pointee
+            }
+        }
+
         let status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
 
         guard status == COMPRESSION_STATUS_OK else {
@@ -100,6 +105,7 @@ class TarBrotliUnzipService: UnzipService {
                 userInfo: [NSLocalizedDescriptionKey: "Failed to initialize brotli decompression stream"]
             )
         }
+
         defer {
             compression_stream_destroy(&stream)
         }
