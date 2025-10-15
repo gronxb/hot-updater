@@ -1,4 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
+import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
+import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { firebaseStorage } from "@hot-updater/firebase";
+import { supabaseStorage } from "@hot-updater/supabase";
+import { kyselyAdapter } from "fumadb/adapters/kysely";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import {
@@ -7,17 +15,10 @@ import {
   beforeAll,
   beforeEach,
   describe,
+  expect,
+  it,
   vi,
 } from "vitest";
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
-import { s3Storage } from "@hot-updater/aws";
-import { r2Storage } from "@hot-updater/cloudflare";
-import { supabaseStorage } from "@hot-updater/supabase";
-import { firebaseStorage } from "@hot-updater/firebase";
-import { kyselyAdapter } from "fumadb/adapters/kysely";
-import { expect, it } from "vitest";
 import { HotUpdaterDB, hotUpdater } from "./index";
 
 // Initialize real storage plugins for testing

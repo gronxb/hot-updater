@@ -153,13 +153,10 @@ export function createHandler(
         const bundle = await request.json();
         await api.insertBundle(bundle);
 
-        return new Response(
-          JSON.stringify({ success: true, bundle }),
-          {
-            status: 201,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify({ success: true, bundle }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       // DELETE /api/bundles/:id - Delete bundle
