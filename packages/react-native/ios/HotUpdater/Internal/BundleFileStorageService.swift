@@ -32,24 +32,24 @@ public protocol BundleStorageService {
 class BundleFileStorageService: BundleStorageService {
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
-    private let unzipService: UnzipService
+    private let unzipService: UnzipService?
     private let preferences: PreferencesService
-    
+
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
-    
+
     private var activeTasks: [URLSessionTask] = []
-    
+
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
                 unzipService: UnzipService,
                 preferences: PreferencesService) {
-        
+
         self.fileSystem = fileSystem
         self.downloadService = downloadService
         self.unzipService = unzipService
         self.preferences = preferences
-        
+
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
                                                qos: .utility,
                                                attributes: .concurrent)
@@ -389,7 +389,7 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
         
-        // 4) Define paths for ZIP file
+        // 4) Define paths for compressed bundle file
         let tempZipFile = (tempDirectory as NSString).appendingPathComponent("bundle.zip")
         
         NSLog("[BundleStorage] Starting download from \(fileUrl)")
@@ -454,7 +454,7 @@ class BundleFileStorageService: BundleStorageService {
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
         
-        // 1) Ensure the ZIP file exists
+        // 1) Ensure the compressed bundle file exists
         guard self.fileSystem.fileExists(atPath: location.path) else {
             self.cleanupTemporaryFiles([tempDirectory])
             completion(.failure(BundleStorageError.fileSystemError(NSError(
@@ -480,12 +480,14 @@ class BundleFileStorageService: BundleStorageService {
             try self.fileSystem.createDirectory(atPath: tmpDir)
             NSLog("[BundleStorage] Created tmpDir: \(tmpDir)")
             
-            // 5) Unzip directly into tmpDir
+            // 5) Detect compression format and unzip directly into tmpDir
+            NSLog("[BundleStorage] Detecting compression format for \(tempZipFile)")
+            let unzipService = self.unzipService ?? CompressionFormatDetector.createUnzipService(forFile: tempZipFile)
             NSLog("[BundleStorage] Unzipping \(tempZipFile) → \(tmpDir)")
-            try self.unzipService.unzip(file: tempZipFile, to: tmpDir)
+            try unzipService.unzip(file: tempZipFile, to: tmpDir)
             NSLog("[BundleStorage] Unzip complete at \(tmpDir)")
             
-            // 6) Remove the downloaded ZIP file
+            // 6) Remove the downloaded compressed bundle file
             try? self.fileSystem.removeItem(atPath: tempZipFile)
             
             // 7) Verify that a valid bundle file exists inside tmpDir
