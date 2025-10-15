@@ -1,8 +1,8 @@
 import fs from "fs/promises";
-import { createBrotliCompress, constants as zlibConstants } from "zlib";
-import { pipeline } from "stream/promises";
 import path from "path";
+import { pipeline } from "stream/promises";
 import { create as createTar } from "tar";
+import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 export const createTarBrotliTargetFiles = async ({
   outfile,

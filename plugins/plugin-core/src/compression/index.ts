@@ -1,12 +1,12 @@
 import type { CompressionStrategy } from "@hot-updater/core";
 
-export * from "./createZip";
 export * from "./createTarBrotli";
 export * from "./createTarGzip";
+export * from "./createZip";
 
-import { createZip, createZipTargetFiles } from "./createZip";
 import { createTarBrotli, createTarBrotliTargetFiles } from "./createTarBrotli";
 import { createTarGzip, createTarGzipTargetFiles } from "./createTarGzip";
+import { createZip, createZipTargetFiles } from "./createZip";
 
 /**
  * Options for creating a compressed bundle from a directory.

@@ -1,8 +1,8 @@
 import fs from "fs/promises";
-import { createGzip } from "zlib";
-import { pipeline } from "stream/promises";
 import path from "path";
+import { pipeline } from "stream/promises";
 import { create as createTar } from "tar";
+import { createGzip } from "zlib";
 
 export const createTarGzipTargetFiles = async ({
   outfile,
