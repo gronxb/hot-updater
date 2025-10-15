@@ -3,18 +3,28 @@ packages:
   - plugins/*
   - docs
   - examples/*
-onlyBuiltDependencies:
-  - "@sentry/cli"
-  - "@swc/core"
-  - core-js-pure
-  - esbuild
-  - nx
-  - sharp
-  - typia
-  - workerd
 
 catalog:
-  "@clack/prompts": 0.10.0
-  "@types/node": ^20
-  "execa": 9.5.2
-  "picocolors": 1.1.1
+  '@clack/prompts': 0.10.0
+  '@types/node': ^20
+  execa: 9.5.2
+  picocolors: 1.1.1
+
+onlyBuiltDependencies:
+  - '@biomejs/biome'
+  - '@firebase/util'
+  - '@sentry/cli'
+  - '@swc/core'
+  - aws-sdk
+  - core-js
+  - core-js-pure
+  - cpu-features
+  - esbuild
+  - msw
+  - nx
+  - protobufjs
+  - re2
+  - sharp
+  - ssh2
+  - typia
+  - workerd
