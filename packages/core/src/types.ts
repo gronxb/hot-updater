@@ -1,5 +1,40 @@
 export type Platform = "ios" | "android";
 
+/**
+ * Compression strategy for bundle packaging.
+ *
+ * - `zip`: Traditional ZIP compression (DEFLATE algorithm)
+ * - `tarBrotli`: TAR archive with Brotli compression (better compression ratio)
+ * - `tarGzip`: TAR archive with GZIP compression (widely supported)
+ */
+export type CompressionStrategy = "zip" | "tarBrotli" | "tarGzip";
+
+/**
+ * Compression format metadata for format detection.
+ */
+export const COMPRESSION_FORMATS = {
+  zip: {
+    magicBytes: 0x504b0304, // PK.. (first 4 bytes of ZIP files)
+    extension: ".zip",
+    mimeType: "application/zip",
+  },
+  gzip: {
+    magicBytes: 0x1f8b, // First 2 bytes of GZIP files
+    extension: ".tar.gz",
+    mimeType: "application/gzip",
+  },
+  tar: {
+    // TAR has "ustar" at offset 257
+    signature: "ustar",
+    offset: 257,
+  },
+  brotli: {
+    // Brotli has no standard magic bytes, relies on metadata
+    extension: ".tar.br",
+    mimeType: "application/x-tar+br",
+  },
+} as const;
+
 export type BundleMetadata = {
   app_version?: string;
 };
