@@ -89,9 +89,15 @@ class TarBrotliUnzipService: UnzipService {
         var decompressedData = Data()
         let count = data.count
 
-        // Create compression stream with zero initialization
-        // The compression_stream struct requires proper initialization
-        var stream = compression_stream()
+        // Create and zero-initialize compression stream
+        // We need to use unsafeBitCast to create temporary pointer values for initialization
+        var stream = compression_stream(
+            dst_ptr: unsafeBitCast(0, to: UnsafeMutablePointer<UInt8>.self),
+            dst_size: 0,
+            src_ptr: unsafeBitCast(0, to: UnsafePointer<UInt8>.self),
+            src_size: 0,
+            state: nil
+        )
 
         let status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
 
