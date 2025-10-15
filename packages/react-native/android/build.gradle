@@ -132,7 +132,15 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
 
   // Apache Commons Compress for tar+gzip support
-  implementation "org.apache.commons:commons-compress:1.26.0"
+  // Using 1.24.0 for better compatibility with older Gradle/Android versions
+  implementation("org.apache.commons:commons-compress:1.24.0") {
+    exclude group: 'commons-io', module: 'commons-io'
+    exclude group: 'org.apache.commons', module: 'commons-lang3'
+  }
+
+  // Add compatible versions explicitly
+  implementation "commons-io:commons-io:2.11.0"
+  implementation "org.apache.commons:commons-lang3:3.12.0"
 
   // Brotli4j for tar+brotli support
   implementation "com.aayushatharva.brotli4j:brotli4j:1.16.0"
