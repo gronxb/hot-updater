@@ -12,10 +12,15 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "types": "./dist/index.d.ts"
+    },
+    "./test-utils": {
+      "types": "./src/test-utils/index.ts",
+      "import": "./src/test-utils/index.ts"
     }
   },
   "files": [
     "dist",
+    "src",
     "package.json"
   ],
   "license": "MIT",
@@ -42,6 +47,7 @@
     "@hot-updater/supabase": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
+    "execa": "^9.5.2",
     "kysely": "^0.28.5",
     "kysely-pglite-dialect": "^1.2.0"
   }

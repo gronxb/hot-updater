@@ -13,7 +13,7 @@ import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
-import { createHandler, type HandlerOptions, type HandlerAPI } from "../handler";
+import { createHandler, type HandlerOptions } from "../handler";
 import { v1 } from "../schema/v1";
 import type { PaginationInfo } from "../types";
 

@@ -29,7 +29,7 @@ const port = Number(process.env.PORT) || 3000;
 try {
   await initializeDatabase();
 
-  await serve(
+  serve(
     {
       fetch: app.fetch,
       port,
