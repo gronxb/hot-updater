@@ -216,7 +216,6 @@ export const createTarBrotliTargetFiles = async ({
     targetFiles,
     compressionStream: createBrotliCompress({
       params: {
-        // @ts-expect-error - Node.js zlib constants
         [require("zlib").constants.BROTLI_PARAM_QUALITY]: 11, // Max quality
       },
     }),
