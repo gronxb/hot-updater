@@ -120,6 +120,12 @@ export interface NativeBuildArgs {
 }
 
 export interface StoragePlugin {
+  /**
+   * Protocol this storage plugin can resolve.
+   * @example "s3", "r2", "supabase-storage".
+   */
+  supportedProtocol: string;
+
   uploadBundle: (
     bundleId: string,
     bundlePath: string,
@@ -129,6 +135,10 @@ export interface StoragePlugin {
 
   deleteBundle: (bundleId: string) => Promise<{
     storageUri: string;
+  }>;
+
+  getDownloadUrl: (storageUri: string) => Promise<{
+    fileUrl: string;
   }>;
   name: string;
 }

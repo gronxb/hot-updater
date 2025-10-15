@@ -32,6 +32,7 @@ export const supabaseStorage =
     const getStorageKey = createStorageKeyBuilder(config.basePath);
     return {
       name: "supabaseStorage",
+      supportedProtocol: "supabase-storage",
       async deleteBundle(bundleId) {
         const filename = "bundle.zip";
         const Key = getStorageKey(bundleId, filename);
@@ -70,6 +71,29 @@ export const supabaseStorage =
         return {
           storageUri: `supabase-storage://${fullPath}`,
         };
+      },
+      async getDownloadUrl(storageUri: string) {
+        // Simple validation: supported protocol must match
+        const u = new URL(storageUri);
+        if (u.protocol.replace(":", "") !== "supabase-storage") {
+          throw new Error("Invalid Supabase storage URI protocol");
+        }
+        // Extract key without bucket prefix if present
+        let key = `${u.host}${u.pathname}`.replace(/^\//, "");
+        if (!key) {
+          throw new Error("Invalid Supabase storage URI: missing key");
+        }
+        if (key.startsWith(`${config.bucketName}/`)) {
+          key = key.substring(`${config.bucketName}/`.length);
+        }
+        const { data, error } = await bucket.createSignedUrl(key, 3600);
+        if (error) {
+          throw new Error(`Failed to generate download URL: ${error.message}`);
+        }
+        if (!data?.signedUrl) {
+          throw new Error("Failed to generate download URL");
+        }
+        return { fileUrl: data.signedUrl };
       },
     };
   };

@@ -31,6 +31,7 @@ export const firebaseStorage =
     const getStorageKey = createStorageKeyBuilder(config.basePath);
     return {
       name: "firebaseStorage",
+      supportedProtocol: "gs",
       async deleteBundle(bundleId) {
         const key = getStorageKey(bundleId, "bundle.zip");
         try {
@@ -72,6 +73,26 @@ export const firebaseStorage =
           }
           throw error;
         }
+      },
+      async getDownloadUrl(storageUri: string) {
+        // Simple validation: supported protocol must match
+        const u = new URL(storageUri);
+        if (u.protocol.replace(":", "") !== "gs") {
+          throw new Error("Invalid Firebase storage URI protocol");
+        }
+        const key = u.pathname.slice(1);
+        if (!key) {
+          throw new Error("Invalid Firebase storage URI: missing key");
+        }
+        const file = bucket.file(key);
+        const [signedUrl] = await file.getSignedUrl({
+          action: "read",
+          expires: Date.now() + 60 * 60 * 1000,
+        });
+        if (!signedUrl) {
+          throw new Error("Failed to generate download URL");
+        }
+        return { fileUrl: signedUrl };
       },
     };
   };
