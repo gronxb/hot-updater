@@ -87,26 +87,16 @@ class TarBrotliUnzipService: UnzipService {
         let bufferSize = 64 * 1024 // 64KB buffer for streaming
 
         var decompressedData = Data()
-        var index = 0
         let count = data.count
 
-        // Create decompression stream
-        // Allocate temporary pointers to satisfy the struct initializer on older iOS SDKs
-        let tempPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
-        defer { tempPtr.deallocate() }
+        // Create decompression stream with proper initialization
+        var stream = compression_stream()
+        let status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
 
-        var stream = compression_stream(
-            dst_ptr: tempPtr,
-            dst_size: 0,
-            src_ptr: tempPtr,
-            src_size: 0,
-            state: nil
-        )
-        let initStatus = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
-        guard initStatus == COMPRESSION_STATUS_OK else {
+        guard status == COMPRESSION_STATUS_OK else {
             throw NSError(
                 domain: "TarBrotliUnzipService",
-                code: 6,
+                code: 5,
                 userInfo: [NSLocalizedDescriptionKey: "Failed to initialize brotli decompression stream"]
             )
         }
@@ -129,14 +119,14 @@ class TarBrotliUnzipService: UnzipService {
             stream.src_ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
             stream.src_size = count
 
-            var status: compression_status
+            var processStatus: compression_status
             repeat {
                 stream.dst_ptr = outputBuffer
                 stream.dst_size = bufferSize
 
-                status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE))
+                processStatus = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE))
 
-                switch status {
+                switch processStatus {
                 case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:
                     let outputSize = bufferSize - stream.dst_size
                     decompressedData.append(outputBuffer, count: outputSize)
@@ -147,14 +137,14 @@ class TarBrotliUnzipService: UnzipService {
                 default:
                     break
                 }
-            } while status == COMPRESSION_STATUS_OK
+            } while processStatus == COMPRESSION_STATUS_OK
         }
 
         // Check if decompression was successful
         if decompressedData.isEmpty && !data.isEmpty {
             throw NSError(
                 domain: "TarBrotliUnzipService",
-                code: 5,
+                code: 6,
                 userInfo: [NSLocalizedDescriptionKey: "Brotli decompression produced no output"]
             )
         }
