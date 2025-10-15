@@ -2,8 +2,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { initializeDatabase, closeDatabase } from "./db";
-import routes from "./routes";
+import { closeDatabase, initializeDatabase } from "./db.js";
+import routes from "./routes.js";
 
 const app = new Hono();
 
@@ -29,7 +29,7 @@ const port = Number(process.env.PORT) || 3000;
 try {
   await initializeDatabase();
 
-  const server = serve(
+  await serve(
     {
       fetch: app.fetch,
       port,
@@ -60,4 +60,3 @@ try {
   console.error("Failed to start server:", error);
   process.exit(1);
 }
-

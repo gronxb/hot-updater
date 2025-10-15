@@ -10,8 +10,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Initialize PGlite with file-based storage for persistence
-const dbPath = path.join(process.cwd(), "data");
+// Use TEST_DB_PATH for testing, otherwise use default "data" directory
+const dbPath = process.env.TEST_DB_PATH || path.join(process.cwd(), "data");
 const db = new PGlite(dbPath);
+
+// Wait for PGlite to be ready
+await db.waitReady;
 
 // Initialize Kysely with PGlite dialect
 const kysely = new Kysely({ dialect: new PGliteDialect(db) });
@@ -24,6 +28,23 @@ const adapterConfig = {
 
 // Create HotUpdaterDB client
 const client = HotUpdaterDB.client(kyselyAdapter(adapterConfig));
+
+// Mock storage plugin for "storage://" protocol (used in tests)
+const mockStoragePlugin = {
+  name: "mockStorage",
+  supportedProtocol: "storage",
+  async getDownloadUrl(storageUri: string) {
+    return {
+      fileUrl: storageUri.replace("storage://", "https://mock-storage.com/"),
+    };
+  },
+  async uploadBundle() {
+    throw new Error("uploadBundle not implemented in mock");
+  },
+  async deleteBundle() {
+    throw new Error("deleteBundle not implemented in mock");
+  },
+};
 
 // Storage plugin configuration (example with S3)
 // In production, use environment variables for credentials
@@ -41,19 +62,24 @@ const storagePlugin = s3Storage(
 
 // Create Hot Updater API
 export const api = hotUpdater(client, {
-  storagePlugins: [storagePlugin],
+  storagePlugins: [mockStoragePlugin, storagePlugin],
 });
 
 // Initialize database schema
 export async function initializeDatabase() {
   console.log("Initializing database schema...");
-  const migrator = client.createMigrator();
-  const result = await migrator.migrateToLatest({
-    mode: "from-schema",
-    updateSettings: true,
-  });
-  await result.execute();
-  console.log("Database schema initialized successfully");
+  try {
+    const migrator = client.createMigrator();
+    const result = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await result.execute();
+    console.log("Database schema initialized successfully");
+  } catch (error) {
+    console.error("Database initialization error:", error);
+    throw error;
+  }
 }
 
 // Cleanup function for graceful shutdown

@@ -13,6 +13,7 @@ import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
+import { createHandler, type HandlerOptions } from "../handler";
 import { v1 } from "../schema/v1";
 import type { PaginationInfo } from "../types";
 
@@ -26,7 +27,10 @@ export type HotUpdaterAPI = ReturnType<typeof hotUpdater>;
 
 export function hotUpdater(
   client: InferFumaDB<typeof HotUpdaterDB>,
-  options?: { storagePlugins?: StoragePlugin[] },
+  options?: {
+    storagePlugins?: StoragePlugin[];
+    handlerOptions?: HandlerOptions;
+  },
 ) {
   const storagePlugins = options?.storagePlugins ?? [];
 
@@ -43,7 +47,8 @@ export function hotUpdater(
     if (!fileUrl) throw new Error("Storage plugin returned empty fileUrl");
     return fileUrl;
   };
-  return {
+
+  const api = {
     async getBundleById(id: string): Promise<Bundle | null> {
       const version = await client.version();
       const orm = client.orm(version);
@@ -428,5 +433,10 @@ export function hotUpdater(
       const orm = client.orm(version);
       await orm.deleteMany("bundles", { where: (b) => b("id", "=", bundleId) });
     },
+  };
+
+  return {
+    ...api,
+    handler: createHandler(api, options?.handlerOptions),
   };
 }
