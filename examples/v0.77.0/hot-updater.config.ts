@@ -21,14 +21,15 @@ export default defineConfig({
       release: {
         scheme: "HotUpdaterExample",
         configuration: "Release",
-        archive: false,
-        installPods: true,
+        installPods: false,
         exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
       },
-      // debug: {
-      //   scheme: "Debug",
-      //   exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
-      // },
+      debug: {
+        scheme: "HotUpdaterExample",
+        configuration: "Debug",
+        installPods: false,
+        exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
+      },
     },
   },
   build: bare({ enableHermes: true }),

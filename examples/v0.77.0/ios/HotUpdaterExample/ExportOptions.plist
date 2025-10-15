@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>development</string>
+    <string>app-store-connect</string>
     <key>teamID</key>
     <string>7U49RNK4H7</string>
     <key>signingStyle</key>
@@ -18,7 +18,5 @@
     <string>&lt;none&gt;</string>
     <key>destination</key>
     <string>export</string>
-    <key>provisioningProfiles</key>
-    <dict/>
 </dict>
 </plist>
