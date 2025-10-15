@@ -89,12 +89,9 @@ class TarBrotliUnzipService: UnzipService {
         var decompressedData = Data()
         let count = data.count
 
-        // Create compression stream using unsafeBitCast from zeroed memory
-        var stream: compression_stream = withUnsafePointer(to: UInt(0)) { ptr in
-            return ptr.withMemoryRebound(to: compression_stream.self, capacity: 1) { streamPtr in
-                return streamPtr.pointee
-            }
-        }
+        // Create compression stream with zeroed memory
+        var stream = compression_stream()
+        memset(&stream, 0, MemoryLayout<compression_stream>.size)
 
         let status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
 
