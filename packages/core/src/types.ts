@@ -93,13 +93,6 @@ export interface Bundle {
    */
   fingerprintHash: string | null;
   /**
-   * The compression strategy used for the bundle.
-   * This indicates how the bundle is compressed and helps the native layer determine how to decompress it.
-   *
-   * @default "zip"
-   */
-  compressionStrategy: CompressionStrategy;
-  /**
    * The metadata of the bundle.
    */
   metadata?: BundleMetadata;

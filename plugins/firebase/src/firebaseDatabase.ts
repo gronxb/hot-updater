@@ -21,9 +21,6 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   storageUri: firestoreData.storage_uri,
   fingerprintHash: firestoreData.fingerprint_hash,
   metadata: firestoreData?.metadata ?? {},
-  compressionStrategy:
-    (firestoreData.compression_strategy as "zip" | "tarBrotli" | "tarGzip") ??
-    "zip",
 });
 
 export const firebaseDatabase = (

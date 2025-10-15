@@ -17,7 +17,6 @@ const DEFAULT_BUNDLES: Bundle[] = [
       "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
     fingerprintHash: null,
     metadata: {},
-    compressionStrategy: "zip" as const,
   },
   {
     id: "0194ed78-d791-753c-ba37-abb7259edcc8",
@@ -33,7 +32,6 @@ const DEFAULT_BUNDLES: Bundle[] = [
       "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
     fingerprintHash: null,
     metadata: {},
-    compressionStrategy: "zip" as const,
   },
 ];
 
@@ -82,7 +80,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     const bundle2 = {
@@ -98,7 +95,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     const bundle3 = {
@@ -114,7 +110,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     await plugin.appendBundle(bundle1);
@@ -155,7 +150,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     const bundle2 = {
@@ -171,7 +165,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     const bundle3 = {
@@ -187,7 +180,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     await plugin.appendBundle(bundle1);
@@ -486,7 +478,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/new-bundle",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     // Add bundle
@@ -524,7 +515,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     const bundle2 = {
@@ -540,7 +530,6 @@ describe("mockDatabase", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
-      compressionStrategy: "zip" as const,
     };
 
     // Add first bundle, commit it, then delete it, then add second bundle

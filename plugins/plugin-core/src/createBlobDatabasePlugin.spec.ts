@@ -14,7 +14,6 @@ const DEFAULT_BUNDLE: Omit<
   storageUri:
     "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
   fingerprintHash: null,
-  compressionStrategy: "zip",
 };
 
 const createBundleJson = (
@@ -43,7 +42,6 @@ const bundlesData = [
     targetAppVersion: "1.1.1",
     storageUri: "gs://test-bucket/test-key",
     fingerprintHash: null,
-    compressionStrategy: "zip",
   },
   {
     id: "bundleY",
@@ -57,7 +55,6 @@ const bundlesData = [
     targetAppVersion: "1.1.1",
     storageUri: "gs://test-bucket/test-key",
     fingerprintHash: null,
-    compressionStrategy: "zip",
   },
   {
     id: "bundleZ",
@@ -71,7 +68,6 @@ const bundlesData = [
     targetAppVersion: "1.1.1",
     storageUri: "gs://test-bucket/test-key",
     fingerprintHash: null,
-    compressionStrategy: "zip",
   },
 ] as const;
 

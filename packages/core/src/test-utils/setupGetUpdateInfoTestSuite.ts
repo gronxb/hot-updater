@@ -10,7 +10,6 @@ const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   channel: "production",
   storageUri: "storage://my-app/bundle.zip",
   fingerprintHash: null,
-  compressionStrategy: "zip",
 } as const;
 
 const DEFAULT_BUNDLE_FINGERPRINT_STRATEGY = {
@@ -21,7 +20,6 @@ const DEFAULT_BUNDLE_FINGERPRINT_STRATEGY = {
   channel: "production",
   storageUri: "storage://my-app/bundle.zip",
   targetAppVersion: null,
-  compressionStrategy: "zip",
 } as const;
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
