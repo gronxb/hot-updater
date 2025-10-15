@@ -73,7 +73,8 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
     metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
-    compressionStrategy: (row.compression_strategy as "zip" | "tarBrotli" | "tarGzip") ?? "zip",
+    compressionStrategy:
+      (row.compression_strategy as "zip" | "tarBrotli" | "tarGzip") ?? "zip",
   };
 }
 

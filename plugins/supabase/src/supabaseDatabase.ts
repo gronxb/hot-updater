@@ -47,7 +47,9 @@ export const supabaseDatabase = (
           fingerprintHash: data.fingerprint_hash,
           storageUri: data.storage_uri,
           metadata: data.metadata ?? {},
-          compressionStrategy: (data.compression_strategy as "zip" | "tarBrotli" | "tarGzip") ?? "zip",
+          compressionStrategy:
+            (data.compression_strategy as "zip" | "tarBrotli" | "tarGzip") ??
+            "zip",
         } as Bundle;
       },
 
@@ -104,7 +106,11 @@ export const supabaseDatabase = (
               fingerprintHash: bundle.fingerprint_hash,
               storageUri: bundle.storage_uri,
               metadata: bundle.metadata ?? {},
-              compressionStrategy: (bundle.compression_strategy as "zip" | "tarBrotli" | "tarGzip") ?? "zip",
+              compressionStrategy:
+                (bundle.compression_strategy as
+                  | "zip"
+                  | "tarBrotli"
+                  | "tarGzip") ?? "zip",
             }))
           : [];
 

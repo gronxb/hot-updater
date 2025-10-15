@@ -1,8 +1,4 @@
-import type {
-  Bundle,
-  CompressionStrategy,
-  Platform,
-} from "@hot-updater/core";
+import type { Bundle, Platform } from "@hot-updater/core";
 
 export type {
   Bundle,
