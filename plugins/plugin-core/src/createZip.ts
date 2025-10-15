@@ -1,6 +1,12 @@
 import fs from "fs/promises";
 import JSZip from "jszip";
 import path from "path";
+import type { CompressionStrategy } from "./types";
+import {
+  createTarBrotli,
+  createTarGzip,
+  getCompressionMetadata,
+} from "./compression";
 
 export const createZipTargetFiles = async ({
   outfile,
@@ -114,4 +120,49 @@ export const createZip = async ({
 
   await fs.writeFile(outfile, content);
   return outfile;
+};
+
+/**
+ * Create a compressed bundle using the specified compression strategy
+ */
+export const createCompressedBundle = async ({
+  outfile,
+  targetFiles,
+  compressionStrategy = "zip",
+}: {
+  targetFiles: { path: string; name: string }[];
+  outfile: string;
+  compressionStrategy?: CompressionStrategy;
+}): Promise<{
+  filePath: string;
+  metadata: {
+    contentEncoding: string;
+    contentType: string;
+  };
+}> => {
+  const metadata = getCompressionMetadata(compressionStrategy);
+  const finalOutfile = outfile.replace(
+    /\.(zip|tar\.br|tar\.gz)$/,
+    metadata.fileExtension,
+  );
+
+  switch (compressionStrategy) {
+    case "zip":
+      await createZipTargetFiles({ outfile: finalOutfile, targetFiles });
+      break;
+    case "tarBrotli":
+      await createTarBrotli({ outfile: finalOutfile, targetFiles });
+      break;
+    case "tarGzip":
+      await createTarGzip({ outfile: finalOutfile, targetFiles });
+      break;
+  }
+
+  return {
+    filePath: finalOutfile,
+    metadata: {
+      contentEncoding: metadata.contentEncoding,
+      contentType: metadata.contentType,
+    },
+  };
 };

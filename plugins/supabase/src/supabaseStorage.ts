@@ -49,9 +49,11 @@ export const supabaseStorage =
         };
       },
 
-      async uploadBundle(bundleId, bundlePath) {
+      async uploadBundle(bundleId, bundlePath, metadata) {
         const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
+        const ContentType =
+          metadata?.contentType ?? mime.getType(bundlePath) ?? void 0;
+        const contentEncoding = metadata?.contentEncoding;
 
         const filename = path.basename(bundlePath);
 
@@ -59,6 +61,9 @@ export const supabaseStorage =
 
         const upload = await bucket.upload(Key, Body, {
           contentType: ContentType,
+          ...(contentEncoding && contentEncoding !== "identity"
+            ? { contentEncoding: contentEncoding }
+            : {}),
         });
         if (upload.error) {
           throw upload.error;

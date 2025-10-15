@@ -119,10 +119,16 @@ export interface NativeBuildArgs {
   };
 }
 
+export type CompressionStrategy = "zip" | "tarBrotli" | "tarGzip";
+
 export interface StoragePlugin {
   uploadBundle: (
     bundleId: string,
     bundlePath: string,
+    metadata?: {
+      contentEncoding?: string;
+      contentType?: string;
+    },
   ) => Promise<{
     storageUri: string;
   }>;
@@ -156,6 +162,16 @@ export type ConfigInput = {
    * @default "appVersion"
    */
   updateStrategy: "fingerprint" | "appVersion";
+  /**
+   * The compression strategy used for bundle deployment.
+   *
+   * - `zip`: Standard ZIP compression (default, backward compatible)
+   * - `tarBrotli`: TAR archive with Brotli compression (better compression ratio)
+   * - `tarGzip`: TAR archive with Gzip compression (good compression, widely supported)
+   *
+   * @default "zip"
+   */
+  compressionStrategy?: CompressionStrategy;
   /**
    * The fingerprint configuration.
    */

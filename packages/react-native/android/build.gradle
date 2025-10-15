@@ -130,6 +130,8 @@ dependencies {
   implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.1"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+  // Apache Commons Compress for tar/gzip/brotli support
+  implementation "org.apache.commons:commons-compress:1.26.0"
 }
 
 if (isNewArchitectureEnabled()) {

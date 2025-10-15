@@ -52,8 +52,10 @@ export const r2Storage =
           throw new Error("Can not delete bundle");
         }
       },
-      async uploadBundle(bundleId, bundlePath) {
-        const contentType = mime.getType(bundlePath) ?? void 0;
+      async uploadBundle(bundleId, bundlePath, metadata) {
+        const contentType =
+          metadata?.contentType ?? mime.getType(bundlePath) ?? void 0;
+        const contentEncoding = metadata?.contentEncoding;
 
         const filename = path.basename(bundlePath);
 
@@ -67,6 +69,9 @@ export const r2Storage =
             "--file",
             bundlePath,
             ...(contentType ? ["--content-type", contentType] : []),
+            ...(contentEncoding && contentEncoding !== "identity"
+              ? ["--content-encoding", contentEncoding]
+              : []),
             "--remote",
           );
           if (exitCode !== 0 && stderr) {

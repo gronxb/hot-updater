@@ -64,9 +64,11 @@ export const s3Storage =
 
         throw new Error("Bundle Not Found");
       },
-      async uploadBundle(bundleId, bundlePath) {
+      async uploadBundle(bundleId, bundlePath, metadata) {
         const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
+        const ContentType =
+          metadata?.contentType ?? mime.getType(bundlePath) ?? void 0;
+        const ContentEncoding = metadata?.contentEncoding;
 
         const filename = path.basename(bundlePath);
 
@@ -75,6 +77,7 @@ export const s3Storage =
           client,
           params: {
             ContentType,
+            ContentEncoding,
             Bucket: bucketName,
             Key,
             Body,

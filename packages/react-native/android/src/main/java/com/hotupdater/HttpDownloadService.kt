@@ -13,6 +13,7 @@ import java.net.URL
 sealed class DownloadResult {
     data class Success(
         val file: File,
+        val contentEncoding: String? = null,
     ) : DownloadResult()
 
     data class Error(
@@ -64,6 +65,9 @@ class HttpDownloadService : DownloadService {
                     return@withContext DownloadResult.Error(Exception("Invalid content length: $totalSize"))
                 }
 
+                // Get Content-Encoding header to determine compression format
+                val contentEncoding = conn.getHeaderField("Content-Encoding")
+
                 // Make sure parent directories exist
                 destination.parentFile?.mkdirs()
 
@@ -87,7 +91,7 @@ class HttpDownloadService : DownloadService {
                         progressCallback.invoke(1.0)
                     }
                 }
-                DownloadResult.Success(destination)
+                DownloadResult.Success(destination, contentEncoding)
             } catch (e: Exception) {
                 Log.d("DownloadService", "Failed to download data from URL: $fileUrl, Error: ${e.message}")
                 DownloadResult.Error(e)

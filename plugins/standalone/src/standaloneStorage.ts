@@ -85,10 +85,13 @@ export const standaloneStorage =
           storageUri: result.storageUri,
         };
       },
-      async uploadBundle(bundleId: string, bundlePath: string) {
+      async uploadBundle(bundleId: string, bundlePath: string, metadata) {
         const fileContent = await fs.readFile(bundlePath);
         const contentType =
-          mime.getType(bundlePath) ?? "application/octet-stream";
+          metadata?.contentType ??
+          mime.getType(bundlePath) ??
+          "application/octet-stream";
+        const contentEncoding = metadata?.contentEncoding;
         const filename = path.basename(bundlePath);
 
         const { path: routePath, headers: routeHeaders } = routes.uploadBundle(
@@ -103,6 +106,9 @@ export const standaloneStorage =
           filename,
         );
         formData.append("bundleId", bundleId);
+        if (contentEncoding && contentEncoding !== "identity") {
+          formData.append("contentEncoding", contentEncoding);
+        }
 
         const response = await fetch(`${config.baseUrl}${routePath}`, {
           method: "POST",

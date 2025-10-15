@@ -5,7 +5,7 @@ export const mockStorage =
   (_: BasePluginArgs): StoragePlugin => {
     return {
       name: "mock",
-      uploadBundle: (bundleId: string) =>
+      uploadBundle: (bundleId: string, _bundlePath: string, _metadata?) =>
         Promise.resolve({
           storageUri: `storage://my-app/${bundleId}/bundle.zip`,
         }),

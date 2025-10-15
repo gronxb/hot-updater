@@ -55,7 +55,7 @@ interface BundleStorageService {
 class BundleFileStorageService(
     private val fileSystem: FileSystemService,
     private val downloadService: DownloadService,
-    private val unzipService: UnzipService,
+    private val decompressionService: DecompressionService,
     private val preferences: PreferencesService,
 ) : BundleStorageService {
     override fun setBundleURL(localPath: String?): Boolean {
@@ -158,10 +158,15 @@ class BundleFileStorageService(
                     }
                     tmpDir.mkdirs()
 
-                    // 2) Unzip into tmpDir
-                    Log.d("BundleStorage", "Unzipping $tempZipFile → $tmpDir")
-                    if (!unzipService.extractZipFile(tempZipFile.absolutePath, tmpDir.absolutePath)) {
-                        Log.d("BundleStorage", "Failed to extract zip into tmpDir.")
+                    // 2) Extract archive into tmpDir using appropriate decompression based on Content-Encoding
+                    val contentEncoding = downloadResult.contentEncoding
+                    Log.d("BundleStorage", "Extracting $tempZipFile → $tmpDir (encoding: $contentEncoding)")
+                    if (!decompressionService.extractArchive(
+                            tempZipFile.absolutePath,
+                            tmpDir.absolutePath,
+                            contentEncoding
+                        )) {
+                        Log.d("BundleStorage", "Failed to extract archive into tmpDir.")
                         tempDir.deleteRecursively()
                         tmpDir.deleteRecursively()
                         return@withContext false

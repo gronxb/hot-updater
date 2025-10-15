@@ -45,11 +45,14 @@ export const firebaseStorage =
         }
       },
 
-      async uploadBundle(bundleId, bundlePath) {
+      async uploadBundle(bundleId, bundlePath, metadata) {
         try {
           const fileContent = await fs.readFile(bundlePath);
           const contentType =
-            mime.getType(bundlePath) ?? "application/octet-stream";
+            metadata?.contentType ??
+            mime.getType(bundlePath) ??
+            "application/octet-stream";
+          const contentEncoding = metadata?.contentEncoding;
           const filename = path.basename(bundlePath);
           const key = getStorageKey(bundleId, filename);
 
@@ -57,6 +60,9 @@ export const firebaseStorage =
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
+              ...(contentEncoding && contentEncoding !== "identity"
+                ? { contentEncoding: contentEncoding }
+                : {}),
             },
           });
 

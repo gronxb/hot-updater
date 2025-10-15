@@ -1,7 +1,8 @@
 import * as p from "@clack/prompts";
 import {
-  createZipTargetFiles,
+  createCompressedBundle,
   getCwd,
+  getCompressionMetadata,
   loadConfig,
   type Platform,
 } from "@hot-updater/plugin-core";
@@ -186,7 +187,10 @@ export const deploy = async (options: DeployOptions) => {
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const bundlePath = path.join(normalizeOutputPath, "bundle", "bundle.zip");
+  const compressionStrategy = config.compressionStrategy ?? "zip";
+  const compressionMetadata = getCompressionMetadata(compressionStrategy);
+  const bundleFilename = `bundle${compressionMetadata.fileExtension}`;
+  const bundlePath = path.join(normalizeOutputPath, "bundle", bundleFilename);
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -240,13 +244,16 @@ export const deploy = async (options: DeployOptions) => {
               )
               .map((file) => path.join(buildPath, file)),
           );
-          await createZipTargetFiles({
-            outfile: bundlePath,
-            targetFiles: targetFiles,
-          });
+
+          const { filePath: compressedBundlePath } =
+            await createCompressedBundle({
+              outfile: bundlePath,
+              targetFiles: targetFiles,
+              compressionStrategy,
+            });
 
           bundleId = taskRef.buildResult.bundleId;
-          fileHash = await getFileHashFromFile(bundlePath);
+          fileHash = await getFileHashFromFile(compressedBundlePath);
 
           p.log.success(
             `Bundle stored at ${picocolors.blueBright(path.relative(cwd, bundlePath))}`,
@@ -273,6 +280,10 @@ export const deploy = async (options: DeployOptions) => {
             const { storageUri } = await storagePlugin.uploadBundle(
               bundleId,
               bundlePath,
+              {
+                contentEncoding: compressionMetadata.contentEncoding,
+                contentType: compressionMetadata.contentType,
+              },
             );
             taskRef.storageUri = storageUri;
           } catch (e) {
