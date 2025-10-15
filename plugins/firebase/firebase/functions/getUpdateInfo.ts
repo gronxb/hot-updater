@@ -31,6 +31,7 @@ const convertToBundle = (data: any): Bundle => ({
   gitCommitHash: data.git_commit_hash,
   fingerprintHash: data.fingerprint_hash,
   storageUri: data.storage_uri,
+  compressionStrategy: (data.compression_strategy as "zip" | "tarBrotli" | "tarGzip") ?? "zip",
 });
 
 const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({

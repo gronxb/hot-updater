@@ -26,6 +26,7 @@ const DEFAULT_BUNDLE: Omit<
   shouldForceUpdate: false,
   storageUri: "s3://test-bucket/test-key",
   fingerprintHash: null,
+  compressionStrategy: "zip" as const,
 };
 
 const createBundleJson = (
@@ -640,6 +641,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle2 = {
@@ -654,6 +656,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle3 = {
@@ -668,6 +671,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "1.5.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     await plugin.appendBundle(bundle1);
@@ -707,6 +711,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle2 = {
@@ -721,6 +726,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle3 = {
@@ -735,6 +741,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "1.5.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     await plugin.appendBundle(bundle1);

@@ -170,6 +170,7 @@ export const postgres = (
                   channel: bundle.channel,
                   storage_uri: bundle.storageUri,
                   fingerprint_hash: bundle.fingerprintHash,
+                  compression_strategy: bundle.compressionStrategy,
                 })
                 .onConflict((oc) =>
                   oc.column("id").doUpdateSet({
@@ -183,6 +184,7 @@ export const postgres = (
                     channel: bundle.channel,
                     storage_uri: bundle.storageUri,
                     fingerprint_hash: bundle.fingerprintHash,
+                    compression_strategy: bundle.compressionStrategy,
                   }),
                 )
                 .execute();

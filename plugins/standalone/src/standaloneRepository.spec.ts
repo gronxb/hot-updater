@@ -22,6 +22,7 @@ const DEFAULT_BUNDLE = {
   platform: "ios",
   gitCommitHash: null,
   message: null,
+  compressionStrategy: "zip",
 } as const;
 
 const testBundles: Bundle[] = [
@@ -49,6 +50,7 @@ const TEST_BUNDLE_1 = {
   targetAppVersion: "2.0.0",
   storageUri: "gs://test-bucket/test-key",
   fingerprintHash: null,
+  compressionStrategy: "zip",
 } as const;
 
 const TEST_BUNDLE_2 = {
@@ -63,6 +65,7 @@ const TEST_BUNDLE_2 = {
   targetAppVersion: "1.0.0",
   storageUri: "gs://test-bucket/test-key",
   fingerprintHash: null,
+  compressionStrategy: "zip",
 } as const;
 
 const TEST_BUNDLE_3 = {
@@ -77,6 +80,7 @@ const TEST_BUNDLE_3 = {
   targetAppVersion: "1.5.0",
   storageUri: "gs://test-bucket/test-key",
   fingerprintHash: null,
+  compressionStrategy: "zip",
 } as const;
 
 const server = setupServer();

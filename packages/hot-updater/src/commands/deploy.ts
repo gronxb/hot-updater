@@ -315,6 +315,7 @@ export const deploy = async (options: DeployOptions) => {
                     }
                   : {}),
               },
+              compressionStrategy: "zip" as const,
             });
             await databasePlugin.commitBundle();
           } catch (e) {

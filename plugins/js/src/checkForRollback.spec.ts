@@ -13,6 +13,7 @@ const DEFAULT_BUNDLE_FINGERPRINT_STRATEGY = {
   storageUri:
     "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
   fingerprintHash: null,
+  compressionStrategy: "zip",
 } as const;
 
 describe("checkForRollback", () => {

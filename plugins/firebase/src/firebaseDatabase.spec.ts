@@ -40,6 +40,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
     await plugin.appendBundle(snakeBundle);
     await plugin.commitBundle();
@@ -58,6 +59,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
+      compressionStrategy: "zip",
     });
   });
 
@@ -74,6 +76,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle2 = {
@@ -88,6 +91,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle3 = {
@@ -102,6 +106,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.5.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     await plugin.appendBundle(bundle1);
@@ -132,6 +137,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
     const bundle2 = {
       id: "bundle2",
@@ -145,6 +151,7 @@ describe("firebaseDatabase plugin", () => {
       shouldForceUpdate: false,
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
     await plugin.appendBundle(bundle1);
     await plugin.appendBundle(bundle2);
@@ -167,6 +174,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
 
     await plugin.commitBundle();
@@ -196,6 +204,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.x",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
 
     await plugin.commitBundle();
@@ -233,6 +242,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
     const bundleB = {
       id: "bundleB",
@@ -246,6 +256,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
     const bundleC = {
       id: "bundleC",
@@ -259,6 +270,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     await plugin.appendBundle(bundleA);
@@ -285,6 +297,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle2 = {
@@ -299,6 +312,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle3 = {
@@ -313,6 +327,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.5.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     await plugin.appendBundle(bundle1);
@@ -352,6 +367,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle2 = {
@@ -366,6 +382,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     const bundle3 = {
@@ -380,6 +397,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.5.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
 
     await plugin.appendBundle(bundle1);
@@ -432,6 +450,7 @@ describe("firebaseDatabase plugin", () => {
         targetAppVersion: "1.1.1",
         storageUri: "gs://test-bucket/test-key",
         fingerprintHash: null,
+        compressionStrategy: "zip",
       },
       {
         id: "bundleY",
@@ -445,6 +464,7 @@ describe("firebaseDatabase plugin", () => {
         targetAppVersion: "1.1.1",
         storageUri: "gs://test-bucket/test-key",
         fingerprintHash: null,
+        compressionStrategy: "zip",
       },
       {
         id: "bundleZ",
@@ -458,6 +478,7 @@ describe("firebaseDatabase plugin", () => {
         targetAppVersion: "1.1.1",
         storageUri: "gs://test-bucket/test-key",
         fingerprintHash: null,
+        compressionStrategy: "zip",
       },
     ] as const;
 
@@ -494,6 +515,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: null,
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -516,6 +538,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     } as const;
     await plugin.appendBundle(bundleDirect);
     await plugin.commitBundle();
@@ -544,6 +567,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "4.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -571,6 +595,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "5.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.appendBundle({
       id: "bundleTV3",
@@ -584,6 +609,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "5.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -606,6 +632,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "5.1.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -635,6 +662,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "5.2.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -671,6 +699,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "2.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
     const tvDoc = await firestore
@@ -692,6 +721,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "2.0.1",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -716,6 +746,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -737,6 +768,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
+      compressionStrategy: "zip",
     });
     await plugin.commitBundle();
 
@@ -763,6 +795,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
+      compressionStrategy: "zip" as const,
     },
     {
       id: "bundleY",
@@ -777,6 +810,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
+      compressionStrategy: "zip" as const,
     },
     {
       id: "bundleZ",
@@ -791,6 +825,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
+      compressionStrategy: "zip" as const,
     },
   ];
   it("should delete a single bundle successfully", async () => {
