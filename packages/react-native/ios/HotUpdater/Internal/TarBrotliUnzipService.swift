@@ -90,11 +90,11 @@ class TarBrotliUnzipService: UnzipService {
         let count = data.count
 
         // Create and zero-initialize compression stream
-        // We need to use unsafeBitCast to create temporary pointer values for initialization
+        // Use bitPattern initializer to create null pointers for initialization
         var stream = compression_stream(
-            dst_ptr: unsafeBitCast(0, to: UnsafeMutablePointer<UInt8>.self),
+            dst_ptr: UnsafeMutablePointer<UInt8>(bitPattern: 0)!,
             dst_size: 0,
-            src_ptr: unsafeBitCast(0, to: UnsafePointer<UInt8>.self),
+            src_ptr: UnsafePointer<UInt8>(bitPattern: 0)!,
             src_size: 0,
             state: nil
         )
@@ -133,7 +133,7 @@ class TarBrotliUnzipService: UnzipService {
                 stream.dst_ptr = outputBuffer
                 stream.dst_size = bufferSize
 
-                processStatus = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE))
+                processStatus = compression_stream_process(&stream, COMPRESSION_STREAM_FINALIZE.rawValue)
 
                 switch processStatus {
                 case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:
