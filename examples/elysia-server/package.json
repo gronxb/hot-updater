@@ -1,0 +1,29 @@
+{
+  "name": "elysia-server",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@elysiajs/node": "^1.0.3",
+    "elysia": "^1.2.17",
+    "fumadb": "^0.1.1",
+    "kysely": "^0.28.5",
+    "kysely-pglite-dialect": "^1.2.0",
+    "memoirist": "^0.4.0",
+    "@sinclair/typebox": "^0.34.15"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "execa": "^9.5.2",
+    "tsx": "^4.7.1",
+    "typescript": "^5.8.3"
+  }
+}

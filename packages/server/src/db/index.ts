@@ -13,7 +13,7 @@ import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
-import { createHandler, type HandlerOptions } from "../handler";
+import { createHandler, type HandlerOptions, type HandlerAPI } from "../handler";
 import { v1 } from "../schema/v1";
 import type { PaginationInfo } from "../types";
 
@@ -23,7 +23,24 @@ export const HotUpdaterDB = fumadb({
 });
 
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
-export type HotUpdaterAPI = ReturnType<typeof hotUpdater>;
+export interface DatabaseAPI {
+  getBundleById(id: string): Promise<Bundle | null>;
+  getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
+  getAppUpdateInfo(args: GetBundlesArgs): Promise<AppUpdateInfo | null>;
+  getChannels(): Promise<string[]>;
+  getBundles(options: {
+    where?: { channel?: string; platform?: string };
+    limit: number;
+    offset: number;
+  }): Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  insertBundle(bundle: Bundle): Promise<void>;
+  updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
+  deleteBundleById(bundleId: string): Promise<void>;
+}
+
+export type HotUpdaterAPI = DatabaseAPI & {
+  handler: (request: Request) => Promise<Response>;
+};
 
 export function hotUpdater(
   client: InferFumaDB<typeof HotUpdaterDB>,
@@ -31,20 +48,29 @@ export function hotUpdater(
     storagePlugins?: StoragePlugin[];
     handlerOptions?: HandlerOptions;
   },
-) {
+): HotUpdaterAPI {
   const storagePlugins = options?.storagePlugins ?? [];
 
   const resolveFileUrl = async (
     storageUri: string | null,
   ): Promise<string | null> => {
-    if (!storageUri) return null;
+    if (!storageUri) {
+      return null;
+    }
     const url = new URL(storageUri);
     const protocol = url.protocol.replace(":", "");
-    if (protocol === "http" || protocol === "https") return storageUri;
+    if (protocol === "http" || protocol === "https") {
+      return storageUri;
+    }
     const plugin = storagePlugins.find((p) => p.supportedProtocol === protocol);
-    if (!plugin) throw new Error(`No storage plugin for protocol: ${protocol}`);
+
+    if (!plugin) {
+      throw new Error(`No storage plugin for protocol: ${protocol}`);
+    }
     const { fileUrl } = await plugin.getDownloadUrl(storageUri);
-    if (!fileUrl) throw new Error("Storage plugin returned empty fileUrl");
+    if (!fileUrl) {
+      throw new Error("Storage plugin returned empty fileUrl");
+    }
     return fileUrl;
   };
 

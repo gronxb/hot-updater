@@ -1,4 +1,25 @@
-import type { HotUpdaterAPI } from "./db";
+import type {
+  AppUpdateInfo,
+  AppVersionGetBundlesArgs,
+  Bundle,
+  FingerprintGetBundlesArgs,
+} from "@hot-updater/core";
+import type { PaginationInfo } from "./types";
+
+// Narrow API surface needed by the handler to avoid circular types
+export interface HandlerAPI {
+  getAppUpdateInfo: (
+    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
+  ) => Promise<AppUpdateInfo | null>;
+  getBundles: (options: {
+    where?: { channel?: string; platform?: string };
+    limit: number;
+    offset: number;
+  }) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  insertBundle: (bundle: Bundle) => Promise<void>;
+  deleteBundleById: (bundleId: string) => Promise<void>;
+  getChannels: () => Promise<string[]>;
+}
 
 export interface HandlerOptions {
   /**
@@ -14,7 +35,7 @@ export interface HandlerOptions {
  * that supports Web Standard Request/Response (Hono, Elysia, etc.)
  */
 export function createHandler(
-  api: HotUpdaterAPI,
+  api: HandlerAPI,
   options: HandlerOptions = {},
 ): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
@@ -32,7 +53,9 @@ export function createHandler(
 
       // POST /api/update - Client checks for updates
       if (routePath === "/update" && method === "POST") {
-        const body = await request.json();
+        const body = (await request.json()) as
+          | AppVersionGetBundlesArgs
+          | FingerprintGetBundlesArgs;
         const updateInfo = await api.getAppUpdateInfo(body);
 
         if (!updateInfo) {
@@ -150,7 +173,7 @@ export function createHandler(
 
       // POST /api/bundles - Create new bundle
       if (routePath === "/bundles" && method === "POST") {
-        const bundle = await request.json();
+        const bundle = (await request.json()) as Bundle;
         await api.insertBundle(bundle);
 
         return new Response(JSON.stringify({ success: true, bundle }), {
