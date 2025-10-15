@@ -78,24 +78,48 @@ export function createGetUpdateInfo(
 }
 
 /**
+ * Kills any process using the specified port
+ */
+export async function killPort(port: number): Promise<void> {
+  try {
+    const { stdout } = await execa("lsof", ["-ti", `:${port}`], {
+      reject: false,
+    });
+
+    if (stdout.trim()) {
+      await execa("kill", ["-9", stdout.trim()]);
+      // Wait a bit for the port to be released
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  } catch {
+    // Ignore errors - port might not be in use
+  }
+}
+
+/**
  * Helper to wait for server to be ready
  */
 export async function waitForServer(
   url: string,
   maxAttempts = 30,
 ): Promise<void> {
+  let lastError: Error | null = null;
+
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const response = await fetch(url);
       if (response.ok) {
         return;
       }
-    } catch {
-      // Server not ready yet
+    } catch (e) {
+      lastError = e as Error;
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`Server did not start within ${maxAttempts * 200}ms`);
+
+  throw new Error(
+    `Server did not start within ${maxAttempts * 200}ms. Last error: ${lastError?.message || "Unknown"}`,
+  );
 }
 
 /**
