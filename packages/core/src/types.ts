@@ -106,6 +106,15 @@ export interface AppUpdateInfo extends UpdateInfo {
 
 export type UpdateStrategy = "fingerprint" | "appVersion";
 
+/**
+ * Compression strategy for bundle deployment.
+ *
+ * - "zip": Default ZIP compression (backward compatible)
+ * - "tarBrotli": TAR archive with Brotli compression (best compression ratio)
+ * - "tarGzip": TAR archive with Gzip compression (good compression, wide support)
+ */
+export type CompressStrategy = "zip" | "tarBrotli" | "tarGzip";
+
 export type FingerprintGetBundlesArgs = {
   _updateStrategy: "fingerprint";
   platform: Platform;
