@@ -1,9 +1,9 @@
+import { createWriteStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
-import { createWriteStream } from "fs";
-import { createGzip } from "zlib";
 import { pipeline } from "stream/promises";
 import tar from "tar-stream";
+import { createGzip } from "zlib";
 import type { CompressionOptions, CompressionService } from "./types";
 
 /**

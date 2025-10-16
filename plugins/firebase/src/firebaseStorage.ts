@@ -32,12 +32,18 @@ export const firebaseStorage =
     return {
       name: "firebaseStorage",
       async deleteBundle(bundleId) {
-        const key = getStorageKey(bundleId, "bundle.zip");
+        // Use bundleId as prefix to find all related files regardless of extension
+        const prefix = getStorageKey(bundleId, "");
         try {
-          const [files] = await bucket.getFiles({ prefix: key });
+          const [files] = await bucket.getFiles({ prefix });
+          if (files.length === 0) {
+            throw new Error("Bundle Not Found");
+          }
           await Promise.all(files.map((file) => file.delete()));
+          // Return the first deleted file's URI
+          const deletedKey = files[0]?.name || prefix;
           return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
+            storageUri: `gs://${config.storageBucket}/${deletedKey}`,
           };
         } catch (e) {
           console.error("Error listing or deleting files:", e);

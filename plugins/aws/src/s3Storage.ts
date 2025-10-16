@@ -34,8 +34,6 @@ export const s3Storage =
     return {
       name: "s3Storage",
       async deleteBundle(bundleId) {
-        const Key = getStorageKey(bundleId, "bundle.zip");
-
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
           Prefix: bundleId,
@@ -57,8 +55,10 @@ export const s3Storage =
 
           const deleteCommand = new DeleteObjectsCommand(deleteParams);
           await client.send(deleteCommand);
+          // Return the first deleted object's URI (typically the bundle file)
+          const deletedKey = listResponse.Contents[0]?.Key || bundleId;
           return {
-            storageUri: `s3://${bucketName}/${Key}`,
+            storageUri: `s3://${bucketName}/${deletedKey}`,
           };
         }
 
