@@ -1,8 +1,6 @@
 package com.hotupdater
 
 import android.content.Context
-import java.io.File
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -19,6 +17,8 @@ import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.io.File
+import kotlinx.coroutines.test.runTest
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
