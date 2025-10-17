@@ -28,7 +28,10 @@ let package = Package(
                 "Public/HotUpdater.h",
                 "Test"
             ],
-            sources: ["Internal", "Public"]
+            sources: ["Internal", "Public"],
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
         ),
         .testTarget(
             name: "HotUpdaterTest",
