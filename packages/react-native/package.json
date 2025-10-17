@@ -49,7 +49,9 @@
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "test:ios": "swift test --package-path ios/HotUpdater"
+    "test:ios": "swift test --package-path ios/HotUpdater",
+    "test:android": "cd android && ./gradlew test --warning-mode all && cd ..",
+    "test:native": "pnpm test:ios && pnpm test:android"
   },
   "keywords": [
     "react-native",

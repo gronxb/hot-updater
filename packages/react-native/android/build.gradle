@@ -8,7 +8,7 @@ buildscript {
   }
 
   dependencies {
-    classpath "com.android.tools.build:gradle:7.2.1"
+    classpath "com.android.tools.build:gradle:8.1.0"
     // noinspection DifferentKotlinGradleVersion
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
 
@@ -88,8 +88,12 @@ android {
   }
 
   compileOptions {
-    sourceCompatibility JavaVersion.VERSION_1_8
-    targetCompatibility JavaVersion.VERSION_1_8
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
   }
 
   sourceSets {
@@ -104,6 +108,16 @@ android {
           "generated/jni"
         ]
       }
+    }
+    test {
+      java.srcDirs = ["src/test/java"]
+    }
+  }
+
+  testOptions {
+    unitTests {
+      includeAndroidResources = true
+      returnDefaultValues = true
     }
   }
 }
@@ -130,6 +144,15 @@ dependencies {
   implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.1"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+
+  // Testing dependencies
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
+  testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3"
+  testImplementation "org.robolectric:robolectric:4.11.1"
+  testImplementation "androidx.test:core:1.5.0"
+  testImplementation "org.mockito:mockito-core:5.7.0"
+  testImplementation "org.mockito.kotlin:mockito-kotlin:5.1.0"
 }
 
 if (isNewArchitectureEnabled()) {

@@ -13,10 +13,9 @@ Pod::Spec.new do |s|
 
   s.platforms    = { :ios => min_ios_version_supported }
   s.source       = { :git => "https://github.com/gronxb/hot-updater.git", :tag => "#{s.version}" }
-  s.source_files  = "ios/**/*.{h,m,mm,swift}"
+  s.source_files  = "ios/HotUpdater/Internal/*.{h,m,mm,swift}", "ios/HotUpdater/Public/*.{h,m,mm}"
   s.public_header_files = "ios/HotUpdater/Public/*.h"
   s.private_header_files = "ios/HotUpdater/Internal/*.h"
-  s.exclude_files = "ios/HotUpdater/Package.swift", "ios/HotUpdater/Test/**/*.{swift,h,m,mm}"
 
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",

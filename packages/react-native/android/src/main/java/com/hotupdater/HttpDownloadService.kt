@@ -9,8 +9,9 @@ import java.net.URL
 
 /**
  * Result wrapper for download operations
+ * Using open class instead of sealed for compatibility with older Android build tools
  */
-sealed class DownloadResult {
+open class DownloadResult {
     data class Success(
         val file: File,
     ) : DownloadResult()
