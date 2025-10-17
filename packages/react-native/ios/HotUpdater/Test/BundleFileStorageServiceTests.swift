@@ -90,8 +90,8 @@ class MockDownloadService: DownloadService {
     @discardableResult
     func downloadFile(from url: URL,
                       to destination: String,
-                      progressHandler: ((Double) -> Void)?,
-                      completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionTask? {
+                      progressHandler: @escaping (Double) -> Void,
+                      completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
         downloadedFiles.append((url, destination))
 
         DispatchQueue.global(qos: .utility).async {
