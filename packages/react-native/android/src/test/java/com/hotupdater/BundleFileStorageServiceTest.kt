@@ -151,19 +151,26 @@ class BundleFileStorageServiceTest {
             val finalBundleDir = File(bundleStoreDir, "test-bundle-123")
             val bundleFile = File(finalBundleDir, "index.android.bundle")
 
+            // Create the directory structure for File.walk() to work
+            bundleStoreDir.mkdirs()
+            finalBundleDir.mkdirs()
+            bundleFile.createNewFile()
+
             whenever(mockFileSystem.getExternalFilesDir()).thenReturn(baseDir)
             whenever(mockFileSystem.fileExists(bundleStoreDir.absolutePath)).thenReturn(true)
             whenever(mockFileSystem.fileExists(finalBundleDir.absolutePath)).thenReturn(true)
             whenever(mockPreferences.getItem("HotUpdaterBundleURL")).thenReturn(null)
 
-            // Mock the walk() method behavior by directly checking if the bundle exists
-            val mockWalk = mock<FileTreeWalk>()
-            whenever(mockWalk.find(any())).thenReturn(bundleFile)
-
             val result = service.updateBundle("test-bundle-123", "https://example.com/bundle.zip") { }
 
             assertTrue(result)
             verify(mockPreferences).setItem("HotUpdaterBundleURL", bundleFile.absolutePath)
+
+            // Cleanup
+            bundleFile.delete()
+            finalBundleDir.delete()
+            bundleStoreDir.delete()
+            baseDir.delete()
         }
 
     @Test
@@ -176,10 +183,16 @@ class BundleFileStorageServiceTest {
             val tempZipFile = File(tempDir, "bundle.zip")
             val tmpDir = File(bundleStoreDir, "test-bundle-123.tmp")
 
+            // Create actual file structure for File.walk() to work
+            tmpDir.mkdirs()
+            val extractedBundleFile = File(tmpDir, "index.android.bundle")
+            extractedBundleFile.createNewFile()
+
             whenever(mockFileSystem.getExternalFilesDir()).thenReturn(baseDir)
             whenever(mockFileSystem.fileExists(bundleStoreDir.absolutePath)).thenReturn(false)
             whenever(mockFileSystem.fileExists(finalBundleDir.absolutePath)).thenReturn(false)
             whenever(mockFileSystem.fileExists(tempDir.absolutePath)).thenReturn(false)
+            whenever(mockFileSystem.fileExists(tmpDir.absolutePath)).thenReturn(false)
             whenever(mockFileSystem.createDirectory(any())).thenReturn(true)
             whenever(mockPreferences.getItem("HotUpdaterBundleURL")).thenReturn(null)
 
@@ -190,16 +203,17 @@ class BundleFileStorageServiceTest {
             // Mock successful unzip
             whenever(mockUnzipService.extractZipFile(any(), any())).thenReturn(true)
 
-            // Mock that the bundle file exists after extraction
-            val extractedBundleFile = File(tmpDir, "index.android.bundle")
-            whenever(mockFileSystem.fileExists(extractedBundleFile.absolutePath)).thenReturn(true)
-            whenever(mockFileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)).thenReturn(true)
-
             val result = service.updateBundle("test-bundle-123", "https://example.com/bundle.zip") { }
 
             assertTrue(result)
             verify(mockDownloadService).downloadFile(any(), any(), any())
             verify(mockUnzipService).extractZipFile(tempZipFile.absolutePath, tmpDir.absolutePath)
+
+            // Cleanup
+            extractedBundleFile.delete()
+            tmpDir.delete()
+            bundleStoreDir.delete()
+            baseDir.delete()
         }
 
     @Test

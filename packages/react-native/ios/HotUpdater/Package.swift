@@ -23,12 +23,12 @@ let package = Package(
                 .product(name: "ZipArchive", package: "ZipArchive")
             ],
             path: ".",
-            sources: ["Internal", "Public"],
             exclude: [
                 "Internal/HotUpdater.mm",
                 "Internal/HotUpdater-Bridging-Header.h",
                 "Public/HotUpdater.h"
-            ]
+            ],
+            sources: ["Internal", "Public"]
         ),
         .testTarget(
             name: "HotUpdaterTest",

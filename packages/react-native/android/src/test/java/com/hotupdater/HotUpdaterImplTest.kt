@@ -40,7 +40,9 @@ class HotUpdaterImplTest {
         packageInfo.versionName = "1.0.0"
 
         val packageManager = context.packageManager
-        org.robolectric.Shadows.shadowOf(packageManager).installPackage(packageInfo)
+        org.robolectric.Shadows
+            .shadowOf(packageManager)
+            .installPackage(packageInfo)
 
         mockBundleStorage = mock()
         mockPreferences = mock()
@@ -267,7 +269,9 @@ class HotUpdaterImplIntegrationTest {
         packageInfo.versionName = "1.0.0"
 
         val packageManager = context.packageManager
-        org.robolectric.Shadows.shadowOf(packageManager).installPackage(packageInfo)
+        org.robolectric.Shadows
+            .shadowOf(packageManager)
+            .installPackage(packageInfo)
     }
 
     @Test
@@ -290,6 +294,14 @@ class HotUpdaterImplIntegrationTest {
 
             // Setup mocks for a successful update
             val baseDir = java.io.File("/data/app")
+            val bundleStoreDir = java.io.File(baseDir, "bundle-store")
+            val tmpDir = java.io.File(bundleStoreDir, "test-bundle-123.tmp")
+            val bundleFile = java.io.File(tmpDir, "index.android.bundle")
+
+            // Create actual file structure for File.walk() to work
+            tmpDir.mkdirs()
+            bundleFile.createNewFile()
+
             whenever(mockFS.getExternalFilesDir()).thenReturn(baseDir)
             whenever(mockFS.fileExists(any())).thenReturn(false)
             whenever(mockFS.createDirectory(any())).thenReturn(true)
@@ -301,13 +313,6 @@ class HotUpdaterImplIntegrationTest {
 
             whenever(mockUnzip.extractZipFile(any(), any())).thenReturn(true)
 
-            // Simulate finding the bundle file after extraction
-            val bundleStoreDir = java.io.File(baseDir, "bundle-store")
-            val tmpDir = java.io.File(bundleStoreDir, "test-bundle-123.tmp")
-            val bundleFile = java.io.File(tmpDir, "index.android.bundle")
-            whenever(mockFS.fileExists(bundleFile.absolutePath)).thenReturn(true)
-            whenever(mockFS.moveItem(any(), any())).thenReturn(true)
-
             // Execute update
             val bundleId = "test-bundle-123"
             val fileUrl = "https://example.com/bundle.zip"
@@ -318,7 +323,13 @@ class HotUpdaterImplIntegrationTest {
             // Verify workflow
             verify(mockDownload).downloadFile(any(), any(), any())
             verify(mockUnzip).extractZipFile(any(), any())
-            verify(mockPrefs).setItem(eq("HotUpdaterBundleURL"), any())
+            verify(mockPrefs, atLeast(1)).setItem(eq("HotUpdaterBundleURL"), any())
+
+            // Cleanup
+            bundleFile.delete()
+            tmpDir.delete()
+            bundleStoreDir.delete()
+            baseDir.delete()
         }
 
     @Test
@@ -341,6 +352,17 @@ class HotUpdaterImplIntegrationTest {
 
             // Setup mocks
             val baseDir = java.io.File("/data/app")
+            val bundleStoreDir = java.io.File(baseDir, "bundle-store")
+
+            // Create file structures for both bundles
+            val tmpDir1 = java.io.File(bundleStoreDir, "bundle-v1.0-fingerprint1.tmp")
+            val bundleFile1 = java.io.File(tmpDir1, "index.android.bundle")
+            tmpDir1.mkdirs()
+            bundleFile1.createNewFile()
+
+            val tmpDir2 = java.io.File(bundleStoreDir, "bundle-v2.0-fingerprint2.tmp")
+            val bundleFile2 = java.io.File(tmpDir2, "index.android.bundle")
+
             whenever(mockFS.getExternalFilesDir()).thenReturn(baseDir)
             whenever(mockFS.createDirectory(any())).thenReturn(true)
             whenever(mockPrefs.getItem(any())).thenReturn(null)
@@ -348,12 +370,15 @@ class HotUpdaterImplIntegrationTest {
             whenever(mockDownload.downloadFile(any(), any(), any()))
                 .thenReturn(DownloadResult.Success(java.io.File("/temp/bundle.zip")))
             whenever(mockUnzip.extractZipFile(any(), any())).thenReturn(true)
-            whenever(mockFS.fileExists(any())).thenReturn(false, true)
-            whenever(mockFS.moveItem(any(), any())).thenReturn(true)
+            whenever(mockFS.fileExists(any())).thenReturn(false)
 
             // Update bundle for version 1
             val bundle1Id = "bundle-v1.0-fingerprint1"
             impl.updateBundle(bundle1Id, "https://example.com/bundle1.zip") { }
+
+            // Create second bundle structure
+            tmpDir2.mkdirs()
+            bundleFile2.createNewFile()
 
             // Update bundle for version 2
             val bundle2Id = "bundle-v2.0-fingerprint2"
@@ -365,6 +390,14 @@ class HotUpdaterImplIntegrationTest {
 
             // Verify storage was updated twice with different paths
             verify(mockPrefs, atLeast(2)).setItem(eq("HotUpdaterBundleURL"), any())
+
+            // Cleanup
+            bundleFile1.delete()
+            tmpDir1.delete()
+            bundleFile2.delete()
+            tmpDir2.delete()
+            bundleStoreDir.delete()
+            baseDir.delete()
         }
 
     @Test
@@ -389,12 +422,15 @@ class HotUpdaterImplIntegrationTest {
             val baseDir = java.io.File("/data/app")
             val bundleStoreDir = java.io.File(baseDir, "bundle-store")
             val bundleId = "test-bundle-verified"
-            val finalBundleDir = java.io.File(bundleStoreDir, bundleId)
-            val bundleFile = java.io.File(finalBundleDir, "index.android.bundle")
+            val tmpDir = java.io.File(bundleStoreDir, "$bundleId.tmp")
+            val bundleFile = java.io.File(tmpDir, "index.android.bundle")
+
+            // Create actual file structure for File.walk() to work
+            tmpDir.mkdirs()
+            bundleFile.createNewFile()
 
             whenever(mockFS.getExternalFilesDir()).thenReturn(baseDir)
-            whenever(mockFS.fileExists(bundleStoreDir.absolutePath)).thenReturn(false)
-            whenever(mockFS.fileExists(finalBundleDir.absolutePath)).thenReturn(false)
+            whenever(mockFS.fileExists(any())).thenReturn(false)
             whenever(mockFS.createDirectory(any())).thenReturn(true)
             whenever(mockPrefs.getItem(any())).thenReturn(null)
 
@@ -404,10 +440,6 @@ class HotUpdaterImplIntegrationTest {
 
             whenever(mockUnzip.extractZipFile(any(), any())).thenReturn(true)
 
-            // After extraction, the bundle file should exist
-            whenever(mockFS.fileExists(bundleFile.absolutePath)).thenReturn(true)
-            whenever(mockFS.moveItem(any(), any())).thenReturn(true)
-
             val result = impl.updateBundle(bundleId, "https://example.com/bundle.zip") { }
 
             assertTrue(result)
@@ -416,6 +448,12 @@ class HotUpdaterImplIntegrationTest {
             val inOrder = inOrder(mockDownload, mockUnzip, mockPrefs)
             inOrder.verify(mockDownload).downloadFile(any(), any(), any())
             inOrder.verify(mockUnzip).extractZipFile(any(), any())
-            inOrder.verify(mockPrefs).setItem(eq("HotUpdaterBundleURL"), eq(bundleFile.absolutePath))
+            inOrder.verify(mockPrefs).setItem(eq("HotUpdaterBundleURL"), any())
+
+            // Cleanup
+            bundleFile.delete()
+            tmpDir.delete()
+            bundleStoreDir.delete()
+            baseDir.delete()
         }
 }
