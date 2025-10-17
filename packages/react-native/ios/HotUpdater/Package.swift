@@ -13,21 +13,18 @@ let package = Package(
             targets: ["HotUpdater"]
         )
     ],
-    dependencies: [
-        .package(url: "https://github.com/ZipArchive/ZipArchive.git", from: "2.6.0"),
-    ],
+    dependencies: [],
     targets: [
         .target(
             name: "HotUpdater",
-            dependencies: [
-                .product(name: "ZipArchive", package: "ZipArchive")
-            ],
+            dependencies: [],
             path: ".",
             exclude: [
                 "Internal/HotUpdater.mm",
                 "Internal/HotUpdater-Bridging-Header.h",
                 "Internal/HotUpdaterImpl.swift",
                 "Internal/HotUpdaterFactory.swift",
+                "Internal/SSZipArchiveUnzipService.swift",
                 "Public/HotUpdater.h",
                 "Test"
             ],
