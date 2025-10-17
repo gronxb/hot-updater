@@ -1,7 +1,6 @@
 package com.hotupdater
 
 import android.content.Context
-import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

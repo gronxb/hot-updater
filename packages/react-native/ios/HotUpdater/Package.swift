@@ -22,7 +22,8 @@ let package = Package(
             dependencies: [
                 .product(name: "ZipArchive", package: "ZipArchive")
             ],
-            path: "Sources/HotUpdater"
+            path: ".",
+            sources: ["Internal", "Public"]
         ),
         .testTarget(
             name: "HotUpdaterTest",
