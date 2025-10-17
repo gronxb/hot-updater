@@ -143,11 +143,11 @@ class BundleFileStorageService(
                     progressCallback,
                 )
 
-            return@withContext when (downloadResult) {
+            when (downloadResult) {
                 is DownloadResult.Error -> {
                     Log.d("BundleStorage", "Download failed: ${downloadResult.exception.message}")
                     tempDir.deleteRecursively()
-                    false
+                    return@withContext false
                 }
                 is DownloadResult.Success -> {
                     // 1) Create a .tmp directory under bundle-store (to avoid colliding with an existing bundleId folder)
@@ -214,7 +214,7 @@ class BundleFileStorageService(
                     cleanupOldBundles(bundleStoreDir, currentBundleId, bundleId)
 
                     Log.d("BundleStorage", "Downloaded and activated bundle successfully.")
-                    true
+                    return@withContext true
                 }
             }
         }
