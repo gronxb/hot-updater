@@ -262,7 +262,7 @@ class HotUpdaterImplIntegrationTest {
 
         val tempZipFile = java.io.File(baseDir, "bundle-temp/bundle.zip")
         whenever(mockDownload.downloadFile(any(), any(), any()))
-            .thenReturn(DownloadResult.Success(tempZipFile.absolutePath))
+            .thenReturn(DownloadResult.Success(tempZipFile))
 
         whenever(mockUnzip.extractZipFile(any(), any())).thenReturn(true)
 
@@ -309,7 +309,7 @@ class HotUpdaterImplIntegrationTest {
         whenever(mockPrefs.getItem(any())).thenReturn(null)
 
         whenever(mockDownload.downloadFile(any(), any(), any()))
-            .thenReturn(DownloadResult.Success("/temp/bundle.zip"))
+            .thenReturn(DownloadResult.Success(java.io.File("/temp/bundle.zip")))
         whenever(mockUnzip.extractZipFile(any(), any())).thenReturn(true)
         whenever(mockFS.fileExists(any())).thenReturn(false, true)
         whenever(mockFS.moveItem(any(), any())).thenReturn(true)
@@ -361,7 +361,7 @@ class HotUpdaterImplIntegrationTest {
 
         val tempZipFile = java.io.File(baseDir, "bundle-temp/bundle.zip")
         whenever(mockDownload.downloadFile(any(), any(), any()))
-            .thenReturn(DownloadResult.Success(tempZipFile.absolutePath))
+            .thenReturn(DownloadResult.Success(tempZipFile))
 
         whenever(mockUnzip.extractZipFile(any(), any())).thenReturn(true)
 

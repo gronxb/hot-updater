@@ -175,7 +175,7 @@ class BundleFileStorageServiceTest {
 
         // Mock successful download
         whenever(mockDownloadService.downloadFile(any(), any(), any()))
-            .thenReturn(DownloadResult.Success(tempZipFile.absolutePath))
+            .thenReturn(DownloadResult.Success(tempZipFile))
 
         // Mock successful unzip
         whenever(mockUnzipService.extractZipFile(any(), any())).thenReturn(true)
@@ -235,7 +235,7 @@ class BundleFileStorageServiceTest {
 
         // Mock successful download
         whenever(mockDownloadService.downloadFile(any(), any(), any()))
-            .thenReturn(DownloadResult.Success(tempZipFile.absolutePath))
+            .thenReturn(DownloadResult.Success(tempZipFile))
 
         // Mock failed unzip
         whenever(mockUnzipService.extractZipFile(any(), any())).thenReturn(false)
@@ -265,7 +265,7 @@ class BundleFileStorageServiceTest {
 
         // Mock successful download
         whenever(mockDownloadService.downloadFile(any(), any(), any()))
-            .thenReturn(DownloadResult.Success(tempZipFile.absolutePath))
+            .thenReturn(DownloadResult.Success(tempZipFile))
 
         // Mock successful unzip but no bundle file found
         whenever(mockUnzipService.extractZipFile(any(), any())).thenReturn(true)
@@ -292,7 +292,7 @@ class BundleFileStorageServiceTest {
         val bundle1Dir = File(bundleStoreDir, "bundle-v1-fingerprint1")
         whenever(mockFileSystem.fileExists(bundle1Dir.absolutePath)).thenReturn(false)
         whenever(mockDownloadService.downloadFile(any(), any(), any()))
-            .thenReturn(DownloadResult.Success("/temp/bundle.zip"))
+            .thenReturn(DownloadResult.Success(java.io.File("/temp/bundle.zip")))
         whenever(mockUnzipService.extractZipFile(any(), any())).thenReturn(true)
 
         service.updateBundle("bundle-v1-fingerprint1", "https://example.com/bundle1.zip") { }
@@ -328,7 +328,7 @@ class BundleFileStorageServiceTest {
             val progressCallback = invocation.getArgument<(Double) -> Unit>(2)
             progressCallback(0.5)
             progressCallback(1.0)
-            DownloadResult.Success(tempZipFile.absolutePath)
+            DownloadResult.Success(tempZipFile)
         }
 
         whenever(mockUnzipService.extractZipFile(any(), any())).thenReturn(true)
