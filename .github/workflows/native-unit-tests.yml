@@ -1,0 +1,72 @@
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/react-native/ios/**"
+      - "packages/react-native/android/**"
+  pull_request:
+    paths:
+      - "packages/react-native/ios/**"
+      - "packages/react-native/android/**"
+
+name: Native Unit Tests
+
+jobs:
+  ios-unit-tests:
+    runs-on: macos-14
+    name: iOS Unit Tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run iOS Unit Tests
+        run: |
+          cd packages/react-native/ios/HotUpdater
+          swift test --parallel
+
+  android-unit-tests:
+    runs-on: ubuntu-latest
+    name: Android Unit Tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run Android Unit Tests
+        run: |
+          cd packages/react-native/android
+          ./gradlew test --no-daemon --warning-mode all
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-results
+          path: packages/react-native/android/build/test-results/
+          retention-days: 7
+
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: packages/react-native/android/build/reports/tests/
+          retention-days: 7

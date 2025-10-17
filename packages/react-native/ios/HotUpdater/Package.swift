@@ -18,20 +18,12 @@ let package = Package(
         .package(url: "https://github.com/ZipArchive/ZipArchive.git", from: "2.6.0"),
     ],
     targets: [
-        // Target for Swift code
-        // Since React Native doesn't support SPM yet, we can't build properly. Will add proper unit tests when it's officially supported
-        // .target(
-        //     name: "HotUpdater",
-        //     path: "Internal",
-        //     exclude: [
-        //         "HotUpdater.mm",
-        //         "HotUpdater-Bridging-Header.h",
-        //     ]
-        // ),
         .testTarget(
             name: "HotUpdaterTest",
-            // dependencies: ["HotUpdater"],
-            path: "Test"
+            path: "Test",
+            exclude: [
+                "TempTest.swift"
+            ]
         ),
     ]
 ) 
