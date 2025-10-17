@@ -216,6 +216,12 @@ class BundleFileStorageService(
                     Log.d("BundleStorage", "Downloaded and activated bundle successfully.")
                     return@withContext true
                 }
+                else -> {
+                    // This should never happen, but adding for exhaustiveness
+                    Log.e("BundleStorage", "Unexpected download result type: ${downloadResult::class.simpleName}")
+                    tempDir.deleteRecursively()
+                    return@withContext false
+                }
             }
         }
     }
