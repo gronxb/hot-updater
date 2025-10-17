@@ -69,8 +69,7 @@ class BundleFileStorageService(
             return null
         }
 
-        val file = File(urlString)
-        if (!file.exists()) {
+        if (!fileSystem.fileExists(urlString)) {
             preferences.setItem("HotUpdaterBundleURL", null)
             return null
         }
@@ -96,8 +95,8 @@ class BundleFileStorageService(
 
         val baseDir = fileSystem.getExternalFilesDir()
         val bundleStoreDir = File(baseDir, "bundle-store")
-        if (!bundleStoreDir.exists()) {
-            bundleStoreDir.mkdirs()
+        if (!fileSystem.fileExists(bundleStoreDir.absolutePath)) {
+            fileSystem.createDirectory(bundleStoreDir.absolutePath)
         }
 
         val currentBundleId =
@@ -110,7 +109,7 @@ class BundleFileStorageService(
                 }
             }
         val finalBundleDir = File(bundleStoreDir, bundleId)
-        if (finalBundleDir.exists()) {
+        if (fileSystem.fileExists(finalBundleDir.absolutePath)) {
             Log.d("BundleStorage", "Bundle for bundleId $bundleId already exists. Using cached bundle.")
             val existingIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
             if (existingIndexFile != null) {
@@ -126,10 +125,10 @@ class BundleFileStorageService(
         }
 
         val tempDir = File(baseDir, "bundle-temp")
-        if (tempDir.exists()) {
+        if (fileSystem.fileExists(tempDir.absolutePath)) {
             tempDir.deleteRecursively()
         }
-        tempDir.mkdirs()
+        fileSystem.createDirectory(tempDir.absolutePath)
 
         val tempZipFile = File(tempDir, "bundle.zip")
 
@@ -153,10 +152,10 @@ class BundleFileStorageService(
                 is DownloadResult.Success -> {
                     // 1) Create a .tmp directory under bundle-store (to avoid colliding with an existing bundleId folder)
                     val tmpDir = File(bundleStoreDir, "$bundleId.tmp")
-                    if (tmpDir.exists()) {
+                    if (fileSystem.fileExists(tmpDir.absolutePath)) {
                         tmpDir.deleteRecursively()
                     }
-                    tmpDir.mkdirs()
+                    fileSystem.createDirectory(tmpDir.absolutePath)
 
                     // 2) Unzip into tmpDir
                     Log.d("BundleStorage", "Unzipping $tempZipFile → $tmpDir")
@@ -177,7 +176,7 @@ class BundleFileStorageService(
                     }
 
                     // 4) If the realDir (bundle-store/<bundleId>) exists, delete it
-                    if (finalBundleDir.exists()) {
+                    if (fileSystem.fileExists(finalBundleDir.absolutePath)) {
                         finalBundleDir.deleteRecursively()
                     }
 

@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [28], manifest = Config.NONE)
 class BundleFileStorageServiceTest {
     private lateinit var context: Context
     private lateinit var mockFileSystem: FileSystemService

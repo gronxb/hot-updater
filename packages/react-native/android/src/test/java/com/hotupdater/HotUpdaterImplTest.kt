@@ -23,7 +23,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [28], manifest = Config.NONE)
 class HotUpdaterImplTest {
     private lateinit var context: Context
     private lateinit var mockBundleStorage: BundleStorageService
@@ -33,6 +33,15 @@ class HotUpdaterImplTest {
     @Before
     fun setup() {
         context = RuntimeEnvironment.getApplication()
+
+        // Set up package info for Robolectric
+        val packageInfo = android.content.pm.PackageInfo()
+        packageInfo.packageName = context.packageName
+        packageInfo.versionName = "1.0.0"
+
+        val packageManager = context.packageManager
+        org.robolectric.Shadows.shadowOf(packageManager).installPackage(packageInfo)
+
         mockBundleStorage = mock()
         mockPreferences = mock()
 
@@ -244,13 +253,21 @@ class HotUpdaterImplTest {
 // MARK: - Integration Tests
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [28], manifest = Config.NONE)
 class HotUpdaterImplIntegrationTest {
     private lateinit var context: Context
 
     @Before
     fun setup() {
         context = RuntimeEnvironment.getApplication()
+
+        // Set up package info for Robolectric
+        val packageInfo = android.content.pm.PackageInfo()
+        packageInfo.packageName = context.packageName
+        packageInfo.versionName = "1.0.0"
+
+        val packageManager = context.packageManager
+        org.robolectric.Shadows.shadowOf(packageManager).installPackage(packageInfo)
     }
 
     @Test
