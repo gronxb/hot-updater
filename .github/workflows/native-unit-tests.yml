@@ -14,7 +14,7 @@ name: Native Unit Tests
 
 jobs:
   ios-unit-tests:
-    runs-on: macos-14
+    runs-on: macos-15
     name: iOS Unit Tests
     steps:
       - uses: actions/checkout@v4
