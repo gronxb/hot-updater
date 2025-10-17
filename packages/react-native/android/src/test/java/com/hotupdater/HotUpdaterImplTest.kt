@@ -293,7 +293,8 @@ class HotUpdaterImplIntegrationTest {
             val impl = HotUpdaterImpl(context, storage, mockPrefs)
 
             // Setup mocks for a successful update
-            val baseDir = java.io.File("/data/app")
+            val tempRoot = java.io.File(System.getProperty("java.io.tmpdir"), "hotupdater-test-${System.currentTimeMillis()}")
+            val baseDir = java.io.File(tempRoot, "data/app")
             val bundleStoreDir = java.io.File(baseDir, "bundle-store")
             val tmpDir = java.io.File(bundleStoreDir, "test-bundle-123.tmp")
             val bundleFile = java.io.File(tmpDir, "index.android.bundle")
@@ -330,6 +331,7 @@ class HotUpdaterImplIntegrationTest {
             tmpDir.delete()
             bundleStoreDir.delete()
             baseDir.delete()
+            tempRoot.deleteRecursively()
         }
 
     @Test
@@ -351,7 +353,8 @@ class HotUpdaterImplIntegrationTest {
             val impl = HotUpdaterImpl(context, storage, mockPrefs)
 
             // Setup mocks
-            val baseDir = java.io.File("/data/app")
+            val tempRoot = java.io.File(System.getProperty("java.io.tmpdir"), "hotupdater-test-${System.currentTimeMillis()}")
+            val baseDir = java.io.File(tempRoot, "data/app")
             val bundleStoreDir = java.io.File(baseDir, "bundle-store")
 
             // Create file structures for both bundles
@@ -398,6 +401,7 @@ class HotUpdaterImplIntegrationTest {
             tmpDir2.delete()
             bundleStoreDir.delete()
             baseDir.delete()
+            tempRoot.deleteRecursively()
         }
 
     @Test
@@ -419,7 +423,8 @@ class HotUpdaterImplIntegrationTest {
             val impl = HotUpdaterImpl(context, storage, mockPrefs)
 
             // Setup mocks
-            val baseDir = java.io.File("/data/app")
+            val tempRoot = java.io.File(System.getProperty("java.io.tmpdir"), "hotupdater-test-${System.currentTimeMillis()}")
+            val baseDir = java.io.File(tempRoot, "data/app")
             val bundleStoreDir = java.io.File(baseDir, "bundle-store")
             val bundleId = "test-bundle-verified"
             val tmpDir = java.io.File(bundleStoreDir, "$bundleId.tmp")
@@ -455,5 +460,6 @@ class HotUpdaterImplIntegrationTest {
             tmpDir.delete()
             bundleStoreDir.delete()
             baseDir.delete()
+            tempRoot.deleteRecursively()
         }
 }

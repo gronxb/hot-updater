@@ -146,7 +146,8 @@ class BundleFileStorageServiceTest {
     @Test
     fun `updateBundle uses cached bundle when it exists`() =
         runTest {
-            val baseDir = File("/data/app")
+            val tempRoot = File(System.getProperty("java.io.tmpdir"), "hotupdater-test-${System.currentTimeMillis()}")
+            val baseDir = File(tempRoot, "data/app")
             val bundleStoreDir = File(baseDir, "bundle-store")
             val finalBundleDir = File(bundleStoreDir, "test-bundle-123")
             val bundleFile = File(finalBundleDir, "index.android.bundle")
@@ -171,12 +172,14 @@ class BundleFileStorageServiceTest {
             finalBundleDir.delete()
             bundleStoreDir.delete()
             baseDir.delete()
+            tempRoot.deleteRecursively()
         }
 
     @Test
     fun `updateBundle downloads and extracts new bundle successfully`() =
         runTest {
-            val baseDir = File("/data/app")
+            val tempRoot = File(System.getProperty("java.io.tmpdir"), "hotupdater-test-${System.currentTimeMillis()}")
+            val baseDir = File(tempRoot, "data/app")
             val bundleStoreDir = File(baseDir, "bundle-store")
             val finalBundleDir = File(bundleStoreDir, "test-bundle-123")
             val tempDir = File(baseDir, "bundle-temp")
@@ -214,6 +217,7 @@ class BundleFileStorageServiceTest {
             tmpDir.delete()
             bundleStoreDir.delete()
             baseDir.delete()
+            tempRoot.deleteRecursively()
         }
 
     @Test

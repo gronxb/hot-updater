@@ -26,7 +26,10 @@ let package = Package(
             exclude: [
                 "Internal/HotUpdater.mm",
                 "Internal/HotUpdater-Bridging-Header.h",
-                "Public/HotUpdater.h"
+                "Internal/HotUpdaterImpl.swift",
+                "Internal/HotUpdaterFactory.swift",
+                "Public/HotUpdater.h",
+                "Test"
             ],
             sources: ["Internal", "Public"]
         ),
@@ -35,7 +38,8 @@ let package = Package(
             dependencies: ["HotUpdater"],
             path: "Test",
             exclude: [
-                "TempTest.swift"
+                "TempTest.swift",
+                "HotUpdaterImplTests.swift"
             ]
         ),
     ]
