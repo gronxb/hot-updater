@@ -1,10 +1,10 @@
+import { SSM } from "@aws-sdk/client-ssm";
 import {
   type GetBundlesArgs,
   NIL_UUID,
   type Platform,
   type UpdateStrategy,
 } from "@hot-updater/core";
-import { SSM } from "@aws-sdk/client-ssm";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { type Context, Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";

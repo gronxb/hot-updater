@@ -70,7 +70,7 @@ export class IAMManager {
             PolicyDocument: ssmPolicyDocument,
           });
           p.log.info("Updated SSM access policy for existing IAM role");
-        } catch (policyError) {
+        } catch {
           p.log.warn("Failed to update SSM policy, continuing anyway");
         }
         p.log.info(
