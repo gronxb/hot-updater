@@ -34,8 +34,6 @@ export const s3Storage =
     return {
       name: "s3Storage",
       async deleteBundle(bundleId) {
-        const Key = getStorageKey(bundleId, "bundle.zip");
-
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
           Prefix: bundleId,
@@ -57,8 +55,10 @@ export const s3Storage =
 
           const deleteCommand = new DeleteObjectsCommand(deleteParams);
           await client.send(deleteCommand);
+          // Return the first deleted object's URI (typically the bundle file)
+          const deletedKey = listResponse.Contents[0]?.Key || bundleId;
           return {
-            storageUri: `s3://${bucketName}/${Key}`,
+            storageUri: `s3://${bucketName}/${deletedKey}`,
           };
         }
 
@@ -70,6 +70,14 @@ export const s3Storage =
 
         const filename = path.basename(bundlePath);
 
+        // Detect Content-Encoding based on file extension
+        let ContentEncoding: string | undefined;
+        if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+          ContentEncoding = "gzip";
+        } else if (filename.endsWith(".tar.br") || filename.endsWith(".br")) {
+          ContentEncoding = "br";
+        }
+
         const Key = getStorageKey(bundleId, filename);
         const upload = new Upload({
           client,
@@ -79,6 +87,7 @@ export const s3Storage =
             Key,
             Body,
             CacheControl: "max-age=31536000",
+            ...(ContentEncoding && { ContentEncoding }),
           },
         });
         const response = await upload.done();

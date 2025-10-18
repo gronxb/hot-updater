@@ -32,12 +32,18 @@ export const firebaseStorage =
     return {
       name: "firebaseStorage",
       async deleteBundle(bundleId) {
-        const key = getStorageKey(bundleId, "bundle.zip");
+        // Use bundleId as prefix to find all related files regardless of extension
+        const prefix = getStorageKey(bundleId, "");
         try {
-          const [files] = await bucket.getFiles({ prefix: key });
+          const [files] = await bucket.getFiles({ prefix });
+          if (files.length === 0) {
+            throw new Error("Bundle Not Found");
+          }
           await Promise.all(files.map((file) => file.delete()));
+          // Return the first deleted file's URI
+          const deletedKey = files[0]?.name || prefix;
           return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
+            storageUri: `gs://${config.storageBucket}/${deletedKey}`,
           };
         } catch (e) {
           console.error("Error listing or deleting files:", e);
@@ -53,10 +59,19 @@ export const firebaseStorage =
           const filename = path.basename(bundlePath);
           const key = getStorageKey(bundleId, filename);
 
+          // Detect Content-Encoding based on file extension
+          let contentEncoding: string | undefined;
+          if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+            contentEncoding = "gzip";
+          } else if (filename.endsWith(".tar.br") || filename.endsWith(".br")) {
+            contentEncoding = "br";
+          }
+
           const file = bucket.file(key);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
+              ...(contentEncoding && { contentEncoding }),
             },
           });
 

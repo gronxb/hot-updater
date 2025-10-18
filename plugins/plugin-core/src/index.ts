@@ -1,6 +1,7 @@
 export * from "./banner";
 export * from "./ConfigBuilder";
 export * from "./calculatePagination";
+export * from "./compression";
 export * from "./copyDirToTmp";
 export * from "./createBlobDatabasePlugin";
 export * from "./createDatabasePlugin";

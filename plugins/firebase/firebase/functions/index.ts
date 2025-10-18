@@ -45,14 +45,27 @@ const handleUpdateRequest = async (
 
   let signedUrl: string | null = null;
   if (!storageUri) {
-    const [_signedUrl] = await admin
-      .storage()
-      .bucket(admin.app().options.storageBucket)
-      .file([rest.id, "bundle.zip"].join("/"))
-      .getSignedUrl({
-        action: "read",
-        expires: Date.now() + 60 * 1000,
-      });
+    // Fallback: Try to find bundle file by listing with prefix
+    // This handles old bundles that don't have storageUri set
+    const bucket = admin.storage().bucket(admin.app().options.storageBucket);
+    const [files] = await bucket.getFiles({ prefix: rest.id });
+
+    // Find the bundle file (should end with .zip, .tar.gz, or .tar.br)
+    const bundleFile = files.find(
+      (file) =>
+        file.name.endsWith(".zip") ||
+        file.name.endsWith(".tar.gz") ||
+        file.name.endsWith(".tar.br"),
+    );
+
+    if (!bundleFile) {
+      throw new Error(`Bundle file not found for id: ${rest.id}`);
+    }
+
+    const [_signedUrl] = await bundleFile.getSignedUrl({
+      action: "read",
+      expires: Date.now() + 60 * 1000,
+    });
     signedUrl = _signedUrl;
   } else {
     const storageUrl = new URL(storageUri);

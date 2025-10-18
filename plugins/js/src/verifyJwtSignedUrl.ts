@@ -45,6 +45,22 @@ export const verifyJwtToken = async ({
 };
 
 /**
+ * Detects compression format based on file extension
+ */
+const detectCompressionFromFilename = (
+  fileName: string,
+): "gzip" | "br" | null => {
+  if (fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz")) {
+    return "gzip";
+  }
+  if (fileName.endsWith(".tar.br") || fileName.endsWith(".br")) {
+    return "br";
+  }
+  // .zip files are not transported with Content-Encoding
+  return null;
+};
+
+/**
  * Retrieves file data through the handler and constructs a response object with appropriate headers for download.
  */
 const getFileResponse = async ({
@@ -62,10 +78,16 @@ const getFileResponse = async ({
   const pathParts = key.split("/");
   const fileName = pathParts[pathParts.length - 1];
 
-  const headers = {
+  const headers: Record<string, string> = {
     "Content-Type": object.contentType || "application/octet-stream",
     "Content-Disposition": `attachment; filename=${fileName}`,
   };
+
+  // Add Content-Encoding header if the file is compressed
+  const contentEncoding = detectCompressionFromFilename(fileName);
+  if (contentEncoding) {
+    headers["Content-Encoding"] = contentEncoding;
+  }
 
   return { status: 200, responseHeaders: headers, responseBody: object.body };
 };

@@ -51,11 +51,13 @@ interface BundleStorageService {
 
 /**
  * Implementation of BundleStorageService
+ * Note: unzipService parameter is kept for backward compatibility but is no longer used.
+ * Format detection is now automatic based on file magic bytes.
  */
 class BundleFileStorageService(
     private val fileSystem: FileSystemService,
     private val downloadService: DownloadService,
-    private val unzipService: UnzipService,
+    @Deprecated("No longer used - format is auto-detected") private val unzipService: UnzipService,
     private val preferences: PreferencesService,
 ) : BundleStorageService {
     override fun setBundleURL(localPath: String?): Boolean {
@@ -158,10 +160,26 @@ class BundleFileStorageService(
                     }
                     tmpDir.mkdirs()
 
-                    // 2) Unzip into tmpDir
-                    Log.d("BundleStorage", "Unzipping $tempZipFile → $tmpDir")
-                    if (!unzipService.extractZipFile(tempZipFile.absolutePath, tmpDir.absolutePath)) {
-                        Log.d("BundleStorage", "Failed to extract zip into tmpDir.")
+                    // 2) Detect format and extract into tmpDir
+                    Log.d("BundleStorage", "Extracting $tempZipFile → $tmpDir")
+                    val detectedUnzipService =
+                        CompressionFormatDetector.getUnzipServiceForFile(tempZipFile.absolutePath)
+                    if (detectedUnzipService == null) {
+                        Log.e(
+                            "BundleStorage",
+                            "Unable to detect compression format for ${tempZipFile.absolutePath}",
+                        )
+                        tempDir.deleteRecursively()
+                        tmpDir.deleteRecursively()
+                        return@withContext false
+                    }
+
+                    if (!detectedUnzipService.extractZipFile(
+                            tempZipFile.absolutePath,
+                            tmpDir.absolutePath,
+                        )
+                    ) {
+                        Log.d("BundleStorage", "Failed to extract archive into tmpDir.")
                         tempDir.deleteRecursively()
                         tmpDir.deleteRecursively()
                         return@withContext false

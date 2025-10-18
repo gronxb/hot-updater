@@ -35,27 +35,54 @@ export const r2Storage =
     return {
       name: "r2Storage",
       async deleteBundle(bundleId) {
-        const Key = getStorageKey(bundleId, "bundle.zip");
-        try {
-          await wrangler(
-            "r2",
-            "object",
-            "delete",
-            [bucketName, Key].join("/"),
-            "--remote",
-          );
+        // Try deleting with all possible file extensions
+        const possibleExtensions = [
+          "bundle.zip",
+          "bundle.tar.gz",
+          "bundle.tar.br",
+        ];
+        let deletedKey: string | null = null;
+        let lastError: Error | null = null;
 
-          return {
-            storageUri: `r2://${bucketName}/${Key}`,
-          };
-        } catch {
-          throw new Error("Can not delete bundle");
+        for (const filename of possibleExtensions) {
+          const Key = getStorageKey(bundleId, filename);
+          try {
+            await wrangler(
+              "r2",
+              "object",
+              "delete",
+              [bucketName, Key].join("/"),
+              "--remote",
+            );
+            deletedKey = Key;
+            break; // Successfully deleted, exit loop
+          } catch (error) {
+            // Store the error but continue trying other extensions
+            lastError =
+              error instanceof Error ? error : new Error(String(error));
+          }
         }
+
+        if (deletedKey) {
+          return {
+            storageUri: `r2://${bucketName}/${deletedKey}`,
+          };
+        }
+
+        throw lastError || new Error("Can not delete bundle");
       },
       async uploadBundle(bundleId, bundlePath) {
         const contentType = mime.getType(bundlePath) ?? void 0;
 
         const filename = path.basename(bundlePath);
+
+        // Detect Content-Encoding based on file extension
+        let contentEncoding: string | undefined;
+        if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+          contentEncoding = "gzip";
+        } else if (filename.endsWith(".tar.br") || filename.endsWith(".br")) {
+          contentEncoding = "br";
+        }
 
         const Key = getStorageKey(bundleId, filename);
         try {
@@ -67,6 +94,7 @@ export const r2Storage =
             "--file",
             bundlePath,
             ...(contentType ? ["--content-type", contentType] : []),
+            ...(contentEncoding ? ["--content-encoding", contentEncoding] : []),
             "--remote",
           );
           if (exitCode !== 0 && stderr) {

@@ -45,7 +45,7 @@ const ComboboxItemIndicator = <T extends ValidComponent = "div">(
       <Show
         when={local.children}
         fallback={
-          // biome-ignore lint/a11y/noSvgWithoutTitle: <explanation>
+          // biome-ignore lint/a11y/noSvgWithoutTitle: decorative icon in combobox component
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -145,7 +145,7 @@ const ComboboxTrigger = <T extends ValidComponent = "button">(
         <Show
           when={local.children}
           fallback={
-            // biome-ignore lint/a11y/noSvgWithoutTitle: <explanation>
+            // biome-ignore lint/a11y/noSvgWithoutTitle: decorative icon in combobox component
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"

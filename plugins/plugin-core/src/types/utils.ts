@@ -7,7 +7,7 @@ export type Primitive =
   | symbol
   | bigint;
 
-// biome-ignore lint/suspicious/noConfusingVoidType: <explanation>
+// biome-ignore lint/suspicious/noConfusingVoidType: void is needed for BuiltIns type union
 export type BuiltIns = Primitive | void | Date | RegExp;
 
 type ExcludeUndefined<T> = Exclude<T, undefined>;
@@ -45,7 +45,7 @@ export type RequiredDeep<
               : E extends Promise<infer ValueType>
                 ? Promise<RequiredDeep<ValueType>>
                 : E extends (...arguments_: any[]) => unknown
-                  ? // biome-ignore lint/complexity/noBannedTypes: <explanation>
+                  ? // biome-ignore lint/complexity/noBannedTypes: empty object type used for type checking in conditional type
                     {} extends RequiredObjectDeep<E>
                     ? E
                     : HasMultipleCallSignatures<E> extends true
