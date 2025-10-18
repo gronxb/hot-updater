@@ -206,9 +206,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   // Deploy Lambda@Edge: Using LambdaEdgeDeployer
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);
+  const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
   const { functionArn } = await lambdaEdgeDeployer.deploy(lambdaRoleArn, {
-    publicKey: publicKeyId,
-    privateKey: keyPair.privateKey,
+    publicKeyId: publicKeyId,
+    ssmParameterName: ssmParameterName,
+    ssmRegion: bucketRegion,
   });
 
   // Create or update CloudFront distribution

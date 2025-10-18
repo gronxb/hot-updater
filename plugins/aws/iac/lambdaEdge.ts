@@ -18,7 +18,11 @@ export class LambdaEdgeDeployer {
 
   async deploy(
     lambdaRoleArn: string,
-    keyPair: { publicKey: string; privateKey: string },
+    config: {
+      publicKeyId: string;
+      ssmParameterName: string;
+      ssmRegion: string;
+    },
   ): Promise<{ lambdaName: string; functionArn: string }> {
     const cwd = getCwd();
     const lambdaName = await p.text({
@@ -32,13 +36,12 @@ export class LambdaEdgeDeployer {
     const lambdaDir = path.dirname(lambdaPath);
     const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
 
-    // Transform Lambda code with CloudFront key pair details
+    // Transform Lambda code with CloudFront key pair details and SSM config
     const indexPath = path.join(tmpDir, "index.cjs");
     const code = transformEnv(indexPath, {
-      CLOUDFRONT_KEY_PAIR_ID: keyPair.publicKey,
-      CLOUDFRONT_PRIVATE_KEY_BASE64: Buffer.from(keyPair.privateKey).toString(
-        "base64",
-      ),
+      CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
+      SSM_PARAMETER_NAME: config.ssmParameterName,
+      SSM_REGION: config.ssmRegion,
     });
     await fs.writeFile(indexPath, code);
 

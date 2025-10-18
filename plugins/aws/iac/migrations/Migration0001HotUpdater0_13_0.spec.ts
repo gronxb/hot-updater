@@ -57,7 +57,6 @@ describe("Migration0001HotUpdater0_13_0 integration test", () => {
     await migrator.migrate({ dryRun: false });
 
     const fakeBucket = getFakeBucket();
-    // biome-ignore lint/performance/noDelete: <explanation>
     delete fakeBucket["migrate.json"];
 
     expect(fakeBucket).toEqual({
