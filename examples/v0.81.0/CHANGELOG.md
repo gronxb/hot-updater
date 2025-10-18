@@ -1,5 +1,12 @@
 # @hot-updater/example-react-native-v81
 
+## 0.20.14
+
+### Patch Changes
+
+- a61fa0e: fix(aws): lambda using cloudfront private key from parameter store
+  - @hot-updater/react-native@0.20.14
+
 ## 0.20.13
 
 ### Patch Changes
