@@ -1,4 +1,5 @@
 import { IAM } from "@aws-sdk/client-iam";
+import { STS } from "@aws-sdk/client-sts";
 import * as p from "@clack/prompts";
 
 export class IAMManager {
@@ -18,6 +19,18 @@ export class IAMManager {
       region: this.region,
       credentials: this.credentials,
     });
+    const stsClient = new STS({
+      region: this.region,
+      credentials: this.credentials,
+    });
+
+    // Get AWS account ID for SSM policy
+    const callerIdentity = await stsClient.getCallerIdentity({});
+    const accountId = callerIdentity.Account;
+    if (!accountId) {
+      throw new Error("Failed to get AWS account ID");
+    }
+
     const assumeRolePolicyDocument = JSON.stringify({
       Version: "2012-10-17",
       Statement: [
@@ -32,11 +45,34 @@ export class IAMManager {
     });
     const roleName = "hot-updater-edge-role";
 
+    // SSM GetParameter inline policy
+    const ssmPolicyDocument = JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Action: ["ssm:GetParameter"],
+          Resource: `arn:aws:ssm:*:${accountId}:parameter/hot-updater/*`,
+        },
+      ],
+    });
+
     try {
       const { Role: existingRole } = await iamClient.getRole({
         RoleName: roleName,
       });
       if (existingRole?.Arn) {
+        // Update inline policy for existing role
+        try {
+          await iamClient.putRolePolicy({
+            RoleName: roleName,
+            PolicyName: "HotUpdaterSSMAccess",
+            PolicyDocument: ssmPolicyDocument,
+          });
+          p.log.info("Updated SSM access policy for existing IAM role");
+        } catch (policyError) {
+          p.log.warn("Failed to update SSM policy, continuing anyway");
+        }
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,
         );
@@ -48,12 +84,12 @@ export class IAMManager {
         const createRoleResp = await iamClient.createRole({
           RoleName: roleName,
           AssumeRolePolicyDocument: assumeRolePolicyDocument,
-          Description: "Role for Lambda@Edge to access S3",
+          Description: "Role for Lambda@Edge to access S3 and SSM",
         });
         const lambdaRoleArn = createRoleResp.Role?.Arn!;
         p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
 
-        // Attach required policies
+        // Attach required managed policies
         await iamClient.attachRolePolicy({
           RoleName: roleName,
           PolicyArn:
@@ -63,7 +99,15 @@ export class IAMManager {
           RoleName: roleName,
           PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
         });
-        p.log.info(`Attached required policies to ${roleName}`);
+        p.log.info(`Attached managed policies to ${roleName}`);
+
+        // Add inline policy for SSM access
+        await iamClient.putRolePolicy({
+          RoleName: roleName,
+          PolicyName: "HotUpdaterSSMAccess",
+          PolicyDocument: ssmPolicyDocument,
+        });
+        p.log.info(`Added SSM access inline policy to ${roleName}`);
 
         return lambdaRoleArn;
       } catch (createError) {
