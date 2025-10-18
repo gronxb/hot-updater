@@ -36,6 +36,13 @@ async function getPrivateKey(): Promise<string> {
     return cachedPrivateKey;
   }
 
+  // Validate SSM region format
+  if (!SSM_REGION) {
+    throw new Error(
+      `Invalid AWS region format: ${SSM_REGION}. Expected format like 'us-east-1' or 'ap-southeast-1'`,
+    );
+  }
+
   const ssmClient = new SSM({ region: SSM_REGION });
   const response = await ssmClient.getParameter({
     Name: SSM_PARAMETER_NAME,
@@ -48,12 +55,22 @@ async function getPrivateKey(): Promise<string> {
     );
   }
 
-  // Parse the stored key pair JSON
-  const keyPair = JSON.parse(response.Parameter.Value);
+  // Parse the stored key pair JSON with error handling
+  let keyPair: { privateKey?: unknown };
+  try {
+    keyPair = JSON.parse(response.Parameter.Value);
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON format in SSM parameter: ${SSM_PARAMETER_NAME}. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   const privateKey = keyPair.privateKey;
 
-  if (typeof privateKey !== "string") {
-    throw new Error("Invalid private key format in SSM parameter");
+  if (!privateKey || typeof privateKey !== "string") {
+    throw new Error(
+      `Invalid private key format in SSM parameter: ${SSM_PARAMETER_NAME}`,
+    );
   }
 
   cachedPrivateKey = privateKey;
