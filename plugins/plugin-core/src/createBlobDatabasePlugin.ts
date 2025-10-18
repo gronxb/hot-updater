@@ -24,6 +24,39 @@ function isExactVersion(version: string | null | undefined): boolean {
 }
 
 /**
+ * Get all normalized semver versions for a version string.
+ * This handles the case where clients may request with different normalized forms.
+ *
+ * Examples:
+ * - "1.0.0" generates ["1.0.0", "1.0", "1"]
+ * - "2.1.0" generates ["2.1.0", "2.1"]
+ * - "1.2.3" generates ["1.2.3"]
+ */
+function getSemverNormalizedVersions(version: string): string[] {
+  const coerced = semver.coerce(version);
+  if (!coerced) {
+    return [version];
+  }
+
+  const versions = new Set<string>();
+
+  // Always add the full version (1.0.0)
+  versions.add(coerced.version);
+
+  // Add "1.0" path if patch is 0
+  if (coerced.patch === 0) {
+    versions.add(`${coerced.major}.${coerced.minor}`);
+  }
+
+  // Add "1" path if both minor and patch are 0
+  if (coerced.minor === 0 && coerced.patch === 0) {
+    versions.add(`${coerced.major}`);
+  }
+
+  return Array.from(versions);
+}
+
+/**
  *
  * @param name - The name of the database plugin
  * @param listObjects - Function to list objects in the storage
@@ -288,9 +321,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                   `${apiBasePath}/app-version/${data.platform}/*`,
                 );
               } else {
-                pathsToInvalidate.add(
-                  `${apiBasePath}/app-version/${data.platform}/${data.targetAppVersion}/${data.channel}/*`,
+                // Invalidate all normalized semver paths
+                const normalizedVersions = getSemverNormalizedVersions(
+                  data.targetAppVersion,
                 );
+                for (const version of normalizedVersions) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${data.platform}/${version}/${data.channel}/*`,
+                  );
+                }
               }
             }
             continue;
@@ -327,9 +366,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                   `${apiBasePath}/app-version/${bundle.platform}/*`,
                 );
               } else {
-                pathsToInvalidate.add(
-                  `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                // Invalidate all normalized semver paths
+                const normalizedVersions = getSemverNormalizedVersions(
+                  bundle.targetAppVersion,
                 );
+                for (const version of normalizedVersions) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${bundle.platform}/${version}/${bundle.channel}/*`,
+                  );
+                }
               }
             }
             continue;
@@ -412,12 +457,18 @@ export const createBlobDatabasePlugin = <TContext = object>({
                       `${apiBasePath}/app-version/${bundle.platform}/*`,
                     );
                   } else {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${oldChannel}/*`,
+                    // Invalidate all normalized semver paths for both channels
+                    const normalizedVersions = getSemverNormalizedVersions(
+                      bundle.targetAppVersion,
                     );
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${newChannel}/*`,
-                    );
+                    for (const version of normalizedVersions) {
+                      pathsToInvalidate.add(
+                        `${apiBasePath}/app-version/${bundle.platform}/${version}/${oldChannel}/*`,
+                      );
+                      pathsToInvalidate.add(
+                        `${apiBasePath}/app-version/${bundle.platform}/${version}/${newChannel}/*`,
+                      );
+                    }
                   }
                 }
               }
@@ -433,9 +484,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                     `${apiBasePath}/app-version/${updatedBundle.platform}/*`,
                   );
                 } else {
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/app-version/${updatedBundle.platform}/${updatedBundle.targetAppVersion}/${updatedBundle.channel}/*`,
+                  // Invalidate all normalized semver paths for new version
+                  const normalizedVersions = getSemverNormalizedVersions(
+                    updatedBundle.targetAppVersion,
                   );
+                  for (const version of normalizedVersions) {
+                    pathsToInvalidate.add(
+                      `${apiBasePath}/app-version/${updatedBundle.platform}/${version}/${updatedBundle.channel}/*`,
+                    );
+                  }
                 }
 
                 // Also invalidate old targetAppVersion path if it changed
@@ -448,9 +505,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                       `${apiBasePath}/app-version/${bundle.platform}/*`,
                     );
                   } else {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                    // Invalidate all normalized semver paths for old version
+                    const oldNormalizedVersions = getSemverNormalizedVersions(
+                      bundle.targetAppVersion,
                     );
+                    for (const version of oldNormalizedVersions) {
+                      pathsToInvalidate.add(
+                        `${apiBasePath}/app-version/${bundle.platform}/${version}/${bundle.channel}/*`,
+                      );
+                    }
                   }
                 }
               }
@@ -480,9 +543,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                   `${apiBasePath}/app-version/${updatedBundle.platform}/*`,
                 );
               } else {
-                pathsToInvalidate.add(
-                  `${apiBasePath}/app-version/${updatedBundle.platform}/${updatedBundle.targetAppVersion}/${updatedBundle.channel}/*`,
+                // Invalidate all normalized semver paths for new version
+                const normalizedVersions = getSemverNormalizedVersions(
+                  updatedBundle.targetAppVersion,
                 );
+                for (const version of normalizedVersions) {
+                  pathsToInvalidate.add(
+                    `${apiBasePath}/app-version/${updatedBundle.platform}/${version}/${updatedBundle.channel}/*`,
+                  );
+                }
               }
 
               // Also invalidate old targetAppVersion path if it changed
@@ -495,9 +564,15 @@ export const createBlobDatabasePlugin = <TContext = object>({
                     `${apiBasePath}/app-version/${bundle.platform}/*`,
                   );
                 } else {
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/app-version/${bundle.platform}/${bundle.targetAppVersion}/${bundle.channel}/*`,
+                  // Invalidate all normalized semver paths for old version
+                  const oldNormalizedVersions = getSemverNormalizedVersions(
+                    bundle.targetAppVersion,
                   );
+                  for (const version of oldNormalizedVersions) {
+                    pathsToInvalidate.add(
+                      `${apiBasePath}/app-version/${bundle.platform}/${version}/${bundle.channel}/*`,
+                    );
+                  }
                 }
               }
             }

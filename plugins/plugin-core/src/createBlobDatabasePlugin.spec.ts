@@ -1605,4 +1605,106 @@ describe("blobDatabase plugin", () => {
       "/api/check-update/app-version/android/3.0.1/production/*",
     );
   });
+
+  it("should invalidate all normalized semver paths when targetAppVersion is 1.0.0", async () => {
+    // Setup: Deploy bundle with targetAppVersion "1.0.0"
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "semver-normalization-test",
+    );
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+
+    // Should invalidate exact version path
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1.0.0/production/*",
+    );
+
+    // Should ALSO invalidate normalized versions
+    // "1.0.0" should also invalidate "1.0" and "1"
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1.0/production/*",
+    );
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1/production/*",
+    );
+  });
+
+  it("should invalidate normalized semver paths when targetAppVersion is 2.1.0", async () => {
+    // Setup: Deploy bundle with targetAppVersion "2.1.0"
+    const bundle = createBundleJson(
+      "production",
+      "android",
+      "2.1.0",
+      "semver-normalization-test-2",
+    );
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+
+    // Should invalidate exact version path
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/2.1.0/production/*",
+    );
+
+    // Should ALSO invalidate "2.1" (patch is 0)
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/android/2.1/production/*",
+    );
+
+    // Should NOT invalidate "2" (minor is not 0)
+    expect(invalidatedPaths).not.toContain(
+      "/api/check-update/app-version/android/2/production/*",
+    );
+  });
+
+  it("should not add duplicate normalized paths when minor and patch are non-zero", async () => {
+    // Setup: Deploy bundle with targetAppVersion "1.2.3"
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.2.3",
+      "no-normalization-test",
+    );
+
+    // Clear previous invalidations
+    cloudfrontInvalidations.length = 0;
+
+    await plugin.appendBundle(bundle);
+    await plugin.commitBundle();
+
+    const invalidatedPaths = cloudfrontInvalidations.flatMap(
+      (inv) => inv.paths,
+    );
+
+    // Should only invalidate the exact version path
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1.2.3/production/*",
+    );
+
+    // Should NOT invalidate normalized versions (minor/patch are non-zero)
+    expect(invalidatedPaths).not.toContain(
+      "/api/check-update/app-version/ios/1.2/production/*",
+    );
+    expect(invalidatedPaths).not.toContain(
+      "/api/check-update/app-version/ios/1/production/*",
+    );
+  });
 });
