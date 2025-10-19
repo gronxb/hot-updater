@@ -104,6 +104,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.15
         version: 0.34.41
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
       elysia:
         specifier: ^1.2.17
         version: 1.4.12(@sinclair/typebox@0.34.41)(exact-mirror@0.2.2(@sinclair/typebox@0.34.41))(file-type@21.0.0)(openapi-types@12.1.3)(typescript@5.8.3)
@@ -205,6 +208,9 @@ importers:
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
       fumadb:
         specifier: ^0.1.1
         version: 0.1.1(typeorm@0.3.26(babel-plugin-macros@3.1.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))
@@ -800,6 +806,9 @@ importers:
       '@hot-updater/cloudflare':
         specifier: workspace:*
         version: link:../../plugins/cloudflare
+      '@hot-updater/standalone':
+        specifier: workspace:*
+        version: link:../../plugins/standalone
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -9807,6 +9816,10 @@ packages:
 
   dotenv@16.4.5:
     resolution: {integrity: sha512-ZmdL2rui+eB2YwhsWzjInR8LldtZHGDoQ1ugH85ppHKwpUHL7j7rN0Ti9NCnGiQbhaZ11FpR+7ao1dNsmduNUg==}
+    engines: {node: '>=12'}
+
+  dotenv@16.4.7:
+    resolution: {integrity: sha512-47qPchRCykZC03FhkYAhrvwU4xDBFIj1QPqaarj6mdM/hgUzfPHcpkHJOn3mJAufFeeAxAzeGsr5X0M4k6fLZQ==}
     engines: {node: '>=12'}
 
   dotenv@16.6.1:
@@ -21896,7 +21909,7 @@ snapshots:
     dependencies:
       chalk: 4.1.2
       debug: 4.4.1
-      dotenv: 16.4.5
+      dotenv: 16.4.7
       dotenv-expand: 11.0.6
       getenv: 1.0.0
     transitivePeerDependencies:
@@ -21906,7 +21919,7 @@ snapshots:
     dependencies:
       chalk: 4.1.2
       debug: 4.4.1
-      dotenv: 16.4.5
+      dotenv: 16.4.7
       dotenv-expand: 11.0.6
       getenv: 1.0.0
     transitivePeerDependencies:
@@ -30723,9 +30736,11 @@ snapshots:
 
   dotenv-expand@11.0.6:
     dependencies:
-      dotenv: 16.4.5
+      dotenv: 16.6.1
 
   dotenv@16.4.5: {}
+
+  dotenv@16.4.7: {}
 
   dotenv@16.6.1: {}
 
