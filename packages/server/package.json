@@ -44,11 +44,13 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "execa": "^9.5.2",
     "kysely": "^0.28.5",
-    "kysely-pglite-dialect": "^1.2.0"
+    "kysely-pglite-dialect": "^1.2.0",
+    "msw": "^2.7.0"
   }
 }

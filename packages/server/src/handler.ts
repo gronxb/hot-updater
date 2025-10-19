@@ -11,6 +11,7 @@ export interface HandlerAPI {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
   ) => Promise<AppUpdateInfo | null>;
+  getBundleById: (id: string) => Promise<Bundle | null>;
   getBundles: (options: {
     where?: { channel?: string; platform?: string };
     limit: number;
@@ -149,6 +150,25 @@ export function createHandler(
         );
       }
 
+      // GET /api/bundles/:id - Get single bundle
+      const getBundleMatch = routePath.match(/^\/bundles\/([^/]+)$/);
+      if (getBundleMatch && method === "GET") {
+        const id = getBundleMatch[1];
+        const bundle = await api.getBundleById(id);
+
+        if (!bundle) {
+          return new Response(JSON.stringify({ error: "Bundle not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify(bundle), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       // GET /api/bundles - List bundles
       if (routePath === "/bundles" && method === "GET") {
         const channel = url.searchParams.get("channel") ?? undefined;
@@ -165,18 +185,22 @@ export function createHandler(
           offset,
         });
 
-        return new Response(JSON.stringify(result), {
+        return new Response(JSON.stringify(result.data), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
 
-      // POST /api/bundles - Create new bundle
+      // POST /api/bundles - Create new bundle(s)
       if (routePath === "/bundles" && method === "POST") {
-        const bundle = (await request.json()) as Bundle;
-        await api.insertBundle(bundle);
+        const body = await request.json();
+        const bundles = Array.isArray(body) ? body : [body];
 
-        return new Response(JSON.stringify({ success: true, bundle }), {
+        for (const bundle of bundles) {
+          await api.insertBundle(bundle as Bundle);
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
           status: 201,
           headers: { "Content-Type": "application/json" },
         });

@@ -241,14 +241,17 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
   it("getBundleById: GET /hot-updater/bundles/:id retrieves a bundle (success case)", async () => {
     server.use(
-      http.get("http://localhost/hot-updater/bundles/:bundleId", ({ params, request }) => {
-        const { bundleId } = params;
-        if (bundleId === testBundles[0].id) {
-          expect(request.headers.get("Accept")).toEqual("application/json");
-          return HttpResponse.json(testBundles[0]);
-        }
-        return HttpResponse.error();
-      }),
+      http.get(
+        "http://localhost/hot-updater/bundles/:bundleId",
+        ({ params, request }) => {
+          const { bundleId } = params;
+          if (bundleId === testBundles[0].id) {
+            expect(request.headers.get("Accept")).toEqual("application/json");
+            return HttpResponse.json(testBundles[0]);
+          }
+          return HttpResponse.error();
+        },
+      ),
     );
 
     const bundle = await repo.getBundleById(
@@ -303,14 +306,17 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       http.get("http://localhost/hot-updater/bundles", () => {
         return HttpResponse.json(testBundles);
       }),
-      http.get("http://localhost/hot-updater/bundles/:bundleId", ({ params, request }) => {
-        const { bundleId } = params;
-        if (bundleId === testBundles[0].id) {
-          expect(request.headers.get("Accept")).toEqual("application/json");
-          return HttpResponse.json(testBundles[0]);
-        }
-        return HttpResponse.error();
-      }),
+      http.get(
+        "http://localhost/hot-updater/bundles/:bundleId",
+        ({ params, request }) => {
+          const { bundleId } = params;
+          if (bundleId === testBundles[0].id) {
+            expect(request.headers.get("Accept")).toEqual("application/json");
+            return HttpResponse.json(testBundles[0]);
+          }
+          return HttpResponse.error();
+        },
+      ),
       http.post("http://localhost/hot-updater/bundles", async ({ request }) => {
         postCalled = true;
         const body = (await request.json()) as Bundle[];
@@ -411,12 +417,15 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     let deleteCalled = false;
 
     server.use(
-      http.delete("http://localhost/hot-updater/bundles/:bundleId", ({ params }) => {
-        deleteCalled = true;
-        const { bundleId } = params;
-        expect(bundleId).toBe(testBundles[0].id);
-        return HttpResponse.json({ success: true });
-      }),
+      http.delete(
+        "http://localhost/hot-updater/bundles/:bundleId",
+        ({ params }) => {
+          deleteCalled = true;
+          const { bundleId } = params;
+          expect(bundleId).toBe(testBundles[0].id);
+          return HttpResponse.json({ success: true });
+        },
+      ),
     );
 
     await repo.deleteBundle(testBundles[0]);

@@ -463,6 +463,9 @@ export function hotUpdater(
 
   return {
     ...api,
-    handler: createHandler(api, options?.basePath ? { basePath: options.basePath } : {}),
+    handler: createHandler(
+      api,
+      options?.basePath ? { basePath: options.basePath } : {},
+    ),
   };
 }

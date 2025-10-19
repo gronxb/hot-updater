@@ -1188,6 +1188,9 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
+      '@hot-updater/standalone':
+        specifier: workspace:*
+        version: link:../../plugins/standalone
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -1206,6 +1209,9 @@ importers:
       kysely-pglite-dialect:
         specifier: ^1.2.0
         version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.5)
+      msw:
+        specifier: ^2.7.0
+        version: 2.7.0(@types/node@20.19.11)(typescript@5.8.3)
 
   plugins/aws:
     dependencies:
@@ -4668,26 +4674,8 @@ packages:
       '@types/node':
         optional: true
 
-  '@inquirer/confirm@5.1.6':
-    resolution: {integrity: sha512-6ZXYK3M1XmaVBZX6FCfChgtponnL0R6I7k8Nu+kaoNkT828FVZTcca1MqmWQipaW2oNREQl5AaPCUOOCVNdRMw==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-
   '@inquirer/core@10.1.11':
     resolution: {integrity: sha512-BXwI/MCqdtAhzNQlBEFE7CEflhPkl/BqvAuV/aK6lW3DClIfYVDWPP/kXuXHtBWC7/EEbNqd/1BGq2BGBBnuxw==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-
-  '@inquirer/core@10.1.7':
-    resolution: {integrity: sha512-AA9CQhlrt6ZgiSy6qoAigiA1izOa751ugX6ioSjqgJ+/Gd+tEN/TORk5sUYNjXuHWfW0r1n/a6ak4u/NqHHrtA==}
     engines: {node: '>=18'}
     peerDependencies:
       '@types/node': '>=18'
@@ -4712,10 +4700,6 @@ packages:
     peerDependenciesMeta:
       '@types/node':
         optional: true
-
-  '@inquirer/figures@1.0.10':
-    resolution: {integrity: sha512-Ey6176gZmeqZuY/W/nZiUyvmb1/qInjcpiZjXWi6nON+nxJpD1bxtSoBxNliGISae32n6OwbY+TSXPZ1CfS4bw==}
-    engines: {node: '>=18'}
 
   '@inquirer/figures@1.0.11':
     resolution: {integrity: sha512-eOg92lvrn/aRUqbxRyvpEWnrvRuTYRifixHkYVpJiygTgVSBIHDqLh0SrMQXkafvULg3ck11V7xvR+zcgvpHFw==}
@@ -4777,15 +4761,6 @@ packages:
 
   '@inquirer/select@4.2.1':
     resolution: {integrity: sha512-gt1Kd5XZm+/ddemcT3m23IP8aD8rC9drRckWoP/1f7OL46Yy2FGi8DSmNjEjQKtPl6SV96Kmjbl6p713KXJ/Jg==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-
-  '@inquirer/type@3.0.4':
-    resolution: {integrity: sha512-2MNFrDY8jkFYc9Il9DgLsHhMzuHnOYM1+CUYVWbzu9oT0hC7V7EcYvdCKeoll/Fcci04A+ERZ9wcc7cQ8lTkIA==}
     engines: {node: '>=18'}
     peerDependencies:
       '@types/node': '>=18'
@@ -22873,6 +22848,13 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.13.5
 
+  '@inquirer/confirm@5.1.10(@types/node@20.19.11)':
+    dependencies:
+      '@inquirer/core': 10.1.11(@types/node@20.19.11)
+      '@inquirer/type': 3.0.6(@types/node@20.19.11)
+    optionalDependencies:
+      '@types/node': 20.19.11
+
   '@inquirer/confirm@5.1.10(@types/node@22.13.5)':
     dependencies:
       '@inquirer/core': 10.1.11(@types/node@22.13.5)
@@ -22880,20 +22862,18 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.13.5
 
-  '@inquirer/confirm@5.1.6(@types/node@20.19.11)':
+  '@inquirer/core@10.1.11(@types/node@20.19.11)':
     dependencies:
-      '@inquirer/core': 10.1.7(@types/node@20.19.11)
-      '@inquirer/type': 3.0.4(@types/node@20.19.11)
+      '@inquirer/figures': 1.0.11
+      '@inquirer/type': 3.0.6(@types/node@20.19.11)
+      ansi-escapes: 4.3.2
+      cli-width: 4.1.0
+      mute-stream: 2.0.0
+      signal-exit: 4.1.0
+      wrap-ansi: 6.2.0
+      yoctocolors-cjs: 2.1.2
     optionalDependencies:
       '@types/node': 20.19.11
-
-  '@inquirer/confirm@5.1.6(@types/node@22.13.5)':
-    dependencies:
-      '@inquirer/core': 10.1.7(@types/node@22.13.5)
-      '@inquirer/type': 3.0.4(@types/node@22.13.5)
-    optionalDependencies:
-      '@types/node': 22.13.5
-    optional: true
 
   '@inquirer/core@10.1.11(@types/node@22.13.5)':
     dependencies:
@@ -22907,33 +22887,6 @@ snapshots:
       yoctocolors-cjs: 2.1.2
     optionalDependencies:
       '@types/node': 22.13.5
-
-  '@inquirer/core@10.1.7(@types/node@20.19.11)':
-    dependencies:
-      '@inquirer/figures': 1.0.10
-      '@inquirer/type': 3.0.4(@types/node@20.19.11)
-      ansi-escapes: 4.3.2
-      cli-width: 4.1.0
-      mute-stream: 2.0.0
-      signal-exit: 4.1.0
-      wrap-ansi: 6.2.0
-      yoctocolors-cjs: 2.1.2
-    optionalDependencies:
-      '@types/node': 20.19.11
-
-  '@inquirer/core@10.1.7(@types/node@22.13.5)':
-    dependencies:
-      '@inquirer/figures': 1.0.10
-      '@inquirer/type': 3.0.4(@types/node@22.13.5)
-      ansi-escapes: 4.3.2
-      cli-width: 4.1.0
-      mute-stream: 2.0.0
-      signal-exit: 4.1.0
-      wrap-ansi: 6.2.0
-      yoctocolors-cjs: 2.1.2
-    optionalDependencies:
-      '@types/node': 22.13.5
-    optional: true
 
   '@inquirer/editor@4.2.11(@types/node@22.13.5)':
     dependencies:
@@ -22950,8 +22903,6 @@ snapshots:
       yoctocolors-cjs: 2.1.2
     optionalDependencies:
       '@types/node': 22.13.5
-
-  '@inquirer/figures@1.0.10': {}
 
   '@inquirer/figures@1.0.11': {}
 
@@ -23019,14 +22970,9 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.13.5
 
-  '@inquirer/type@3.0.4(@types/node@20.19.11)':
+  '@inquirer/type@3.0.6(@types/node@20.19.11)':
     optionalDependencies:
       '@types/node': 20.19.11
-
-  '@inquirer/type@3.0.4(@types/node@22.13.5)':
-    optionalDependencies:
-      '@types/node': 22.13.5
-    optional: true
 
   '@inquirer/type@3.0.6(@types/node@22.13.5)':
     optionalDependencies:
@@ -26055,7 +26001,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.77.0(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -26066,9 +26014,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.81.0(@babel/core@7.26.0)':
     dependencies:
@@ -37416,7 +37362,7 @@ snapshots:
       '@bundled-es-modules/cookie': 2.0.1
       '@bundled-es-modules/statuses': 1.0.1
       '@bundled-es-modules/tough-cookie': 0.1.6
-      '@inquirer/confirm': 5.1.6(@types/node@20.19.11)
+      '@inquirer/confirm': 5.1.10(@types/node@20.19.11)
       '@mswjs/interceptors': 0.37.6
       '@open-draft/deferred-promise': 2.2.0
       '@open-draft/until': 2.1.0
@@ -37429,7 +37375,7 @@ snapshots:
       path-to-regexp: 6.3.0
       picocolors: 1.1.1
       strict-event-emitter: 0.5.1
-      type-fest: 4.35.0
+      type-fest: 4.37.0
       yargs: 17.7.2
     optionalDependencies:
       typescript: 5.8.3
@@ -37441,7 +37387,7 @@ snapshots:
       '@bundled-es-modules/cookie': 2.0.1
       '@bundled-es-modules/statuses': 1.0.1
       '@bundled-es-modules/tough-cookie': 0.1.6
-      '@inquirer/confirm': 5.1.6(@types/node@22.13.5)
+      '@inquirer/confirm': 5.1.10(@types/node@22.13.5)
       '@mswjs/interceptors': 0.37.6
       '@open-draft/deferred-promise': 2.2.0
       '@open-draft/until': 2.1.0
@@ -37454,7 +37400,7 @@ snapshots:
       path-to-regexp: 6.3.0
       picocolors: 1.1.1
       strict-event-emitter: 0.5.1
-      type-fest: 4.35.0
+      type-fest: 4.37.0
       yargs: 17.7.2
     optionalDependencies:
       typescript: 5.8.3
