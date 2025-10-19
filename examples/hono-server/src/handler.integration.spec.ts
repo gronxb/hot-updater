@@ -34,7 +34,7 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     baseUrl = `http://localhost:${port}`;
 
     serverProcess = spawnServerProcess({
-      serverCommand: ["tsx", "src/index.ts"],
+      serverCommand: ["pnpm", "exec", "tsx", "src/index.ts"],
       port,
       testDbPath,
       projectRoot,
