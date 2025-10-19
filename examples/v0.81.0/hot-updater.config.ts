@@ -1,5 +1,6 @@
+import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { standaloneRepository } from "@hot-updater/standalone";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
@@ -9,15 +10,18 @@ export default defineConfig({
   nativeBuild: { android: { aab: false } },
 
   build: bare({ enableHermes: true }),
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-    basePath: "0-81-0",
+  storage: s3Storage({
+    region: process.env.HOT_UPDATER_AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.HOT_UPDATER_AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.HOT_UPDATER_AWS_S3_BUCKET_NAME!,
   }),
-  database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+  database: standaloneRepository({
+    baseUrl:
+      process.env.HOT_UPDATER_SERVER_URL ||
+      "http://localhost:3000/hot-updater",
   }),
   fingerprint: {
     debug: true,

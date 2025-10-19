@@ -10,9 +10,10 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "@hono/node-server": "^1.19.5",
-    "@hot-updater/core": "workspace:*",
     "@hot-updater/aws": "workspace:*",
+    "@hot-updater/core": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "dotenv": "^16.4.7",
     "fumadb": "^0.1.1",
     "hono": "^4.9.12",
     "kysely": "^0.28.5",

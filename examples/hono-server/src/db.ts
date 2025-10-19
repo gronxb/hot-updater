@@ -1,13 +1,17 @@
 import { PGlite } from "@electric-sql/pglite";
+import { s3Storage } from "@hot-updater/aws";
 import { HotUpdaterDB, hotUpdater } from "@hot-updater/server";
+import { config } from "dotenv";
+import { kyselyAdapter } from "fumadb/adapters/kysely";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { kyselyAdapter } from "fumadb/adapters/kysely";
-import { s3Storage } from "@hot-updater/aws";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load .env.hotupdater
+config({ path: ".env.hotupdater" });
 
 // Initialize PGlite with file-based storage for persistence
 // Use TEST_DB_PATH for testing, otherwise use default "data" directory
@@ -50,12 +54,12 @@ const mockStoragePlugin = {
 // In production, use environment variables for credentials
 const storagePlugin = s3Storage(
   {
-    region: process.env.AWS_REGION || "us-east-1",
+    region: process.env.HOT_UPDATER_AWS_REGION!,
     credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test-access-key",
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test-secret-key",
+      accessKeyId: process.env.HOT_UPDATER_AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_AWS_SECRET_ACCESS_KEY!,
     },
-    bucketName: process.env.AWS_BUCKET_NAME || "hot-updater-bundles",
+    bucketName: process.env.HOT_UPDATER_AWS_S3_BUCKET_NAME!,
   },
   {},
 )({ cwd: process.cwd() });

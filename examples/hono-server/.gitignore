@@ -14,6 +14,7 @@ node_modules/
 # env
 .env
 .env.production
+.env.hotupdater
 
 # logs
 logs/

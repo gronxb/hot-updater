@@ -1,6 +1,7 @@
 .DS_Store
 .env
 .env.local
+.env.hotupdater
 package-lock.json
 
 node_modules/
