@@ -13,7 +13,7 @@ import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
-import { createHandler, type HandlerOptions } from "../handler";
+import { createHandler } from "../handler";
 import { v1 } from "../schema/v1";
 import type { PaginationInfo } from "../types";
 
@@ -46,7 +46,7 @@ export function hotUpdater(
   client: InferFumaDB<typeof HotUpdaterDB>,
   options?: {
     storagePlugins?: StoragePlugin[];
-    handlerOptions?: HandlerOptions;
+    basePath?: string;
   },
 ): HotUpdaterAPI {
   const storagePlugins = options?.storagePlugins ?? [];
@@ -463,6 +463,6 @@ export function hotUpdater(
 
   return {
     ...api,
-    handler: createHandler(api, options?.handlerOptions),
+    handler: createHandler(api, options?.basePath ? { basePath: options.basePath } : {}),
   };
 }

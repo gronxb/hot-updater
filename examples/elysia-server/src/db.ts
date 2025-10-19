@@ -63,6 +63,7 @@ const storagePlugin = s3Storage(
 // Create Hot Updater API
 export const api = hotUpdater(client, {
   storagePlugins: [mockStoragePlugin, storagePlugin],
+  basePath: "/hot-updater",
 });
 
 // Initialize database schema

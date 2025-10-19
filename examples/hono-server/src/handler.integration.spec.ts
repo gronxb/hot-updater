@@ -51,7 +51,9 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     bundles,
     options,
   ) => {
-    return createGetUpdateInfo(baseUrl)(bundles, options);
+    return createGetUpdateInfo({
+      baseUrl: `${baseUrl}/hot-updater`,
+    })(bundles, options);
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });

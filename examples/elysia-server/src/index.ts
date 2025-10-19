@@ -14,7 +14,7 @@ try {
       service: "Hot Updater Server (Elysia)",
       version: "1.0.0",
     }))
-    .mount("/api", api.handler)
+    .mount("/hot-updater", api.handler)
     .listen(port);
 
   console.log(`

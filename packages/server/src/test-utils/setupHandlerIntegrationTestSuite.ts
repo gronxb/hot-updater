@@ -4,18 +4,25 @@ import { execa } from "execa";
 import fs from "fs/promises";
 import path from "path";
 
+export interface TestApiConfig {
+  baseUrl: string;
+}
+
 /**
  * Creates getUpdateInfo function for integration tests
  * This is used with setupGetUpdateInfoTestSuite from @hot-updater/core/test-utils
  */
 export function createGetUpdateInfo(
-  baseUrl: string,
+  config: TestApiConfig,
 ): (bundles: Bundle[], options: GetBundlesArgs) => Promise<UpdateInfo | null> {
+  // Single source URL builder
+  const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+
   return async (bundles, options) => {
     try {
-      // Step 1: Create bundles via POST /api/bundles
+      // Step 1: Create bundles via POST
       for (const bundle of bundles) {
-        const createResponse = await fetch(`${baseUrl}/api/bundles`, {
+        const createResponse = await fetch(buildUrl("/bundles"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(bundle),
@@ -35,10 +42,14 @@ export function createGetUpdateInfo(
       let url: string;
       if (options._updateStrategy === "appVersion") {
         const appVersion = (options as any).appVersion;
-        url = `${baseUrl}/api/app-version/${options.platform}/${appVersion}/${channel}/${minBundleId}/${options.bundleId}`;
+        url = buildUrl(
+          `/app-version/${options.platform}/${appVersion}/${channel}/${minBundleId}/${options.bundleId}`,
+        );
       } else {
         const fingerprintHash = (options as any).fingerprintHash;
-        url = `${baseUrl}/api/fingerprint/${options.platform}/${fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}`;
+        url = buildUrl(
+          `/fingerprint/${options.platform}/${fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}`,
+        );
       }
 
       // Step 3: Check for updates via GET
@@ -51,9 +62,9 @@ export function createGetUpdateInfo(
         | { update: false }
         | ({ update: true; fileUrl?: string } & UpdateInfo);
 
-      // Step 4: Clean up via DELETE /api/bundles/:id
+      // Step 4: Clean up via DELETE
       for (const bundle of bundles) {
-        await fetch(`${baseUrl}/api/bundles/${bundle.id}`, {
+        await fetch(buildUrl(`/bundles/${bundle.id}`), {
           method: "DELETE",
         });
       }
