@@ -1,5 +1,14 @@
 # @hot-updater/supabase
 
+## 0.20.15
+
+### Patch Changes
+
+- Updated dependencies [526a5ba]
+- Updated dependencies [ddf6f2c]
+  - @hot-updater/plugin-core@0.20.15
+  - @hot-updater/core@0.20.15
+
 ## 0.20.14
 
 ### Patch Changes
