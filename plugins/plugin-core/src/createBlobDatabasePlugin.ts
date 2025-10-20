@@ -637,8 +637,14 @@ export const createBlobDatabasePlugin = <TContext = object>({
         for (const path of updatedTargetFilePaths) {
           pathsToInvalidate.add(path);
         }
+        
+        // Enconded paths for invalidation (in case of special characters)
+        const encondedPaths = new Set<string>();
+        for (const path of pathsToInvalidate) {
+          encondedPaths.add(encodeURI(path));
+        }
 
-        await invalidatePaths(context, Array.from(pathsToInvalidate));
+        await invalidatePaths(context, Array.from(encondedPaths));
 
         pendingBundlesMap.clear();
         hooks?.onDatabaseUpdated?.();
