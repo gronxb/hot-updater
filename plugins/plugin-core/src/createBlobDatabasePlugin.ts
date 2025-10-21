@@ -15,12 +15,24 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   return pureBundle;
 }
 
+// Helper function to normalize targetAppVersion by removing all whitespace
+function normalizeTargetAppVersion(
+  version: string | null | undefined,
+): string | null {
+  if (!version) return null;
+  // Remove all whitespace characters (spaces, tabs, newlines, etc.)
+  return version.replace(/\s+/g, "");
+}
+
 // Helper function to check if a version string is an exact version (not a range)
 function isExactVersion(version: string | null | undefined): boolean {
   if (!version) return false;
+  // Normalize the version first to handle cases with spaces
+  const normalized = normalizeTargetAppVersion(version);
+  if (!normalized) return false;
   // semver.valid() returns the cleaned version string if it's a valid exact version
   // or null if it's not a valid version (includes ranges like x, *, ~, ^)
-  return semver.valid(version) !== null;
+  return semver.valid(normalized) !== null;
 }
 
 /**
@@ -33,9 +45,11 @@ function isExactVersion(version: string | null | undefined): boolean {
  * - "1.2.3" generates ["1.2.3"]
  */
 function getSemverNormalizedVersions(version: string): string[] {
-  const coerced = semver.coerce(version);
+  // Normalize the version first to handle cases with spaces
+  const normalized = normalizeTargetAppVersion(version) || version;
+  const coerced = semver.coerce(normalized);
   if (!coerced) {
-    return [version];
+    return [normalized];
   }
 
   const versions = new Set<string>();
@@ -292,7 +306,9 @@ export const createBlobDatabasePlugin = <TContext = object>({
 
           // Insert operation.
           if (operation === "insert") {
-            const target = data.targetAppVersion ?? data.fingerprintHash;
+            const target =
+              normalizeTargetAppVersion(data.targetAppVersion) ??
+              data.fingerprintHash;
             if (!target) {
               throw new Error("target not found");
             }
@@ -398,8 +414,8 @@ export const createBlobDatabasePlugin = <TContext = object>({
             const target =
               data.fingerprintHash ??
               bundle.fingerprintHash ??
-              data.targetAppVersion ??
-              bundle.targetAppVersion;
+              normalizeTargetAppVersion(data.targetAppVersion) ??
+              normalizeTargetAppVersion(bundle.targetAppVersion);
             if (!target) {
               throw new Error("target not found");
             }
@@ -638,7 +654,13 @@ export const createBlobDatabasePlugin = <TContext = object>({
           pathsToInvalidate.add(path);
         }
 
-        await invalidatePaths(context, Array.from(pathsToInvalidate));
+        // Enconded paths for invalidation (in case of special characters)
+        const encondedPaths = new Set<string>();
+        for (const path of pathsToInvalidate) {
+          encondedPaths.add(encodeURI(path));
+        }
+
+        await invalidatePaths(context, Array.from(encondedPaths));
 
         pendingBundlesMap.clear();
         hooks?.onDatabaseUpdated?.();

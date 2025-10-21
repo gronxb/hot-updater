@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 0.20.15
+
+### Patch Changes
+
+- 526a5ba: fix(aws): normalize targetAppVersion to prevent duplicate S3 paths
+- ddf6f2c: Encodes paths before invalidation to handle special chars
+  - @hot-updater/core@0.20.15
+
 ## 0.20.14
 
 ### Patch Changes
