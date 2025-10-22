@@ -13,6 +13,10 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./node": {
+      "import": "./dist/node.js",
+      "require": "./dist/node.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -31,16 +35,18 @@
     "access": "public"
   },
   "dependencies": {
-    "execa": "catalog:",
-    "vitest": "^3.0.4",
     "workspace-tools": "^0.18.4"
   },
   "peerDependencies": {
-    "@hot-updater/core": "workspace:*"
+    "@hot-updater/core": "workspace:*",
+    "execa": "catalog:",
+    "vitest": "*"
   },
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
     "@types/node": "catalog:",
-    "workspace-tools": "^0.18.4"
+    "workspace-tools": "^0.18.4",
+    "execa": "catalog:",
+    "vitest": "^3.2.4"
   }
 }

@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import type {
   AppUpdateInfo,
   Bundle,
@@ -6,6 +5,7 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
+import { describe, expect, it } from "vitest";
 
 const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   message: "hello",

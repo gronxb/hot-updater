@@ -1,4 +1,4 @@
-import { mockReactNativeProjectRoot } from "@hot-updater/test-utils";
+import { mockReactNativeProjectRoot } from "@hot-updater/test-utils/node";
 import fs from "fs";
 import path from "path";
 import { beforeEach, describe, expect, it } from "vitest";
