@@ -35,7 +35,7 @@ export const supabaseStorage =
       name: "supabaseStorage",
       supportedProtocol: "supabase-storage",
       async delete(storageUri) {
-        let { key, bucket: bucketName } = parseStorageUri(
+        const { key, bucket: bucketName } = parseStorageUri(
           storageUri,
           "supabase-storage",
         );

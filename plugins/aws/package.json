@@ -28,7 +28,8 @@
     },
     "./lambda": {
       "require": "./dist/lambda/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

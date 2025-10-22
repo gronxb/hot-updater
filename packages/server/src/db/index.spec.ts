@@ -19,7 +19,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { HotUpdaterDB, hotUpdater } from "./index";
+import { hotUpdater } from "./index";
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();

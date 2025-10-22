@@ -5,15 +5,15 @@
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -31,11 +31,16 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
     "execa": "catalog:",
-    "vitest": "^3.0.4"
+    "vitest": "^3.0.4",
+    "workspace-tools": "^0.18.4"
+  },
+  "peerDependencies": {
+    "@hot-updater/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@hot-updater/core": "workspace:*",
+    "@types/node": "catalog:",
+    "workspace-tools": "^0.18.4"
   }
 }

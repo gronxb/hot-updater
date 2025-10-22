@@ -4,15 +4,16 @@
   "type": "module",
   "version": "0.20.15",
   "description": "React Native OTA solution for self-hosted",
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
-  "types": "dist/index.d.ts",
+  "types": "./dist/index.d.cts",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
