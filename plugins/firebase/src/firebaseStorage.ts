@@ -37,7 +37,7 @@ export const firebaseStorage =
         const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
         if (bucketName !== config.storageBucket) {
           throw new Error(
-            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+            `Bucket name mismatch: expected "${config.storageBucket}", but found "${bucketName}".`,
           );
         }
 
