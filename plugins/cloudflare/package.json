@@ -54,6 +54,7 @@
     "@clack/prompts": "catalog:",
     "@cloudflare/vitest-pool-workers": "^0.8.70",
     "@cloudflare/workers-types": "^4.20250828.1",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "dayjs": "^1.11.13",

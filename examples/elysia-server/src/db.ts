@@ -1,5 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import { s3Storage } from "@hot-updater/aws";
+import { mockStorage } from "@hot-updater/mock";
 import { hotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
@@ -31,6 +32,7 @@ export const api = hotUpdater({
     provider: "postgresql",
   }),
   storagePlugins: [
+    mockStorage({}),
     s3Storage({
       region: process.env.HOT_UPDATER_AWS_REGION!,
       credentials: {

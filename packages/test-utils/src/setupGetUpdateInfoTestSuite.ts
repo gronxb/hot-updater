@@ -4,8 +4,8 @@ import type {
   Bundle,
   GetBundlesArgs,
   UpdateInfo,
-} from "../types";
-import { NIL_UUID } from "../uuid";
+} from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
 
 const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   message: "hello",

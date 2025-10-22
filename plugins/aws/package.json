@@ -42,6 +42,7 @@
     "@aws-sdk/cloudfront-signer": "3.772.0",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "catalog:",
     "aws-sdk-client-mock": "^4.1.0",

@@ -5,7 +5,7 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import camelcaseKeys from "camelcase-keys";
 import { afterAll, beforeEach, describe } from "vitest";

@@ -3,7 +3,7 @@ import { s3Storage } from "@hot-updater/aws";
 import { r2Storage } from "@hot-updater/cloudflare";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { firebaseStorage } from "@hot-updater/firebase";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { supabaseStorage } from "@hot-updater/supabase";

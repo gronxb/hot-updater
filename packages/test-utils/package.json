@@ -1,8 +1,9 @@
 {
-  "name": "@hot-updater/core",
+  "name": "@hot-updater/test-utils",
+  "private": true,
   "version": "0.20.15",
   "type": "module",
-  "description": "React Native OTA solution for self-hosted",
+  "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -16,17 +17,8 @@
   },
   "files": [
     "dist",
+    "src",
     "package.json"
-  ],
-  "keywords": [
-    "react-native",
-    "react-native-code-push",
-    "code-push",
-    "eas",
-    "eas-update",
-    "expo",
-    "expo-update",
-    "self-hosted"
   ],
   "license": "MIT",
   "scripts": {
@@ -35,12 +27,13 @@
   },
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
-  "bugs": {
-    "url": "https://github.com/gronxb/hot-updater/issues"
-  },
-  "homepage": "https://github.com/gronxb/hot-updater#readme",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "execa": "catalog:",
+    "vitest": "^3.0.4"
   },
   "devDependencies": {
     "@types/node": "catalog:"

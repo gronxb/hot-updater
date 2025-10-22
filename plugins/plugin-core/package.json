@@ -55,6 +55,7 @@
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "boxen": "^8.0.1",

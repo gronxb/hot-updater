@@ -62,6 +62,7 @@
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "execa": "^9.5.2",
