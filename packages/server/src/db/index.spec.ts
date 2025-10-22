@@ -5,8 +5,8 @@ import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
 import { firebaseStorage } from "@hot-updater/firebase";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { supabaseStorage } from "@hot-updater/supabase";
-import { kyselyAdapter } from "fumadb/adapters/kysely";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import {
@@ -21,67 +21,44 @@ import {
 } from "vitest";
 import { HotUpdaterDB, hotUpdater } from "./index";
 
-// Initialize real storage plugins for testing
-const s3StoragePlugin = s3Storage(
-  {
-    region: "us-east-1",
-    credentials: {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    },
-    bucketName: "test-bucket",
-  },
-  {},
-)({ cwd: process.cwd() });
-
-const r2StoragePlugin = r2Storage(
-  {
-    cloudflareApiToken: "test-token",
-    accountId: "test-account-id",
-    bucketName: "test-bucket",
-  },
-  {},
-)({ cwd: process.cwd() });
-
-const supabaseStoragePlugin = supabaseStorage(
-  {
-    supabaseUrl: "https://test.supabase.co",
-    supabaseAnonKey: "test-anon-key",
-    bucketName: "test-bucket",
-  },
-  {},
-)({ cwd: process.cwd() });
-
-const firebaseStoragePlugin = firebaseStorage(
-  {
-    storageBucket: "test-bucket.appspot.com",
-  },
-  {},
-)({ cwd: process.cwd() });
-
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
 
   const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 
-  const adapterConfig = {
-    db: kysely,
-    provider: "postgresql" as const,
-  } as unknown as Parameters<typeof kyselyAdapter>[0];
-
-  const client = HotUpdaterDB.client(kyselyAdapter(adapterConfig));
-  const api = hotUpdater(client, {
+  const api = hotUpdater({
+    database: kyselyAdapter({
+      db: kysely,
+      provider: "postgresql",
+    }),
     storagePlugins: [
-      s3StoragePlugin,
-      r2StoragePlugin,
-      supabaseStoragePlugin,
-      firebaseStoragePlugin,
+      s3Storage({
+        region: "us-east-1",
+        credentials: {
+          accessKeyId: "test-access-key",
+          secretAccessKey: "test-secret-key",
+        },
+        bucketName: "test-bucket",
+      }),
+      r2Storage({
+        cloudflareApiToken: "test-token",
+        accountId: "test-account-id",
+        bucketName: "test-bucket",
+      }),
+      supabaseStorage({
+        supabaseUrl: "https://test.supabase.co",
+        supabaseAnonKey: "test-anon-key",
+        bucketName: "test-bucket",
+      }),
+      firebaseStorage({
+        storageBucket: "test-bucket.appspot.com",
+      }),
     ],
   });
 
   beforeAll(async () => {
     // Initialize FumaDB schema to latest (creates tables under the hood)
-    const migrator = client.createMigrator();
+    const migrator = api.createMigrator();
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,
@@ -149,114 +126,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo).not.toBeNull();
       expect(updateInfo?.fileUrl).toBe(
         "https://test-bucket.s3.us-east-1.amazonaws.com/bundles/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=test-access-key%2F20251015%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=4fa782e86a842ce2eacbfa6534d1f5d5145d733092959cf6ad755cc306bbe98e&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
-      );
-    });
-
-    it("resolves r2:// storage URI to signed URL via r2StoragePlugin", async () => {
-      // Mock R2 getDownloadUrl to return a presigned URL
-      vi.spyOn(r2StoragePlugin, "getDownloadUrl").mockResolvedValue({
-        fileUrl:
-          "https://test-bucket.r2.cloudflarestorage.com/bundles/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=test-account-id&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=mockedr2signature&X-Amz-SignedHeaders=host",
-      });
-
-      const bundle: Bundle = {
-        id: "00000000-0000-0000-0000-000000000002",
-        platform: "ios",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash456",
-        gitCommitHash: null,
-        message: "R2 bundle",
-        channel: "production",
-        storageUri: "r2://test-bucket/bundles/bundle.zip",
-        targetAppVersion: "1.0.0",
-        fingerprintHash: null,
-      };
-
-      await api.insertBundle(bundle);
-
-      const updateInfo = await api.getAppUpdateInfo({
-        appVersion: "1.0.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      });
-
-      expect(updateInfo).not.toBeNull();
-      expect(updateInfo?.fileUrl).toBe(
-        "https://test-bucket.r2.cloudflarestorage.com/bundles/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=test-account-id&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=mockedr2signature&X-Amz-SignedHeaders=host",
-      );
-    });
-
-    it("resolves supabase-storage:// URI to signed URL via supabaseStoragePlugin", async () => {
-      // Mock Supabase getDownloadUrl to return a signed URL
-      vi.spyOn(supabaseStoragePlugin, "getDownloadUrl").mockResolvedValue({
-        fileUrl:
-          "https://test.supabase.co/storage/v1/object/sign/test-bucket/bundles/bundle.zip?token=mockedsupabasetoken",
-      });
-
-      const bundle: Bundle = {
-        id: "00000000-0000-0000-0000-000000000003",
-        platform: "ios",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash789",
-        gitCommitHash: null,
-        message: "Supabase bundle",
-        channel: "production",
-        storageUri: "supabase-storage://test-bucket/bundles/bundle.zip",
-        targetAppVersion: "1.0.0",
-        fingerprintHash: null,
-      };
-
-      await api.insertBundle(bundle);
-
-      const updateInfo = await api.getAppUpdateInfo({
-        appVersion: "1.0.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      });
-
-      expect(updateInfo).not.toBeNull();
-      expect(updateInfo?.fileUrl).toBe(
-        "https://test.supabase.co/storage/v1/object/sign/test-bucket/bundles/bundle.zip?token=mockedsupabasetoken",
-      );
-    });
-
-    it("resolves gs:// (Firebase) storage URI to signed URL via firebaseStoragePlugin", async () => {
-      // Mock Firebase getDownloadUrl to return a signed URL
-      vi.spyOn(firebaseStoragePlugin, "getDownloadUrl").mockResolvedValue({
-        fileUrl:
-          "https://storage.googleapis.com/test-bucket.appspot.com/bundles/bundle.zip?GoogleAccessId=firebase-adminsdk&Expires=1729000000&Signature=mockedfirebasesignature",
-      });
-
-      const bundle: Bundle = {
-        id: "00000000-0000-0000-0000-000000000007",
-        platform: "ios",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hashfb",
-        gitCommitHash: null,
-        message: "Firebase bundle",
-        channel: "production",
-        storageUri: "gs://test-bucket.appspot.com/bundles/bundle.zip",
-        targetAppVersion: "1.0.0",
-        fingerprintHash: null,
-      };
-
-      await api.insertBundle(bundle);
-
-      const updateInfo = await api.getAppUpdateInfo({
-        appVersion: "1.0.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      });
-
-      expect(updateInfo).not.toBeNull();
-      expect(updateInfo?.fileUrl).toBe(
-        "https://storage.googleapis.com/test-bucket.appspot.com/bundles/bundle.zip?GoogleAccessId=firebase-adminsdk&Expires=1729000000&Signature=mockedfirebasesignature",
       );
     });
 

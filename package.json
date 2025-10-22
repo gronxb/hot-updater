@@ -32,7 +32,7 @@
     "nx": "^21.0.1",
     "picocolors": "catalog:",
     "rimraf": "^5.0.7",
-    "tsdown": "^0.14.2",
+    "tsdown": "^0.15.9",
     "typescript": "^5.8.3",
     "vitest": "^3.1.4"
   },

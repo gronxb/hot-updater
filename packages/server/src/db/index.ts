@@ -23,6 +23,9 @@ export const HotUpdaterDB = fumadb({
 });
 
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
+
+export type DatabaseAdapter = Parameters<typeof HotUpdaterDB.client>[0];
+
 export interface DatabaseAPI {
   getBundleById(id: string): Promise<Bundle | null>;
   getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
@@ -40,16 +43,26 @@ export interface DatabaseAPI {
 
 export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
+  createMigrator: () => ReturnType<HotUpdaterClient["createMigrator"]>;
 };
 
-export function hotUpdater(
-  client: InferFumaDB<typeof HotUpdaterDB>,
-  options?: {
-    storagePlugins?: StoragePlugin[];
-    basePath?: string;
-  },
-): HotUpdaterAPI {
-  const storagePlugins = options?.storagePlugins ?? [];
+export type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
+
+export interface HotUpdaterOptions {
+  database: DatabaseAdapter;
+  storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
+  basePath?: string;
+  cwd?: string;
+}
+
+export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
+  const client = HotUpdaterDB.client(options.database);
+  const cwd = options.cwd ?? process.cwd();
+
+  // Initialize storage plugins - call factories if they are functions
+  const storagePlugins = (options?.storagePlugins ?? []).map((plugin) =>
+    typeof plugin === "function" ? plugin({ cwd }) : plugin,
+  );
 
   const resolveFileUrl = async (
     storageUri: string | null,
@@ -467,5 +480,6 @@ export function hotUpdater(
       api,
       options?.basePath ? { basePath: options.basePath } : {},
     ),
+    createMigrator: () => client.createMigrator(),
   };
 }

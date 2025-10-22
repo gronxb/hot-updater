@@ -4,19 +4,35 @@
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
-    "./test-utils": {
-      "types": "./src/test-utils/index.ts",
-      "import": "./src/test-utils/index.ts"
-    }
+    "./adapters/drizzle": {
+      "import": "./dist/adapters/drizzle.js",
+      "require": "./dist/adapters/drizzle.cjs"
+    },
+    "./adapters/kysely": {
+      "import": "./dist/adapters/kysely.js",
+      "require": "./dist/adapters/kysely.cjs"
+    },
+    "./adapters/mongodb": {
+      "import": "./dist/adapters/mongodb.js",
+      "require": "./dist/adapters/mongodb.cjs"
+    },
+    "./adapters/prisma": {
+      "import": "./dist/adapters/prisma.js",
+      "require": "./dist/adapters/prisma.cjs"
+    },
+    "./adapters/typeorm": {
+      "import": "./dist/adapters/typeorm.js",
+      "require": "./dist/adapters/typeorm.cjs"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -36,7 +52,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "fumadb": "^0.1.1",
+    "fumadb": "0.1.1",
     "semver": "^7.7.2"
   },
   "devDependencies": {

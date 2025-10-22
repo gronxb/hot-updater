@@ -1,14 +1,14 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { standaloneRepository } from "@hot-updater/standalone";
-import { kyselyAdapter } from "fumadb/adapters/kysely";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { HotUpdaterDB, hotUpdater } from "./db";
+import { hotUpdater } from "./db";
 
 /**
  * Integration tests between @hot-updater/server handler and @hot-updater/standalone repository
@@ -24,15 +24,12 @@ import { HotUpdaterDB, hotUpdater } from "./db";
 const db = new PGlite();
 const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 
-const adapterConfig = {
-  db: kysely,
-  provider: "postgresql" as const,
-} as unknown as Parameters<typeof kyselyAdapter>[0];
-
-const client = HotUpdaterDB.client(kyselyAdapter(adapterConfig));
-
 // Create handler API with in-memory DB
-const api = hotUpdater(client, {
+const api = hotUpdater({
+  database: kyselyAdapter({
+    db: kysely,
+    provider: "postgresql",
+  }),
   basePath: "/hot-updater",
 });
 
@@ -42,7 +39,7 @@ const server = setupServer();
 
 beforeAll(async () => {
   // Initialize database
-  const migrator = client.createMigrator();
+  const migrator = api.createMigrator();
   const result = await migrator.migrateToLatest({
     mode: "from-schema",
     updateSettings: true,
@@ -281,7 +278,11 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
   it("Works with custom basePath configuration", async () => {
     // Create handler with custom basePath
-    const customApi = hotUpdater(client, {
+    const customApi = hotUpdater({
+      database: kyselyAdapter({
+        db: kysely,
+        provider: "postgresql",
+      }),
       basePath: "/api/v2",
     });
 
