@@ -5,7 +5,7 @@ import {
   killPort,
   spawnServerProcess,
   waitForServer,
-} from "@hot-updater/test-utils";
+} from "@hot-updater/test-utils/node";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import type { execa } from "execa";
 import { afterAll, beforeAll, describe } from "vitest";
