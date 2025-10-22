@@ -321,7 +321,7 @@ export function hotUpdater(
         storageUri: string | null;
       };
       const fileUrl = await resolveFileUrl(storageUri ?? null);
-      return { ...rest, storageUri: storageUri ?? null, fileUrl };
+      return { ...rest, fileUrl };
     },
 
     async getChannels(): Promise<string[]> {

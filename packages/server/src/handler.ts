@@ -67,10 +67,7 @@ export function createHandler(
         }
 
         return new Response(
-          JSON.stringify({
-            update: true,
-            ...updateInfo,
-          }),
+          JSON.stringify(updateInfo),
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
@@ -103,10 +100,7 @@ export function createHandler(
         }
 
         return new Response(
-          JSON.stringify({
-            update: true,
-            ...updateInfo,
-          }),
+          JSON.stringify(updateInfo),
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
@@ -139,10 +133,7 @@ export function createHandler(
         }
 
         return new Response(
-          JSON.stringify({
-            update: true,
-            ...updateInfo,
-          }),
+          JSON.stringify(updateInfo),
           {
             status: 200,
             headers: { "Content-Type": "application/json" },

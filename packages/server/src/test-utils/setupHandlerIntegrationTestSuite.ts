@@ -1,4 +1,9 @@
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import type {
+  AppUpdateInfo,
+  Bundle,
+  GetBundlesArgs,
+  UpdateInfo,
+} from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { execa } from "execa";
 import fs from "fs/promises";
@@ -14,7 +19,10 @@ export interface TestApiConfig {
  */
 export function createGetUpdateInfo(
   config: TestApiConfig,
-): (bundles: Bundle[], options: GetBundlesArgs) => Promise<UpdateInfo | null> {
+): (
+  bundles: Bundle[],
+  options: GetBundlesArgs,
+) => Promise<AppUpdateInfo | null> {
   // Single source URL builder
   const buildUrl = (path: string) => `${config.baseUrl}${path}`;
 
@@ -58,10 +66,7 @@ export function createGetUpdateInfo(
         throw new Error(`Failed to check for updates: ${response.statusText}`);
       }
 
-      const data = (await response.json()) as
-        | { update: false }
-        | ({ update: true; fileUrl?: string } & UpdateInfo);
-
+      const data = (await response.json()) as AppUpdateInfo | null;
       // Step 4: Clean up via DELETE
       for (const bundle of bundles) {
         await fetch(buildUrl(`/bundles/${bundle.id}`), {
@@ -70,17 +75,11 @@ export function createGetUpdateInfo(
       }
 
       // Return UpdateInfo or null
-      if (data.update) {
-        return {
-          id: data.id,
-          message: data.message,
-          shouldForceUpdate: data.shouldForceUpdate,
-          status: data.status,
-          storageUri: data.storageUri,
-        };
+      if (!data) {
+        return null;
       }
 
-      return null;
+      return data;
     } catch (error) {
       console.error("getUpdateInfo error:", error);
       throw error;

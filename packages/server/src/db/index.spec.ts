@@ -150,9 +150,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo?.fileUrl).toBe(
         "https://test-bucket.s3.us-east-1.amazonaws.com/bundles/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=test-access-key%2F20251015%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=4fa782e86a842ce2eacbfa6534d1f5d5145d733092959cf6ad755cc306bbe98e&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
       );
-      expect(updateInfo?.storageUri).toBe(
-        "s3://test-bucket/bundles/bundle.zip",
-      );
     });
 
     it("resolves r2:// storage URI to signed URL via r2StoragePlugin", async () => {
@@ -188,9 +185,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo).not.toBeNull();
       expect(updateInfo?.fileUrl).toBe(
         "https://test-bucket.r2.cloudflarestorage.com/bundles/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=test-account-id&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=mockedr2signature&X-Amz-SignedHeaders=host",
-      );
-      expect(updateInfo?.storageUri).toBe(
-        "r2://test-bucket/bundles/bundle.zip",
       );
     });
 
@@ -228,9 +222,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo?.fileUrl).toBe(
         "https://test.supabase.co/storage/v1/object/sign/test-bucket/bundles/bundle.zip?token=mockedsupabasetoken",
       );
-      expect(updateInfo?.storageUri).toBe(
-        "supabase-storage://test-bucket/bundles/bundle.zip",
-      );
     });
 
     it("resolves gs:// (Firebase) storage URI to signed URL via firebaseStoragePlugin", async () => {
@@ -267,9 +258,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo?.fileUrl).toBe(
         "https://storage.googleapis.com/test-bucket.appspot.com/bundles/bundle.zip?GoogleAccessId=firebase-adminsdk&Expires=1729000000&Signature=mockedfirebasesignature",
       );
-      expect(updateInfo?.storageUri).toBe(
-        "gs://test-bucket.appspot.com/bundles/bundle.zip",
-      );
     });
 
     it("passes through http:// URLs without plugin resolution", async () => {
@@ -300,7 +288,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo?.fileUrl).toBe(
         "https://bundle.s3.us-east-1.amazonaws.com/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=test-access-key%2F20251015%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=b83d9cfc9bd23275e5eb3baf792776fd7b49730f3aa2f5172d067c9dfb10cd94&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
       );
-      expect(updateInfo?.storageUri).toBe("s3://bundle/bundle.zip");
     });
 
     it("passes through https:// URLs without plugin resolution", async () => {
@@ -329,7 +316,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(updateInfo).not.toBeNull();
       expect(updateInfo?.fileUrl).toBe("https://cdn.example.com/bundle.zip");
-      expect(updateInfo?.storageUri).toBe("https://cdn.example.com/bundle.zip");
     });
 
     it("returns null when no update is available", async () => {
@@ -371,7 +357,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo?.fileUrl).toBe(
         "https://test-bucket.s3.us-east-1.amazonaws.com/fp-bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=test-access-key%2F20251015%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=d70e9b699dccbb51cf32f3e5b7912f2567d38f7e508b1f30091a8fee0d0abb65&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
       );
-      expect(updateInfo?.storageUri).toBe("s3://test-bucket/fp-bundle.zip");
     });
   });
 });

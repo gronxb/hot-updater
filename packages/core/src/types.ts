@@ -100,7 +100,7 @@ export interface UpdateInfo {
  * The update info for the app layer.
  * This is the update info that is used by the app.
  */
-export interface AppUpdateInfo extends UpdateInfo {
+export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
   fileUrl: string | null;
 }
 
