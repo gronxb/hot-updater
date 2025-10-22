@@ -66,13 +66,10 @@ export function createHandler(
           });
         }
 
-        return new Response(
-          JSON.stringify(updateInfo),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify(updateInfo), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       // GET /api/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
@@ -99,13 +96,10 @@ export function createHandler(
           });
         }
 
-        return new Response(
-          JSON.stringify(updateInfo),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify(updateInfo), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       // GET /api/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
@@ -132,13 +126,10 @@ export function createHandler(
           });
         }
 
-        return new Response(
-          JSON.stringify(updateInfo),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify(updateInfo), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       // GET /api/bundles/:id - Get single bundle

@@ -1,9 +1,4 @@
-import type {
-  AppUpdateInfo,
-  Bundle,
-  GetBundlesArgs,
-  UpdateInfo,
-} from "@hot-updater/core";
+import type { AppUpdateInfo, Bundle, GetBundlesArgs } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { execa } from "execa";
 import fs from "fs/promises";
