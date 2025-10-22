@@ -1,6 +1,7 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -35,30 +36,32 @@ export const r2Storage =
     return {
       name: "r2Storage",
       supportedProtocol: "r2",
-      async deleteBundle(bundleId) {
-        const Key = getStorageKey(bundleId, "bundle.zip");
+      async delete(storageUri) {
+        const { bucket, key } = parseStorageUri(storageUri, "r2");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
+
         try {
           await wrangler(
             "r2",
             "object",
             "delete",
-            [bucketName, Key].join("/"),
+            [bucketName, key].join("/"),
             "--remote",
           );
-
-          return {
-            storageUri: `r2://${bucketName}/${Key}`,
-          };
         } catch {
           throw new Error("Can not delete bundle");
         }
       },
-      async uploadBundle(bundleId, bundlePath) {
-        const contentType = mime.getType(bundlePath) ?? void 0;
+      async upload(key, filePath) {
+        const contentType = mime.getType(filePath) ?? void 0;
 
-        const filename = path.basename(bundlePath);
+        const filename = path.basename(filePath);
 
-        const Key = getStorageKey(bundleId, filename);
+        const Key = getStorageKey(key, filename);
         try {
           const { stderr, exitCode } = await wrangler(
             "r2",
@@ -66,7 +69,7 @@ export const r2Storage =
             "put",
             [bucketName, Key].join("/"),
             "--file",
-            bundlePath,
+            filePath,
             ...(contentType ? ["--content-type", contentType] : []),
             "--remote",
           );

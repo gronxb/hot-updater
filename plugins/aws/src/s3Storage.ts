@@ -10,6 +10,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -36,12 +37,17 @@ export const s3Storage =
     return {
       name: "s3Storage",
       supportedProtocol: "s3",
-      async deleteBundle(bundleId) {
-        const Key = getStorageKey(bundleId, "bundle.zip");
+      async delete(storageUri) {
+        const { bucket, key } = parseStorageUri(storageUri, "s3");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
 
         const listCommand = new ListObjectsV2Command({
           Bucket: bucketName,
-          Prefix: bundleId,
+          Prefix: key,
         });
         const listResponse = await client.send(listCommand);
 
@@ -60,20 +66,18 @@ export const s3Storage =
 
           const deleteCommand = new DeleteObjectsCommand(deleteParams);
           await client.send(deleteCommand);
-          return {
-            storageUri: `s3://${bucketName}/${Key}`,
-          };
+          return;
         }
 
         throw new Error("Bundle Not Found");
       },
-      async uploadBundle(bundleId, bundlePath) {
-        const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
+      async upload(key, filePath) {
+        const Body = await fs.readFile(filePath);
+        const ContentType = mime.getType(filePath) ?? void 0;
 
-        const filename = path.basename(bundlePath);
+        const filename = path.basename(filePath);
 
-        const Key = getStorageKey(bundleId, filename);
+        const Key = getStorageKey(key, filename);
         const upload = new Upload({
           client,
           params: {

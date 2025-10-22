@@ -5,15 +5,12 @@ export const mockStorage =
   (_: BasePluginArgs): StoragePlugin => {
     return {
       name: "mock",
-      supportedProtocol: "mock",
-      uploadBundle: (bundleId: string) =>
+      supportedProtocol: "storage",
+      upload: (key: string) =>
         Promise.resolve({
-          storageUri: `storage://my-app/${bundleId}/bundle.zip`,
+          storageUri: `storage://my-app/${key}/bundle.zip`,
         }),
-      deleteBundle: (bundleId: string) =>
-        Promise.resolve({
-          storageUri: `storage://my-app/${bundleId}/bundle.zip`,
-        }),
+      delete: (_storageUri: string) => Promise.resolve(),
       async getDownloadUrl(storageUri: string) {
         try {
           const url = new URL(storageUri);

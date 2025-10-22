@@ -12,6 +12,7 @@ export * from "./generateMinBundleId";
 export * from "./loadConfig";
 export * from "./log";
 export * from "./makeEnv";
+export * from "./parseStorageUri";
 export * from "./semverSatisfies";
 export * from "./transformEnv";
 export * from "./transformTemplate";

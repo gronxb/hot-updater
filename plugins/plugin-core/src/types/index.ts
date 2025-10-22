@@ -126,16 +126,14 @@ export interface StoragePlugin {
    */
   supportedProtocol: string;
 
-  uploadBundle: (
-    bundleId: string,
-    bundlePath: string,
+  upload: (
+    key: string,
+    filePath: string,
   ) => Promise<{
     storageUri: string;
   }>;
 
-  deleteBundle: (bundleId: string) => Promise<{
-    storageUri: string;
-  }>;
+  delete: (storageUri: string) => Promise<void>;
 
   getDownloadUrl: (storageUri: string) => Promise<{
     fileUrl: string;

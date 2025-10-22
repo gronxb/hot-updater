@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Load .env.hotupdater
-config({ path: ".env.hotupdater" });
+config({ path: path.join(__dirname, ".env.hotupdater") });
 
 // Initialize PGlite with file-based storage for persistence
 // Use TEST_DB_PATH for testing, otherwise use default "data" directory
@@ -42,11 +42,11 @@ const mockStoragePlugin = {
       fileUrl: storageUri.replace("storage://", "https://mock-storage.com/"),
     };
   },
-  async uploadBundle() {
-    throw new Error("uploadBundle not implemented in mock");
+  async upload() {
+    throw new Error("upload not implemented in mock");
   },
-  async deleteBundle() {
-    throw new Error("deleteBundle not implemented in mock");
+  async delete() {
+    throw new Error("delete not implemented in mock");
   },
 };
 
@@ -63,6 +63,8 @@ const storagePlugin = s3Storage(
   },
   {},
 )({ cwd: process.cwd() });
+
+console.log(process.env.HOT_UPDATER_AWS_REGION);
 
 // Create Hot Updater API
 export const api = hotUpdater(client, {

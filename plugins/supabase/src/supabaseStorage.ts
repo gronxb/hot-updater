@@ -1,6 +1,7 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -33,30 +34,34 @@ export const supabaseStorage =
     return {
       name: "supabaseStorage",
       supportedProtocol: "supabase-storage",
-      async deleteBundle(bundleId) {
-        const filename = "bundle.zip";
-        const Key = getStorageKey(bundleId, filename);
+      async delete(storageUri) {
+        let { key, bucket: bucketName } = parseStorageUri(
+          storageUri,
+          "supabase-storage",
+        );
+        if (bucketName !== config.bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+          );
+        }
 
-        const { error } = await bucket.remove([Key]);
+        const { error } = await bucket.remove([key]);
 
         if (error) {
           if (error.message?.includes("not found")) {
-            throw new Error(`Bundle with id ${bundleId} not found`);
+            throw new Error(`Bundle not found`);
           }
           throw new Error(`Failed to delete bundle: ${error.message}`);
         }
-        return {
-          storageUri: `supabase-storage://${config.bucketName}/${Key}`,
-        };
       },
 
-      async uploadBundle(bundleId, bundlePath) {
-        const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
+      async upload(key, filePath) {
+        const Body = await fs.readFile(filePath);
+        const ContentType = mime.getType(filePath) ?? void 0;
 
-        const filename = path.basename(bundlePath);
+        const filename = path.basename(filePath);
 
-        const Key = getStorageKey(bundleId, filename);
+        const Key = getStorageKey(key, filename);
 
         const upload = await bucket.upload(Key, Body, {
           contentType: ContentType,

@@ -1,6 +1,7 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -32,29 +33,32 @@ export const firebaseStorage =
     return {
       name: "firebaseStorage",
       supportedProtocol: "gs",
-      async deleteBundle(bundleId) {
-        const key = getStorageKey(bundleId, "bundle.zip");
+      async delete(storageUri) {
+        const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
+        if (bucketName !== config.storageBucket) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+          );
+        }
+
         try {
           const [files] = await bucket.getFiles({ prefix: key });
           await Promise.all(files.map((file) => file.delete()));
-          return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
-          };
         } catch (e) {
           console.error("Error listing or deleting files:", e);
           throw new Error("Bundle Not Found");
         }
       },
 
-      async uploadBundle(bundleId, bundlePath) {
+      async upload(key, filePath) {
         try {
-          const fileContent = await fs.readFile(bundlePath);
+          const fileContent = await fs.readFile(filePath);
           const contentType =
-            mime.getType(bundlePath) ?? "application/octet-stream";
-          const filename = path.basename(bundlePath);
-          const key = getStorageKey(bundleId, filename);
+            mime.getType(filePath) ?? "application/octet-stream";
+          const filename = path.basename(filePath);
+          const storageKey = getStorageKey(key, filename);
 
-          const file = bucket.file(key);
+          const file = bucket.file(storageKey);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
@@ -64,7 +68,7 @@ export const firebaseStorage =
           hooks?.onStorageUploaded?.();
 
           return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
+            storageUri: `gs://${config.storageBucket}/${storageKey}`,
           };
         } catch (error) {
           console.error("Error uploading bundle:", error);

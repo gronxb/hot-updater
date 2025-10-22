@@ -9,17 +9,17 @@ import path from "path";
 import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {
-  uploadBundle: (bundleId: string, bundlePath: string) => RouteConfig;
-  deleteBundle: (bundleId: string) => RouteConfig;
+  upload: (key: string, filePath: string) => RouteConfig;
+  delete: (storageUri: string) => RouteConfig;
   getDownloadUrl: (storageUri: string) => RouteConfig;
 }
 
 const defaultRoutes: StorageRoutes = {
-  uploadBundle: (_bundleId: string, _bundlePath: string) => ({
-    path: "/uploadBundle",
+  upload: (_key: string, _filePath: string) => ({
+    path: "/upload",
   }),
-  deleteBundle: (_bundleId: string) => ({
-    path: "/deleteBundle",
+  delete: (_storageUri: string) => ({
+    path: "/delete",
   }),
   getDownloadUrl: (_storageUri: string) => ({
     path: "/getDownloadUrl",
@@ -47,15 +47,15 @@ export const standaloneStorage =
   (config: StandaloneStorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
     const routes: StorageRoutes = {
-      uploadBundle: (bundleId: string, bundlePath: string) =>
+      upload: (key: string, filePath: string) =>
         createRoute(
-          defaultRoutes.uploadBundle(bundleId, bundlePath),
-          config.routes?.uploadBundle?.(bundleId, bundlePath),
+          defaultRoutes.upload(key, filePath),
+          config.routes?.upload?.(key, filePath),
         ),
-      deleteBundle: (bundleId: string) =>
+      delete: (storageUri: string) =>
         createRoute(
-          defaultRoutes.deleteBundle(bundleId),
-          config.routes?.deleteBundle?.(bundleId),
+          defaultRoutes.delete(storageUri),
+          config.routes?.delete?.(storageUri),
         ),
       getDownloadUrl: (storageUri: string) =>
         createRoute(
@@ -72,13 +72,13 @@ export const standaloneStorage =
     return {
       name: "standaloneStorage",
       supportedProtocol: "http",
-      async deleteBundle(bundleId: string) {
+      async delete(storageUri: string) {
         const { path: routePath, headers: routeHeaders } =
-          routes.deleteBundle(bundleId);
+          routes.delete(storageUri);
         const response = await fetch(`${config.baseUrl}${routePath}`, {
           method: "DELETE",
           headers: getHeaders(routeHeaders),
-          body: JSON.stringify({ bundleId }),
+          body: JSON.stringify({ storageUri }),
         });
 
         if (!response.ok) {
@@ -88,22 +88,16 @@ export const standaloneStorage =
           console.error(error);
           throw error;
         }
-        const result = (await response.json()) as {
-          storageUri: string;
-        };
-        return {
-          storageUri: result.storageUri,
-        };
       },
-      async uploadBundle(bundleId: string, bundlePath: string) {
-        const fileContent = await fs.readFile(bundlePath);
+      async upload(key: string, filePath: string) {
+        const fileContent = await fs.readFile(filePath);
         const contentType =
-          mime.getType(bundlePath) ?? "application/octet-stream";
-        const filename = path.basename(bundlePath);
+          mime.getType(filePath) ?? "application/octet-stream";
+        const filename = path.basename(filePath);
 
-        const { path: routePath, headers: routeHeaders } = routes.uploadBundle(
-          bundleId,
-          bundlePath,
+        const { path: routePath, headers: routeHeaders } = routes.upload(
+          key,
+          filePath,
         );
 
         const formData = new FormData();
@@ -112,7 +106,7 @@ export const standaloneStorage =
           new Blob([fileContent], { type: contentType }),
           filename,
         );
-        formData.append("bundleId", bundleId);
+        formData.append("key", key);
 
         const response = await fetch(`${config.baseUrl}${routePath}`, {
           method: "POST",
@@ -122,7 +116,7 @@ export const standaloneStorage =
 
         if (!response.ok) {
           const error = `Failed to upload bundle: ${response.statusText}`;
-          console.error(`[uploadBundle] ${error}`);
+          console.error(`[upload] ${error}`);
           throw new Error(error);
         }
 
@@ -132,7 +126,7 @@ export const standaloneStorage =
 
         if (!result.storageUri) {
           const error = "Failed to upload bundle - no storageUri in response";
-          console.error(`[uploadBundle] ${error}`);
+          console.error(`[upload] ${error}`);
           throw new Error(error);
         }
 
