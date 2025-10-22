@@ -67,16 +67,12 @@ export function createGetUpdateInfo(
       }
 
       const data = (await response.json()) as AppUpdateInfo | null;
+
       // Step 4: Clean up via DELETE
       for (const bundle of bundles) {
         await fetch(buildUrl(`/bundles/${bundle.id}`), {
           method: "DELETE",
         });
-      }
-
-      // Return UpdateInfo or null
-      if (!data) {
-        return null;
       }
 
       return data;

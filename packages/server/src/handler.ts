@@ -60,7 +60,7 @@ export function createHandler(
         const updateInfo = await api.getAppUpdateInfo(body);
 
         if (!updateInfo) {
-          return new Response(JSON.stringify({ update: false }), {
+          return new Response(JSON.stringify(null), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
@@ -93,7 +93,7 @@ export function createHandler(
         });
 
         if (!updateInfo) {
-          return new Response(JSON.stringify({ update: false }), {
+          return new Response(JSON.stringify(null), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
@@ -126,7 +126,7 @@ export function createHandler(
         });
 
         if (!updateInfo) {
-          return new Response(JSON.stringify({ update: false }), {
+          return new Response(JSON.stringify(null), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
