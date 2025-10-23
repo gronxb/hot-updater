@@ -62,6 +62,7 @@
     "es-git": "0.4.0"
   },
   "devDependencies": {
+    "semver": "^7.6.3",
     "fast-xml-parser": "^5.2.3",
     "fast-glob": "3.3.3",
     "@bacons/xcode": "1.0.0-alpha.24",
@@ -93,7 +94,6 @@
     "picocolors": "catalog:",
     "plist": "^3.1.0",
     "read-package-up": "^11.0.0",
-    "semver": "^7.6.3",
     "uuidv7": "^1.0.2"
   },
   "peerDependencies": {

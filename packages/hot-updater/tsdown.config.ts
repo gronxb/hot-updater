@@ -7,7 +7,6 @@ export default defineConfig([
       config: "./src/config.ts",
       "plugins/babel": "./src/plugins/babel.ts",
     },
-    unbundle: true,
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
