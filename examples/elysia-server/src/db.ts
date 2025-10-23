@@ -34,12 +34,13 @@ export const api = hotUpdater({
   storagePlugins: [
     mockStorage({}),
     s3Storage({
-      region: process.env.HOT_UPDATER_AWS_REGION!,
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
       credentials: {
-        accessKeyId: process.env.HOT_UPDATER_AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.HOT_UPDATER_AWS_SECRET_ACCESS_KEY!,
+        accessKeyId: process.env.R2_ENDPOINT!,
+        secretAccessKey: process.env.R2_ENDPOINT!,
       },
-      bucketName: process.env.HOT_UPDATER_AWS_S3_BUCKET_NAME!,
+      bucketName: process.env.R2_BUCKET_NAME!,
     }),
   ],
   basePath: "/hot-updater",

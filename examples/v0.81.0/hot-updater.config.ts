@@ -11,14 +11,13 @@ export default defineConfig({
 
   build: bare({ enableHermes: true }),
   storage: s3Storage({
-    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-    region: process.env.HOT_UPDATER_S3_REGION!,
+    region: 'auto',
+    endpoint: process.env.R2_ENDPOINT,
     credentials: {
-      accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-      // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
-      sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
+      accessKeyId: process.env.R2_ENDPOINT!,
+      secretAccessKey: process.env.R2_ENDPOINT!,
     },
+    bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
     baseUrl:
