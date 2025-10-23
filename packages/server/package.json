@@ -1,0 +1,73 @@
+{
+  "name": "@hot-updater/server",
+  "version": "0.20.12",
+  "type": "module",
+  "description": "React Native OTA solution for self-hosted",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./adapters/drizzle": {
+      "import": "./dist/adapters/drizzle.js",
+      "require": "./dist/adapters/drizzle.cjs"
+    },
+    "./adapters/kysely": {
+      "import": "./dist/adapters/kysely.js",
+      "require": "./dist/adapters/kysely.cjs"
+    },
+    "./adapters/mongodb": {
+      "import": "./dist/adapters/mongodb.js",
+      "require": "./dist/adapters/mongodb.cjs"
+    },
+    "./adapters/prisma": {
+      "import": "./dist/adapters/prisma.js",
+      "require": "./dist/adapters/prisma.cjs"
+    },
+    "./adapters/typeorm": {
+      "import": "./dist/adapters/typeorm.js",
+      "require": "./dist/adapters/typeorm.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "package.json"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "fumadb": "0.1.1",
+    "semver": "^7.7.2"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/cloudflare": "workspace:*",
+    "@hot-updater/firebase": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/semver": "^7.5.8",
+    "execa": "^9.5.2",
+    "kysely": "^0.28.5",
+    "kysely-pglite-dialect": "^1.2.0",
+    "msw": "^2.7.0"
+  }
+}

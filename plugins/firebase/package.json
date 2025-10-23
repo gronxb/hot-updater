@@ -19,7 +19,8 @@
     },
     "./functions": {
       "require": "./dist/firebase/functions/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -49,6 +50,7 @@
   "devDependencies": {
     "@clack/prompts": "catalog:",
     "@hot-updater/js": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:",

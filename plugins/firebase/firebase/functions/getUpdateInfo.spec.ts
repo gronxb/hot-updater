@@ -1,5 +1,5 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import type { Firestore } from "firebase-admin/firestore";
 import { beforeEach, describe } from "vitest";
 import { createFirestoreMock } from "../../test-utils/createFirestoreMock";

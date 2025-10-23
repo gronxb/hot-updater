@@ -220,7 +220,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
               }
 
               try {
-                const { storageUri } = await storagePlugin.uploadBundle(
+                const { storageUri } = await storagePlugin.upload(
                   bundleId,
                   artifactPath,
                 );

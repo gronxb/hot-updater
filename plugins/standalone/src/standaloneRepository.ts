@@ -70,6 +70,8 @@ export const standaloneRepository = (
       ),
   };
 
+  const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+
   const getHeaders = (routeHeaders?: Record<string, string>) => ({
     "Content-Type": "application/json",
     ...config.commonHeaders,
@@ -82,7 +84,7 @@ export const standaloneRepository = (
       async getBundleById(_, bundleId: string): Promise<Bundle | null> {
         try {
           const { path, headers: routeHeaders } = routes.retrieve(bundleId);
-          const response = await fetch(`${config.baseUrl}${path}`, {
+          const response = await fetch(buildUrl(path), {
             method: "GET",
             headers: getHeaders(routeHeaders),
           });
@@ -99,7 +101,7 @@ export const standaloneRepository = (
       async getBundles(_, options) {
         const { where, limit, offset = 0 } = options ?? {};
         const { path, headers: routeHeaders } = routes.list();
-        const response = await fetch(`${config.baseUrl}${path}`, {
+        const response = await fetch(buildUrl(path), {
           method: "GET",
           headers: getHeaders(routeHeaders),
         });
@@ -146,7 +148,7 @@ export const standaloneRepository = (
           if (op.operation === "delete") {
             // Handle delete operation
             const { path, headers: routeHeaders } = routes.delete(op.data.id);
-            const response = await fetch(`${config.baseUrl}${path}`, {
+            const response = await fetch(buildUrl(path), {
               method: "DELETE",
               headers: getHeaders(routeHeaders),
             });
@@ -173,7 +175,7 @@ export const standaloneRepository = (
           } else if (op.operation === "insert" || op.operation === "update") {
             // Handle insert and update operations
             const { path, headers: routeHeaders } = routes.upsert();
-            const response = await fetch(`${config.baseUrl}${path}`, {
+            const response = await fetch(buildUrl(path), {
               method: "POST",
               headers: getHeaders(routeHeaders),
               body: JSON.stringify([op.data]),

@@ -180,7 +180,7 @@ export const rpc = new Hono()
         }
         await databasePlugin.deleteBundle(deleteBundle);
         await databasePlugin.commitBundle();
-        await storagePlugin.deleteBundle(bundleId);
+        await storagePlugin.delete(deleteBundle.storageUri);
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle deletion:", error);
