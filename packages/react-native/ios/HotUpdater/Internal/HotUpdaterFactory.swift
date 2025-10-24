@@ -10,15 +10,14 @@ public class HotUpdaterFactory: NSObject {
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
-        let unzipService = SSZipArchiveUnzipService()
-        
+
+        // UnzipService is created dynamically based on Content-Encoding header
         let bundleStorage = BundleFileStorageService(
             fileSystem: fileSystem,
             downloadService: downloadService,
-            unzipService: unzipService,
             preferences: preferences
         )
-        
+
         return HotUpdaterImpl(bundleStorage: bundleStorage, preferences: preferences)
     }
 }

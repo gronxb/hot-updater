@@ -1,5 +1,15 @@
 export type Platform = "ios" | "android";
 
+/**
+ * Compression strategy for bundle files
+ */
+export type CompressStrategy = "zip" | "tar.br";
+
+/**
+ * Compression format types
+ */
+export type CompressFormat = "zip" | "tar" | "tar.gz" | "tar.br";
+
 export type BundleMetadata = {
   app_version?: string;
 };

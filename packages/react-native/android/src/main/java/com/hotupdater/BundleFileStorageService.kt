@@ -58,7 +58,6 @@ interface BundleStorageService {
 class BundleFileStorageService(
     private val fileSystem: FileSystemService,
     private val downloadService: DownloadService,
-    private val unzipService: UnzipService,
     private val preferences: PreferencesService,
 ) : BundleStorageService {
     override fun setBundleURL(localPath: String?): Boolean {
@@ -176,6 +175,10 @@ class BundleFileStorageService(
                     return@withContext false
                 }
                 is DownloadResult.Success -> {
+                    // Get content encoding from download result
+                    val contentEncoding = downloadResult.contentEncoding
+                    Log.d("BundleStorage", "Downloaded file with Content-Encoding: $contentEncoding")
+
                     // 1) Verify file hash if provided
                     if (!fileHash.isNullOrEmpty()) {
                         Log.d("BundleStorage", "Verifying file hash...")
@@ -195,8 +198,11 @@ class BundleFileStorageService(
                     }
                     tmpDir.mkdirs()
 
-                    // 3) Unzip into tmpDir (80% - 100%)
-                    Log.d("BundleStorage", "Unzipping $tempZipFile → $tmpDir")
+                    // 3) Create appropriate unzip service based on content encoding
+                    val unzipService = UnzipServiceFactory.createUnzipService(contentEncoding)
+
+                    // 4) Unzip into tmpDir (80% - 100%)
+                    Log.d("BundleStorage", "Extracting $tempZipFile → $tmpDir")
                     if (!unzipService.extractZipFile(
                             tempZipFile.absolutePath,
                             tmpDir.absolutePath,
@@ -205,13 +211,13 @@ class BundleFileStorageService(
                             progressCallback(0.8 + (unzipProgress * 0.2))
                         }
                     ) {
-                        Log.d("BundleStorage", "Failed to extract zip into tmpDir.")
+                        Log.d("BundleStorage", "Failed to extract archive into tmpDir.")
                         tempDir.deleteRecursively()
                         tmpDir.deleteRecursively()
                         return@withContext false
                     }
 
-                    // 4) Find index.android.bundle inside tmpDir
+                    // 5) Find index.android.bundle inside tmpDir
                     val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
                     if (extractedIndex == null) {
                         Log.d("BundleStorage", "index.android.bundle not found in tmpDir.")
@@ -220,16 +226,16 @@ class BundleFileStorageService(
                         return@withContext false
                     }
 
-                    // 5) Log extracted bundle file size
+                    // 6) Log extracted bundle file size
                     val bundleSize = extractedIndex.length()
                     Log.d("BundleStorage", "Extracted bundle size: $bundleSize bytes")
 
-                    // 6) If the realDir (bundle-store/<bundleId>) exists, delete it
+                    // 7) If the realDir (bundle-store/<bundleId>) exists, delete it
                     if (finalBundleDir.exists()) {
                         finalBundleDir.deleteRecursively()
                     }
 
-                    // 7) Attempt to rename tmpDir → finalBundleDir (atomic within the same parent folder)
+                    // 8) Attempt to rename tmpDir → finalBundleDir (atomic within the same parent folder)
                     val renamed = tmpDir.renameTo(finalBundleDir)
                     if (!renamed) {
                         // If rename fails, use moveItem or copyItem
@@ -239,7 +245,7 @@ class BundleFileStorageService(
                         }
                     }
 
-                    // 8) Verify index.android.bundle exists inside finalBundleDir
+                    // 9) Verify index.android.bundle exists inside finalBundleDir
                     val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
                     if (finalIndexFile == null) {
                         Log.d("BundleStorage", "index.android.bundle not found in realDir.")
@@ -248,18 +254,18 @@ class BundleFileStorageService(
                         return@withContext false
                     }
 
-                    // 9) Update finalBundleDir's last modified time
+                    // 10) Update finalBundleDir's last modified time
                     finalBundleDir.setLastModified(System.currentTimeMillis())
 
-                    // 10) Save the new bundle path in Preferences
+                    // 11) Save the new bundle path in Preferences
                     val bundlePath = finalIndexFile.absolutePath
                     Log.d("BundleStorage", "Setting bundle URL: $bundlePath")
                     setBundleURL(bundlePath)
 
-                    // 11) Clean up temporary and download folders
+                    // 12) Clean up temporary and download folders
                     tempDir.deleteRecursively()
 
-                    // 12) Remove old bundles
+                    // 13) Remove old bundles
                     cleanupOldBundles(bundleStoreDir, currentBundleId, bundleId)
 
                     Log.d("BundleStorage", "Downloaded and activated bundle successfully.")

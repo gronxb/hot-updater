@@ -1,6 +1,6 @@
-import type { Bundle, Platform } from "@hot-updater/core";
+import type { Bundle, CompressStrategy, Platform } from "@hot-updater/core";
 
-export type { Bundle, Platform } from "@hot-updater/core";
+export type { Bundle, CompressStrategy, Platform } from "@hot-updater/core";
 
 export * from "./utils";
 
@@ -156,6 +156,15 @@ export type ConfigInput = {
    * @default "appVersion"
    */
   updateStrategy: "fingerprint" | "appVersion";
+  /**
+   * Compression strategy for bundle files.
+   *
+   * - `zip`: Standard ZIP compression (default, best compatibility)
+   * - `tar.br`: TAR archive with Brotli compression (smaller size, reduces network costs)
+   *
+   * @default "zip"
+   */
+  compressStrategy?: CompressStrategy;
   /**
    * The fingerprint configuration.
    */

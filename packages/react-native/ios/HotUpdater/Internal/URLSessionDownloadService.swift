@@ -1,5 +1,10 @@
 import Foundation
 
+struct DownloadResult {
+    let url: URL
+    let contentEncoding: String?
+}
+
 protocol DownloadService {
     /**
      * Gets the file size from the URL without downloading.
@@ -13,10 +18,10 @@ protocol DownloadService {
      * @param url The URL to download from
      * @param destination The local path to save to
      * @param progressHandler Callback for download progress updates
-     * @param completion Callback with result of the download
+     * @param completion Callback with result of the download (includes URL and contentEncoding)
      * @return The download task (optional)
      */
-    func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?
+    func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<DownloadResult, Error>) -> Void) -> URLSessionDownloadTask?
 }
 
 
@@ -28,7 +33,7 @@ enum DownloadError: Error {
 class URLSessionDownloadService: NSObject, DownloadService {
     private var session: URLSession!
     private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
-    private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
+    private var completionHandlers: [URLSessionTask: (Result<DownloadResult, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
 
     override init() {
@@ -94,6 +99,10 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             return
         }
 
+        // Capture Content-Encoding header
+        let contentEncoding = (downloadTask.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Encoding")
+        NSLog("[DownloadService] Content-Encoding: \(contentEncoding ?? "nil")")
+
         // Verify file size
         let expectedSize = downloadTask.response?.expectedContentLength ?? -1
         let actualSize: Int64?
@@ -123,7 +132,8 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
 
             try FileManager.default.copyItem(at: location, to: destinationURL)
             NSLog("[DownloadService] Download completed successfully: \(actualSize ?? 0) bytes")
-            completion?(.success(destinationURL))
+            let result = DownloadResult(url: destinationURL, contentEncoding: contentEncoding)
+            completion?(.success(result))
         } catch {
             NSLog("[DownloadService] Failed to copy downloaded file: \(error.localizedDescription)")
             completion?(.failure(error))

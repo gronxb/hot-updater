@@ -51,15 +51,29 @@ export const supabaseStorage =
 
       async uploadBundle(bundleId, bundlePath) {
         const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
-
         const filename = path.basename(bundlePath);
-
         const Key = getStorageKey(bundleId, filename);
 
-        const upload = await bucket.upload(Key, Body, {
+        // Determine Content-Type and Content-Encoding based on file extension
+        let ContentType = mime.getType(bundlePath) ?? void 0;
+        let contentEncoding: string | undefined;
+
+        if (filename.endsWith(".tar.br")) {
+          ContentType = "application/x-tar";
+          contentEncoding = "br";
+        } else if (filename.endsWith(".zip")) {
+          ContentType = "application/zip";
+        }
+
+        const uploadOptions: any = {
           contentType: ContentType,
-        });
+        };
+
+        if (contentEncoding) {
+          uploadOptions.contentEncoding = contentEncoding;
+        }
+
+        const upload = await bucket.upload(Key, Body, uploadOptions);
         if (upload.error) {
           throw upload.error;
         }

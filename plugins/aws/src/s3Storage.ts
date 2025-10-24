@@ -66,15 +66,26 @@ export const s3Storage =
       },
       async uploadBundle(bundleId, bundlePath) {
         const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
-
         const filename = path.basename(bundlePath);
+
+        // Determine Content-Type and Content-Encoding based on file extension
+        let ContentType =
+          mime.getType(bundlePath) ?? "application/octet-stream";
+        let ContentEncoding: string | undefined;
+
+        if (filename.endsWith(".tar.br")) {
+          ContentType = "application/x-tar";
+          ContentEncoding = "br";
+        } else if (filename.endsWith(".zip")) {
+          ContentType = "application/zip";
+        }
 
         const Key = getStorageKey(bundleId, filename);
         const upload = new Upload({
           client,
           params: {
             ContentType,
+            ContentEncoding,
             Bucket: bucketName,
             Key,
             Body,

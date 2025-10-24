@@ -12,14 +12,21 @@ export interface MockedReactNativeProjectRoot {
 type Example = "rn-77";
 
 const resolveWorkspaceInfoFromExample = (example: Example) => {
-  const workspaces = getPnpmWorkspaces(getCwd()).filter((ws) =>
-    ws.path.includes("hot-updater/examples"),
+  const workspaces = getPnpmWorkspaces(getCwd()).filter(
+    (ws) => ws.path.includes("examples") || ws.name?.includes("example"),
   );
   switch (example) {
-    case "rn-77":
-      return workspaces.find(
+    case "rn-77": {
+      const workspace = workspaces.find(
         (ws) => ws.name === "@hot-updater/example-react-native-v77",
-      )!;
+      );
+      if (!workspace) {
+        throw new Error(
+          `Could not find workspace @hot-updater/example-react-native-v77. Available workspaces: ${workspaces.map((ws) => ws.name).join(", ")}`,
+        );
+      }
+      return workspace;
+    }
   }
 };
 

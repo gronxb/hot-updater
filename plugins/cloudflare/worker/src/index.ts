@@ -168,6 +168,7 @@ app.get("*", async (c) => {
       return {
         body: object.body,
         contentType: object.httpMetadata?.contentType,
+        contentEncoding: object.httpMetadata?.contentEncoding,
       };
     },
   });

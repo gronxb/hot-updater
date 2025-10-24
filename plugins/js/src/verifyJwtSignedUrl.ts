@@ -52,7 +52,11 @@ const getFileResponse = async ({
   handler,
 }: {
   key: string;
-  handler: (key: string) => Promise<{ body: any; contentType?: string } | null>;
+  handler: (key: string) => Promise<{
+    body: any;
+    contentType?: string;
+    contentEncoding?: string;
+  } | null>;
 }): Promise<VerifyJwtSignedUrlResponse> => {
   const object = await handler(key);
   if (!object) {
@@ -62,10 +66,14 @@ const getFileResponse = async ({
   const pathParts = key.split("/");
   const fileName = pathParts[pathParts.length - 1];
 
-  const headers = {
+  const headers: Record<string, string> = {
     "Content-Type": object.contentType || "application/octet-stream",
     "Content-Disposition": `attachment; filename=${fileName}`,
   };
+
+  if (object.contentEncoding) {
+    headers["Content-Encoding"] = object.contentEncoding;
+  }
 
   return { status: 200, responseHeaders: headers, responseBody: object.body };
 };
@@ -84,7 +92,11 @@ export const verifyJwtSignedUrl = async ({
   path: string;
   token: string | undefined;
   jwtSecret: string;
-  handler: (key: string) => Promise<{ body: any; contentType?: string } | null>;
+  handler: (key: string) => Promise<{
+    body: any;
+    contentType?: string;
+    contentEncoding?: string;
+  } | null>;
 }): Promise<VerifyJwtSignedUrlResponse> => {
   const result = await verifyJwtToken({ path, token, jwtSecret });
   if (!result.valid) {

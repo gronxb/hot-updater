@@ -6,7 +6,6 @@ import { appendToProjectRootGitignore } from "./git";
 
 describe("appendToProjectRootGitignore", () => {
   let rootDir: string;
-  const gitIgnorePath = () => path.join(rootDir, ".gitignore");
 
   beforeEach(async () => {
     const mockedProject = await mockReactNativeProjectRoot({
@@ -16,25 +15,27 @@ describe("appendToProjectRootGitignore", () => {
   }, 5000);
 
   it(".gitignore won't be generated if globLines is empty", () => {
-    fs.rmSync(gitIgnorePath());
+    const gitIgnorePath = path.join(rootDir, ".gitignore");
+    fs.rmSync(gitIgnorePath);
 
     appendToProjectRootGitignore({
       cwd: rootDir,
       globLines: [],
     });
 
-    expect(fs.existsSync(gitIgnorePath())).toBe(false);
+    expect(fs.existsSync(gitIgnorePath)).toBe(false);
   });
 
   it(".gitignore is generated if doesn't exist", () => {
-    fs.rmSync(gitIgnorePath());
+    const gitIgnorePath = path.join(rootDir, ".gitignore");
+    fs.rmSync(gitIgnorePath);
 
     appendToProjectRootGitignore({
       cwd: rootDir,
       globLines: [".hot-updater/output"],
     });
 
-    expect(fs.readFileSync(gitIgnorePath(), { encoding: "utf8" })).toBe(
+    expect(fs.readFileSync(gitIgnorePath, { encoding: "utf8" })).toBe(
       `# hot-updater
 .hot-updater/output
 `,

@@ -53,22 +53,36 @@ export const r2Storage =
         }
       },
       async uploadBundle(bundleId, bundlePath) {
-        const contentType = mime.getType(bundlePath) ?? void 0;
-
         const filename = path.basename(bundlePath);
-
         const Key = getStorageKey(bundleId, filename);
+
+        // Determine Content-Type and Content-Encoding based on file extension
+        let contentType: string | undefined =
+          mime.getType(bundlePath) ?? void 0;
+        const wranglerArgs = [
+          "r2",
+          "object",
+          "put",
+          [bucketName, Key].join("/"),
+          "--file",
+          bundlePath,
+        ];
+
+        if (filename.endsWith(".tar.br")) {
+          contentType = "application/x-tar";
+          wranglerArgs.push("--content-encoding", "br");
+        } else if (filename.endsWith(".zip")) {
+          contentType = "application/zip";
+        }
+
+        if (contentType) {
+          wranglerArgs.push("--content-type", contentType);
+        }
+
+        wranglerArgs.push("--remote");
+
         try {
-          const { stderr, exitCode } = await wrangler(
-            "r2",
-            "object",
-            "put",
-            [bucketName, Key].join("/"),
-            "--file",
-            bundlePath,
-            ...(contentType ? ["--content-type", contentType] : []),
-            "--remote",
-          );
+          const { stderr, exitCode } = await wrangler(...wranglerArgs);
           if (exitCode !== 0 && stderr) {
             throw new Error(stderr);
           }

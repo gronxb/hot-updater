@@ -211,6 +211,7 @@ export default defineConfig({
   storage: ${this.storageInfo.configString},
   database: ${this.databaseInfo.configString},
   updateStrategy: "appVersion", // or "fingerprint"
+  compressStrategy: "zip", // or "tar.br"
 });
 `.trim(); // Ensure trailing newline
   }

@@ -173,6 +173,7 @@ export default defineConfig({
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
+  compressStrategy: "zip", // or "tar.br"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -207,6 +208,7 @@ export default defineConfig({
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
+  compressStrategy: "zip", // or "tar.br"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -235,6 +237,7 @@ export default defineConfig({
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
+  compressStrategy: "zip", // or "tar.br"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -264,6 +267,7 @@ export default defineConfig({
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
+  compressStrategy: "zip", // or "tar.br"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -293,6 +297,7 @@ export default defineConfig({
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
+  compressStrategy: "zip", // or "tar.br"
 });`;
 
     expect(result).toBe(expectedConfig);
@@ -327,6 +332,7 @@ export default defineConfig({
     credential,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
+  compressStrategy: "zip", // or "tar.br"
 });`;
 
     expect(result).toBe(expectedConfig);

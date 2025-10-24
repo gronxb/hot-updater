@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts";
 import {
-  createZipTargetFiles,
+  createCompressedBundle,
+  getCompressExtension,
   getCwd,
   loadConfig,
   type Platform,
@@ -186,7 +187,13 @@ export const deploy = async (options: DeployOptions) => {
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const bundlePath = path.join(normalizeOutputPath, "bundle", "bundle.zip");
+  const compressStrategy = config.compressStrategy ?? "zip";
+  const extension = getCompressExtension(compressStrategy);
+  const bundlePath = path.join(
+    normalizeOutputPath,
+    "bundle",
+    `bundle${extension}`,
+  );
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -240,7 +247,8 @@ export const deploy = async (options: DeployOptions) => {
               )
               .map((file) => path.join(buildPath, file)),
           );
-          await createZipTargetFiles({
+          await createCompressedBundle({
+            compressStrategy,
             outfile: bundlePath,
             targetFiles: targetFiles,
           });

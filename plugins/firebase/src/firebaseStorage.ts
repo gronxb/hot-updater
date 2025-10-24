@@ -48,15 +48,26 @@ export const firebaseStorage =
       async uploadBundle(bundleId, bundlePath) {
         try {
           const fileContent = await fs.readFile(bundlePath);
-          const contentType =
-            mime.getType(bundlePath) ?? "application/octet-stream";
           const filename = path.basename(bundlePath);
           const key = getStorageKey(bundleId, filename);
+
+          // Determine Content-Type and Content-Encoding based on file extension
+          let contentType =
+            mime.getType(bundlePath) ?? "application/octet-stream";
+          let contentEncoding: string | undefined;
+
+          if (filename.endsWith(".tar.br")) {
+            contentType = "application/x-tar";
+            contentEncoding = "br";
+          } else if (filename.endsWith(".zip")) {
+            contentType = "application/zip";
+          }
 
           const file = bucket.file(key);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
+              ...(contentEncoding && { contentEncoding }),
             },
           });
 

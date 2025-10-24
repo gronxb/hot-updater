@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit
 sealed class DownloadResult {
     data class Success(
         val file: File,
+        val contentEncoding: String? = null,
     ) : DownloadResult()
 
     data class Error(
@@ -222,6 +223,10 @@ class OkHttpDownloadService : DownloadService {
                 return@withContext DownloadResult.Error(Exception("Response body is null"))
             }
 
+            // Capture Content-Encoding header
+            val contentEncoding = response.header("Content-Encoding")
+            Log.d(TAG, "Content-Encoding: $contentEncoding")
+
             // Get total file size
             val totalSize = body.contentLength()
 
@@ -267,7 +272,7 @@ class OkHttpDownloadService : DownloadService {
 
                 Log.d(TAG, "Download completed successfully: $finalSize bytes")
                 progressCallback.invoke(1.0)
-                DownloadResult.Success(destination)
+                DownloadResult.Success(destination, contentEncoding)
             } catch (e: Exception) {
                 response.close()
                 Log.d(TAG, "Failed to download data: ${e.message}")

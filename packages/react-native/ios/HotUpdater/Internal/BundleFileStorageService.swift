@@ -35,22 +35,19 @@ public protocol BundleStorageService {
 class BundleFileStorageService: BundleStorageService {
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
-    private let unzipService: UnzipService
     private let preferences: PreferencesService
-    
+
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
-    
+
     private var activeTasks: [URLSessionTask] = []
-    
+
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
-                unzipService: UnzipService,
                 preferences: PreferencesService) {
-        
+
         self.fileSystem = fileSystem
         self.downloadService = downloadService
-        self.unzipService = unzipService
         self.preferences = preferences
         
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
@@ -452,13 +449,14 @@ class BundleFileStorageService: BundleStorageService {
             // Dispatch the processing of the downloaded file to the file operation queue
             let workItem = DispatchWorkItem {
                 switch result {
-                case .success(let location):
-                    self.processDownloadedFileWithTmp(location: location,
+                case .success(let downloadResult):
+                    self.processDownloadedFileWithTmp(location: downloadResult.url,
                                                       tempZipFile: tempZipFile,
                                                       fileHash: fileHash,
                                                       storeDir: storeDir,
                                                       bundleId: bundleId,
                                                       tempDirectory: tempDirectory,
+                                                      contentEncoding: downloadResult.contentEncoding,
                                                       progressHandler: progressHandler,
                                                       completion: completion)
                 case .failure(let error):
@@ -485,6 +483,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param storeDir Path to the bundle-store directory
      * @param bundleId ID of the bundle being processed
      * @param tempDirectory Temporary directory for processing
+     * @param contentEncoding Content-Encoding header from download response
      * @param progressHandler Callback for extraction progress (0.8 to 1.0)
      * @param completion Callback with result of the operation
      */
@@ -495,6 +494,7 @@ class BundleFileStorageService: BundleStorageService {
         storeDir: String,
         bundleId: String,
         tempDirectory: String,
+        contentEncoding: String?,
         progressHandler: @escaping (Double) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
@@ -541,45 +541,49 @@ class BundleFileStorageService: BundleStorageService {
                 NSLog("[BundleStorage] Hash verification passed")
             }
 
-            // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
-            NSLog("[BundleStorage] Unzipping \(tempZipFile) → \(tmpDir)")
-            try self.unzipService.unzip(file: tempZipFile, to: tmpDir, progressHandler: { unzipProgress in
+            // 6) Create appropriate unzip service based on content encoding
+            let unzipService = UnzipServiceFactory.createUnzipService(contentEncoding: contentEncoding)
+            NSLog("[BundleStorage] Downloaded file with Content-Encoding: \(contentEncoding ?? "nil")")
+
+            // 7) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
+            NSLog("[BundleStorage] Extracting \(tempZipFile) → \(tmpDir)")
+            try unzipService.unzip(file: tempZipFile, to: tmpDir, progressHandler: { unzipProgress in
                 // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
                 progressHandler(0.8 + (unzipProgress * 0.2))
             })
-            NSLog("[BundleStorage] Unzip complete at \(tmpDir)")
+            NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
 
-            // 7) Remove the downloaded ZIP file
+            // 8) Remove the downloaded archive file
             try? self.fileSystem.removeItem(atPath: tempZipFile)
 
-            // 8) Verify that a valid bundle file exists inside tmpDir
+            // 9) Verify that a valid bundle file exists inside tmpDir
             switch self.findBundleFile(in: tmpDir) {
             case .success(let maybeBundlePath):
                 if let bundlePathInTmp = maybeBundlePath {
-                    // 9) Remove any existing realDir
+                    // 10) Remove any existing realDir
                     if self.fileSystem.fileExists(atPath: realDir) {
                         try self.fileSystem.removeItem(atPath: realDir)
                         NSLog("[BundleStorage] Removed existing realDir: \(realDir)")
                     }
 
-                    // 10) Rename (move) tmpDir → realDir
+                    // 11) Rename (move) tmpDir → realDir
                     try self.fileSystem.moveItem(atPath: tmpDir, toPath: realDir)
                     NSLog("[BundleStorage] Renamed tmpDir to realDir: \(realDir)")
 
-                    // 11) Construct final bundlePath for preferences
+                    // 12) Construct final bundlePath for preferences
                     let finalBundlePath = (realDir as NSString).appendingPathComponent((bundlePathInTmp as NSString).lastPathComponent)
 
-                    // 12) Set the bundle URL in preferences
+                    // 13) Set the bundle URL in preferences
                     let setResult = self.setBundleURL(localPath: finalBundlePath)
                     switch setResult {
                     case .success:
-                        // 13) Clean up the temporary directory
+                        // 14) Clean up the temporary directory
                         self.cleanupTemporaryFiles([tempDirectory])
 
-                        // 14) Clean up old bundles, preserving current and latest
+                        // 15) Clean up old bundles, preserving current and latest
                         let _ = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
 
-                        // 15) Complete with success
+                        // 16) Complete with success
                         completion(.success(true))
                     case .failure(let err):
                         // Preferences save failed → remove realDir and clean up
