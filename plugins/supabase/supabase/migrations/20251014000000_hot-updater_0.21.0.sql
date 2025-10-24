@@ -12,7 +12,8 @@ RETURNS TABLE (
     should_force_update  boolean,
     message       text,
     status        text,
-    storage_uri   text
+    storage_uri   text,
+    file_hash     text
 )
 LANGUAGE plpgsql
 AS
@@ -27,7 +28,8 @@ BEGIN
             b.should_force_update,
             b.message,
             'UPDATE' AS status,
-            b.storage_uri
+            b.storage_uri,
+            b.file_hash
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -44,7 +46,8 @@ BEGIN
             TRUE AS should_force_update,
             b.message,
             'ROLLBACK' AS status,
-            b.storage_uri
+            b.storage_uri,
+            b.file_hash
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -72,7 +75,8 @@ BEGIN
         TRUE          AS should_force_update,
         NULL          AS message,
         'ROLLBACK'    AS status,
-        NULL          AS storage_uri
+        NULL          AS storage_uri,
+        NULL          AS file_hash
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
@@ -101,7 +105,8 @@ RETURNS TABLE (
     should_force_update  boolean,
     message       text,
     status        text,
-    storage_uri   text
+    storage_uri   text,
+    file_hash     text
 )
 LANGUAGE plpgsql
 AS
@@ -116,7 +121,8 @@ BEGIN
             b.should_force_update,
             b.message,
             'UPDATE' AS status,
-            b.storage_uri
+            b.storage_uri,
+            b.file_hash
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -133,7 +139,8 @@ BEGIN
             TRUE AS should_force_update,
             b.message,
             'ROLLBACK' AS status,
-            b.storage_uri
+            b.storage_uri,
+            b.file_hash
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -159,7 +166,8 @@ BEGIN
         TRUE          AS should_force_update,
         NULL          AS message,
         'ROLLBACK'    AS status,
-        NULL          AS storage_uri
+        NULL          AS storage_uri,
+        NULL          AS file_hash
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
