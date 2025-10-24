@@ -58,9 +58,19 @@ interface BundleStorageService {
 class BundleFileStorageService(
     private val fileSystem: FileSystemService,
     private val downloadService: DownloadService,
-    private val unzipService: UnzipService,
+    private val zipUnzipService: UnzipService,
+    private val tarBrUnzipService: UnzipService,
     private val preferences: PreferencesService,
 ) : BundleStorageService {
+
+    private fun getUnzipService(filePath: String): UnzipService {
+        // Detect format based on file extension
+        return if (filePath.endsWith(".tar.br")) {
+            tarBrUnzipService
+        } else {
+            zipUnzipService
+        }
+    }
     override fun setBundleURL(localPath: String?): Boolean {
         preferences.setItem("HotUpdaterBundleURL", localPath)
         return true
@@ -195,8 +205,9 @@ class BundleFileStorageService(
                     }
                     tmpDir.mkdirs()
 
-                    // 3) Unzip into tmpDir (80% - 100%)
-                    Log.d("BundleStorage", "Unzipping $tempZipFile → $tmpDir")
+                    // 3) Extract archive into tmpDir (80% - 100%)
+                    Log.d("BundleStorage", "Extracting $tempZipFile → $tmpDir")
+                    val unzipService = getUnzipService(tempZipFile.absolutePath)
                     if (!unzipService.extractZipFile(
                             tempZipFile.absolutePath,
                             tmpDir.absolutePath,
@@ -205,7 +216,7 @@ class BundleFileStorageService(
                             progressCallback(0.8 + (unzipProgress * 0.2))
                         }
                     ) {
-                        Log.d("BundleStorage", "Failed to extract zip into tmpDir.")
+                        Log.d("BundleStorage", "Failed to extract archive into tmpDir.")
                         tempDir.deleteRecursively()
                         tmpDir.deleteRecursively()
                         return@withContext false

@@ -35,27 +35,39 @@ public protocol BundleStorageService {
 class BundleFileStorageService: BundleStorageService {
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
-    private let unzipService: UnzipService
+    private let zipUnzipService: UnzipService
+    private let tarBrUnzipService: UnzipService
     private let preferences: PreferencesService
-    
+
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
-    
+
     private var activeTasks: [URLSessionTask] = []
-    
+
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
-                unzipService: UnzipService,
+                zipUnzipService: UnzipService,
+                tarBrUnzipService: UnzipService,
                 preferences: PreferencesService) {
-        
+
         self.fileSystem = fileSystem
         self.downloadService = downloadService
-        self.unzipService = unzipService
+        self.zipUnzipService = zipUnzipService
+        self.tarBrUnzipService = tarBrUnzipService
         self.preferences = preferences
-        
+
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
                                                qos: .utility,
                                                attributes: .concurrent)
+    }
+
+    private func getUnzipService(for filePath: String) -> UnzipService {
+        // Detect format based on file extension
+        if filePath.hasSuffix(".tar.br") {
+            return tarBrUnzipService
+        } else {
+            return zipUnzipService
+        }
     }
     
     // MARK: - Directory Management
@@ -542,12 +554,13 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
-            NSLog("[BundleStorage] Unzipping \(tempZipFile) → \(tmpDir)")
-            try self.unzipService.unzip(file: tempZipFile, to: tmpDir, progressHandler: { unzipProgress in
+            NSLog("[BundleStorage] Extracting \(tempZipFile) → \(tmpDir)")
+            let unzipService = self.getUnzipService(for: tempZipFile)
+            try unzipService.unzip(file: tempZipFile, to: tmpDir, progressHandler: { unzipProgress in
                 // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
                 progressHandler(0.8 + (unzipProgress * 0.2))
             })
-            NSLog("[BundleStorage] Unzip complete at \(tmpDir)")
+            NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
 
             // 7) Remove the downloaded ZIP file
             try? self.fileSystem.removeItem(atPath: tempZipFile)
