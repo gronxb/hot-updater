@@ -18,7 +18,6 @@ Pod::Spec.new do |s|
   s.private_header_files = "ios/HotUpdater/Internal/*.h"
   s.exclude_files = "ios/HotUpdater/Package.swift", "ios/HotUpdater/Test/**/*.{swift,h,m,mm}"
 
-  s.static_framework = true
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",
     "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport"

@@ -44,25 +44,22 @@ target 'expo52' do
     :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
   )
 
-  # Enable modular headers for Brotli to support Swift static libraries
-  pod 'Brotli', :modular_headers => true
-end
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
+    )
 
-post_install do |installer|
-  react_native_post_install(
-    installer,
-    '../node_modules/react-native',
-    :mac_catalyst_enabled => false,
-    :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
-  )
-
-  # This is necessary for Xcode 14, because it signs resource bundles by default
-  # when building for devices.
-  installer.target_installation_results.pod_target_installation_results
-    .each do |pod_name, target_installation_result|
-    target_installation_result.resource_bundle_targets.each do |resource_bundle_target|
-      resource_bundle_target.build_configurations.each do |config|
-        config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+    # This is necessary for Xcode 14, because it signs resource bundles by default
+    # when building for devices.
+    installer.target_installation_results.pod_target_installation_results
+      .each do |pod_name, target_installation_result|
+      target_installation_result.resource_bundle_targets.each do |resource_bundle_target|
+        resource_bundle_target.build_configurations.each do |config|
+          config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+        end
       end
     end
   end

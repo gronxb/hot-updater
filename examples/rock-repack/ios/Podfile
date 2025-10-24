@@ -23,16 +23,13 @@ target 'RockRepack' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-  # Enable modular headers for Brotli to support Swift static libraries
-  pod 'Brotli', :modular_headers => true
-end
-
-post_install do |installer|
-  # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
-  react_native_post_install(
-    installer,
-    '../node_modules/react-native',
-    :mac_catalyst_enabled => false,
-    # :ccache_enabled => true
-  )
+  post_install do |installer|
+    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
+    )
+  end
 end
