@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [afb084b]
+  - @hot-updater/plugin-core@0.21.0
+  - @hot-updater/cloudflare@0.21.0
+  - @hot-updater/console@0.21.0
+  - @hot-updater/firebase@0.21.0
+  - @hot-updater/supabase@0.21.0
+  - @hot-updater/core@0.21.0
+  - @hot-updater/aws@0.21.0
+
 ## 0.20.15
 
 ### Patch Changes
