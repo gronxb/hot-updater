@@ -21,6 +21,19 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 /**
+ * Result wrapper for download operations
+ */
+sealed class DownloadResult {
+    data class Success(
+        val file: File,
+    ) : DownloadResult()
+
+    data class Error(
+        val exception: Exception,
+    ) : DownloadResult()
+}
+
+/**
  * Progress tracking wrapper for OkHttp ResponseBody
  */
 private class ProgressResponseBody(
@@ -251,6 +264,7 @@ class OkHttpDownloadService : DownloadService {
             is UnknownHostException,
             is IOException,
             -> true
+
             else -> false
         }
 }
