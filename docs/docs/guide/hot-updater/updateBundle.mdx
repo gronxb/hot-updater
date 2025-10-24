@@ -30,22 +30,25 @@ async function applyAppUpdate(updateInfo: UpdateInfo) {
 
     /**
      * You can apply updates using one of two methods:
-     * 
-     * Method 1: Use the updateBundle() method from the updateInfo object
+     *
+     * Method 1: (RECOMMENDED) Use the updateBundle() method from the updateInfo object
      * - A convenience method built into the return value from checkForUpdate
-     * - Performs the same function as HotUpdater.updateBundle with all required arguments pre-filled
+     * - Automatically includes fileHash for secure verification
+     * - All required arguments are pre-filled from the checkForUpdate response
      */
-    // await updateInfo.updateBundle();
+    await updateInfo.updateBundle();
 
     /**
      * Method 2: Call HotUpdater.updateBundle() directly
      * - Explicitly pass the necessary values extracted from updateInfo
+     * - You must manually include fileHash for security
      */
-    await HotUpdater.updateBundle({
-      bundleId: updateInfo.id,
-      fileUrl: updateInfo.fileUrl,
-      status: updateInfo.status,
-    });
+    // await HotUpdater.updateBundle({
+    //   bundleId: updateInfo.id,
+    //   fileUrl: updateInfo.fileUrl,
+    //   fileHash: updateInfo.fileHash,
+    //   status: updateInfo.status,
+    // });
 
 
     if (updateInfo.shouldForceUpdate) {
@@ -81,10 +84,39 @@ The `updateBundle` function accepts the following parameters:
 |-----------|-----------|----------|-----------------------------------------|
 | `id`      | `string`  | ✅        | Unique identifier of the update bundle. |
 | `fileUrl` | `string`  | ✅        | URL from which the update bundle will be downloaded. |
+| `fileHash` | `string \| null`  | ⚠️ Optional but recommended | SHA256 hash of the bundle file for integrity verification. If provided, the downloaded file will be verified before extraction. |
 
 ### Behavior
 
 - Downloads the specified bundle from the provided `fileUrl`.
+- **If `fileHash` is provided**: Verifies the downloaded file's SHA256 hash before extraction. If verification fails, the update is aborted and the downloaded file is deleted.
+- **If `fileHash` is not provided**: Proceeds with extraction without hash verification (not recommended for production).
 - Applies the downloaded bundle as the active bundle for the application.
 - Requires an explicit call to `HotUpdater.reload()` if you want to immediately reload the application after updating, particularly when `shouldForceUpdate` is true.
 
+### Security Recommendation
+
+**Always provide `fileHash` in production environments.** Hash verification protects against:
+- Man-in-the-middle attacks
+- Corrupted downloads
+- Tampered bundle files
+
+#### Recommended Approach
+
+**Use `updateInfo.updateBundle()` instead of `HotUpdater.updateBundle()`** whenever possible. The `updateInfo.updateBundle()` method automatically includes the `fileHash` from the `checkForUpdate()` response, ensuring secure verification without manual parameter passing.
+
+```tsx
+// ✅ Recommended: fileHash is automatically included
+const updateInfo = await checkForUpdate(/* ... */);
+await updateInfo.updateBundle();
+
+// ⚠️ Less safe: you must remember to include fileHash manually
+await HotUpdater.updateBundle({
+  bundleId: updateInfo.id,
+  fileUrl: updateInfo.fileUrl,
+  fileHash: updateInfo.fileHash, // Easy to forget!
+  status: updateInfo.status,
+});
+```
+
+The `fileHash` is automatically included in the response from `checkForUpdate()` when your update server provides it.
