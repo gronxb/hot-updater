@@ -43,23 +43,12 @@ target 'expo52' do
     :app_path => "#{Pod::Config.instance.installation_root}/..",
     :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
   )
-end
 
-pre_install do |installer|
   # Enable modular headers for Brotli to support Swift static libraries
-  Pod::Installer::Xcode::TargetValidator.send(:define_method, :verify_no_static_framework_transitive_dependencies) {}
+  pod 'Brotli', :modular_headers => true
 end
 
 post_install do |installer|
-  # Enable modular headers for Brotli to support Swift static libraries
-  installer.pods_project.targets.each do |target|
-    if target.name == 'Brotli'
-      target.build_configurations.each do |config|
-        config.build_settings['DEFINES_MODULE'] = 'YES'
-      end
-    end
-  end
-
   react_native_post_install(
     installer,
     '../node_modules/react-native',
