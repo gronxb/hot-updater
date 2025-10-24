@@ -5,11 +5,6 @@ export type Platform = "ios" | "android";
  */
 export type CompressStrategy = "zip" | "tar.br";
 
-/**
- * Compression format types
- */
-export type CompressFormat = "zip" | "tar" | "tar.gz" | "tar.br";
-
 export type BundleMetadata = {
   app_version?: string;
 };
@@ -82,13 +77,14 @@ type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
   : S;
 
 // Utility type to recursively map object keys to snake_case
-type SnakeKeyObject<T> = T extends Record<string, any>
-  ? {
-      [K in keyof T as SnakeCase<Extract<K, string>>]: T[K] extends object
-        ? SnakeKeyObject<T[K]>
-        : T[K];
-    }
-  : T;
+type SnakeKeyObject<T> =
+  T extends Record<string, any>
+    ? {
+        [K in keyof T as SnakeCase<Extract<K, string>>]: T[K] extends object
+          ? SnakeKeyObject<T[K]>
+          : T[K];
+      }
+    : T;
 
 export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
 
