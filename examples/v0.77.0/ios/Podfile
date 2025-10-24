@@ -22,28 +22,28 @@ target 'HotUpdaterExample' do
     # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
+end
 
-  pre_install do |installer|
-    # Enable modular headers for Brotli to support Swift static libraries
-    Pod::Installer::Xcode::TargetValidator.send(:define_method, :verify_no_static_framework_transitive_dependencies) {}
-  end
+pre_install do |installer|
+  # Enable modular headers for Brotli to support Swift static libraries
+  Pod::Installer::Xcode::TargetValidator.send(:define_method, :verify_no_static_framework_transitive_dependencies) {}
+end
 
-  post_install do |installer|
-    # Enable modular headers for Brotli to support Swift static libraries
-    installer.pods_project.targets.each do |target|
-      if target.name == 'Brotli'
-        target.build_configurations.each do |config|
-          config.build_settings['DEFINES_MODULE'] = 'YES'
-        end
+post_install do |installer|
+  # Enable modular headers for Brotli to support Swift static libraries
+  installer.pods_project.targets.each do |target|
+    if target.name == 'Brotli'
+      target.build_configurations.each do |config|
+        config.build_settings['DEFINES_MODULE'] = 'YES'
       end
     end
-
-    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
-    )
   end
+
+  # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
+  react_native_post_install(
+    installer,
+    '../node_modules/react-native',
+    :mac_catalyst_enabled => false,
+    # :ccache_enabled => true
+  )
 end

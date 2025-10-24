@@ -47,28 +47,28 @@ target 'HotUpdaterExample' do
     inherit! :complete
     # Pods for testing
   end
+end
 
-  pre_install do |installer|
-    # Enable modular headers for Brotli to support Swift static libraries
-    Pod::Installer::Xcode::TargetValidator.send(:define_method, :verify_no_static_framework_transitive_dependencies) {}
-  end
+pre_install do |installer|
+  # Enable modular headers for Brotli to support Swift static libraries
+  Pod::Installer::Xcode::TargetValidator.send(:define_method, :verify_no_static_framework_transitive_dependencies) {}
+end
 
-  post_install do |installer|
-    # Enable modular headers for Brotli to support Swift static libraries
-    installer.pods_project.targets.each do |target|
-      if target.name == 'Brotli'
-        target.build_configurations.each do |config|
-          config.build_settings['DEFINES_MODULE'] = 'YES'
-        end
+post_install do |installer|
+  # Enable modular headers for Brotli to support Swift static libraries
+  installer.pods_project.targets.each do |target|
+    if target.name == 'Brotli'
+      target.build_configurations.each do |config|
+        config.build_settings['DEFINES_MODULE'] = 'YES'
       end
     end
-
-    react_native_post_install(
-      installer,
-      # Set `mac_catalyst_enabled` to `true` in order to apply patches
-      # necessary for Mac Catalyst builds
-      :mac_catalyst_enabled => false
-    )
-    __apply_Xcode_12_5_M1_post_install_workaround(installer)
   end
+
+  react_native_post_install(
+    installer,
+    # Set `mac_catalyst_enabled` to `true` in order to apply patches
+    # necessary for Mac Catalyst builds
+    :mac_catalyst_enabled => false
+  )
+  __apply_Xcode_12_5_M1_post_install_workaround(installer)
 end
