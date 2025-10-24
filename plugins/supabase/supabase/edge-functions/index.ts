@@ -132,6 +132,7 @@ const handleUpdateRequest = async (
         shouldForceUpdate: data[0].should_force_update,
         message: data[0].message,
         status: data[0].status,
+        fileHash: data[0].file_hash,
       } as UpdateInfo)
     : null;
 
