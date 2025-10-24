@@ -25,6 +25,13 @@ sealed class DownloadResult {
  */
 interface DownloadService {
     /**
+     * Gets the file size from the URL without downloading
+     * @param fileUrl The URL to check
+     * @return File size in bytes, or -1 if unavailable
+     */
+    suspend fun getFileSize(fileUrl: URL): Long
+
+    /**
      * Downloads a file from a URL
      * @param fileUrl The URL to download from
      * @param destination The local file to save to
@@ -42,6 +49,21 @@ interface DownloadService {
  * Implementation of DownloadService using HttpURLConnection
  */
 class HttpDownloadService : DownloadService {
+    override suspend fun getFileSize(fileUrl: URL): Long =
+        withContext(Dispatchers.IO) {
+            try {
+                val conn = fileUrl.openConnection() as HttpURLConnection
+                conn.requestMethod = "HEAD"
+                conn.connect()
+                val contentLength = conn.contentLength.toLong()
+                conn.disconnect()
+                contentLength
+            } catch (e: Exception) {
+                Log.d("DownloadService", "Failed to get file size: ${e.message}")
+                -1L
+            }
+        }
+
     override suspend fun downloadFile(
         fileUrl: URL,
         destination: File,
