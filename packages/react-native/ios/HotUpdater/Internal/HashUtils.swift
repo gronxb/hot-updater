@@ -5,6 +5,9 @@ import CryptoKit
  * Utility class for file hash operations
  */
 class HashUtils {
+    /// Buffer size for file reading operations (64KB for optimal I/O performance)
+    private static let BUFFER_SIZE = 65536
+
     /**
      * Calculates SHA256 hash of a file
      * @param fileURL URL of the file to hash
@@ -21,10 +24,10 @@ class HashUtils {
         }
 
         var hasher = SHA256()
-        let bufferSize = 8192
 
+        // Read file in chunks with autoreleasepool for memory efficiency
         while autoreleasepool(invoking: {
-            let data = fileHandle.readData(ofLength: bufferSize)
+            let data = fileHandle.readData(ofLength: BUFFER_SIZE)
             if data.count > 0 {
                 hasher.update(data: data)
                 return true
