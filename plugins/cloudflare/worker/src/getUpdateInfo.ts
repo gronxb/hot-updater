@@ -37,7 +37,7 @@ const appVersionStrategy = async (
 
   const sql = /* sql */ `
   WITH input AS (
-    SELECT 
+    SELECT
       ? AS app_platform,
       ? AS app_version,
       ? AS bundle_id,
@@ -46,11 +46,12 @@ const appVersionStrategy = async (
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
-    SELECT 
+    SELECT
       b.id,
       b.should_force_update,
       b.message,
       b.storage_uri,
+      b.file_hash,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -61,15 +62,16 @@ const appVersionStrategy = async (
       AND b.target_app_version IN (${targetAppVersionList
         .map((version) => `'${version}'`)
         .join(",")})
-    ORDER BY b.id DESC 
+    ORDER BY b.id DESC
     LIMIT 1
   ),
   rollback_candidate AS (
-    SELECT 
+    SELECT
       b.id,
       1 AS should_force_update,
       b.message,
       b.storage_uri,
+      b.file_hash,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -85,18 +87,19 @@ const appVersionStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri
+  SELECT id, should_force_update, message, status, storage_uri, file_hash
   FROM final_result, input
   WHERE id <> bundle_id
-  
+
   UNION ALL
-  
-  SELECT 
+
+  SELECT
     nil_uuid AS id,
     1 AS should_force_update,
     NULL AS message,
     'ROLLBACK' AS status,
-    NULL AS storage_uri
+    NULL AS storage_uri,
+    NULL AS file_hash
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;
@@ -110,6 +113,7 @@ const appVersionStrategy = async (
       status: UpdateStatus;
       message: string | null;
       storage_uri: string | null;
+      file_hash: string | null;
     }>();
 
   if (!result) {
@@ -122,6 +126,7 @@ const appVersionStrategy = async (
     status: result.status,
     message: result.message,
     storageUri: result.storage_uri,
+    fileHash: result.file_hash,
   } as UpdateInfo;
 };
 
@@ -137,7 +142,7 @@ export const fingerprintStrategy = async (
 ) => {
   const sql = /* sql */ `
   WITH input AS (
-    SELECT 
+    SELECT
       ? AS app_platform,
       ? AS bundle_id,
       ? AS min_bundle_id,
@@ -146,11 +151,12 @@ export const fingerprintStrategy = async (
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
-    SELECT 
+    SELECT
       b.id,
       b.should_force_update,
       b.message,
       b.storage_uri,
+      b.file_hash,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -159,15 +165,16 @@ export const fingerprintStrategy = async (
       AND b.id >= input.min_bundle_id
       AND b.channel = input.channel
       AND b.fingerprint_hash = input.fingerprint_hash
-    ORDER BY b.id DESC 
+    ORDER BY b.id DESC
     LIMIT 1
   ),
   rollback_candidate AS (
-    SELECT 
+    SELECT
       b.id,
       1 AS should_force_update,
       b.message,
       b.storage_uri,
+      b.file_hash,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -185,18 +192,19 @@ export const fingerprintStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri
+  SELECT id, should_force_update, message, status, storage_uri, file_hash
   FROM final_result, input
   WHERE id <> bundle_id
-  
+
   UNION ALL
-  
-  SELECT 
+
+  SELECT
     nil_uuid AS id,
     1 AS should_force_update,
     NULL AS message,
     'ROLLBACK' AS status,
-    NULL AS storage_uri
+    NULL AS storage_uri,
+    NULL AS file_hash
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;
@@ -210,6 +218,7 @@ export const fingerprintStrategy = async (
       status: UpdateStatus;
       message: string | null;
       storage_uri: string | null;
+      file_hash: string | null;
     }>();
 
   if (!result) {
@@ -222,6 +231,7 @@ export const fingerprintStrategy = async (
     status: result.status,
     message: result.message,
     storageUri: result.storage_uri,
+    fileHash: result.file_hash,
   } as UpdateInfo;
 };
 

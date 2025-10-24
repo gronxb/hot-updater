@@ -88,7 +88,7 @@ const ToastClose = <T extends ValidComponent = "button">(
       )}
       {...others}
     >
-      {/* biome-ignore lint/a11y/noSvgWithoutTitle: <explanation> */}
+      {/* biome-ignore lint/a11y/noSvgWithoutTitle: close toast icon */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"

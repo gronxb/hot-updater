@@ -42,12 +42,14 @@ class HotUpdaterModule internal constructor(
             try {
                 val bundleId = params.getString("bundleId")!!
                 val fileUrl = params.getString("fileUrl")
+                val fileHash = params.getString("fileHash")
 
                 val isSuccess =
                     HotUpdater.updateBundle(
                         mReactApplicationContext,
                         bundleId,
                         fileUrl,
+                        fileHash,
                     ) { progress ->
                         val progressParams =
                             WritableNativeMap().apply {
