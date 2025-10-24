@@ -1,5 +1,12 @@
 # @hot-updater/bare
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [afb084b]
+  - @hot-updater/plugin-core@0.21.0
+
 ## 0.20.15
 
 ### Patch Changes

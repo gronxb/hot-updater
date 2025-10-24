@@ -1,5 +1,16 @@
 # @hot-updater/example-react-native-v81
 
+## 0.21.0
+
+### Minor Changes
+
+- afb084b: feat: validate bundle file with fileHash
+
+### Patch Changes
+
+- Updated dependencies [afb084b]
+  - @hot-updater/react-native@0.21.0
+
 ## 0.20.15
 
 ### Patch Changes

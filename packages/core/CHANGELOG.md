@@ -1,5 +1,11 @@
 # @hot-updater/core
 
+## 0.21.0
+
+### Minor Changes
+
+- afb084b: feat: validate bundle file with fileHash
+
 ## 0.20.15
 
 ## 0.20.14
