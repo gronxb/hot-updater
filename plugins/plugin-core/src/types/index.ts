@@ -157,6 +157,18 @@ export type ConfigInput = {
    */
   updateStrategy: "fingerprint" | "appVersion";
   /**
+   * The compression strategy used for bundle deployment.
+   *
+   * - `zip`: Standard ZIP compression (default, maintains backward compatibility)
+   * - `tar.br`: TAR archive with Brotli compression (better compression ratio, lower network costs)
+   *
+   * The compression format is detected on the client side via Content-Encoding header.
+   * This setting is NOT stored in the database.
+   *
+   * @default "zip"
+   */
+  compressStrategy?: "zip" | "tar.br";
+  /**
    * The fingerprint configuration.
    */
   fingerprint?: {
