@@ -31,6 +31,11 @@ target 'HotUpdaterExample' do
     # Pods for testing
   end
 
+  pre_install do |installer|
+    # Enable modular headers for Brotli to support Swift static library integration
+    Pod::Installer::Xcode::TargetValidator.send(:define_method, :verify_no_static_framework_transitive_dependencies) {}
+  end
+
   post_install do |installer|
     # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(
@@ -45,6 +50,7 @@ target 'HotUpdaterExample' do
       if target.name == 'Brotli'
         target.build_configurations.each do |config|
           config.build_settings['DEFINES_MODULE'] = 'YES'
+          config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
         end
       end
     end
