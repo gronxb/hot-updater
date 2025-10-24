@@ -17,6 +17,9 @@ end
 target 'RockRepack' do
   config = use_native_modules!(['npx', 'rock', 'config', '-p', 'ios'])
 
+  # Enable modular headers for specific pods that need Swift interoperability
+  pod 'Brotli', :modular_headers => true
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.

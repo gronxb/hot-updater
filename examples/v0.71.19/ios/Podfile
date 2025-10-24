@@ -24,6 +24,9 @@ end
 target 'HotUpdaterExample' do
   config = use_native_modules!
 
+  # Enable modular headers for specific pods that need Swift interoperability
+  pod 'Brotli', :modular_headers => true
+
   # Flags change depending on the env values.
   flags = get_default_flags()
 

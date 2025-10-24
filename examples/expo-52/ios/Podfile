@@ -16,6 +16,9 @@ prepare_react_native_project!
 target 'expo52' do
   use_expo_modules!
 
+  # Enable modular headers for specific pods that need Swift interoperability
+  pod 'Brotli', :modular_headers => true
+
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
   else
