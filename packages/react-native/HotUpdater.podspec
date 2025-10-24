@@ -22,7 +22,12 @@ Pod::Spec.new do |s|
     "DEFINES_MODULE" => "YES",
     "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport"
   }
+
   s.dependency "SSZipArchive", "~> 2.2.2"
+
+  # Brotli dependency for tar.br compression support
+  # Note: Brotli is a C library that needs modular headers to be imported from Swift
+  # The :modular_headers option is specified in the Podfile's post_install hook
   s.dependency "Brotli"
 
   # Use install_modules_dependencies helper to install the dependencies if React Native version >=0.71.0.

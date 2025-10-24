@@ -56,5 +56,14 @@ target 'HotUpdaterExample' do
       :mac_catalyst_enabled => false
     )
     __apply_Xcode_12_5_M1_post_install_workaround(installer)
+
+    # Enable modular headers for Brotli to support Swift static library integration
+    installer.pods_project.targets.each do |target|
+      if target.name == 'Brotli'
+        target.build_configurations.each do |config|
+          config.build_settings['DEFINES_MODULE'] = 'YES'
+        end
+      end
+    end
   end
 end
