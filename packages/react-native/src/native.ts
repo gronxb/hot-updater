@@ -101,7 +101,7 @@ export async function updateBundle(
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         fileUrl: targetFileUrl,
-        fileHash: targetFileHash,
+        fileHash: targetFileHash ?? null,
       });
       if (ok) {
         lastInstalledBundleId = updateBundleId;

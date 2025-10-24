@@ -8,7 +8,7 @@ export interface UpdateBundleParams {
    * SHA256 hash of the bundle file for integrity verification.
    * If provided, the native layer will verify the downloaded file's hash.
    */
-  fileHash?: string;
+  fileHash: string | null;
 }
 
 export interface Spec extends TurboModule {
