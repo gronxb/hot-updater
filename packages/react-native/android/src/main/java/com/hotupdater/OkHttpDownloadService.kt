@@ -34,6 +34,31 @@ sealed class DownloadResult {
 }
 
 /**
+ * Interface for download operations
+ */
+interface DownloadService {
+    /**
+     * Gets the file size from the URL without downloading
+     * @param fileUrl The URL to check
+     * @return File size in bytes, or -1 if unavailable
+     */
+    suspend fun getFileSize(fileUrl: URL): Long
+
+    /**
+     * Downloads a file from a URL
+     * @param fileUrl The URL to download from
+     * @param destination The local file to save to
+     * @param progressCallback Callback for download progress updates
+     * @return Result indicating success or failure
+     */
+    suspend fun downloadFile(
+        fileUrl: URL,
+        destination: File,
+        progressCallback: (Double) -> Unit,
+    ): DownloadResult
+}
+
+/**
  * Progress tracking wrapper for OkHttp ResponseBody
  */
 private class ProgressResponseBody(
