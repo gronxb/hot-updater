@@ -1,13 +1,17 @@
 import Foundation
-import Brotli
+import SWCompression
+import Compression
 
+/**
+ * UnzipService implementation for tar+brotli compressed files.
+ * Uses Apple's native Compression framework for brotli decompression
+ * and SWCompression for tar extraction.
+ * Requires iOS 11.0 or later for native brotli support.
+ */
 class TarBrUnzipService: UnzipService {
-    private static let TAR_BR_HEADER: [UInt8] = [0x1F, 0x8B] // Brotli magic number
     private static let MIN_FILE_SIZE: UInt64 = 10
 
     func isValidZipFile(atPath: String) -> Bool {
-        let fileURL = URL(fileURLWithPath: atPath)
-
         // Check if file exists
         guard FileManager.default.fileExists(atPath: atPath) else {
             NSLog("[TarBrUnzipService] Invalid file: doesn't exist")
@@ -26,28 +30,16 @@ class TarBrUnzipService: UnzipService {
             return false
         }
 
-        // For tar.br files, we can validate by attempting to read the header
-        // Brotli-compressed files don't have a fixed magic number like ZIP
-        // So we'll try to decompress a small portion
-        guard let fileHandle = FileHandle(forReadingAtPath: atPath) else {
-            NSLog("[TarBrUnzipService] Invalid file: cannot open file")
-            return false
-        }
-
-        defer {
-            fileHandle.closeFile()
-        }
-
-        let header = fileHandle.readData(ofLength: 100)
-        guard header.count >= 10 else {
-            NSLog("[TarBrUnzipService] Invalid file: cannot read header")
+        // For tar.br files, we can validate by attempting to decompress a small portion
+        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: atPath)) else {
+            NSLog("[TarBrUnzipService] Invalid file: cannot read file")
             return false
         }
 
         // Attempt to decompress a small portion to validate
         do {
-            let testData = header.prefix(100)
-            _ = try testData.brotliDecompressed()
+            let testData = compressedData.prefix(1024)
+            _ = try decompressBrotli(testData)
             return true
         } catch {
             // If decompression fails, it's likely not a valid Brotli file
@@ -61,178 +53,231 @@ class TarBrUnzipService: UnzipService {
     }
 
     func unzip(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
-        let fileURL = URL(fileURLWithPath: file)
-        let destinationURL = URL(fileURLWithPath: destination)
+        NSLog("[TarBrUnzipService] Starting extraction of \(file) to \(destination)")
 
         // Read the compressed file
-        let compressedData = try Data(contentsOf: fileURL)
-
-        // Decompress with Brotli
-        progressHandler(0.3)
-        let decompressedData = try compressedData.brotliDecompressed()
-        progressHandler(0.6)
-
-        // Extract tar archive
-        try extractTar(data: decompressedData, to: destinationURL, progressHandler: { extractProgress in
-            // Map extract progress from 0.6 to 1.0
-            progressHandler(0.6 + (extractProgress * 0.4))
-        })
-
-        NSLog("[TarBrUnzipService] Successfully extracted tar.br file")
-    }
-
-    private func extractTar(data: Data, to destination: URL, progressHandler: @escaping (Double) -> Void) throws {
-        // Create destination directory
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-
-        // Parse TAR format
-        var offset = 0
-        var processedBytes = 0
-        let totalBytes = data.count
-
-        while offset < data.count {
-            // TAR header is 512 bytes
-            guard offset + 512 <= data.count else {
-                break
-            }
-
-            let headerData = data.subdata(in: offset..<offset + 512)
-
-            // Check for empty block (end of archive)
-            if headerData.allSatisfy({ $0 == 0 }) {
-                break
-            }
-
-            // Parse header
-            guard let header = try? parseTarHeader(headerData, baseOffset: offset) else {
-                throw NSError(
-                    domain: "TarBrUnzipService",
-                    code: 2,
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to parse TAR header"]
-                )
-            }
-
-            offset += 512
-
-            // Extract file/directory
-            if header.isDirectory {
-                let dirURL = destination.appendingPathComponent(header.name)
-                try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
-            } else {
-                let fileURL = destination.appendingPathComponent(header.name)
-
-                // Validate path to prevent directory traversal
-                guard fileURL.path.starts(with: destination.path) else {
-                    NSLog("[TarBrUnzipService] Skipping potentially malicious entry: \(header.name)")
-                    offset += header.size
-                    continue
-                }
-
-                // Create parent directories
-                try FileManager.default.createDirectory(
-                    at: fileURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-
-                // Write file data
-                let fileData = data.subdata(in: offset..<min(offset + header.size, data.count))
-                try fileData.write(to: fileURL)
-            }
-
-            // Move offset by file size (rounded up to 512 bytes)
-            let paddedSize = ((header.size + 511) / 512) * 512
-            offset += paddedSize
-
-            // Update progress
-            processedBytes += 512 + paddedSize
-            progressHandler(Double(processedBytes) / Double(totalBytes))
-        }
-
-        progressHandler(1.0)
-    }
-
-    private struct TarHeader {
-        let name: String
-        let size: Int
-        let isDirectory: Bool
-    }
-
-    private func parseTarHeader(_ data: Data, baseOffset: Int) throws -> TarHeader {
-        // TAR header format (POSIX ustar)
-        // 0-99: filename
-        // 100-107: file mode
-        // 108-115: owner user ID
-        // 116-123: owner group ID
-        // 124-135: file size in octal
-        // 136-147: last modification time
-        // 148-155: checksum
-        // 156: link indicator (file type)
-        // 157-256: link name
-        // 257-262: ustar indicator
-        // ... (rest of header)
-
-        // Extract filename (0-99)
-        let nameData = data.subdata(in: 0..<100)
-        guard let name = String(data: nameData, encoding: .utf8)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0")) else {
-            throw NSError(
-                domain: "TarBrUnzipService",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to parse filename"]
-            )
-        }
-
-        // Extract file size (124-135, octal string)
-        let sizeData = data.subdata(in: 124..<136)
-        guard let sizeString = String(data: sizeData, encoding: .utf8)?
-            .trimmingCharacters(in: CharacterSet(charactersIn: " \0")) else {
-            throw NSError(
-                domain: "TarBrUnzipService",
-                code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to parse file size"]
-            )
-        }
-
-        let size = Int(sizeString, radix: 8) ?? 0
-
-        // Extract type flag (156)
-        let typeFlagByte = data[156]
-        let isDirectory = typeFlagByte == 0x35 // '5' = directory
-
-        return TarHeader(name: name, size: size, isDirectory: isDirectory)
-    }
-}
-
-// Extension for Brotli decompression
-extension Data {
-    func brotliDecompressed() throws -> Data {
-        // Use Brotli library to decompress
-        // This is a wrapper around the Brotli C library
-
-        let inputBuffer = [UInt8](self)
-        let maxOutputSize = self.count * 10 // Estimate decompressed size
-
-        var outputBuffer = [UInt8](repeating: 0, count: maxOutputSize)
-        var outputSize = maxOutputSize
-
-        let result = inputBuffer.withUnsafeBytes { inputPtr in
-            outputBuffer.withUnsafeMutableBytes { outputPtr in
-                BrotliDecoderDecompress(
-                    self.count,
-                    inputPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                    &outputSize,
-                    outputPtr.baseAddress?.assumingMemoryBound(to: UInt8.self)
-                )
-            }
-        }
-
-        guard result == BROTLI_DECODER_RESULT_SUCCESS else {
+        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
             throw NSError(
                 domain: "TarBrUnzipService",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Brotli decompression failed"]
+                userInfo: [NSLocalizedDescriptionKey: "Failed to read tar.br file at: \(file)"]
             )
         }
 
-        return Data(outputBuffer.prefix(outputSize))
+        // Decompress brotli using native Compression framework
+        progressHandler(0.3)
+        let decompressedData: Data
+        do {
+            decompressedData = try decompressBrotli(compressedData)
+            NSLog("[TarBrUnzipService] Brotli decompression successful, size: \(decompressedData.count) bytes")
+            progressHandler(0.6)
+        } catch {
+            throw NSError(
+                domain: "TarBrUnzipService",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Brotli decompression failed: \(error.localizedDescription)"]
+            )
+        }
+
+        // Extract tar entries
+        let tarEntries: [TarEntry]
+        do {
+            tarEntries = try TarContainer.open(container: decompressedData)
+            NSLog("[TarBrUnzipService] Tar extraction successful, found \(tarEntries.count) entries")
+        } catch {
+            throw NSError(
+                domain: "TarBrUnzipService",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Tar extraction failed: \(error.localizedDescription)"]
+            )
+        }
+
+        // Get canonical destination path for security checks
+        let destinationURL = URL(fileURLWithPath: destination)
+        let canonicalDestination = destinationURL.standardized.path
+
+        // Create destination directory if it doesn't exist
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: canonicalDestination) {
+            try fileManager.createDirectory(
+                atPath: canonicalDestination,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+        }
+
+        // Extract each entry
+        let totalEntries = Double(tarEntries.count)
+        for (index, entry) in tarEntries.enumerated() {
+            try extractTarEntry(entry, to: canonicalDestination)
+            // Map extract progress from 0.6 to 1.0
+            progressHandler(0.6 + (Double(index + 1) / totalEntries * 0.4))
+        }
+
+        NSLog("[TarBrUnzipService] Successfully extracted all entries")
+    }
+
+    /**
+     * Decompresses brotli-compressed data using Apple's native Compression framework.
+     * Uses streaming decompression for memory efficiency with large files.
+     * @param data The brotli-compressed data
+     * @return The decompressed data
+     * @throws Error if decompression fails
+     */
+    private func decompressBrotli(_ data: Data) throws -> Data {
+        let bufferSize = 64 * 1024 // 64KB buffer for streaming
+
+        var decompressedData = Data()
+        let count = data.count
+
+        // Create and zero-initialize compression stream
+        // Use bitPattern initializer to create null pointers for initialization
+        var stream = compression_stream(
+            dst_ptr: UnsafeMutablePointer<UInt8>(bitPattern: 0)!,
+            dst_size: 0,
+            src_ptr: UnsafePointer<UInt8>(bitPattern: 0)!,
+            src_size: 0,
+            state: nil
+        )
+
+        let status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_BROTLI)
+
+        guard status == COMPRESSION_STATUS_OK else {
+            throw NSError(
+                domain: "TarBrUnzipService",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to initialize brotli decompression stream"]
+            )
+        }
+
+        defer {
+            compression_stream_destroy(&stream)
+        }
+
+        // Allocate output buffer
+        let outputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer {
+            outputBuffer.deallocate()
+        }
+
+        // Process data in chunks
+        data.withUnsafeBytes { (rawBufferPointer: UnsafeRawBufferPointer) in
+            guard let baseAddress = rawBufferPointer.baseAddress else {
+                return
+            }
+
+            stream.src_ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
+            stream.src_size = count
+
+            var processStatus: compression_status
+            repeat {
+                stream.dst_ptr = outputBuffer
+                stream.dst_size = bufferSize
+
+                processStatus = compression_stream_process(&stream, Int32(bitPattern: COMPRESSION_STREAM_FINALIZE.rawValue))
+
+                switch processStatus {
+                case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:
+                    let outputSize = bufferSize - stream.dst_size
+                    decompressedData.append(outputBuffer, count: outputSize)
+
+                case COMPRESSION_STATUS_ERROR:
+                    break
+
+                default:
+                    break
+                }
+            } while processStatus == COMPRESSION_STATUS_OK
+        }
+
+        // Check if decompression was successful
+        if decompressedData.isEmpty && !data.isEmpty {
+            throw NSError(
+                domain: "TarBrUnzipService",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Brotli decompression produced no output"]
+            )
+        }
+
+        return decompressedData
+    }
+
+    /**
+     * Extracts a single tar entry to the destination directory.
+     * Includes path traversal protection.
+     * @param entry The tar entry to extract
+     * @param destination The destination directory (must be canonical path)
+     * @throws Error if extraction fails or path traversal is detected
+     */
+    private func extractTarEntry(_ entry: TarEntry, to destination: String) throws {
+        // Get entry info
+        let entryInfo = entry.info
+        let entryName = entryInfo.name
+
+        // Skip entries that are just markers (e.g., "./" or empty)
+        if entryName.isEmpty || entryName == "./" || entryName == "." {
+            return
+        }
+
+        // Construct target path
+        let targetURL = URL(fileURLWithPath: destination).appendingPathComponent(entryName)
+        let targetPath = targetURL.standardized.path
+
+        // Path traversal protection: ensure target is within destination
+        if !targetPath.hasPrefix(destination) {
+            throw NSError(
+                domain: "TarBrUnzipService",
+                code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Path traversal detected",
+                    "entry": entryName,
+                    "targetPath": targetPath,
+                    "destination": destination
+                ]
+            )
+        }
+
+        let fileManager = FileManager.default
+
+        // Handle different entry types
+        switch entryInfo.type {
+        case .directory:
+            // Create directory
+            if !fileManager.fileExists(atPath: targetPath) {
+                try fileManager.createDirectory(
+                    atPath: targetPath,
+                    withIntermediateDirectories: true,
+                    attributes: nil
+                )
+            }
+            NSLog("[TarBrUnzipService] Created directory: \(entryName)")
+
+        case .regular:
+            // Create parent directory if needed
+            let parentPath = targetURL.deletingLastPathComponent().path
+            if !fileManager.fileExists(atPath: parentPath) {
+                try fileManager.createDirectory(
+                    atPath: parentPath,
+                    withIntermediateDirectories: true,
+                    attributes: nil
+                )
+            }
+
+            // Write file data
+            if let data = entry.data {
+                try data.write(to: targetURL, options: .atomic)
+                NSLog("[TarBrUnzipService] Extracted file: \(entryName) (\(data.count) bytes)")
+            } else {
+                NSLog("[TarBrUnzipService] Warning: No data for file entry: \(entryName)")
+            }
+
+        case .symbolicLink:
+            // Skip symbolic links for security
+            NSLog("[TarBrUnzipService] Skipping symbolic link: \(entryName)")
+
+        default:
+            // Skip other types (block devices, character devices, fifos, etc.)
+            NSLog("[TarBrUnzipService] Skipping unsupported entry type: \(entryName)")
+        }
     }
 }
