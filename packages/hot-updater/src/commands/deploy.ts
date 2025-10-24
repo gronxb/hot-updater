@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
 import {
+  createTarBrTargetFiles,
   createZipTargetFiles,
   getCwd,
   loadConfig,
@@ -186,7 +187,13 @@ export const deploy = async (options: DeployOptions) => {
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const bundlePath = path.join(normalizeOutputPath, "bundle", "bundle.zip");
+  const compressStrategy = config.compressStrategy ?? "zip";
+  const bundleExtension = compressStrategy === "tar.br" ? ".tar.br" : ".zip";
+  const bundlePath = path.join(
+    normalizeOutputPath,
+    "bundle",
+    `bundle${bundleExtension}`,
+  );
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -240,10 +247,18 @@ export const deploy = async (options: DeployOptions) => {
               )
               .map((file) => path.join(buildPath, file)),
           );
-          await createZipTargetFiles({
-            outfile: bundlePath,
-            targetFiles: targetFiles,
-          });
+
+          if (compressStrategy === "tar.br") {
+            await createTarBrTargetFiles({
+              outfile: bundlePath,
+              targetFiles: targetFiles,
+            });
+          } else {
+            await createZipTargetFiles({
+              outfile: bundlePath,
+              targetFiles: targetFiles,
+            });
+          }
 
           bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(bundlePath);

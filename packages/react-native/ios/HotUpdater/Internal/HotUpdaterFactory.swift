@@ -10,15 +10,17 @@ public class HotUpdaterFactory: NSObject {
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
-        let unzipService = SSZipArchiveUnzipService()
-        
+        let zipUnzipService = SSZipArchiveUnzipService()
+        let tarBrUnzipService = TarBrUnzipService()
+
         let bundleStorage = BundleFileStorageService(
             fileSystem: fileSystem,
             downloadService: downloadService,
-            unzipService: unzipService,
+            zipUnzipService: zipUnzipService,
+            tarBrUnzipService: tarBrUnzipService,
             preferences: preferences
         )
-        
+
         return HotUpdaterImpl(bundleStorage: bundleStorage, preferences: preferences)
     }
 }
