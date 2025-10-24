@@ -62,7 +62,6 @@ class BundleFileStorageService(
     private val tarBrUnzipService: UnzipService,
     private val preferences: PreferencesService,
 ) : BundleStorageService {
-
     private fun getUnzipService(filePath: String): UnzipService {
         // Detect format based on file extension
         return if (filePath.endsWith(".tar.br")) {
@@ -71,6 +70,7 @@ class BundleFileStorageService(
             zipUnzipService
         }
     }
+
     override fun setBundleURL(localPath: String?): Boolean {
         preferences.setItem("HotUpdaterBundleURL", localPath)
         return true

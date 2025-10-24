@@ -48,8 +48,8 @@ class TarBrUnzipService : UnzipService {
         filePath: String,
         destinationPath: String,
         progressCallback: (Double) -> Unit,
-    ): Boolean {
-        return try {
+    ): Boolean =
+        try {
             val destinationDir = File(destinationPath)
             if (!destinationDir.exists()) {
                 destinationDir.mkdirs()
@@ -115,5 +115,5 @@ class TarBrUnzipService : UnzipService {
             e.printStackTrace()
             false
         }
-    }
+
 }
