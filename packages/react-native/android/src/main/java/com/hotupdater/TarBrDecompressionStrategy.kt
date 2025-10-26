@@ -2,7 +2,7 @@ package com.hotupdater
 
 import android.util.Log
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.brotli.dec.BrotliInputStream
+import org.apache.commons.compress.archivers.tar.BrotliCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -55,7 +55,7 @@ class TarBrDecompressionStrategy : DecompressionStrategy {
 
             FileInputStream(filePath).use { fileInputStream ->
                 BufferedInputStream(fileInputStream).use { bufferedInputStream ->
-                    BrotliInputStream(bufferedInputStream).use { brotliInputStream ->
+                    BrotliCompressorInputStream(bufferedInputStream).use { brotliInputStream ->
                         TarArchiveInputStream(brotliInputStream).use { tarInputStream ->
                             var entry = tarInputStream.nextEntry
 
