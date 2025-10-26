@@ -133,6 +133,7 @@ export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
         should_force_update: boolean;
         message: string | null;
         storage_uri: string | null;
+        file_hash: string;
       };
 
       const toUpdateInfo = (
@@ -145,6 +146,7 @@ export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
         message: row.message ?? null,
         status,
         storageUri: row.storage_uri ?? null,
+        fileHash: row.file_hash ?? null,
       });
 
       const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
@@ -153,6 +155,7 @@ export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
         shouldForceUpdate: true,
         status: "ROLLBACK",
         storageUri: null,
+        fileHash: null,
       };
 
       const appVersionStrategy = async ({
@@ -187,6 +190,7 @@ export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
                   "should_force_update",
                   "message",
                   "storage_uri",
+                  "file_hash",
                   "channel",
                   "target_app_version",
                   "enabled",
@@ -261,6 +265,7 @@ export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
             "should_force_update",
             "message",
             "storage_uri",
+            "file_hash",
             "channel",
             "fingerprint_hash",
             "enabled",
