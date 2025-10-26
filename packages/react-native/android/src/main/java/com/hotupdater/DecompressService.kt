@@ -13,11 +13,12 @@ class DecompressService {
 
     // Array of available strategies in order of detection priority
     // Order matters: Try ZIP first (clear magic bytes), then TAR.GZ (GZIP magic bytes), then TAR.BR (fallback)
-    private val strategies = listOf(
-        ZipDecompressionStrategy(),
-        TarGzDecompressionStrategy(),
-        TarBrDecompressionStrategy()
-    )
+    private val strategies =
+        listOf(
+            ZipDecompressionStrategy(),
+            TarGzDecompressionStrategy(),
+            TarBrDecompressionStrategy(),
+        )
 
     /**
      * Extracts a compressed file to the destination directory.
@@ -30,7 +31,7 @@ class DecompressService {
     fun extractZipFile(
         filePath: String,
         destinationPath: String,
-        progressCallback: (Double) -> Unit
+        progressCallback: (Double) -> Unit,
     ): Boolean {
         // Try each strategy's validation
         for (strategy in strategies) {

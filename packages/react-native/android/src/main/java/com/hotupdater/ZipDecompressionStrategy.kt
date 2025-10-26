@@ -80,7 +80,7 @@ class ZipDecompressionStrategy : DecompressionStrategy {
     override fun decompress(
         filePath: String,
         destinationPath: String,
-        progressCallback: (Double) -> Unit
+        progressCallback: (Double) -> Unit,
     ): Boolean {
         return try {
             val destinationDir = File(destinationPath)

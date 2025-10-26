@@ -21,6 +21,6 @@ interface DecompressionStrategy {
     fun decompress(
         filePath: String,
         destinationPath: String,
-        progressCallback: (Double) -> Unit
+        progressCallback: (Double) -> Unit,
     ): Boolean
 }

@@ -61,7 +61,6 @@ class BundleFileStorageService(
     private val decompressService: DecompressService,
     private val preferences: PreferencesService,
 ) : BundleStorageService {
-
     override fun setBundleURL(localPath: String?): Boolean {
         preferences.setItem("HotUpdaterBundleURL", localPath)
         return true

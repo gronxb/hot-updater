@@ -44,7 +44,7 @@ class TarBrDecompressionStrategy : DecompressionStrategy {
     override fun decompress(
         filePath: String,
         destinationPath: String,
-        progressCallback: (Double) -> Unit
+        progressCallback: (Double) -> Unit,
     ): Boolean =
         try {
             val destinationDir = File(destinationPath)
