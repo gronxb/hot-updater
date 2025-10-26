@@ -94,6 +94,7 @@ export interface UpdateInfo {
   message: string | null;
   status: UpdateStatus;
   storageUri: string | null;
+  fileHash: string | null;
 }
 
 /**
@@ -102,6 +103,11 @@ export interface UpdateInfo {
  */
 export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
   fileUrl: string | null;
+  /**
+   * SHA256 hash of the bundle file for integrity verification.
+   * If provided, the client will verify the downloaded file's hash before extraction.
+   */
+  fileHash: string | null;
 }
 
 export type UpdateStrategy = "fingerprint" | "appVersion";

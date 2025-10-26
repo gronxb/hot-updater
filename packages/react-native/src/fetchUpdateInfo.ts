@@ -26,7 +26,7 @@ function buildRequestHeaders(
       : { "x-app-version": params.appVersion }),
     ...(params.minBundleId && { "x-min-bundle-id": params.minBundleId }),
     ...(params.channel && { "x-channel": params.channel }),
-    ...(requestHeaders ?? {}),
+    ...requestHeaders,
   };
 }
 
