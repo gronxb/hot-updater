@@ -1,4 +1,5 @@
 PODS:
+  - BitByteData (2.0.4)
   - boost (1.76.0)
   - DoubleConversion (1.1.6)
   - FBLazyVector (0.71.19)
@@ -17,7 +18,7 @@ PODS:
   - HotUpdater (0.20.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-    - SSZipArchive (~> 2.2.2)
+    - SWCompression (~> 4.8.0)
   - libevent (2.1.12)
   - RCT-Folly (2021.07.22.00):
     - boost
@@ -361,7 +362,47 @@ PODS:
     - React-hermes
     - Sentry/HybridSDK (= 8.48.0)
   - Sentry/HybridSDK (8.48.0)
-  - SSZipArchive (2.2.3)
+  - SWCompression (4.8.6):
+    - BitByteData (~> 2.0)
+    - SWCompression/BZip2 (= 4.8.6)
+    - SWCompression/Deflate (= 4.8.6)
+    - SWCompression/GZip (= 4.8.6)
+    - SWCompression/LZ4 (= 4.8.6)
+    - SWCompression/LZMA (= 4.8.6)
+    - SWCompression/LZMA2 (= 4.8.6)
+    - SWCompression/SevenZip (= 4.8.6)
+    - SWCompression/TAR (= 4.8.6)
+    - SWCompression/XZ (= 4.8.6)
+    - SWCompression/ZIP (= 4.8.6)
+    - SWCompression/Zlib (= 4.8.6)
+  - SWCompression/BZip2 (4.8.6):
+    - BitByteData (~> 2.0)
+  - SWCompression/Deflate (4.8.6):
+    - BitByteData (~> 2.0)
+  - SWCompression/GZip (4.8.6):
+    - BitByteData (~> 2.0)
+    - SWCompression/Deflate
+  - SWCompression/LZ4 (4.8.6):
+    - BitByteData (~> 2.0)
+  - SWCompression/LZMA (4.8.6):
+    - BitByteData (~> 2.0)
+  - SWCompression/LZMA2 (4.8.6):
+    - BitByteData (~> 2.0)
+    - SWCompression/LZMA
+  - SWCompression/SevenZip (4.8.6):
+    - BitByteData (~> 2.0)
+    - SWCompression/LZMA2
+  - SWCompression/TAR (4.8.6):
+    - BitByteData (~> 2.0)
+  - SWCompression/XZ (4.8.6):
+    - BitByteData (~> 2.0)
+    - SWCompression/LZMA2
+  - SWCompression/ZIP (4.8.6):
+    - BitByteData (~> 2.0)
+    - SWCompression/Deflate
+  - SWCompression/Zlib (4.8.6):
+    - BitByteData (~> 2.0)
+    - SWCompression/Deflate
   - Yoga (1.14.0)
 
 DEPENDENCIES:
@@ -406,10 +447,11 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - BitByteData
     - fmt
     - libevent
     - Sentry
-    - SSZipArchive
+    - SWCompression
 
 EXTERNAL SOURCES:
   boost:
@@ -486,16 +528,17 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
+  BitByteData: 2422ed269fcddc44976d97f171a183d25ef535ce
   boost: 7dcd2de282d72e344012f7d6564d024930a6a440
   DoubleConversion: 5189b271737e1565bdce30deb4a08d647e3f5f54
   FBLazyVector: 038aa5ab388c9eec7a6a65b71596afd9ff99c949
   FBReactNativeSpec: d3712bd711c0ebc865dd38d4a2d97e1d76fd1234
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
-  glog: 791fe035093b84822da7f0870421a25839ca7870
-  hermes-engine: 1b2623da987a23d7d3122d883e22b716948ee6f1
-  HotUpdater: fba7abd610edee498b60aecdb61a8deb5a7e7f8f
+  glog: 04b94705f318337d7ead9e6d17c019bd9b1f6b1b
+  hermes-engine: 1468b458e81705fcd55ed6e29c32ff069f04b69c
+  HotUpdater: 152a33c97eaf41eb461a85a20cdd091ba24fad99
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
-  RCT-Folly: 85766c3226c7ec638f05ad7cb3cf6a268d6c4241
+  RCT-Folly: 8dc08ca5a393b48b1c523ab6220dfdcc0fe000ad
   RCTRequired: 79b5f823c2b4b865451ba9ddb33c676786760ea8
   RCTTypeSafety: 4f6d5414413d8848923ccd448c4cef4b6ffcd403
   React: d277ab7d840987a460690fcbe979e9234785ad63
@@ -524,7 +567,7 @@ SPEC CHECKSUMS:
   ReactCommon: 9d5423a44441e73260000f780f209004e7a15678
   RNSentry: a28d5e9dfedd1cc9386c6cefc5666729f444e105
   Sentry: 1ca8405451040482877dcd344dfa3ef80b646631
-  SSZipArchive: 62d4947b08730e4cda640473b0066d209ff033c9
+  SWCompression: 9379873ad5e9f25b31db88c441649b59a4c2bab7
   Yoga: d4f5b037672e6b68ba484c7cf7fe6790122df792
 
 PODFILE CHECKSUM: 8c66f8668f50d0d6f095a6437029b5db2e5f1365

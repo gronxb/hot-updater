@@ -61,7 +61,7 @@ function App(): React.JSX.Element {
           textAlign: 'center',
         }}
       >
-        Hot Updater 2
+        Hot Updater 2 Zip
       </Text>
 
       <Text
