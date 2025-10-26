@@ -159,15 +159,15 @@ export type ConfigInput = {
   /**
    * The compression strategy used for bundle deployment.
    *
-   * - `zip`: Standard ZIP compression (default, maintains backward compatibility)
-   * - `tar.br`: TAR archive with Brotli compression (better compression ratio, lower network costs)
+   * - `zip`: Standard ZIP compression (default). Fast and widely supported.
+   * - `tar.br`: TAR archive with Brotli compression. Highest compression ratio, smaller bundle size.
+   * - `tar.gz`: TAR archive with Gzip compression. Balanced speed and compression ratio.
    *
-   * The compression format is detected on the client side via Content-Encoding header.
-   * This setting is NOT stored in the database.
+   * The compression format is determined by the storage plugin used for bundle upload.
    *
    * @default "zip"
    */
-  compressStrategy?: "zip" | "tar.br";
+  compressStrategy?: "zip" | "tar.br" | "tar.gz";
   /**
    * The fingerprint configuration.
    */
