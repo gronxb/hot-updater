@@ -1,6 +1,7 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -67,7 +68,6 @@ export const r2Storage =
             bundlePath,
             "--content-type",
             contentType,
-            ...(contentEncoding ? ["--content-encoding", contentEncoding] : []),
             "--remote",
           );
           if (exitCode !== 0 && stderr) {
