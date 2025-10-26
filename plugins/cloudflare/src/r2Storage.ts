@@ -1,12 +1,12 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
-import mime from "mime";
 import path from "path";
 import { createWrangler } from "./utils/createWrangler";
 
@@ -53,7 +53,7 @@ export const r2Storage =
         }
       },
       async uploadBundle(bundleId, bundlePath) {
-        const contentType = mime.getType(bundlePath) ?? void 0;
+        const contentType = getContentType(bundlePath);
 
         const filename = path.basename(bundlePath);
 
@@ -66,7 +66,8 @@ export const r2Storage =
             [bucketName, Key].join("/"),
             "--file",
             bundlePath,
-            ...(contentType ? ["--content-type", contentType] : []),
+            "--content-type",
+            contentType,
             "--remote",
           );
           if (exitCode !== 0 && stderr) {

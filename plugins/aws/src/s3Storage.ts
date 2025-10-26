@@ -8,11 +8,11 @@ import { Upload } from "@aws-sdk/lib-storage";
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
-import mime from "mime";
 import path from "path";
 
 export interface S3StorageConfig extends S3ClientConfig {
@@ -66,7 +66,7 @@ export const s3Storage =
       },
       async uploadBundle(bundleId, bundlePath) {
         const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
+        const ContentType = getContentType(bundlePath);
 
         const filename = path.basename(bundlePath);
 
