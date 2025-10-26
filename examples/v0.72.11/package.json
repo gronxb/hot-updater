@@ -31,6 +31,7 @@
     "@react-native-community/cli-plugin-metro": "10.2.0",
     "@react-native-community/eslint-config": "^3.2.0",
     "@react-native/gradle-plugin": "0.72.11",
+    "@react-native/metro-config": "0.72.11",
     "@rnx-kit/metro-config": "^2.0.1",
     "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
     "@sentry/cli": "^2.43.0",
