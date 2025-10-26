@@ -11,11 +11,11 @@ import {
   type BasePluginArgs,
   createStorageKeyBuilder,
   parseStorageUri,
+  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
-import mime from "mime";
 import path from "path";
 
 export interface S3StorageConfig extends S3ClientConfig {
@@ -71,13 +71,13 @@ export const s3Storage =
 
         throw new Error("Bundle Not Found");
       },
-      async upload(key, filePath) {
-        const Body = await fs.readFile(filePath);
-        const ContentType = mime.getType(filePath) ?? void 0;
+      async uploadBundle(bundleId, bundlePath) {
+        const Body = await fs.readFile(bundlePath);
+        const ContentType = getContentType(bundlePath);
 
-        const filename = path.basename(filePath);
+        const filename = path.basename(bundlePath);
 
-        const Key = getStorageKey(key, filename);
+        const Key = getStorageKey(bundleId, filename);
         const upload = new Upload({
           client,
           params: {

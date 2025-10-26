@@ -13,7 +13,7 @@ protocol DownloadService {
      * @param url The URL to download from
      * @param destination The local path to save to
      * @param progressHandler Callback for download progress updates
-     * @param completion Callback with result of the download
+     * @param completion Callback with downloaded file URL or error
      * @return The download task (optional)
      */
     func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?

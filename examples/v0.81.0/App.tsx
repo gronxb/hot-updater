@@ -12,7 +12,15 @@ import {
   useHotUpdaterStore,
 } from '@hot-updater/react-native';
 import React, { useEffect, useState } from 'react';
-import { Button, Image, Modal, SafeAreaView, Text, View } from 'react-native';
+import {
+  Alert,
+  Button,
+  Image,
+  Modal,
+  SafeAreaView,
+  Text,
+  View,
+} from 'react-native';
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split('-').join('').slice(0, 12);
@@ -53,7 +61,7 @@ function App(): React.JSX.Element {
           textAlign: 'center',
         }}
       >
-        Hot Updater 1
+        Hot Updater 2 Zip
       </Text>
 
       <Text
@@ -83,7 +91,7 @@ function App(): React.JSX.Element {
           height: 100,
         }}
         source={require('./src/logo.png')}
-        // source={require("./src/test/_image.png")}
+        // source={require('./src/test/_image.png')}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
@@ -102,9 +110,12 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource(`http://localhost:3000/hot-updater`, {
-    updateStrategy: 'appVersion', // or "appVersion"
-  }),
+  source: getUpdateSource(
+    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+    {
+      updateStrategy: 'appVersion', // or "appVersion"
+    },
+  ),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View
@@ -130,4 +141,11 @@ export default HotUpdater.wrap({
       </View>
     </Modal>
   ),
+  onError: error => {
+    if (error instanceof Error) {
+      Alert.alert('Error', error.message);
+    } else {
+      Alert.alert('Error', 'An unknown error occurred');
+    }
+  },
 })(App);

@@ -1,4 +1,8 @@
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePluginHooks,
+  Platform,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -27,7 +31,9 @@ export const supabaseDatabase = (
       async getBundleById(context, bundleId) {
         const { data, error } = await context.supabase
           .from("bundles")
-          .select("*")
+          .select(
+            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata",
+          )
           .eq("id", bundleId)
           .single();
 
@@ -61,14 +67,16 @@ export const supabaseDatabase = (
           countQuery = countQuery.eq("channel", where.channel);
         }
         if (where?.platform) {
-          countQuery = countQuery.eq("platform", where.platform);
+          countQuery = countQuery.eq("platform", where.platform as Platform);
         }
 
         const { count: total = 0 } = await countQuery;
 
         let query = context.supabase
           .from("bundles")
-          .select("*")
+          .select(
+            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata",
+          )
           .order("id", { ascending: false });
 
         if (where?.channel) {
@@ -76,7 +84,7 @@ export const supabaseDatabase = (
         }
 
         if (where?.platform) {
-          query = query.eq("platform", where.platform);
+          query = query.eq("platform", where.platform as Platform);
         }
 
         if (limit) {

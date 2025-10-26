@@ -116,7 +116,7 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ 
+export default HotUpdater.wrap({
   source: getUpdateSource("https://<your-worker-name>.<your-subdomain>.workers.dev/api/check-update", { // [!code ++]
     updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   }), // [!code ++]
@@ -165,7 +165,7 @@ module.exports = {
     'hot-updater/babel-plugin', // [!code ++]
   ],
 };
- 
+
 ```
 </Tab>
 <Tab label="Re.Pack">
@@ -343,29 +343,6 @@ class MainApplication : Application(), ReactApplication {
 ```
   </Tab>
   <Tab label="Java">
-  ```java title=android/app/build.gradle
-    buildscript {
-        ext {
-            buildToolsVersion = "33.0.0"
-            minSdkVersion = 21
-            compileSdkVersion = 33
-            targetSdkVersion = 33
-
-            // We use NDK 23 which has both M1 support and is the side-by-side NDK version from AGP.
-            ndkVersion = "23.1.7779620"
-            kotlinVersion = "1.9.24" // [!code ++]
-        }
-        repositories {
-            google()
-            mavenCentral()
-        }
-        dependencies {
-            classpath("com.android.tools.build:gradle:7.3.1")
-            classpath("com.facebook.react:react-native-gradle-plugin")
-            classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}") // [!code ++]
-        }
-    }
-  ```
   ```java title=android/app/src/main/java/com/<your-app-name>/MainApplication.java
 
 package com.hotupdaterexample;
@@ -402,7 +379,7 @@ public class MainApplication extends Application implements ReactApplication {
         protected String getJSMainModuleName() {
           return "index";
         }
-        
+
         @Override // [!code ++]
         protected String getJSBundleFile() {  // [!code ++]
             return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  // [!code ++]
@@ -428,7 +405,7 @@ public class MainApplication extends Application implements ReactApplication {
   public void onCreate() {
     super.onCreate();
     SoLoader.init(this, /* native exopackage */ false);
-    
+
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.
       DefaultNewArchitectureEntryPoint.load();
@@ -445,42 +422,6 @@ public class MainApplication extends Application implements ReactApplication {
 ### iOS
 
 <Tabs>
-    <Tab label="Objective-C">
-```objc title=ios/<your-app-name>/AppDelegate.mm
-#import "AppDelegate.h"
-#import <HotUpdater/HotUpdater.h> // [!code ++]
-#import <React/RCTBundleURLProvider.h>
-
-@implementation AppDelegate
-
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
-{
-  self.moduleName = @"HotUpdaterExample";
-  // You can add your custom initial props in the dictionary below.
-  // They will be passed down to the ViewController used by React Native.
-  self.initialProps = @{};
-
-  return [super application:application didFinishLaunchingWithOptions:launchOptions];
-}
-
-- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
-{
-  return [self bundleURL];
-}
-
-- (NSURL *)bundleURL
-{
-#if DEBUG
-  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
-#else
-  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
-  return [HotUpdater bundleURL]; // [!code ++]
-#endif
-}
-
-@end
-```
-</Tab>
 <Tab label="Swift">
 ```swift title=ios/<your-app-name>/AppDelegate.swift
 import UIKit
@@ -516,6 +457,42 @@ class AppDelegate: RCTAppDelegate {
   }
 }
 
+```
+</Tab>
+<Tab label="Objective-C">
+```objc title=ios/<your-app-name>/AppDelegate.mm
+#import "AppDelegate.h"
+#import <HotUpdater/HotUpdater.h> // [!code ++]
+#import <React/RCTBundleURLProvider.h>
+
+@implementation AppDelegate
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+  self.moduleName = @"HotUpdaterExample";
+  // You can add your custom initial props in the dictionary below.
+  // They will be passed down to the ViewController used by React Native.
+  self.initialProps = @{};
+
+  return [super application:application didFinishLaunchingWithOptions:launchOptions];
+}
+
+- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
+{
+  return [self bundleURL];
+}
+
+- (NSURL *)bundleURL
+{
+#if DEBUG
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
+#else
+  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
+  return [HotUpdater bundleURL]; // [!code ++]
+#endif
+}
+
+@end
 ```
 </Tab>
 </Tabs>

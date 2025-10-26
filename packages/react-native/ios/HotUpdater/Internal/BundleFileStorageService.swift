@@ -35,24 +35,24 @@ public protocol BundleStorageService {
 class BundleFileStorageService: BundleStorageService {
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
-    private let unzipService: UnzipService
+    private let decompressService: DecompressService
     private let preferences: PreferencesService
-    
+
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
-    
+
     private var activeTasks: [URLSessionTask] = []
-    
+
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
-                unzipService: UnzipService,
+                decompressService: DecompressService,
                 preferences: PreferencesService) {
-        
+
         self.fileSystem = fileSystem
         self.downloadService = downloadService
-        self.unzipService = unzipService
+        self.decompressService = decompressService
         self.preferences = preferences
-        
+
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
                                                qos: .utility,
                                                attributes: .concurrent)
@@ -397,9 +397,10 @@ class BundleFileStorageService: BundleStorageService {
             completion(.failure(BundleStorageError.directoryCreationFailed))
             return
         }
-        
-        // 4) Define paths for ZIP file
-        let tempZipFile = (tempDirectory as NSString).appendingPathComponent("bundle.zip")
+
+        // 4) Determine bundle filename from URL
+        let bundleFileName = fileUrl.lastPathComponent.isEmpty ? "bundle.zip" : fileUrl.lastPathComponent
+        let tempBundleFile = (tempDirectory as NSString).appendingPathComponent(bundleFileName)
 
         NSLog("[BundleStorage] Checking file size and disk space...")
 
@@ -436,7 +437,7 @@ class BundleFileStorageService: BundleStorageService {
             // 6) DownloadService handles its own threading for the download task.
             // The completion handler for downloadService.downloadFile is then dispatched to fileOperationQueue.
             let task = self.downloadService.downloadFile(from: fileUrl,
-                                                         to: tempZipFile,
+                                                         to: tempBundleFile,
                                                          progressHandler: { downloadProgress in
                                                              // Map download progress to 0.0 - 0.8
                                                              progressHandler(downloadProgress * 0.8)
@@ -448,13 +449,13 @@ class BundleFileStorageService: BundleStorageService {
                 completion(.failure(error))
                 return
             }
-            
+
             // Dispatch the processing of the downloaded file to the file operation queue
             let workItem = DispatchWorkItem {
                 switch result {
                 case .success(let location):
                     self.processDownloadedFileWithTmp(location: location,
-                                                      tempZipFile: tempZipFile,
+                                                      tempBundleFile: tempBundleFile,
                                                       fileHash: fileHash,
                                                       storeDir: storeDir,
                                                       bundleId: bundleId,
@@ -480,7 +481,7 @@ class BundleFileStorageService: BundleStorageService {
      * Processes a downloaded bundle file using the "tmp" rename approach.
      * This method is part of the asynchronous `updateBundle` flow and is expected to run on a background thread.
      * @param location URL of the downloaded file
-     * @param tempZipFile Path to store the downloaded zip file
+     * @param tempBundleFile Path to store the downloaded bundle file
      * @param fileHash SHA256 hash of the bundle file for verification (nullable)
      * @param storeDir Path to the bundle-store directory
      * @param bundleId ID of the bundle being processed
@@ -490,7 +491,7 @@ class BundleFileStorageService: BundleStorageService {
      */
     private func processDownloadedFileWithTmp(
         location: URL,
-        tempZipFile: String,
+        tempBundleFile: String,
         fileHash: String?,
         storeDir: String,
         bundleId: String,
@@ -500,8 +501,8 @@ class BundleFileStorageService: BundleStorageService {
     ) {
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
-        
-        // 1) Ensure the ZIP file exists
+
+        // 1) Ensure the bundle file exists
         guard self.fileSystem.fileExists(atPath: location.path) else {
             self.cleanupTemporaryFiles([tempDirectory])
             completion(.failure(BundleStorageError.fileSystemError(NSError(
@@ -511,18 +512,18 @@ class BundleFileStorageService: BundleStorageService {
             ))))
             return
         }
-        
+
         // 2) Define tmpDir and realDir
         let tmpDir = (storeDir as NSString).appendingPathComponent("\(bundleId).tmp")
         let realDir = (storeDir as NSString).appendingPathComponent(bundleId)
-        
+
         do {
             // 3) Remove any existing tmpDir
             if self.fileSystem.fileExists(atPath: tmpDir) {
                 try self.fileSystem.removeItem(atPath: tmpDir)
                 NSLog("[BundleStorage] Removed existing tmpDir: \(tmpDir)")
             }
-            
+
             // 4) Create tmpDir
             try self.fileSystem.createDirectory(atPath: tmpDir)
             NSLog("[BundleStorage] Created tmpDir: \(tmpDir)")
@@ -530,8 +531,8 @@ class BundleFileStorageService: BundleStorageService {
             // 5) Verify file hash if provided
             if let expectedHash = fileHash {
                 NSLog("[BundleStorage] Verifying file hash...")
-                let tempZipURL = URL(fileURLWithPath: tempZipFile)
-                guard HashUtils.verifyHash(fileURL: tempZipURL, expectedHash: expectedHash) else {
+                let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
+                guard HashUtils.verifyHash(fileURL: tempBundleURL, expectedHash: expectedHash) else {
                     NSLog("[BundleStorage] Hash mismatch!")
                     try? self.fileSystem.removeItem(atPath: tmpDir)
                     self.cleanupTemporaryFiles([tempDirectory])
@@ -542,15 +543,23 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
-            NSLog("[BundleStorage] Unzipping \(tempZipFile) → \(tmpDir)")
-            try self.unzipService.unzip(file: tempZipFile, to: tmpDir, progressHandler: { unzipProgress in
-                // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
-                progressHandler(0.8 + (unzipProgress * 0.2))
-            })
-            NSLog("[BundleStorage] Unzip complete at \(tmpDir)")
+            NSLog("[BundleStorage] Extracting \(tempBundleFile) → \(tmpDir)")
+            do {
+                try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
+                    // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
+                    progressHandler(0.8 + (unzipProgress * 0.2))
+                })
+                NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
+            } catch {
+                NSLog("[BundleStorage] Extraction failed: \(error.localizedDescription)")
+                try? self.fileSystem.removeItem(atPath: tmpDir)
+                self.cleanupTemporaryFiles([tempDirectory])
+                completion(.failure(BundleStorageError.extractionFailed(error)))
+                return
+            }
 
-            // 7) Remove the downloaded ZIP file
-            try? self.fileSystem.removeItem(atPath: tempZipFile)
+            // 7) Remove the downloaded bundle file
+            try? self.fileSystem.removeItem(atPath: tempBundleFile)
 
             // 8) Verify that a valid bundle file exists inside tmpDir
             switch self.findBundleFile(in: tmpDir) {

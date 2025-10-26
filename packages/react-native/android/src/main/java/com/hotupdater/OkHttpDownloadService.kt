@@ -160,7 +160,6 @@ class OkHttpDownloadService : DownloadService {
                         fileUrl,
                         destination,
                         progressCallback,
-                        attempt,
                     )
                 } catch (e: Exception) {
                     lastException = e
@@ -187,7 +186,6 @@ class OkHttpDownloadService : DownloadService {
         fileUrl: URL,
         destination: File,
         progressCallback: (Double) -> Unit,
-        attempt: Int,
     ): DownloadResult =
         withContext(Dispatchers.IO) {
             // Make sure parent directories exist

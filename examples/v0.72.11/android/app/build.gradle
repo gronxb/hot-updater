@@ -101,6 +101,7 @@ android {
         versionCode 1
         versionName "1.0"
         buildConfigField "String", "HOT_UPDATER_CHANNEL", "\"dev\""
+        multiDexEnabled true
     }
 
     splits {
@@ -132,6 +133,11 @@ android {
         }
     }
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
     // applicationVariants are e.g. debug, release
     applicationVariants.all { variant ->
         variant.outputs.each { output ->
@@ -154,6 +160,7 @@ dependencies {
     implementation("com.facebook.react:react-android")
 
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.0.0")
+    implementation("androidx.multidex:multidex:2.0.1")
 
     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}")
     debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {

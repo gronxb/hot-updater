@@ -34,14 +34,14 @@ object HotUpdaterFactory {
         val fileSystem = FileManagerService(appContext)
         val preferences = VersionedPreferencesService(appContext, isolationKey)
         val downloadService = OkHttpDownloadService()
-        val unzipService = ZipFileUnzipService()
+        val decompressService = DecompressService()
 
         // Create bundle storage with dependencies
         val bundleStorage =
             BundleFileStorageService(
                 fileSystem,
                 downloadService,
-                unzipService,
+                decompressService,
                 preferences,
             )
 

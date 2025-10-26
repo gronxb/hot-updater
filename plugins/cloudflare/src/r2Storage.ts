@@ -2,12 +2,12 @@ import {
   type BasePluginArgs,
   createStorageKeyBuilder,
   parseStorageUri,
+  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
-import mime from "mime";
 import path from "path";
 import { createWrangler } from "./utils/createWrangler";
 
@@ -56,12 +56,12 @@ export const r2Storage =
           throw new Error("Can not delete bundle");
         }
       },
-      async upload(key, filePath) {
-        const contentType = mime.getType(filePath) ?? void 0;
+      async uploadBundle(bundleId, bundlePath) {
+        const contentType = getContentType(bundlePath);
 
-        const filename = path.basename(filePath);
+        const filename = path.basename(bundlePath);
 
-        const Key = getStorageKey(key, filename);
+        const Key = getStorageKey(bundleId, filename);
         try {
           const { stderr, exitCode } = await wrangler(
             "r2",
@@ -69,8 +69,9 @@ export const r2Storage =
             "put",
             [bucketName, Key].join("/"),
             "--file",
-            filePath,
-            ...(contentType ? ["--content-type", contentType] : []),
+            bundlePath,
+            "--content-type",
+            contentType,
             "--remote",
           );
           if (exitCode !== 0 && stderr) {
