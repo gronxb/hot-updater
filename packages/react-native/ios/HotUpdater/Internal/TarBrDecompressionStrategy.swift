@@ -25,19 +25,15 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
             return false
         }
 
-        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
-            NSLog("[TarBrStrategy] Invalid file: cannot read file")
-            return false
+        // Brotli has no standard magic bytes, check file extension
+        let lowercasedPath = file.lowercased()
+        let isBrotli = lowercasedPath.hasSuffix(".tar.br") || lowercasedPath.hasSuffix(".br")
+
+        if !isBrotli {
+            NSLog("[TarBrStrategy] Invalid file: not a .tar.br or .br file")
         }
 
-        do {
-            let testData = compressedData.prefix(1024)
-            _ = try decompressBrotli(testData)
-            return true
-        } catch {
-            NSLog("[TarBrStrategy] Invalid file: not a valid Brotli compressed file")
-            return false
-        }
+        return isBrotli
     }
 
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {

@@ -25,20 +25,15 @@ class TarBrDecompressionStrategy : DecompressionStrategy {
             return false
         }
 
-        try {
-            FileInputStream(file).use { fis ->
-                BufferedInputStream(fis).use { bis ->
-                    BrotliInputStream(bis).use { brotli ->
-                        val buffer = ByteArray(100)
-                        brotli.read(buffer)
-                    }
-                }
-            }
-            return true
-        } catch (e: Exception) {
-            Log.d(TAG, "Invalid file: not a valid Brotli compressed file: ${e.message}")
-            return false
+        // Brotli has no standard magic bytes, check file extension
+        val lowercasedPath = filePath.lowercase()
+        val isBrotli = lowercasedPath.endsWith(".tar.br") || lowercasedPath.endsWith(".br")
+
+        if (!isBrotli) {
+            Log.d(TAG, "Invalid file: not a .tar.br or .br file")
         }
+
+        return isBrotli
     }
 
     override fun decompress(

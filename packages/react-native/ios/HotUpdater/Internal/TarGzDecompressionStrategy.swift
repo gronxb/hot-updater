@@ -25,19 +25,26 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
             return false
         }
 
-        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
-            NSLog("[TarGzStrategy] Invalid file: cannot read file")
+        // Check GZIP magic bytes (0x1F 0x8B)
+        guard let fileHandle = FileHandle(forReadingAtPath: file) else {
+            NSLog("[TarGzStrategy] Invalid file: cannot open file")
             return false
         }
 
-        do {
-            let testData = compressedData.prefix(1024)
-            _ = try decompressGzip(testData)
-            return true
-        } catch {
-            NSLog("[TarGzStrategy] Invalid file: not a valid GZIP compressed file")
+        defer {
+            fileHandle.closeFile()
+        }
+
+        guard let header = try? fileHandle.read(upToCount: 2), header.count == 2 else {
+            NSLog("[TarGzStrategy] Invalid file: cannot read header")
             return false
         }
+
+        let isGzip = header[0] == 0x1F && header[1] == 0x8B
+        if !isGzip {
+            NSLog("[TarGzStrategy] Invalid file: wrong magic bytes (expected 0x1F 0x8B, got 0x\(String(format: "%02X", header[0])) 0x\(String(format: "%02X", header[1])))")
+        }
+        return isGzip
     }
 
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {

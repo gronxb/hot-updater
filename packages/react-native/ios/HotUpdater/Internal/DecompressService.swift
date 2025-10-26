@@ -26,20 +26,39 @@ class DecompressService {
      * @throws Error if decompression fails or no valid strategy found
      */
     func unzip(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
+        // Collect file information for better error messages
+        let fileURL = URL(fileURLWithPath: file)
+        let fileName = fileURL.lastPathComponent
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: file)[.size] as? UInt64) ?? 0
+
         // Try each strategy's validation
         for strategy in strategies {
             if strategy.isValid(file: file) {
-                NSLog("[DecompressService] Found valid strategy, delegating to decompression")
+                NSLog("[DecompressService] Using strategy for \(fileName)")
                 try strategy.decompress(file: file, to: destination, progressHandler: progressHandler)
                 return
             }
         }
 
-        // No valid strategy found
+        // No valid strategy found - provide detailed error message
+        let errorMessage = """
+Failed to decompress file: \(fileName) (\(fileSize) bytes)
+
+Tried strategies: ZIP (magic bytes 0x504B0304), TAR.GZ (magic bytes 0x1F8B), TAR.BR (file extension)
+
+Supported formats:
+- ZIP archives (.zip)
+- GZIP compressed TAR archives (.tar.gz)
+- Brotli compressed TAR archives (.tar.br)
+
+Please verify the file is not corrupted and matches one of the supported formats.
+"""
+
+        NSLog("[DecompressService] \(errorMessage)")
         throw NSError(
             domain: "DecompressService",
             code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "No valid decompression strategy found for file: \(file)"]
+            userInfo: [NSLocalizedDescriptionKey: errorMessage]
         )
     }
 

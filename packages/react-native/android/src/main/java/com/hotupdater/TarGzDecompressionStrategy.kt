@@ -27,16 +27,24 @@ class TarGzDecompressionStrategy : DecompressionStrategy {
 
         try {
             FileInputStream(file).use { fis ->
-                BufferedInputStream(fis).use { bis ->
-                    GzipCompressorInputStream(bis).use { gzip ->
-                        val buffer = ByteArray(100)
-                        gzip.read(buffer)
-                    }
+                val header = ByteArray(2)
+                if (fis.read(header) != 2) {
+                    Log.d(TAG, "Invalid file: cannot read header")
+                    return false
                 }
+
+                // Check GZIP magic bytes (0x1F 0x8B)
+                val isGzip = header[0] == 0x1F.toByte() && header[1] == 0x8B.toByte()
+                if (!isGzip) {
+                    Log.d(
+                        TAG,
+                        "Invalid file: wrong magic bytes (expected 0x1F 0x8B, got 0x${header[0].toString(16)} 0x${header[1].toString(16)})",
+                    )
+                }
+                return isGzip
             }
-            return true
         } catch (e: Exception) {
-            Log.d(TAG, "Invalid file: not a valid GZIP compressed file: ${e.message}")
+            Log.d(TAG, "Invalid file: error reading header: ${e.message}")
             return false
         }
     }

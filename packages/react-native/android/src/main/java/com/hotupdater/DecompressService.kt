@@ -33,16 +33,35 @@ class DecompressService {
         destinationPath: String,
         progressCallback: (Double) -> Unit,
     ): Boolean {
+        // Collect file information for better error messages
+        val file = File(filePath)
+        val fileName = file.name
+        val fileSize = if (file.exists()) file.length() else 0L
+
         // Try each strategy's validation
         for (strategy in strategies) {
             if (strategy.isValid(filePath)) {
-                Log.d(TAG, "Found valid strategy, delegating to decompression")
+                Log.d(TAG, "Using strategy for $fileName")
                 return strategy.decompress(filePath, destinationPath, progressCallback)
             }
         }
 
-        // No valid strategy found
-        Log.e(TAG, "No valid decompression strategy found for file: $filePath")
+        // No valid strategy found - provide detailed error message
+        val errorMessage =
+            """
+            Failed to decompress file: $fileName ($fileSize bytes)
+
+            Tried strategies: ZIP (magic bytes 0x504B0304), TAR.GZ (magic bytes 0x1F8B), TAR.BR (file extension)
+
+            Supported formats:
+            - ZIP archives (.zip)
+            - GZIP compressed TAR archives (.tar.gz)
+            - Brotli compressed TAR archives (.tar.br)
+
+            Please verify the file is not corrupted and matches one of the supported formats.
+            """.trimIndent()
+
+        Log.e(TAG, errorMessage)
         return false
     }
 
