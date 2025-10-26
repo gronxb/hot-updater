@@ -1542,6 +1542,9 @@ importers:
       '@hot-updater/postgres':
         specifier: workspace:*
         version: link:../postgres
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.11
       dayjs:
         specifier: ^1.11.13
         version: 1.11.13
@@ -34268,7 +34271,7 @@ snapshots:
       whatwg-encoding: 3.1.1
       whatwg-mimetype: 4.0.0
       whatwg-url: 14.0.0
-      ws: 8.18.1
+      ws: 8.18.3
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - bufferutil

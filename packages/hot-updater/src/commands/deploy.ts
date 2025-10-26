@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts";
 import {
   createTarBrTargetFiles,
+  createTarGzTargetFiles,
   createZipTargetFiles,
   getCwd,
   loadConfig,
@@ -46,6 +47,8 @@ const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   switch (compressStrategy) {
     case "tar.br":
       return ".tar.br";
+    case "tar.gz":
+      return ".tar.gz";
     case "zip":
       return ".zip";
     default:
@@ -262,6 +265,12 @@ export const deploy = async (options: DeployOptions) => {
           switch (compressStrategy) {
             case "tar.br":
               await createTarBrTargetFiles({
+                outfile: bundlePath,
+                targetFiles: targetFiles,
+              });
+              break;
+            case "tar.gz":
+              await createTarGzTargetFiles({
                 outfile: bundlePath,
                 targetFiles: targetFiles,
               });

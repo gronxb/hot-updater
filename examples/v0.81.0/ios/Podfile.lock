@@ -36,7 +36,6 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - SocketRocket
-    - SSZipArchive (~> 2.2.2)
     - SWCompression (~> 4.8.0)
     - Yoga
   - RCT-Folly (2024.11.18.00):
@@ -2342,7 +2341,6 @@ PODS:
     - React-utils (= 0.81.0)
     - SocketRocket
   - SocketRocket (0.7.1)
-  - SSZipArchive (2.2.3)
   - SWCompression (4.8.6):
     - BitByteData (~> 2.0)
     - SWCompression/BZip2 (= 4.8.6)
@@ -2467,7 +2465,6 @@ SPEC REPOS:
   trunk:
     - BitByteData
     - SocketRocket
-    - SSZipArchive
     - SWCompression
 
 EXTERNAL SOURCES:
@@ -2628,7 +2625,7 @@ SPEC CHECKSUMS:
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   hermes-engine: e7491a2038f2618c8cd444ed411a6deb350a3742
-  HotUpdater: ffea11dd9c76aafec26e59f5462221a514079780
+  HotUpdater: 9703ebdad00e6b82a1ca986e572cb648c45ee243
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: 0735ab4f6b3ec93a7f98187b5da74d7916e2cf4c
   RCTRequired: 8fcc7801bfc433072287b0f24a662e2816e89d0c
@@ -2694,7 +2691,6 @@ SPEC CHECKSUMS:
   ReactCodegen: a896af6b16680afb9e478fcce2b6d839f02fe65d
   ReactCommon: 116d6ee71679243698620d8cd9a9042541e44aa6
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
-  SSZipArchive: 62d4947b08730e4cda640473b0066d209ff033c9
   SWCompression: 9379873ad5e9f25b31db88c441649b59a4c2bab7
   Yoga: 00013dd9cde63a2d98e8002fcc4f5ddb66c10782
 

@@ -54,6 +54,7 @@
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:",
+    "@types/node": "catalog:",
     "mime": "^4.0.4",
     "picocolors": "catalog:"
   }

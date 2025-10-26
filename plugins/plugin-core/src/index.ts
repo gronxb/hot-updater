@@ -7,6 +7,7 @@ export * from "./createBlobDatabasePlugin";
 export * from "./createDatabasePlugin";
 export * from "./createStorageKeyBuilder";
 export * from "./createTarBr";
+export * from "./createTarGz";
 export * from "./createZip";
 export * from "./cwd";
 export * from "./generateMinBundleId";

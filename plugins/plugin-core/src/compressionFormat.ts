@@ -4,7 +4,7 @@ import path from "path";
 /**
  * Compression format type definition
  */
-export type CompressionFormat = "zip" | "tar.br";
+export type CompressionFormat = "zip" | "tar.br" | "tar.gz";
 
 /**
  * Compression format metadata
@@ -30,6 +30,12 @@ const COMPRESSION_FORMATS: Record<CompressionFormat, CompressionFormatInfo> = {
     format: "tar.br",
     fileExtension: ".tar.br",
     contentEncoding: "br",
+    mimeType: "application/x-tar",
+  },
+  "tar.gz": {
+    format: "tar.gz",
+    fileExtension: ".tar.gz",
+    contentEncoding: "gzip",
     mimeType: "application/x-tar",
   },
 };
