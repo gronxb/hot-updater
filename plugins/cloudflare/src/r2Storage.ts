@@ -1,8 +1,6 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
-  getContentEncoding,
-  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -57,7 +55,6 @@ export const r2Storage =
         const contentType = getContentType(bundlePath);
 
         const filename = path.basename(bundlePath);
-        const contentEncoding = getContentEncoding(filename);
 
         const Key = getStorageKey(bundleId, filename);
         try {

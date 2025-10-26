@@ -1,7 +1,6 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
-  getContentEncoding,
   getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
@@ -51,14 +50,12 @@ export const firebaseStorage =
           const fileContent = await fs.readFile(bundlePath);
           const contentType = getContentType(bundlePath);
           const filename = path.basename(bundlePath);
-          const contentEncoding = getContentEncoding(filename);
           const key = getStorageKey(bundleId, filename);
 
           const file = bucket.file(key);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
-              ...(contentEncoding && { contentEncoding }),
             },
           });
 

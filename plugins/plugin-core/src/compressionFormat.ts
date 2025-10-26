@@ -12,7 +12,6 @@ export type CompressionFormat = "zip" | "tar.br" | "tar.gz";
 export interface CompressionFormatInfo {
   format: CompressionFormat;
   fileExtension: string;
-  contentEncoding?: string; // HTTP Content-Encoding header value
   mimeType?: string;
 }
 
@@ -29,13 +28,11 @@ const COMPRESSION_FORMATS: Record<CompressionFormat, CompressionFormatInfo> = {
   "tar.br": {
     format: "tar.br",
     fileExtension: ".tar.br",
-    contentEncoding: "br",
     mimeType: "application/x-tar",
   },
   "tar.gz": {
     format: "tar.gz",
     fileExtension: ".tar.gz",
-    contentEncoding: "gzip",
     mimeType: "application/x-tar",
   },
 };
@@ -55,15 +52,6 @@ export function detectCompressionFormat(
   }
   // Default to zip if no match
   return COMPRESSION_FORMATS.zip;
-}
-
-/**
- * Gets Content-Encoding header value for a filename
- * @param filename The filename to get encoding for
- * @returns Content-Encoding value or undefined if not needed
- */
-export function getContentEncoding(filename: string): string | undefined {
-  return detectCompressionFormat(filename).contentEncoding;
 }
 
 /**

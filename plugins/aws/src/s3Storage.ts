@@ -8,7 +8,6 @@ import { Upload } from "@aws-sdk/lib-storage";
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
-  getContentEncoding,
   getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
@@ -70,7 +69,6 @@ export const s3Storage =
         const ContentType = getContentType(bundlePath);
 
         const filename = path.basename(bundlePath);
-        const contentEncoding = getContentEncoding(filename);
 
         const Key = getStorageKey(bundleId, filename);
         const upload = new Upload({
@@ -81,7 +79,6 @@ export const s3Storage =
             Key,
             Body,
             CacheControl: "max-age=31536000",
-            ...(contentEncoding && { ContentEncoding: contentEncoding }),
           },
         });
         const response = await upload.done();
