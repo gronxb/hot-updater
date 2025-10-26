@@ -7,6 +7,7 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
+    exports: true,
     failOnWarn: true,
     shims: true,
     env: {

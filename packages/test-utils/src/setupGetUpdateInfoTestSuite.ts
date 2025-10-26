@@ -1,6 +1,11 @@
+import type {
+  AppUpdateInfo,
+  Bundle,
+  GetBundlesArgs,
+  UpdateInfo,
+} from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "../types";
-import { NIL_UUID } from "../uuid";
 
 const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
   message: "hello",
@@ -27,8 +32,6 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
   message: null,
   shouldForceUpdate: true,
   status: "ROLLBACK",
-  storageUri: null,
-  fileHash: null,
 } as const;
 
 export const setupGetUpdateInfoTestSuite = ({
@@ -37,7 +40,7 @@ export const setupGetUpdateInfoTestSuite = ({
   getUpdateInfo: (
     bundles: Bundle[],
     options: GetBundlesArgs,
-  ) => Promise<UpdateInfo | null>;
+  ) => Promise<UpdateInfo | AppUpdateInfo | null>;
 }) => {
   describe("app version strategy", () => {
     it("applies an update when a '*' bundle is available", async () => {
@@ -58,13 +61,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -151,13 +152,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000002",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -178,13 +177,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true,
         status: "UPDATE",
         message: "hello",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -205,13 +202,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -232,13 +227,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000005",
         shouldForceUpdate: false,
         message: "hello",
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -266,13 +259,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -327,7 +318,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual(null);
+      expect(update).toBeNull();
     });
 
     it("applies an update when a same-version bundle is available and enabled", async () => {
@@ -350,14 +341,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hi",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash:
-          "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
       });
     });
 
@@ -370,7 +358,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("returns null if the user is already up-to-date with an available bundle", async () => {
@@ -417,13 +405,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true,
         status: "ROLLBACK",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -458,13 +444,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000003",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -514,13 +498,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000005",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -583,13 +565,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true, // Cause the app to reload
         status: "ROLLBACK",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -617,7 +597,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("returns null when there is an available bundle lower than minBundleId", async () => {
@@ -666,13 +646,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -701,7 +679,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("rolls back to initial bundle when current bundle does not exist and only bundles lower than minBundleId exist", async () => {
@@ -722,7 +700,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("returns null when current bundle is enabled and no updates are available", async () => {
@@ -785,7 +763,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("rolls back to the bundle when current bundle does not exist in DB and a bundle exists that is higher than minBundleId but lower than current bundleId", async () => {
@@ -834,13 +812,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
         message: "hello",
         shouldForceUpdate: true,
         status: "ROLLBACK",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -908,13 +884,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -977,13 +951,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "01963024-c131-7971-8725-ab47e232df40",
         message: "hello",
         shouldForceUpdate: true,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
   });
@@ -1072,13 +1044,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1099,13 +1069,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true,
         status: "UPDATE",
         message: "hello",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1126,13 +1094,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1153,13 +1119,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000005",
         shouldForceUpdate: false,
         message: "hello",
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1187,13 +1151,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1248,7 +1210,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual(null);
+      expect(update).toBeNull();
     });
 
     it("applies an update when a same-version bundle is available and enabled", async () => {
@@ -1271,14 +1233,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hi",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash:
-          "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
       });
     });
 
@@ -1291,7 +1250,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("returns null if the user is already up-to-date with an available bundle", async () => {
@@ -1338,13 +1297,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true,
         status: "ROLLBACK",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1379,13 +1336,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000003",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1434,13 +1389,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000005",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1503,13 +1456,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         message: "hello",
         id: "00000000-0000-0000-0000-000000000001",
         shouldForceUpdate: true, // Cause the app to reload
         status: "ROLLBACK",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1537,7 +1488,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("returns null when there is an available bundle lower than minBundleId", async () => {
@@ -1586,13 +1537,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "0195715d-42db-7475-9204-31819efc2f1d", // 2025-03-07T16:08:12.251Z
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1621,7 +1570,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("rolls back to initial bundle when current bundle does not exist and only bundles lower than minBundleId exist", async () => {
@@ -1642,7 +1591,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("returns null when current bundle is enabled and no updates are available", async () => {
@@ -1705,7 +1654,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
     });
 
     it("rolls back to the bundle when current bundle does not exist in DB and a bundle exists that is higher than minBundleId but lower than current bundleId", async () => {
@@ -1754,13 +1703,11 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "0195716c-82f5-7e5e-ac8c-d4fbf5bc7555", // 2025-03-07T16:24:51.701Z
         message: "hello",
         shouldForceUpdate: true,
         status: "ROLLBACK",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1828,13 +1775,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "00000000-0000-0000-0000-000000000001",
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
 
@@ -1897,13 +1842,11 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
 
-      expect(update).toStrictEqual({
+      expect(update).toMatchObject({
         id: "01963024-c131-7971-8725-ab47e232df40",
         message: "hello",
         shouldForceUpdate: true,
         status: "UPDATE",
-        storageUri: "storage://my-app/bundle.zip",
-        fileHash: "hash",
       });
     });
   });

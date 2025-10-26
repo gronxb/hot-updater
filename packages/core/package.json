@@ -4,20 +4,15 @@
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./test-utils": {
-      "types": "./src/test-utils/index.ts",
-      "import": "./src/test-utils/index.ts",
-      "require": "./src/test-utils/index.ts"
-    }
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

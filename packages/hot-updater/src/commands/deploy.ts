@@ -312,7 +312,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            const { storageUri } = await storagePlugin.uploadBundle(
+            const { storageUri } = await storagePlugin.upload(
               bundleId,
               bundlePath,
             );

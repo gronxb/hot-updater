@@ -1,5 +1,6 @@
 import { bare } from '@hot-updater/bare';
-import { supabaseDatabase, supabaseStorage } from '@hot-updater/supabase';
+import { standaloneRepository } from '@hot-updater/standalone';
+import { supabaseStorage } from '@hot-updater/supabase';
 import { config } from 'dotenv';
 import { defineConfig } from 'hot-updater';
 
@@ -15,9 +16,9 @@ export default defineConfig({
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     basePath: '0-81-0',
   }),
-  database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+  database: standaloneRepository({
+    baseUrl:
+      process.env.HOT_UPDATER_SERVER_URL || 'http://localhost:3000/hot-updater',
   }),
   fingerprint: {
     debug: true,

@@ -4,7 +4,7 @@ import type {
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/core/test-utils";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { beforeEach, describe, vi } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromCdn } from "./getUpdateInfo";
 
