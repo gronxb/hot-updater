@@ -12,9 +12,9 @@ PODS:
     - ReactCommon/turbomodule/core (= 0.72.11)
   - fmt (6.2.1)
   - glog (0.3.5)
-  - hermes-engine (0.71.19):
-    - hermes-engine/Pre-built (= 0.71.19)
-  - hermes-engine/Pre-built (0.71.19)
+  - hermes-engine (0.72.11):
+    - hermes-engine/Pre-built (= 0.72.11)
+  - hermes-engine/Pre-built (0.72.11)
   - HotUpdater (0.20.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
@@ -627,7 +627,7 @@ SPEC CHECKSUMS:
   FBReactNativeSpec: 78eb797d0fff9acf32097efe68f77b0a49ae3fd0
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
   glog: 04b94705f318337d7ead9e6d17c019bd9b1f6b1b
-  hermes-engine: 1468b458e81705fcd55ed6e29c32ff069f04b69c
+  hermes-engine: c22b4cc0bb1d1603b9e4faf83732be227baa55bc
   HotUpdater: 152a33c97eaf41eb461a85a20cdd091ba24fad99
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
   RCT-Folly: 8dc08ca5a393b48b1c523ab6220dfdcc0fe000ad
@@ -668,6 +668,6 @@ SPEC CHECKSUMS:
   SWCompression: 9379873ad5e9f25b31db88c441649b59a4c2bab7
   Yoga: 76b2d5677fc9694bae53c80d0cccfc55719064a3
 
-PODFILE CHECKSUM: cc6b3971863f1340c68346ae38611b34cf30a713
+PODFILE CHECKSUM: c55c66eea957cd39979eda1c86684282fb328b11
 
 COCOAPODS: 1.15.2
