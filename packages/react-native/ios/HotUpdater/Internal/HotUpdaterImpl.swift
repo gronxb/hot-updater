@@ -16,14 +16,12 @@ import React
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
-        let zipUnzipService = SSZipArchiveUnzipService()
-        let tarBrUnzipService = TarBrUnzipService()
+        let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
             fileSystem: fileSystem,
             downloadService: downloadService,
-            zipUnzipService: zipUnzipService,
-            tarBrUnzipService: tarBrUnzipService,
+            decompressService: decompressService,
             preferences: preferences
         )
 
