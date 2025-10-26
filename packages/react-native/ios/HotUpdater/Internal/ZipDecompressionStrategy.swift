@@ -34,7 +34,8 @@ class ZipDecompressionStrategy: DecompressionStrategy {
             fileHandle.closeFile()
         }
 
-        guard let header = try? fileHandle.read(upToCount: 4), header.count == 4 else {
+        let header = fileHandle.readData(ofLength: 4)
+        guard header.count == 4 else {
             NSLog("[ZipStrategy] Invalid ZIP: cannot read header")
             return false
         }
