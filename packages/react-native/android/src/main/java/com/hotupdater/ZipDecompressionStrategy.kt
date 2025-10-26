@@ -17,7 +17,6 @@ import java.util.zip.ZipInputStream
 class ZipDecompressionStrategy : DecompressionStrategy {
     companion object {
         private const val TAG = "ZipStrategy"
-        private const val ZIP_MAGIC_NUMBER = 0x504B0304
         private const val MIN_ZIP_SIZE = 22L
     }
 
@@ -37,14 +36,12 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                     return false
                 }
 
-                val magic =
-                    ((header[0].toInt() and 0xFF)) or
-                        ((header[1].toInt() and 0xFF) shl 8) or
-                        ((header[2].toInt() and 0xFF) shl 16) or
-                        ((header[3].toInt() and 0xFF) shl 24)
+                // ZIP magic bytes: 0x50 0x4B 0x03 0x04 ("PK\u0003\u0004")
+                val expectedMagic = byteArrayOf(0x50.toByte(), 0x4B.toByte(), 0x03.toByte(), 0x04.toByte())
 
-                if (magic != ZIP_MAGIC_NUMBER) {
-                    Log.d(TAG, "Invalid ZIP: wrong magic number (0x${magic.toString(16)})")
+                if (!header.contentEquals(expectedMagic)) {
+                    val headerHex = header.joinToString(" ") { "0x%02X".format(it) }
+                    Log.d(TAG, "Invalid ZIP: wrong magic bytes (expected 0x50 0x4B 0x03 0x04, got $headerHex)")
                     return false
                 }
             }
