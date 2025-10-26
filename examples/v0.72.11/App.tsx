@@ -63,7 +63,7 @@ function App(): React.JSX.Element {
           fontWeight: 'bold',
           textAlign: 'center',
         }}>
-        Hot Updater 1
+        Hot Updater 0
       </Text>
 
       <Text
@@ -91,8 +91,8 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        source={require('./src/logo.png')}
-        // source={require('./src/test/_image.png')}
+        // source={require("./src/logo.png")}
+        source={require('./src/test/_image.png')}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
@@ -119,7 +119,7 @@ function App(): React.JSX.Element {
 
 export default HotUpdater.wrap({
   source: getUpdateSource(
-    `https://d2zkxggbe748dg.cloudfront.net/api/check-update`,
+    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
     {
       updateStrategy: 'appVersion', // or "fingerprint"
     },
