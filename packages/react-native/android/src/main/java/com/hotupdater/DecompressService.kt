@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.util.Log
+import java.io.File
 
 /**
  * Unified decompression service that uses Strategy pattern to handle multiple compression formats.
