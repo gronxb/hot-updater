@@ -2,7 +2,7 @@ package com.hotupdater
 
 import android.util.Log
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.archivers.tar.BrotliCompressorInputStream
+import org.apache.commons.compress.compressors.brotli.BrotliCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
