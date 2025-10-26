@@ -1,5 +1,18 @@
 # @hot-updater/js
 
+## 1.0.0
+
+### Minor Changes
+
+- afb084b: feat: validate bundle file with fileHash
+- 036f8f0: feat: support `@hot-updater/server` for self-hosted (WIP)
+
+### Patch Changes
+
+- Updated dependencies [afb084b]
+- Updated dependencies [036f8f0]
+  - @hot-updater/core@1.0.0
+
 ## 0.20.15
 
 ### Patch Changes

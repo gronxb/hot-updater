@@ -1,5 +1,12 @@
 # @hot-updater/core
 
+## 1.0.0
+
+### Minor Changes
+
+- afb084b: feat: validate bundle file with fileHash
+- 036f8f0: feat: support `@hot-updater/server` for self-hosted (WIP)
+
 ## 0.20.15
 
 ## 0.20.14

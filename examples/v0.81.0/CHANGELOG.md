@@ -1,5 +1,19 @@
 # @hot-updater/example-react-native-v81
 
+## 1.0.0
+
+### Minor Changes
+
+- 610b2dd: feat: supports `compressStrategy` => `tar.br` (brotli) / `tar.gz` (gzip)
+- afb084b: feat: validate bundle file with fileHash
+- 036f8f0: feat: support `@hot-updater/server` for self-hosted (WIP)
+
+### Patch Changes
+
+- Updated dependencies [610b2dd]
+- Updated dependencies [afb084b]
+  - @hot-updater/react-native@1.0.0
+
 ## 0.20.15
 
 ### Patch Changes
