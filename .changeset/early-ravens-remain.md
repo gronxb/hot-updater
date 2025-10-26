@@ -1,12 +1,12 @@
 ---
-"@hot-updater/react-native": patch
-"hot-updater": patch
-"@hot-updater/plugin-core": patch
-"@hot-updater/cloudflare": patch
-"@hot-updater/example-react-native-v81": patch
-"@hot-updater/firebase": patch
-"@hot-updater/supabase": patch
-"@hot-updater/aws": patch
+"@hot-updater/react-native": minor
+"hot-updater": minor
+"@hot-updater/plugin-core": minor
+"@hot-updater/cloudflare": minor
+"@hot-updater/example-react-native-v81": minor
+"@hot-updater/firebase": minor
+"@hot-updater/supabase": minor
+"@hot-updater/aws": minor
 ---
 
 feat: supports `compressStrategy` => `tar.br` (brotli) / `tar.gz` (gzip)
