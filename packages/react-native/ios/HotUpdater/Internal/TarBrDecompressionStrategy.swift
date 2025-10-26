@@ -139,7 +139,8 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
                 stream.dst_ptr = outputBuffer
                 stream.dst_size = bufferSize
 
-                processStatus = compression_stream_process(&stream, Int32(bitPattern: COMPRESSION_STREAM_FINALIZE.rawValue))
+                let flags = (stream.src_size == 0) ? Int32(bitPattern: COMPRESSION_STREAM_FINALIZE.rawValue) : Int32(0)
+                processStatus = compression_stream_process(&stream, flags)
 
                 switch processStatus {
                 case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:

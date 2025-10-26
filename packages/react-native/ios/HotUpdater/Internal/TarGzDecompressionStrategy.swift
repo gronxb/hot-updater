@@ -106,73 +106,17 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
     }
 
     private func decompressGzip(_ data: Data) throws -> Data {
-        let bufferSize = 64 * 1024
-        var decompressedData = Data()
-        let count = data.count
-
-        var stream = compression_stream(
-            dst_ptr: UnsafeMutablePointer<UInt8>(bitPattern: 1)!,
-            dst_size: 0,
-            src_ptr: UnsafePointer<UInt8>(bitPattern: 1)!,
-            src_size: 0,
-            state: nil
-        )
-
-        let status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB)
-
-        guard status == COMPRESSION_STATUS_OK else {
+        do {
+            let decompressedData = try GzipArchive.unarchive(archive: data)
+            NSLog("[TarGzStrategy] GZIP decompression successful using SWCompression")
+            return decompressedData
+        } catch {
             throw NSError(
                 domain: "TarGzDecompressionStrategy",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to initialize gzip decompression stream"]
+                userInfo: [NSLocalizedDescriptionKey: "GZIP decompression failed: \(error.localizedDescription)"]
             )
         }
-
-        defer {
-            compression_stream_destroy(&stream)
-        }
-
-        let outputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-        defer {
-            outputBuffer.deallocate()
-        }
-
-        data.withUnsafeBytes { (rawBufferPointer: UnsafeRawBufferPointer) in
-            guard let baseAddress = rawBufferPointer.baseAddress else {
-                return
-            }
-
-            stream.src_ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
-            stream.src_size = count
-
-            var processStatus: compression_status
-            repeat {
-                stream.dst_ptr = outputBuffer
-                stream.dst_size = bufferSize
-
-                processStatus = compression_stream_process(&stream, 0)
-
-                switch processStatus {
-                case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:
-                    let outputSize = bufferSize - stream.dst_size
-                    decompressedData.append(outputBuffer, count: outputSize)
-                case COMPRESSION_STATUS_ERROR:
-                    break
-                default:
-                    break
-                }
-            } while processStatus == COMPRESSION_STATUS_OK
-        }
-
-        if decompressedData.isEmpty && !data.isEmpty {
-            throw NSError(
-                domain: "TarGzDecompressionStrategy",
-                code: 6,
-                userInfo: [NSLocalizedDescriptionKey: "GZIP decompression produced no output"]
-            )
-        }
-
-        return decompressedData
     }
 
     private func extractTarEntry(_ entry: TarEntry, to destination: String) throws {

@@ -544,11 +544,19 @@ class BundleFileStorageService: BundleStorageService {
 
             // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
             NSLog("[BundleStorage] Extracting \(tempBundleFile) → \(tmpDir)")
-            try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
-                // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
-                progressHandler(0.8 + (unzipProgress * 0.2))
-            })
-            NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
+            do {
+                try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
+                    // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
+                    progressHandler(0.8 + (unzipProgress * 0.2))
+                })
+                NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
+            } catch {
+                NSLog("[BundleStorage] Extraction failed: \(error.localizedDescription)")
+                try? self.fileSystem.removeItem(atPath: tmpDir)
+                self.cleanupTemporaryFiles([tempDirectory])
+                completion(.failure(BundleStorageError.extractionFailed(error)))
+                return
+            }
 
             // 7) Remove the downloaded bundle file
             try? self.fileSystem.removeItem(atPath: tempBundleFile)
