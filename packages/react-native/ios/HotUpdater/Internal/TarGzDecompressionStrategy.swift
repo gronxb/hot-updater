@@ -125,51 +125,47 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
             compression_stream_destroy(&stream)
         }
 
-        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        let outputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer {
+            outputBuffer.deallocate()
+        }
 
-        return try data.withUnsafeBytes { (srcPtr: UnsafeRawBufferPointer) -> Data in
-            guard let srcBaseAddress = srcPtr.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                throw NSError(
-                    domain: "TarGzDecompressionStrategy",
-                    code: 6,
-                    userInfo: [NSLocalizedDescriptionKey: "Invalid source data pointer"]
-                )
+        data.withUnsafeBytes { (rawBufferPointer: UnsafeRawBufferPointer) in
+            guard let baseAddress = rawBufferPointer.baseAddress else {
+                return
             }
 
-            stream.src_ptr = srcBaseAddress
+            stream.src_ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
             stream.src_size = count
 
+            var processStatus: compression_status
             repeat {
-                stream.dst_ptr = UnsafeMutablePointer<UInt8>(&buffer)
+                stream.dst_ptr = outputBuffer
                 stream.dst_size = bufferSize
 
-                let flags = Int32(stream.src_size == 0 ? COMPRESSION_STREAM_FINALIZE : 0)
-                let status = compression_stream_process(&stream, flags)
+                processStatus = compression_stream_process(&stream, 0)
 
-                switch status {
+                switch processStatus {
                 case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:
-                    let outputCount = bufferSize - stream.dst_size
-                    if outputCount > 0 {
-                        decompressedData.append(buffer, count: outputCount)
-                    }
-                    if status == COMPRESSION_STATUS_END {
-                        return decompressedData
-                    }
+                    let outputSize = bufferSize - stream.dst_size
+                    decompressedData.append(outputBuffer, count: outputSize)
                 case COMPRESSION_STATUS_ERROR:
-                    throw NSError(
-                        domain: "TarGzDecompressionStrategy",
-                        code: 7,
-                        userInfo: [NSLocalizedDescriptionKey: "GZIP decompression error"]
-                    )
+                    break
                 default:
-                    throw NSError(
-                        domain: "TarGzDecompressionStrategy",
-                        code: 8,
-                        userInfo: [NSLocalizedDescriptionKey: "Unknown decompression status: \(status)"]
-                    )
+                    break
                 }
-            } while true
+            } while processStatus == COMPRESSION_STATUS_OK
         }
+
+        if decompressedData.isEmpty && !data.isEmpty {
+            throw NSError(
+                domain: "TarGzDecompressionStrategy",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "GZIP decompression produced no output"]
+            )
+        }
+
+        return decompressedData
     }
 
     private func extractTarEntry(_ entry: TarEntry, to destination: String) throws {
@@ -208,7 +204,7 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
             return
         }
 
-        if entry.info.type == .regular || entry.info.type == .normal {
+        if entry.info.type == .regular {
             let parentPath = (canonicalFullPath as NSString).deletingLastPathComponent
             if !fileManager.fileExists(atPath: parentPath) {
                 try fileManager.createDirectory(
