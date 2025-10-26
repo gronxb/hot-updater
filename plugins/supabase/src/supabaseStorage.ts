@@ -1,12 +1,12 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
-import mime from "mime";
 import path from "path";
 import type { Database } from "./types";
 
@@ -51,7 +51,7 @@ export const supabaseStorage =
 
       async uploadBundle(bundleId, bundlePath) {
         const Body = await fs.readFile(bundlePath);
-        const ContentType = mime.getType(bundlePath) ?? void 0;
+        const ContentType = getContentType(bundlePath);
 
         const filename = path.basename(bundlePath);
 
@@ -59,6 +59,8 @@ export const supabaseStorage =
 
         const upload = await bucket.upload(Key, Body, {
           contentType: ContentType,
+          cacheControl: "max-age=31536000",
+          headers: {},
         });
         if (upload.error) {
           throw upload.error;

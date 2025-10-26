@@ -58,18 +58,9 @@ interface BundleStorageService {
 class BundleFileStorageService(
     private val fileSystem: FileSystemService,
     private val downloadService: DownloadService,
-    private val zipUnzipService: UnzipService,
-    private val tarBrUnzipService: UnzipService,
+    private val decompressService: DecompressService,
     private val preferences: PreferencesService,
 ) : BundleStorageService {
-    private fun getUnzipService(filePath: String): UnzipService {
-        // Detect format based on file extension
-        return if (filePath.endsWith(".tar.br")) {
-            tarBrUnzipService
-        } else {
-            zipUnzipService
-        }
-    }
 
     override fun setBundleURL(localPath: String?): Boolean {
         preferences.setItem("HotUpdaterBundleURL", localPath)
@@ -145,10 +136,17 @@ class BundleFileStorageService(
         }
         tempDir.mkdirs()
 
-        val tempZipFile = File(tempDir, "bundle.zip")
-
         return withContext(Dispatchers.IO) {
             val downloadUrl = URL(fileUrl)
+
+            // Determine bundle filename from URL
+            val bundleFileName =
+                if (downloadUrl.path.isNotEmpty()) {
+                    File(downloadUrl.path).name.ifEmpty { "bundle.zip" }
+                } else {
+                    "bundle.zip"
+                }
+            val tempBundleFile = File(tempDir, bundleFileName)
 
             // Check file size before downloading
             val fileSize = downloadService.getFileSize(downloadUrl)
@@ -173,7 +171,7 @@ class BundleFileStorageService(
             val downloadResult =
                 downloadService.downloadFile(
                     downloadUrl,
-                    tempZipFile,
+                    tempBundleFile,
                 ) { downloadProgress ->
                     // Map download progress to 0.0 - 0.8
                     progressCallback(downloadProgress * 0.8)
@@ -186,13 +184,14 @@ class BundleFileStorageService(
                     return@withContext false
                 }
                 is DownloadResult.Success -> {
+                    Log.d("BundleStorage", "Download successful")
                     // 1) Verify file hash if provided
                     if (!fileHash.isNullOrEmpty()) {
                         Log.d("BundleStorage", "Verifying file hash...")
-                        if (!HashUtils.verifyHash(tempZipFile, fileHash)) {
+                        if (!HashUtils.verifyHash(tempBundleFile, fileHash)) {
                             Log.d("BundleStorage", "Hash mismatch! Deleting and aborting.")
                             tempDir.deleteRecursively()
-                            tempZipFile.delete()
+                            tempBundleFile.delete()
                             return@withContext false
                         }
                         Log.d("BundleStorage", "Hash verification passed")
@@ -206,10 +205,9 @@ class BundleFileStorageService(
                     tmpDir.mkdirs()
 
                     // 3) Extract archive into tmpDir (80% - 100%)
-                    Log.d("BundleStorage", "Extracting $tempZipFile → $tmpDir")
-                    val unzipService = getUnzipService(tempZipFile.absolutePath)
-                    if (!unzipService.extractZipFile(
-                            tempZipFile.absolutePath,
+                    Log.d("BundleStorage", "Extracting $tempBundleFile → $tmpDir")
+                    if (!decompressService.extractZipFile(
+                            tempBundleFile.absolutePath,
                             tmpDir.absolutePath,
                         ) { unzipProgress ->
                             // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)

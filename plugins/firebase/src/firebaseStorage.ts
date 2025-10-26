@@ -1,12 +1,13 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  getContentEncoding,
+  getContentType,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 import fs from "fs/promises";
-import mime from "mime";
 import path from "path";
 
 export interface FirebaseStorageConfig extends admin.AppOptions {
@@ -48,15 +49,16 @@ export const firebaseStorage =
       async uploadBundle(bundleId, bundlePath) {
         try {
           const fileContent = await fs.readFile(bundlePath);
-          const contentType =
-            mime.getType(bundlePath) ?? "application/octet-stream";
+          const contentType = getContentType(bundlePath);
           const filename = path.basename(bundlePath);
+          const contentEncoding = getContentEncoding(filename);
           const key = getStorageKey(bundleId, filename);
 
           const file = bucket.file(key);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
+              ...(contentEncoding && { contentEncoding }),
             },
           });
 

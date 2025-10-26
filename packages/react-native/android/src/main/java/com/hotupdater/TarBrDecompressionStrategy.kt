@@ -9,29 +9,26 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 
 /**
- * Implementation of UnzipService for tar.br (TAR with Brotli compression) files
+ * Strategy for handling TAR+Brotli compressed files
  */
-class TarBrUnzipService : UnzipService {
+class TarBrDecompressionStrategy : DecompressionStrategy {
     companion object {
-        private const val TAG = "TarBrUnzipService"
+        private const val TAG = "TarBrStrategy"
         private const val MIN_FILE_SIZE = 10L
     }
 
-    override fun isValidZipFile(filePath: String): Boolean {
+    override fun isValid(filePath: String): Boolean {
         val file = File(filePath)
 
-        // Check if file exists and has minimum size
         if (!file.exists() || file.length() < MIN_FILE_SIZE) {
             Log.d(TAG, "Invalid file: doesn't exist or too small (${file.length()} bytes)")
             return false
         }
 
-        // Try to validate by attempting to read the Brotli header
         try {
             FileInputStream(file).use { fis ->
                 BufferedInputStream(fis).use { bis ->
                     BrotliInputStream(bis).use { brotli ->
-                        // Try to read a small amount to validate
                         val buffer = ByteArray(100)
                         brotli.read(buffer)
                     }
@@ -44,10 +41,10 @@ class TarBrUnzipService : UnzipService {
         }
     }
 
-    override fun extractZipFile(
+    override fun decompress(
         filePath: String,
         destinationPath: String,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (Double) -> Unit
     ): Boolean =
         try {
             val destinationDir = File(destinationPath)
@@ -63,16 +60,13 @@ class TarBrUnzipService : UnzipService {
 
             FileInputStream(filePath).use { fileInputStream ->
                 BufferedInputStream(fileInputStream).use { bufferedInputStream ->
-                    // Decompress Brotli
                     BrotliInputStream(bufferedInputStream).use { brotliInputStream ->
-                        // Extract TAR
                         TarArchiveInputStream(brotliInputStream).use { tarInputStream ->
                             var entry = tarInputStream.nextEntry
 
                             while (entry != null) {
                                 val file = File(destinationPath, entry.name)
 
-                                // Validate that the entry path doesn't escape the destination directory
                                 if (!file.canonicalPath.startsWith(destinationDir.canonicalPath)) {
                                     Log.w(TAG, "Skipping potentially malicious tar entry: ${entry.name}")
                                     entry = tarInputStream.nextEntry
@@ -84,7 +78,6 @@ class TarBrUnzipService : UnzipService {
                                 } else {
                                     file.parentFile?.mkdirs()
 
-                                    // Extract file
                                     FileOutputStream(file).use { output ->
                                         val buffer = ByteArray(8 * 1024)
                                         var bytesRead: Int
@@ -96,8 +89,7 @@ class TarBrUnzipService : UnzipService {
                                     }
                                 }
 
-                                // Update progress (estimate based on processed bytes)
-                                val progress = processedBytes.toDouble() / (totalSize * 2.0) // Rough estimate
+                                val progress = processedBytes.toDouble() / (totalSize * 2.0)
                                 progressCallback.invoke(progress.coerceIn(0.0, 1.0))
 
                                 entry = tarInputStream.nextEntry

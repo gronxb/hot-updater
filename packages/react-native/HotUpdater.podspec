@@ -23,10 +23,8 @@ Pod::Spec.new do |s|
     "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport"
   }
 
-  s.dependency "SSZipArchive", "~> 2.2.2"
-
-  # SWCompression dependency for tar extraction support
-  # Native Compression framework is used for brotli decompression (iOS 11.0+)
+  # SWCompression dependency for ZIP/TAR/GZIP/Brotli extraction support
+  # Native Compression framework is used for GZIP and Brotli decompression
   s.dependency "SWCompression", "~> 4.8.0"
 
   # Use install_modules_dependencies helper to install the dependencies if React Native version >=0.71.0.

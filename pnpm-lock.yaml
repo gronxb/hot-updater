@@ -410,13 +410,13 @@ importers:
         version: 0.74.83
       '@react-native/metro-config':
         specifier: 0.74.83
-        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
       '@react-native/typescript-config':
         specifier: 0.74.83
         version: 0.74.83
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
+        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
@@ -1064,7 +1064,7 @@ importers:
         version: 0.79.1(@babel/core@7.27.1)(@react-native-community/cli@18.0.0(typescript@5.8.3))(@types/react@19.1.3)(react@19.1.0)
       react-native-builder-bob:
         specifier: ^0.40.10
-        version: 0.40.10(encoding@0.1.13)
+        version: 0.40.10
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -1361,6 +1361,9 @@ importers:
       fast-glob:
         specifier: 3.3.3
         version: 3.3.3
+      mime:
+        specifier: ^4.0.4
+        version: 4.0.4
       oxc-transform:
         specifier: 0.82.1
         version: 0.82.1
@@ -1530,8 +1533,8 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
       '@supabase/supabase-js':
-        specifier: ^2.47.10
-        version: 2.47.10
+        specifier: ^2.76.1
+        version: 2.76.1
     devDependencies:
       '@clack/prompts':
         specifier: 'catalog:'
@@ -3899,7 +3902,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {node: '>=0.10.0'}
+    engines: {'0': node >=0.10.0}
 
   '@expo/cli@0.17.13':
     resolution: {integrity: sha512-n13yxOmI3I0JidzMdFCH68tYKGDtK4XlDFk1vysZX7AIRKeDVRsSbHhma5jCla2bDt25RKmJBHA9KtzielwzAA==}
@@ -7347,27 +7350,27 @@ packages:
   '@speed-highlight/core@1.2.7':
     resolution: {integrity: sha512-0dxmVj4gxg3Jg879kvFS/msl4s9F3T9UXC1InxgOf7t5NvcPD97u/WTA5vL/IxWHMn7qSxBozqrnnE2wvl1m8g==}
 
-  '@supabase/auth-js@2.67.3':
-    resolution: {integrity: sha512-NJDaW8yXs49xMvWVOkSIr8j46jf+tYHV0wHhrwOaLLMZSFO4g6kKAf+MfzQ2RaD06OCUkUHIzctLAxjTgEVpzw==}
+  '@supabase/auth-js@2.76.1':
+    resolution: {integrity: sha512-bxmcgPuyjTUBg7+jAohJ15TDh3ph4hXcv7QkRsQgnIpszurD5LYaJPzX638ETQ8zDL4fvHZRHfGrcmHV8C91jA==}
 
-  '@supabase/functions-js@2.4.4':
-    resolution: {integrity: sha512-WL2p6r4AXNGwop7iwvul2BvOtuJ1YQy8EbOd0dhG1oN1q8el/BIRSFCFnWAMM/vJJlHWLi4ad22sKbKr9mvjoA==}
+  '@supabase/functions-js@2.76.1':
+    resolution: {integrity: sha512-+zJym/GC1sofm5QYKGxHSszCpMW4Ao2dj/WC3YlffAGuIlIhUtWTJvKsv5q7sWaSKUKdDhGpWhZ2OD++fW5BtQ==}
 
   '@supabase/node-fetch@2.6.15':
     resolution: {integrity: sha512-1ibVeYUacxWYi9i0cf5efil6adJ9WRyZBLivgjs+AUpewx1F3xPi7gLgaASI2SmIQxPoCEjAsLAzKPgMJVgOUQ==}
     engines: {node: 4.x || >=6.0.0}
 
-  '@supabase/postgrest-js@1.17.7':
-    resolution: {integrity: sha512-aOzOYaTADm/dVTNksyqv9KsbhVa1gHz1Hoxb2ZEF2Ed9H7qlWOfptECQWmkEmrrFjtNaiPrgiSaPECvzI/seDA==}
+  '@supabase/postgrest-js@2.76.1':
+    resolution: {integrity: sha512-QJ1Cwim6L9gzWKP8U4Lgw9x/4lMWkZSVMDRYFCH+vVGitVbtfU885swTiioOjjUe4EYGZm+Xktg90twzSVv6IA==}
 
-  '@supabase/realtime-js@2.11.2':
-    resolution: {integrity: sha512-u/XeuL2Y0QEhXSoIPZZwR6wMXgB+RQbJzG9VErA3VghVt7uRfSVsjeqd7m5GhX3JR6dM/WRmLbVR8URpDWG4+w==}
+  '@supabase/realtime-js@2.76.1':
+    resolution: {integrity: sha512-B5Lfmprea2fx2FS7obp4uAWiRUlEa6j9J3+BvvETGp/2LdkSRBaLEJCBylfcZTXk67ajNPX6ppvKvAZsckqXYg==}
 
-  '@supabase/storage-js@2.7.1':
-    resolution: {integrity: sha512-asYHcyDR1fKqrMpytAS1zjyEfvxuOIp1CIXX7ji4lHHcJKqyk+sLl/Vxgm4sN6u8zvuUtae9e4kDxQP2qrwWBA==}
+  '@supabase/storage-js@2.76.1':
+    resolution: {integrity: sha512-OJiNT8tocI9tcTjTjv1SBVLabzgEnS1NorZuqivkiJ0gTYmeg2c2PFmqCARhoQ4whF6zR9MVsX/Mtj2oSv4i/w==}
 
-  '@supabase/supabase-js@2.47.10':
-    resolution: {integrity: sha512-vJfPF820Ho5WILYHfKiBykDQ1SB9odTHrRZ0JxHfuLMC8GRvv21YLkUZQK7/rSVCkLvD6/ZwMWaOAfdUd//guw==}
+  '@supabase/supabase-js@2.76.1':
+    resolution: {integrity: sha512-dYMh9EsTVXZ6WbQ0QmMGIhbXct5+x636tXXaaxUmwjj3kY1jyBTQU8QehxAIfjyRu1mWGV07hoYmTYakkxdSGQ==}
 
   '@swc-node/core@1.13.3':
     resolution: {integrity: sha512-OGsvXIid2Go21kiNqeTIn79jcaX4l0G93X2rAnas4LFoDyA9wAwVK7xZdm+QsKoMn5Mus2yFLCc4OtX2dD/PWA==}
@@ -7739,8 +7742,8 @@ packages:
   '@types/uuid@9.0.8':
     resolution: {integrity: sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA==}
 
-  '@types/ws@8.5.12':
-    resolution: {integrity: sha512-3tPRkv1EtkDpzlgyKyI8pGsGZAGPEaXeu0DOj5DI25Ja91bdAYddYHbADRYVrZMRbfW+1l5YwXVDKohDJNQxkQ==}
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@types/yargs-parser@21.0.2':
     resolution: {integrity: sha512-5qcvofLPbfjmBfKaLfj/+f+Sbd6pN4zl7w7VSVI5uz7m9QZTuB2aZAa2uo1wHFBNN2x6g/SoTkXmd8mQnQF2Cw==}
@@ -16884,6 +16887,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.18.3:
+    resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xcode@3.0.1:
     resolution: {integrity: sha512-kCz5k7J7XbJtjABOvkc5lJmkiDh8VhjVCGNiqdKCscmVpdVUpEAyXv1xmCLkQJ5dsHqx3IPO4XW+NTDhU/fatA==}
     engines: {node: '>=10.0.0'}
@@ -22486,7 +22501,7 @@ snapshots:
 
   '@img/sharp-wasm32@0.33.5':
     dependencies:
-      '@emnapi/runtime': 1.4.5
+      '@emnapi/runtime': 1.5.0
     optional: true
 
   '@img/sharp-win32-ia32@0.33.5':
@@ -25658,7 +25673,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
+  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)':
     dependencies:
       '@react-native/js-polyfills': 0.74.83
       '@react-native/metro-babel-transformer': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
@@ -25667,7 +25682,10 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
+      - encoding
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -25713,9 +25731,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/new-app-screen@0.81.0(@types/react@19.1.3)(react-native@0.81.0(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.8.3))(@react-native/metro-config@0.81.0(@babel/core@7.26.0))(@types/react@19.1.3)(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -25839,7 +25855,7 @@ snapshots:
 
   '@rnx-kit/console@2.0.0': {}
 
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@rnx-kit/tools-node': 3.0.0
       '@rnx-kit/tools-react-native': 2.0.0
@@ -25847,7 +25863,7 @@ snapshots:
       react: 18.2.0
       react-native: 0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0)
     optionalDependencies:
-      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
+      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
 
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@20.0.0)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -27391,44 +27407,49 @@ snapshots:
 
   '@speed-highlight/core@1.2.7': {}
 
-  '@supabase/auth-js@2.67.3':
+  '@supabase/auth-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
-  '@supabase/functions-js@2.4.4':
+  '@supabase/functions-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
   '@supabase/node-fetch@2.6.15':
     dependencies:
       whatwg-url: 5.0.0
 
-  '@supabase/postgrest-js@1.17.7':
+  '@supabase/postgrest-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
-  '@supabase/realtime-js@2.11.2':
+  '@supabase/realtime-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
       '@types/phoenix': 1.6.6
-      '@types/ws': 8.5.12
-      ws: 8.18.1
+      '@types/ws': 8.18.1
+      tslib: 2.8.1
+      ws: 8.18.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@supabase/storage-js@2.7.1':
+  '@supabase/storage-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
-  '@supabase/supabase-js@2.47.10':
+  '@supabase/supabase-js@2.76.1':
     dependencies:
-      '@supabase/auth-js': 2.67.3
-      '@supabase/functions-js': 2.4.4
+      '@supabase/auth-js': 2.76.1
+      '@supabase/functions-js': 2.76.1
       '@supabase/node-fetch': 2.6.15
-      '@supabase/postgrest-js': 1.17.7
-      '@supabase/realtime-js': 2.11.2
-      '@supabase/storage-js': 2.7.1
+      '@supabase/postgrest-js': 2.76.1
+      '@supabase/realtime-js': 2.76.1
+      '@supabase/storage-js': 2.76.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -27829,7 +27850,7 @@ snapshots:
 
   '@types/uuid@9.0.8': {}
 
-  '@types/ws@8.5.12':
+  '@types/ws@8.18.1':
     dependencies:
       '@types/node': 22.13.5
 
@@ -38104,7 +38125,7 @@ snapshots:
 
   react-lazy-with-preload@2.2.1: {}
 
-  react-native-builder-bob@0.40.10(encoding@0.1.13):
+  react-native-builder-bob@0.40.10:
     dependencies:
       '@babel/core': 7.26.0
       '@babel/plugin-transform-flow-strip-types': 7.27.1(@babel/core@7.26.0)
@@ -38130,10 +38151,7 @@ snapshots:
       which: 2.0.2
       yargs: 17.7.2
     transitivePeerDependencies:
-      - bufferutil
-      - encoding
       - supports-color
-      - utf-8-validate
 
   react-native-codegen@0.71.6(@babel/preset-env@7.26.0(@babel/core@7.26.0)):
     dependencies:
@@ -41626,6 +41644,8 @@ snapshots:
   ws@8.18.0: {}
 
   ws@8.18.1: {}
+
+  ws@8.18.3: {}
 
   xcode@3.0.1:
     dependencies:

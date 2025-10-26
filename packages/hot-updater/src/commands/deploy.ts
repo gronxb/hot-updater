@@ -42,6 +42,17 @@ export interface DeployOptions {
   targetAppVersion?: string;
 }
 
+const getExtensionFromCompressStrategy = (compressStrategy: string) => {
+  switch (compressStrategy) {
+    case "tar.br":
+      return ".tar.br";
+    case "zip":
+      return ".zip";
+    default:
+      throw new Error(`Unsupported compress strategy: ${compressStrategy}`);
+  }
+};
+
 export const deploy = async (options: DeployOptions) => {
   printBanner();
 
@@ -187,8 +198,8 @@ export const deploy = async (options: DeployOptions) => {
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const compressStrategy = config.compressStrategy ?? "zip";
-  const bundleExtension = compressStrategy === "tar.br" ? ".tar.br" : ".zip";
+  const compressStrategy = config.compressStrategy;
+  const bundleExtension = getExtensionFromCompressStrategy(compressStrategy);
   const bundlePath = path.join(
     normalizeOutputPath,
     "bundle",
@@ -248,16 +259,23 @@ export const deploy = async (options: DeployOptions) => {
               .map((file) => path.join(buildPath, file)),
           );
 
-          if (compressStrategy === "tar.br") {
-            await createTarBrTargetFiles({
-              outfile: bundlePath,
-              targetFiles: targetFiles,
-            });
-          } else {
-            await createZipTargetFiles({
-              outfile: bundlePath,
-              targetFiles: targetFiles,
-            });
+          switch (compressStrategy) {
+            case "tar.br":
+              await createTarBrTargetFiles({
+                outfile: bundlePath,
+                targetFiles: targetFiles,
+              });
+              break;
+            case "zip":
+              await createZipTargetFiles({
+                outfile: bundlePath,
+                targetFiles: targetFiles,
+              });
+              break;
+            default:
+              throw new Error(
+                `Unsupported compression strategy: ${compressStrategy}`,
+              );
           }
 
           bundleId = taskRef.buildResult.bundleId;

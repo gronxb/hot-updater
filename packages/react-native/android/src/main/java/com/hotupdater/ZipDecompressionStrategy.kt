@@ -12,50 +12,23 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 /**
- * Interface for unzip operations
+ * Strategy for handling ZIP compressed files
  */
-interface UnzipService {
-    /**
-     * Validates if a file is a valid ZIP file
-     * @param filePath Path to the zip file
-     * @return true if the file is a valid ZIP, false otherwise
-     */
-    fun isValidZipFile(filePath: String): Boolean
-
-    /**
-     * Extracts a zip file to a destination directory
-     * @param filePath Path to the zip file
-     * @param destinationPath Directory to extract contents to
-     * @param progressCallback Callback for extraction progress updates (0.0 to 1.0)
-     * @return true if extraction was successful, false otherwise
-     */
-    fun extractZipFile(
-        filePath: String,
-        destinationPath: String,
-        progressCallback: (Double) -> Unit,
-    ): Boolean
-}
-
-/**
- * Implementation of UnzipService using ZipInputStream for 16KB page compatibility
- */
-class ZipFileUnzipService : UnzipService {
+class ZipDecompressionStrategy : DecompressionStrategy {
     companion object {
-        private const val TAG = "UnzipService"
+        private const val TAG = "ZipStrategy"
         private const val ZIP_MAGIC_NUMBER = 0x504B0304
-        private const val MIN_ZIP_SIZE = 22L // Minimum size for a valid ZIP file
+        private const val MIN_ZIP_SIZE = 22L
     }
 
-    override fun isValidZipFile(filePath: String): Boolean {
+    override fun isValid(filePath: String): Boolean {
         val file = File(filePath)
 
-        // Check if file exists and has minimum size
         if (!file.exists() || file.length() < MIN_ZIP_SIZE) {
             Log.d(TAG, "Invalid ZIP: file doesn't exist or too small (${file.length()} bytes)")
             return false
         }
 
-        // Check ZIP magic number
         try {
             FileInputStream(file).use { fis ->
                 val header = ByteArray(4)
@@ -80,7 +53,6 @@ class ZipFileUnzipService : UnzipService {
             return false
         }
 
-        // Validate ZIP structure using ZipFile
         try {
             ZipFile(file).use { zipFile ->
                 val entries = zipFile.entries()
@@ -89,7 +61,6 @@ class ZipFileUnzipService : UnzipService {
                     return false
                 }
 
-                // Try to read the first entry to verify integrity
                 val firstEntry = entries.nextElement()
                 zipFile.getInputStream(firstEntry).use { stream ->
                     val buffer = ByteArray(1024)
@@ -106,10 +77,10 @@ class ZipFileUnzipService : UnzipService {
         }
     }
 
-    override fun extractZipFile(
+    override fun decompress(
         filePath: String,
         destinationPath: String,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (Double) -> Unit
     ): Boolean {
         return try {
             val destinationDir = File(destinationPath)
@@ -117,7 +88,6 @@ class ZipFileUnzipService : UnzipService {
                 destinationDir.mkdirs()
             }
 
-            // First, count total entries for progress tracking
             val totalEntries =
                 try {
                     ZipFile(File(filePath)).use { zipFile ->
@@ -145,7 +115,6 @@ class ZipFileUnzipService : UnzipService {
                         while (entry != null) {
                             val file = File(destinationPath, entry.name)
 
-                            // Validate that the entry path doesn't escape the destination directory
                             if (!file.canonicalPath.startsWith(destinationDir.canonicalPath)) {
                                 Log.w(TAG, "Skipping potentially malicious zip entry: ${entry.name}")
                                 entry = zipInputStream.nextEntry
@@ -158,7 +127,6 @@ class ZipFileUnzipService : UnzipService {
                             } else {
                                 file.parentFile?.mkdirs()
 
-                                // Extract with CRC verification
                                 val crc = CRC32()
                                 FileOutputStream(file).use { output ->
                                     val buffer = ByteArray(8 * 1024)
@@ -170,7 +138,6 @@ class ZipFileUnzipService : UnzipService {
                                     }
                                 }
 
-                                // Verify CRC if entry has CRC value
                                 if (entry.crc != -1L && crc.value != entry.crc) {
                                     Log.w(TAG, "CRC mismatch for ${entry.name}: expected ${entry.crc}, got ${crc.value}")
                                     file.delete()
@@ -183,7 +150,6 @@ class ZipFileUnzipService : UnzipService {
                             zipInputStream.closeEntry()
                             processedEntries++
 
-                            // Update progress
                             val progress = processedEntries.toDouble() / totalEntries
                             progressCallback.invoke(progress)
 

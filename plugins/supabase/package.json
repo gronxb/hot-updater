@@ -46,7 +46,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@supabase/supabase-js": "^2.47.10"
+    "@supabase/supabase-js": "^2.76.1"
   },
   "devDependencies": {
     "@clack/prompts": "catalog:",
