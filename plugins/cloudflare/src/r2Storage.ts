@@ -1,8 +1,8 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
-  parseStorageUri,
   getContentType,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -56,12 +56,12 @@ export const r2Storage =
           throw new Error("Can not delete bundle");
         }
       },
-      async uploadBundle(bundleId, bundlePath) {
-        const contentType = getContentType(bundlePath);
+      async upload(key, filePath) {
+        const contentType = getContentType(filePath);
 
-        const filename = path.basename(bundlePath);
+        const filename = path.basename(filePath);
 
-        const Key = getStorageKey(bundleId, filename);
+        const Key = getStorageKey(key, filename);
         try {
           const { stderr, exitCode } = await wrangler(
             "r2",
@@ -69,7 +69,7 @@ export const r2Storage =
             "put",
             [bucketName, Key].join("/"),
             "--file",
-            bundlePath,
+            filePath,
             "--content-type",
             contentType,
             "--remote",

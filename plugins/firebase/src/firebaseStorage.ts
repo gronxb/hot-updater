@@ -1,8 +1,8 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
-  parseStorageUri,
   getContentType,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -50,12 +50,12 @@ export const firebaseStorage =
         }
       },
 
-      async uploadBundle(bundleId, bundlePath) {
+      async upload(key, filePath) {
         try {
-          const fileContent = await fs.readFile(bundlePath);
-          const contentType = getContentType(bundlePath);
-          const filename = path.basename(bundlePath);
-          const storageKey = getStorageKey(bundleId, filename);
+          const fileContent = await fs.readFile(filePath);
+          const contentType = getContentType(filePath);
+          const filename = path.basename(filePath);
+          const storageKey = getStorageKey(key, filename);
 
           const file = bucket.file(storageKey);
           await file.save(fileContent, {

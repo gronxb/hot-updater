@@ -1,8 +1,8 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
-  parseStorageUri,
   getContentType,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -55,13 +55,13 @@ export const supabaseStorage =
         }
       },
 
-      async uploadBundle(bundleId, bundlePath) {
-        const Body = await fs.readFile(bundlePath);
-        const ContentType = getContentType(bundlePath);
+      async upload(key, filePath) {
+        const Body = await fs.readFile(filePath);
+        const ContentType = getContentType(filePath);
 
-        const filename = path.basename(bundlePath);
+        const filename = path.basename(filePath);
 
-        const Key = getStorageKey(bundleId, filename);
+        const Key = getStorageKey(key, filename);
 
         const upload = await bucket.upload(Key, Body, {
           contentType: ContentType,

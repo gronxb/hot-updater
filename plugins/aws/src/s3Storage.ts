@@ -10,8 +10,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
-  parseStorageUri,
   getContentType,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -71,13 +71,13 @@ export const s3Storage =
 
         throw new Error("Bundle Not Found");
       },
-      async uploadBundle(bundleId, bundlePath) {
-        const Body = await fs.readFile(bundlePath);
-        const ContentType = getContentType(bundlePath);
+      async upload(key, filePath) {
+        const Body = await fs.readFile(filePath);
+        const ContentType = getContentType(filePath);
 
-        const filename = path.basename(bundlePath);
+        const filename = path.basename(filePath);
 
-        const Key = getStorageKey(bundleId, filename);
+        const Key = getStorageKey(key, filename);
         const upload = new Upload({
           client,
           params: {
