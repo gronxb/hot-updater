@@ -14,7 +14,6 @@ try {
     .post("/shutdown", async () => {
       console.log("Shutdown endpoint called");
       await closeDatabase();
-      app.stop();
       setTimeout(() => process.exit(0), 100);
       return { status: "shutting down" };
     })
