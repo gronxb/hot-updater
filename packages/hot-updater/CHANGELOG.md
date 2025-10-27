@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.21.2
+
+### Patch Changes
+
+- Updated dependencies [b72da6e]
+  - @hot-updater/firebase@0.21.2
+  - @hot-updater/console@0.21.2
+  - @hot-updater/core@0.21.2
+  - @hot-updater/aws@0.21.2
+  - @hot-updater/cloudflare@0.21.2
+  - @hot-updater/plugin-core@0.21.2
+  - @hot-updater/supabase@0.21.2
+
 ## 0.21.1
 
 ### Patch Changes

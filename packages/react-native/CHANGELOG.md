@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 0.21.2
+
+### Patch Changes
+
+- hot-updater@0.21.2
+- @hot-updater/core@0.21.2
+- @hot-updater/js@0.21.2
+- @hot-updater/plugin-core@0.21.2
+
 ## 0.21.1
 
 ### Patch Changes
