@@ -20,7 +20,8 @@
       "import": "./dist/plugins/babel.js",
       "require": "./dist/plugins/babel.cjs",
       "types": "./dist/plugins/babel.d.ts"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

@@ -7,10 +7,15 @@ import path from "path";
 export interface MigrateDbOptions {
   configPath: string;
   targetDir?: string;
+  skipConfirm?: boolean;
 }
 
 export async function migrateDb(options: MigrateDbOptions) {
-  const { configPath, targetDir = "hot-updater_migrations" } = options;
+  const {
+    configPath,
+    targetDir = "hot-updater_migrations",
+    skipConfirm = false,
+  } = options;
 
   // Resolve absolute paths
   const absoluteConfigPath = path.resolve(process.cwd(), configPath);
@@ -75,6 +80,19 @@ export async function migrateDb(options: MigrateDbOptions) {
     }
 
     p.log.info(`Found ${sqlFiles.length} SQL file(s)`);
+
+    // Confirm before executing migrations
+    if (!skipConfirm) {
+      const shouldContinue = await p.confirm({
+        message: `Execute ${sqlFiles.length} migration file(s)?`,
+        initialValue: true,
+      });
+
+      if (p.isCancel(shouldContinue) || !shouldContinue) {
+        p.cancel("Operation cancelled");
+        process.exit(0);
+      }
+    }
 
     // Create migrator
     p.log.step("Creating migrator");

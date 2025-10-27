@@ -142,9 +142,16 @@ program
     "[outputDir]",
     "directory to output generated SQL files (default: hot-updater_migrations)",
   )
-  .action(async (configPath: string, outputDir?: string) => {
-    await generateDb({ configPath, outputDir });
-  });
+  .option("-y, --yes", "skip confirmation prompt", false)
+  .action(
+    async (
+      configPath: string,
+      outputDir: string | undefined,
+      options: { yes: boolean },
+    ) => {
+      await generateDb({ configPath, outputDir, skipConfirm: options.yes });
+    },
+  );
 
 program
   .command("migrate-db")
@@ -154,9 +161,16 @@ program
     "[targetDir]",
     "directory containing SQL migration files (default: hot-updater_migrations)",
   )
-  .action(async (configPath: string, targetDir?: string) => {
-    await migrateDb({ configPath, targetDir });
-  });
+  .option("-y, --yes", "skip confirmation prompt", false)
+  .action(
+    async (
+      configPath: string,
+      targetDir: string | undefined,
+      options: { yes: boolean },
+    ) => {
+      await migrateDb({ configPath, targetDir, skipConfirm: options.yes });
+    },
+  );
 
 // developing command groups
 if (process.env["NODE_ENV"] === "development") {

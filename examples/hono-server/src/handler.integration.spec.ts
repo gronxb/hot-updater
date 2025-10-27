@@ -34,19 +34,20 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     baseUrl = `http://localhost:${port}`;
 
     // Run database migrations before starting server
-    const hotUpdaterCli = path.resolve(
-      projectRoot,
-      "../../packages/hot-updater/dist/index.js",
+    const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
+    const hotUpdaterCli = path.join(
+      path.dirname(hotUpdaterPkgPath),
+      "dist/index.js",
     );
 
     // First generate SQL migration files
-    await execa("node", [hotUpdaterCli, "generate-db", "src/db.ts"], {
+    await execa("node", [hotUpdaterCli, "generate-db", "src/db.ts", "--yes"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
     });
 
     // Then apply migrations to database
-    await execa("node", [hotUpdaterCli, "migrate-db", "src/db.ts"], {
+    await execa("node", [hotUpdaterCli, "migrate-db", "src/db.ts", "--yes"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
     });
@@ -63,7 +64,7 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
 
   afterAll(async () => {
     await cleanupServer(serverProcess, testDbPath);
-  });
+  }, 60000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
     bundles,

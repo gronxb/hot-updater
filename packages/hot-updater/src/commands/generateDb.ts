@@ -9,10 +9,15 @@ import { format } from "sql-formatter";
 export interface GenerateDbOptions {
   configPath: string;
   outputDir?: string;
+  skipConfirm?: boolean;
 }
 
 export async function generateDb(options: GenerateDbOptions) {
-  const { configPath, outputDir = "hot-updater_migrations" } = options;
+  const {
+    configPath,
+    outputDir = "hot-updater_migrations",
+    skipConfirm = false,
+  } = options;
 
   // Resolve absolute paths
   const absoluteConfigPath = path.resolve(process.cwd(), configPath);
@@ -133,6 +138,19 @@ export async function generateDb(options: GenerateDbOptions) {
       ?.replace(/:/g, "-");
     const filename = `migration_${timestamp}.sql`;
     const outputPath = path.join(absoluteOutputDir, filename);
+
+    // Confirm before writing SQL file
+    if (!skipConfirm) {
+      const shouldContinue = await p.confirm({
+        message: `Generate migration file: ${filename}?`,
+        initialValue: true,
+      });
+
+      if (p.isCancel(shouldContinue) || !shouldContinue) {
+        p.cancel("Operation cancelled");
+        process.exit(0);
+      }
+    }
 
     // Write SQL file
     p.log.step(`Writing SQL to ${filename}`);
