@@ -231,9 +231,7 @@ export const initFirebaseUser = async (
 
     if (databasesJson.length === 0) {
       p.log.warning("Firestore Database not found");
-      p.log.step(
-        "Please enable Firestore in the Firebase Console:",
-      );
+      p.log.step("Please enable Firestore in the Firebase Console:");
       p.log.step(
         link(
           `https://console.firebase.google.com/project/${projectId}/firestore`,
