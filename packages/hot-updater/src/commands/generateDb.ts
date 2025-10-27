@@ -1,8 +1,9 @@
-import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import * as p from "@clack/prompts";
+import { createHash } from "crypto";
+import { existsSync } from "fs";
+import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { createJiti } from "jiti";
+import path from "path";
 import { format } from "sql-formatter";
 
 export interface GenerateDbOptions {
@@ -98,8 +99,10 @@ export async function generateDb(options: GenerateDbOptions) {
     p.log.step(`Creating output directory: ${outputDir}`);
     await mkdir(absoluteOutputDir, { recursive: true });
 
-    // Check for duplicate SQL files
+    // Check for duplicate SQL files using MD5 hash
     p.log.step("Checking for existing migrations");
+    const newSqlHash = createHash("md5").update(formattedSql).digest("hex");
+
     try {
       const files = await readdir(absoluteOutputDir);
       const sqlFiles = files.filter((file) => file.endsWith(".sql"));
@@ -107,8 +110,11 @@ export async function generateDb(options: GenerateDbOptions) {
       for (const file of sqlFiles) {
         const filePath = path.join(absoluteOutputDir, file);
         const existingContent = await readFile(filePath, "utf-8");
+        const existingHash = createHash("md5")
+          .update(existingContent)
+          .digest("hex");
 
-        if (existingContent === formattedSql) {
+        if (existingHash === newSqlHash) {
           p.log.warn(
             `Identical migration already exists: ${file}\nNo new migration file created.`,
           );

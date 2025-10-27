@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
 import * as p from "@clack/prompts";
+import { existsSync } from "fs";
+import { readdir, readFile } from "fs/promises";
 import { createJiti } from "jiti";
+import path from "path";
 
 export interface MigrateDbOptions {
   configPath: string;

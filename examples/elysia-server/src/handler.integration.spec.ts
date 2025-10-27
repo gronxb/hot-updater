@@ -9,9 +9,9 @@ import {
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import type { execa } from "execa";
 import { afterAll, beforeAll, describe } from "vitest";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import fs from "node:fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs/promises";
 import { execa as execaImport } from "execa";
 
 // Get the directory of this test file
