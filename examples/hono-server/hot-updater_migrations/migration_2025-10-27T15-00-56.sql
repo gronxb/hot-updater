@@ -21,7 +21,7 @@ CREATE TABLE "private_hot-updater_settings" (
 INSERT INTO
   "private_hot-updater_settings" ("key", "value")
 VALUES
-  ('version', '1.0.0');
+  ('version', '0.21.0');
 
 INSERT INTO
   "private_hot-updater_settings" ("key", "value")
