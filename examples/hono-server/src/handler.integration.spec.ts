@@ -60,11 +60,11 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     });
 
     await waitForServer(baseUrl);
-  }, 60000);
+  }, 120000);
 
   afterAll(async () => {
     await cleanupServer(serverProcess, testDbPath);
-  }, 60000);
+  }, 120000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
     bundles,
