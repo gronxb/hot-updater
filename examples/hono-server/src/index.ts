@@ -20,6 +20,14 @@ app.get("/", (c) => {
   });
 });
 
+// Shutdown endpoint for tests
+app.post("/shutdown", async (c) => {
+  console.log("Shutdown endpoint called");
+  await closeDatabase();
+  setTimeout(() => process.exit(0), 100);
+  return c.json({ status: "shutting down" });
+});
+
 // Mount API routes
 app.route("/", routes);
 

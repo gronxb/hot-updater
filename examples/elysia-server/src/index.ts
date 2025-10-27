@@ -11,6 +11,13 @@ try {
       service: "Hot Updater Server (Elysia)",
       version: "1.0.0",
     }))
+    .post("/shutdown", async () => {
+      console.log("Shutdown endpoint called");
+      await closeDatabase();
+      app.stop();
+      setTimeout(() => process.exit(0), 100);
+      return { status: "shutting down" };
+    })
     .mount("/hot-updater", hotUpdater.handler)
     .listen(port);
 
