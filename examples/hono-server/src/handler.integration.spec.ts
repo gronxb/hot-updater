@@ -59,7 +59,7 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
       projectRoot,
     });
 
-    await waitForServer(baseUrl);
+    await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
   }, 120000);
 
   afterAll(async () => {
