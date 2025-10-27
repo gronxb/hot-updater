@@ -1,5 +1,13 @@
 # @hot-updater/firebase
 
+## 0.21.2
+
+### Patch Changes
+
+- b72da6e: fix(firebase): find firebase with gcloud
+  - @hot-updater/core@0.21.2
+  - @hot-updater/plugin-core@0.21.2
+
 ## 0.21.1
 
 ### Patch Changes
