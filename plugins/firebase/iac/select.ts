@@ -8,8 +8,6 @@ import {
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
-import { stdin } from "process";
-import { inherits } from "util";
 
 const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
