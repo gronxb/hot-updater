@@ -1,9 +1,9 @@
-import { s3Database, s3Storage } from "@hot-updater/aws";
-import { bare } from "@hot-updater/bare";
-import { config } from "dotenv";
-import { defineConfig } from "hot-updater";
+import {s3Database, s3Storage} from '@hot-updater/aws';
+import {bare} from '@hot-updater/bare';
+import {config} from 'dotenv';
+import {defineConfig} from 'hot-updater';
 
-config({ path: ".env.hotupdater" });
+config({path: '.env.hotupdater'});
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -17,11 +17,12 @@ const commonOptions = {
 };
 
 export default defineConfig({
-  build: bare({ enableHermes: true }),
+  build: bare({enableHermes: true}),
   storage: s3Storage(commonOptions),
   database: s3Database({
     ...commonOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    cloudfrontDistributionId:
+      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  updateStrategy: "appVersion", // or "fingerprint"
+  updateStrategy: 'appVersion', // or "fingerprint"
 });
