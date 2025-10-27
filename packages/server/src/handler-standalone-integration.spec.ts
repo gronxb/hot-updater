@@ -8,7 +8,7 @@ import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { hotUpdater } from "./db";
+import { createHotUpdater } from "./db";
 
 /**
  * Integration tests between @hot-updater/server handler and @hot-updater/standalone repository
@@ -25,7 +25,7 @@ const db = new PGlite();
 const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 
 // Create handler API with in-memory DB
-const api = hotUpdater({
+const api = createHotUpdater({
   database: kyselyAdapter({
     db: kysely,
     provider: "postgresql",
@@ -278,7 +278,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
   it("Works with custom basePath configuration", async () => {
     // Create handler with custom basePath
-    const customApi = hotUpdater({
+    const customApi = createHotUpdater({
       database: kyselyAdapter({
         db: kysely,
         provider: "postgresql",

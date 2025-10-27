@@ -21,6 +21,8 @@ import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
+import { generateDb } from "./commands/generateDb";
+import { migrateDb } from "./commands/migrateDb";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -130,6 +132,26 @@ program
 
     log.info(`Android version: ${androidVersion}`);
     log.info(`iOS version: ${iosVersion}`);
+  });
+
+program
+  .command("generate-db")
+  .description("Generate database migration SQL from schema")
+  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .argument(
+    "[outputDir]",
+    "directory to output generated SQL files (default: hot-updater_migrations)",
+  )
+  .action(async (configPath: string, outputDir?: string) => {
+    await generateDb({ configPath, outputDir });
+  });
+
+program
+  .command("migrate-db")
+  .description("Run database migration")
+  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .action(async (configPath: string) => {
+    await migrateDb({ configPath });
   });
 
 // developing command groups

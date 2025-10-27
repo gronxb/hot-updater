@@ -26,7 +26,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 
-  const api = createHotUpdater({
+  const hotUpdater = createHotUpdater({
     database: kyselyAdapter({
       db: kysely,
       provider: "postgresql",
@@ -58,7 +58,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   beforeAll(async () => {
     // Initialize FumaDB schema to latest (creates tables under the hood)
-    const migrator = api.createMigrator();
+    const migrator = hotUpdater.createMigrator();
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,
@@ -81,9 +81,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   ): Promise<UpdateInfo | null> => {
     // Insert fixtures via the server API to exercise its types + mapping
     for (const b of bundles) {
-      await api.insertBundle(b);
+      await hotUpdater.insertBundle(b);
     }
-    return api.getUpdateInfo(options);
+    return hotUpdater.getUpdateInfo(options);
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
@@ -114,9 +114,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         fingerprintHash: null,
       };
 
-      await api.insertBundle(bundle);
+      await hotUpdater.insertBundle(bundle);
 
-      const updateInfo = await api.getAppUpdateInfo({
+      const updateInfo = await hotUpdater.getAppUpdateInfo({
         appVersion: "1.0.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -144,9 +144,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         fingerprintHash: null,
       };
 
-      await api.insertBundle(bundle);
+      await hotUpdater.insertBundle(bundle);
 
-      const updateInfo = await api.getAppUpdateInfo({
+      const updateInfo = await hotUpdater.getAppUpdateInfo({
         appVersion: "1.0.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -174,9 +174,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         fingerprintHash: null,
       };
 
-      await api.insertBundle(bundle);
+      await hotUpdater.insertBundle(bundle);
 
-      const updateInfo = await api.getAppUpdateInfo({
+      const updateInfo = await hotUpdater.getAppUpdateInfo({
         appVersion: "1.0.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -188,7 +188,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("returns null when no update is available", async () => {
-      const updateInfo = await api.getAppUpdateInfo({
+      const updateInfo = await hotUpdater.getAppUpdateInfo({
         appVersion: "99.0.0",
         bundleId: NIL_UUID,
         platform: "ios",
@@ -213,9 +213,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         fingerprintHash: "fingerprint123",
       };
 
-      await api.insertBundle(bundle);
+      await hotUpdater.insertBundle(bundle);
 
-      const updateInfo = await api.getAppUpdateInfo({
+      const updateInfo = await hotUpdater.getAppUpdateInfo({
         fingerprintHash: "fingerprint123",
         bundleId: NIL_UUID,
         platform: "ios",
