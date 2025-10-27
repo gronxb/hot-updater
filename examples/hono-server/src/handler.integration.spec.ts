@@ -34,18 +34,21 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     baseUrl = `http://localhost:${port}`;
 
     // Run database migrations before starting server
+    const hotUpdaterCli = path.resolve(
+      projectRoot,
+      "../../packages/hot-updater/dist/index.js",
+    );
+
     // First generate SQL migration files
-    await execa("npx", ["hot-updater", "generate-db", "src/db.ts"], {
+    await execa("node", [hotUpdaterCli, "generate-db", "src/db.ts"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
-      input: "y\n",
     });
 
     // Then apply migrations to database
-    await execa("npx", ["hot-updater", "migrate-db", "src/db.ts"], {
+    await execa("node", [hotUpdaterCli, "migrate-db", "src/db.ts"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
-      input: "y\n",
     });
 
     serverProcess = spawnServerProcess({
