@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
+import { execa as execaImport } from "execa";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,19 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
     await fs.mkdir(path.join(projectRoot, "data"), { recursive: true });
 
     baseUrl = `http://localhost:${port}`;
+
+    // Run database migrations before starting server
+    // First generate SQL migration files
+    await execaImport("pnpm", ["exec", "hot-updater", "generate-db", "src/db.ts"], {
+      cwd: projectRoot,
+      env: { TEST_DB_PATH: testDbPath },
+    });
+
+    // Then apply migrations to database
+    await execaImport("pnpm", ["exec", "hot-updater", "migrate-db", "src/db.ts"], {
+      cwd: projectRoot,
+      env: { TEST_DB_PATH: testDbPath },
+    });
 
     serverProcess = spawnServerProcess({
       serverCommand: ["pnpm", "exec", "tsx", "src/index.ts"],

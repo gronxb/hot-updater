@@ -1,20 +1,17 @@
 import { Elysia } from "elysia";
 import { node } from "@elysiajs/node";
-import { closeDatabase, initializeDatabase } from "./db.js";
-import { api } from "./db.js";
+import { closeDatabase, hotUpdater } from "./db.js";
 
 const port = Number(process.env.PORT) || 3001;
 
 try {
-  await initializeDatabase();
-
   const app = new Elysia({ adapter: node() })
     .get("/", () => ({
       status: "ok",
       service: "Hot Updater Server (Elysia)",
       version: "1.0.0",
     }))
-    .mount("/hot-updater", api.handler)
+    .mount("/hot-updater", hotUpdater.handler)
     .listen(port);
 
   console.log(`

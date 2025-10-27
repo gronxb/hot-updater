@@ -150,8 +150,12 @@ program
   .command("migrate-db")
   .description("Run database migration")
   .argument("<configPath>", "path to the config file that exports hotUpdater")
-  .action(async (configPath: string) => {
-    await migrateDb({ configPath });
+  .argument(
+    "[targetDir]",
+    "directory containing SQL migration files (default: hot-updater_migrations)",
+  )
+  .action(async (configPath: string, targetDir?: string) => {
+    await migrateDb({ configPath, targetDir });
   });
 
 // developing command groups

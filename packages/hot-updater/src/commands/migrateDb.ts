@@ -1,21 +1,30 @@
 import { existsSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import * as p from "@clack/prompts";
 import { createJiti } from "jiti";
 
 export interface MigrateDbOptions {
   configPath: string;
+  targetDir?: string;
 }
 
 export async function migrateDb(options: MigrateDbOptions) {
-  const { configPath } = options;
+  const { configPath, targetDir = "hot-updater_migrations" } = options;
 
-  // Resolve absolute path
+  // Resolve absolute paths
   const absoluteConfigPath = path.resolve(process.cwd(), configPath);
+  const absoluteTargetDir = path.resolve(process.cwd(), targetDir);
 
   // Verify config file exists
   if (!existsSync(absoluteConfigPath)) {
     p.log.error(`Config file not found: ${absoluteConfigPath}`);
+    process.exit(1);
+  }
+
+  // Verify target directory exists
+  if (!existsSync(absoluteTargetDir)) {
+    p.log.error(`Target directory not found: ${absoluteTargetDir}`);
     process.exit(1);
   }
 
@@ -54,20 +63,40 @@ export async function migrateDb(options: MigrateDbOptions) {
       process.exit(1);
     }
 
+    // Read SQL files from target directory
+    p.log.step(`Reading SQL files from ${targetDir}`);
+    const files = await readdir(absoluteTargetDir);
+    const sqlFiles = files.filter((file) => file.endsWith(".sql")).sort();
+
+    if (sqlFiles.length === 0) {
+      p.log.warn(`No SQL files found in ${targetDir}`);
+      p.outro("Done");
+      return;
+    }
+
+    p.log.info(`Found ${sqlFiles.length} SQL file(s)`);
+
     // Create migrator
     p.log.step("Creating migrator");
     const migrator = hotUpdater.createMigrator();
 
-    // Run migration
-    p.log.step("Running migration to latest version");
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: true,
-    });
+    // Execute each SQL file
+    for (const sqlFile of sqlFiles) {
+      const filePath = path.join(absoluteTargetDir, sqlFile);
+      p.log.step(`Executing ${sqlFile}`);
 
-    // Execute migration
-    p.log.step("Applying migration to database");
-    await result.execute();
+      const sql = await readFile(filePath, "utf-8");
+
+      // Run migration from SQL
+      const result = await migrator.migrateToLatest({
+        mode: "from-sql",
+        sql,
+        updateSettings: true,
+      });
+
+      await result.execute();
+      p.log.success(`Completed ${sqlFile}`);
+    }
 
     p.outro("Database migration completed successfully");
   } catch (error) {

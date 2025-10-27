@@ -25,8 +25,6 @@ await db.waitReady;
 // Initialize Kysely with PGlite dialect
 const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 
-console.log(process.env.HOT_UPDATER_AWS_REGION);
-
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({
@@ -47,23 +45,6 @@ export const hotUpdater = createHotUpdater({
   ],
   basePath: "/hot-updater",
 });
-
-// Initialize database schema
-export async function initializeDatabase() {
-  console.log("Initializing database schema...");
-  try {
-    const migrator = hotUpdater.createMigrator();
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: true,
-    });
-    await result.execute();
-    console.log("Database schema initialized successfully");
-  } catch (error) {
-    console.error("Database initialization error:", error);
-    throw error;
-  }
-}
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {

@@ -1,7 +1,7 @@
 import { column, idColumn, schema, table } from "fumadb/schema";
 
 export const v1 = schema({
-  version: "1.0.0",
+  version: "0.21.0",
   tables: {
     bundles: table("bundles", {
       id: idColumn("id", "varchar(255)").defaultTo$("auto"),

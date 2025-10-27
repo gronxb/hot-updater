@@ -66,7 +66,7 @@ export async function generateDb(options: GenerateDbOptions) {
     p.log.step("Generating SQL migration");
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
-      updateSettings: false,
+      updateSettings: true,
     });
 
     // Get SQL
