@@ -7,12 +7,11 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import type { execa } from "execa";
 import { afterAll, beforeAll, describe } from "vitest";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs/promises";
-import { execa as execaImport } from "execa";
+import { execa } from "execa";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -36,13 +35,13 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
 
     // Run database migrations before starting server
     // First generate SQL migration files
-    await execaImport("npx", ["hot-updater", "generate-db", "src/db.ts"], {
+    await execa("npx", ["hot-updater", "generate-db", "src/db.ts"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
     });
 
     // Then apply migrations to database
-    await execaImport("npx", ["hot-updater", "migrate-db", "src/db.ts"], {
+    await execa("npx", ["hot-updater", "migrate-db", "src/db.ts"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
     });
