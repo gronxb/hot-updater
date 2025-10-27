@@ -1,5 +1,13 @@
 # @hot-updater/firebase
 
+## 0.21.1
+
+### Patch Changes
+
+- Updated dependencies [7b7bc48]
+  - @hot-updater/plugin-core@0.21.1
+  - @hot-updater/core@0.21.1
+
 ## 1.0.0
 
 ### Minor Changes
