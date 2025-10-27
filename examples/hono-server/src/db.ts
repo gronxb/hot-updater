@@ -28,7 +28,7 @@ const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 console.log(process.env.HOT_UPDATER_AWS_REGION);
 
 // Create Hot Updater API
-export const api = hotUpdater({
+export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({
     db: kysely,
     provider: "postgresql",
@@ -52,7 +52,7 @@ export const api = hotUpdater({
 export async function initializeDatabase() {
   console.log("Initializing database schema...");
   try {
-    const migrator = api.createMigrator();
+    const migrator = hotUpdater.createMigrator();
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,

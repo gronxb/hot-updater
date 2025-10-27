@@ -19,14 +19,14 @@ import {
   it,
   vi,
 } from "vitest";
-import { hotUpdater } from "./index";
+import { createHotUpdater } from "./index";
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
 
   const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 
-  const api = hotUpdater({
+  const api = createHotUpdater({
     database: kyselyAdapter({
       db: kysely,
       provider: "postgresql",

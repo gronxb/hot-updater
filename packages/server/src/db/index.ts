@@ -55,7 +55,7 @@ export interface HotUpdaterOptions {
   cwd?: string;
 }
 
-export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
+export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
   const client = HotUpdaterDB.client(options.database);
   const cwd = options.cwd ?? process.cwd();
 
