@@ -8,6 +8,8 @@ import {
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
+import { stdin } from "process";
+import { inherits } from "util";
 
 const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
@@ -225,6 +227,11 @@ export const initFirebaseUser = async (
       ],
       {
         shell: true,
+        /**
+         * API [firestore.googleapis.com] not enabled on project [xxx]. Would you
+         like to enable and retry (this will take a few minutes)? (y/N)?
+         */
+        input: "N\n",
       },
     );
     const databasesJson = JSON.parse(databases.stdout);

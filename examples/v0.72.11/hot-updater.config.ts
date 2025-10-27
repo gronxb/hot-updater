@@ -1,27 +1,27 @@
-import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
+import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
+import * as admin from "firebase-admin";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
 
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-    // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
-    sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
-  },
-};
+// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+// Check your .env file and add the credentials
+// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
+// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+const credential = admin.credential.applicationDefault();
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage(commonOptions),
-  database: s3Database({
-    ...commonOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  storage: firebaseStorage({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+    credential,
+  }),
+  database: firebaseDatabase({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    credential,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
 });
