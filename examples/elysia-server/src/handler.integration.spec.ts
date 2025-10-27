@@ -36,13 +36,13 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
 
     // Run database migrations before starting server
     // First generate SQL migration files
-    await execaImport("pnpm", ["exec", "hot-updater", "generate-db", "src/db.ts"], {
+    await execaImport("pnpm", ["hot-updater", "generate-db", "src/db.ts"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
     });
 
     // Then apply migrations to database
-    await execaImport("pnpm", ["exec", "hot-updater", "migrate-db", "src/db.ts"], {
+    await execaImport("pnpm", ["hot-updater", "migrate-db", "src/db.ts"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath },
     });
