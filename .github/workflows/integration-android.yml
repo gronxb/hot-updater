@@ -40,6 +40,9 @@ jobs:
       - name: Library Build
         run: pnpm build
 
+      - name: Clean Gradle Cache
+        run: rm -rf ~/.gradle/caches/
+
       - name: Build Android
         run: cd examples/v0.76.1-new-arch/android && ./gradlew clean assembleDebug --build-cache && cd ../..
         env:
@@ -61,6 +64,9 @@ jobs:
 
       - name: Library Build
         run: pnpm build
+
+      - name: Clean Gradle Cache
+        run: rm -rf ~/.gradle/caches/
 
       - name: Build Android
         run: cd examples/v0.72.11/android && ./gradlew clean assembleDebug --build-cache && cd ../..
