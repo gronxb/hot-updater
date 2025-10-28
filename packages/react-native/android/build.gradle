@@ -137,7 +137,7 @@ dependencies {
   implementation("org.apache.commons:commons-compress:1.28.0") {
     exclude group: 'org.apache.commons', module: 'commons-lang3'
   }
-  implementation "org.apache.commons:commons-lang3:3.12.0"
+  implementation "org.apache.commons:commons-lang3:3.18.0"
 }
 
 if (isNewArchitectureEnabled()) {
