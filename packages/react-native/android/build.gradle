@@ -132,20 +132,22 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation "org.brotli:dec:0.1.2"
-  // Version 1.24.0 is the latest version compatible with AGP 7.x used in React Native 0.72.x
-  // Upgrading to 1.25.0+ causes D8 dexing errors with older Android Gradle Plugin versions (AGP < 8.0)
+  // Using commons-compress 1.28.0 which requires excluding the bundled commons-lang3
+  // to avoid conflicts. We explicitly add commons-lang3:3.12.0 separately.
   //
   // If you encounter dependency conflicts with other SDKs requiring different versions:
   // Add this to your app's build.gradle:
   //
   // configurations.all {
   //   resolutionStrategy {
-  //     // Force a version that works with both hot-updater and other SDKs
-  //     force 'org.apache.commons:commons-compress:1.24.0'
-  //     // Or use the version required by your other SDK if compatible
+  //     force 'org.apache.commons:commons-compress:1.28.0'
+  //     force 'org.apache.commons:commons-lang3:3.12.0'
   //   }
   // }
-  implementation "org.apache.commons:commons-compress:1.24.0"
+  implementation("org.apache.commons:commons-compress:1.28.0") {
+    exclude group: 'org.apache.commons', module: 'commons-lang3'
+  }
+  implementation "org.apache.commons:commons-lang3:3.12.0"
 }
 
 if (isNewArchitectureEnabled()) {

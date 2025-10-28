@@ -94,6 +94,17 @@ android {
     compileSdkVersion rootProject.ext.compileSdkVersion
 
     namespace "com.hotupdaterexample"
+
+    // Force commons-compress 1.28.0 and commons-lang3 3.12.0 to work with hot-updater
+    // This is needed because hot-updater uses commons-compress 1.28.0 which requires
+    // excluding the bundled commons-lang3 to avoid conflicts
+    configurations.all {
+        resolutionStrategy {
+            force 'org.apache.commons:commons-compress:1.28.0'
+            force 'org.apache.commons:commons-lang3:3.12.0'
+        }
+    }
+
     defaultConfig {
         applicationId "com.hotupdaterexample"
         minSdkVersion rootProject.ext.minSdkVersion
