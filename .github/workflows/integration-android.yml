@@ -39,7 +39,7 @@ jobs:
         run: pnpm build
 
       - name: Build Android
-        run: cd examples/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
+        run: cd examples/v0.76.1-new-arch/android && ./gradlew clean assembleDebug --build-cache && cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
 
@@ -61,6 +61,6 @@ jobs:
         run: pnpm build
 
       - name: Build Android
-        run: cd examples/v0.72.11/android && ./gradlew assembleDebug --build-cache && cd ../..
+        run: cd examples/v0.72.11/android && ./gradlew clean assembleDebug --build-cache && cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
