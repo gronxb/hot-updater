@@ -132,21 +132,7 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation "org.brotli:dec:0.1.2"
-  // Using commons-compress 1.24.0 for compatibility with Android Gradle Plugin (AGP) 7.x.
-  // Versions 1.25.0+ cause D8 dexing errors with AGP < 8.0.
-  //
-  // If you encounter dependency conflicts with other SDKs requiring different versions
-  // (e.g., "Cannot find a version that satisfies the version constraints"), add this
-  // resolution strategy to your app's build.gradle:
-  //
-  // configurations.all {
-  //   resolutionStrategy {
-  //     // Force a version that works with both hot-updater and your other SDK
-  //     force 'org.apache.commons:commons-compress:1.24.0'
-  //     // Or use the version required by your other SDK if compatible
-  //   }
-  // }
-  implementation "org.apache.commons:commons-compress:1.24.0"
+  implementation "org.apache.commons:commons-compress:1.28.0"
 }
 
 if (isNewArchitectureEnabled()) {
