@@ -132,18 +132,12 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation "org.brotli:dec:0.1.2"
-  // Version 1.24.0 is compatible with older Android Gradle Plugin versions (AGP 7.x)
-  // If you encounter dependency conflicts with other libraries that use {strictly} constraints,
-  // add this to your app's build.gradle to force a specific version:
-  //
-  // configurations.all {
-  //   resolutionStrategy {
-  //     force 'org.apache.commons:commons-compress:1.24.0'
-  //     // Or use a version compatible with your other dependencies:
-  //     // force 'org.apache.commons:commons-compress:1.20'
-  //   }
-  // }
-  implementation "org.apache.commons:commons-compress:1.24.0"
+  // Version 1.28.0 with commons-lang3 exclusion to ensure compatibility with older Android Gradle Plugin versions (AGP 7.x)
+  // The newer commons-lang3 that comes with 1.28.0 causes D8 dexing issues, so we exclude it and force version 3.12.0
+  implementation("org.apache.commons:commons-compress:1.28.0") {
+    exclude group: 'org.apache.commons', module: 'commons-lang3'
+  }
+  implementation "org.apache.commons:commons-lang3:3.12.0"
 }
 
 if (isNewArchitectureEnabled()) {
