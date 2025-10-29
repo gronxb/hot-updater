@@ -7,7 +7,7 @@ import { createJiti } from "jiti";
 import path from "path";
 import { format } from "sql-formatter";
 
-export interface GenerateDbOptions {
+export interface GenerateOptions {
   configPath: string;
   outputDir?: string;
   skipConfirm?: boolean;
@@ -17,7 +17,7 @@ interface HotUpdaterInstance {
   createMigrator: () => Migrator;
 }
 
-export async function generateDb(options: GenerateDbOptions) {
+export async function generate(options: GenerateOptions) {
   const {
     configPath,
     outputDir = "hot-updater_migrations",
@@ -34,11 +34,8 @@ export async function generateDb(options: GenerateDbOptions) {
     process.exit(1);
   }
 
-  p.intro("Generating database migrations");
-
   try {
     // Load config file using jiti
-    p.log.step(`Loading configuration from ${configPath}`);
     const jiti = createJiti(import.meta.url, { interopDefault: true });
 
     let moduleExports: Record<string, unknown>;
@@ -125,11 +122,9 @@ export async function generateDb(options: GenerateDbOptions) {
     }
 
     // Create migrator
-    p.log.step("Creating migrator");
     const migrator = hotUpdater.createMigrator();
 
     // Generate migration
-    p.log.step("Generating SQL migration");
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,
@@ -147,13 +142,11 @@ export async function generateDb(options: GenerateDbOptions) {
     const sql = result.getSQL();
 
     if (!sql || sql.trim() === "") {
-      p.log.warn("No migrations generated - schema is already up to date");
-      p.outro("Done");
+      p.log.warn("No migrations needed - schema is up to date");
       return;
     }
 
     // Format SQL for better readability
-    p.log.step("Formatting SQL");
     const formattedSql = format(sql, {
       language: "postgresql",
       tabWidth: 2,
@@ -161,11 +154,9 @@ export async function generateDb(options: GenerateDbOptions) {
     });
 
     // Create output directory
-    p.log.step(`Creating output directory: ${outputDir}`);
     await mkdir(absoluteOutputDir, { recursive: true });
 
     // Check for duplicate SQL files using MD5 hash
-    p.log.step("Checking for existing migrations");
     const newSqlHash = createHash("md5").update(formattedSql).digest("hex");
 
     try {
@@ -213,10 +204,9 @@ export async function generateDb(options: GenerateDbOptions) {
     }
 
     // Write SQL file
-    p.log.step(`Writing SQL to ${filename}`);
     await writeFile(outputPath, formattedSql, "utf-8");
 
-    p.outro(`Migration file generated successfully: ${outputPath}`);
+    p.log.success(`Migration file created: ${filename}`);
   } catch (error) {
     p.log.error("Failed to generate migrations");
     if (error instanceof Error) {

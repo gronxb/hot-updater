@@ -14,7 +14,7 @@ import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
 import { createHandler } from "../handler";
-import { v1 } from "../schema/v1";
+import { v1, v2 } from "../schema/v1";
 import type { PaginationInfo } from "../types";
 
 export const HotUpdaterDB = fumadb({
@@ -45,6 +45,8 @@ export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
   createMigrator: () => ReturnType<HotUpdaterClient["createMigrator"]>;
 };
+
+export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
 
 export type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
 

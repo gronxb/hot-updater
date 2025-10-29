@@ -21,8 +21,8 @@ import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
-import { generateDb } from "./commands/generateDb";
-import { migrateDb } from "./commands/migrateDb";
+import { generate } from "./commands/generate";
+import { migrate } from "./commands/migrate";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -134,14 +134,27 @@ program
     log.info(`iOS version: ${iosVersion}`);
   });
 
-program
-  .command("generate-db")
-  .description("Generate database migration SQL from schema")
+// Database migration commands
+const dbCommand = program
+  .command("db")
+  .description("Database migration commands");
+
+// db migrate - Primary migration command (always to latest)
+dbCommand
+  .command("migrate")
+  .description("Run database migration (creates tables directly in database)")
   .argument("<configPath>", "path to the config file that exports hotUpdater")
-  .argument(
-    "[outputDir]",
-    "directory to output generated SQL files (default: hot-updater_migrations)",
-  )
+  .option("-y, --yes", "skip confirmation prompt", false)
+  .action(async (configPath: string, options: { yes: boolean }) => {
+    await migrate({ configPath, skipConfirm: options.yes });
+  });
+
+// db generate - SQL generation command
+dbCommand
+  .command("generate")
+  .description("Generate SQL migration file (does not execute)")
+  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .argument("[outputDir]", "output directory (default: hot-updater_migrations)")
   .option("-y, --yes", "skip confirmation prompt", false)
   .action(
     async (
@@ -149,26 +162,7 @@ program
       outputDir: string | undefined,
       options: { yes: boolean },
     ) => {
-      await generateDb({ configPath, outputDir, skipConfirm: options.yes });
-    },
-  );
-
-program
-  .command("migrate-db")
-  .description("Run database migration")
-  .argument("<configPath>", "path to the config file that exports hotUpdater")
-  .argument(
-    "[targetDir]",
-    "directory containing SQL migration files (default: hot-updater_migrations)",
-  )
-  .option("-y, --yes", "skip confirmation prompt", false)
-  .action(
-    async (
-      configPath: string,
-      targetDir: string | undefined,
-      options: { yes: boolean },
-    ) => {
-      await migrateDb({ configPath, targetDir, skipConfirm: options.yes });
+      await generate({ configPath, outputDir, skipConfirm: options.yes });
     },
   );
 
