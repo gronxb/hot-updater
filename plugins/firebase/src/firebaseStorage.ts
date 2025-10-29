@@ -1,12 +1,13 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  getContentType,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 import fs from "fs/promises";
-import mime from "mime";
 import path from "path";
 
 export interface FirebaseStorageConfig extends admin.AppOptions {
@@ -31,29 +32,32 @@ export const firebaseStorage =
     const getStorageKey = createStorageKeyBuilder(config.basePath);
     return {
       name: "firebaseStorage",
-      async deleteBundle(bundleId) {
-        const key = getStorageKey(bundleId, "bundle.zip");
+      supportedProtocol: "gs",
+      async delete(storageUri) {
+        const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
+        if (bucketName !== config.storageBucket) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.storageBucket}", but found "${bucketName}".`,
+          );
+        }
+
         try {
           const [files] = await bucket.getFiles({ prefix: key });
           await Promise.all(files.map((file) => file.delete()));
-          return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
-          };
         } catch (e) {
           console.error("Error listing or deleting files:", e);
           throw new Error("Bundle Not Found");
         }
       },
 
-      async uploadBundle(bundleId, bundlePath) {
+      async upload(key, filePath) {
         try {
-          const fileContent = await fs.readFile(bundlePath);
-          const contentType =
-            mime.getType(bundlePath) ?? "application/octet-stream";
-          const filename = path.basename(bundlePath);
-          const key = getStorageKey(bundleId, filename);
+          const fileContent = await fs.readFile(filePath);
+          const contentType = getContentType(filePath);
+          const filename = path.basename(filePath);
+          const storageKey = getStorageKey(key, filename);
 
-          const file = bucket.file(key);
+          const file = bucket.file(storageKey);
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
@@ -63,7 +67,7 @@ export const firebaseStorage =
           hooks?.onStorageUploaded?.();
 
           return {
-            storageUri: `gs://${config.storageBucket}/${key}`,
+            storageUri: `gs://${config.storageBucket}/${storageKey}`,
           };
         } catch (error) {
           console.error("Error uploading bundle:", error);
@@ -72,6 +76,26 @@ export const firebaseStorage =
           }
           throw error;
         }
+      },
+      async getDownloadUrl(storageUri: string) {
+        // Simple validation: supported protocol must match
+        const u = new URL(storageUri);
+        if (u.protocol.replace(":", "") !== "gs") {
+          throw new Error("Invalid Firebase storage URI protocol");
+        }
+        const key = u.pathname.slice(1);
+        if (!key) {
+          throw new Error("Invalid Firebase storage URI: missing key");
+        }
+        const file = bucket.file(key);
+        const [signedUrl] = await file.getSignedUrl({
+          action: "read",
+          expires: Date.now() + 60 * 60 * 1000,
+        });
+        if (!signedUrl) {
+          throw new Error("Failed to generate download URL");
+        }
+        return { fileUrl: signedUrl };
       },
     };
   };

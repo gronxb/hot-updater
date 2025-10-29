@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/supabase",
   "type": "module",
-  "version": "0.20.14",
+  "version": "0.21.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -19,7 +19,8 @@
       "types": "./dist/iac/index.d.ts",
       "import": "./dist/iac/index.js",
       "require": "./dist/iac/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -46,7 +47,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@supabase/supabase-js": "^2.47.10"
+    "@supabase/supabase-js": "^2.76.1"
   },
   "devDependencies": {
     "@clack/prompts": "catalog:",
@@ -54,6 +55,7 @@
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:",
+    "@types/node": "catalog:",
     "mime": "^4.0.4",
     "picocolors": "catalog:"
   }

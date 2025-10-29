@@ -1707,4 +1707,342 @@ describe("blobDatabase plugin", () => {
       "/api/check-update/app-version/ios/1/production/*",
     );
   });
+
+  describe("targetAppVersion with spaces (semver ranges)", () => {
+    it("should normalize targetAppVersion with spaces when creating bundle", async () => {
+      // Setup: Create bundle with targetAppVersion containing spaces
+      const bundle = createBundleJson(
+        "production",
+        "ios",
+        ">= 10.7.0",
+        "space-normalization-test",
+      );
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      // Assert: Key should be created without spaces
+      const normalizedKey = "production/ios/>=10.7.0/update.json";
+      expect(fakeStore[normalizedKey]).toBeDefined();
+
+      // Verify the bundle is stored correctly
+      const storedBundles = JSON.parse(fakeStore[normalizedKey]);
+      expect(storedBundles).toHaveLength(1);
+      expect(storedBundles[0].id).toBe("space-normalization-test");
+    });
+
+    it("should normalize targetAppVersion with multiple spaces", async () => {
+      // Test with extra spaces
+      const bundle = createBundleJson(
+        "production",
+        "android",
+        ">  1.0.0   <   2.0.0",
+        "multi-space-test",
+      );
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      // Assert: Spaces within comparators should be removed, but space between
+      // different comparators must be preserved for valid semver syntax
+      const normalizedKey = "production/android/>1.0.0 <2.0.0/update.json";
+      expect(fakeStore[normalizedKey]).toBeDefined();
+    });
+
+    it("should generate correct CloudFront invalidation paths for semver ranges with spaces", async () => {
+      const bundle = createBundleJson(
+        "production",
+        "ios",
+        ">= 10.7.0",
+        "cloudfront-space-test",
+      );
+
+      cloudfrontInvalidations.length = 0;
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      const invalidatedPaths = cloudfrontInvalidations.flatMap(
+        (inv) => inv.paths,
+      );
+
+      // Should invalidate the normalized key (URI encoded: >= becomes %3E=)
+      expect(invalidatedPaths).toContain(
+        "/production/ios/%3E=10.7.0/update.json",
+      );
+
+      // Should invalidate app-version path (since it's not an exact version)
+      expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+    });
+
+    it("should handle update operation with space-containing targetAppVersion", async () => {
+      // Initial: exact version
+      const initialBundle = createBundleJson(
+        "production",
+        "ios",
+        "1.0.0",
+        "update-space-test",
+      );
+
+      await plugin.appendBundle(initialBundle);
+      await plugin.commitBundle();
+
+      cloudfrontInvalidations.length = 0;
+
+      // Update to semver range with spaces
+      await plugin.updateBundle("update-space-test", {
+        targetAppVersion: "> 2.0.0",
+      });
+      await plugin.commitBundle();
+
+      // Assert: Should move to normalized path
+      const oldKey = "production/ios/1.0.0/update.json";
+      const newKey = "production/ios/>2.0.0/update.json";
+
+      expect(fakeStore[newKey]).toBeDefined();
+      const newBundles = JSON.parse(fakeStore[newKey]);
+      expect(newBundles[0].id).toBe("update-space-test");
+
+      // Old key should be removed (no bundles left)
+      expect(fakeStore[oldKey]).toBeUndefined();
+    });
+
+    it("should handle delete operation with space-containing targetAppVersion", async () => {
+      const bundle = createBundleJson(
+        "production",
+        "android",
+        "<= 5.0.0",
+        "delete-space-test",
+      );
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      const bundleKey = "production/android/<=5.0.0/update.json";
+      expect(fakeStore[bundleKey]).toBeDefined();
+
+      cloudfrontInvalidations.length = 0;
+
+      // Delete the bundle
+      await plugin.deleteBundle(bundle);
+      await plugin.commitBundle();
+
+      // Assert: Bundle should be deleted
+      expect(fakeStore[bundleKey]).toBeUndefined();
+
+      // Should invalidate correct paths (URI encoded: <= becomes %3C=)
+      const invalidatedPaths = cloudfrontInvalidations.flatMap(
+        (inv) => inv.paths,
+      );
+      expect(invalidatedPaths).toContain(
+        "/production/android/%3C=5.0.0/update.json",
+      );
+      expect(invalidatedPaths).toContain(
+        "/api/check-update/app-version/android/*",
+      );
+    });
+
+    it("should handle various semver range formats with spaces", async () => {
+      const testCases = [
+        { version: "> 1.0.0", normalized: ">1.0.0" },
+        { version: "< 2.0.0", normalized: "<2.0.0" },
+        { version: ">= 1.0.0", normalized: ">=1.0.0" },
+        { version: "<= 2.0.0", normalized: "<=2.0.0" },
+        { version: "~  1.0.0", normalized: "~1.0.0" },
+        { version: "^  2.0.0", normalized: "^2.0.0" },
+      ];
+
+      for (const [index, { version }] of testCases.entries()) {
+        const bundle = createBundleJson(
+          "production",
+          "ios",
+          version,
+          `format-test-${index}`,
+        );
+
+        await plugin.appendBundle(bundle);
+      }
+
+      await plugin.commitBundle();
+
+      // Verify all bundles were stored with normalized keys
+      for (const { normalized } of testCases) {
+        const key = `production/ios/${normalized}/update.json`;
+        expect(fakeStore[key]).toBeDefined();
+      }
+    });
+
+    it("should handle getBundleById with space-containing targetAppVersion", async () => {
+      const bundle = createBundleJson(
+        "production",
+        "ios",
+        ">= 3.0.0",
+        "getbyid-space-test",
+      );
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      // Should be able to retrieve the bundle by ID
+      const fetchedBundle = await plugin.getBundleById("getbyid-space-test");
+      expect(fetchedBundle).toBeTruthy();
+      expect(fetchedBundle?.targetAppVersion).toBe(">= 3.0.0");
+    });
+
+    it("should handle getBundles filtering with space-containing targetAppVersion", async () => {
+      const bundle1 = createBundleJson(
+        "production",
+        "ios",
+        ">= 3.0.0",
+        "filter-test-1",
+      );
+      const bundle2 = createBundleJson(
+        "production",
+        "ios",
+        "1.0.0",
+        "filter-test-2",
+      );
+
+      await plugin.appendBundle(bundle1);
+      await plugin.appendBundle(bundle2);
+      await plugin.commitBundle();
+
+      const result = await plugin.getBundles({
+        where: { platform: "ios", channel: "production" },
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(result.data).toHaveLength(2);
+      const ids = result.data.map((b) => b.id);
+      expect(ids).toContain("filter-test-1");
+      expect(ids).toContain("filter-test-2");
+    });
+
+    it("should update target-app-versions.json correctly with normalized paths", async () => {
+      const bundle = createBundleJson(
+        "production",
+        "ios",
+        ">= 10.7.0",
+        "target-versions-test",
+      );
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      // Check target-app-versions.json
+      const targetVersionsKey = "production/ios/target-app-versions.json";
+      const versions = JSON.parse(fakeStore[targetVersionsKey]);
+
+      // Should contain the normalized version
+      expect(versions).toContain(">=10.7.0");
+    });
+
+    it("should handle channel migration with space-containing targetAppVersion", async () => {
+      const bundle = createBundleJson(
+        "beta",
+        "ios",
+        ">= 5.0.0",
+        "channel-migration-space-test",
+      );
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      cloudfrontInvalidations.length = 0;
+
+      // Migrate to production channel
+      await plugin.updateBundle("channel-migration-space-test", {
+        channel: "production",
+      });
+      await plugin.commitBundle();
+
+      // Assert: Bundle should be in new channel with normalized path
+      const newKey = "production/ios/>=5.0.0/update.json";
+      expect(fakeStore[newKey]).toBeDefined();
+
+      const newBundles = JSON.parse(fakeStore[newKey]);
+      expect(newBundles[0].id).toBe("channel-migration-space-test");
+      expect(newBundles[0].channel).toBe("production");
+
+      // Old channel should not have the bundle
+      const oldKey = "beta/ios/>=5.0.0/update.json";
+      const oldBundles = JSON.parse(fakeStore[oldKey] || "[]");
+      expect(oldBundles).toHaveLength(0);
+
+      // Should invalidate both old and new paths (URI encoded: >= becomes %3E=)
+      const invalidatedPaths = cloudfrontInvalidations.flatMap(
+        (inv) => inv.paths,
+      );
+      expect(invalidatedPaths).toContain("/beta/ios/%3E=5.0.0/update.json");
+      expect(invalidatedPaths).toContain(
+        "/production/ios/%3E=5.0.0/update.json",
+      );
+    });
+
+    it("should handle mixed bundles (with and without spaces) in same channel", async () => {
+      const bundle1 = createBundleJson(
+        "production",
+        "ios",
+        "1.0.0",
+        "mixed-exact",
+      );
+      const bundle2 = createBundleJson(
+        "production",
+        "ios",
+        ">= 2.0.0",
+        "mixed-range",
+      );
+
+      await plugin.appendBundle(bundle1);
+      await plugin.appendBundle(bundle2);
+      await plugin.commitBundle();
+
+      // Both should be stored in their respective keys
+      expect(fakeStore["production/ios/1.0.0/update.json"]).toBeDefined();
+      expect(fakeStore["production/ios/>=2.0.0/update.json"]).toBeDefined();
+
+      // getBundles should return both
+      const result = await plugin.getBundles({
+        where: { platform: "ios", channel: "production" },
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(result.data).toHaveLength(2);
+      const ids = result.data.map((b) => b.id);
+      expect(ids).toContain("mixed-exact");
+      expect(ids).toContain("mixed-range");
+    });
+
+    it("should encode normalized paths for CloudFront invalidation", async () => {
+      // Test that special characters in normalized versions are properly encoded
+      const bundle = createBundleJson(
+        "production",
+        "ios",
+        ">= 1.0.0 < 2.0.0",
+        "encoding-test",
+      );
+
+      cloudfrontInvalidations.length = 0;
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      const invalidatedPaths = cloudfrontInvalidations.flatMap(
+        (inv) => inv.paths,
+      );
+
+      // Paths should be URI encoded
+      // After normalization: ">=1.0.0 <2.0.0" (space between comparators preserved)
+      // After encoding: "%3E=1.0.0%20%3C2.0.0" (space becomes %20)
+      const encodedUpdateJsonPath = invalidatedPaths.find((path) =>
+        path.includes("update.json"),
+      );
+      expect(encodedUpdateJsonPath).toBeTruthy();
+      // encodeURI encodes < and > but not =
+      expect(encodedUpdateJsonPath).toContain("%3E");
+      expect(encodedUpdateJsonPath).toContain("%3C");
+    });
+  });
 });
