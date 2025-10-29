@@ -1,5 +1,12 @@
 # @hot-updater/test-utils
 
+## 0.21.4
+
+### Patch Changes
+
+- 5d3070a: fix(aws): semver bounded range matching bug (#632)
+  - @hot-updater/core@0.21.4
+
 ## 0.21.3
 
 ### Patch Changes

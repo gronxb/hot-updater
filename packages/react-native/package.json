@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "0.21.3",
+  "version": "0.21.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
