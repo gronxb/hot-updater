@@ -278,27 +278,37 @@ export async function migrate(options: MigrateOptions) {
     );
 
     // Generate migration to check what changes will be made
+    const s = p.spinner();
+    s.start("Analyzing schema changes");
+
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,
     });
+
+    s.stop("Analysis complete");
 
     // Check if there are any operations to perform
     const operations = (result as { operations?: MigrationOperation[] })
       .operations;
 
     if (!operations || operations.length === 0) {
-      p.log.info("No changes needed");
+      p.log.info("No changes needed - schema is up to date");
       return;
     }
 
     // Format operations into human-readable changes
     const changes = formatOperations(operations);
-    if (changes.length > 0) {
-      p.log.step("Changes to apply:");
-      for (const change of changes) {
-        p.log.info(`  ${change}`);
-      }
+
+    // Double-check: if operations exist but produce no changes, schema is up to date
+    if (changes.length === 0) {
+      p.log.info("No changes needed - schema is up to date");
+      return;
+    }
+
+    p.log.step("Changes to apply:");
+    for (const change of changes) {
+      p.log.info(`  ${change}`);
     }
 
     // Confirmation

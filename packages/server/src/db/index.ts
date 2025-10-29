@@ -19,7 +19,7 @@ import type { PaginationInfo } from "../types";
 
 export const HotUpdaterDB = fumadb({
   namespace: "hot-updater",
-  schemas: [v1],
+  schemas: [v1, v2],
 });
 
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;

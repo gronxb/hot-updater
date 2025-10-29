@@ -125,10 +125,15 @@ export async function generate(options: GenerateOptions) {
     const migrator = hotUpdater.createMigrator();
 
     // Generate migration
+    const s = p.spinner();
+    s.start("Analyzing schema changes");
+
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,
     });
+
+    s.stop("Analysis complete");
 
     // Get SQL
     if (!result.getSQL) {
@@ -142,7 +147,7 @@ export async function generate(options: GenerateOptions) {
     const sql = result.getSQL();
 
     if (!sql || sql.trim() === "") {
-      p.log.warn("No migrations needed - schema is up to date");
+      p.log.info("No changes needed - schema is up to date");
       return;
     }
 
