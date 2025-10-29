@@ -78,6 +78,7 @@
     "@babel/types": "7.26.0",
     "@hono/node-server": "^1.13.4",
     "@hot-updater/aws": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
@@ -116,6 +117,9 @@
       "optional": true
     },
     "@hot-updater/firebase": {
+      "optional": true
+    },
+    "@hot-updater/server": {
       "optional": true
     }
   }

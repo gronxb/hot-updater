@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import type { Migrator } from "@hot-updater/server";
 import { createHash } from "crypto";
 import { existsSync } from "fs";
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
@@ -10,6 +11,10 @@ export interface GenerateDbOptions {
   configPath: string;
   outputDir?: string;
   skipConfirm?: boolean;
+}
+
+interface HotUpdaterInstance {
+  createMigrator: () => Migrator;
 }
 
 export async function generateDb(options: GenerateDbOptions) {
@@ -89,7 +94,8 @@ export async function generateDb(options: GenerateDbOptions) {
     }
 
     // Extract hotUpdater instance
-    const hotUpdater = moduleExports["hotUpdater"] || moduleExports["default"];
+    const hotUpdater = (moduleExports["hotUpdater"] ||
+      moduleExports["default"]) as HotUpdaterInstance | undefined;
 
     if (!hotUpdater) {
       p.log.error(
