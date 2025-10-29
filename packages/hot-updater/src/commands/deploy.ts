@@ -346,7 +346,7 @@ export const deploy = async (options: DeployOptions) => {
               gitCommitHash,
               message: options?.message ?? gitMessage,
               id: bundleId,
-              enabled: options.disabled ? false : true,
+              enabled: !options.disabled,
               channel,
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
