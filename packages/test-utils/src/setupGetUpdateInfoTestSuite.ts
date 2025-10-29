@@ -984,6 +984,27 @@ export const setupGetUpdateInfoTestSuite = ({
         status: "UPDATE",
       });
     });
+
+    it("returns null for bounded range >= 5.7.0 <= 5.7.4 with app version 5.7.5 (Issue #632)", async () => {
+      const bundles: Bundle[] = [
+        {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: ">= 5.7.0 <= 5.7.4",
+          enabled: true,
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+        },
+      ];
+
+      const update = await getUpdateInfo(bundles, {
+        appVersion: "5.7.5",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      });
+
+      expect(update).toBeNull();
+    });
   });
 
   describe("fingerprint strategy", () => {
