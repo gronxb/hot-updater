@@ -15,13 +15,34 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   return pureBundle;
 }
 
-// Helper function to normalize targetAppVersion by removing all whitespace
+// Helper function to normalize targetAppVersion for use as a storage key
+// while preserving spaces between different semver comparators.
+//
+// For semver ranges with multiple comparators (e.g., ">= 5.7.0 <= 5.7.4"),
+// spaces between the comparators are REQUIRED by npm/semver to parse correctly.
+// Without the space, ">=5.7.0<=5.7.4" is invalid semver syntax.
+//
+// This function:
+// 1. Removes spaces within a comparator (">= 5.7.0" → ">=5.7.0")
+// 2. Preserves single spaces between different comparators (">=5.7.0 <=5.7.4")
+// 3. Normalizes multiple spaces to single spaces
 function normalizeTargetAppVersion(
   version: string | null | undefined,
 ): string | null {
   if (!version) return null;
-  // Remove all whitespace characters (spaces, tabs, newlines, etc.)
-  return version.replace(/\s+/g, "");
+
+  // First, normalize multiple whitespace to single spaces and trim
+  let normalized = version.replace(/\s+/g, " ").trim();
+
+  // Remove spaces between operators and version numbers within each comparator
+  // Matches: operator (>=, <=, >, <, =, ~, ^) followed by optional space and version
+  // This turns ">= 5.7.0" into ">=5.7.0" while keeping space between comparators
+  normalized = normalized.replace(
+    /([><=~^]+)\s+(\d)/g,
+    (_match, operator, digit) => `${operator}${digit}`,
+  );
+
+  return normalized;
 }
 
 // Helper function to check if a version string is an exact version (not a range)

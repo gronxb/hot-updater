@@ -1743,8 +1743,9 @@ describe("blobDatabase plugin", () => {
       await plugin.appendBundle(bundle);
       await plugin.commitBundle();
 
-      // Assert: All spaces should be removed
-      const normalizedKey = "production/android/>1.0.0<2.0.0/update.json";
+      // Assert: Spaces within comparators should be removed, but space between
+      // different comparators must be preserved for valid semver syntax
+      const normalizedKey = "production/android/>1.0.0 <2.0.0/update.json";
       expect(fakeStore[normalizedKey]).toBeDefined();
     });
 
@@ -2032,9 +2033,9 @@ describe("blobDatabase plugin", () => {
         (inv) => inv.paths,
       );
 
-      // Paths should be URI encoded (>= becomes %3E%3D, spaces are removed first)
-      // After normalization: ">=1.0.0<2.0.0"
-      // After encoding: "%3E=1.0.0%3C2.0.0"
+      // Paths should be URI encoded
+      // After normalization: ">=1.0.0 <2.0.0" (space between comparators preserved)
+      // After encoding: "%3E=1.0.0%20%3C2.0.0" (space becomes %20)
       const encodedUpdateJsonPath = invalidatedPaths.find((path) =>
         path.includes("update.json"),
       );
