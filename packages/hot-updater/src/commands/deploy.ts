@@ -39,6 +39,7 @@ export interface DeployOptions {
   forceUpdate: boolean;
   interactive: boolean;
   message?: string;
+  disabled?: boolean;
   platform?: Platform;
   targetAppVersion?: string;
 }
@@ -345,7 +346,7 @@ export const deploy = async (options: DeployOptions) => {
               gitCommitHash,
               message: options?.message ?? gitMessage,
               id: bundleId,
-              enabled: true,
+              enabled: options.disabled ? false : true,
               channel,
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
