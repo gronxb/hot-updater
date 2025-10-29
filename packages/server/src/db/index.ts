@@ -14,12 +14,12 @@ import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
 import { createHandler } from "../handler";
-import { v1 } from "../schema/v1";
+import { v0_21_0 } from "../schema/v0_21_0";
 import type { PaginationInfo } from "../types";
 
 export const HotUpdaterDB = fumadb({
   namespace: "hot-updater",
-  schemas: [v1],
+  schemas: [v0_21_0],
 });
 
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
@@ -46,6 +46,8 @@ export type HotUpdaterAPI = DatabaseAPI & {
   createMigrator: () => ReturnType<HotUpdaterClient["createMigrator"]>;
 };
 
+export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
+
 export type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
 
 export interface HotUpdaterOptions {
@@ -55,7 +57,7 @@ export interface HotUpdaterOptions {
   cwd?: string;
 }
 
-export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
+export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
   const client = HotUpdaterDB.client(options.database);
   const cwd = options.cwd ?? process.cwd();
 

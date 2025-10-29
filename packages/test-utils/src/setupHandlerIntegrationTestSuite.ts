@@ -178,20 +178,54 @@ export function spawnServerProcess(options: {
  * Cleans up server process and test database
  */
 export async function cleanupServer(
+  baseUrl: string,
   serverProcess: ReturnType<typeof execa> | null,
   testDbPath: string,
 ): Promise<void> {
-  // Kill server process
+  // 1. Call shutdown endpoint to gracefully close database
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    await fetch(`${baseUrl}/shutdown`, {
+      method: "POST",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    // Wait for server to shut down gracefully
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } catch (error) {
+    // Shutdown endpoint failed, will fallback to SIGTERM
+    console.warn("Shutdown endpoint failed:", error);
+  }
+
+  // 2. If process is still alive, force kill it
   if (serverProcess) {
-    serverProcess.kill("SIGTERM");
     try {
-      await serverProcess;
+      serverProcess.kill("SIGTERM");
+
+      // Wait up to 5 seconds for graceful shutdown
+      await Promise.race([
+        serverProcess,
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]);
     } catch {
-      // Process was killed, expected
+      // If still running, force kill
+      try {
+        serverProcess.kill("SIGKILL");
+        await serverProcess.catch(() => {});
+      } catch {
+        // Process already dead
+      }
     }
   }
 
-  // Clean up test database
+  // 3. Wait for database file locks to be released
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // 4. Clean up test database
   try {
     await fs.rm(testDbPath, { recursive: true, force: true });
   } catch {

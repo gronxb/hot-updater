@@ -7,11 +7,11 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import type { execa } from "execa";
 import { afterAll, beforeAll, describe } from "vitest";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import fs from "node:fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs/promises";
+import { execa } from "execa";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -33,19 +33,36 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
 
     baseUrl = `http://localhost:${port}`;
 
+    // Run database migrations before starting server
+    const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
+    const hotUpdaterCli = path.join(
+      path.dirname(hotUpdaterPkgPath),
+      "dist/index.js",
+    );
+
+    // Then apply migrations to database
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_DB_PATH: testDbPath },
+      },
+    );
+
     serverProcess = spawnServerProcess({
-      serverCommand: ["pnpm", "exec", "tsx", "src/index.ts"],
+      serverCommand: ["npx", "tsx", "src/index.ts"],
       port,
       testDbPath,
       projectRoot,
     });
 
-    await waitForServer(baseUrl);
+    await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
   }, 60000);
 
   afterAll(async () => {
-    await cleanupServer(serverProcess, testDbPath);
-  });
+    await cleanupServer(baseUrl, serverProcess, testDbPath);
+  }, 60000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
     bundles,

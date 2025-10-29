@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { closeDatabase, initializeDatabase } from "./db.js";
+import { closeDatabase } from "./db.js";
 import routes from "./routes.js";
 
 const app = new Hono();
@@ -20,15 +20,21 @@ app.get("/", (c) => {
   });
 });
 
+// Shutdown endpoint for tests
+app.post("/shutdown", async (c) => {
+  console.log("Shutdown endpoint called");
+  await closeDatabase();
+  setTimeout(() => process.exit(0), 100);
+  return c.json({ status: "shutting down" });
+});
+
 // Mount API routes
 app.route("/", routes);
 
-// Initialize database and start server
+// Start server
 const port = Number(process.env.PORT) || 3000;
 
 try {
-  await initializeDatabase();
-
   serve(
     {
       fetch: app.fetch,

@@ -1,13 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
-import { hotUpdater } from "@hot-updater/server";
+import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +26,7 @@ await db.waitReady;
 const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 
 // Create Hot Updater API
-export const api = hotUpdater({
+export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({
     db: kysely,
     provider: "postgresql",
@@ -45,23 +45,6 @@ export const api = hotUpdater({
   ],
   basePath: "/hot-updater",
 });
-
-// Initialize database schema
-export async function initializeDatabase() {
-  console.log("Initializing database schema...");
-  try {
-    const migrator = api.createMigrator();
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: true,
-    });
-    await result.execute();
-    console.log("Database schema initialized successfully");
-  } catch (error) {
-    console.error("Database initialization error:", error);
-    throw error;
-  }
-}
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {
