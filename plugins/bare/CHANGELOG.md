@@ -1,5 +1,12 @@
 # @hot-updater/bare
 
+## 0.21.4
+
+### Patch Changes
+
+- Updated dependencies [5d3070a]
+  - @hot-updater/plugin-core@0.21.4
+
 ## 0.21.3
 
 ### Patch Changes
