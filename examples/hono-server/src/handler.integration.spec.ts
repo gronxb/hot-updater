@@ -40,17 +40,15 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
       "dist/index.js",
     );
 
-    // First generate SQL migration files
-    await execa("node", [hotUpdaterCli, "generate-db", "src/db.ts", "--yes"], {
-      cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath },
-    });
-
     // Then apply migrations to database
-    await execa("node", [hotUpdaterCli, "migrate-db", "src/db.ts", "--yes"], {
-      cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath },
-    });
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_DB_PATH: testDbPath },
+      },
+    );
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
