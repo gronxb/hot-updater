@@ -35,6 +35,10 @@ export async function generate(options: GenerateOptions) {
   }
 
   try {
+    // Start spinner early to show progress during config loading
+    const s = p.spinner();
+    s.start("Loading configuration and analyzing schema");
+
     // Load config file using jiti
     const jiti = createJiti(import.meta.url, { interopDefault: true });
 
@@ -45,6 +49,7 @@ export async function generate(options: GenerateOptions) {
         unknown
       >;
     } catch (importError) {
+      s.stop("Failed to load configuration");
       const errorMessage =
         importError instanceof Error
           ? importError.message
@@ -95,6 +100,7 @@ export async function generate(options: GenerateOptions) {
       moduleExports["default"]) as HotUpdaterInstance | undefined;
 
     if (!hotUpdater) {
+      s.stop("Configuration validation failed");
       p.log.error(
         'Could not find "hotUpdater" export in the config file.\n\n' +
           "Your config file should export a hotUpdater instance:\n\n" +
@@ -114,6 +120,7 @@ export async function generate(options: GenerateOptions) {
       !("createMigrator" in hotUpdater) ||
       typeof hotUpdater.createMigrator !== "function"
     ) {
+      s.stop("Configuration validation failed");
       p.log.error(
         "The hotUpdater instance does not have a createMigrator() method. " +
           "Please ensure you're using @hot-updater/server's createHotUpdater().",
@@ -125,9 +132,6 @@ export async function generate(options: GenerateOptions) {
     const migrator = hotUpdater.createMigrator();
 
     // Generate migration
-    const s = p.spinner();
-    s.start("Analyzing schema changes");
-
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,

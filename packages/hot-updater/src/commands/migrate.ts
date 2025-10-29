@@ -65,12 +65,16 @@ function formatOperations(operations: MigrationOperation[]): string[] {
                 type: col.type ?? "unknown",
               };
             })
-            .filter((col): col is { name: string; type: string } => col !== null);
+            .filter(
+              (col): col is { name: string; type: string } => col !== null,
+            );
 
           if (columns.length > 0) {
             changes.push("  Columns:");
             // Calculate max column name length for alignment
-            const maxNameLength = Math.max(...columns.map((c) => c.name.length));
+            const maxNameLength = Math.max(
+              ...columns.map((c) => c.name.length),
+            );
             for (const col of columns) {
               const paddedName = col.name.padEnd(maxNameLength);
               changes.push(
@@ -105,9 +109,7 @@ function formatOperations(operations: MigrationOperation[]): string[] {
               case "create-column": {
                 const colName = colOp.value?.ormName ?? "unknown";
                 const colType = colOp.value?.type;
-                const colInfo = colType
-                  ? `${colName}: ${colType}`
-                  : colName;
+                const colInfo = colType ? `${colName}: ${colType}` : colName;
                 changes.push(`Add column: ${tableName}.${colInfo}`);
                 break;
               }
@@ -122,9 +124,7 @@ function formatOperations(operations: MigrationOperation[]): string[] {
               case "update-column": {
                 const colName = colOp.name;
                 const colType = colOp.value?.type;
-                const colInfo = colType
-                  ? `${colName}: ${colType}`
-                  : colName;
+                const colInfo = colType ? `${colName}: ${colType}` : colName;
                 changes.push(`Update column: ${tableName}.${colInfo}`);
                 break;
               }
@@ -180,6 +180,10 @@ export async function migrate(options: MigrateOptions) {
   }
 
   try {
+    // Start spinner early to show progress during config loading
+    const s = p.spinner();
+    s.start("Loading configuration and analyzing schema");
+
     // Load config file using jiti
     const jiti = createJiti(import.meta.url, { interopDefault: true });
 
@@ -190,6 +194,7 @@ export async function migrate(options: MigrateOptions) {
         unknown
       >;
     } catch (importError) {
+      s.stop("Failed to load configuration");
       const errorMessage =
         importError instanceof Error
           ? importError.message
@@ -240,6 +245,7 @@ export async function migrate(options: MigrateOptions) {
       moduleExports["default"]) as HotUpdaterInstance | undefined;
 
     if (!hotUpdater) {
+      s.stop("Configuration validation failed");
       p.log.error(
         'Could not find "hotUpdater" export in the config file.\n\n' +
           "Your config file should export a hotUpdater instance:\n\n" +
@@ -259,6 +265,7 @@ export async function migrate(options: MigrateOptions) {
       !("createMigrator" in hotUpdater) ||
       typeof hotUpdater.createMigrator !== "function"
     ) {
+      s.stop("Configuration validation failed");
       p.log.error(
         "The hotUpdater instance does not have a createMigrator() method. " +
           "Please ensure you're using @hot-updater/server's createHotUpdater().",
@@ -271,22 +278,21 @@ export async function migrate(options: MigrateOptions) {
 
     // Get current version
     const currentVersion = await migrator.getVersion();
-    p.log.info(
-      currentVersion
-        ? `Current version: ${currentVersion}`
-        : "Database is empty (initial migration)",
-    );
 
     // Generate migration to check what changes will be made
-    const s = p.spinner();
-    s.start("Analyzing schema changes");
-
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,
     });
 
     s.stop("Analysis complete");
+
+    // Show current version after analysis
+    p.log.info(
+      currentVersion
+        ? `Current version: ${currentVersion}`
+        : "Database is empty (initial migration)",
+    );
 
     // Check if there are any operations to perform
     const operations = (result as { operations?: MigrationOperation[] })
