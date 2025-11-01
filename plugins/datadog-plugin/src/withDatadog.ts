@@ -43,7 +43,7 @@ export const withDatadog =
             recursive: true,
           });
 
-          const javascriptBundleFilename = `index.${args.platform}.bundle`;
+          const javascriptBundleFilename = args.platform === 'ios' ? 'main.jsbundle' : `index.${args.platform}.bundle`;
           const javascriptBundleSourcemapFilename = `${javascriptBundleFilename}.map`;
           const hermesBundleFilename = `${javascriptBundleFilename}.hbc`;
           const hermesBundleSourcemapFilename = `${javascriptBundleFilename}.hbc.map`;
