@@ -2,4 +2,4 @@
 "hot-updater": patch
 ---
 
-feat(cli): es-git to DLY
+chore(cli): replace es-git with native Git commands 
