@@ -1,12 +1,12 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { mongodbAdapter } from "@hot-updater/server/adapters/mongodb";
+import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 import { db, closeDatabase as closeMongo } from "./mongodb";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  database: mongodbAdapter({
+  database: mongoAdapter({
     db,
   }),
   storagePlugins: [
