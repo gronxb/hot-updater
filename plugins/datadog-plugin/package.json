@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/datadog-plugin",
-  "version": "0.21.4",
+  "version": "0.21.5",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
