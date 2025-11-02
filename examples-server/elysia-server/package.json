@@ -17,12 +17,9 @@
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@libsql/client": "^0.15.15",
-    "@prisma/client": "^6.4.1",
-    "@sinclair/typebox": "^0.34.15",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.44.7",
     "elysia": "^1.2.17",
-    "fumadb": "^0.1.1",
     "memoirist": "^0.4.0"
   },
   "devDependencies": {

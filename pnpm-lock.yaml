@@ -104,12 +104,6 @@ importers:
       '@libsql/client':
         specifier: ^0.15.15
         version: 0.15.15
-      '@prisma/client':
-        specifier: ^6.4.1
-        version: 6.18.0(prisma@6.18.0(typescript@5.8.3))(typescript@5.8.3)
-      '@sinclair/typebox':
-        specifier: ^0.34.15
-        version: 0.34.41
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
@@ -119,9 +113,6 @@ importers:
       elysia:
         specifier: ^1.2.17
         version: 1.4.13(@sinclair/typebox@0.34.41)(exact-mirror@0.2.2(@sinclair/typebox@0.34.41))(file-type@21.0.0)(openapi-types@12.1.3)(typescript@5.8.3)
-      fumadb:
-        specifier: ^0.1.1
-        version: 0.1.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.8.3))(typescript@5.8.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(pg@8.13.1)(prisma@6.18.0(typescript@5.8.3)))(prisma@6.18.0(typescript@5.8.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))
       memoirist:
         specifier: ^0.4.0
         version: 0.4.0
@@ -166,7 +157,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
       '@prisma/client':
-        specifier: ^6.4.1
+        specifier: ^6.18.0
         version: 6.18.0(prisma@6.18.0(typescript@5.8.3))(typescript@5.8.3)
       cors:
         specifier: ^2.8.5
@@ -177,9 +168,6 @@ importers:
       express:
         specifier: ^4.21.2
         version: 4.21.2
-      fumadb:
-        specifier: ^0.1.1
-        version: 0.1.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.8.3))(typescript@5.8.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(pg@8.13.1)(prisma@6.18.0(typescript@5.8.3)))(prisma@6.18.0(typescript@5.8.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))
     devDependencies:
       '@hot-updater/test-utils':
         specifier: workspace:*
@@ -232,9 +220,6 @@ importers:
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
-      fumadb:
-        specifier: ^0.1.1
-        version: 0.1.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.8.3))(typescript@5.8.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(pg@8.13.1)(prisma@6.18.0(typescript@5.8.3)))(prisma@6.18.0(typescript@5.8.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))
       hono:
         specifier: ^4.9.12
         version: 4.10.3
