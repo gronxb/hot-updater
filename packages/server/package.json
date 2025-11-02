@@ -57,6 +57,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "fumadb": "0.1.2",
+    "rou3": "0.7.9",
     "semver": "^7.7.2"
   },
   "devDependencies": {
