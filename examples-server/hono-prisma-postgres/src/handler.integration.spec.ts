@@ -34,7 +34,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     baseUrl = `http://localhost:${port}`;
 
     // Ensure Docker Compose is running
-    await execa("docker-compose", ["up", "-d"], {
+    await execa("docker", ["compose", "up", "-d"], {
       cwd: projectRoot,
     });
 
