@@ -1,17 +1,15 @@
 import * as p from "@clack/prompts";
 import type { Migrator } from "@hot-updater/server";
-import { existsSync } from "fs";
-import { createJiti } from "jiti";
-import path from "path";
 import pc from "picocolors";
+import {
+  showMigrateUnsupportedError,
+  validateMigratorSupport,
+} from "./utils/adapter-strategies";
+import { loadHotUpdater } from "./utils/load-hot-updater";
 
 export interface MigrateOptions {
   configPath: string;
   skipConfirm?: boolean;
-}
-
-interface HotUpdaterInstance {
-  createMigrator: () => Migrator;
 }
 
 /**
@@ -170,171 +168,38 @@ function formatOperations(operations: MigrationOperation[]): string[] {
 export async function migrate(options: MigrateOptions) {
   const { configPath, skipConfirm = false } = options;
 
-  // Resolve absolute path
-  const absoluteConfigPath = path.resolve(process.cwd(), configPath);
-
-  // Verify config file exists
-  if (!existsSync(absoluteConfigPath)) {
-    p.log.error(`Config file not found: ${absoluteConfigPath}`);
-    process.exit(1);
-  }
-
   try {
     // Start spinner early to show progress during config loading
     const s = p.spinner();
     s.start("Loading configuration and analyzing schema");
 
-    // Load config file using jiti
-    const jiti = createJiti(import.meta.url, { interopDefault: true });
+    // Load hotUpdater instance from config file
+    const { hotUpdater, adapterName } = await loadHotUpdater(configPath);
 
-    let moduleExports: Record<string, unknown>;
-    try {
-      moduleExports = (await jiti.import(absoluteConfigPath)) as Record<
-        string,
-        unknown
-      >;
-    } catch (importError) {
-      s.stop("Failed to load configuration");
-      const errorMessage =
-        importError instanceof Error
-          ? importError.message
-          : String(importError);
+    // Execute migration based on adapter type
+    switch (adapterName) {
+      case "kysely":
+      case "mongodb":
+        // Use createMigrator to run migrations
+        await migrateWithMigrator(hotUpdater, skipConfirm, s);
+        break;
 
-      if (errorMessage.includes("is not a function")) {
+      case "drizzle":
+      case "prisma":
+      case "typeorm":
+        // These adapters have their own migration systems
+        s.stop("Migration not supported");
+        showMigrateUnsupportedError(adapterName);
+        break;
+
+      default:
+        s.stop("Unknown adapter");
         p.log.error(
-          "Failed to load the config file due to an import error.\n" +
-            "This usually happens when:\n" +
-            "  1. '@hot-updater/server' package is not installed\n" +
-            "  2. The import statement is incorrect\n\n" +
-            "Solutions:\n" +
-            "  • Run: pnpm install @hot-updater/server\n" +
-            "  • Verify your import: import { createHotUpdater } from '@hot-updater/server'\n" +
-            "  • Ensure you're exporting: export const hotUpdater = createHotUpdater({...})",
+          `Unknown adapter: ${adapterName}. Migration is not supported.`,
         );
-      } else if (
-        errorMessage.includes("Cannot find module") ||
-        errorMessage.includes("Cannot find package")
-      ) {
-        p.log.error(
-          "Failed to load required dependencies.\n\n" +
-            "Please run: pnpm install\n\n" +
-            "If the error persists, check that all packages in your config file are installed.",
-        );
-      } else {
-        p.log.error(
-          `Failed to load configuration file: ${errorMessage}\n\n` +
-            "Please check:\n" +
-            "  • The config file syntax is valid TypeScript/JavaScript\n" +
-            "  • All imported packages are installed\n" +
-            "  • The file path is correct",
-        );
-      }
-
-      if (process.env["DEBUG"]) {
-        console.error("\nDetailed error:");
-        console.error(importError);
-      } else {
-        p.log.info("Run with DEBUG=1 for more details");
-      }
-
-      process.exit(1);
+        process.exit(1);
+        break;
     }
-
-    // Extract hotUpdater instance
-    const hotUpdater = (moduleExports["hotUpdater"] ||
-      moduleExports["default"]) as HotUpdaterInstance | undefined;
-
-    if (!hotUpdater) {
-      s.stop("Configuration validation failed");
-      p.log.error(
-        'Could not find "hotUpdater" export in the config file.\n\n' +
-          "Your config file should export a hotUpdater instance:\n\n" +
-          "  import { createHotUpdater } from '@hot-updater/server';\n" +
-          "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
-          "  export const hotUpdater = createHotUpdater({\n" +
-          "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
-          "    storagePlugins: [...],\n" +
-          "  });",
-      );
-      process.exit(1);
-    }
-
-    // Verify hotUpdater has createMigrator method
-    if (
-      typeof hotUpdater !== "object" ||
-      !("createMigrator" in hotUpdater) ||
-      typeof hotUpdater.createMigrator !== "function"
-    ) {
-      s.stop("Configuration validation failed");
-      p.log.error(
-        "The hotUpdater instance does not have a createMigrator() method. " +
-          "Please ensure you're using @hot-updater/server's createHotUpdater().",
-      );
-      process.exit(1);
-    }
-
-    // Create migrator
-    const migrator = hotUpdater.createMigrator();
-
-    // Get current version
-    const currentVersion = await migrator.getVersion();
-
-    // Generate migration to check what changes will be made
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: true,
-    });
-
-    s.stop("Analysis complete");
-
-    // Show current version after analysis
-    p.log.info(
-      currentVersion
-        ? `Current version: ${currentVersion}`
-        : "Database is empty (initial migration)",
-    );
-
-    // Check if there are any operations to perform
-    const operations = (result as { operations?: MigrationOperation[] })
-      .operations;
-
-    if (!operations || operations.length === 0) {
-      p.log.info("No changes needed - schema is up to date");
-      return;
-    }
-
-    // Format operations into human-readable changes
-    const changes = formatOperations(operations);
-
-    // Double-check: if operations exist but produce no changes, schema is up to date
-    if (changes.length === 0) {
-      p.log.info("No changes needed - schema is up to date");
-      return;
-    }
-
-    p.log.step("Changes to apply:");
-    for (const change of changes) {
-      p.log.info(`  ${change}`);
-    }
-
-    // Confirmation
-    if (!skipConfirm) {
-      const shouldContinue = await p.confirm({
-        message: "Apply these changes?",
-        initialValue: true,
-      });
-
-      if (p.isCancel(shouldContinue) || !shouldContinue) {
-        p.cancel("Migration cancelled");
-        process.exit(0);
-      }
-    }
-
-    // Execute migration
-    await result.execute();
-
-    const newVersion = await migrator.getVersion();
-    p.log.success(`Migrated to version ${newVersion}`);
   } catch (error) {
     p.log.error("Failed to run migration");
     if (error instanceof Error) {
@@ -345,4 +210,78 @@ export async function migrate(options: MigrateOptions) {
     }
     process.exit(1);
   }
+}
+
+/**
+ * Run migrations using createMigrator (for kysely/mongodb)
+ */
+async function migrateWithMigrator(
+  hotUpdater: { createMigrator?: () => Migrator; adapterName: string },
+  skipConfirm: boolean,
+  s: ReturnType<typeof p.spinner>,
+) {
+  validateMigratorSupport(hotUpdater, hotUpdater.adapterName);
+
+  // Create migrator
+  const migrator = hotUpdater.createMigrator!();
+
+  // Get current version
+  const currentVersion = await migrator.getVersion();
+
+  // Generate migration to check what changes will be made
+  const result = await migrator.migrateToLatest({
+    mode: "from-schema",
+    updateSettings: true,
+  });
+
+  s.stop("Analysis complete");
+
+  // Show current version after analysis
+  p.log.info(
+    currentVersion
+      ? `Current version: ${currentVersion}`
+      : "Database is empty (initial migration)",
+  );
+
+  // Check if there are any operations to perform
+  const operations = (result as { operations?: MigrationOperation[] })
+    .operations;
+
+  if (!operations || operations.length === 0) {
+    p.log.info("No changes needed - schema is up to date");
+    return;
+  }
+
+  // Format operations into human-readable changes
+  const changes = formatOperations(operations);
+
+  // Double-check: if operations exist but produce no changes, schema is up to date
+  if (changes.length === 0) {
+    p.log.info("No changes needed - schema is up to date");
+    return;
+  }
+
+  p.log.step("Changes to apply:");
+  for (const change of changes) {
+    p.log.info(`  ${change}`);
+  }
+
+  // Confirmation
+  if (!skipConfirm) {
+    const shouldContinue = await p.confirm({
+      message: "Apply these changes?",
+      initialValue: true,
+    });
+
+    if (p.isCancel(shouldContinue) || !shouldContinue) {
+      p.cancel("Migration cancelled");
+      process.exit(0);
+    }
+  }
+
+  // Execute migration
+  await result.execute();
+
+  const newVersion = await migrator.getVersion();
+  p.log.success(`Migrated to version ${newVersion}`);
 }

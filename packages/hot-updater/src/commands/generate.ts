@@ -1,11 +1,14 @@
 import * as p from "@clack/prompts";
 import type { Migrator } from "@hot-updater/server";
 import { createHash } from "crypto";
-import { existsSync } from "fs";
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
-import { createJiti } from "jiti";
 import path from "path";
 import { format } from "sql-formatter";
+import {
+  validateMigratorSupport,
+  validateSchemaGeneratorSupport,
+} from "./utils/adapter-strategies";
+import { loadHotUpdater } from "./utils/load-hot-updater";
 
 export interface GenerateOptions {
   configPath: string;
@@ -13,211 +16,68 @@ export interface GenerateOptions {
   skipConfirm?: boolean;
 }
 
-interface HotUpdaterInstance {
-  createMigrator: () => Migrator;
-}
-
 export async function generate(options: GenerateOptions) {
-  const {
-    configPath,
-    outputDir = "hot-updater_migrations",
-    skipConfirm = false,
-  } = options;
-
-  // Resolve absolute paths
-  const absoluteConfigPath = path.resolve(process.cwd(), configPath);
-  const absoluteOutputDir = path.resolve(process.cwd(), outputDir);
-
-  // Verify config file exists
-  if (!existsSync(absoluteConfigPath)) {
-    p.log.error(`Config file not found: ${absoluteConfigPath}`);
-    process.exit(1);
-  }
+  const { configPath, outputDir = undefined, skipConfirm = false } = options;
 
   try {
     // Start spinner early to show progress during config loading
     const s = p.spinner();
     s.start("Loading configuration and analyzing schema");
 
-    // Load config file using jiti
-    const jiti = createJiti(import.meta.url, { interopDefault: true });
+    // Load hotUpdater instance from config file
+    const { hotUpdater, adapterName } = await loadHotUpdater(configPath);
 
-    let moduleExports: Record<string, unknown>;
-    try {
-      moduleExports = (await jiti.import(absoluteConfigPath)) as Record<
-        string,
-        unknown
-      >;
-    } catch (importError) {
-      s.stop("Failed to load configuration");
-      const errorMessage =
-        importError instanceof Error
-          ? importError.message
-          : String(importError);
+    // Set default outputDir based on adapter type
+    const defaultOutputDir =
+      adapterName === "kysely" || adapterName === "mongodb"
+        ? "hot-updater_migrations" // SQL migrations
+        : "."; // Schema files
 
-      if (errorMessage.includes("is not a function")) {
-        p.log.error(
-          "Failed to load the config file due to an import error.\n" +
-            "This usually happens when:\n" +
-            "  1. '@hot-updater/server' package is not installed\n" +
-            "  2. The import statement is incorrect\n\n" +
-            "Solutions:\n" +
-            "  • Run: pnpm install @hot-updater/server\n" +
-            "  • Verify your import: import { createHotUpdater } from '@hot-updater/server'\n" +
-            "  • Ensure you're exporting: export const hotUpdater = createHotUpdater({...})",
+    const finalOutputDir = outputDir || defaultOutputDir;
+    const absoluteOutputDir = path.resolve(process.cwd(), finalOutputDir);
+
+    // Execute generation based on adapter type
+    switch (adapterName) {
+      case "kysely":
+      case "mongodb":
+        // Use createMigrator to generate SQL migration files
+        await generateWithMigrator(
+          hotUpdater,
+          absoluteOutputDir,
+          skipConfirm,
+          s,
         );
-      } else if (
-        errorMessage.includes("Cannot find module") ||
-        errorMessage.includes("Cannot find package")
-      ) {
-        p.log.error(
-          "Failed to load required dependencies.\n\n" +
-            "Please run: pnpm install\n\n" +
-            "If the error persists, check that all packages in your config file are installed.",
+        break;
+
+      case "drizzle":
+      case "prisma":
+      case "typeorm":
+        // Use generateSchema to generate TypeScript schema files
+        await generateWithSchemaGenerator(
+          hotUpdater,
+          adapterName,
+          absoluteOutputDir,
+          skipConfirm,
+          s,
         );
-      } else {
-        p.log.error(
-          `Failed to load configuration file: ${errorMessage}\n\n` +
-            "Please check:\n" +
-            "  • The config file syntax is valid TypeScript/JavaScript\n" +
-            "  • All imported packages are installed\n" +
-            "  • The file path is correct",
+        break;
+
+      default:
+        s.stop("Unknown adapter");
+        p.log.warn(
+          `Unknown adapter: ${adapterName}. Attempting to use schema generation.`,
         );
-      }
-
-      if (process.env["DEBUG"]) {
-        console.error("\nDetailed error:");
-        console.error(importError);
-      } else {
-        p.log.info("Run with DEBUG=1 for more details");
-      }
-
-      process.exit(1);
+        await generateWithSchemaGenerator(
+          hotUpdater,
+          adapterName,
+          absoluteOutputDir,
+          skipConfirm,
+          s,
+        );
+        break;
     }
-
-    // Extract hotUpdater instance
-    const hotUpdater = (moduleExports["hotUpdater"] ||
-      moduleExports["default"]) as HotUpdaterInstance | undefined;
-
-    if (!hotUpdater) {
-      s.stop("Configuration validation failed");
-      p.log.error(
-        'Could not find "hotUpdater" export in the config file.\n\n' +
-          "Your config file should export a hotUpdater instance:\n\n" +
-          "  import { createHotUpdater } from '@hot-updater/server';\n" +
-          "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
-          "  export const hotUpdater = createHotUpdater({\n" +
-          "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
-          "    storagePlugins: [...],\n" +
-          "  });",
-      );
-      process.exit(1);
-    }
-
-    // Verify hotUpdater has createMigrator method
-    if (
-      typeof hotUpdater !== "object" ||
-      !("createMigrator" in hotUpdater) ||
-      typeof hotUpdater.createMigrator !== "function"
-    ) {
-      s.stop("Configuration validation failed");
-      p.log.error(
-        "The hotUpdater instance does not have a createMigrator() method. " +
-          "Please ensure you're using @hot-updater/server's createHotUpdater().",
-      );
-      process.exit(1);
-    }
-
-    // Create migrator
-    const migrator = hotUpdater.createMigrator();
-
-    // Generate migration
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: true,
-    });
-
-    s.stop("Analysis complete");
-
-    // Get SQL
-    if (!result.getSQL) {
-      p.log.error(
-        "Migration result does not support SQL generation. " +
-          "This may happen if you're not using an SQL-based database adapter.",
-      );
-      process.exit(1);
-    }
-
-    const sql = result.getSQL();
-
-    if (!sql || sql.trim() === "") {
-      p.log.info("No changes needed - schema is up to date");
-      return;
-    }
-
-    // Format SQL for better readability
-    const formattedSql = format(sql, {
-      language: "postgresql",
-      tabWidth: 2,
-      keywordCase: "upper",
-    });
-
-    // Create output directory
-    await mkdir(absoluteOutputDir, { recursive: true });
-
-    // Check for duplicate SQL files using MD5 hash
-    const newSqlHash = createHash("md5").update(formattedSql).digest("hex");
-
-    try {
-      const files = await readdir(absoluteOutputDir);
-      const sqlFiles = files.filter((file) => file.endsWith(".sql"));
-
-      for (const file of sqlFiles) {
-        const filePath = path.join(absoluteOutputDir, file);
-        const existingContent = await readFile(filePath, "utf-8");
-        const existingHash = createHash("md5")
-          .update(existingContent)
-          .digest("hex");
-
-        if (existingHash === newSqlHash) {
-          p.log.warn(
-            `Identical migration already exists: ${file}\nNo new migration file created.`,
-          );
-          p.outro("Done");
-          return;
-        }
-      }
-    } catch {
-      // Directory doesn't exist yet or can't be read, continue with file creation
-    }
-
-    // Generate filename with timestamp (YYYY-MM-DDTHH-MM-SS format)
-    const timestamp = new Date()
-      .toISOString()
-      .split(".")[0]
-      ?.replace(/:/g, "-");
-    const filename = `migration_${timestamp}.sql`;
-    const outputPath = path.join(absoluteOutputDir, filename);
-
-    // Confirm before writing SQL file
-    if (!skipConfirm) {
-      const shouldContinue = await p.confirm({
-        message: `Generate migration file: ${filename}?`,
-        initialValue: true,
-      });
-
-      if (p.isCancel(shouldContinue) || !shouldContinue) {
-        p.cancel("Operation cancelled");
-        process.exit(0);
-      }
-    }
-
-    // Write SQL file
-    await writeFile(outputPath, formattedSql, "utf-8");
-
-    p.log.success(`Migration file created: ${filename}`);
   } catch (error) {
-    p.log.error("Failed to generate migrations");
+    p.log.error("Failed to generate");
     if (error instanceof Error) {
       p.log.error(error.message);
       if (process.env["DEBUG"]) {
@@ -226,4 +86,187 @@ export async function generate(options: GenerateOptions) {
     }
     process.exit(1);
   }
+}
+
+/**
+ * Generate SQL migration files using createMigrator (for kysely/mongodb)
+ */
+async function generateWithMigrator(
+  hotUpdater: { createMigrator?: () => Migrator; adapterName: string },
+  absoluteOutputDir: string,
+  skipConfirm: boolean,
+  s: ReturnType<typeof p.spinner>,
+) {
+  validateMigratorSupport(hotUpdater, hotUpdater.adapterName);
+
+  // Create migrator
+  const migrator = hotUpdater.createMigrator!();
+
+  // Generate migration
+  const result = await migrator.migrateToLatest({
+    mode: "from-schema",
+    updateSettings: true,
+  });
+
+  s.stop("Analysis complete");
+
+  // Get SQL
+  if (!result.getSQL) {
+    p.log.error(
+      "Migration result does not support SQL generation. " +
+        "This may happen if you're not using an SQL-based database adapter.",
+    );
+    process.exit(1);
+  }
+
+  const sql = result.getSQL();
+
+  if (!sql || sql.trim() === "") {
+    p.log.info("No changes needed - schema is up to date");
+    return;
+  }
+
+  // Format SQL for better readability
+  const formattedSql = format(sql, {
+    language: "postgresql",
+    tabWidth: 2,
+    keywordCase: "upper",
+  });
+
+  // Create output directory
+  await mkdir(absoluteOutputDir, { recursive: true });
+
+  // Check for duplicate SQL files using MD5 hash
+  const newSqlHash = createHash("md5").update(formattedSql).digest("hex");
+
+  try {
+    const files = await readdir(absoluteOutputDir);
+    const sqlFiles = files.filter((file) => file.endsWith(".sql"));
+
+    for (const file of sqlFiles) {
+      const filePath = path.join(absoluteOutputDir, file);
+      const existingContent = await readFile(filePath, "utf-8");
+      const existingHash = createHash("md5")
+        .update(existingContent)
+        .digest("hex");
+
+      if (existingHash === newSqlHash) {
+        p.log.warn(
+          `Identical migration already exists: ${file}\nNo new migration file created.`,
+        );
+        p.outro("Done");
+        return;
+      }
+    }
+  } catch {
+    // Directory doesn't exist yet or can't be read, continue with file creation
+  }
+
+  // Generate filename with timestamp (YYYY-MM-DDTHH-MM-SS format)
+  const timestamp = new Date().toISOString().split(".")[0]?.replace(/:/g, "-");
+  const filename = `migration_${timestamp}.sql`;
+  const outputPath = path.join(absoluteOutputDir, filename);
+
+  // Confirm before writing SQL file
+  if (!skipConfirm) {
+    const shouldContinue = await p.confirm({
+      message: `Generate migration file: ${filename}?`,
+      initialValue: true,
+    });
+
+    if (p.isCancel(shouldContinue) || !shouldContinue) {
+      p.cancel("Operation cancelled");
+      process.exit(0);
+    }
+  }
+
+  // Write SQL file
+  await writeFile(outputPath, formattedSql, "utf-8");
+
+  p.log.success(`Migration file created: ${filename}`);
+}
+
+/**
+ * Generate TypeScript schema files using generateSchema (for drizzle/prisma/typeorm)
+ */
+async function generateWithSchemaGenerator(
+  hotUpdater: {
+    generateSchema?: (
+      version: string | "latest",
+      name?: string,
+    ) => {
+      code: string;
+      path: string;
+    };
+    adapterName: string;
+  },
+  adapterName: string,
+  absoluteOutputDir: string,
+  skipConfirm: boolean,
+  s: ReturnType<typeof p.spinner>,
+) {
+  validateSchemaGeneratorSupport(hotUpdater, adapterName);
+
+  // Generate schema
+  const schemaResult = hotUpdater.generateSchema!("latest");
+
+  s.stop("Analysis complete");
+
+  const schemaCode = schemaResult.code;
+
+  if (!schemaCode || schemaCode.trim() === "") {
+    p.log.info("No schema generated");
+    return;
+  }
+
+  // Create output directory
+  await mkdir(absoluteOutputDir, { recursive: true });
+
+  // Check for duplicate schema files using MD5 hash
+  const newSchemaHash = createHash("md5").update(schemaCode).digest("hex");
+
+  try {
+    const files = await readdir(absoluteOutputDir);
+    const schemaFiles = files.filter((file) => file.endsWith(".ts"));
+
+    for (const file of schemaFiles) {
+      const filePath = path.join(absoluteOutputDir, file);
+      const existingContent = await readFile(filePath, "utf-8");
+      const existingHash = createHash("md5")
+        .update(existingContent)
+        .digest("hex");
+
+      if (existingHash === newSchemaHash) {
+        p.log.warn(
+          `Identical schema already exists: ${file}\nNo new schema file created.`,
+        );
+        p.outro("Done");
+        return;
+      }
+    }
+  } catch {
+    // Directory doesn't exist yet or can't be read, continue with file creation
+  }
+
+  // Use fixed filename for schema files
+  const filename = "hot-updater-schema.ts";
+  const outputPath = path.join(absoluteOutputDir, filename);
+
+  // Confirm before writing schema file
+  if (!skipConfirm) {
+    const shouldContinue = await p.confirm({
+      message: `Generate schema file: ${filename}?`,
+      initialValue: true,
+    });
+
+    if (p.isCancel(shouldContinue) || !shouldContinue) {
+      p.cancel("Operation cancelled");
+      process.exit(0);
+    }
+  }
+
+  // Write schema file
+  await writeFile(outputPath, schemaCode, "utf-8");
+
+  p.log.success(`Schema file created: ${filename}`);
 }

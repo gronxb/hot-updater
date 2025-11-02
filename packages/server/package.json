@@ -52,7 +52,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "fumadb": "0.1.1",
+    "fumadb": "0.1.2",
     "semver": "^7.7.2"
   },
   "devDependencies": {

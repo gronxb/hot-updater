@@ -6,7 +6,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "npx hot-updater db generate src/db.ts --yes",
+    "db:push": "npx drizzle-kit push"
   },
   "dependencies": {
     "@elysiajs/node": "^1.0.3",

@@ -2,10 +2,12 @@ import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { createClient } from "@libsql/client";
 import { config } from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { drizzle } from "drizzle-orm/libsql";
+import * as schema from "../hot-updater-schema";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,7 +20,15 @@ const dbPath =
   process.env.TEST_DB_PATH ||
   path.join(process.cwd(), "data", "hot-updater.db");
 
-const db = drizzle(`file:${dbPath}`);
+const client = createClient({
+  url: `file:${dbPath}`,
+});
+
+const db = drizzle(client, {
+  casing: "snake_case",
+  logger: false,
+  schema,
+});
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
@@ -40,8 +50,6 @@ export const hotUpdater = createHotUpdater({
   ],
   basePath: "/hot-updater",
 });
-
-console.log(hotUpdater.generateSchema("latest").code);
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {}

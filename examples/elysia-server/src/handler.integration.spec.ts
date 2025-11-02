@@ -40,15 +40,21 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       "dist/index.js",
     );
 
-    // Apply migrations to database
+    // Generate Drizzle schema from hotUpdater instance
     await execa(
       "node",
-      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      [hotUpdaterCli, "db", "generate", "src/db.ts", "--yes"],
       {
         cwd: projectRoot,
         env: { TEST_DB_PATH: testDbPath },
       },
     );
+
+    // Apply schema to database using drizzle-kit
+    await execa("npx", ["drizzle-kit", "push"], {
+      cwd: projectRoot,
+      env: { TEST_DB_PATH: testDbPath },
+    });
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
