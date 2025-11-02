@@ -20,7 +20,7 @@ export const appVersionStrategy = async (
   }: AppVersionGetBundlesArgs,
 ) => {
   const sqlGetTargetAppVersionList = minify(`
-    SELECT target_app_version 
+    SELECT target_app_version
     FROM get_target_app_version_list($1, $2);
   `);
 
@@ -50,6 +50,8 @@ export const appVersionStrategy = async (
     should_force_update: boolean;
     message: string;
     status: string;
+    storage_uri: string | null;
+    file_hash: string | null;
   }>(sqlGetUpdateInfo, [
     platform,
     appVersion,

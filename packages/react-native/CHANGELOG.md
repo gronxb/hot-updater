@@ -1,5 +1,92 @@
 # @hot-updater/react-native
 
+## 0.21.4
+
+### Patch Changes
+
+- Updated dependencies [5d3070a]
+  - @hot-updater/plugin-core@0.21.4
+  - hot-updater@0.21.4
+  - @hot-updater/js@0.21.4
+  - @hot-updater/core@0.21.4
+
+## 0.21.3
+
+### Patch Changes
+
+- c1125b4: chore(android): bump org.apache.commons:commons-compress:1.28.0
+  - hot-updater@0.21.3
+  - @hot-updater/core@0.21.3
+  - @hot-updater/js@0.21.3
+  - @hot-updater/plugin-core@0.21.3
+
+## 0.21.2
+
+### Patch Changes
+
+- hot-updater@0.21.2
+- @hot-updater/core@0.21.2
+- @hot-updater/js@0.21.2
+- @hot-updater/plugin-core@0.21.2
+
+## 0.21.1
+
+### Patch Changes
+
+- Updated dependencies [7b7bc48]
+  - @hot-updater/plugin-core@0.21.1
+  - hot-updater@0.21.1
+  - @hot-updater/core@0.21.1
+  - @hot-updater/js@0.21.1
+
+## 1.0.0
+
+### Minor Changes
+
+- 610b2dd: feat: supports `compressStrategy` => `tar.br` (brotli) / `tar.gz` (gzip)
+- afb084b: feat: validate bundle file with fileHash
+
+### Patch Changes
+
+- Updated dependencies [610b2dd]
+- Updated dependencies [afb084b]
+- Updated dependencies [036f8f0]
+  - hot-updater@1.0.0
+  - @hot-updater/plugin-core@1.0.0
+  - @hot-updater/core@1.0.0
+  - @hot-updater/js@1.0.0
+
+## 0.20.15
+
+### Patch Changes
+
+- Updated dependencies [526a5ba]
+- Updated dependencies [ddf6f2c]
+  - @hot-updater/plugin-core@0.20.15
+  - hot-updater@0.20.15
+  - @hot-updater/core@0.20.15
+  - @hot-updater/js@0.20.15
+
+## 0.20.14
+
+### Patch Changes
+
+- Updated dependencies [a61fa0e]
+  - @hot-updater/plugin-core@0.20.14
+  - hot-updater@0.20.14
+  - @hot-updater/core@0.20.14
+  - @hot-updater/js@0.20.14
+
+## 0.20.13
+
+### Patch Changes
+
+- 05eeb89: feat(react-native): HotUpdater.isUpdateDownloaded()
+  - hot-updater@0.20.13
+  - @hot-updater/core@0.20.13
+  - @hot-updater/js@0.20.13
+  - @hot-updater/plugin-core@0.20.13
+
 ## 0.20.12
 
 ### Patch Changes

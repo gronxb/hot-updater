@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/cloudflare",
   "type": "module",
-  "version": "0.20.12",
+  "version": "0.21.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -18,7 +18,8 @@
       "types": "./dist/iac/index.d.ts",
       "import": "./dist/iac/index.js",
       "require": "./dist/iac/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -54,6 +55,7 @@
     "@clack/prompts": "catalog:",
     "@cloudflare/vitest-pool-workers": "^0.8.70",
     "@cloudflare/workers-types": "^4.20250828.1",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "dayjs": "^1.11.13",

@@ -248,15 +248,23 @@ export interface NativeBuildArgs {
 }
 
 export interface StoragePlugin {
-  uploadBundle: (
-    bundleId: string,
-    bundlePath: string,
+  /**
+   * Protocol this storage plugin can resolve.
+   * @example "s3", "r2", "supabase-storage".
+   */
+  supportedProtocol: string;
+
+  upload: (
+    key: string,
+    filePath: string,
   ) => Promise<{
     storageUri: string;
   }>;
 
-  deleteBundle: (bundleId: string) => Promise<{
-    storageUri: string;
+  delete: (storageUri: string) => Promise<void>;
+
+  getDownloadUrl: (storageUri: string) => Promise<{
+    fileUrl: string;
   }>;
   name: string;
 }
@@ -284,6 +292,18 @@ export type ConfigInput = {
    * @default "appVersion"
    */
   updateStrategy: "fingerprint" | "appVersion";
+  /**
+   * The compression strategy used for bundle deployment.
+   *
+   * - `zip`: Standard ZIP compression (default). Fast and widely supported.
+   * - `tar.br`: TAR archive with Brotli compression. Highest compression ratio, smaller bundle size.
+   * - `tar.gz`: TAR archive with Gzip compression. Balanced speed and compression ratio.
+   *
+   * The compression format is determined by the storage plugin used for bundle upload.
+   *
+   * @default "zip"
+   */
+  compressStrategy?: "zip" | "tar.br" | "tar.gz";
   /**
    * The fingerprint configuration.
    */

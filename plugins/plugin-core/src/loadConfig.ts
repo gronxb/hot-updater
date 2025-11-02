@@ -74,6 +74,7 @@ const getDefaultConfig = (): ConfigInput => {
   return {
     releaseChannel: "production",
     updateStrategy: "appVersion",
+    compressStrategy: "zip",
     fingerprint: {
       extraSources: [],
     },

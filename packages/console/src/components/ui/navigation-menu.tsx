@@ -59,7 +59,7 @@ const NavigationMenuTrigger = <T extends ValidComponent = "button">(
 const NavigationMenuIcon = () => {
   return (
     <NavigationMenuPrimitive.Icon aria-hidden="true">
-      {/* biome-ignore lint/a11y/noSvgWithoutTitle: <explanation> */}
+      {/* biome-ignore lint/a11y/noSvgWithoutTitle: decorative chevron icon */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"

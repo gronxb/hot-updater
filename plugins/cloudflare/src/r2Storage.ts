@@ -1,12 +1,13 @@
 import {
   type BasePluginArgs,
   createStorageKeyBuilder,
+  getContentType,
+  parseStorageUri,
   type StoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
-import mime from "mime";
 import path from "path";
 import { createWrangler } from "./utils/createWrangler";
 
@@ -34,30 +35,33 @@ export const r2Storage =
 
     return {
       name: "r2Storage",
-      async deleteBundle(bundleId) {
-        const Key = getStorageKey(bundleId, "bundle.zip");
+      supportedProtocol: "r2",
+      async delete(storageUri) {
+        const { bucket, key } = parseStorageUri(storageUri, "r2");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
+
         try {
           await wrangler(
             "r2",
             "object",
             "delete",
-            [bucketName, Key].join("/"),
+            [bucketName, key].join("/"),
             "--remote",
           );
-
-          return {
-            storageUri: `r2://${bucketName}/${Key}`,
-          };
         } catch {
           throw new Error("Can not delete bundle");
         }
       },
-      async uploadBundle(bundleId, bundlePath) {
-        const contentType = mime.getType(bundlePath) ?? void 0;
+      async upload(key, filePath) {
+        const contentType = getContentType(filePath);
 
-        const filename = path.basename(bundlePath);
+        const filename = path.basename(filePath);
 
-        const Key = getStorageKey(bundleId, filename);
+        const Key = getStorageKey(key, filename);
         try {
           const { stderr, exitCode } = await wrangler(
             "r2",
@@ -65,8 +69,9 @@ export const r2Storage =
             "put",
             [bucketName, Key].join("/"),
             "--file",
-            bundlePath,
-            ...(contentType ? ["--content-type", contentType] : []),
+            filePath,
+            "--content-type",
+            contentType,
             "--remote",
           );
           if (exitCode !== 0 && stderr) {
@@ -85,6 +90,29 @@ export const r2Storage =
         return {
           storageUri: `r2://${bucketName}/${Key}`,
         };
+      },
+      async getDownloadUrl(storageUri: string) {
+        // Simple validation: supported protocol must match
+        const u = new URL(storageUri);
+        if (u.protocol.replace(":", "") !== "r2") {
+          throw new Error("Invalid R2 storage URI protocol");
+        }
+        const key = u.pathname.slice(1);
+        // Generate presigned URL via wrangler for the configured bucket
+        const { stdout: urlOutput } = await wrangler(
+          "r2",
+          "object",
+          "presign",
+          [bucketName, key].join("/"),
+          "--expires-in",
+          "3600",
+          "--remote",
+        );
+        const signedUrl = urlOutput?.trim();
+        if (!signedUrl) {
+          throw new Error("Failed to generate download URL");
+        }
+        return { fileUrl: signedUrl };
       },
     };
   };

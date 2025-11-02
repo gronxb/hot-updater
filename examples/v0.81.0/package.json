@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/example-react-native-v81",
-  "version": "0.20.12",
+  "version": "0.21.4",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -25,6 +25,7 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@react-native-community/cli": "20.0.0",
     "@react-native-community/cli-platform-android": "20.0.0",

@@ -214,23 +214,41 @@ export const initFirebaseUser = async (
   ]);
 
   try {
-    const indexes = await execa("npx", ["firebase", "firestore:indexes"], {
-      cwd,
-      shell: true,
-    });
-    if (indexes.exitCode !== 0) {
-      throw new Error(indexes.stderr);
-    }
-  } catch {
-    // Create firestore database if it doesn't exist
-    await execa(
+    const databases = await execa(
       "gcloud",
-      ["firestore", "databases", "describe", `--project=${projectId}`],
+      [
+        "firestore",
+        "databases",
+        "list",
+        `--project=${projectId}`,
+        "--format=json",
+      ],
       {
-        stdio: "inherit",
         shell: true,
+        /**
+         * API [firestore.googleapis.com] not enabled on project [xxx]. Would you
+         like to enable and retry (this will take a few minutes)? (y/N)?
+         */
+        input: "N\n",
       },
     );
+    const databasesJson = JSON.parse(databases.stdout);
+
+    if (databasesJson.length === 0) {
+      p.log.warning("Firestore Database not found");
+      p.log.step("Please enable Firestore in the Firebase Console:");
+      p.log.step(
+        link(
+          `https://console.firebase.google.com/project/${projectId}/firestore`,
+        ),
+      );
+      p.log.step(
+        "After enabling Firestore, please run 'npx hot-updater init' again.",
+      );
+      process.exit(1);
+    }
+  } catch (err) {
+    handleError(err);
   }
 
   let storageBucket: string | null = null;

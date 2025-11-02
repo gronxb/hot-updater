@@ -1,5 +1,7 @@
 import * as p from "@clack/prompts";
 import {
+  createTarBrTargetFiles,
+  createTarGzTargetFiles,
   createZipTargetFiles,
   getCwd,
   loadConfig,
@@ -37,9 +39,23 @@ export interface DeployOptions {
   forceUpdate: boolean;
   interactive: boolean;
   message?: string;
+  disabled?: boolean;
   platform?: Platform;
   targetAppVersion?: string;
 }
+
+const getExtensionFromCompressStrategy = (compressStrategy: string) => {
+  switch (compressStrategy) {
+    case "tar.br":
+      return ".tar.br";
+    case "tar.gz":
+      return ".tar.gz";
+    case "zip":
+      return ".zip";
+    default:
+      throw new Error(`Unsupported compress strategy: ${compressStrategy}`);
+  }
+};
 
 export const deploy = async (options: DeployOptions) => {
   printBanner();
@@ -186,7 +202,13 @@ export const deploy = async (options: DeployOptions) => {
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const bundlePath = path.join(normalizeOutputPath, "bundle", "bundle.zip");
+  const compressStrategy = config.compressStrategy;
+  const bundleExtension = getExtensionFromCompressStrategy(compressStrategy);
+  const bundlePath = path.join(
+    normalizeOutputPath,
+    "bundle",
+    `bundle${bundleExtension}`,
+  );
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -240,10 +262,31 @@ export const deploy = async (options: DeployOptions) => {
               )
               .map((file) => path.join(buildPath, file)),
           );
-          await createZipTargetFiles({
-            outfile: bundlePath,
-            targetFiles: targetFiles,
-          });
+
+          switch (compressStrategy) {
+            case "tar.br":
+              await createTarBrTargetFiles({
+                outfile: bundlePath,
+                targetFiles: targetFiles,
+              });
+              break;
+            case "tar.gz":
+              await createTarGzTargetFiles({
+                outfile: bundlePath,
+                targetFiles: targetFiles,
+              });
+              break;
+            case "zip":
+              await createZipTargetFiles({
+                outfile: bundlePath,
+                targetFiles: targetFiles,
+              });
+              break;
+            default:
+              throw new Error(
+                `Unsupported compression strategy: ${compressStrategy}`,
+              );
+          }
 
           bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(bundlePath);
@@ -270,7 +313,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            const { storageUri } = await storagePlugin.uploadBundle(
+            const { storageUri } = await storagePlugin.upload(
               bundleId,
               bundlePath,
             );
@@ -303,7 +346,7 @@ export const deploy = async (options: DeployOptions) => {
               gitCommitHash,
               message: options?.message ?? gitMessage,
               id: bundleId,
-              enabled: true,
+              enabled: !options.disabled,
               channel,
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,

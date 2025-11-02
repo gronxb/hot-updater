@@ -1,6 +1,6 @@
 {
   "name": "rock-repack",
-  "version": "1.0.0",
+  "version": "0.21.0",
   "private": true,
   "scripts": {
     "start": "rock start",

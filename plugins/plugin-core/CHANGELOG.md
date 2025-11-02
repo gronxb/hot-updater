@@ -1,5 +1,66 @@
 # @hot-updater/plugin-core
 
+## 0.21.4
+
+### Patch Changes
+
+- 5d3070a: fix(aws): semver bounded range matching bug (#632)
+  - @hot-updater/core@0.21.4
+
+## 0.21.3
+
+### Patch Changes
+
+- @hot-updater/core@0.21.3
+
+## 0.21.2
+
+### Patch Changes
+
+- @hot-updater/core@0.21.2
+
+## 0.21.1
+
+### Patch Changes
+
+- 7b7bc48: fix: zlib using node api
+  - @hot-updater/core@0.21.1
+
+## 1.0.0
+
+### Minor Changes
+
+- 610b2dd: feat: supports `compressStrategy` => `tar.br` (brotli) / `tar.gz` (gzip)
+- afb084b: feat: validate bundle file with fileHash
+- 036f8f0: feat: support `@hot-updater/server` for self-hosted (WIP)
+
+### Patch Changes
+
+- Updated dependencies [afb084b]
+- Updated dependencies [036f8f0]
+  - @hot-updater/core@1.0.0
+
+## 0.20.15
+
+### Patch Changes
+
+- 526a5ba: fix(aws): normalize targetAppVersion to prevent duplicate S3 paths
+- ddf6f2c: Encodes paths before invalidation to handle special chars
+  - @hot-updater/core@0.20.15
+
+## 0.20.14
+
+### Patch Changes
+
+- a61fa0e: fix(aws): lambda using cloudfront private key from parameter store
+  - @hot-updater/core@0.20.14
+
+## 0.20.13
+
+### Patch Changes
+
+- @hot-updater/core@0.20.13
+
 ## 0.20.12
 
 ### Patch Changes

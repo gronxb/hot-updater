@@ -1,5 +1,67 @@
 # @hot-updater/aws
 
+## 0.21.4
+
+### Patch Changes
+
+- Updated dependencies [5d3070a]
+  - @hot-updater/plugin-core@0.21.4
+
+## 0.21.3
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.21.3
+
+## 0.21.2
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.21.2
+
+## 0.21.1
+
+### Patch Changes
+
+- Updated dependencies [7b7bc48]
+  - @hot-updater/plugin-core@0.21.1
+
+## 1.0.0
+
+### Minor Changes
+
+- 610b2dd: feat: supports `compressStrategy` => `tar.br` (brotli) / `tar.gz` (gzip)
+- 036f8f0: feat: support `@hot-updater/server` for self-hosted (WIP)
+
+### Patch Changes
+
+- Updated dependencies [610b2dd]
+- Updated dependencies [afb084b]
+- Updated dependencies [036f8f0]
+  - @hot-updater/plugin-core@1.0.0
+
+## 0.20.15
+
+### Patch Changes
+
+- Updated dependencies [526a5ba]
+- Updated dependencies [ddf6f2c]
+  - @hot-updater/plugin-core@0.20.15
+
+## 0.20.14
+
+### Patch Changes
+
+- a61fa0e: fix(aws): lambda using cloudfront private key from parameter store
+- Updated dependencies [a61fa0e]
+  - @hot-updater/plugin-core@0.20.14
+
+## 0.20.13
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.20.13
+
 ## 0.20.12
 
 ### Patch Changes

@@ -32,6 +32,19 @@ Projects use `hot-updater.config.ts` files that define build, storage, and datab
 
 ## Development Notes
 
+### CI/CD Requirements
+**IMPORTANT**: All changes must pass the GitHub Actions workflow (`.github/workflows/integraion-typescript.yml`) before being merged. This workflow runs:
+
+1. `pnpm build` - All packages and plugins must build successfully
+2. `pnpm test:type` - TypeScript type checking must pass with no errors
+3. `pnpm biome:check` - Code must pass Biome linting and formatting checks
+4. `pnpm test` - All unit tests must pass
+
+Before committing changes, always run these commands locally to ensure CI will pass:
+```bash
+pnpm build && pnpm test:type && pnpm biome:check && pnpm test
+```
+
 ### Code Style
 - Uses Biome for formatting and linting (see `biome.json`)
 - 2-space indentation, 80 character line width

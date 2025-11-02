@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.20.12",
+  "version": "0.21.4",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -64,6 +64,7 @@
     "es-git": "0.4.0"
   },
   "devDependencies": {
+    "semver": "^7.6.3",
     "fast-xml-parser": "^5.2.3",
     "fast-glob": "3.3.3",
     "@bacons/xcode": "1.0.0-alpha.24",
@@ -79,6 +80,7 @@
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/babel__core": "7.20.5",
     "@types/babel__generator": "7.6.8",
     "@types/babel__traverse": "7.20.6",
@@ -94,7 +96,6 @@
     "picocolors": "catalog:",
     "plist": "^3.1.0",
     "read-package-up": "^11.0.0",
-    "semver": "^7.6.3",
     "uuidv7": "^1.0.2"
   },
   "peerDependencies": {

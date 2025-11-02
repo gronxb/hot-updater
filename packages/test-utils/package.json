@@ -1,0 +1,52 @@
+{
+  "name": "@hot-updater/test-utils",
+  "private": true,
+  "version": "0.21.4",
+  "type": "module",
+  "description": "Test utilities for Hot Updater packages",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./node": {
+      "import": "./dist/node.js",
+      "require": "./dist/node.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "package.json"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "workspace-tools": "^0.18.4"
+  },
+  "peerDependencies": {
+    "@hot-updater/core": "workspace:*",
+    "execa": "catalog:",
+    "vitest": "*"
+  },
+  "devDependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@types/node": "catalog:",
+    "workspace-tools": "^0.18.4",
+    "execa": "catalog:",
+    "vitest": "^3.2.4"
+  }
+}

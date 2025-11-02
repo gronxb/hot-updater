@@ -31,7 +31,7 @@ static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
     self = [super init];
     if (self) {
         observedTasks = [NSMutableSet set];
-        
+
         // Start observing notifications needed for cleanup/events
         // Using self as observer
         [[NSNotificationCenter defaultCenter] addObserver:self
@@ -217,7 +217,10 @@ RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)param
     if (params.fileUrl()) {
         paramDict[@"fileUrl"] = params.fileUrl();
     }
-    
+    if (params.fileHash()) {
+        paramDict[@"fileHash"] = params.fileHash();
+    }
+
     [_hotUpdaterImpl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
 #else

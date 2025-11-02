@@ -1,5 +1,64 @@
 # @hot-updater/example-react-native-v81
 
+## 0.21.4
+
+### Patch Changes
+
+- @hot-updater/react-native@0.21.4
+
+## 0.21.3
+
+### Patch Changes
+
+- Updated dependencies [c1125b4]
+  - @hot-updater/react-native@0.21.3
+
+## 0.21.2
+
+### Patch Changes
+
+- @hot-updater/react-native@0.21.2
+
+## 0.21.1
+
+### Patch Changes
+
+- @hot-updater/react-native@0.21.1
+
+## 1.0.0
+
+### Minor Changes
+
+- 610b2dd: feat: supports `compressStrategy` => `tar.br` (brotli) / `tar.gz` (gzip)
+- afb084b: feat: validate bundle file with fileHash
+- 036f8f0: feat: support `@hot-updater/server` for self-hosted (WIP)
+
+### Patch Changes
+
+- Updated dependencies [610b2dd]
+- Updated dependencies [afb084b]
+  - @hot-updater/react-native@1.0.0
+
+## 0.20.15
+
+### Patch Changes
+
+- @hot-updater/react-native@0.20.15
+
+## 0.20.14
+
+### Patch Changes
+
+- a61fa0e: fix(aws): lambda using cloudfront private key from parameter store
+  - @hot-updater/react-native@0.20.14
+
+## 0.20.13
+
+### Patch Changes
+
+- Updated dependencies [05eeb89]
+  - @hot-updater/react-native@0.20.13
+
 ## 0.20.12
 
 ### Patch Changes

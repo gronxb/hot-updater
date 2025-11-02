@@ -86,6 +86,7 @@ program
       return value;
     }),
   )
+  .addOption(new Option("-d, --disabled", "disable the update").default(false))
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),
   )

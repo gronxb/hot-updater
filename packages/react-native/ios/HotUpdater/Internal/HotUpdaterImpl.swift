@@ -16,15 +16,15 @@ import React
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
-        let unzipService = SSZipArchiveUnzipService()
-        
+        let decompressService = DecompressService()
+
         let bundleStorage = BundleFileStorageService(
             fileSystem: fileSystem,
             downloadService: downloadService,
-            unzipService: unzipService,
+            decompressService: decompressService,
             preferences: preferences
         )
-        
+
         self.init(bundleStorage: bundleStorage, preferences: preferences)
     }
     
@@ -132,20 +132,33 @@ import React
             }
             
             let fileUrlString = data["fileUrl"] as? String ?? ""
-            
+
             var fileUrl: URL? = nil
             if !fileUrlString.isEmpty {
                 guard let url = URL(string: fileUrlString) else {
-                    throw NSError(domain: "HotUpdaterError", code: 103, 
+                    throw NSError(domain: "HotUpdaterError", code: 103,
                                  userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
                 }
                 fileUrl = url
             }
-            
-            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil")")
-            
+
+            // Extract fileHash if provided
+            let fileHash = data["fileHash"] as? String
+
+            // Extract progress callback if provided
+            let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
+
+            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
+
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl) { [weak self] result in
+            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, progressHandler: { progress in
+                // Call JS progress callback if provided
+                if let callback = progressCallback {
+                    DispatchQueue.main.async {
+                        callback([progress])
+                    }
+                }
+            }) { [weak self] result in
                 guard self != nil else {
                     let error = NSError(domain: "HotUpdaterError", code: 998, 
                                        userInfo: [NSLocalizedDescriptionKey: "Self deallocated during update"])
