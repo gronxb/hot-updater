@@ -43,7 +43,8 @@ export interface DatabaseAPI {
 
 export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
-  createMigrator: () => ReturnType<HotUpdaterClient["createMigrator"]>;
+  createMigrator: HotUpdaterClient["createMigrator"];
+  generateSchema: HotUpdaterClient["generateSchema"];
 };
 
 export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
@@ -59,6 +60,7 @@ export interface HotUpdaterOptions {
 
 export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
   const client = HotUpdaterDB.client(options.database);
+
   const cwd = options.cwd ?? process.cwd();
 
   // Initialize storage plugins - call factories if they are functions
@@ -488,5 +490,6 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
       options?.basePath ? { basePath: options.basePath } : {},
     ),
     createMigrator: () => client.createMigrator(),
+    generateSchema: client.generateSchema,
   };
 }

@@ -40,7 +40,7 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       "dist/index.js",
     );
 
-    // Then apply migrations to database
+    // Apply migrations to database
     await execa(
       "node",
       [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
