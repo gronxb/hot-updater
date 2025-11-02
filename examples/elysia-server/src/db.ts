@@ -7,7 +7,6 @@ import { config } from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { drizzle } from "drizzle-orm/libsql";
-import * as schema from "../hot-updater-schema";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,9 +24,7 @@ const client = createClient({
 });
 
 const db = drizzle(client, {
-  casing: "snake_case",
   logger: false,
-  schema,
 });
 
 // Create Hot Updater API

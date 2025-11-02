@@ -4,7 +4,7 @@ export const v0_21_0 = schema({
   version: "0.21.0",
   tables: {
     bundles: table("bundles", {
-      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      id: idColumn("id", "varchar(255)"),
       platform: column("platform", "string"),
       should_force_update: column("should_force_update", "bool"),
       enabled: column("enabled", "bool"),

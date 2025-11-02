@@ -1,8 +1,7 @@
 import { sqliteTable, text, integer, blob } from "drizzle-orm/sqlite-core"
-import { createId } from "fumadb"
 
 export const bundles = sqliteTable("bundles", {
-  id: text("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  id: text("id", { length: 255 }).primaryKey().notNull(),
   platform: text("platform").notNull(),
   should_force_update: integer("should_force_update", { mode: "boolean" }).notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull(),
@@ -16,7 +15,7 @@ export const bundles = sqliteTable("bundles", {
   metadata: blob("metadata", { mode: "json" }).notNull()
 })
 
-export const private_hot-updater_settings = sqliteTable("private_hot-updater_settings", {
+export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
   version: text("version", { length: 255 }).notNull().default("0.21.0")
 })

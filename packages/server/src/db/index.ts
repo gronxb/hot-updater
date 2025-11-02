@@ -18,7 +18,7 @@ import { v0_21_0 } from "../schema/v0_21_0";
 import type { PaginationInfo } from "../types";
 
 export const HotUpdaterDB = fumadb({
-  namespace: "hot-updater",
+  namespace: "hot_updater",
   schemas: [v0_21_0],
 });
 
