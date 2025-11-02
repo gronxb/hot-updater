@@ -29,7 +29,7 @@ export async function generate(options: GenerateOptions) {
 
     // Set default outputDir based on adapter type
     const defaultOutputDir =
-      adapterName === "kysely" || adapterName === "mongodb"
+      adapterName === "kysely"
         ? "hot-updater_migrations" // SQL migrations
         : "."; // Schema files
 
@@ -39,7 +39,6 @@ export async function generate(options: GenerateOptions) {
     // Execute generation based on adapter type
     switch (adapterName) {
       case "kysely":
-      case "mongodb":
         // Use createMigrator to generate SQL migration files
         await generateWithMigrator(
           hotUpdater,
@@ -61,19 +60,8 @@ export async function generate(options: GenerateOptions) {
           s,
         );
         break;
-
       default:
-        s.stop("Unknown adapter");
-        p.log.warn(
-          `Unknown adapter: ${adapterName}. Attempting to use schema generation.`,
-        );
-        await generateWithSchemaGenerator(
-          hotUpdater,
-          adapterName,
-          absoluteOutputDir,
-          skipConfirm,
-          s,
-        );
+        s.stop(`Unsupported adapter: ${adapterName}.`);
         break;
     }
   } catch (error) {
