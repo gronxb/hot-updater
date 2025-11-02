@@ -1,17 +1,48 @@
+import { exec } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { promisify } from "node:util";
 import { getCwd } from "@hot-updater/plugin-core";
-import { type Commit, openRepository } from "es-git";
-import fs from "fs";
-import path from "path";
+
+const execAsync = promisify(exec);
+
+/**
+ * Commit class compatible with es-git's Commit interface
+ */
+class Commit {
+  constructor(
+    private readonly commitHash: string,
+    private readonly commitMessage: string | null,
+  ) {}
+
+  id(): string {
+    return this.commitHash;
+  }
+
+  summary(): string | null {
+    return this.commitMessage;
+  }
+}
 
 export const getLatestGitCommit = async (): Promise<Commit | null> => {
   try {
-    const repo = await openRepository(getCwd());
-    const headSha = repo.revparse("HEAD").from;
-    if (headSha) {
-      return repo.getCommit(headSha);
+    const cwd = getCwd();
+
+    // Get commit hash
+    const { stdout: hash } = await execAsync("git rev-parse HEAD", { cwd });
+    const commitHash = hash.trim();
+
+    if (!commitHash) {
+      return null;
     }
 
-    return null;
+    // Get commit message (first line only)
+    const { stdout: message } = await execAsync("git log -1 --format=%s", {
+      cwd,
+    });
+    const commitMessage = message.trim() || null;
+
+    return new Commit(commitHash, commitMessage);
   } catch {
     return null;
   }

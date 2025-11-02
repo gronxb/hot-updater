@@ -58,8 +58,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "cosmiconfig": "9.0.0",
-    "cosmiconfig-typescript-loader": "5.0.0",
-    "es-git": "0.4.0"
+    "cosmiconfig-typescript-loader": "5.0.0"
   },
   "devDependencies": {
     "semver": "^7.6.3",
