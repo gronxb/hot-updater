@@ -1,0 +1,33 @@
+{
+  "name": "hono-drizzle-pglite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "db:generate": "npx hot-updater db generate src/db.ts --yes",
+    "db:push": "npx drizzle-kit push"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@hono/node-server": "^1.19.5",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "dotenv": "^16.6.1",
+    "drizzle-orm": "^0.44.7",
+    "hono": "^4.9.12"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "^20.11.17",
+    "drizzle-kit": "^0.31.6",
+    "execa": "^9.5.2",
+    "hot-updater": "workspace:*",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.3"
+  }
+}

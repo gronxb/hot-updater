@@ -28,10 +28,6 @@
       "import": "./dist/adapters/prisma.js",
       "require": "./dist/adapters/prisma.cjs"
     },
-    "./adapters/typeorm": {
-      "import": "./dist/adapters/typeorm.js",
-      "require": "./dist/adapters/typeorm.cjs"
-    },
     "./node": {
       "import": "./dist/node.js",
       "require": "./dist/node.cjs"
