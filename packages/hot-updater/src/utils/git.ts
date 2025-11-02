@@ -1,8 +1,8 @@
-import { exec } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-import { promisify } from "node:util";
 import { getCwd } from "@hot-updater/plugin-core";
+import { exec } from "child_process";
+import fs from "fs";
+import path from "path";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
