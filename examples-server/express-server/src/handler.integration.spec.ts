@@ -40,6 +40,12 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       "dist/index.js",
     );
 
+    // Generate Prisma Client first from existing schema
+    await execa("npx", ["prisma", "generate"], {
+      cwd: projectRoot,
+      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+    });
+
     // Generate Prisma schema from hotUpdater instance
     await execa(
       "node",
@@ -49,12 +55,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
         env: { TEST_DB_PATH: testDbPath },
       },
     );
-
-    // Generate Prisma Client first
-    await execa("npx", ["prisma", "generate"], {
-      cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
-    });
 
     // Apply schema to database using prisma db push
     await execa("npx", ["prisma", "db", "push", "--skip-generate"], {
