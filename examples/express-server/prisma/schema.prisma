@@ -1,0 +1,32 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Hot Updater models
+model bundles {
+  id                  String  @id
+  platform            String
+  should_force_update Boolean
+  enabled             Boolean
+  file_hash           String
+  git_commit_hash     String?
+  message             String?
+  channel             String
+  storage_uri         String
+  target_app_version  String?
+  fingerprint_hash    String?
+  metadata            Json
+}
+
+model private_hot_updater_settings {
+  key   String @id
+  value String @default("0.21.0")
+}
