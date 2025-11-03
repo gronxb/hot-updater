@@ -1,14 +1,14 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import type { HotUpdater } from "@hot-updater/server";
+import type { HotUpdaterAPI } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 import { client, closeDatabase as closeMongo } from "./mongodb";
 
-let hotUpdaterInstance: HotUpdater | null = null;
+let hotUpdaterInstance: HotUpdaterAPI | null = null;
 
 // Factory function to create Hot Updater API after MongoDB is connected
-export function createHotUpdaterInstance(): HotUpdater {
+export function createHotUpdaterInstance(): HotUpdaterAPI {
   if (!hotUpdaterInstance) {
     hotUpdaterInstance = createHotUpdater({
       database: mongoAdapter({
@@ -33,7 +33,7 @@ export function createHotUpdaterInstance(): HotUpdater {
 }
 
 // Get the initialized Hot Updater instance
-export function getHotUpdater(): HotUpdater {
+export function getHotUpdater(): HotUpdaterAPI {
   if (!hotUpdaterInstance) {
     throw new Error(
       "Hot Updater not initialized. Call createHotUpdaterInstance() first.",
