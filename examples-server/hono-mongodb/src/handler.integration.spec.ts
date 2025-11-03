@@ -28,7 +28,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
 
     // Generate unique test database name
     testDbName = `hot_updater_test_${Date.now()}`;
-    const testMongoUrl = `mongodb://hot_updater:hot_updater_dev@localhost:27018/${testDbName}`;
+    const testMongoUrl = `mongodb://hot_updater:hot_updater_dev@localhost:27018/${testDbName}?authSource=admin`;
 
     baseUrl = `http://localhost:${port}`;
 

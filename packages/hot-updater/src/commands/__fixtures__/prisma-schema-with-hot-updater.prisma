@@ -1,16 +1,12 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// User's custom models
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -21,21 +17,22 @@ model User {
 
 // --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
 model bundles {
-  id String @id
-  platform String
+  id                  String  @id
+  platform            String
   should_force_update Boolean
-  enabled Boolean
-  file_hash String
-  git_commit_hash String?
-  message String?
-  channel String
-  storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
-  metadata Json
+  enabled             Boolean
+  file_hash           String
+  git_commit_hash     String?
+  message             String?
+  channel             String
+  storage_uri         String
+  target_app_version  String?
+  fingerprint_hash    String?
+  metadata            Json
 }
+
 model private_hot_updater_settings {
-  key String @id
+  key   String @id
   value String @default("0.21.0")
 }
 // --- END HOT-UPDATER MODELS ---

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { closeDatabase } from "./db.js";
+import { ensureConnected } from "./mongodb.js";
 import routes from "./routes.js";
 
 const app = new Hono();
@@ -34,35 +35,48 @@ app.route("/", routes);
 // Start server
 const port = Number(process.env.PORT) || 3006;
 
-try {
-  serve(
-    {
-      fetch: app.fetch,
-      port,
-    },
-    (info) => {
-      console.log(`
+async function startServer() {
+  try {
+    // Ensure MongoDB connection before starting HTTP server
+    await ensureConnected();
+
+    serve(
+      {
+        fetch: app.fetch,
+        port,
+      },
+      (info) => {
+        console.log(`
 ╭─────────────────────────────────────╮
 │  Hot Updater Server (Hono)         │
 │  Running on http://localhost:${info.port}  │
 ╰─────────────────────────────────────╯
       `);
-    },
-  );
+      },
+    );
 
-  // Graceful shutdown
-  process.on("SIGTERM", async () => {
-    console.log("SIGTERM received. Closing server gracefully...");
-    await closeDatabase();
-    process.exit(0);
-  });
+    // Graceful shutdown
+    process.on("SIGTERM", async () => {
+      console.log("SIGTERM received. Closing server gracefully...");
+      await closeDatabase();
+      process.exit(0);
+    });
 
-  process.on("SIGINT", async () => {
-    console.log("SIGINT received. Closing server gracefully...");
-    await closeDatabase();
-    process.exit(0);
-  });
-} catch (error) {
-  console.error("Failed to start server:", error);
-  process.exit(1);
+    process.on("SIGINT", async () => {
+      console.log("SIGINT received. Closing server gracefully...");
+      await closeDatabase();
+      process.exit(0);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
 }
+
+// Handle unhandled rejections
+process.on("unhandledRejection", (error) => {
+  console.error("Unhandled rejection:", error);
+  process.exit(1);
+});
+
+startServer();

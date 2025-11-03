@@ -7,7 +7,7 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs/promises";
@@ -56,6 +56,33 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       },
     );
 
+    // Verify schema was correctly merged
+    const schemaPath = path.join(projectRoot, "prisma", "schema.prisma");
+    const schemaContent = await fs.readFile(schemaPath, "utf-8");
+
+    // Should contain User model (existing model)
+    if (!schemaContent.includes("model User")) {
+      throw new Error("User model not found in schema after generate");
+    }
+
+    // Should contain hot-updater models
+    if (!schemaContent.includes("model bundles")) {
+      throw new Error("bundles model not found in schema after generate");
+    }
+
+    if (
+      !schemaContent.includes("model private_hot_updater_settings")
+    ) {
+      throw new Error(
+        "private_hot_updater_settings model not found in schema after generate",
+      );
+    }
+
+    // Should have hot-updater markers
+    if (!schemaContent.includes("BEGIN HOT-UPDATER MODELS")) {
+      throw new Error("HOT-UPDATER marker not found in schema after generate");
+    }
+
     // Apply schema to database using prisma db push
     await execa("npx", ["prisma", "db", "push", "--skip-generate"], {
       cwd: projectRoot,
@@ -86,4 +113,27 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+
+  it("should preserve User model and add hot-updater models in schema.prisma", async () => {
+    const schemaPath = path.join(projectRoot, "prisma", "schema.prisma");
+    const schemaContent = await fs.readFile(schemaPath, "utf-8");
+
+    // Verify User model exists (user's custom model)
+    expect(schemaContent).toContain("model User");
+    expect(schemaContent).toContain("email     String   @unique");
+
+    // Verify hot-updater models exist
+    expect(schemaContent).toContain("model bundles");
+    expect(schemaContent).toContain("model private_hot_updater_settings");
+
+    // Verify hot-updater markers
+    expect(schemaContent).toContain("BEGIN HOT-UPDATER MODELS");
+    expect(schemaContent).toContain("END HOT-UPDATER MODELS");
+
+    // Verify only one set of markers exists
+    const beginMatches = schemaContent.match(/BEGIN HOT-UPDATER MODELS/g);
+    const endMatches = schemaContent.match(/END HOT-UPDATER MODELS/g);
+    expect(beginMatches).toHaveLength(1);
+    expect(endMatches).toHaveLength(1);
+  });
 });

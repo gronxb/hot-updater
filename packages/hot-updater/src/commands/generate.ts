@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import type { Migrator } from "@hot-updater/server";
 import { createHash } from "crypto";
-import { mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { format } from "sql-formatter";
 import {
@@ -9,6 +9,7 @@ import {
   validateSchemaGeneratorSupport,
 } from "./utils/adapter-strategies";
 import { loadHotUpdater } from "./utils/load-hot-updater";
+import { mergePrismaSchema } from "./utils/prisma-schema-merger";
 
 export interface GenerateOptions {
   configPath: string;
@@ -207,6 +208,13 @@ async function generateWithSchemaGenerator(
     return;
   }
 
+  // Special handling for Prisma adapter - write directly to schema.prisma
+  if (adapterName === "prisma") {
+    await generatePrismaSchema(schemaCode, absoluteOutputDir, skipConfirm);
+    return;
+  }
+
+  // For other adapters (drizzle, typeorm), use the original logic
   // Create output directory
   await mkdir(absoluteOutputDir, { recursive: true });
 
@@ -257,4 +265,74 @@ async function generateWithSchemaGenerator(
   await writeFile(outputPath, schemaCode, "utf-8");
 
   p.log.success(`Schema file created: ${filename}`);
+}
+
+/**
+ * Generate Prisma schema - directly modifies prisma/schema.prisma file
+ * Similar to better-auth's approach
+ */
+async function generatePrismaSchema(
+  schemaCode: string,
+  outputDir: string,
+  skipConfirm: boolean,
+) {
+  // Default Prisma schema path
+  const prismaSchemaPath = path.join(outputDir, "prisma", "schema.prisma");
+
+  // Check if prisma/schema.prisma exists
+  let schemaExists = false;
+  try {
+    await access(prismaSchemaPath);
+    schemaExists = true;
+  } catch {
+    // Schema file doesn't exist
+  }
+
+  let finalContent: string;
+  let message: string;
+
+  if (!schemaExists) {
+    // Use the complete schema from generateSchema for initial creation
+    finalContent = schemaCode;
+    message = "Create prisma/schema.prisma?";
+  } else {
+    // Read existing schema and merge
+    const existingSchema = await readFile(prismaSchemaPath, "utf-8");
+    const { content, hadExistingModels } = mergePrismaSchema(
+      existingSchema,
+      schemaCode,
+    );
+    finalContent = content;
+    message = hadExistingModels
+      ? "Update hot-updater models in prisma/schema.prisma?"
+      : "Add hot-updater models to prisma/schema.prisma?";
+  }
+
+  // Confirm before writing
+  if (!skipConfirm) {
+    const shouldContinue = await p.confirm({
+      message,
+      initialValue: true,
+    });
+
+    if (p.isCancel(shouldContinue) || !shouldContinue) {
+      p.cancel("Operation cancelled");
+      process.exit(0);
+    }
+  }
+
+  // Create prisma directory if it doesn't exist
+  await mkdir(path.dirname(prismaSchemaPath), { recursive: true });
+
+  // Write schema file
+  await writeFile(prismaSchemaPath, finalContent, "utf-8");
+
+  p.log.success(
+    schemaExists
+      ? "Updated prisma/schema.prisma"
+      : "Created prisma/schema.prisma",
+  );
+  p.log.info(
+    "Next steps:\n  1. Run: npx prisma generate\n  2. Run: npx prisma migrate dev",
+  );
 }
