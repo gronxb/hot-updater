@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { closeDatabase } from "./db.js";
-import { ensureConnected } from "./mongodb.js";
+import { ensureConnected, client } from "./mongodb.js";
 import routes from "./routes.js";
 
 const app = new Hono();
@@ -39,6 +39,13 @@ async function startServer() {
   try {
     // Ensure MongoDB connection before starting HTTP server
     await ensureConnected();
+
+    // Verify MongoDB is truly ready with a ping
+    await client.db().admin().ping();
+    console.log("MongoDB ping successful - database is ready");
+
+    // Small delay to ensure connection is stable
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     serve(
       {
@@ -76,6 +83,12 @@ async function startServer() {
 // Handle unhandled rejections
 process.on("unhandledRejection", (error) => {
   console.error("Unhandled rejection:", error);
+  process.exit(1);
+});
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
   process.exit(1);
 });
 
