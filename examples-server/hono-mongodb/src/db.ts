@@ -31,21 +31,21 @@ export const hotUpdater = createHotUpdater({
       },
       bucketName: process.env.R2_BUCKET_NAME!,
     }),
-    r2Storage({
-      bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-      accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-      cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-    }),
+    // r2Storage({
+    //   bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    //   accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    //   cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+    // }),
     // firebaseStorage({
     //   projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     //   storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
     //   credential: admin.credential.applicationDefault(),
     // }),
-    supabaseStorage({
-      supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-      supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
-      bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-    }),
+    // supabaseStorage({
+    //   supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    //   supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+    // }),
   ],
   basePath: "/hot-updater",
 });
