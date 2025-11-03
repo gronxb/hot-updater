@@ -1,4 +1,9 @@
 import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
+import { firebaseStorage } from "@hot-updater/firebase";
+import { supabaseStorage } from "@hot-updater/supabase";
+
+import admin from "firebase-admin";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
@@ -20,6 +25,21 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
+    }),
+    r2Storage({
+      bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+      accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+      cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+    }),
+    firebaseStorage({
+      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+      storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+      credential: admin.credential.applicationDefault(),
+    }),
+    supabaseStorage({
+      supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+      supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+      bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     }),
   ],
   basePath: "/hot-updater",

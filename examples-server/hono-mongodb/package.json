@@ -13,10 +13,14 @@
   "dependencies": {
     "@hono/node-server": "^1.19.5",
     "@hot-updater/aws": "workspace:*",
+    "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/core": "workspace:*",
+    "@hot-updater/firebase": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
     "dotenv": "^16.6.1",
+    "firebase-admin": "^13.5.0",
     "hono": "^4.9.12",
     "mongodb": "^6.12.0"
   },

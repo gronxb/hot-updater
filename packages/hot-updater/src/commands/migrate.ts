@@ -221,7 +221,7 @@ async function migrateWithMigrator(
   validateMigratorSupport(hotUpdater, hotUpdater.adapterName);
 
   // Create migrator
-  const migrator = hotUpdater.createMigrator!();
+  const migrator = hotUpdater.createMigrator();
 
   // Get current version
   const currentVersion = await migrator.getVersion();

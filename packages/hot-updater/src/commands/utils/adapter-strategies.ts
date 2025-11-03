@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import type { Migrator } from "@hot-updater/server";
 import type { HotUpdaterInstance } from "./load-hot-updater";
 
 /**
@@ -17,7 +18,9 @@ export type AdapterName =
 export function validateMigratorSupport(
   hotUpdater: HotUpdaterInstance,
   adapterName: string,
-): void {
+): asserts hotUpdater is HotUpdaterInstance & {
+  createMigrator: () => Migrator;
+} {
   if (
     !("createMigrator" in hotUpdater) ||
     typeof hotUpdater.createMigrator !== "function"
@@ -36,7 +39,12 @@ export function validateMigratorSupport(
 export function validateSchemaGeneratorSupport(
   hotUpdater: HotUpdaterInstance,
   adapterName: string,
-): void {
+): asserts hotUpdater is HotUpdaterInstance & {
+  generateSchema: (
+    version: string | "latest",
+    name?: string,
+  ) => { code: string; path: string };
+} {
   if (
     !("generateSchema" in hotUpdater) ||
     typeof hotUpdater.generateSchema !== "function"

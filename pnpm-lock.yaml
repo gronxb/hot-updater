@@ -309,18 +309,30 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
+      '@hot-updater/cloudflare':
+        specifier: workspace:*
+        version: link:../../plugins/cloudflare
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@hot-updater/firebase':
+        specifier: workspace:*
+        version: link:../../plugins/firebase
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../../plugins/mock
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@hot-updater/supabase':
+        specifier: workspace:*
+        version: link:../../plugins/supabase
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
+      firebase-admin:
+        specifier: ^13.5.0
+        version: 13.5.0(encoding@0.1.13)
       hono:
         specifier: ^4.9.12
         version: 4.10.3
@@ -495,7 +507,7 @@ importers:
         version: 0.80.1(@babel/core@7.26.0)
       '@react-native/eslint-config':
         specifier: 0.80.1
-        version: 0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)
+        version: 0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)
       '@react-native/typescript-config':
         specifier: 0.80.1
         version: 0.80.1
@@ -537,7 +549,7 @@ importers:
         version: link:../../packages/hot-updater
       jest:
         specifier: ^29.6.3
-        version: 29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4))
+        version: 29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.0.4))
       prettier:
         specifier: 2.8.8
         version: 2.8.8
@@ -592,7 +604,7 @@ importers:
         version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@react-native/eslint-config':
         specifier: 0.74.83
-        version: 0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.8.3)))(prettier@2.8.8)(typescript@5.8.3)
+        version: 0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))(prettier@2.8.8)(typescript@5.8.3)
       '@react-native/gradle-plugin':
         specifier: 0.74.83
         version: 0.74.83
@@ -634,7 +646,7 @@ importers:
         version: 2.2.4
       jest:
         specifier: ^29.6.3
-        version: 29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.8.3))
+        version: 29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3))
       metro:
         specifier: 0.80.9
         version: 0.80.9(encoding@0.1.13)
@@ -896,6 +908,9 @@ importers:
       '@hot-updater/cloudflare':
         specifier: workspace:*
         version: link:../../plugins/cloudflare
+      '@hot-updater/firebase':
+        specifier: workspace:*
+        version: link:../../plugins/firebase
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:../../plugins/standalone
@@ -950,6 +965,9 @@ importers:
       eslint:
         specifier: ^8.19.0
         version: 8.57.0
+      firebase-admin:
+        specifier: ^13.5.0
+        version: 13.5.0(encoding@0.1.13)
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
@@ -10986,6 +11004,10 @@ packages:
     resolution: {integrity: sha512-qQBTKo0QWCDaWwISry989pr8YfZSSk00rNCKaucjOgltEm3cCYzEe4rODqBd1uUwma+Iu5jtAzg89Nfsjr3fGg==}
     engines: {node: '>=18'}
 
+  firebase-admin@13.5.0:
+    resolution: {integrity: sha512-QZOpv1DJRJpH8NcWiL1xXE10tw3L/bdPFlgjcWrqU3ufyOJDYfxB1MMtxiVTwxK16NlybQbEM6ciSich2uWEIQ==}
+    engines: {node: '>=18'}
+
   firebase-functions-test@3.4.1:
     resolution: {integrity: sha512-qAq0oszrBGdf4bnCF6t4FoSgMsepeIXh0Pi/FhikSE6e+TvKKGpfrfUP/5pFjJZxFcLsweoau88KydCql4xSeg==}
     engines: {node: '>=14.0.0'}
@@ -16289,10 +16311,6 @@ packages:
   tr46@0.0.3:
     resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
 
-  tr46@5.0.0:
-    resolution: {integrity: sha512-tk2G5R2KRwBd+ZN0zaEXpmzdKyOYksXwywulIX95MBODjSzMIuQnQ3m8JxgbhnL1LeVo7lqQKsYa1O3Htl7K5g==}
-    engines: {node: '>=18'}
-
   tr46@5.1.1:
     resolution: {integrity: sha512-hdF5ZgjTqgAntKkklYw0R03MG2x/bSzTtkxmIRw/sTNV8YXsCJ1tfLAX23lhxhHJlEf3CRCOCGGWw3vI3GaSPw==}
     engines: {node: '>=18'}
@@ -17084,10 +17102,6 @@ packages:
   whatwg-url-without-unicode@8.0.0-3:
     resolution: {integrity: sha512-HoKuzZrUlgpz35YO27XgD28uh/WJH4B0+3ttFqRo//lmq+9T/mIOJ6kqmINI9HpUpz1imRC/nR/lxKpJiv0uig==}
     engines: {node: '>=10'}
-
-  whatwg-url@14.0.0:
-    resolution: {integrity: sha512-1lfMEm2IEr7RIV+f4lUNPOqfFL+pO+Xw3fJSqmjX9AbXcXcYOkCe1P6+9VBZB6n94af16NfZf+sSk0JCBZC9aw==}
-    engines: {node: '>=18'}
 
   whatwg-url@14.2.0:
     resolution: {integrity: sha512-De72GdQZzNTUBBChsXueQUnPKDkg/5A5zp7pFDuQAj5UFoENpiACU0wlCvzpAGnTkj++ihpKwKyYewn/XNUbKw==}
@@ -25741,7 +25755,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@react-native/eslint-config@0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.8.3)))(prettier@2.8.8)(typescript@5.8.3)':
+  '@react-native/eslint-config@0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))(prettier@2.8.8)(typescript@5.8.3)':
     dependencies:
       '@babel/core': 7.26.0
       '@babel/eslint-parser': 7.24.5(@babel/core@7.26.0)(eslint@8.57.0)
@@ -25752,7 +25766,7 @@ snapshots:
       eslint-config-prettier: 8.10.0(eslint@8.57.0)
       eslint-plugin-eslint-comments: 3.2.0(eslint@8.57.0)
       eslint-plugin-ft-flow: 2.0.3(@babel/eslint-parser@7.24.5(@babel/core@7.26.0)(eslint@8.57.0))(eslint@8.57.0)
-      eslint-plugin-jest: 26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.8.3)))(typescript@5.8.3)
+      eslint-plugin-jest: 26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))(typescript@5.8.3)
       eslint-plugin-prettier: 4.2.1(eslint-config-prettier@8.10.0(eslint@8.57.0))(eslint@8.57.0)(prettier@2.8.8)
       eslint-plugin-react: 7.34.1(eslint@8.57.0)
       eslint-plugin-react-hooks: 4.6.2(eslint@8.57.0)
@@ -25806,7 +25820,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@react-native/eslint-config@0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)':
+  '@react-native/eslint-config@0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)':
     dependencies:
       '@babel/core': 7.26.0
       '@babel/eslint-parser': 7.25.9(@babel/core@7.26.0)(eslint@8.57.0)
@@ -25817,7 +25831,7 @@ snapshots:
       eslint-config-prettier: 8.10.0(eslint@8.57.0)
       eslint-plugin-eslint-comments: 3.2.0(eslint@8.57.0)
       eslint-plugin-ft-flow: 2.0.3(@babel/eslint-parser@7.25.9(@babel/core@7.26.0)(eslint@8.57.0))(eslint@8.57.0)
-      eslint-plugin-jest: 27.9.0(@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4)))(typescript@5.0.4)
+      eslint-plugin-jest: 27.9.0(@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.0.4)))(typescript@5.0.4)
       eslint-plugin-react: 7.34.1(eslint@8.57.0)
       eslint-plugin-react-hooks: 5.2.0(eslint@8.57.0)
       eslint-plugin-react-native: 4.1.0(eslint@8.57.0)
@@ -30214,7 +30228,7 @@ snapshots:
   data-urls@5.0.0:
     dependencies:
       whatwg-mimetype: 4.0.0
-      whatwg-url: 14.0.0
+      whatwg-url: 14.2.0
     optional: true
 
   data-view-buffer@1.0.2:
@@ -30947,13 +30961,13 @@ snapshots:
       lodash: 4.17.21
       string-natural-compare: 3.0.1
 
-  eslint-plugin-jest@26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(jest@29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.8.3)))(typescript@5.8.3):
+  eslint-plugin-jest@26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3)))(typescript@5.8.3):
     dependencies:
       '@typescript-eslint/utils': 5.62.0(eslint@8.57.0)(typescript@5.8.3)
       eslint: 8.57.0
     optionalDependencies:
       '@typescript-eslint/eslint-plugin': 6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.8.3))(eslint@8.57.0)(typescript@5.8.3)
-      jest: 29.7.0(@types/node@22.13.5)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@22.13.5)(typescript@5.8.3))
+      jest: 29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.7.42(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3))
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -31902,6 +31916,26 @@ snapshots:
       '@firebase/database-types': 1.0.10
       '@types/node': 22.13.5
       farmhash-modern: 1.1.0
+      google-auth-library: 9.15.1(encoding@0.1.13)
+      jsonwebtoken: 9.0.2
+      jwks-rsa: 3.2.0
+      node-forge: 1.3.1
+      uuid: 11.1.0
+    optionalDependencies:
+      '@google-cloud/firestore': 7.11.0(encoding@0.1.13)
+      '@google-cloud/storage': 7.15.2(encoding@0.1.13)
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
+  firebase-admin@13.5.0(encoding@0.1.13):
+    dependencies:
+      '@fastify/busboy': 3.1.1
+      '@firebase/database-compat': 2.0.5
+      '@firebase/database-types': 1.0.10
+      '@types/node': 22.13.5
+      farmhash-modern: 1.1.0
+      fast-deep-equal: 3.1.3
       google-auth-library: 9.15.1(encoding@0.1.13)
       jsonwebtoken: 9.0.2
       jwks-rsa: 3.2.0
@@ -34087,7 +34121,7 @@ snapshots:
       webidl-conversions: 7.0.0
       whatwg-encoding: 3.1.1
       whatwg-mimetype: 4.0.0
-      whatwg-url: 14.0.0
+      whatwg-url: 14.2.0
       ws: 8.18.3
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
@@ -39612,11 +39646,6 @@ snapshots:
 
   tr46@0.0.3: {}
 
-  tr46@5.0.0:
-    dependencies:
-      punycode: 2.3.1
-    optional: true
-
   tr46@5.1.1:
     dependencies:
       punycode: 2.3.1
@@ -40577,12 +40606,6 @@ snapshots:
       buffer: 5.7.1
       punycode: 2.3.1
       webidl-conversions: 5.0.0
-
-  whatwg-url@14.0.0:
-    dependencies:
-      tr46: 5.0.0
-      webidl-conversions: 7.0.0
-    optional: true
 
   whatwg-url@14.2.0:
     dependencies:

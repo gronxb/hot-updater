@@ -91,7 +91,7 @@ async function generateWithMigrator(
   validateMigratorSupport(hotUpdater, hotUpdater.adapterName);
 
   // Create migrator
-  const migrator = hotUpdater.createMigrator!();
+  const migrator = hotUpdater.createMigrator();
 
   // Generate migration
   const result = await migrator.migrateToLatest({
@@ -199,7 +199,7 @@ async function generateWithSchemaGenerator(
   validateSchemaGeneratorSupport(hotUpdater, adapterName);
 
   // Generate schema
-  const schemaResult = hotUpdater.generateSchema!("latest");
+  const schemaResult = hotUpdater.generateSchema("latest");
 
   s.stop("Analysis complete");
 
