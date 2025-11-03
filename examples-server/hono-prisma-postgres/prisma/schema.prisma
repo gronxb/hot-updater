@@ -11,22 +11,24 @@ datasource db {
 }
 
 // Hot Updater models
-model bundles {
-  id                  String  @id
-  platform            String
-  should_force_update Boolean
-  enabled             Boolean
-  file_hash           String
-  git_commit_hash     String?
-  message             String?
-  channel             String
-  storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-}
 
+// --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
+model bundles {
+  id String @db.VarChar(36) @id
+  platform String
+  should_force_update Boolean
+  enabled Boolean
+  file_hash String
+  git_commit_hash String?
+  message String?
+  channel String
+  storage_uri String
+  target_app_version String?
+  fingerprint_hash String?
+  metadata Json
+}
 model private_hot_updater_settings {
-  key   String @id
+  key String @db.VarChar(255) @id
   value String @default("0.21.0")
 }
+// --- END HOT-UPDATER MODELS ---

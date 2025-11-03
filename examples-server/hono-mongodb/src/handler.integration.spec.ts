@@ -41,14 +41,16 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Run database migrations
-    await execa(
-      "npx",
-      ["hot-updater", "db", "migrate", "src/db.ts", "--yes"],
-      {
-        cwd: projectRoot,
-        env: { TEST_MONGODB_URL: testMongoUrl },
-      },
+    const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
+    const hotUpdaterCli = path.join(
+      path.dirname(hotUpdaterPkgPath),
+      "dist/index.js",
     );
+
+    await execa("node", [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"], {
+      cwd: projectRoot,
+      env: { TEST_MONGODB_URL: testMongoUrl },
+    });
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
