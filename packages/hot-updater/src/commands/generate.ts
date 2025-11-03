@@ -204,7 +204,6 @@ async function generateWithSchemaGenerator(
   s.stop("Analysis complete");
 
   const schemaCode = schemaResult.code;
-
   if (!schemaCode || schemaCode.trim() === "") {
     p.log.info("No schema generated");
     return;
@@ -294,6 +293,12 @@ async function generatePrismaSchema(
   let message: string;
 
   if (!schemaExists) {
+    // Warn about missing generator and datasource blocks
+    p.log.warn(
+      "The generated schema only contains model definitions.\n" +
+        "You need to add 'generator client' and 'datasource db' blocks to prisma/schema.prisma.",
+    );
+
     // Use the complete schema from generateSchema for initial creation
     finalContent = schemaCode;
     message = "Create prisma/schema.prisma?";
