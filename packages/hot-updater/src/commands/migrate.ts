@@ -186,16 +186,14 @@ export async function migrate(options: MigrateOptions) {
 
       case "drizzle":
       case "prisma":
-      case "typeorm":
         // These adapters have their own migration systems
         s.stop("Migration not supported");
         showMigrateUnsupportedError(adapterName);
         break;
 
       default:
-        s.stop("Unknown adapter");
         p.log.error(
-          `Unknown adapter: ${adapterName}. Migration is not supported.`,
+          `Unsupported adapter: ${adapterName}. Migration is not supported.`,
         );
         process.exit(1);
         break;
@@ -249,7 +247,7 @@ async function migrateWithMigrator(
 
   if (!operations || operations.length === 0) {
     p.log.info("No changes needed - schema is up to date");
-    return;
+    process.exit(0);
   }
 
   // Format operations into human-readable changes
@@ -258,7 +256,7 @@ async function migrateWithMigrator(
   // Double-check: if operations exist but produce no changes, schema is up to date
   if (changes.length === 0) {
     p.log.info("No changes needed - schema is up to date");
-    return;
+    process.exit(0);
   }
 
   p.log.step("Changes to apply:");
@@ -284,4 +282,9 @@ async function migrateWithMigrator(
 
   const newVersion = await migrator.getVersion();
   p.log.success(`Migrated to version ${newVersion}`);
+
+  // Exit process to ensure all connections are closed
+  // This is especially important for MongoDB and other databases
+  // that may keep connections open
+  process.exit(0);
 }

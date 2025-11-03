@@ -121,6 +121,11 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     } catch (error) {
       console.error("Failed to drop test database:", error);
     }
+
+    // Stop and remove Docker containers
+    await execa("docker", ["compose", "down", "-v"], {
+      cwd: projectRoot,
+    });
   }, 60000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (

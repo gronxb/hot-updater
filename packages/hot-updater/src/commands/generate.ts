@@ -51,7 +51,6 @@ export async function generate(options: GenerateOptions) {
 
       case "drizzle":
       case "prisma":
-      case "typeorm":
         // Use generateSchema to generate TypeScript schema files
         await generateWithSchemaGenerator(
           hotUpdater,
@@ -62,7 +61,10 @@ export async function generate(options: GenerateOptions) {
         );
         break;
       default:
-        s.stop(`Unsupported adapter: ${adapterName}.`);
+        p.log.error(
+          `Unsupported adapter: ${adapterName}. Migration is not supported.`,
+        );
+        process.exit(1);
         break;
     }
   } catch (error) {

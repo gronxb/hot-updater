@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { closeDatabase, createHotUpdaterInstance } from "./db.js";
+import { closeDatabase } from "./db.js";
 import { ensureConnected, client } from "./mongodb.js";
 import routes from "./routes.js";
 
@@ -43,13 +43,6 @@ async function startServer() {
     // Verify MongoDB is truly ready with a ping
     await client.db().admin().ping();
     console.log("MongoDB ping successful - database is ready");
-
-    // Small delay to ensure connection is stable
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Initialize Hot Updater AFTER MongoDB is connected
-    createHotUpdaterInstance();
-    console.log("Hot Updater initialized successfully");
 
     serve(
       {

@@ -40,6 +40,16 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
     // Wait for MongoDB to be ready
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
+    // Run database migrations
+    await execa(
+      "npx",
+      ["hot-updater", "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_MONGODB_URL: testMongoUrl },
+      },
+    );
+
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
       port,
@@ -53,6 +63,11 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, "");
+
+    // Stop and remove Docker containers
+    await execa("docker", ["compose", "down", "-v"], {
+      cwd: projectRoot,
+    });
   }, 60000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
