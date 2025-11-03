@@ -7,6 +7,9 @@
 node_modules
 dist/
 doc_build/
+.vinxi/
+.output/
+app/routeTree.gen.ts
 
 # IDE
 .vscode/*

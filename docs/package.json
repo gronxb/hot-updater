@@ -2,17 +2,34 @@
   "name": "@hot-updater/docs",
   "version": "0.2.0",
   "private": true,
+  "type": "module",
   "homepage": "https://hot-updater.dev/",
   "scripts": {
-    "dev": "rspress dev",
-    "build": "rspress build",
-    "preview": "rspress preview"
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "start": "vinxi start"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "^1.120.20",
+    "@tanstack/start": "^1.120.20",
+    "@types/mdx": "^2.0.13",
+    "fumadocs-core": "^16.0.7",
+    "fumadocs-mdx": "^13.0.5",
+    "fumadocs-ui": "^16.0.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.0.0",
+    "vinxi": "^0.5.3"
   },
   "devDependencies": {
-    "@rspress/plugin-llms": "^2.0.0-beta.8",
-    "@shikijs/transformers": "^3.4.2",
+    "@tailwindcss/vite": "^4.0.0",
+    "@tanstack/router-cli": "^1.134.9",
     "@types/node": "catalog:",
-    "rspress": "^2.0.0-beta.8",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
     "wrangler": "^4.26.0"
   }
 }
