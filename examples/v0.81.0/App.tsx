@@ -110,7 +110,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource('http://localhost:3000/hot-updater', {
+  source: getUpdateSource('http://localhost:3006/hot-updater', {
     updateStrategy: 'appVersion', // or "appVersion"
   }),
   fallbackComponent: ({ progress, status }) => (
