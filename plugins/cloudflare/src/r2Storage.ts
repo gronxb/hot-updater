@@ -21,6 +21,29 @@ export interface R2StorageConfig {
   basePath?: string;
 }
 
+/**
+ * Cloudflare R2 storage plugin for Hot Updater.
+ *
+ * Note: This plugin does not support `getDownloadUrl()`.
+ * If you need download URL generation, use `s3Storage` from `@hot-updater/aws` instead,
+ * which is fully compatible with Cloudflare R2.
+ *
+ * @example
+ * ```typescript
+ * // Using s3Storage with Cloudflare R2 for download URL support
+ * import { s3Storage } from "@hot-updater/aws";
+ *
+ * s3Storage({
+ *   region: "auto",
+ *   endpoint: "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com",
+ *   credentials: {
+ *     accessKeyId: "YOUR_ACCESS_KEY_ID",
+ *     secretAccessKey: "YOUR_SECRET_ACCESS_KEY",
+ *   },
+ *   bucketName: "YOUR_BUCKET_NAME",
+ * })
+ * ```
+ */
 export const r2Storage =
   (config: R2StorageConfig, hooks?: StoragePluginHooks) =>
   (_: BasePluginArgs): StoragePlugin => {
@@ -91,28 +114,20 @@ export const r2Storage =
           storageUri: `r2://${bucketName}/${Key}`,
         };
       },
-      async getDownloadUrl(storageUri: string) {
-        // Simple validation: supported protocol must match
-        const u = new URL(storageUri);
-        if (u.protocol.replace(":", "") !== "r2") {
-          throw new Error("Invalid R2 storage URI protocol");
-        }
-        const key = u.pathname.slice(1);
-        // Generate presigned URL via wrangler for the configured bucket
-        const { stdout: urlOutput } = await wrangler(
-          "r2",
-          "object",
-          "presign",
-          [bucketName, key].join("/"),
-          "--expires-in",
-          "3600",
-          "--remote",
+      async getDownloadUrl() {
+        throw new Error(
+          "`r2Storage` does not support `getDownloadUrl()`. Use `s3Storage` from `@hot-updater/aws` instead (compatible with Cloudflare R2).\n\n" +
+            "Example:\n" +
+            "s3Storage({\n" +
+            "  region: 'auto',\n" +
+            "  endpoint: 'https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com',\n" +
+            "  credentials: {\n" +
+            "    accessKeyId: 'YOUR_ACCESS_KEY_ID',\n" +
+            "    secretAccessKey: 'YOUR_SECRET_ACCESS_KEY',\n" +
+            "  },\n" +
+            "  bucketName: 'YOUR_BUCKET_NAME',\n" +
+            "})",
         );
-        const signedUrl = urlOutput?.trim();
-        if (!signedUrl) {
-          throw new Error("Failed to generate download URL");
-        }
-        return { fileUrl: signedUrl };
       },
     };
   };
