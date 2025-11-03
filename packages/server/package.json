@@ -28,9 +28,9 @@
       "import": "./dist/adapters/prisma.js",
       "require": "./dist/adapters/prisma.cjs"
     },
-    "./adapters/typeorm": {
-      "import": "./dist/adapters/typeorm.js",
-      "require": "./dist/adapters/typeorm.cjs"
+    "./node": {
+      "import": "./dist/node.js",
+      "require": "./dist/node.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -52,7 +52,8 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "fumadb": "0.1.1",
+    "fumadb": "0.1.2",
+    "rou3": "0.7.9",
     "semver": "^7.7.2"
   },
   "devDependencies": {

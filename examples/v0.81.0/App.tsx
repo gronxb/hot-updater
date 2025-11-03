@@ -110,12 +110,9 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource(
-    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-    {
-      updateStrategy: 'appVersion', // or "appVersion"
-    },
-  ),
+  source: getUpdateSource('http://localhost:3006/hot-updater', {
+    updateStrategy: 'appVersion', // or "appVersion"
+  }),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

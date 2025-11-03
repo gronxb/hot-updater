@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
+model bundles {
+  id                  String  @id
+  platform            String
+  should_force_update Boolean
+  enabled             Boolean
+  file_hash           String
+  git_commit_hash     String?
+  message             String?
+  channel             String
+  storage_uri         String
+  target_app_version  String?
+  fingerprint_hash    String?
+  metadata            Json
+}
+
+model private_hot_updater_settings {
+  key   String @id
+  value String @default("0.21.0")
+}
+// --- END HOT-UPDATER MODELS ---

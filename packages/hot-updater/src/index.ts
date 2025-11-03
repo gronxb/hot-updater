@@ -21,6 +21,8 @@ import {
   handleCreateFingerprint,
   handleFingerprint,
 } from "./commands/fingerprint";
+import { generate } from "./commands/generate";
+import { migrate } from "./commands/migrate";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -132,6 +134,38 @@ program
     log.info(`Android version: ${androidVersion}`);
     log.info(`iOS version: ${iosVersion}`);
   });
+
+// Database migration commands
+const dbCommand = program
+  .command("db")
+  .description("Database migration commands");
+
+// db migrate - Primary migration command (always to latest)
+dbCommand
+  .command("migrate")
+  .description("Run database migration (creates tables directly in database)")
+  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .option("-y, --yes", "skip confirmation prompt", false)
+  .action(async (configPath: string, options: { yes: boolean }) => {
+    await migrate({ configPath, skipConfirm: options.yes });
+  });
+
+// db generate - SQL generation command
+dbCommand
+  .command("generate")
+  .description("Generate SQL migration file (does not execute)")
+  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .argument("[outputDir]", "output directory (default: hot-updater_migrations)")
+  .option("-y, --yes", "skip confirmation prompt", false)
+  .action(
+    async (
+      configPath: string,
+      outputDir: string | undefined,
+      options: { yes: boolean },
+    ) => {
+      await generate({ configPath, outputDir, skipConfirm: options.yes });
+    },
+  );
 
 // developing command groups
 if (process.env["NODE_ENV"] === "development") {

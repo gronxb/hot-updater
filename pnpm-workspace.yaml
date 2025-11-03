@@ -3,6 +3,7 @@ packages:
   - plugins/*
   - docs
   - examples/*
+  - examples-server/*
 onlyBuiltDependencies:
   - "@sentry/cli"
   - "@swc/core"
