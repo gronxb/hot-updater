@@ -55,8 +55,7 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: getStorage(),
   database: standaloneRepository({
-    baseUrl:
-      process.env.HOT_UPDATER_SERVER_URL || 'http://localhost:3000/hot-updater',
+    baseUrl: 'http://localhost:3006/hot-updater',
   }),
   fingerprint: {
     debug: true,
