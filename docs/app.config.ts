@@ -1,4 +1,4 @@
-import { defineConfig } from "@tanstack/start/config";
+import { defineConfig } from "@tanstack/react-start/config";
 import { fumadocsVitePlugin } from "fumadocs-mdx/vite";
 import tailwindcss from "@tailwindcss/vite";
 
