@@ -1,3 +1,11 @@
+// For standalone library builds, we don't need React Native resolution
+def isStandaloneLibraryBuild = rootProject.name == "HotUpdater"
+if (isStandaloneLibraryBuild) {
+  // Provide stub implementations and exit early
+  project.ext.shouldConsumeReactNativeFromMavenCentral = { -> true }
+  return
+}
+
 def safeAppExtGet(prop, fallback) {
   def appProject = rootProject.allprojects.find { it.plugins.hasPlugin('com.android.application') }
   appProject?.ext?.has(prop) ? appProject.ext.get(prop) : fallback
@@ -12,9 +20,18 @@ def resolveReactNativeDirectory() {
   }
 
   // Fallback to node resolver for custom directory structures like monorepos.
-  def reactNativePackage = file(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim())
-  if (reactNativePackage.exists()) {
-      return reactNativePackage.parentFile
+  try {
+    def workDir = rootDir ?: projectDir
+    def process = ["node", "--print", "require.resolve('react-native/package.json')"].execute(null, workDir)
+    process.waitFor()
+    if (process.exitValue() == 0) {
+      def reactNativePackage = file(process.text.trim())
+      if (reactNativePackage.exists()) {
+        return reactNativePackage.parentFile
+      }
+    }
+  } catch (Exception e) {
+    // Ignore - will throw below
   }
 
   throw new GradleException(

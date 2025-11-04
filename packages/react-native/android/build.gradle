@@ -26,7 +26,16 @@ def isNewArchitectureEnabled() {
 
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
-apply from: "$projectDir/react-native-helpers.gradle"
+
+// Only apply react-native-helpers if we're building as part of a React Native app
+// For standalone library testing, skip this
+def isStandaloneLibraryBuild = rootProject.name == "HotUpdater"
+if (!isStandaloneLibraryBuild) {
+  apply from: "$projectDir/react-native-helpers.gradle"
+} else {
+  // Provide stub implementations for standalone builds
+  project.ext.shouldConsumeReactNativeFromMavenCentral = { -> true }
+}
 
 if (isNewArchitectureEnabled()) {
   apply plugin: "com.facebook.react"
@@ -88,8 +97,14 @@ android {
   }
 
   compileOptions {
-    sourceCompatibility JavaVersion.VERSION_1_8
-    targetCompatibility JavaVersion.VERSION_1_8
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+      jvmTarget = "17"
+    }
   }
 
   sourceSets {
@@ -105,6 +120,10 @@ android {
         ]
       }
     }
+    test {
+      java.srcDirs += ["src/test/java"]
+      resources.srcDirs += ["src/test/resources"]
+    }
   }
 }
 
@@ -116,6 +135,15 @@ repositories {
 def kotlin_version = getExtOrDefault("kotlinVersion")
 
 dependencies {
+  // Force Kotlin version to prevent conflicts
+  configurations.all {
+    resolutionStrategy {
+      force "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+      force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+      force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    }
+  }
+
   // For < 0.71, this will be from the local maven repo
   // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
   //noinspection GradleDynamicVersion
@@ -133,6 +161,13 @@ dependencies {
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation "org.brotli:dec:0.1.2"
   implementation "org.apache.commons:commons-compress:1.28.0"
+
+  // Unit testing dependencies
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'io.mockk:mockk:1.13.8'
+  testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+  testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+  testImplementation 'org.robolectric:robolectric:4.11.1'
 }
 
 if (isNewArchitectureEnabled()) {
