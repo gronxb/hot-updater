@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload Android test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-test-results
           path: packages/react-native/android/build/reports/tests/
