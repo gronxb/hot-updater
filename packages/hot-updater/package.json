@@ -20,7 +20,8 @@
       "import": "./dist/plugins/babel.js",
       "require": "./dist/plugins/babel.cjs",
       "types": "./dist/plugins/babel.d.ts"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -58,6 +59,8 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "cosmiconfig": "9.0.0",
+    "jiti": "2.6.1",
+    "sql-formatter": "15.6.10",
     "cosmiconfig-typescript-loader": "5.0.0"
   },
   "devDependencies": {
@@ -74,6 +77,7 @@
     "@babel/types": "7.26.0",
     "@hono/node-server": "^1.13.4",
     "@hot-updater/aws": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
@@ -112,6 +116,9 @@
       "optional": true
     },
     "@hot-updater/firebase": {
+      "optional": true
+    },
+    "@hot-updater/server": {
       "optional": true
     }
   }

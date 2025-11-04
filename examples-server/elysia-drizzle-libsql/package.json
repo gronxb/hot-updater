@@ -1,0 +1,35 @@
+{
+  "name": "elysia-drizzle-libsql",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "db:generate": "npx hot-updater db generate src/db.ts --yes",
+    "db:push": "npx drizzle-kit push"
+  },
+  "dependencies": {
+    "@elysiajs/node": "^1.0.3",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@libsql/client": "^0.15.15",
+    "dotenv": "^16.6.1",
+    "drizzle-orm": "^0.44.7",
+    "elysia": "^1.2.17",
+    "memoirist": "^0.4.0"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "^20.11.17",
+    "drizzle-kit": "^0.31.6",
+    "execa": "^9.5.2",
+    "hot-updater": "workspace:*",
+    "prisma": "^6.4.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.3"
+  }
+}

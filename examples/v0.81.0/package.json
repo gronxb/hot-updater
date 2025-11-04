@@ -27,6 +27,8 @@
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
+    "@hot-updater/firebase": "workspace:*",
+    "firebase-admin": "^13.5.0",
     "@react-native-community/cli": "20.0.0",
     "@react-native-community/cli-platform-android": "20.0.0",
     "@react-native-community/cli-platform-ios": "20.0.0",

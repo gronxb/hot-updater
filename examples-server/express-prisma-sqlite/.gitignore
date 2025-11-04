@@ -1,0 +1,8 @@
+node_modules
+dist
+data
+.env
+.env.local
+.env.hotupdater
+hot-updater-schema.ts
+hot-updater_migrations

@@ -14,12 +14,12 @@ import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
 import { createHandler } from "../handler";
-import { v1 } from "../schema/v1";
+import { v0_21_0 } from "../schema/v0_21_0";
 import type { PaginationInfo } from "../types";
 
 export const HotUpdaterDB = fumadb({
-  namespace: "hot-updater",
-  schemas: [v1],
+  namespace: "hot_updater",
+  schemas: [v0_21_0],
 });
 
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
@@ -43,8 +43,13 @@ export interface DatabaseAPI {
 
 export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
-  createMigrator: () => ReturnType<HotUpdaterClient["createMigrator"]>;
+
+  adapterName: string;
+  createMigrator: HotUpdaterClient["createMigrator"];
+  generateSchema: HotUpdaterClient["generateSchema"];
 };
+
+export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
 
 export type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
 
@@ -55,7 +60,7 @@ export interface HotUpdaterOptions {
   cwd?: string;
 }
 
-export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
+export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
   const client = HotUpdaterDB.client(options.database);
   const cwd = options.cwd ?? process.cwd();
 
@@ -485,6 +490,10 @@ export function hotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
       api,
       options?.basePath ? { basePath: options.basePath } : {},
     ),
+
+    // private method
+    adapterName: client.adapter.name,
     createMigrator: () => client.createMigrator(),
+    generateSchema: client.generateSchema,
   };
 }

@@ -1,0 +1,35 @@
+{
+  "name": "hono-mongodb",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.ts",
+    "test": "vitest run",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.5",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/cloudflare": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/firebase": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "dotenv": "^16.6.1",
+    "firebase-admin": "^13.5.0",
+    "hono": "^4.9.12",
+    "mongodb": "^6.12.0"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "^20.11.17",
+    "execa": "^9.5.2",
+    "hot-updater": "workspace:*",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.3"
+  }
+}

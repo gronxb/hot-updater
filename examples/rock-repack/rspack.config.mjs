@@ -1,13 +1,13 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import * as Repack from "@callstack/repack";
-import { HotUpdaterPlugin } from "@hot-updater/repack";
-import rspack from "@rspack/core";
-import { config } from "dotenv";
-import { SentryDebugIdPlugin } from "repack-plugin-sentry";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import * as Repack from '@callstack/repack';
+import { HotUpdaterPlugin } from '@hot-updater/repack';
+import rspack from '@rspack/core';
+import { config } from 'dotenv';
+import { SentryDebugIdPlugin } from 'repack-plugin-sentry';
 
 config({
-  path: ".env.hotupdater",
+  path: '.env.hotupdater',
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 
 export default {
   context: __dirname,
-  entry: "./index.js",
+  entry: './index.js',
   resolve: {
     ...Repack.getResolveOptions(),
   },

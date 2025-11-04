@@ -1,0 +1,34 @@
+{
+  "name": "hono-prisma-postgres",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.ts",
+    "test": "vitest run",
+    "db:generate": "npx hot-updater db generate src/db.ts --yes",
+    "db:push": "npx prisma db push",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.5",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@prisma/client": "^6.18.0",
+    "dotenv": "^16.6.1",
+    "hono": "^4.9.12"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "^20.11.17",
+    "execa": "^9.5.2",
+    "hot-updater": "workspace:*",
+    "prisma": "^6.4.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.3"
+  }
+}
