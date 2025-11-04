@@ -64,3 +64,40 @@ jobs:
           cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
+
+  native-tests:
+    runs-on: macos-latest
+    name: iOS Native Unit Tests
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "5.9"
+
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            packages/react-native/ios/HotUpdater/.build
+            ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-spm-${{ hashFiles('packages/react-native/ios/HotUpdater/Package.swift', 'packages/react-native/ios/HotUpdater/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Run iOS Swift tests
+        run: cd packages/react-native && swift test --package-path ios/HotUpdater
+
+      - name: Run iOS Swift tests with coverage
+        run: cd packages/react-native && swift test --enable-code-coverage --package-path ios/HotUpdater
+
+      - name: Upload iOS test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-test-results
+          path: |
+            packages/react-native/ios/HotUpdater/.build/debug/codecov/*.json
+            packages/react-native/ios/HotUpdater/.build/debug/*.xctest
