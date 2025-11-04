@@ -99,8 +99,6 @@ jobs:
       - name: Generate test report
         if: ${{ always() }}
         uses: asadmansr/android-test-report-action@v1.2.0
-        with:
-          name: Android Test Report
 
       - name: Upload Android test results
         if: ${{ always() }}

@@ -8,25 +8,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runTest
-import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/**
- * Collection of test helper utilities for Hot Updater Android tests.
- *
- * This file provides common utilities for:
- * - Creating mock Android Context instances
- * - Managing temporary test directories
- * - Creating mock ZIP bundles
- * - Calculating file hashes for verification
- * - Mock SharedPreferences implementations
- * - Coroutine testing utilities
- */
+// Collection of test helper utilities for Hot Updater Android tests.
+//
+// This file provides common utilities for:
+// - Creating mock Android Context instances
+// - Managing temporary test directories
+// - Creating mock ZIP bundles
+// - Calculating file hashes for verification
+// - Mock SharedPreferences implementations
+// - Coroutine testing utilities
 
 /**
  * Creates a mock Android Context suitable for testing.
@@ -46,19 +42,19 @@ import java.util.zip.ZipOutputStream
  * ```
  */
 fun createMockContext(filesDir: File? = null): Context {
-  val context = mockk<Context>(relaxed = true)
-  val actualFilesDir = filesDir ?: createTempDirectory("test-files")
+    val context = mockk<Context>(relaxed = true)
+    val actualFilesDir = filesDir ?: createTempDirectory("test-files")
 
-  every { context.filesDir } returns actualFilesDir
-  every { context.cacheDir } returns File(actualFilesDir.parent, "cache").apply { mkdirs() }
-  every { context.packageName } returns "com.test.hotupdater"
+    every { context.filesDir } returns actualFilesDir
+    every { context.cacheDir } returns File(actualFilesDir.parent, "cache").apply { mkdirs() }
+    every { context.packageName } returns "com.test.hotupdater"
 
-  // Mock application info
-  val applicationInfo = android.content.pm.ApplicationInfo()
-  applicationInfo.dataDir = actualFilesDir.parent
-  every { context.applicationInfo } returns applicationInfo
+    // Mock application info
+    val applicationInfo = android.content.pm.ApplicationInfo()
+    applicationInfo.dataDir = actualFilesDir.parent
+    every { context.applicationInfo } returns applicationInfo
 
-  return context
+    return context
 }
 
 /**
@@ -78,10 +74,10 @@ fun createMockContext(filesDir: File? = null): Context {
  * ```
  */
 fun createTempDirectory(prefix: String = "test-"): File {
-  val tempDir = File.createTempFile(prefix, "")
-  tempDir.delete()
-  tempDir.mkdirs()
-  return tempDir
+    val tempDir = File.createTempFile(prefix, "")
+    tempDir.delete()
+    tempDir.mkdirs()
+    return tempDir
 }
 
 /**
@@ -92,16 +88,15 @@ fun createTempDirectory(prefix: String = "test-"): File {
  * @param directory The directory to delete
  * @return true if successful, false otherwise
  */
-fun cleanupTestDirectory(directory: File): Boolean {
-  return try {
-    if (directory.exists()) {
-      directory.deleteRecursively()
+fun cleanupTestDirectory(directory: File): Boolean =
+    try {
+        if (directory.exists()) {
+            directory.deleteRecursively()
+        }
+        true
+    } catch (e: Exception) {
+        false
     }
-    true
-  } catch (e: Exception) {
-    false
-  }
-}
 
 /**
  * Creates a mock ZIP bundle containing the specified files.
@@ -120,16 +115,16 @@ fun cleanupTestDirectory(directory: File): Boolean {
  * ```
  */
 fun createMockZipBundle(files: Map<String, String>): ByteArray {
-  val byteArrayOutputStream = ByteArrayOutputStream()
-  ZipOutputStream(byteArrayOutputStream).use { zipOut ->
-    files.forEach { (path, content) ->
-      val entry = ZipEntry(path)
-      zipOut.putNextEntry(entry)
-      zipOut.write(content.toByteArray(Charsets.UTF_8))
-      zipOut.closeEntry()
+    val byteArrayOutputStream = ByteArrayOutputStream()
+    ZipOutputStream(byteArrayOutputStream).use { zipOut ->
+        files.forEach { (path, content) ->
+            val entry = ZipEntry(path)
+            zipOut.putNextEntry(entry)
+            zipOut.write(content.toByteArray(Charsets.UTF_8))
+            zipOut.closeEntry()
+        }
     }
-  }
-  return byteArrayOutputStream.toByteArray()
+    return byteArrayOutputStream.toByteArray()
 }
 
 /**
@@ -139,16 +134,16 @@ fun createMockZipBundle(files: Map<String, String>): ByteArray {
  * @return A byte array containing the ZIP file data
  */
 fun createMockZipBundleWithBinaryFiles(files: Map<String, ByteArray>): ByteArray {
-  val byteArrayOutputStream = ByteArrayOutputStream()
-  ZipOutputStream(byteArrayOutputStream).use { zipOut ->
-    files.forEach { (path, content) ->
-      val entry = ZipEntry(path)
-      zipOut.putNextEntry(entry)
-      zipOut.write(content)
-      zipOut.closeEntry()
+    val byteArrayOutputStream = ByteArrayOutputStream()
+    ZipOutputStream(byteArrayOutputStream).use { zipOut ->
+        files.forEach { (path, content) ->
+            val entry = ZipEntry(path)
+            zipOut.putNextEntry(entry)
+            zipOut.write(content)
+            zipOut.closeEntry()
+        }
     }
-  }
-  return byteArrayOutputStream.toByteArray()
+    return byteArrayOutputStream.toByteArray()
 }
 
 /**
@@ -167,9 +162,9 @@ fun createMockZipBundleWithBinaryFiles(files: Map<String, ByteArray>): ByteArray
  * ```
  */
 fun calculateSHA256(data: ByteArray): String {
-  val digest = MessageDigest.getInstance("SHA-256")
-  digest.update(data)
-  return digest.digest().joinToString("") { "%02x".format(it) }
+    val digest = MessageDigest.getInstance("SHA-256")
+    digest.update(data)
+    return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
 /**
@@ -179,15 +174,15 @@ fun calculateSHA256(data: ByteArray): String {
  * @return Hex string of the hash (lowercase)
  */
 fun calculateFileSHA256(file: File): String {
-  val digest = MessageDigest.getInstance("SHA-256")
-  file.inputStream().use { input ->
-    val buffer = ByteArray(8192)
-    var bytesRead: Int
-    while (input.read(buffer).also { bytesRead = it } != -1) {
-      digest.update(buffer, 0, bytesRead)
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(8192)
+        var bytesRead: Int
+        while (input.read(buffer).also { bytesRead = it } != -1) {
+            digest.update(buffer, 0, bytesRead)
+        }
     }
-  }
-  return digest.digest().joinToString("") { "%02x".format(it) }
+    return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
 /**
@@ -206,84 +201,84 @@ fun calculateFileSHA256(file: File): String {
  * ```
  */
 fun createMockSharedPreferences(): SharedPreferences {
-  val data = mutableMapOf<String, Any?>()
-  val prefs = mockk<SharedPreferences>(relaxed = true)
+    val data = mutableMapOf<String, Any?>()
+    val prefs = mockk<SharedPreferences>(relaxed = true)
 
-  // Mock getString
-  every { prefs.getString(any(), any()) } answers {
-    val key = firstArg<String>()
-    val default = secondArg<String?>()
-    data[key] as? String ?: default
-  }
+    // Mock getString
+    every { prefs.getString(any(), any()) } answers {
+        val key = firstArg<String>()
+        val default = secondArg<String?>()
+        data[key] as? String ?: default
+    }
 
-  // Mock getInt
-  every { prefs.getInt(any(), any()) } answers {
-    val key = firstArg<String>()
-    val default = secondArg<Int>()
-    data[key] as? Int ?: default
-  }
+    // Mock getInt
+    every { prefs.getInt(any(), any()) } answers {
+        val key = firstArg<String>()
+        val default = secondArg<Int>()
+        data[key] as? Int ?: default
+    }
 
-  // Mock getBoolean
-  every { prefs.getBoolean(any(), any()) } answers {
-    val key = firstArg<String>()
-    val default = secondArg<Boolean>()
-    data[key] as? Boolean ?: default
-  }
+    // Mock getBoolean
+    every { prefs.getBoolean(any(), any()) } answers {
+        val key = firstArg<String>()
+        val default = secondArg<Boolean>()
+        data[key] as? Boolean ?: default
+    }
 
-  // Mock getLong
-  every { prefs.getLong(any(), any()) } answers {
-    val key = firstArg<String>()
-    val default = secondArg<Long>()
-    data[key] as? Long ?: default
-  }
+    // Mock getLong
+    every { prefs.getLong(any(), any()) } answers {
+        val key = firstArg<String>()
+        val default = secondArg<Long>()
+        data[key] as? Long ?: default
+    }
 
-  // Mock contains
-  every { prefs.contains(any()) } answers {
-    data.containsKey(firstArg())
-  }
+    // Mock contains
+    every { prefs.contains(any()) } answers {
+        data.containsKey(firstArg())
+    }
 
-  // Mock getAll
-  every { prefs.all } returns data.toMap()
+    // Mock getAll
+    every { prefs.all } returns data.toMap()
 
-  // Mock edit()
-  val editor = mockk<SharedPreferences.Editor>(relaxed = true)
+    // Mock edit()
+    val editor = mockk<SharedPreferences.Editor>(relaxed = true)
 
-  every { editor.putString(any(), any()) } answers {
-    data[firstArg()] = secondArg<String?>()
-    editor
-  }
+    every { editor.putString(any(), any()) } answers {
+        data[firstArg()] = secondArg<String?>()
+        editor
+    }
 
-  every { editor.putInt(any(), any()) } answers {
-    data[firstArg()] = secondArg<Int>()
-    editor
-  }
+    every { editor.putInt(any(), any()) } answers {
+        data[firstArg()] = secondArg<Int>()
+        editor
+    }
 
-  every { editor.putBoolean(any(), any()) } answers {
-    data[firstArg()] = secondArg<Boolean>()
-    editor
-  }
+    every { editor.putBoolean(any(), any()) } answers {
+        data[firstArg()] = secondArg<Boolean>()
+        editor
+    }
 
-  every { editor.putLong(any(), any()) } answers {
-    data[firstArg()] = secondArg<Long>()
-    editor
-  }
+    every { editor.putLong(any(), any()) } answers {
+        data[firstArg()] = secondArg<Long>()
+        editor
+    }
 
-  every { editor.remove(any()) } answers {
-    data.remove(firstArg())
-    editor
-  }
+    every { editor.remove(any()) } answers {
+        data.remove(firstArg())
+        editor
+    }
 
-  every { editor.clear() } answers {
-    data.clear()
-    editor
-  }
+    every { editor.clear() } answers {
+        data.clear()
+        editor
+    }
 
-  every { editor.apply() } returns Unit
-  every { editor.commit() } returns true
+    every { editor.apply() } returns Unit
+    every { editor.commit() } returns true
 
-  every { prefs.edit() } returns editor
+    every { prefs.edit() } returns editor
 
-  return prefs
+    return prefs
 }
 
 /**
@@ -293,17 +288,15 @@ fun createMockSharedPreferences(): SharedPreferences {
  * @return A mocked Context with SharedPreferences support
  */
 fun createMockContextWithPreferences(filesDir: File? = null): Context {
-  val context = createMockContext(filesDir)
-  val mockPrefs = createMockSharedPreferences()
+    val context = createMockContext(filesDir)
+    val mockPrefs = createMockSharedPreferences()
 
-  every { context.getSharedPreferences(any(), any()) } returns mockPrefs
+    every { context.getSharedPreferences(any(), any()) } returns mockPrefs
 
-  return context
+    return context
 }
 
-/**
- * Coroutine testing utilities
- */
+// Coroutine testing utilities
 
 /**
  * Creates a test CoroutineScope with an UnconfinedTestDispatcher.
@@ -323,9 +316,7 @@ fun createMockContextWithPreferences(filesDir: File? = null): Context {
  * ```
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-fun createTestScope(dispatcher: TestDispatcher = UnconfinedTestDispatcher()): CoroutineScope {
-  return CoroutineScope(dispatcher)
-}
+fun createTestScope(dispatcher: TestDispatcher = UnconfinedTestDispatcher()): CoroutineScope = CoroutineScope(dispatcher)
 
 /**
  * Writes data to a file, creating parent directories if needed.
@@ -334,11 +325,11 @@ fun createTestScope(dispatcher: TestDispatcher = UnconfinedTestDispatcher()): Co
  * @param data The data to write
  */
 fun writeTestFile(
-  file: File,
-  data: ByteArray,
+    file: File,
+    data: ByteArray,
 ) {
-  file.parentFile?.mkdirs()
-  file.writeBytes(data)
+    file.parentFile?.mkdirs()
+    file.writeBytes(data)
 }
 
 /**
@@ -348,11 +339,11 @@ fun writeTestFile(
  * @param text The text to write
  */
 fun writeTestFile(
-  file: File,
-  text: String,
+    file: File,
+    text: String,
 ) {
-  file.parentFile?.mkdirs()
-  file.writeText(text)
+    file.parentFile?.mkdirs()
+    file.writeText(text)
 }
 
 /**
@@ -364,15 +355,15 @@ fun writeTestFile(
  * @return The created ZIP file
  */
 fun createMockBundleFile(
-  directory: File,
-  filename: String,
-  files: Map<String, String>,
+    directory: File,
+    filename: String,
+    files: Map<String, String>,
 ): File {
-  directory.mkdirs()
-  val zipFile = File(directory, filename)
-  val zipData = createMockZipBundle(files)
-  writeTestFile(zipFile, zipData)
-  return zipFile
+    directory.mkdirs()
+    val zipFile = File(directory, filename)
+    val zipData = createMockZipBundle(files)
+    writeTestFile(zipFile, zipData)
+    return zipFile
 }
 
 /**
@@ -382,12 +373,12 @@ fun createMockBundleFile(
  * @throws AssertionError if the file doesn't exist or is empty
  */
 fun assertFileExistsAndNotEmpty(file: File) {
-  if (!file.exists()) {
-    throw AssertionError("File does not exist: ${file.absolutePath}")
-  }
-  if (file.length() == 0L) {
-    throw AssertionError("File is empty: ${file.absolutePath}")
-  }
+    if (!file.exists()) {
+        throw AssertionError("File does not exist: ${file.absolutePath}")
+    }
+    if (file.length() == 0L) {
+        throw AssertionError("File is empty: ${file.absolutePath}")
+    }
 }
 
 /**
@@ -397,14 +388,14 @@ fun assertFileExistsAndNotEmpty(file: File) {
  * @throws AssertionError if the directory doesn't exist or is empty
  */
 fun assertDirectoryExistsAndNotEmpty(directory: File) {
-  if (!directory.exists()) {
-    throw AssertionError("Directory does not exist: ${directory.absolutePath}")
-  }
-  if (!directory.isDirectory) {
-    throw AssertionError("Not a directory: ${directory.absolutePath}")
-  }
-  val files = directory.listFiles()
-  if (files == null || files.isEmpty()) {
-    throw AssertionError("Directory is empty: ${directory.absolutePath}")
-  }
+    if (!directory.exists()) {
+        throw AssertionError("Directory does not exist: ${directory.absolutePath}")
+    }
+    if (!directory.isDirectory) {
+        throw AssertionError("Not a directory: ${directory.absolutePath}")
+    }
+    val files = directory.listFiles()
+    if (files == null || files.isEmpty()) {
+        throw AssertionError("Directory is empty: ${directory.absolutePath}")
+    }
 }

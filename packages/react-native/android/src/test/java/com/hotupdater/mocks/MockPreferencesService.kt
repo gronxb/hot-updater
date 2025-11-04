@@ -20,69 +20,61 @@ import com.hotupdater.PreferencesService
  * ```
  */
 class MockPreferencesService : PreferencesService {
-  private val storage = mutableMapOf<String, String?>()
+    private val storage = mutableMapOf<String, String?>()
 
-  /**
-   * Gets a stored preference value.
-   *
-   * @param key The key to retrieve
-   * @return The stored value or null if not found
-   */
-  override fun getItem(key: String): String? {
-    return storage[key]
-  }
+    /**
+     * Gets a stored preference value.
+     *
+     * @param key The key to retrieve
+     * @return The stored value or null if not found
+     */
+    override fun getItem(key: String): String? = storage[key]
 
-  /**
-   * Sets a preference value.
-   *
-   * @param key The key to store under
-   * @param value The value to store (or null to remove)
-   */
-  override fun setItem(
-    key: String,
-    value: String?,
-  ) {
-    if (value == null) {
-      storage.remove(key)
-    } else {
-      storage[key] = value
+    /**
+     * Sets a preference value.
+     *
+     * @param key The key to store under
+     * @param value The value to store (or null to remove)
+     */
+    override fun setItem(
+        key: String,
+        value: String?,
+    ) {
+        if (value == null) {
+            storage.remove(key)
+        } else {
+            storage[key] = value
+        }
     }
-  }
 
-  /**
-   * Clears all stored preferences.
-   *
-   * Useful for resetting state between tests.
-   */
-  fun clear() {
-    storage.clear()
-  }
+    /**
+     * Clears all stored preferences.
+     *
+     * Useful for resetting state between tests.
+     */
+    fun clear() {
+        storage.clear()
+    }
 
-  /**
-   * Gets all stored key-value pairs.
-   *
-   * @return A map of all stored preferences
-   */
-  fun getAll(): Map<String, String?> {
-    return storage.toMap()
-  }
+    /**
+     * Gets all stored key-value pairs.
+     *
+     * @return A map of all stored preferences
+     */
+    fun getAll(): Map<String, String?> = storage.toMap()
 
-  /**
-   * Checks if a key exists in storage.
-   *
-   * @param key The key to check
-   * @return true if the key exists, false otherwise
-   */
-  fun contains(key: String): Boolean {
-    return storage.containsKey(key)
-  }
+    /**
+     * Checks if a key exists in storage.
+     *
+     * @param key The key to check
+     * @return true if the key exists, false otherwise
+     */
+    fun contains(key: String): Boolean = storage.containsKey(key)
 
-  /**
-   * Gets the number of stored items.
-   *
-   * @return The size of the storage
-   */
-  fun size(): Int {
-    return storage.size
-  }
+    /**
+     * Gets the number of stored items.
+     *
+     * @return The size of the storage
+     */
+    fun size(): Int = storage.size
 }
