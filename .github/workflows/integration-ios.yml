@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - "packages/react-native/ios/**"
+  workflow_dispatch:
 
 name: iOS Integration
 

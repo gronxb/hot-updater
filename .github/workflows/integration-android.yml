@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - "packages/react-native/android/**"
+  workflow_dispatch:
 
 name: Android Integration
 
