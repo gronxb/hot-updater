@@ -26,7 +26,16 @@ def isNewArchitectureEnabled() {
 
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
-apply from: "$projectDir/react-native-helpers.gradle"
+
+// Only apply react-native-helpers if we're building as part of a React Native app
+// For standalone library testing, skip this
+def isStandaloneLibraryBuild = rootProject.name == "HotUpdater"
+if (!isStandaloneLibraryBuild) {
+  apply from: "$projectDir/react-native-helpers.gradle"
+} else {
+  // Provide stub implementations for standalone builds
+  project.ext.shouldConsumeReactNativeFromMavenCentral = { -> true }
+}
 
 if (isNewArchitectureEnabled()) {
   apply plugin: "com.facebook.react"
@@ -88,8 +97,12 @@ android {
   }
 
   compileOptions {
-    sourceCompatibility JavaVersion.VERSION_1_8
-    targetCompatibility JavaVersion.VERSION_1_8
+    sourceCompatibility JavaVersion.VERSION_11
+    targetCompatibility JavaVersion.VERSION_11
+  }
+
+  kotlinOptions {
+    jvmTarget = "11"
   }
 
   sourceSets {
@@ -120,6 +133,15 @@ repositories {
 def kotlin_version = getExtOrDefault("kotlinVersion")
 
 dependencies {
+  // Force Kotlin version to prevent conflicts
+  configurations.all {
+    resolutionStrategy {
+      force "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+      force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+      force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    }
+  }
+
   // For < 0.71, this will be from the local maven repo
   // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
   //noinspection GradleDynamicVersion

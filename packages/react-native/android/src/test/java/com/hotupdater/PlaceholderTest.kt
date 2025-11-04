@@ -22,7 +22,7 @@ class PlaceholderTest {
     @Test
     fun testBasicKotlinFeatures() {
         val testString = "Hello, Hot Updater Tests!"
-        assertEquals(26, testString.length)
+        assertEquals(25, testString.length)
         assertTrue(testString.contains("Hot Updater"))
     }
 }
