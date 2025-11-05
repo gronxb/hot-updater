@@ -1,12 +1,12 @@
 import Foundation
 
-enum PreferencesError: Error {
+public enum PreferencesError: Error {
     case configurationError
     case setItemError(String)
     case getItemError(String)
 }
 
-protocol PreferencesService {
+public protocol PreferencesService {
     func setItem(_ value: String?, forKey key: String) throws
     func getItem(forKey key: String) throws -> String?
 }

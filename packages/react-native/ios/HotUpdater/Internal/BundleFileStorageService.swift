@@ -231,7 +231,7 @@ public class BundleFileStorageService: BundleStorageService {
      * @param localPath Path to the bundle file (or nil to reset)
      * @return Result of operation
      */
-    func setBundleURL(localPath: String?) -> Result<Void, Error> {
+    public func setBundleURL(localPath: String?) -> Result<Void, Error> {
         do {
             NSLog("[BundleStorage] Setting bundle URL to: \(localPath ?? "nil")")
             try self.preferences.setItem(localPath, forKey: "HotUpdaterBundleURL")
@@ -240,11 +240,11 @@ public class BundleFileStorageService: BundleStorageService {
             return .failure(error)
         }
     }
-    
+
     /**
      * Gets the URL to the cached bundle file if it exists.
      */
-    func getCachedBundleURL() -> URL? {
+    public func getCachedBundleURL() -> URL? {
         do {
             guard let savedURLString = try self.preferences.getItem(forKey: "HotUpdaterBundleURL"),
                   let bundleURL = URL(string: savedURLString),
@@ -257,21 +257,21 @@ public class BundleFileStorageService: BundleStorageService {
             return nil
         }
     }
-    
+
     /**
      * Gets the URL to the fallback bundle included in the app.
      * @return URL to the fallback bundle or nil if not found
      */
-    func getFallbackBundleURL() -> URL? {
+    public func getFallbackBundleURL() -> URL? {
         return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     }
-    
+
     public func getBundleURL() -> URL? {
         return getCachedBundleURL() ?? getFallbackBundleURL()
     }
-    
+
     // MARK: - Bundle Update
-    
+
     /**
      * Updates the bundle from the specified URL. This operation is asynchronous.
      * @param bundleId ID of the bundle to update
@@ -280,7 +280,7 @@ public class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    public func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
         // Get the current bundle ID from the cached bundle URL (exclude fallback bundles)
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         

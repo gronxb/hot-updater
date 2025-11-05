@@ -1,6 +1,6 @@
 import Foundation
 
-protocol DownloadService {
+public protocol DownloadService {
     /**
      * Gets the file size from the URL without downloading.
      * @param url The URL to check
@@ -20,7 +20,7 @@ protocol DownloadService {
 }
 
 
-enum DownloadError: Error {
+public enum DownloadError: Error {
     case incompleteDownload
     case invalidContentLength
 }
@@ -84,7 +84,7 @@ public class URLSessionDownloadService: NSObject, DownloadService, @unchecked Se
 }
 
 extension URLSessionDownloadService: URLSessionDownloadDelegate {
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         let completion = completionHandlers[downloadTask]
         let destination = destinations[downloadTask]
 
@@ -137,8 +137,8 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             completion?(.failure(error))
         }
     }
-    
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         let completion = completionHandlers[task]
         defer {
             progressHandlers.removeValue(forKey: task)
@@ -152,8 +152,8 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             completion?(.failure(error))
         }
     }
-    
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         let progressHandler = progressHandlers[downloadTask]
         
         if totalBytesExpectedToWrite > 0 {
