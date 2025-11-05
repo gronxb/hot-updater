@@ -1,11 +1,28 @@
 import Testing
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // MARK: - Test Configuration
 /// Mock HTTP server for testing OTA updates
 /// Uses URLProtocol to intercept network requests
 class MockHTTPServer: URLProtocol {
-    static var responses: [URL: (Data?, URLResponse?, Error?)] = [:]
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _responses: [URL: (Data?, URLResponse?, Error?)] = [:]
+
+    static var responses: [URL: (Data?, URLResponse?, Error?)] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _responses
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _responses = newValue
+        }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool {
         guard let url = request.url else { return false }
