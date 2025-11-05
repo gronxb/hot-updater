@@ -1,0 +1,1 @@
+This is a test asset file for Hot Updater OTA bundle testing.

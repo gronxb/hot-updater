@@ -5,6 +5,10 @@ import FoundationNetworking
 #endif
 
 // MARK: - Test Configuration
+
+/// Test bundle hash (SHA256 of test-bundle.zip)
+let TEST_BUNDLE_HASH = "1287fe58c0ea5434c5dd4c1a1d8a5c7d36759f55b0e54632c2ff050370155b6e"
+
 /// Mock HTTP server for testing OTA updates
 /// Uses URLProtocol to intercept network requests
 class MockHTTPServer: URLProtocol {
@@ -56,6 +60,113 @@ class MockHTTPServer: URLProtocol {
     override func stopLoading() {}
 }
 
+// MARK: - Test Helpers
+
+/// Helper to load test bundle resources
+func loadTestBundle(named name: String) throws -> Data {
+    let resourcePath = URL(fileURLWithPath: #file)
+        .deletingLastPathComponent()
+        .appendingPathComponent("Resources")
+        .appendingPathComponent(name)
+
+    return try Data(contentsOf: resourcePath)
+}
+
+/// Helper to create a mock file system with temp directory
+class TestFileSystem {
+    let tempDir: String
+    let fileManager: FileManager
+
+    init() {
+        fileManager = FileManager.default
+        tempDir = NSTemporaryDirectory() + "hot-updater-test-\(UUID().uuidString)"
+        try? fileManager.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+    }
+
+    func cleanup() {
+        try? fileManager.removeItem(atPath: tempDir)
+    }
+
+    func documentsPath() -> String {
+        return tempDir
+    }
+}
+
+/// Mock FileSystemService that uses a test directory
+class TestFileManagerService: FileSystemService {
+    private let fileManager = FileManager.default
+    private let baseDir: String
+
+    init(baseDir: String) {
+        self.baseDir = baseDir
+    }
+
+    func fileExists(atPath path: String) -> Bool {
+        return fileManager.fileExists(atPath: path)
+    }
+
+    func createDirectory(atPath path: String) -> Bool {
+        do {
+            try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeItem(atPath path: String) throws {
+        try fileManager.removeItem(atPath: path)
+    }
+
+    func moveItem(atPath srcPath: String, toPath dstPath: String) throws {
+        try fileManager.moveItem(atPath: srcPath, toPath: dstPath)
+    }
+
+    func copyItem(atPath srcPath: String, toPath dstPath: String) throws {
+        try fileManager.copyItem(atPath: srcPath, toPath: dstPath)
+    }
+
+    func contentsOfDirectory(atPath path: String) throws -> [String] {
+        return try fileManager.contentsOfDirectory(atPath: path)
+    }
+
+    func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
+        return try fileManager.attributesOfItem(atPath: path)
+    }
+
+    func documentsPath() -> String {
+        return baseDir
+    }
+}
+
+/// Test expectation helper for async tests
+class TestExpectation {
+    private var isFulfilled = false
+    private let lock = NSLock()
+
+    func fulfill() {
+        lock.lock()
+        defer { lock.unlock() }
+        isFulfilled = true
+    }
+
+    func wait(timeout: TimeInterval = 10.0) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            lock.lock()
+            let fulfilled = isFulfilled
+            lock.unlock()
+
+            if fulfilled {
+                return
+            }
+
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        }
+        throw NSError(domain: "TestExpectation", code: 1, userInfo: [NSLocalizedDescriptionKey: "Timeout waiting for expectation"])
+    }
+}
+
 // MARK: - Integration Tests
 @Suite("HotUpdater Integration Tests")
 struct HotUpdaterIntegrationTests {
@@ -71,10 +182,69 @@ struct HotUpdaterIntegrationTests {
 
     @Test("Complete first-time OTA update flow")
     func testCompleteOTAUpdate_FirstInstall() async throws {
-        // TODO: Implement test
-        // Scenario: Download bundle → Extract → Save to file system → Update Preferences → Return bundle path
-        // Verify: All steps succeed, correct bundle path returned
-        #expect(true, "Test not implemented yet")
+        // Create isolated test file system
+        let testFS = TestFileSystem()
+        defer { testFS.cleanup() }
+
+        // Setup services with test file system
+        let fileSystem = TestFileManagerService(baseDir: testFS.documentsPath())
+        let preferences = VersionedPreferencesService(userDefaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        preferences.configure(isolationKey: "hotupdater_1.0.0_production_")
+
+        // Create download service with mock URL session
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockHTTPServer.self]
+        let urlSession = URLSession(configuration: config)
+        let downloadService = URLSessionDownloadService(urlSession: urlSession)
+
+        let decompressService = DecompressService()
+        let bundleStorage = BundleFileStorageService(
+            fileSystem: fileSystem,
+            downloadService: downloadService,
+            decompressService: decompressService,
+            preferences: preferences
+        )
+
+        // Load test bundle and setup mock response
+        let bundleData = try loadTestBundle(named: "test-bundle.zip")
+        let testURL = URL(string: "https://test.example.com/bundle.zip")!
+        let response = HTTPURLResponse(url: testURL, statusCode: 200, httpVersion: nil, headerFields: nil)
+        MockHTTPServer.responses[testURL] = (bundleData, response, nil)
+
+        // Execute update
+        let bundleId = "test-bundle-v1"
+        let expectation = TestExpectation()
+        var updateSuccess = false
+        var updateError: Error?
+
+        bundleStorage.updateBundle(bundleId: bundleId, fileUrl: testURL, fileHash: nil, progressHandler: { _ in }) { result in
+            switch result {
+            case .success:
+                updateSuccess = true
+            case .failure(let error):
+                updateError = error
+            }
+            expectation.fulfill()
+        }
+
+        // Wait for async completion
+        try await expectation.wait()
+
+        // Verify update succeeded
+        #expect(updateSuccess, "Update should succeed")
+        #expect(updateError == nil, "Should not have error: \(String(describing: updateError))")
+
+        // Verify bundle URL is set
+        let bundleURL = bundleStorage.getBundleURL()
+        #expect(bundleURL != nil, "Bundle URL should be set")
+
+        // Verify bundle file exists
+        if let bundleURL = bundleURL {
+            #expect(FileManager.default.fileExists(atPath: bundleURL.path), "Bundle file should exist at \(bundleURL.path)")
+        }
+
+        // Cleanup
+        MockHTTPServer.responses.removeAll()
     }
 
     @Test("Upgrade from existing bundle to new version")
