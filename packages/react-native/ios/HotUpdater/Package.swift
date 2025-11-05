@@ -29,6 +29,7 @@ let package = Package(
                 "HotUpdater.mm",
                 "HotUpdater-Bridging-Header.h",
                 "HotUpdaterImpl.swift",
+                "HotUpdaterFactory.swift",
             ]
         ),
         .testTarget(
