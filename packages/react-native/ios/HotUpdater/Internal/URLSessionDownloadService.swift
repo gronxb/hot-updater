@@ -25,21 +25,24 @@ enum DownloadError: Error {
     case invalidContentLength
 }
 
-class URLSessionDownloadService: NSObject, DownloadService {
-    private var session: URLSession!
+class URLSessionDownloadService: NSObject, DownloadService, @unchecked Sendable {
+    private var session: URLSession
     private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
 
     override init() {
-        super.init()
         let configuration = URLSessionConfiguration.default
-        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        // Temporarily initialize with a placeholder session
+        self.session = URLSession(configuration: configuration)
+        super.init()
+        // Now set the actual session with self as delegate
+        self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }
 
     init(urlSession: URLSession) {
-        super.init()
         self.session = urlSession
+        super.init()
     }
 
     func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void) {
