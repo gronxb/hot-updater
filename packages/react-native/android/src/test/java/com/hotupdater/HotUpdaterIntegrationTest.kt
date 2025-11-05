@@ -1,11 +1,10 @@
 package com.hotupdater
 
 import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.MockResponse
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
@@ -14,7 +13,6 @@ import java.io.File
  */
 @DisplayName("HotUpdater Integration Tests")
 class HotUpdaterIntegrationTest {
-
     private lateinit var mockWebServer: MockWebServer
     private lateinit var tempDir: File
 
