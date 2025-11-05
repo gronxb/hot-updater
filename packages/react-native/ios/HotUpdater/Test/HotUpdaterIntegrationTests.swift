@@ -65,12 +65,15 @@ class MockHTTPServer: URLProtocol {
 
 /// Helper to load test bundle resources
 func loadTestBundle(named name: String) throws -> Data {
-    let resourcePath = URL(fileURLWithPath: #file)
-        .deletingLastPathComponent()
-        .appendingPathComponent("Resources")
-        .appendingPathComponent(name)
-
-    return try Data(contentsOf: resourcePath)
+    // Use Bundle.module for Swift Package Manager resource loading
+    guard let resourceURL = Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Resources") else {
+        throw NSError(
+            domain: "TestBundleLoader",
+            code: 404,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find resource: \(name)"]
+        )
+    }
+    return try Data(contentsOf: resourceURL)
 }
 
 /// Helper to create a mock file system with temp directory
