@@ -163,10 +163,19 @@ class HotUpdaterIntegrationTest {
 
             // Load test bundle and setup mock response
             val bundleData = loadTestBundle("test-bundle.zip")
+
+            // Enqueue HEAD response for getFileSize() call
             mockWebServer.enqueue(
                 MockResponse()
                     .setResponseCode(200)
-                    .setBody(Buffer().write(bundleData)),
+                    .addHeader("Content-Length", bundleData.size.toString())
+            )
+
+            // Enqueue GET response for downloadFile() call
+            mockWebServer.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(Buffer().write(bundleData))
             )
 
             // Execute update

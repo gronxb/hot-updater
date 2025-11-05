@@ -21,7 +21,7 @@ let package = Package(
         .target(
             name: "HotUpdater",
             dependencies: [
-                .product(name: "SSZipArchive", package: "ZipArchive"),
+                .product(name: "ZipArchive", package: "ZipArchive"),
                 .product(name: "SWCompression", package: "SWCompression"),
             ],
             path: "Internal",
