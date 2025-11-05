@@ -8,7 +8,7 @@ enum FileSystemError: Error {
     case fileNotFound(String)
 }
 
-protocol FileSystemService {
+public protocol FileSystemService {
     func fileExists(atPath path: String) -> Bool
     func createDirectory(atPath path: String) -> Bool
     func removeItem(atPath path: String) throws

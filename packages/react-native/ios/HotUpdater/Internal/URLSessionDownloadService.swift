@@ -25,13 +25,13 @@ enum DownloadError: Error {
     case invalidContentLength
 }
 
-class URLSessionDownloadService: NSObject, DownloadService, @unchecked Sendable {
+public class URLSessionDownloadService: NSObject, DownloadService, @unchecked Sendable {
     private var session: URLSession
     private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
 
-    override init() {
+    public override init() {
         let configuration = URLSessionConfiguration.default
         // Temporarily initialize with a placeholder session
         self.session = URLSession(configuration: configuration)
@@ -40,7 +40,7 @@ class URLSessionDownloadService: NSObject, DownloadService, @unchecked Sendable 
         self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }
 
-    init(urlSession: URLSession) {
+    public init(urlSession: URLSession) {
         self.session = urlSession
         super.init()
     }

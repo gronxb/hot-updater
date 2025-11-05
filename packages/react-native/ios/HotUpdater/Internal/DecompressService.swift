@@ -4,11 +4,11 @@ import Foundation
  * Unified decompression service that uses Strategy pattern to handle multiple compression formats.
  * Automatically detects format by trying each strategy's validation and delegates to appropriate decompression strategy.
  */
-class DecompressService {
+public class DecompressService {
     /// Array of available strategies in order of detection priority
     private let strategies: [DecompressionStrategy]
 
-    init() {
+    public init() {
         // Order matters: Try ZIP first (clear magic bytes), then TAR.GZ (GZIP magic bytes), then TAR.BR (fallback)
         self.strategies = [
             ZipDecompressionStrategy(),

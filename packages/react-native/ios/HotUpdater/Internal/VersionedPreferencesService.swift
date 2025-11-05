@@ -11,11 +11,11 @@ protocol PreferencesService {
     func getItem(forKey key: String) throws -> String?
 }
 
-class VersionedPreferencesService: PreferencesService {
+public class VersionedPreferencesService: PreferencesService {
     private let userDefaults: UserDefaults
     private var isolationKey: String = ""
-    
-    init(userDefaults: UserDefaults = .standard) {
+
+    public init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
     }
     
@@ -23,7 +23,7 @@ class VersionedPreferencesService: PreferencesService {
      * Configures the service with isolation key.
      * @param isolationKey The complete isolation key to use for storage
      */
-    func configure(isolationKey: String) {
+    public func configure(isolationKey: String) {
         self.isolationKey = isolationKey
         NSLog("[PreferencesService] Configured with isolation key: \(self.isolationKey)")
     }

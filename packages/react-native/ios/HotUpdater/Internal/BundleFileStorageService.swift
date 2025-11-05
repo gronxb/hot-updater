@@ -32,7 +32,7 @@ public protocol BundleStorageService {
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 }
 
-class BundleFileStorageService: BundleStorageService {
+public class BundleFileStorageService: BundleStorageService {
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let decompressService: DecompressService
