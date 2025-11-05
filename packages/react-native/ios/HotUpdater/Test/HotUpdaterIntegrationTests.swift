@@ -3,6 +3,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+@testable import HotUpdater
 
 // MARK: - Test Configuration
 
