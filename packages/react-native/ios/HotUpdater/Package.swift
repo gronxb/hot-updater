@@ -30,9 +30,6 @@ let package = Package(
                 "HotUpdater-Bridging-Header.h",
                 "HotUpdaterImpl.swift",
                 "HotUpdaterFactory.swift",
-                "TarGzDecompressionStrategy.swift",
-                "TarBrDecompressionStrategy.swift",
-                "ZipDecompressionStrategy.swift",
             ]
         ),
         .testTarget(
