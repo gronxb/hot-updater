@@ -35,7 +35,15 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
             fileHandle.closeFile()
         }
 
-        guard let header = try? fileHandle.read(upToCount: 2), header.count == 2 else {
+        let header: Data?
+        if #available(macOS 10.15.4, iOS 13.4, *) {
+            header = try? fileHandle.read(upToCount: 2)
+        } else {
+            let tempData = fileHandle.readData(ofLength: 2)
+            header = tempData.count > 0 ? tempData : nil
+        }
+
+        guard let header = header, header.count == 2 else {
             NSLog("[TarGzStrategy] Invalid file: cannot read header")
             return false
         }
