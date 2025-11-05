@@ -7,31 +7,40 @@ def safeAppExtGet(prop, fallback) {
 // https://github.com/software-mansion/react-native-reanimated/blob/36c291a15880c78a94dd125c51484630546ceb7c/packages/react-native-reanimated/android/build.gradle#L73
 def resolveReactNativeDirectory() {
   def reactNativeLocation = safeAppExtGet("REACT_NATIVE_NODE_MODULES_DIR", null)
-  if (reactNativeLocation != null) {
+  if (reactNativeLocation != null && reactNativeLocation != "") {
     return file(reactNativeLocation)
   }
 
   // Fallback to node resolver for custom directory structures like monorepos.
-  def reactNativePackage = file(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim())
-  if (reactNativePackage.exists()) {
-      return reactNativePackage.parentFile
+  try {
+    def output = ["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()
+    if (output != null && output != "") {
+      def reactNativePackage = file(output)
+      if (reactNativePackage.exists()) {
+        return reactNativePackage.parentFile
+      }
+    }
+  } catch (Exception e) {
+    // If node command fails or react-native is not found, return null
+    return null
   }
 
-  throw new GradleException(
-    "${project.name}: unable to resolve react-native location in " +
-    "node_modules. You should project extension property (in app/build.gradle) " +
-    "`REACT_NATIVE_NODE_MODULES_DIR` with path to react-native."
-  )
+  return null
 }
 
 // https://github.com/software-mansion/react-native-reanimated/blob/cda4627c3337c33674f05f755b7485165c6caca9/android/build.gradle#L199#L205
 def reactNativeRootDir = resolveReactNativeDirectory()
 
-def reactProperties = new Properties()
-file("$reactNativeRootDir/ReactAndroid/gradle.properties").withInputStream { reactProperties.load(it) }
+def REACT_NATIVE_VERSION = "0.74.0" // Default version for standalone builds
+def REACT_NATIVE_MINOR_VERSION = 74 // Default minor version
 
-def REACT_NATIVE_VERSION = reactProperties.getProperty("VERSION_NAME")
-def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.startsWith("0.0.0-") ? 1000 : REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
+if (reactNativeRootDir != null) {
+  def reactProperties = new Properties()
+  file("$reactNativeRootDir/ReactAndroid/gradle.properties").withInputStream { reactProperties.load(it) }
+
+  REACT_NATIVE_VERSION = reactProperties.getProperty("VERSION_NAME")
+  REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.startsWith("0.0.0-") ? 1000 : REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
+}
 
 project.ext.resolveReactNativeDirectory = { ->
   return resolveReactNativeDirectory()
