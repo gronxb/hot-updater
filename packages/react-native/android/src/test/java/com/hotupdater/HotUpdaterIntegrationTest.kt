@@ -130,7 +130,7 @@ class HotUpdaterIntegrationTest {
         private var isolationPrefix = ""
 
         fun configure(prefix: String) {
-            isolationPrefix = "$prefix_"
+            isolationPrefix = "${prefix}_"
         }
 
         override fun setItem(

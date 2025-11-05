@@ -153,9 +153,9 @@ class TestExpectation {
     func wait(timeout: TimeInterval = 10.0) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            lock.lock()
-            let fulfilled = isFulfilled
-            lock.unlock()
+            let fulfilled = lock.withLock {
+                return isFulfilled
+            }
 
             if fulfilled {
                 return
@@ -217,7 +217,7 @@ struct HotUpdaterIntegrationTests {
         var updateSuccess = false
         var updateError: Error?
 
-        bundleStorage.updateBundle(bundleId: bundleId, fileUrl: testURL, fileHash: nil, progressHandler: { _ in }) { result in
+        bundleStorage.updateBundle(bundleId: bundleId, fileUrl: testURL, fileHash: nil as String?, progressHandler: { _ in }) { result in
             switch result {
             case .success:
                 updateSuccess = true
