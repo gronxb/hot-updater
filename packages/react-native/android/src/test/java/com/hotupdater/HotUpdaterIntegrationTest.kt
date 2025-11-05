@@ -3,16 +3,14 @@ package com.hotupdater
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
 import okio.Buffer
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.File
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Test bundle hash (SHA256 of test-bundle.zip)
@@ -50,10 +48,9 @@ class HotUpdaterIntegrationTest {
     /**
      * Load test bundle from resources
      */
-    private fun loadTestBundle(name: String): ByteArray {
-        return javaClass.classLoader!!.getResourceAsStream(name)?.readBytes()
+    private fun loadTestBundle(name: String): ByteArray =
+        javaClass.classLoader!!.getResourceAsStream(name)?.readBytes()
             ?: throw IllegalStateException("Test bundle not found: $name")
-    }
 
     /**
      * Create test services with isolated file system
@@ -66,12 +63,13 @@ class HotUpdaterIntegrationTest {
         val downloadService = OkHttpDownloadService()
         val decompressService = DecompressService()
 
-        val bundleStorage = BundleFileStorageService(
-            fileSystem = fileSystem,
-            downloadService = downloadService,
-            decompressService = decompressService,
-            preferences = preferences
-        )
+        val bundleStorage =
+            BundleFileStorageService(
+                fileSystem = fileSystem,
+                downloadService = downloadService,
+                decompressService = decompressService,
+                preferences = preferences,
+            )
 
         return Triple(bundleStorage, fileSystem, preferences)
     }
@@ -79,7 +77,9 @@ class HotUpdaterIntegrationTest {
     /**
      * Test FileSystemService implementation using a test directory
      */
-    class TestFileSystemService(private val baseDir: File) : FileSystemService {
+    class TestFileSystemService(
+        private val baseDir: File,
+    ) : FileSystemService {
         override fun fileExists(path: String): Boolean = File(path).exists()
 
         override fun createDirectory(path: String): Boolean = File(path).mkdirs()
