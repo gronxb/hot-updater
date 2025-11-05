@@ -35,7 +35,10 @@ let package = Package(
         .testTarget(
             name: "HotUpdaterTest",
             dependencies: ["HotUpdater"],
-            path: "Test"
+            path: "Test",
+            resources: [
+                .copy("Resources")
+            ]
         ),
     ]
 ) 
