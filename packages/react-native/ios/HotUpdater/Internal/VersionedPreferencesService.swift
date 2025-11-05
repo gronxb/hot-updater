@@ -48,7 +48,7 @@ public class VersionedPreferencesService: PreferencesService {
      * @param key The key to store under
      * @throws PreferencesError if key prefixing fails
      */
-    func setItem(_ value: String?, forKey key: String) throws {
+    public func setItem(_ value: String?, forKey key: String) throws {
         do {
             let fullKey = try prefixedKey(forKey: key)
             if let valueToSet = value {
@@ -70,7 +70,7 @@ public class VersionedPreferencesService: PreferencesService {
      * @return The stored value or nil if not found
      * @throws PreferencesError if key prefixing fails
      */
-    func getItem(forKey key: String) throws -> String? {
+    public func getItem(forKey key: String) throws -> String? {
         do {
             let fullKey = try prefixedKey(forKey: key)
             return userDefaults.string(forKey: fullKey)

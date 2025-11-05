@@ -45,7 +45,7 @@ public class URLSessionDownloadService: NSObject, DownloadService, @unchecked Se
         super.init()
     }
 
-    func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void) {
+    public func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void) {
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
 
@@ -73,7 +73,7 @@ public class URLSessionDownloadService: NSObject, DownloadService, @unchecked Se
         task.resume()
     }
 
-    func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+    public func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
         let task = session.downloadTask(with: url)
         progressHandlers[task] = progressHandler
         completionHandlers[task] = completion
