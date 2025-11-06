@@ -52,7 +52,9 @@ export default HotUpdater.wrap({
 
 ```tsx
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   releaseChannel: "dev", // Specifying the release channel

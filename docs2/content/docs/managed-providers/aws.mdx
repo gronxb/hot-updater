@@ -102,7 +102,9 @@ During the initialization process, the following file is automatically generated
 import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,

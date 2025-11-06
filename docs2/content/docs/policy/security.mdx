@@ -14,7 +14,9 @@ Using environment variables is simply for populating the token value in the `hot
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),

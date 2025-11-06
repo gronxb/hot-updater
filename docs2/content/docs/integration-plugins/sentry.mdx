@@ -69,7 +69,9 @@ Once wrapped, sourcemaps will automatically be uploaded to Sentry when running t
 import { bare } from "@hot-updater/bare";
 import { withSentry } from "@hot-updater/sentry-plugin";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: withSentry(

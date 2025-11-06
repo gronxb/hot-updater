@@ -78,7 +78,9 @@ During the initialization process, the following file is automatically generated
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),

@@ -56,7 +56,9 @@ HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 import { bare } from "@hot-updater/bare";
 import { supabaseStorage, supabaseDatabase } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),

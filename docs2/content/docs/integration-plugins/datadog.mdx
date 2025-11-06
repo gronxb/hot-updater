@@ -30,7 +30,9 @@ Once wrapped, sourcemaps will automatically be uploaded to Datadog when running 
 import { bare } from "@hot-updater/bare";
 import { withDatadog } from "@hot-updater/datadog-plugin";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: withDatadog(
