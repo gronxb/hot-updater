@@ -1,5 +1,14 @@
 # @hot-updater/server
 
+## 0.21.6
+
+### Patch Changes
+
+- b12394d: feat(cli): create migration sql hot-updater generate-db
+- d4c23bc: fix(server): id column uuid
+  - @hot-updater/core@0.21.6
+  - @hot-updater/plugin-core@0.21.6
+
 ## 0.21.5
 
 ### Patch Changes

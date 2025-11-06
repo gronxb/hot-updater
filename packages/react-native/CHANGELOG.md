@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.21.6
+
+### Patch Changes
+
+- 3e9681c: fix(android): Android API 25 compatibility with TarStream
+- Updated dependencies [b12394d]
+  - hot-updater@0.21.6
+  - @hot-updater/core@0.21.6
+  - @hot-updater/js@0.21.6
+  - @hot-updater/plugin-core@0.21.6
+
 ## 0.21.5
 
 ### Patch Changes
