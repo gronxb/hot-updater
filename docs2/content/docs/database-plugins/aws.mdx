@@ -11,6 +11,18 @@ icon: aws
 npm install @hot-updater/aws --save-dev
 ```
 
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/managed-providers/aws) documentation.
+
+For manual configuration, use the settings below.
+
 ## Configuration
 
 ```typescript
@@ -45,27 +57,6 @@ export default defineConfig({
   // ... other config
 });
 ```
-
-## Setup
-
-1. Create an S3 bucket for storing metadata JSON files
-2. Create a CloudFront distribution pointing to the S3 bucket
-3. Configure IAM credentials with S3 and CloudFront permissions
-4. Note your CloudFront distribution ID
-
-## How It Works
-
-- Stores bundle metadata as JSON files in S3
-- Uses CloudFront for global CDN distribution
-- Automatically invalidates CloudFront cache on updates
-- Blob-based storage approach (no traditional database)
-
-## Key Features
-
-- Serverless metadata storage
-- Global CDN distribution via CloudFront
-- Automatic cache invalidation
-- No database management required
 
 ## Complete Example
 

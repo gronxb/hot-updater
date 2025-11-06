@@ -11,6 +11,18 @@ icon: firebase
 npm install @hot-updater/firebase firebase-admin --save-dev
 ```
 
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Firebase](/docs/managed-providers/firebase) documentation.
+
+For manual configuration, use the settings below.
+
 ## Configuration
 
 ```typescript
@@ -37,28 +49,6 @@ export default defineConfig({
   // ... other config
 });
 ```
-
-## Setup
-
-1. Create a Firebase project
-2. Enable Cloud Firestore
-3. Download service account credentials JSON
-4. Set the credentials path in environment variables
-
-## Collections
-
-The plugin creates these Firestore collections:
-- `bundles` - Bundle metadata
-- `channels` - Channel information
-- `target_app_versions` - App version targeting
-
-## Key Features
-
-- NoSQL document-based storage
-- Real-time synchronization capabilities
-- Transactional operations
-- Automatic cleanup of orphaned records
-- Reuses existing Firebase Admin app if initialized
 
 ## Complete Example
 

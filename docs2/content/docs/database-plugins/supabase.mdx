@@ -10,6 +10,18 @@ icon: supabase
 npm install @hot-updater/supabase --save-dev
 ```
 
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed-providers/supabase) documentation.
+
+For manual configuration, use the settings below.
+
 ## Configuration
 
 ```typescript
@@ -33,26 +45,6 @@ export default defineConfig({
   // ... other config
 });
 ```
-
-## Database Setup
-
-Run the SQL migration to create the required tables:
-
-```sql
--- Located in @hot-updater/supabase/sql directory
--- Check the package's sql/ folder for migration scripts
-```
-
-The migration creates:
-- `bundles` table with snake_case columns
-- `get_channels` RPC function
-
-## Key Features
-
-- PostgreSQL-backed storage
-- Support for channels and platform filtering
-- Built-in pagination
-- RPC functions for optimized queries
 
 ## Complete Example
 

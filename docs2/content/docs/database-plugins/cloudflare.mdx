@@ -11,6 +11,18 @@ icon: cloudflare
 npm install @hot-updater/cloudflare --save-dev
 ```
 
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed-providers/cloudflare) documentation.
+
+For manual configuration, use the settings below.
+
 ## Configuration
 
 ```typescript
@@ -36,24 +48,6 @@ export default defineConfig({
   // ... other config
 });
 ```
-
-## Setup
-
-1. Create a D1 database in Cloudflare dashboard
-2. Generate an API token with D1 edit permissions
-3. Note your database ID and account ID
-4. Run SQL migrations to create tables
-
-## Database Schema
-
-The plugin uses a snake_case schema compatible with SQLite. Check the package's SQL directory for migration scripts.
-
-## Key Features
-
-- Serverless SQLite at the edge
-- Global distribution via Cloudflare network
-- Optimized SQL queries with pg-minify
-- Uses Cloudflare SDK for API operations
 
 ## Complete Example
 
