@@ -121,12 +121,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await repo.commitBundle(); // Triggers actual commit
 
     // Verify via handler that bundle was created
-    const request = new Request(
-      `${baseUrl}/hot-updater/bundles/${bundleId}`,
-      {
-        method: "GET",
-      },
-    );
+    const request = new Request(`${baseUrl}/hot-updater/bundles/${bundleId}`, {
+      method: "GET",
+    });
 
     const response = await api.handler(request);
     expect(response.status).toBe(200);
