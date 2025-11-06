@@ -7,6 +7,7 @@ import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
+import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createHotUpdater } from "./db";
 
@@ -109,8 +110,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
       baseUrl: `${baseUrl}/hot-updater`,
     })({ cwd: process.cwd() });
 
+    const bundleId = uuidv7();
     const bundle = createTestBundle({
-      id: "integration-test-1",
+      id: bundleId,
       fileHash: "integration-hash-1",
     });
 
@@ -120,7 +122,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     // Verify via handler that bundle was created
     const request = new Request(
-      `${baseUrl}/hot-updater/bundles/integration-test-1`,
+      `${baseUrl}/hot-updater/bundles/${bundleId}`,
       {
         method: "GET",
       },
@@ -130,14 +132,15 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(response.status).toBe(200);
 
     const retrieved = (await response.json()) as Bundle;
-    expect(retrieved.id).toBe("integration-test-1");
+    expect(retrieved.id).toBe(bundleId);
     expect(retrieved.fileHash).toBe("integration-hash-1");
   });
 
   it("Real integration: getBundleById → handler GET /bundles/:id", async () => {
     // First, create a bundle directly via handler
+    const bundleId = uuidv7();
     const bundle = createTestBundle({
-      id: "get-test-1",
+      id: bundleId,
       fileHash: "get-hash-1",
     });
 
@@ -149,24 +152,25 @@ describe("Handler <-> Standalone Repository Integration", () => {
     })({ cwd: process.cwd() });
 
     // Use standalone repository to retrieve
-    const retrieved = await repo.getBundleById("get-test-1");
+    const retrieved = await repo.getBundleById(bundleId);
 
     expect(retrieved).toBeTruthy();
-    expect(retrieved?.id).toBe("get-test-1");
+    expect(retrieved?.id).toBe(bundleId);
     expect(retrieved?.fileHash).toBe("get-hash-1");
   });
 
   it("Real integration: deleteBundle + commitBundle → handler DELETE /bundles/:id", async () => {
     // Create a bundle via handler
+    const bundleId = uuidv7();
     const bundle = createTestBundle({
-      id: "delete-test-1",
+      id: bundleId,
       fileHash: "delete-hash-1",
     });
 
     await api.insertBundle(bundle);
 
     // Verify it exists
-    const beforeDelete = await api.getBundleById("delete-test-1");
+    const beforeDelete = await api.getBundleById(bundleId);
     expect(beforeDelete).toBeTruthy();
 
     // Create standalone repository
@@ -179,20 +183,20 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await repo.commitBundle();
 
     // Verify it was deleted
-    const afterDelete = await api.getBundleById("delete-test-1");
+    const afterDelete = await api.getBundleById(bundleId);
     expect(afterDelete).toBeNull();
   });
 
   it("Real integration: getBundles → handler GET /bundles", async () => {
     // Create multiple bundles
     await api.insertBundle(
-      createTestBundle({ id: "list-1", channel: "production" }),
+      createTestBundle({ id: uuidv7(), channel: "production" }),
     );
     await api.insertBundle(
-      createTestBundle({ id: "list-2", channel: "production" }),
+      createTestBundle({ id: uuidv7(), channel: "production" }),
     );
     await api.insertBundle(
-      createTestBundle({ id: "list-3", channel: "staging" }),
+      createTestBundle({ id: uuidv7(), channel: "staging" }),
     );
 
     // Create standalone repository
@@ -222,8 +226,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
     })({ cwd: process.cwd() });
 
     // Step 1: Create bundle via standalone
+    const bundleId = uuidv7();
     const bundle = createTestBundle({
-      id: "e2e-bundle",
+      id: bundleId,
       fileHash: "e2e-hash",
       enabled: true,
     });
@@ -232,16 +237,16 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await repo.commitBundle();
 
     // Step 2: Retrieve via standalone
-    const retrieved = await repo.getBundleById("e2e-bundle");
+    const retrieved = await repo.getBundleById(bundleId);
     expect(retrieved).toBeTruthy();
     expect(retrieved?.enabled).toBe(true);
 
     // Step 3: Update via standalone
-    await repo.updateBundle("e2e-bundle", { enabled: false });
+    await repo.updateBundle(bundleId, { enabled: false });
     await repo.commitBundle();
 
     // Verify update
-    const updated = await repo.getBundleById("e2e-bundle");
+    const updated = await repo.getBundleById(bundleId);
     expect(updated?.enabled).toBe(false);
 
     // Step 4: Delete via standalone
@@ -249,7 +254,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await repo.commitBundle();
 
     // Verify deletion
-    const deleted = await repo.getBundleById("e2e-bundle");
+    const deleted = await repo.getBundleById(bundleId);
     expect(deleted).toBeNull();
   });
 
@@ -259,17 +264,20 @@ describe("Handler <-> Standalone Repository Integration", () => {
     })({ cwd: process.cwd() });
 
     // Append multiple bundles
-    await repo.appendBundle(createTestBundle({ id: "batch-1" }));
-    await repo.appendBundle(createTestBundle({ id: "batch-2" }));
-    await repo.appendBundle(createTestBundle({ id: "batch-3" }));
+    const bundleId1 = uuidv7();
+    const bundleId2 = uuidv7();
+    const bundleId3 = uuidv7();
+    await repo.appendBundle(createTestBundle({ id: bundleId1 }));
+    await repo.appendBundle(createTestBundle({ id: bundleId2 }));
+    await repo.appendBundle(createTestBundle({ id: bundleId3 }));
 
     // Commit all at once (standalone sends array in POST)
     await repo.commitBundle();
 
     // Verify all were created
-    const bundle1 = await api.getBundleById("batch-1");
-    const bundle2 = await api.getBundleById("batch-2");
-    const bundle3 = await api.getBundleById("batch-3");
+    const bundle1 = await api.getBundleById(bundleId1);
+    const bundle2 = await api.getBundleById(bundleId2);
+    const bundle3 = await api.getBundleById(bundleId3);
 
     expect(bundle1).toBeTruthy();
     expect(bundle2).toBeTruthy();
@@ -314,15 +322,16 @@ describe("Handler <-> Standalone Repository Integration", () => {
     })({ cwd: process.cwd() });
 
     // Test create and retrieve
+    const bundleId = uuidv7();
     const bundle = createTestBundle({
-      id: "custom-path-test",
+      id: bundleId,
       fileHash: "custom-hash",
     });
 
     await repo.appendBundle(bundle);
     await repo.commitBundle();
 
-    const retrieved = await repo.getBundleById("custom-path-test");
+    const retrieved = await repo.getBundleById(bundleId);
     expect(retrieved).toBeTruthy();
     expect(retrieved?.fileHash).toBe("custom-hash");
   });

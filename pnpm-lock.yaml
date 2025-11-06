@@ -1344,6 +1344,9 @@ importers:
       msw:
         specifier: ^2.7.0
         version: 2.7.0(@types/node@20.19.11)(typescript@5.8.3)
+      uuidv7:
+        specifier: ^1.0.2
+        version: 1.0.2
 
   packages/test-utils:
     dependencies:
