@@ -1,7 +1,7 @@
 import { sqliteTable, text, integer, blob } from "drizzle-orm/sqlite-core"
 
 export const bundles = sqliteTable("bundles", {
-  id: text("id", { length: 36 }).primaryKey().notNull(),
+  id: text("id").primaryKey().notNull(),
   platform: text("platform").notNull(),
   should_force_update: integer("should_force_update", { mode: "boolean" }).notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull(),
