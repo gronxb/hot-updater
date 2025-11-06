@@ -35,6 +35,17 @@ icon: icon-name
 ---
 ```
 
+**Frontmatter Description Rules:**
+- **Keep it concise**: 1 sentence maximum, ideally under 20 words
+- **High-level overview**: Don't include technical details or implementation specifics
+- **No links**: Save links for the body content
+- **Action-oriented**: Focus on what it does or what problem it solves
+
+**Body Structure Rules:**
+- **Start with ## heading**: Body content must begin directly with a `##` heading (no text between frontmatter and first heading)
+- **No duplicate descriptions**: Don't repeat the frontmatter description as the first paragraph
+- **Natural flow**: Content should flow logically from one section to the next
+
 ### Package Installation
 **IMPORTANT**: Use `package-install` code block syntax with full npm command:
 
@@ -53,32 +64,27 @@ All Hot Updater plugins should be installed as dev dependencies (`--save-dev`).
 
 Each plugin documentation should follow this structure:
 
-1. **Title & Overview** (H1)
-   - Brief 1-2 sentence description of what the plugin does
+**Important**: Body content starts directly with `##` heading. No text or H1 between frontmatter and first `##`.
 
-2. **Installation** (H2)
+1. **Installation** (H2)
    - Use `package-install` code block
 
-3. **Configuration** (H2)
+2. **Configuration** (H2)
    - TypeScript interface showing all config options
    - Include inline comments for each field
 
-4. **Usage** (H2)
+3. **Usage** (H2)
    - Complete working example with `defineConfig`
    - Show environment variable usage
 
-5. **Setup** (H2) - Optional
+4. **Setup** (H2) - Optional
    - Provider-specific setup steps (minimal)
    - Keep it concise
 
-6. **Key Features** (H2)
+5. **Key Features** (H2)
    - 3-5 bullet points of main capabilities
 
-7. **Environment Variables** (H2)
-   - Example .env format
-   - Use placeholder values
-
-8. **Complete Example** (H2) - Optional
+6. **Complete Example** (H2) - Optional
    - Show combined storage + database when applicable
 
 ## Code Block Guidelines
@@ -107,6 +113,16 @@ VARIABLE_NAME=value
 - **No emojis**: Unless explicitly requested by user
 - **English only**: All documentation in English
 - **Minimal setup**: Quick start approach, avoid excessive detail
+
+### Readability Guidelines
+
+- **Short sentences**: Target 15-25 words per sentence. Break sentences over 30 words into multiple sentences
+- **Natural flow**: Write like water flows - smooth transitions between sections, no abrupt jumps
+- **Active voice**: Use direct, active language (e.g., "Configure your app" not "Your app needs to be configured")
+- **Avoid verbosity**: Remove redundant explanations, unnecessary introductions, and filler words
+- **Progressive disclosure**: Start with simple concepts, progress to advanced topics
+- **Scannable content**: Use headings, bullet points, and code examples to break up text
+- **Clear hierarchy**: Organize sections logically (Overview → Setup → Usage → Advanced)
 
 ## Plugin Types
 
@@ -164,9 +180,14 @@ pnpm build
 ## Notes for Claude
 
 - Always use `package-install` code blocks for package installation
+- **Frontmatter description**: 1 concise sentence, max 20 words, no links
+- **Body structure**: Start directly with `##` heading, no text before it
 - Keep documentation minimal and usage-focused
+- Write short sentences (15-25 words), break long sentences (30+ words)
+- Use active voice and direct language
 - Don't add verbose setup instructions unless necessary
+- Remove redundant explanations and introductions
 - Use TypeScript interfaces to show configuration options
-- Include environment variable examples
 - Show complete working examples with imports
 - Keep consistent structure across all plugin docs
+- Organize content logically: Overview → Setup → Usage → Advanced

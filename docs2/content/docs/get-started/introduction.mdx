@@ -1,33 +1,45 @@
 ---
 title: "Introduction"
-description: "Hot Updater is an alternative to `react-native-codepush` that provides self-hostable OTA (Over-The-Air) update capabilities for React Native apps, allowing you to instantly update your JavaScript bundle without going through app stores."
+description: "Self-hostable OTA update solution for React Native apps, alternative to CodePush."
 icon: BookOpen
 ---
 
 <video src={"/docs/deploy/deploy.mov"}  controls autoPlay loop muted />
 
-## Motivation
+## What is Hot Updater?
 
-The existing `CodePush` was limited due to its dependency on Microsoft's `AppCenter`. One significant drawback was the lack of a CDN (Content Delivery Network), which could result in slower bundle downloads in certain countries.
+Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Native apps. Deploy JavaScript bundle updates instantly without going through app stores.
 
-Additionally, while `metro` is widely used as a bundler, new alternatives such as `repack` and `vxrn` have emerged. However, tools like `expo update` and `React Native CodePush` only support `metro`, causing dissatisfaction among developers who need more flexibility.
+## Why Hot Updater?
 
-During the development of this solution, I learned about the discontinuation of `AppCenter`, which further emphasized the urgency of creating a better alternative.
+CodePush depended on Microsoft's AppCenter, which had limitations:
+- No CDN support, causing slow downloads in some regions
+- Only supports Metro bundler, excluding newer alternatives like Re.Pack
+- AppCenter has been discontinued
 
-### Key Requirements
-1. **Freedom of Deployment**
-   The solution should allow deployment to any infrastructure that a company uses, providing maximum flexibility.
+Hot Updater solves these problems with two core principles:
 
-2. **Bundler Flexibility**
-   The solution must support any bundler, not just `metro`, to meet the diverse needs of developers.
+**1. Deploy Anywhere**
+Use any infrastructure you want - AWS, Cloudflare, Supabase, Firebase, or your own servers.
 
-### Implementation Approach
-To meet these requirements, i introduced a [Plugin System](../concepts/plugin-system). This system allows deployment anywhere as long as the necessary plugin is available. Similarly, developers can configure the solution to work with any bundler of their choice.
+**2. Use Any Bundler**
+Works with Metro, Re.Pack or any bundler through the plugin system.
+
+## How It Works
+
+Hot Updater uses a [Plugin System](../concepts/plugin-system) that separates concerns:
+- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo, Rock)
+- **Storage Plugins**: Store bundles anywhere (S3, R2, Supabase, Firebase)
+- **Database Plugins**: Manage metadata (PostgreSQL, D1, Firestore)
+
+This architecture gives you complete control over your deployment infrastructure.
 
 ## Key Features
 
 - **Self-Hosting**: Full control over your update infrastructure
-- **Multi-Platform**: Seamless support for both iOS and Android
+- **Multi-Platform**: Seamless iOS and Android support
 - **Web Console**: Intuitive update management interface
-- **Version Control**: Robust app versioning with semantic versioning
+- **Version Control**: Robust versioning with semantic versioning support
 - **Forced Updates**: Push critical updates when needed
+- **Channel Management**: Separate environments (dev, staging, production)
+- **Fingerprint Strategy**: Automatic native compatibility checking
