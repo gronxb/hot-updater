@@ -8,11 +8,55 @@ This file contains the full documentation for Hot Updater, a self-hostable OTA u
 URL: https://hot-updater.dev/docs/build-plugins/bare
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/build-plugins/bare.mdx
 
-Use hot-updater with React Native CLI
+Build plugin for React Native CLI projects (non-Expo). Bundles your React Native app using the Metro bundler.
 
-# Bare Build Plugin
+## Installation
 
-TODO: Document bare React Native CLI integration
+```package-install
+npm install @hot-updater/bare --save-dev
+```
+
+## Configuration
+
+```typescript
+interface BarePluginConfig {
+  outDir?: string;           // Output directory (default: "dist")
+  entryFile?: string;        // Entry file (default: "index.js")
+  sourcemap?: boolean;       // Generate sourcemaps (default: false)
+  enableHermes: boolean;     // Use Hermes compiler (required)
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  build: bare({
+    enableHermes: true,
+    sourcemap: false,
+    entryFile: 'index.js'
+  }),
+  // ... other config
+});
+```
+
+## Babel Configuration
+
+Add the Hot Updater Babel plugin to your `babel.config.js`:
+
+```javascript
+module.exports = {
+  presets: ['module:@react-native/babel-preset'],
+  plugins: ['@hot-updater/babel-plugin'],
+};
+```
+
+## Key Features
+
+- Uses React Native CLI's Metro bundler
+- Automatic Hermes bytecode compilation when enabled
+- Minification handled by Hermes (disabled when Hermes is enabled)
+- Supports custom entry files and output directories
 
 ---
 
@@ -20,11 +64,83 @@ TODO: Document bare React Native CLI integration
 URL: https://hot-updater.dev/docs/build-plugins/expo
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/build-plugins/expo.mdx
 
-Use hot-updater with Expo
+Build plugin for Expo projects. Bundles your Expo app using Expo's native export command.
 
-# Expo Build Plugin
+## Installation
 
-TODO: Document Expo integration
+```package-install
+npm install @hot-updater/expo --save-dev
+```
+
+## Configuration
+
+```typescript
+interface ExpoPluginConfig {
+  outDir?: string;      // Output directory (default: "dist")
+  sourcemap?: boolean;  // Generate sourcemaps (default: false)
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  build: expo({
+    sourcemap: false
+  }),
+  // ... other config
+});
+```
+
+## Expo Configuration
+
+Add the plugin to your `app.json` file as shown below:
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@hot-updater/react-native", // [!code ++]
+        { // [!code ++]
+          "channel": "production" // [!code ++]
+        } // [!code ++]
+      ] // [!code ++]
+    ]
+  }
+}
+```
+
+Run prebuild to apply the changes:
+
+```package-install
+npx expo prebuild
+```
+
+Run the following command to customize your Babel configuration:
+
+```package-install
+npx expo customize babel.config.js
+```
+
+Add the following to your `babel.config.js` file:
+
+```js title="babel.config.js"
+module.exports = {
+  presets: ['module:@react-native/babel-preset'],
+  plugins: [
+    'hot-updater/babel-plugin', // [!code ++]
+  ],
+};
+```
+
+## Key Features
+
+- Uses Expo's `expo export:embed` command
+- Auto-detects Hermes from app.json configuration
+- Supports both managed and bare Expo workflows
+- Compatible with Expo prebuild for native builds
+- Automatically configures bundler based on Expo settings
 
 ---
 
@@ -32,11 +148,67 @@ TODO: Document Expo integration
 URL: https://hot-updater.dev/docs/build-plugins/rock
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/build-plugins/rock.mdx
 
-Use hot-updater with Rock
+Build plugin for projects using [Rock](https://www.rockjs.dev/) framework, a React Native framework created by Callstack.
 
-# Rock Build Plugin
+## Installation
 
-TODO: Document Rock integration
+```package-install
+npm install @hot-updater/rock --save-dev
+```
+
+## Configuration
+
+```typescript
+interface RockPluginConfig {
+  outDir?: string;      // Output directory (default: "dist")
+  entryFile?: string;   // Entry file (default: "index.js")
+  sourcemap?: boolean;  // Generate sourcemaps (default: false)
+  hermes?: boolean;     // Use Hermes compiler (default: true)
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  build: rock({
+    hermes: true,
+    entryFile: 'index.js',
+    sourcemap: false
+  }),
+  // ... other config
+});
+```
+
+## Re.Pack Integration (Recommended)
+
+Rock framework uses [Re.Pack](https://re-pack.dev/) bundler. It's recommended to use the Re.Pack plugin to set bundle ID at build time.
+
+Install the Re.Pack plugin:
+
+```package-install
+npm install @hot-updater/repack --save-dev
+```
+
+Add the plugin to your `rspack.config.mjs`:
+
+```js title="rspack.config.mjs"
+export default {
+  // ...
+  plugins: [
+    new Repack.RepackPlugin(),
+    new HotUpdaterPlugin() // [!code ++]
+  ],
+};
+```
+
+See the [Re.Pack integration documentation](/docs/integration-plugins/repack) for more details.
+
+## Key Features
+
+- Build plugin for [Rock framework](https://www.rockjs.dev/)
+- Supports Hermes compilation
+- Configurable output directory and entry files
 
 ---
 
@@ -45,10 +217,6 @@ URL: https://hot-updater.dev/docs/concepts/how-it-works
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/concepts/how-it-works.mdx
 
 Understanding the core infrastructure and update decision logic
-
-# How does it work?
-
-`hot-updater` is a system designed for dynamically updating JavaScript bundles in native applications. It operates using the following components and procedures:
 
 ## Core Infrastructure
 
@@ -88,15 +256,11 @@ Storage and Database are configured using plugins defined in `hot-updater.config
 URL: https://hot-updater.dev/docs/concepts/plugin-system
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/concepts/plugin-system.mdx
 
-Customize Hot Updater with build, storage, and database plugins
-
-# Plugin System
-
-The `Hot Updater` is designed to be highly customizable through its plugin system. This extensibility allows you to tailor the updater's behavior to fit your specific requirements.
+"Hot Updater uses a flexible plugin system that lets you customize how bundles are built, stored, and managed to fit your infrastructure."
 
 ## Build Plugin
 
-The **Build Plugin** is used during the execution of the `hot-updater deploy` command. Its primary function is to manage the build process for generating the required update bundles.
+Build plugins handle the bundling process when you run the `hot-updater deploy` command. They generate the JavaScript bundles for your updates.
 
 ### Supported Plugins
 
@@ -106,7 +270,7 @@ The **Build Plugin** is used during the execution of the `hot-updater deploy` co
 
 ## Storage Plugin
 
-The **Storage Plugin** is utilized during the `hot-updater deploy` command to upload bundles generated by the Build Plugin. It ensures that the update files are stored in a designated storage solution.
+Storage plugins upload your generated bundles during the `hot-updater deploy` command and store them in your chosen storage provider.
 
 ### Supported Plugins
 
@@ -117,7 +281,7 @@ The **Storage Plugin** is utilized during the `hot-updater deploy` command to up
 
 ## Database Plugin
 
-The **Database Plugin** is responsible for storing the metadata required to check for updates. This plugin is activated during the execution of the `hot-updater deploy` command.
+Database plugins store bundle metadata that your app uses to check for updates. They run during the `hot-updater deploy` command.
 
 ### Supported Plugins
 
@@ -132,11 +296,84 @@ The **Database Plugin** is responsible for storing the metadata required to chec
 URL: https://hot-updater.dev/docs/database-plugins/aws
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/database-plugins/aws.mdx
 
-Use aws database with hot-updater
+Store your Hot Updater bundle metadata as JSON files in S3, served via CloudFront CDN.
 
-# AWS S3 Database
+## Installation
 
-TODO: Document aws database integration
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/managed-providers/aws) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface S3DatabaseConfig {
+  region: string;                    // AWS region
+  bucketName: string;                // S3 bucket for metadata
+  cloudfrontDistributionId: string;  // CloudFront distribution ID
+  apiBasePath?: string;              // API path (default: "/api/check-update")
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-bundles-bucket'
+  }),
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```
 
 ---
 
@@ -144,11 +381,72 @@ TODO: Document aws database integration
 URL: https://hot-updater.dev/docs/database-plugins/cloudflare
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/database-plugins/cloudflare.mdx
 
-Use cloudflare database with hot-updater
+Store your Hot Updater bundle metadata in Cloudflare D1, a serverless SQLite database running at the edge.
 
-# Cloudflare D1 Database
+## Installation
 
-TODO: Document cloudflare database integration
+```package-install
+npm install @hot-updater/cloudflare --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed-providers/cloudflare) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface D1DatabaseConfig {
+  databaseId: string;           // D1 database ID
+  accountId: string;            // Cloudflare account ID
+  cloudflareApiToken: string;   // Cloudflare API token
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  database: d1Database({
+    databaseId: process.env.D1_DATABASE_ID,
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined R2 storage and D1 database:
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  database: d1Database({
+    databaseId: process.env.D1_DATABASE_ID,
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
+  }),
+  // ... other config
+});
+```
 
 ---
 
@@ -156,11 +454,257 @@ TODO: Document cloudflare database integration
 URL: https://hot-updater.dev/docs/database-plugins/firestore
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/database-plugins/firestore.mdx
 
-Use Firebase Firestore database with hot-updater
+Store your Hot Updater bundle metadata in Cloud Firestore, Firebase's NoSQL document database.
 
-# Firebase Firestore Database
+## Installation
 
-TODO: Document firestore database integration
+```package-install
+npm install @hot-updater/firebase firebase-admin --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Firebase](/docs/managed-providers/firebase) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface FirebaseDatabaseConfig {
+  projectId: string;               // Firebase project ID
+  credential: admin.credential.Credential;  // Firebase credential
+}
+```
+
+## Environment Variables
+
+Set up your Firebase credentials:
+
+```bash title=".env.hotupdater"
+# Project Settings > Service Accounts > New Private Key > Download JSON
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
+FIREBASE_PROJECT_ID=your-project-id
+```
+
+## Usage
+
+```typescript
+// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+// Check your .env file and add the credentials
+// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
+// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+const credential = admin.credential.applicationDefault();
+
+export default defineConfig({
+  database: firebaseDatabase({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    credential
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+const credential = admin.credential.applicationDefault();
+
+export default defineConfig({
+  storage: firebaseStorage({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    credential
+  }),
+  database: firebaseDatabase({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    credential
+  }),
+  // ... other config
+});
+```
+
+## Dependencies
+
+Requires `firebase-admin` as a peer dependency:
+
+```package-install
+npm install firebase-admin --save-dev
+```
+
+---
+
+# Database Plugins: "Standalone Database"
+URL: https://hot-updater.dev/docs/database-plugins/standalone
+Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/database-plugins/standalone.mdx
+
+Store your Hot Updater bundle metadata in your custom self-hosted database by implementing HTTP API endpoints.
+
+## Installation
+
+```package-install
+npm install @hot-updater/standalone --save-dev
+```
+
+## Configuration
+
+```typescript
+interface StandaloneRepositoryConfig {
+  baseUrl: string;                        // Your API base URL
+  commonHeaders?: Record; // Headers sent with all requests
+  routes?: Routes;                        // Optional custom route configuration
+}
+
+interface Routes {
+  upsert: () => RouteConfig;
+  list: () => RouteConfig;
+  retrieve: (bundleId: string) => RouteConfig;
+  delete: (bundleId: string) => RouteConfig;
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  database: standaloneRepository({
+    baseUrl: process.env.DATABASE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  // ... other config
+});
+```
+
+## API Endpoints
+
+Your backend must implement these endpoints:
+
+### POST /bundles
+Create or update bundle(s).
+
+**Request:**
+- Method: `POST`
+- Content-Type: `application/json`
+- Body: Array of bundle objects
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+### GET /bundles
+List all bundles (with optional filtering).
+
+**Request:**
+- Method: `GET`
+- Headers: `Cache-Control: no-cache`
+
+**Response:**
+```json
+[
+  {
+    "id": "bundle-id",
+    "channel": "production",
+    "platform": "ios",
+    // ... other bundle fields
+  }
+]
+```
+
+### GET /bundles/:bundleId
+Retrieve a specific bundle by ID.
+
+**Request:**
+- Method: `GET`
+- Headers: `Accept: application/json`
+
+**Response:**
+```json
+{
+  "id": "bundle-id",
+  "channel": "production",
+  // ... bundle fields
+}
+```
+
+### DELETE /bundles/:bundleId
+Delete a specific bundle.
+
+**Request:**
+- Method: `DELETE`
+
+**Response:** 200 OK or 404 Not Found
+
+## Custom Routes
+
+You can customize the endpoint paths and headers:
+
+```typescript
+standaloneRepository({
+  baseUrl: 'https://api.example.com',
+  routes: {
+    upsert: () => ({
+      path: '/v1/metadata/bundles',
+      headers: { 'X-Custom-Header': 'value' }
+    }),
+    list: () => ({
+      path: '/v1/metadata/bundles',
+      headers: { 'Cache-Control': 'no-store' }
+    }),
+    retrieve: (bundleId) => ({
+      path: `/v1/metadata/bundles/${bundleId}`,
+      headers: { 'Accept': 'application/json' }
+    }),
+    delete: (bundleId) => ({
+      path: `/v1/metadata/bundles/${bundleId}`
+    })
+  }
+})
+```
+
+## Bundle Object Schema
+
+Your API should handle bundle objects with these fields:
+- `id` - Unique bundle identifier
+- `channel` - Deployment channel (e.g., "production", "staging")
+- `platform` - Platform ("ios" or "android")
+- `storageUri` - URI where bundle files are stored
+- `createdAt` - Timestamp
+- Other metadata fields
+
+## Complete Example
+
+Combined standalone storage and database:
+
+```typescript
+export default defineConfig({
+  storage: standaloneStorage({
+    baseUrl: process.env.STORAGE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  database: standaloneRepository({
+    baseUrl: process.env.DATABASE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  // ... other config
+});
+```
 
 ---
 
@@ -168,11 +712,65 @@ TODO: Document firestore database integration
 URL: https://hot-updater.dev/docs/database-plugins/supabase
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/database-plugins/supabase.mdx
 
-Use Supabase database with hot-updater
+Store your Hot Updater bundle metadata in Supabase PostgreSQL database.
 
-# Supabase Database
+## Installation
 
-TODO: Document Supabase database integration
+```package-install
+npm install @hot-updater/supabase --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed-providers/supabase) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface SupabaseDatabaseConfig {
+  supabaseUrl: string;       // Your Supabase project URL
+  supabaseAnonKey: string;   // Your Supabase anon/public key
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  database: supabaseDatabase({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+export default defineConfig({
+  storage: supabaseStorage({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    bucketName: 'hot-updater-bundles'
+  }),
+  database: supabaseDatabase({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  }),
+  // ... other config
+});
+```
 
 ---
 
@@ -180,11 +778,7 @@ TODO: Document Supabase database integration
 URL: https://hot-updater.dev/docs/get-started/basic-usage
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/get-started/basic-usage.mdx
 
-Learn how to configure and integrate hot-updater into your React Native project
-
-# Basic Usage
-
-This guide walks you through the essential steps to integrate hot-updater into your React Native project.
+"This guide walks you through the essential steps to integrate hot-updater into your React Native project."
 
 ## Provider Setup
 
@@ -233,7 +827,7 @@ HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 **`hot-updater.config.ts`** - Contains provider integration settings:
 
 ```ts title="hot-updater.config.ts"
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -320,7 +914,7 @@ module.exports = {
 First, install the Re.Pack plugin:
 
 ```package-install
-@hot-updater/repack
+npm install @hot-updater/repack --save-dev
 ```
 
 Then add the following to your `rspack.config.mjs` file:
@@ -700,41 +1294,45 @@ Learn more about advanced capabilities:
 URL: https://hot-updater.dev/docs/get-started/introduction
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/get-started/introduction.mdx
 
-Self-hostable OTA updates for React Native apps as an alternative to CodePush
+"Self-hostable OTA update solution for React Native apps, alternative to CodePush."
 
-# Introduction
+## What is Hot Updater?
 
-Hot Updater is an alternative to `react-native-codepush` that provides self-hostable OTA (Over-The-Air) update capabilities for React Native apps, allowing you to instantly update your JavaScript bundle without going through app stores.
+Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Native apps. Deploy JavaScript bundle updates instantly without going through app stores.
 
+## Why Hot Updater?
 
+CodePush depended on Microsoft's AppCenter, which had limitations:
+- No CDN support, causing slow downloads in some regions
+- Only supports Metro bundler, excluding newer alternatives like Re.Pack
+- AppCenter has been discontinued
 
+Hot Updater solves these problems with two core principles:
 
+**1. Deploy Anywhere**
+Use any infrastructure you want - AWS, Cloudflare, Supabase, Firebase, or your own servers.
 
-## Motivation
+**2. Use Any Bundler**
+Works with Metro, Re.Pack or any bundler through the plugin system.
 
-The existing `CodePush` was limited due to its dependency on Microsoft's `AppCenter`. One significant drawback was the lack of a CDN (Content Delivery Network), which could result in slower bundle downloads in certain countries.
+## How It Works
 
-Additionally, while `metro` is widely used as a bundler, new alternatives such as `repack` and `vxrn` have emerged. However, tools like `expo update` and `React Native CodePush` only support `metro`, causing dissatisfaction among developers who need more flexibility.
+Hot Updater uses a [Plugin System](../concepts/plugin-system) that separates concerns:
+- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo, Rock)
+- **Storage Plugins**: Store bundles anywhere (S3, R2, Supabase, Firebase)
+- **Database Plugins**: Manage metadata (PostgreSQL, D1, Firestore)
 
-During the development of this solution, I learned about the discontinuation of `AppCenter`, which further emphasized the urgency of creating a better alternative.
-
-### Key Requirements
-1. **Freedom of Deployment**
-   The solution should allow deployment to any infrastructure that a company uses, providing maximum flexibility.
-
-2. **Bundler Flexibility**
-   The solution must support any bundler, not just `metro`, to meet the diverse needs of developers.
-
-### Implementation Approach
-To meet these requirements, i introduced a [Plugin System](../concepts/plugin-system). This system allows deployment anywhere as long as the necessary plugin is available. Similarly, developers can configure the solution to work with any bundler of their choice.
+This architecture gives you complete control over your deployment infrastructure.
 
 ## Key Features
 
 - **Self-Hosting**: Full control over your update infrastructure
-- **Multi-Platform**: Seamless support for both iOS and Android
+- **Multi-Platform**: Seamless iOS and Android support
 - **Web Console**: Intuitive update management interface
-- **Version Control**: Robust app versioning with semantic versioning
+- **Version Control**: Robust versioning with semantic versioning support
 - **Forced Updates**: Push critical updates when needed
+- **Channel Management**: Separate environments (dev, staging, production)
+- **Fingerprint Strategy**: Automatic native compatibility checking
 
 ---
 
@@ -742,18 +1340,14 @@ To meet these requirements, i introduced a [Plugin System](../concepts/plugin-sy
 URL: https://hot-updater.dev/docs/guides/channel-management
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/guides/channel-management.mdx
 
-Manage updates across different environments and user groups
+"Channels let you manage updates across different environments (development, staging, production) and target specific user groups or separate applications."
 
-# Channels
+## Overview
 
-Channels help manage updates across different environments (development, staging, production) and deliver updates to specific user groups or separate applications.
+Channels work for both environment management and multi-app scenarios. You can use them to separate environments like dev, staging, and production, or to manage completely different apps (e.g., app2, app3, app4) with their own channels.
 
-Channels are not limited to environment management alone—they also support managing multiple apps distinctly (e.g., app2, app3, app4), each using its own dedicated channel.
-
-## Channel Overview
-
-- **Default Channel**: Apps default to the `production` channel if no channel is specified.
-- **Environment Management**: Clearly separates different environments (`dev`, `staging`, `production`) to ensure accurate application of updates.
+- **Default Channel**: Apps use the `production` channel when no channel is specified.
+- **Environment Management**: Separate your environments (`dev`, `staging`, `production`) to control which updates go where.
 
 ## Setting Up Channels
 
@@ -936,11 +1530,7 @@ export default HotUpdater.wrap({
 URL: https://hot-updater.dev/docs/guides/compression
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/guides/compression.mdx
 
-Choose a compression format for your bundle distribution
-
-# Compression Strategy
-
-Choose a compression format for your bundle distribution.
+"Choose a compression format for your bundle distribution."
 
 ## Supported Formats
 
@@ -984,19 +1574,12 @@ Since the client handles all formats transparently, choose the format with the b
 URL: https://hot-updater.dev/docs/guides/console
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/guides/console.mdx
 
-Opens a localhost server for rollback, force updates, and git history access
-
-# Console (Rollback & Force Update)
-
-Opens a localhost server based on plugins configured in `hot-updater.config.ts`.
-For security reasons, only localhost server is supported at the moment.
+"Opens a localhost server based on plugins configured in `hot-updater.config.ts`. For security reasons, only localhost server is supported at the moment."
 
 **The console provides the following features:**
 - Rollback
 - Force update flag
 - Quick access to git history for updates
-
-
 
 
 
@@ -1064,12 +1647,7 @@ When you set the git URL, the commit hash will be clickable and redirect you to 
 URL: https://hot-updater.dev/docs/guides/deploy
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/guides/deploy.mdx
 
-Deploy updates to specified platforms using the hot-updater CLI
-
-# Deploy
-This command is used to deploy the update to the specified platform.
-
-
+"This command is used to deploy the update to the specified platform."
 
 ## Checklist
 1. Ensure `hot-updater.config.ts` is properly configured.
@@ -1165,15 +1743,11 @@ npx hot-updater deploy -p  -m ""
 
 ---
 
-# Guides: "Simulate Release Mode"
+# Guides: "Simulate Test"
 URL: https://hot-updater.dev/docs/guides/simulator-test
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/guides/simulator-test.mdx
 
-Test hot-updater in Release mode on simulators
-
-# Simulate Release Mode
-
-Since hot-updater does not work in dev environment, you need to test it in Release mode as shown below.
+"Since hot-updater does not work in dev environment, you need to test it in Release mode as shown below."
 
 ## Checklist
 - Make sure `hot-updater.config.ts` is properly configured.
@@ -1269,30 +1843,45 @@ npx hot-updater console
 URL: https://hot-updater.dev/docs/guides/update-strategies/app-version
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/guides/update-strategies/app-version.mdx
 
-Target specific native app versions for updates
+"Manually target specific app versions for OTA updates instead of using automatic compatibility checks."
 
-# App Version Update Strategy
+## Overview
 
-The "App Version" update strategy in `hot-updater` allows you to target specific native app versions when deploying updates. Unlike the `fingerprint` strategy, which compares hash values to check for native code changes, this strategy applies updates only to the app version specified with the `-t` (or `--target-app-version`) option during the `hot-updater deploy` command.
+The App Version strategy gives you manual control over which app versions receive updates. You specify exact versions or ranges when deploying, rather than relying on automatic fingerprint detection.
 
-## When to Use It?
+**When to use it**: Choose this if you prefer explicit version targeting over automated compatibility checks.
 
-- You might choose this strategy if managing fingerprints feels cumbersome or if you prefer to specify update targets more explicitly.
+## Setup
 
-## Configuration
-
-You can enable this feature by setting the `updateStrategy` option to `appVersion` in your `hot-updater.config.ts` file.
+Configure the strategy in your Hot Updater config:
 
 ```typescript title="hot-updater.config.ts"
 export default defineConfig({
-  // ... other configurations
   updateStrategy: "appVersion",
 });
 ```
 
-## Client-Side Configuration with `getUpdateSource`
+## Version Targeting
 
-When using the app version strategy in your React Native application, you need to configure the `getUpdateSource` function with the `updateStrategy` set to `"appVersion"`. This ensures that the client app sends the correct app version when checking for updates.
+Use version ranges to control which app versions receive updates. The `-t` option accepts various expressions:
+
+| Range | Who gets the update |
+| :--- | :--- |
+| `1.2.3` | Only version `1.2.3` |
+| `*` | All versions |
+| `1.2.x` | Any patch version of `1.2` |
+| `1.2.3 - 1.2.7` | Versions `1.2.3` through `1.2.7` (inclusive) |
+| `>=1.2.3 =1.2.0 =1.2.3 =1.2.3  -t "1.x.x"
+```
+
+Examples:
+- `npx hot-updater deploy -p ios -t "1.0.0"` - Only version 1.0.0
+- `npx hot-updater deploy -p android -t ">=1.2.0"` - Version 1.2.0 and above
+- `npx hot-updater deploy -p ios -t "*"` - All versions
+
+## Client Setup
+
+Configure your React Native app:
 
 ```tsx title="App.tsx"
 function App() {
@@ -1305,55 +1894,30 @@ function App() {
 
 export default HotUpdater.wrap({
   source: getUpdateSource("https://your-update-server.com/api/update-check", {
-    updateStrategy: "appVersion", // Configure for app version strategy
+    updateStrategy: "appVersion", // [!code ++]
   }),
-  // ... other options
 })(App);
 ```
 
-The `getUpdateSource` function will automatically construct the correct endpoint URL for the app version strategy:
-`GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-
-## Specifying App Version During Deployment
-
-When using the "App Version" strategy, you must specify the target app version for the update using the `-t` (or `--target-app-version`) option in the `hot-updater deploy` command.
-
-```package-install
-npx hot-updater deploy -p  -t "1.x.x"
+The client automatically constructs this endpoint:
+```
+GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
 ```
 
-The `-t` option accepts not only single versions but also various range expressions.
+## Testing the Endpoint
 
-## Target App Version Range Expression Table
-
-The following table shows the version range expressions you can use with the `-t` option and their meanings. This table is identical to the Target App Version specification for the `hot-updater deploy` command.
-
-| Range Expression | Who gets the update                                                              |
-| :--------------- | :------------------------------------------------------------------------------- |
-| `1.2.3`          | Only devices running the specific binary app store version `1.2.3` of your app   |
-| `*`              | Any device configured to consume updates from your CodePush app                  |
-| `1.2.x`          | Devices running major version `1`, minor version `2` and any patch version of your app |
-| `1.2.3 - 1.2.7`  | Devices running any binary version between `1.2.3` (inclusive) and `1.2.7` (inclusive) |
-| `>=1.2.3 =1.2.0 =1.2.3 =1.2.3 <2.0.0`                                                   |
-
-## Endpoint Testing
-
-When using the `appVersion` strategy, the update check endpoint typically follows this format:
-`GET /check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-
-Here's an example of testing this endpoint using `curl`. You'll need to replace `:platform`, `:targetAppVersion`, etc., with actual values.
+Test your update endpoint using curl:
 
 ```bash
 curl "https://your-update-endpoint.com/check-update/app-version/ios/1.0.0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
 ```
 
--   `:platform`: Specifies the platform, such as `ios` or `android`.
--   `:targetAppVersion`: The current version of the client app. This value is used to determine if the app is eligible for an update.
--   `:channel`: The channel name you want to check for updates (e.g., `default`, `staging`).
--   `:minBundleId`: The minimum bundle ID supported by the client. (If unknown for testing, you can use `00000000-0000-0000-0000-000000000000`).
--   `:bundleId`: The client's current bundle ID.
-
-This request allows you to verify if an update is available for the specified app version.
+Parameters:
+- `:platform` - `ios` or `android`
+- `:appVersion` - Current app version (e.g., `1.0.0`)
+- `:channel` - Channel name (e.g., `production`, `staging`)
+- `:minBundleId` - Minimum supported bundle ID
+- `:bundleId` - Current bundle ID
 
 ---
 
@@ -1361,113 +1925,106 @@ This request allows you to verify if an update is available for the specified ap
 URL: https://hot-updater.dev/docs/guides/update-strategies/fingerprint
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/guides/update-strategies/fingerprint.mdx
 
-Use fingerprint hashing for precise update targeting
+"Automatically prevent incompatible OTA updates by tracking native code changes with Expo's fingerprint library."
 
-# Fingerprint Update Strategy
+## Why Choose Fingerprint?
 
-The "Fingerprint" update strategy in `hot-updater` leverages Expo's [`@expo/fingerprint`](https://expo.dev/blog/fingerprint-your-native-runtime) library to track and manage changes in your project's native code. This mechanism significantly enhances the stability of app updates by preventing the delivery of JavaScript bundles incompatible with the native code.
+Fingerprint automatically detects native code changes and blocks incompatible OTA updates. This ensures only safe updates reach your users.
 
-## Why Choose Fingerprint Strategy?
+**Fingerprint vs App Version:**
+- **Fingerprint** (Recommended): Automatic protection - detects native changes and blocks unsafe updates
+- **App Version**: Manual control - you specify version targets, no automatic checking
 
-The Fingerprint strategy ensures **OTA update compatibility** by preventing incompatible JavaScript bundles from being delivered to your users. It automatically detects when native code changes would break compatibility and blocks unsafe OTA deployments.
+Choose Fingerprint for automatic safety. Choose App Version for manual control.
 
-### Fingerprint vs App Version Strategy
+## Setup
 
-- **Fingerprint Strategy** (Recommended): Automatically detects native compatibility changes and prevents incompatible OTA updates
-- **App Version Strategy**: Manually specify version targets, but no automatic compatibility checking
-
-Choose Fingerprint if you want automatic protection against incompatible updates. Choose App Version if you prefer manual control over update targeting.
-
-## How It Works: Real Development Scenarios
-
-### Scenario 1: JavaScript/UI Changes ✅ OTA Update
-```javascript
-// ✅ These changes are safe for OTA updates
-// - Updating component logic
-// - Changing styles and layouts  
-// - Adding new screens
-// - Modifying business logic
-// - Updating API calls
-```
-**Result**: Fingerprint stays the same → OTA update deployed safely
-
-### Scenario 2: Native Code Changes ⚠️ Native Rebuild Required
-```bash
-# ⚠️ These changes require native rebuild
-# - Installing new native modules (react-native-camera)
-# - Updating React Native version
-# - Modifying native iOS/Android code
-# - Changing build configurations
-```
-**Result**: Fingerprint changes → OTA deployment blocked → Native rebuild needed
-
-### The Safety Net
-When you try to deploy an OTA update but the fingerprint has changed:
-```bash
-$ pnpm hot-updater deploy
-❌ Fingerprint mismatch detected!
-💡 Native code has changed. You need to:
-1. Run: pnpm hot-updater fingerprint create
-2. Rebuild and resubmit your app
-3. Then deploy OTA updates
-```
-
-## Essential Workflow: Before App Store Submission
-
-### Step 1: Generate Fingerprint Before Native Build
-Before building your app for the App Store, always generate the fingerprint:
-
-```package-install
-npx hot-updater fingerprint create
-```
-
-This command:
-- Calculates a hash representing your native code state
-- Updates `ios/YourApp/Info.plist` with the fingerprint
-- Updates `android/app/src/main/res/values/strings.xml` with the fingerprint
-
-### Step 2: Build and Submit to App Store
-Now build your native app with the embedded fingerprint and submit to App Store.
-
-### Step 3: Deploy OTA Updates Safely
-After your app is live, you can deploy JavaScript-only updates:
-
-```package-install
-npx hot-updater deploy
-```
-
-The system automatically ensures only compatible updates reach your users.
-
-## Quick Setup
-
-### 1. Enable Fingerprint Strategy
-Fingerprint is the default strategy, but you can explicitly set it:
+Fingerprint is the default strategy. Configure it explicitly if needed:
 
 ```typescript title="hot-updater.config.ts"
 export default defineConfig({
-  updateStrategy: "fingerprint", // This is the default
+  updateStrategy: "fingerprint", // Default strategy
 });
 ```
 
-### 2. Include Additional Files (Optional)
-If you have extra files that affect native compatibility:
+### Include Additional Files (Optional)
+
+Track extra files that affect native compatibility:
 
 ```typescript title="hot-updater.config.ts"
 export default defineConfig({
   updateStrategy: "fingerprint",
   fingerprint: {
     extraSources: [
-      "config/native-config.json", // Custom native configurations
-      "scripts/post-build.sh",     // Build scripts that affect native code
+      "config/native-config.json",
+      "scripts/post-build.sh",
     ],
-    debug: true, // See detailed fingerprint calculation info
+    debug: true,
   },
 });
 ```
 
-## Client-Side Configuration with `getUpdateSource`
+## Workflow
 
-When using the fingerprint strategy in your React Native application, you need to configure the `getUpdateSource` function with the `updateStrategy` set to `"fingerprint"`. This ensures that the client app sends the correct fingerprint hash when checking for updates.
+### Before App Store Submission
+
+**Step 1: Generate Fingerprint**
+
+Before building for App Store, generate the fingerprint:
+
+```package-install
+npx hot-updater fingerprint create
+```
+
+This creates a `fingerprint.json` file and embeds the hash in your native files:
+- iOS: `ios/YourApp/Info.plist`
+- Android: `android/app/src/main/res/values/strings.xml`
+
+Example `fingerprint.json`:
+```json
+{
+  "ios": {
+    "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0"
+  },
+  "android": {
+    "hash": "c763ed5729a0bcccf23248ee0183ddf9016c2e6e"
+  }
+}
+```
+
+**Step 2: Build and Submit**
+
+Build your app with the embedded fingerprint and submit to the App Store.
+
+**Step 3: Deploy OTA Updates**
+
+After your app is live, deploy JavaScript-only updates:
+
+```package-install
+npx hot-updater deploy
+```
+
+The system automatically ensures only compatible updates reach users.
+
+### When Native Code Changes
+
+Check if your fingerprint needs updating:
+
+```package-install
+npx hot-updater fingerprint
+```
+
+If there's a mismatch, create a new fingerprint:
+
+```package-install
+npx hot-updater fingerprint create
+```
+
+**Important**: After creating a new fingerprint, you must rebuild your app. The new fingerprint must be embedded in the app binary before deploying OTA updates.
+
+## Client Setup
+
+Configure your React Native app:
 
 ```tsx title="App.tsx"
 function App() {
@@ -1480,48 +2037,61 @@ function App() {
 
 export default HotUpdater.wrap({
   source: getUpdateSource("https://your-update-server.com/api/update-check", {
-    updateStrategy: "fingerprint", // Configure for fingerprint strategy
+    updateStrategy: "fingerprint", // [!code ++]
   }),
-  // ... other options
 })(App);
 ```
 
-The `getUpdateSource` function will automatically construct the correct endpoint URL for the fingerprint strategy:
-`GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+The client automatically constructs this endpoint:
+```
+GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
+```
 
-## Managing and Updating Fingerprints
+## How It Works
 
-It's crucial to check and, if necessary, update the fingerprint whenever changes are made to the native code.
+### JavaScript/UI Changes ✅ OTA Update Safe
 
-1.  **Check Current Fingerprint**:
+```javascript
+// ✅ Safe for OTA updates
+// - Component logic changes
+// - Style and layout updates
+// - New screens
+// - Business logic changes
+// - API call modifications
+```
 
-    ```package-install
-    npx hot-updater fingerprint
-    ```
+**Result**: Fingerprint unchanged → OTA update deployed
 
-    This command calculates the current project's fingerprint and shows whether it matches the stored value.
+### Native Code Changes ⚠️ Rebuild Required
 
-2.  **Create a New Fingerprint**:
-    If the command above indicates a mismatch, you must generate a new fingerprint using:
+```bash
+# ⚠️ Requires native rebuild
+# - New native modules (react-native-camera)
+# - React Native version updates
+# - Native iOS/Android code changes
+# - Build configuration changes
+```
 
-    ```package-install
-    npx hot-updater fingerprint create
-    ```
+**Result**: Fingerprint changed → OTA blocked → Rebuild needed
 
-    **Important**: After creating a new fingerprint, you **must rebuild your app**. This ensures that the updated native environment and the new fingerprint are correctly incorporated into the app binary, preventing compatibility issues with apps built using the previous fingerprint.
+If you try to deploy with a changed fingerprint:
 
-## Advanced: Multiple App Targets
+```bash
+$ npx hot-updater deploy
+❌ Fingerprint mismatch!
+💡 Native code changed. You need to:
+1. Run: npx hot-updater fingerprint create
+2. Rebuild and resubmit your app
+3. Then deploy OTA updates
+```
 
-### What `fingerprint create` Does Automatically
-When you run `pnpm hot-updater fingerprint create`, it automatically:
-- Updates your main `ios/YourApp/Info.plist` 
-- Updates your main `android/app/src/main/res/values/strings.xml`
-- Embeds the fingerprint hash in these files
+## Advanced
 
-### When You Need Additional Configuration
-**Only configure additional paths if you have:**
-- iOS app extensions (widgets, share extensions, watch apps)
-- Multiple Android build variants with separate string files
+### Multiple App Targets
+
+`fingerprint create` automatically handles standard React Native projects. Only configure custom paths if you have:
+- iOS app extensions (widgets, share extensions)
+- Multiple Android build variants
 - Non-standard project structure
 
 ```typescript title="hot-updater.config.ts"
@@ -1530,18 +2100,14 @@ export default defineConfig({
   platform: {
     ios: {
       infoPlistPaths: [
-        // Main app (handled automatically)
         "ios/YourApp/Info.plist",
-        // Additional targets you need to include
         "ios/YourAppWidget/Info.plist",
         "ios/YourAppExtension/Info.plist"
       ]
     },
     android: {
       stringResourcePaths: [
-        // Main strings (handled automatically)  
         "android/app/src/main/res/values/strings.xml",
-        // Additional build variants
         "android/app/src/debug/res/values/strings.xml"
       ]
     }
@@ -1549,45 +2115,22 @@ export default defineConfig({
 });
 ```
 
-💡 **Most projects don't need this configuration** - the default behavior handles standard React Native projects perfectly.
+💡 Most projects don't need this - the defaults work perfectly.
 
-## Fingerprint File Example (`fingerprint.json`)
+### Testing the Endpoint
 
-```json
-{
-  "ios": {
-    "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0",
-    // ... other details
-  },
-  "android": {
-    "hash": "c763ed5729a0bcccf23248ee0183ddf9016c2e6e",
-    // ... other details
-  }
-}
-```
-
-
-## Endpoint Testing
-
-You can test if the update check endpoint, configured via the `hot-updater init` command, is working correctly. When using the `fingerprint` strategy, the endpoint format is typically:
-
-*   `GET /check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
-
-Example of testing with `curl`:
+Test your update endpoint with curl:
 
 ```bash
 curl "https://your-update-endpoint.com/check-update/fingerprint/ios/11142b9062165fa48665f5efa095dd94e9e45eb0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
 ```
 
-**Request Parameter Descriptions:**
-
-*   `:platform`: The platform, such as `ios` or `android`.
-*   `:fingerprintHash`: The current fingerprint hash of the client app.
-*   `:channel`: The channel name you want to check for updates (e.g., `default`, `staging`).
-*   `:minBundleId`: The minimum bundle ID supported by the client (this value is updated when the native app is rebuilt. If unknown for testing, you can use `00000000-0000-0000-0000-000000000000`).
-*   `:bundleId`: The client's current bundle ID.
-
-This request allows you to verify if an update is available for a specific fingerprint hash and channel.
+Parameters:
+- `:platform` - `ios` or `android`
+- `:fingerprintHash` - Current fingerprint hash
+- `:channel` - Channel name (e.g., `production`, `staging`)
+- `:minBundleId` - Minimum supported bundle ID
+- `:bundleId` - Current bundle ID
 
 ---
 
@@ -1595,13 +2138,7 @@ This request allows you to verify if an update is available for a specific finge
 URL: https://hot-updater.dev/docs/integration-plugins/datadog
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/integration-plugins/datadog.mdx
 
-Upload source maps to Datadog for error tracking
-
-# Datadog Source Maps Plugin
-
-The `withDatadog()` plugin for hot-updater enables automatic sourcemap upload to Datadog during the update bundle build process.
-
-This helps you track production crashes with accurate stack traces tied to your React Native source code.
+"The `withDatadog()` plugin for hot-updater enables automatic sourcemap upload to Datadog during the update bundle build process."
 
 ## Prerequisites
 
@@ -1611,7 +2148,7 @@ This helps you track production crashes with accurate stack traces tied to your 
 - Install the plugin:
 
 ```package-install
-@hot-updater/datadog-plugin @datadog/datadog-ci
+npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
 ```
 
 ## Step 1: Wrap Your Build Plugin
@@ -1624,7 +2161,7 @@ Once wrapped, sourcemaps will automatically be uploaded to Datadog when running 
   
 
 ```ts title="hot-updater.config.ts"
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: withDatadog(
@@ -1703,8 +2240,7 @@ Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/integration
 
 Integration plugin for Re.Pack bundler
 
-# Re.Pack Plugin
-
+## Introduction
 Re.Pack is a modern bundler for React Native.
 
 The `@hot-updater/repack` plugin is a plugin for the [Re.Pack](https://re-pack.dev/) bundler.
@@ -1713,13 +2249,11 @@ It is used to set the bundle ID (uuidv7) and channel at build time.
 
 If you don't do this, you'll get an error saying there's no bundle ID when running the `hot-updater deploy` command.
 
-
 ## Installation
 
 ```package-install
-@hot-updater/repack
+npm install @hot-updater/repack --save-dev
 ```
-
 
 ## Usage
 
@@ -1739,13 +2273,7 @@ export default {
 URL: https://hot-updater.dev/docs/integration-plugins/sentry
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/integration-plugins/sentry.mdx
 
-Upload source maps to Sentry for error tracking
-
-# Sentry Source Maps Plugin
-
-The `withSentry()` plugin for hot-updater enables automatic sourcemap upload to Sentry during the update bundle build process.
-
-This helps you track production crashes with accurate stack traces tied to your React Native source code.
+"The `withSentry()` plugin for hot-updater enables automatic sourcemap upload to Sentry during the update bundle build process."
 
 ## Prerequisites
 
@@ -1754,7 +2282,7 @@ This helps you track production crashes with accurate stack traces tied to your 
 - Install the plugin:
 
 ```package-install
-@hot-updater/sentry-plugin
+npm install @hot-updater/sentry-plugin --save-dev
 ```
 
 ## Step 1: Configure Sentry
@@ -1805,7 +2333,7 @@ Once wrapped, sourcemaps will automatically be uploaded to Sentry when running t
   
 
 ```ts title="hot-updater.config.ts"
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: withSentry(
@@ -1882,13 +2410,7 @@ npx hot-updater deploy -i
 URL: https://hot-updater.dev/docs/managed-providers/aws
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/managed-providers/aws.mdx
 
-Set up hot-updater with AWS S3 and Lambda@Edge
-
-# AWS S3 Storage + Lambda@Edge Function
-
-This guide walks you through setting up `hot-updater` with AWS S3 Storage and Lambda@Edge Function in a React Native project. You'll configure the environment, install required packages, and initialize AWS for seamless updates.
-
-
+"This guide walks you through setting up `hot-updater` with AWS S3 Storage and Lambda@Edge Function in a React Native project. You'll configure the environment, install required packages, and initialize AWS for seamless updates."
 
 ## Prerequisites
 
@@ -1980,7 +2502,7 @@ During the initialization process, the following file is automatically generated
 
 ```ts title="hot-updater.config.ts"
 
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -2401,13 +2923,7 @@ This document simplifies the initialization process, making it easy for develope
 URL: https://hot-updater.dev/docs/managed-providers/cloudflare
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/managed-providers/cloudflare.mdx
 
-Set up hot-updater with Cloudflare R2 and D1
-
-# Cloudflare Provider
-
-This guide walks you through setting up `hot-updater` with Cloudflare in a React Native project. You'll configure the environment, install required packages, and initialize Cloudflare for seamless updates.
-
-
+"This guide walks you through setting up `hot-updater` with Cloudflare in a React Native project. You'll configure the environment, install required packages, and initialize Cloudflare for seamless updates."
 
 ## Prerequisites
 
@@ -2475,7 +2991,7 @@ During the initialization process, the following file is automatically generated
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Cloudflare with your project.
 
 ```ts title="hot-updater.config.ts"
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -2880,13 +3396,7 @@ This document simplifies the initialization process, making it easy for develope
 URL: https://hot-updater.dev/docs/managed-providers/firebase
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/managed-providers/firebase.mdx
 
-Set up hot-updater with Firebase Storage and Firestore
-
-# Firebase Provider
-
-This guide walks you through setting up `hot-updater` with Firebase in a React Native project. You'll configure the environment, install required packages, and initialize Firebase for seamless updates.
-
-
+"This guide walks you through setting up `hot-updater` with Firebase in a React Native project. You'll configure the environment, install required packages, and initialize Firebase for seamless updates."
 
 ## Prerequisites
 
@@ -3047,7 +3557,7 @@ module.exports = {
 
 Add the following to your `rspack.config.mjs` file:
 ```package-install
-@hot-updater/repack
+npm install @hot-updater/repack --save-dev
 ```
 
 ```js title="rspack.config.mjs"
@@ -3374,13 +3884,7 @@ This document simplifies the initialization process, making it easy for develope
 URL: https://hot-updater.dev/docs/managed-providers/supabase
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/managed-providers/supabase.mdx
 
-Set up hot-updater with Supabase Storage and Database
-
-# Supabase Provider
-
-This guide walks you through setting up `hot-updater` with Supabase in a React Native project. You'll configure the environment, install required packages, and initialize Supabase for seamless updates.
-
-
+"This guide walks you through setting up `hot-updater` with Supabase in a React Native project. You'll configure the environment, install required packages, and initialize Supabase for seamless updates."
 
 ## Prerequisites
 
@@ -3449,7 +3953,7 @@ During the initialization process, the following file is automatically generated
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Supabase with your project.
 
 ```ts title="hot-updater.config.ts"
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -3852,11 +4356,7 @@ This document simplifies the initialization process, making it easy for develope
 URL: https://hot-updater.dev/docs/policy/app-review
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/policy/app-review.mdx
 
-Understanding when app store review is required vs HotUpdater updates
-
-# When to Submit Your App for Review
-
-`HotUpdater` enables seamless updates to JavaScript (JS) files and assets required by your app, bypassing the app store review process in many cases. However, certain changes, particularly those involving native code (e.g., written in Swift/Objective-C for iOS or Kotlin/Java for Android), require app store review. Below, we outline when you need to submit your app for review and when `HotUpdater` can handle updates independently.
+"`HotUpdater` enables seamless updates to JavaScript (JS) files and assets required by your app, bypassing the app store review process in many cases. However, certain changes, particularly those involving native code (e.g., written in Swift/Objective-C for iOS or Kotlin/Java for Android), require app store review. Below, we outline when you need to submit your app for review and when `HotUpdater` can handle updates independently."
 
 ## Scenarios Requiring App Store Review (Native Code Changes)
 
@@ -3940,10 +4440,7 @@ To ensure a smooth update process:
 URL: https://hot-updater.dev/docs/policy/security
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/policy/security.mdx
 
-Best practices for protecting plugin tokens and sensitive data
-
-# Security
-
+"Best practices for protecting plugin tokens and sensitive data"
 
 ## Plugin Token Protection
 
@@ -3952,7 +4449,7 @@ Developers may worry that sensitive tokens defined in the `hot-updater.config.ts
 Using environment variables is simply for populating the token value in the `hot-updater.config.ts` file. This is, in fact, unrelated to React Native.
 
 ```ts title="hot-updater.config.ts"
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -4026,12 +4523,7 @@ module.exports = {
 URL: https://hot-updater.dev/docs/react-native-api/addListener
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/addListener.mdx
 
-Listen to update events
-
-# `HotUpdater.addEventListener()`
-
-The `addEventListener` function allows you to listen for specific events emitted by the HotUpdater. This is useful for tracking update progress or other events during the update process.
-
+"The `addEventListener` function allows you to listen for specific events emitted by the HotUpdater. This is useful for tracking update progress or other events during the update process."
 
 For most use cases involving bundle download progress bar displays, it's more convenient to use the store hook instead of this listener. See [useHotUpdaterStore](./useHotUpdaterStore).
 
@@ -4113,13 +4605,7 @@ export default App;
 URL: https://hot-updater.dev/docs/react-native-api/checkForUpdate
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/checkForUpdate.mdx
 
-Check if updates are available
-
-# `HotUpdater.checkForUpdate()`
-
-The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server's bundle information.
-
-This method is particularly useful when you need a custom update strategy without using the built-in `wrap` method.
+"The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server's bundle information."
 
 ## Usage
 
@@ -4230,11 +4716,7 @@ export interface UpdateInfo {
 URL: https://hot-updater.dev/docs/react-native-api/getChannel
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/getChannel.mdx
 
-Get the current update channel
-
-# `HotUpdater.getChannel()`
-
-The `HotUpdater.getChannel()` function retrieves the current release channel of the app. This is useful when you want to determine which channel updates are being applied from.
+"The `HotUpdater.getChannel()` function retrieves the current release channel of the app. This is useful when you want to determine which channel updates are being applied from."
 
 By default, if no channel is specified, the app is assigned to the `production` channel.
 
@@ -4280,7 +4762,7 @@ export default HotUpdater.wrap({
 ## Configuration Example (`hot-updater.config.ts`)
 
 ```tsx
-import "dotenv/config";
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   releaseChannel: "dev", // Specifying the release channel
@@ -4298,17 +4780,13 @@ With this configuration, `HotUpdater.getChannel()` will return `"dev"`. This ens
 URL: https://hot-updater.dev/docs/react-native-api/isUpdateDownloaded
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/isUpdateDownloaded.mdx
 
-Check if update has been downloaded
+"Returns whether an update bundle has finished downloading in the current app session and is ready to be applied on reload."
 
-# `HotUpdater.isUpdateDownloaded()`
-
-Returns whether an update bundle has finished downloading in the current app session and is ready to be applied on reload.
+## Usage
 
 - Returns `true` when the download `progress` has reached `1.0`.
 - Returns `false` while downloading or before any download starts.
 - Resets to `false` automatically when a new download starts.
-
-## Usage
 
 ```tsx
 async function maybeApplyUpdate() {
@@ -4371,19 +4849,16 @@ export function UpdateButton() {
 URL: https://hot-updater.dev/docs/react-native-api/reload
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/reload.mdx
 
-Reload the app with the updated bundle
+"By default, the `shouldForceUpdate` flag is `false`, the bundle is downloaded but not applied until the user restarts the app."
 
-# `HotUpdater.reload()`
-
-By default, the `shouldForceUpdate` flag is `false`, the bundle is downloaded but not applied until the user restarts the app.
+## Usage
 
 Calling `HotUpdater.reload()` reloads the app. If there is a completed update bundle ready to be applied, it will be applied immediately.
 
 
+
 The `shouldForceUpdate` flag simply downloads the bundle and calls reload immediately.
 
-
-## Usage
 
 You can use it as shown below, but it is recommended to use it together with the `useHotUpdaterStore().progress value.
 
@@ -4423,13 +4898,7 @@ export default HotUpdater.wrap({
 URL: https://hot-updater.dev/docs/react-native-api/updateBundle
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/updateBundle.mdx
 
-Download and install update bundles
-
-# `HotUpdater.updateBundle()`
-
-The `updateBundle` function downloads and applies a new update bundle to your React Native application. It uses the provided bundle information obtained from `checkForUpdate`.
-
-This method is particularly useful when you need a custom update strategy without using the built-in `wrap` method.
+"The `updateBundle` function downloads and applies a new update bundle to your React Native application. It uses the provided bundle information obtained from `checkForUpdate`."
 
 ## Usage
 
@@ -4552,11 +5021,7 @@ The `fileHash` is automatically included in the response from `checkForUpdate()`
 URL: https://hot-updater.dev/docs/react-native-api/useHotUpdaterStore
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/useHotUpdaterStore.mdx
 
-React hook for accessing update state
-
-# `useHotUpdaterStore()`
-
-A store related to updates.
+"A store related to updates."
 
 ## Download Progress
 
@@ -4620,11 +5085,7 @@ function UpdateButton() {
 URL: https://hot-updater.dev/docs/react-native-api/wrap
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/react-native-api/wrap.mdx
 
-Wrap your app component to enable hot updates
-
-# `HotUpdater.wrap()`
-
-`HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy.
+"`HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy."
 
 ## Usage
 Use the `source` option in `HotUpdater.wrap` to specify the update server URL, then wrap the App entry point.
@@ -4847,11 +5308,7 @@ export default HotUpdater.wrap({
 URL: https://hot-updater.dev/docs/self-hosted/overview
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/self-hosted/overview.mdx
 
-Overview of self-hosted hot-updater deployment
-
-# Self-Hosted Overview
-
-TODO: Document self-hosted deployment
+"TODO: Document self-hosted deployment"
 
 ## Topics to Cover
 
@@ -4865,9 +5322,7 @@ TODO: Document self-hosted deployment
 URL: https://hot-updater.dev/docs/self-hosted/setup
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/self-hosted/setup.mdx
 
-Deploy hot-updater on your own infrastructure
-
-# Self-Hosted Provider
+"Coming Soon"
 
 Coming Soon
 
@@ -4877,11 +5332,81 @@ Coming Soon
 URL: https://hot-updater.dev/docs/storage-plugins/aws
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/storage-plugins/aws.mdx
 
-Use aws storage with hot-updater
+Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
 
-# AWS S3 Storage
+## Installation
 
-TODO: Document aws storage integration
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/managed-providers/aws) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface S3StorageConfig {
+  region: string;           // AWS region or 'auto' for R2
+  bucketName: string;       // S3 bucket name
+  basePath?: string;        // Optional base path within bucket
+  endpoint?: string;        // Custom endpoint for S3-compatible services
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+## Usage
+
+### AWS S3
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-hot-updater-bucket'
+  }),
+  // ... other config
+});
+```
+
+### Cloudflare R2
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+## Protocol
+
+`s3://`
+
+This prefix is stored in the `storageUri` field in the database.
 
 ---
 
@@ -4889,11 +5414,90 @@ TODO: Document aws storage integration
 URL: https://hot-updater.dev/docs/storage-plugins/cloudflare
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/storage-plugins/cloudflare.mdx
 
-Use Cloudflare R2 storage with hot-updater
+Store your Hot Updater bundles in Cloudflare R2 using the Wrangler CLI.
 
-# Cloudflare R2 Storage
+## Installation
 
-TODO: Document cloudflare storage integration
+```package-install
+npm install @hot-updater/cloudflare --save-dev
+```
+
+
+For full R2 feature support including presigned URLs and better performance, use the S3-compatible AWS plugin. See the [AWS S3 Storage documentation](/docs/storage-plugins/aws) for more details.
+
+Install the AWS plugin:
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+Configure with R2:
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: 'https://your-account-id.r2.cloudflarestorage.com',
+    credentials: {
+      accessKeyId: 'your-r2-access-key-id',
+      secretAccessKey: 'your-r2-secret-access-key'
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+This approach provides full R2 compatibility with better performance and all S3 features.
+
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed-providers/cloudflare) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface R2StorageConfig {
+  cloudflareApiToken: string;  // Cloudflare API token
+  accountId: string;           // Cloudflare account ID
+  bucketName: string;          // R2 bucket name
+  basePath?: string;           // Optional base path within bucket
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  storage: r2Storage({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN,
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+## Limitations
+
+- Does not support getDownloadUrl() - bundles cannot be downloaded via presigned URLs
+- Uses CLI instead of SDK (slower performance)
+- Limited compared to S3-compatible approach
+
+## Protocol
+
+`r2://`
+
+This prefix is stored in the `storageUri` field in the database.
 
 ---
 
@@ -4901,11 +5505,192 @@ TODO: Document cloudflare storage integration
 URL: https://hot-updater.dev/docs/storage-plugins/firebase
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/storage-plugins/firebase.mdx
 
-Use Firebase Storage with hot-updater
+Store your Hot Updater bundles in Firebase Cloud Storage.
 
-# Firebase Storage Plugin
+## Installation
 
-TODO: Document firebase storage integration
+```package-install
+npm install @hot-updater/firebase firebase-admin --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Firebase](/docs/managed-providers/firebase) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface FirebaseStorageConfig {
+  projectId: string;               // Firebase project ID
+  storageBucket: string;           // Storage bucket name
+  credential: admin.credential.Credential;  // Firebase credential
+  basePath?: string;               // Optional base path within bucket
+}
+```
+
+
+## Environment Variables
+
+Set up your Firebase credentials:
+
+```bash title=".env.hotupdater"
+# Project Settings > Service Accounts > New Private Key > Download JSON
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_STORAGE_BUCKET=your-bucket-name
+```
+
+
+## Usage
+
+```typescript
+// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+// Check your .env file and add the credentials
+// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
+// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+const credential = admin.credential.applicationDefault();
+
+export default defineConfig({
+  storage: firebaseStorage({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    credential
+  }),
+  // ... other config
+});
+```
+
+
+## Protocol
+
+`gs://`
+
+This prefix is stored in the `storageUri` field in the database.
+
+---
+
+# Storage Plugins: "Standalone Storage"
+URL: https://hot-updater.dev/docs/storage-plugins/standalone
+Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/storage-plugins/standalone.mdx
+
+Store your Hot Updater bundles in your custom self-hosted storage backend by implementing HTTP API endpoints.
+
+## Installation
+
+```package-install
+npm install @hot-updater/standalone --save-dev
+```
+
+## Configuration
+
+```typescript
+interface StandaloneStorageConfig {
+  baseUrl: string;                        // Your API base URL
+  commonHeaders?: Record; // Headers sent with all requests
+  routes?: StorageRoutes;                 // Optional custom route configuration
+}
+
+interface StorageRoutes {
+  upload: (key: string, filePath: string) => RouteConfig;
+  delete: (storageUri: string) => RouteConfig;
+  getDownloadUrl: (storageUri: string) => RouteConfig;
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  storage: standaloneStorage({
+    baseUrl: process.env.STORAGE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  // ... other config
+});
+```
+
+## API Endpoints
+
+Your backend must implement these endpoints:
+
+### POST /upload
+Upload a bundle file.
+
+**Request:**
+- Method: `POST`
+- Content-Type: `multipart/form-data`
+- Body: File (`file` field) + key (`key` field)
+
+**Response:**
+```json
+{
+  "storageUri": "http://your-storage-uri"
+}
+```
+
+### DELETE /delete
+Delete a bundle.
+
+**Request:**
+- Method: `DELETE`
+- Content-Type: `application/json`
+- Body: `{ "storageUri": "http://your-storage-uri" }`
+
+**Response:** 200 OK
+
+### POST /getDownloadUrl
+Get a download URL for a bundle.
+
+**Request:**
+- Method: `POST`
+- Content-Type: `application/json`
+- Body: `{ "storageUri": "http://your-storage-uri" }`
+
+**Response:**
+```json
+{
+  "fileUrl": "http://download-url"
+}
+```
+
+## Custom Routes
+
+You can customize the endpoint paths and headers:
+
+```typescript
+standaloneStorage({
+  baseUrl: 'https://api.example.com',
+  routes: {
+    upload: (key, filePath) => ({
+      path: `/v1/bundles/upload`,
+      headers: { 'X-Bundle-Key': key }
+    }),
+    delete: (uri) => ({
+      path: `/v1/bundles/delete`,
+      headers: { 'X-Custom-Header': 'value' }
+    }),
+    getDownloadUrl: (uri) => ({
+      path: `/v1/bundles/download-url`
+    })
+  }
+})
+```
+
+## Protocol
+
+`http://` or `https://`
+
+This prefix is stored in the `storageUri` field in the database.
 
 ---
 
@@ -4913,11 +5698,56 @@ TODO: Document firebase storage integration
 URL: https://hot-updater.dev/docs/storage-plugins/supabase
 Source: https://github.com/gronxb/hot-updater/blob/main/content/docs/storage-plugins/supabase.mdx
 
-Use Supabase storage with hot-updater
+Store your Hot Updater bundles in Supabase Storage buckets.
 
-# Supabase Storage
+## Installation
 
-TODO: Document supabase storage integration
+```package-install
+npm install @hot-updater/supabase --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed-providers/supabase) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface SupabaseStorageConfig {
+  supabaseUrl: string;       // Your Supabase project URL
+  supabaseAnonKey: string;   // Your Supabase anon/public key
+  bucketName: string;        // Storage bucket name
+  basePath?: string;         // Optional base path within bucket
+}
+```
+
+## Usage
+
+```typescript
+export default defineConfig({
+  storage: supabaseStorage({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    bucketName: 'hot-updater-bundles',
+    basePath: 'bundles'  // Optional
+  }),
+  // ... other config
+});
+```
+
+## Protocol
+
+`supabase-storage://`
+
+This prefix is stored in the `storageUri` field in the database.
 
 ---
 

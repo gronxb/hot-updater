@@ -5,6 +5,10 @@ import { Provider } from "@/components/provider";
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <>
+      <meta charSet="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Hot Updater Docs</title>
+
       {/* Favicon */}
       <link rel="icon" type="image/x-icon" href="/favicon.ico" />
       <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
