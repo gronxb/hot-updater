@@ -1,0 +1,75 @@
+---
+title: "Firebase Storage"
+description: Use Firebase Storage with hot-updater
+icon: firebase
+---
+
+# Firebase Storage Plugin
+
+Store your Hot Updater bundles in Firebase Cloud Storage.
+
+## Installation
+
+```package-install
+npm install @hot-updater/firebase firebase-admin --save-dev
+```
+
+## Configuration
+
+```typescript
+interface FirebaseStorageConfig {
+  projectId: string;               // Firebase project ID
+  storageBucket: string;           // Storage bucket name
+  credential: admin.credential.Credential;  // Firebase credential
+  basePath?: string;               // Optional base path within bucket
+}
+```
+
+## Usage
+
+```typescript
+import { firebaseStorage } from '@hot-updater/firebase';
+import * as admin from 'firebase-admin';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: firebaseStorage({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    credential: admin.credential.cert(
+      process.env.GOOGLE_APPLICATION_CREDENTIALS
+    )
+  }),
+  // ... other config
+});
+```
+
+## Setup
+
+1. Create a Firebase project
+2. Enable Cloud Storage
+3. Download service account credentials JSON
+4. Set the credentials path in environment variables
+
+## Key Features
+
+- Signed URLs with 1-hour expiry
+- Reuses existing Firebase Admin app if initialized
+- Automatic file upload with content-type detection
+- Protocol: `gs://`
+
+## Environment Variables
+
+```bash
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_STORAGE_BUCKET=your-bucket.appspot.com
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
+## Dependencies
+
+Requires `firebase-admin` as a peer dependency:
+
+```package-install
+npm install firebase-admin --save-dev
+```

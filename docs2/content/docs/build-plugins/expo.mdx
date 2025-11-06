@@ -1,0 +1,70 @@
+---
+title: "Expo Plugin"
+description: Use hot-updater with Expo
+icon: expo
+---
+
+# Expo Build Plugin
+
+Build plugin for Expo projects. Bundles your Expo app using Expo's native export command.
+
+## Installation
+
+```package-install
+npm install @hot-updater/expo --save-dev
+```
+
+## Configuration
+
+```typescript
+interface ExpoPluginConfig {
+  outDir?: string;      // Output directory (default: "dist")
+  sourcemap?: boolean;  // Generate sourcemaps (default: false)
+}
+```
+
+## Usage
+
+```typescript
+import { expo } from '@hot-updater/expo';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  build: expo({
+    sourcemap: false
+  }),
+  // ... other config
+});
+```
+
+## App Configuration
+
+Ensure your `app.json` or `app.config.js` is properly configured:
+
+```json
+{
+  "expo": {
+    "jsEngine": "hermes",
+    "ios": {
+      "bundleIdentifier": "com.yourapp"
+    },
+    "android": {
+      "package": "com.yourapp"
+    }
+  }
+}
+```
+
+## Key Features
+
+- Uses Expo's `expo export:embed` command
+- Auto-detects Hermes from app.json configuration
+- Supports both managed and bare Expo workflows
+- Compatible with Expo prebuild for native builds
+- Automatically configures bundler based on Expo settings
+
+## Environment Variables
+
+```bash
+# No specific environment variables required
+```

@@ -1,0 +1,129 @@
+---
+title: "Standalone Storage"
+description: Use your own custom storage backend with hot-updater
+icon: server
+---
+
+# Standalone Storage
+
+Store your Hot Updater bundles in your custom self-hosted storage backend by implementing HTTP API endpoints.
+
+## Installation
+
+```package-install
+npm install @hot-updater/standalone --save-dev
+```
+
+## Configuration
+
+```typescript
+interface StandaloneStorageConfig {
+  baseUrl: string;                        // Your API base URL
+  commonHeaders?: Record<string, string>; // Headers sent with all requests
+  routes?: StorageRoutes;                 // Optional custom route configuration
+}
+
+interface StorageRoutes {
+  upload: (key: string, filePath: string) => RouteConfig;
+  delete: (storageUri: string) => RouteConfig;
+  getDownloadUrl: (storageUri: string) => RouteConfig;
+}
+```
+
+## Usage
+
+```typescript
+import { standaloneStorage } from '@hot-updater/standalone';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: standaloneStorage({
+    baseUrl: process.env.STORAGE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  // ... other config
+});
+```
+
+## API Endpoints
+
+Your backend must implement these endpoints:
+
+### POST /upload
+Upload a bundle file.
+
+**Request:**
+- Method: `POST`
+- Content-Type: `multipart/form-data`
+- Body: File (`file` field) + key (`key` field)
+
+**Response:**
+```json
+{
+  "storageUri": "http://your-storage-uri"
+}
+```
+
+### DELETE /delete
+Delete a bundle.
+
+**Request:**
+- Method: `DELETE`
+- Content-Type: `application/json`
+- Body: `{ "storageUri": "http://your-storage-uri" }`
+
+**Response:** 200 OK
+
+### POST /getDownloadUrl
+Get a download URL for a bundle.
+
+**Request:**
+- Method: `POST`
+- Content-Type: `application/json`
+- Body: `{ "storageUri": "http://your-storage-uri" }`
+
+**Response:**
+```json
+{
+  "fileUrl": "http://download-url"
+}
+```
+
+## Custom Routes
+
+You can customize the endpoint paths and headers:
+
+```typescript
+standaloneStorage({
+  baseUrl: 'https://api.example.com',
+  routes: {
+    upload: (key, filePath) => ({
+      path: `/v1/bundles/upload`,
+      headers: { 'X-Bundle-Key': key }
+    }),
+    delete: (uri) => ({
+      path: `/v1/bundles/delete`,
+      headers: { 'X-Custom-Header': 'value' }
+    }),
+    getDownloadUrl: (uri) => ({
+      path: `/v1/bundles/download-url`
+    })
+  }
+})
+```
+
+## Key Features
+
+- Full control over your storage backend
+- Custom authentication and authorization
+- Flexible endpoint configuration
+- Protocol: `http://` or `https://`
+
+## Environment Variables
+
+```bash
+STORAGE_API_URL=https://api.example.com
+API_TOKEN=your-api-token
+```

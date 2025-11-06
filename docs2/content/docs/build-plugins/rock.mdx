@@ -1,0 +1,66 @@
+---
+title: "Rock Plugin"
+description: Use hot-updater with Rock
+icon: Blocks
+---
+
+# Rock Build Plugin
+
+Build plugin for React Native projects using Rock bundler. Rock is a modern, faster alternative to Metro bundler.
+
+## Installation
+
+```package-install
+npm install @hot-updater/rock --save-dev
+```
+
+## Configuration
+
+```typescript
+interface RockPluginConfig {
+  outDir?: string;      // Output directory (default: "dist")
+  entryFile?: string;   // Entry file (default: "index.js")
+  sourcemap?: boolean;  // Generate sourcemaps (default: false)
+  hermes?: boolean;     // Use Hermes compiler (default: true)
+}
+```
+
+## Usage
+
+```typescript
+import { rock } from '@hot-updater/rock';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  build: rock({
+    hermes: true,
+    entryFile: 'index.js',
+    sourcemap: false
+  }),
+  // ... other config
+});
+```
+
+## Rock Setup
+
+Ensure Rock is installed and configured in your project:
+
+```package-install
+npm install @rock-js/cli --save-dev
+```
+
+Create a `rock.config.js` in your project root if needed.
+
+## Key Features
+
+- Modern bundler with faster build performance than Metro
+- Built-in Hermes support via `--hermes` flag
+- Compatible with React Native projects
+- Supports custom entry files and output directories
+- Improved build times for large codebases
+
+## Environment Variables
+
+```bash
+# No specific environment variables required
+```

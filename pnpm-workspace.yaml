@@ -2,6 +2,7 @@ packages:
   - packages/*
   - plugins/*
   - docs
+  - docs2
   - examples/*
   - examples-server/*
 onlyBuiltDependencies:

@@ -1,0 +1,83 @@
+# Hot Updater Documentation
+
+Hot Updater is a self-hostable OTA (Over-The-Air) updates solution for React Native apps.
+
+## Documentation Structure
+
+### Build Plugins
+
+- ["Bare (CLI) Plugin"](https://hot-updater.dev/docs/build-plugins/bare) - Use hot-updater with React Native CLI
+- ["Expo Plugin"](https://hot-updater.dev/docs/build-plugins/expo) - Use hot-updater with Expo
+- ["Rock Plugin"](https://hot-updater.dev/docs/build-plugins/rock) - Use hot-updater with Rock
+
+### Concepts
+
+- ["How does it work?"](https://hot-updater.dev/docs/concepts/how-it-works) - Understanding the core infrastructure and update decision logic
+- ["Plugin System"](https://hot-updater.dev/docs/concepts/plugin-system) - Customize Hot Updater with build, storage, and database plugins
+
+### Database Plugins
+
+- ["AWS S3 Database"](https://hot-updater.dev/docs/database-plugins/aws) - Use aws database with hot-updater
+- ["Cloudflare D1 Database"](https://hot-updater.dev/docs/database-plugins/cloudflare) - Use cloudflare database with hot-updater
+- ["Firestore Database"](https://hot-updater.dev/docs/database-plugins/firestore) - Use Firebase Firestore database with hot-updater
+- ["Supabase Database"](https://hot-updater.dev/docs/database-plugins/supabase) - Use Supabase database with hot-updater
+
+### Get Started
+
+- ["Basic Usage"](https://hot-updater.dev/docs/get-started/basic-usage) - Learn how to configure and integrate hot-updater into your React Native project
+- ["Introduction"](https://hot-updater.dev/docs/get-started/introduction) - Self-hostable OTA updates for React Native apps as an alternative to CodePush
+
+### Guides
+
+- ["Channels"](https://hot-updater.dev/docs/guides/channel-management) - Manage updates across different environments and user groups
+- ["Compression Strategy"](https://hot-updater.dev/docs/guides/compression) - Choose a compression format for your bundle distribution
+- ["Console (Rollback & Force Update)"](https://hot-updater.dev/docs/guides/console) - Opens a localhost server for rollback, force updates, and git history access
+- ["Deploy"](https://hot-updater.dev/docs/guides/deploy) - Deploy updates to specified platforms using the hot-updater CLI
+- ["Simulate Release Mode"](https://hot-updater.dev/docs/guides/simulator-test) - Test hot-updater in Release mode on simulators
+
+### Integration Plugins
+
+- ["Datadog"](https://hot-updater.dev/docs/integration-plugins/datadog) - Upload source maps to Datadog for error tracking
+- ["Re.Pack"](https://hot-updater.dev/docs/integration-plugins/repack) - Integration plugin for Re.Pack bundler
+- ["Sentry"](https://hot-updater.dev/docs/integration-plugins/sentry) - Upload source maps to Sentry for error tracking
+
+### Managed-Hosted
+
+- ["AWS S3 Storage + Lambda@Edge Function"](https://hot-updater.dev/docs/managed-providers/aws) - Set up hot-updater with AWS S3 and Lambda@Edge
+- ["Cloudflare Provider"](https://hot-updater.dev/docs/managed-providers/cloudflare) - Set up hot-updater with Cloudflare R2 and D1
+- ["Firebase Provider"](https://hot-updater.dev/docs/managed-providers/firebase) - Set up hot-updater with Firebase Storage and Firestore
+- ["Supabase Provider"](https://hot-updater.dev/docs/managed-providers/supabase) - Set up hot-updater with Supabase Storage and Database
+
+### Policy
+
+- ["When to Submit Your App for Review"](https://hot-updater.dev/docs/policy/app-review) - Understanding when app store review is required vs HotUpdater updates
+- ["Security"](https://hot-updater.dev/docs/policy/security) - Best practices for protecting plugin tokens and sensitive data
+
+### React Native API
+
+- ["addEventListener"](https://hot-updater.dev/docs/react-native-api/addListener) - Listen to update events
+- ["checkForUpdate"](https://hot-updater.dev/docs/react-native-api/checkForUpdate) - Check if updates are available
+- ["getChannel"](https://hot-updater.dev/docs/react-native-api/getChannel) - Get the current update channel
+- ["isUpdateDownloaded"](https://hot-updater.dev/docs/react-native-api/isUpdateDownloaded) - Check if update has been downloaded
+- ["reload"](https://hot-updater.dev/docs/react-native-api/reload) - Reload the app with the updated bundle
+
+### Self-Hosted
+
+- ["Self-Hosted Overview"](https://hot-updater.dev/docs/self-hosted/overview) - Overview of self-hosted hot-updater deployment
+- ["Self-Hosted Provider"](https://hot-updater.dev/docs/self-hosted/setup) - Deploy hot-updater on your own infrastructure
+
+### Storage Plugins
+
+- ["AWS S3 Storage"](https://hot-updater.dev/docs/storage-plugins/aws) - Use aws storage with hot-updater
+- ["Cloudflare R2 Storage"](https://hot-updater.dev/docs/storage-plugins/cloudflare) - Use Cloudflare R2 storage with hot-updater
+- ["Firebase Storage"](https://hot-updater.dev/docs/storage-plugins/firebase) - Use Firebase Storage with hot-updater
+- ["Supabase Storage"](https://hot-updater.dev/docs/storage-plugins/supabase) - Use Supabase storage with hot-updater
+
+
+## Quick Links
+
+- Getting Started: https://hot-updater.dev/docs/get-started/introduction
+- API Reference: https://hot-updater.dev/docs/react-native-api/wrap
+- Managed Providers: https://hot-updater.dev/docs/managed-providers/supabase
+
+For full documentation, see: https://hot-updater.dev/docs

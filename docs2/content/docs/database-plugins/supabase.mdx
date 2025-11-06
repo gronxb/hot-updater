@@ -1,0 +1,88 @@
+---
+title: "Supabase Database"
+description: Use Supabase database with hot-updater
+icon: supabase
+---
+
+# Supabase Database
+
+Store your Hot Updater bundle metadata in Supabase PostgreSQL database.
+
+## Installation
+
+```package-install
+npm install @hot-updater/supabase --save-dev
+```
+
+## Configuration
+
+```typescript
+interface SupabaseDatabaseConfig {
+  supabaseUrl: string;       // Your Supabase project URL
+  supabaseAnonKey: string;   // Your Supabase anon/public key
+}
+```
+
+## Usage
+
+```typescript
+import { supabaseDatabase } from '@hot-updater/supabase';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: supabaseDatabase({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  }),
+  // ... other config
+});
+```
+
+## Database Setup
+
+Run the SQL migration to create the required tables:
+
+```sql
+-- Located in @hot-updater/supabase/sql directory
+-- Check the package's sql/ folder for migration scripts
+```
+
+The migration creates:
+- `bundles` table with snake_case columns
+- `get_channels` RPC function
+
+## Key Features
+
+- PostgreSQL-backed storage
+- Support for channels and platform filtering
+- Built-in pagination
+- RPC functions for optimized queries
+
+## Environment Variables
+
+```bash
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+import { supabaseStorage, supabaseDatabase } from '@hot-updater/supabase';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: supabaseStorage({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    bucketName: 'hot-updater-bundles'
+  }),
+  database: supabaseDatabase({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  }),
+  // ... other config
+});
+```

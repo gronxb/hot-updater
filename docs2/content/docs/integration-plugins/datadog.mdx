@@ -1,0 +1,116 @@
+---
+title: "Datadog"
+description: Upload source maps to Datadog for error tracking
+icon: datadog
+---
+
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+
+# Datadog Source Maps Plugin
+
+The `withDatadog()` plugin for hot-updater enables automatic sourcemap upload to Datadog during the update bundle build process.
+
+This helps you track production crashes with accurate stack traces tied to your React Native source code.
+
+## Prerequisites
+
+- Datadog Account: Sign up here if you don't have one.
+- Auth Token: Generate a token from your Datadog dashboard. This must be defined as the environment variable `DATADOG_API_KEY`.
+- Datadog host: in order to communicate with Datadog, you need to specify the host to which the Auth token refers using the environment variable `DATADOG_HOST` (e.g., `DATADOG_HOST=datadoghq.eu`)
+- Install the plugin:
+
+```package-install
+npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
+```
+
+## Step 1: Wrap Your Build Plugin
+
+Use `withDatadog()` to wrap any compatible build plugin such as bare.
+
+Once wrapped, sourcemaps will automatically be uploaded to Datadog when running the `hot-updater deploy` process.
+
+<Tabs items={['Bare', 'Expo', 'Rock']}>
+  <Tab value="Bare">
+
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { withDatadog } from "@hot-updater/datadog-plugin";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
+
+export default defineConfig({
+  build: withDatadog(
+    bare({
+      enableHermes: false, // or true, depending if you want to use it
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
+    },
+  ),
+  // .. your other config
+});
+```
+</Tab>
+<Tab value="Expo">
+
+```ts title="hot-updater.config.ts"
+import { withDatadog } from "@hot-updater/datadog-plugin";
+import { defineConfig } from "hot-updater";
+import { expo } from "@hot-updater/expo";
+
+export default defineConfig({
+  build: withDatadog(
+    expo({
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
+    },
+  ),
+  // .. your other config
+});
+```
+</Tab>
+
+<Tab value="Rock">
+
+```ts title="hot-updater.config.ts"
+import { withDatadog } from "@hot-updater/datadog-plugin";
+import { defineConfig } from "hot-updater";
+import { rock } from "@hot-updater/rock";
+
+export default defineConfig({
+  build: withDatadog(
+    rock({
+      sourcemap: true, // [!code ++] Required for sourcemap upload
+    }),
+    {
+      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
+    },
+  ),
+  // .. your other config
+});
+```
+
+</Tab>
+
+</Tabs>
+
+<Callout title="Automatic Upload">
+When `withDatadog()` wraps your build plugin, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
+</Callout>
+
+## Step 3: Deploy
+
+Now, every time you deploy, sourcemaps will be automatically uploaded to Datadog.
+
+```package-install
+npx hot-updater deploy -i
+```

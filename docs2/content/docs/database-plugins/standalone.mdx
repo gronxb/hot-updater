@@ -1,0 +1,187 @@
+---
+title: "Standalone Database"
+description: Use your own custom database backend with hot-updater
+icon: server
+---
+
+# Standalone Database
+
+Store your Hot Updater bundle metadata in your custom self-hosted database by implementing HTTP API endpoints.
+
+## Installation
+
+```package-install
+npm install @hot-updater/standalone --save-dev
+```
+
+## Configuration
+
+```typescript
+interface StandaloneRepositoryConfig {
+  baseUrl: string;                        // Your API base URL
+  commonHeaders?: Record<string, string>; // Headers sent with all requests
+  routes?: Routes;                        // Optional custom route configuration
+}
+
+interface Routes {
+  upsert: () => RouteConfig;
+  list: () => RouteConfig;
+  retrieve: (bundleId: string) => RouteConfig;
+  delete: (bundleId: string) => RouteConfig;
+}
+```
+
+## Usage
+
+```typescript
+import { standaloneRepository } from '@hot-updater/standalone';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: standaloneRepository({
+    baseUrl: process.env.DATABASE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  // ... other config
+});
+```
+
+## API Endpoints
+
+Your backend must implement these endpoints:
+
+### POST /bundles
+Create or update bundle(s).
+
+**Request:**
+- Method: `POST`
+- Content-Type: `application/json`
+- Body: Array of bundle objects
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+### GET /bundles
+List all bundles (with optional filtering).
+
+**Request:**
+- Method: `GET`
+- Headers: `Cache-Control: no-cache`
+
+**Response:**
+```json
+[
+  {
+    "id": "bundle-id",
+    "channel": "production",
+    "platform": "ios",
+    // ... other bundle fields
+  }
+]
+```
+
+### GET /bundles/:bundleId
+Retrieve a specific bundle by ID.
+
+**Request:**
+- Method: `GET`
+- Headers: `Accept: application/json`
+
+**Response:**
+```json
+{
+  "id": "bundle-id",
+  "channel": "production",
+  // ... bundle fields
+}
+```
+
+### DELETE /bundles/:bundleId
+Delete a specific bundle.
+
+**Request:**
+- Method: `DELETE`
+
+**Response:** 200 OK or 404 Not Found
+
+## Custom Routes
+
+You can customize the endpoint paths and headers:
+
+```typescript
+standaloneRepository({
+  baseUrl: 'https://api.example.com',
+  routes: {
+    upsert: () => ({
+      path: '/v1/metadata/bundles',
+      headers: { 'X-Custom-Header': 'value' }
+    }),
+    list: () => ({
+      path: '/v1/metadata/bundles',
+      headers: { 'Cache-Control': 'no-store' }
+    }),
+    retrieve: (bundleId) => ({
+      path: `/v1/metadata/bundles/${bundleId}`,
+      headers: { 'Accept': 'application/json' }
+    }),
+    delete: (bundleId) => ({
+      path: `/v1/metadata/bundles/${bundleId}`
+    })
+  }
+})
+```
+
+## Bundle Object Schema
+
+Your API should handle bundle objects with these fields:
+- `id` - Unique bundle identifier
+- `channel` - Deployment channel (e.g., "production", "staging")
+- `platform` - Platform ("ios" or "android")
+- `storageUri` - URI where bundle files are stored
+- `createdAt` - Timestamp
+- Other metadata fields
+
+## Key Features
+
+- Full control over your database backend
+- Custom authentication and authorization
+- Flexible endpoint configuration
+- Support for filtering and pagination
+
+## Environment Variables
+
+```bash
+DATABASE_API_URL=https://api.example.com
+API_TOKEN=your-api-token
+```
+
+## Complete Example
+
+Combined standalone storage and database:
+
+```typescript
+import { standaloneStorage, standaloneRepository } from '@hot-updater/standalone';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: standaloneStorage({
+    baseUrl: process.env.STORAGE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  database: standaloneRepository({
+    baseUrl: process.env.DATABASE_API_URL,
+    commonHeaders: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`
+    }
+  }),
+  // ... other config
+});
+```

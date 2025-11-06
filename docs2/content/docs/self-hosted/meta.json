@@ -1,0 +1,6 @@
+{
+  "title": "Self-Hosted",
+  "description": "Self-hosted server setup",
+  "icon": "Server",
+  "pages": ["overview", "setup"]
+}

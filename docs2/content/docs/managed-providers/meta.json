@@ -1,0 +1,6 @@
+{
+  "title": "Managed-Hosted",
+  "description": "Managed cloud providers",
+  "icon": "Cloud",
+  "pages": ["supabase", "cloudflare", "aws", "firebase"]
+}

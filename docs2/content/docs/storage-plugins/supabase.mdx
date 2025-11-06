@@ -1,0 +1,63 @@
+---
+title: "Supabase Storage"
+description: Use Supabase storage with hot-updater
+icon: supabase
+---
+
+# Supabase Storage
+
+Store your Hot Updater bundles in Supabase Storage buckets.
+
+## Installation
+
+```package-install
+npm install @hot-updater/supabase --save-dev
+```
+
+## Configuration
+
+```typescript
+interface SupabaseStorageConfig {
+  supabaseUrl: string;       // Your Supabase project URL
+  supabaseAnonKey: string;   // Your Supabase anon/public key
+  bucketName: string;        // Storage bucket name
+  basePath?: string;         // Optional base path within bucket
+}
+```
+
+## Usage
+
+```typescript
+import { supabaseStorage } from '@hot-updater/supabase';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: supabaseStorage({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    bucketName: 'hot-updater-bundles',
+    basePath: 'bundles'  // Optional
+  }),
+  // ... other config
+});
+```
+
+## Setup
+
+1. Create a storage bucket in your Supabase dashboard
+2. Configure bucket permissions (public or private)
+3. Get your project URL and anon key from Supabase settings
+
+## Key Features
+
+- Generates signed URLs with 1-hour expiry
+- Automatic content-type detection
+- Long-term cache control (1 year max-age)
+- Protocol: `supabase-storage://`
+
+## Environment Variables
+
+```bash
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+```

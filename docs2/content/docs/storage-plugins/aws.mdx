@@ -1,0 +1,94 @@
+---
+title: "AWS S3 Storage"
+description: Use aws storage with hot-updater
+icon: aws
+---
+
+# AWS S3 Storage
+
+Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
+
+## Installation
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Configuration
+
+```typescript
+interface S3StorageConfig {
+  region: string;           // AWS region or 'auto' for R2
+  bucketName: string;       // S3 bucket name
+  basePath?: string;        // Optional base path within bucket
+  endpoint?: string;        // Custom endpoint for S3-compatible services
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+## Usage
+
+### AWS S3
+
+```typescript
+import { s3Storage } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-hot-updater-bucket'
+  }),
+  // ... other config
+});
+```
+
+### Cloudflare R2
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+## Setup
+
+1. Create an S3 bucket (or R2 bucket for Cloudflare)
+2. Configure bucket permissions and CORS settings
+3. Generate access credentials (AWS IAM or R2 API tokens)
+
+## Key Features
+
+- Works with AWS S3 and S3-compatible storage
+- Presigned URLs for downloads (1-hour expiry)
+- Multi-part upload support for large files
+- Protocol: `s3://`
+
+## Environment Variables
+
+```bash
+# For AWS S3
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+
+# For Cloudflare R2
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+R2_ACCESS_KEY_ID=your-r2-access-key
+R2_SECRET_ACCESS_KEY=your-r2-secret-key
+```

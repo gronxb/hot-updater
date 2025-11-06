@@ -1,0 +1,97 @@
+---
+title: "App Version Update Strategy"
+description: Target specific native app versions for updates
+icon: Hash
+---
+
+# App Version Update Strategy
+
+The "App Version" update strategy in `hot-updater` allows you to target specific native app versions when deploying updates. Unlike the `fingerprint` strategy, which compares hash values to check for native code changes, this strategy applies updates only to the app version specified with the `-t` (or `--target-app-version`) option during the `hot-updater deploy` command.
+
+## When to Use It?
+
+- You might choose this strategy if managing fingerprints feels cumbersome or if you prefer to specify update targets more explicitly.
+
+## Configuration
+
+You can enable this feature by setting the `updateStrategy` option to `appVersion` in your `hot-updater.config.ts` file.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... other configurations
+  updateStrategy: "appVersion",
+});
+```
+
+## Client-Side Configuration with `getUpdateSource`
+
+When using the app version strategy in your React Native application, you need to configure the `getUpdateSource` function with the `updateStrategy` set to `"appVersion"`. This ensures that the client app sends the correct app version when checking for updates.
+
+```tsx title="App.tsx"
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: getUpdateSource("https://your-update-server.com/api/update-check", {
+    updateStrategy: "appVersion", // Configure for app version strategy
+  }),
+  // ... other options
+})(App);
+```
+
+The `getUpdateSource` function will automatically construct the correct endpoint URL for the app version strategy:
+`GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+
+## Specifying App Version During Deployment
+
+When using the "App Version" strategy, you must specify the target app version for the update using the `-t` (or `--target-app-version`) option in the `hot-updater deploy` command.
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -t "1.x.x"
+```
+
+The `-t` option accepts not only single versions but also various range expressions.
+
+## Target App Version Range Expression Table
+
+The following table shows the version range expressions you can use with the `-t` option and their meanings. This table is identical to the Target App Version specification for the `hot-updater deploy` command.
+
+| Range Expression | Who gets the update                                                              |
+| :--------------- | :------------------------------------------------------------------------------- |
+| `1.2.3`          | Only devices running the specific binary app store version `1.2.3` of your app   |
+| `*`              | Any device configured to consume updates from your CodePush app                  |
+| `1.2.x`          | Devices running major version `1`, minor version `2` and any patch version of your app |
+| `1.2.3 - 1.2.7`  | Devices running any binary version between `1.2.3` (inclusive) and `1.2.7` (inclusive) |
+| `>=1.2.3 <1.2.7` | Devices running any binary version between `1.2.3` (inclusive) and `1.2.7` (exclusive) |
+| `1.2`            | Equivalent to `>=1.2.0 <1.3.0`                                                   |
+| `~1.2.3`         | Equivalent to `>=1.2.3 <1.3.0`                                                   |
+| `^1.2.3`         | Equivalent to `>=1.2.3 <2.0.0`                                                   |
+
+## Endpoint Testing
+
+When using the `appVersion` strategy, the update check endpoint typically follows this format:
+`GET /check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+
+Here's an example of testing this endpoint using `curl`. You'll need to replace `:platform`, `:targetAppVersion`, etc., with actual values.
+
+```bash
+curl "https://your-update-endpoint.com/check-update/app-version/ios/1.0.0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
+```
+
+-   `:platform`: Specifies the platform, such as `ios` or `android`.
+-   `:targetAppVersion`: The current version of the client app. This value is used to determine if the app is eligible for an update.
+-   `:channel`: The channel name you want to check for updates (e.g., `default`, `staging`).
+-   `:minBundleId`: The minimum bundle ID supported by the client. (If unknown for testing, you can use `00000000-0000-0000-0000-000000000000`).
+-   `:bundleId`: The client's current bundle ID.
+
+This request allows you to verify if an update is available for the specified app version. 

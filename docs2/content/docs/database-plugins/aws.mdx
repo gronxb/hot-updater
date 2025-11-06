@@ -1,0 +1,109 @@
+---
+title: "AWS S3 Database"
+description: Use aws database with hot-updater
+icon: aws
+---
+
+# AWS S3 Database
+
+Store your Hot Updater bundle metadata as JSON files in S3, served via CloudFront CDN.
+
+## Installation
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Configuration
+
+```typescript
+interface S3DatabaseConfig {
+  region: string;                    // AWS region
+  bucketName: string;                // S3 bucket for metadata
+  cloudfrontDistributionId: string;  // CloudFront distribution ID
+  apiBasePath?: string;              // API path (default: "/api/check-update")
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+## Usage
+
+```typescript
+import { s3Database } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```
+
+## Setup
+
+1. Create an S3 bucket for storing metadata JSON files
+2. Create a CloudFront distribution pointing to the S3 bucket
+3. Configure IAM credentials with S3 and CloudFront permissions
+4. Note your CloudFront distribution ID
+
+## How It Works
+
+- Stores bundle metadata as JSON files in S3
+- Uses CloudFront for global CDN distribution
+- Automatically invalidates CloudFront cache on updates
+- Blob-based storage approach (no traditional database)
+
+## Key Features
+
+- Serverless metadata storage
+- Global CDN distribution via CloudFront
+- Automatic cache invalidation
+- No database management required
+
+## Environment Variables
+
+```bash
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+CLOUDFRONT_DISTRIBUTION_ID=E1234567890ABC
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+import { s3Storage, s3Database } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-bundles-bucket'
+  }),
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```

@@ -1,0 +1,88 @@
+---
+title: "Cloudflare R2 Storage"
+description: Use Cloudflare R2 storage with hot-updater
+icon: cloudflare
+---
+
+# Cloudflare R2 Storage
+
+Store your Hot Updater bundles in Cloudflare R2 using the Wrangler CLI.
+
+> **⚠️ Recommendation**: For better compatibility and full feature support, use the `s3Storage` plugin from `@hot-updater/aws` instead. R2 is S3-compatible and works seamlessly with the AWS plugin. See the [AWS S3 Storage](/docs/storage-plugins/aws#cloudflare-r2) documentation.
+
+## Installation
+
+```package-install
+npm install @hot-updater/cloudflare --save-dev
+```
+
+## Configuration
+
+```typescript
+interface R2StorageConfig {
+  cloudflareApiToken: string;  // Cloudflare API token
+  accountId: string;           // Cloudflare account ID
+  bucketName: string;          // R2 bucket name
+  basePath?: string;           // Optional base path within bucket
+}
+```
+
+## Usage
+
+```typescript
+import { r2Storage } from '@hot-updater/cloudflare';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: r2Storage({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN,
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+## Setup
+
+1. Create an R2 bucket in Cloudflare dashboard
+2. Generate an API token with R2 edit permissions
+3. Note your Cloudflare account ID
+
+## Key Features
+
+- Uses Wrangler CLI for R2 operations
+- Protocol: `r2://`
+
+## Limitations
+
+- **Does not support `getDownloadUrl()`** - bundles cannot be downloaded via presigned URLs
+- Uses CLI instead of SDK (slower performance)
+- Limited compared to S3-compatible approach
+
+## Environment Variables
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_API_TOKEN=your-api-token
+```
+
+## Alternative: Use AWS Plugin
+
+For full R2 support, use the S3-compatible approach:
+
+```typescript
+import { s3Storage } from '@hot-updater/aws';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-r2-bucket'
+  })
+});
+```

@@ -1,0 +1,106 @@
+---
+title: "Firestore Database"
+description: Use Firebase Firestore database with hot-updater
+icon: firebase
+---
+
+# Firebase Firestore Database
+
+Store your Hot Updater bundle metadata in Cloud Firestore, Firebase's NoSQL document database.
+
+## Installation
+
+```package-install
+npm install @hot-updater/firebase firebase-admin --save-dev
+```
+
+## Configuration
+
+```typescript
+interface FirebaseDatabaseConfig {
+  projectId: string;               // Firebase project ID
+  credential: admin.credential.Credential;  // Firebase credential
+}
+```
+
+## Usage
+
+```typescript
+import { firebaseDatabase } from '@hot-updater/firebase';
+import * as admin from 'firebase-admin';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: firebaseDatabase({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    credential: admin.credential.cert(
+      process.env.GOOGLE_APPLICATION_CREDENTIALS
+    )
+  }),
+  // ... other config
+});
+```
+
+## Setup
+
+1. Create a Firebase project
+2. Enable Cloud Firestore
+3. Download service account credentials JSON
+4. Set the credentials path in environment variables
+
+## Collections
+
+The plugin creates these Firestore collections:
+- `bundles` - Bundle metadata
+- `channels` - Channel information
+- `target_app_versions` - App version targeting
+
+## Key Features
+
+- NoSQL document-based storage
+- Real-time synchronization capabilities
+- Transactional operations
+- Automatic cleanup of orphaned records
+- Reuses existing Firebase Admin app if initialized
+
+## Environment Variables
+
+```bash
+FIREBASE_PROJECT_ID=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+import { firebaseStorage, firebaseDatabase } from '@hot-updater/firebase';
+import * as admin from 'firebase-admin';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: firebaseStorage({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    credential: admin.credential.cert(
+      process.env.GOOGLE_APPLICATION_CREDENTIALS
+    )
+  }),
+  database: firebaseDatabase({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    credential: admin.credential.cert(
+      process.env.GOOGLE_APPLICATION_CREDENTIALS
+    )
+  }),
+  // ... other config
+});
+```
+
+## Dependencies
+
+Requires `firebase-admin` as a peer dependency:
+
+```package-install
+npm install firebase-admin --save-dev
+```

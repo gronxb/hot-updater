@@ -1,0 +1,36 @@
+---
+title: "Re.Pack"
+description: Integration plugin for Re.Pack bundler
+icon: Box
+---
+
+# Re.Pack Plugin
+
+Re.Pack is a modern bundler for React Native.
+
+The `@hot-updater/repack` plugin is a plugin for the [Re.Pack](https://re-pack.dev/) bundler.
+
+It is used to set the bundle ID (uuidv7) and channel at build time.
+
+If you don't do this, you'll get an error saying there's no bundle ID when running the `hot-updater deploy` command.
+
+
+## Installation
+
+```package-install
+npm install @hot-updater/repack --save-dev
+```
+
+## Usage
+
+```js title="rspack.config.mjs"
+import { HotUpdaterPlugin } from "@hot-updater/repack";
+
+export default {
+  // ...
+  plugins: [
+    new Repack.RepackPlugin(),
+    new HotUpdaterPlugin() // [!code ++]
+  ],
+};
+```

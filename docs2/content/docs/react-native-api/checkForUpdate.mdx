@@ -1,0 +1,116 @@
+---
+title: "checkForUpdate"
+description: Check if updates are available
+icon: Search
+---
+
+# `HotUpdater.checkForUpdate()`
+
+The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server's bundle information.
+
+This method is particularly useful when you need a custom update strategy without using the built-in `wrap` method.
+
+## Usage
+
+Use `checkForUpdate` to verify if an update bundle is available. You need to provide the source of the update server and optionally, request headers.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function checkForAppUpdate() {
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      source: getUpdateSource("<your-update-server-url>", {
+        updateStrategy: "appVersion", // or "fingerprint"
+      }),
+      requestHeaders: {
+        Authorization: "Bearer <your-access-token>",
+      },
+    });
+
+    if (!updateInfo) {
+      return {
+        status: "UP_TO_DATE",
+      };
+    }
+
+    /**
+     * You can apply updates using one of two methods:
+     * 
+     * Method 1: Use the updateBundle() method from the updateInfo object
+     * - A convenience method built into the return value from checkForUpdate
+     * - Performs the same function as HotUpdater.updateBundle with all required arguments pre-filled
+     */
+    await updateInfo.updateBundle();
+
+    /**
+     * Method 2: Call HotUpdater.updateBundle() directly
+     * - Explicitly pass the necessary values extracted from updateInfo
+     */
+    // await HotUpdater.updateBundle({
+    //   bundleId: updateInfo.id,
+    //   fileUrl: updateInfo.fileUrl,
+    //   status: updateInfo.status,
+    // });
+
+    if (updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+    return updateInfo;
+  } catch (error) {
+    console.error("Failed to check for update:", error);
+    return null;
+  }
+}
+
+```
+
+## Understanding `getUpdateSource`
+
+The `getUpdateSource` function is used to construct the final URL for checking for updates. It takes a `baseUrl` as its first argument and an options object as its second argument. The `updateStrategy` property within the options object determines the final structure of the request URL.
+
+**Example Final Endpoint Structures:**
+
+Depending on the `updateStrategy` value, `getUpdateSource` generates URLs like the following:
+
+*   For `updateStrategy: 'appVersion'`: `GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+*   For `updateStrategy: 'fingerprint'`: `GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+
+For example, if you provide `https://your-update-server.com/api/update-check` as the `baseUrl`, `getUpdateSource` will append the correct path and parameters to the URL depending on whether `updateStrategy` is `'appVersion'` or `'fingerprint'`.
+
+## Parameters
+
+The `checkForUpdate` function accepts the following parameters:
+
+| Parameter       | Type                | Required | Description                                      |
+|-----------------|---------------------|----------|--------------------------------------------------|
+| `source`        | `string`            | ✅        | The URL of the update server.                     |
+| `requestHeaders`| `Record<string, string>` | ❌        | Optional headers to include in the update request. |
+
+## Return Value
+
+The function returns an object of type `UpdateInfo` or `null` if the app is up to date.
+
+```ts
+export type UpdateStatus = "ROLLBACK" | "UPDATE";
+
+export interface UpdateInfo {
+  id: string;
+  shouldForceUpdate: boolean;
+  fileUrl: string | null;
+  message: string | null;
+  status: UpdateStatus;
+}
+```
+
+### Example Return Value
+
+```json
+{
+  "id": "01952bbd-e7b2-7931-aee8-2e2187caa0ce",
+  "shouldForceUpdate": true,
+  "status": "UPDATE",
+  "fileUrl": "https://example.com/bundles/update.bundle",
+  "message": "This is a test message",
+}
+```
