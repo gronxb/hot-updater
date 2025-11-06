@@ -4,11 +4,11 @@ description: Store your Hot Updater bundles in Cloudflare R2 using the Wrangler 
 icon: cloudflare
 ---
 
-## Protocol
+## Installation
 
-`r2://`
-
-This prefix is stored in the `storageUri` field in the database.
+```package-install
+npm install @hot-updater/cloudflare --save-dev
+```
 
 <Callout title="Recommended Approach">
 For full R2 feature support including presigned URLs and better performance, use the S3-compatible AWS plugin. See the [AWS S3 Storage documentation](/docs/storage-plugins/aws) for more details.
@@ -42,11 +42,17 @@ export default defineConfig({
 This approach provides full R2 compatibility with better performance and all S3 features.
 </Callout>
 
-## Installation
+## Setup
+
+The easiest way to set up your backend is using the init command:
 
 ```package-install
-npm install @hot-updater/cloudflare --save-dev
+npx hot-updater init
 ```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed-providers/cloudflare) documentation.
+
+For manual configuration, use the settings below.
 
 ## Configuration
 
@@ -75,18 +81,14 @@ export default defineConfig({
 });
 ```
 
-## Setup
-
-1. Create an R2 bucket in Cloudflare dashboard
-2. Generate an API token with R2 edit permissions
-3. Note your Cloudflare account ID
-
-## Key Features
-
-- Uses Wrangler CLI for R2 operations
-
 ## Limitations
 
 - Does not support getDownloadUrl() - bundles cannot be downloaded via presigned URLs
 - Uses CLI instead of SDK (slower performance)
 - Limited compared to S3-compatible approach
+
+## Protocol
+
+`r2://`
+
+This prefix is stored in the `storageUri` field in the database.

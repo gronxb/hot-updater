@@ -4,17 +4,23 @@ description: Store your Hot Updater bundles in AWS S3 or any S3-compatible stora
 icon: aws
 ---
 
-## Protocol
-
-`s3://`
-
-This prefix is stored in the `storageUri` field in the database.
-
 ## Installation
 
 ```package-install
 npm install @hot-updater/aws --save-dev
 ```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/managed-providers/aws) documentation.
+
+For manual configuration, use the settings below.
 
 ## Configuration
 
@@ -69,14 +75,8 @@ export default defineConfig({
 });
 ```
 
-## Setup
+## Protocol
 
-1. Create an S3 bucket (or R2 bucket for Cloudflare)
-2. Configure bucket permissions and CORS settings
-3. Generate access credentials (AWS IAM or R2 API tokens)
+`s3://`
 
-## Key Features
-
-- Works with AWS S3 and S3-compatible storage
-- Presigned URLs for downloads (1-hour expiry)
-- Multi-part upload support for large files
+This prefix is stored in the `storageUri` field in the database.

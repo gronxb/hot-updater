@@ -4,17 +4,23 @@ description: Store your Hot Updater bundles in Supabase Storage buckets.
 icon: supabase
 ---
 
-## Protocol
-
-`supabase-storage://`
-
-This prefix is stored in the `storageUri` field in the database.
-
 ## Installation
 
 ```package-install
 npm install @hot-updater/supabase --save-dev
 ```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed-providers/supabase) documentation.
+
+For manual configuration, use the settings below.
 
 ## Configuration
 
@@ -44,15 +50,8 @@ export default defineConfig({
 });
 ```
 
-## Setup
+## Protocol
 
-1. Create a storage bucket in your Supabase dashboard
-2. Configure bucket permissions (public or private)
-3. Get your project URL and anon key from Supabase settings
+`supabase-storage://`
 
-## Key Features
-
-- Generates signed URLs with 1-hour expiry
-- Automatic content-type detection
-- Long-term cache control (1 year max-age)
-- Protocol: `supabase-storage://`
+This prefix is stored in the `storageUri` field in the database.
