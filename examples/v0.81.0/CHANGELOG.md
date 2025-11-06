@@ -1,5 +1,13 @@
 # @hot-updater/example-react-native-v81
 
+## 0.21.6
+
+### Patch Changes
+
+- 3e9681c: fix(android): Android API 25 compatibility with TarStream
+- Updated dependencies [3e9681c]
+  - @hot-updater/react-native@0.21.6
+
 ## 0.21.5
 
 ### Patch Changes
