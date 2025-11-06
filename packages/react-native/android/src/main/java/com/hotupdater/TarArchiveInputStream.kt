@@ -1,8 +1,6 @@
 package com.hotupdater
 
-import android.util.Log
 import java.io.EOFException
-import java.io.File
 import java.io.IOException
 import java.io.InputStream
 
@@ -11,7 +9,7 @@ import java.io.InputStream
  * Replaces Apache Commons Compress to avoid java.nio.file dependencies
  */
 class TarArchiveInputStream(
-    private val input: InputStream
+    private val input: InputStream,
 ) : InputStream() {
     private var currentEntry: TarArchiveEntry? = null
     private var currentEntryBytesRead: Long = 0
@@ -42,56 +40,56 @@ class TarArchiveInputStream(
      * Get the next TAR entry
      */
     fun getNextEntry(): TarArchiveEntry? {
-            // Skip remaining bytes of current entry
-            if (currentEntry != null) {
-                val remaining = currentEntry!!.size - currentEntryBytesRead
-                if (remaining > 0) {
-                    skipBytes(remaining)
-                }
-                skipPadding(currentEntry!!.size)
+        // Skip remaining bytes of current entry
+        if (currentEntry != null) {
+            val remaining = currentEntry!!.size - currentEntryBytesRead
+            if (remaining > 0) {
+                skipBytes(remaining)
             }
-
-            currentEntryBytesRead = 0
-
-            while (true) {
-                val headerBytes = readBlock() ?: return null
-
-                // Check for end of archive (all zeros)
-                if (isAllZeros(headerBytes)) {
-                    return null
-                }
-
-                // Verify header
-                if (!isValidHeader(headerBytes)) {
-                    throw IOException("Invalid TAR header")
-                }
-
-                if (!verifyChecksum(headerBytes)) {
-                    throw IOException("TAR header checksum verification failed")
-                }
-
-                // Parse header
-                val entry = parseHeader(headerBytes)
-
-                // Handle GNU long filename extension
-                if (entry.typeFlag == 'L') {
-                    longName = readLongName(entry.size)
-                    continue
-                }
-
-                // Apply long name if present
-                if (longName != null) {
-                    entry.name = longName!!
-                    longName = null
-                }
-
-                // Validate entry
-                validateEntry(entry)
-
-                currentEntry = entry
-                return entry
-            }
+            skipPadding(currentEntry!!.size)
         }
+
+        currentEntryBytesRead = 0
+
+        while (true) {
+            val headerBytes = readBlock() ?: return null
+
+            // Check for end of archive (all zeros)
+            if (isAllZeros(headerBytes)) {
+                return null
+            }
+
+            // Verify header
+            if (!isValidHeader(headerBytes)) {
+                throw IOException("Invalid TAR header")
+            }
+
+            if (!verifyChecksum(headerBytes)) {
+                throw IOException("TAR header checksum verification failed")
+            }
+
+            // Parse header
+            val entry = parseHeader(headerBytes)
+
+            // Handle GNU long filename extension
+            if (entry.typeFlag == 'L') {
+                longName = readLongName(entry.size)
+                continue
+            }
+
+            // Apply long name if present
+            if (longName != null) {
+                entry.name = longName!!
+                longName = null
+            }
+
+            // Validate entry
+            validateEntry(entry)
+
+            currentEntry = entry
+            return entry
+        }
+    }
 
     override fun read(): Int {
         val b = ByteArray(1)
@@ -99,7 +97,11 @@ class TarArchiveInputStream(
         return if (n <= 0) -1 else b[0].toInt() and 0xFF
     }
 
-    override fun read(b: ByteArray, off: Int, len: Int): Int {
+    override fun read(
+        b: ByteArray,
+        off: Int,
+        len: Int,
+    ): Int {
         if (currentEntry == null) {
             throw IllegalStateException("No current entry")
         }
@@ -144,9 +146,7 @@ class TarArchiveInputStream(
     /**
      * Check if block is all zeros
      */
-    private fun isAllZeros(block: ByteArray): Boolean {
-        return block.all { it == 0.toByte() }
-    }
+    private fun isAllZeros(block: ByteArray): Boolean = block.all { it == 0.toByte() }
 
     /**
      * Verify TAR header has valid magic number
@@ -168,11 +168,12 @@ class TarArchiveInputStream(
         var signedSum = 0
 
         for (i in 0 until BLOCK_SIZE) {
-            val value = if (i in CHECKSUM_OFFSET until CHECKSUM_OFFSET + CHECKSUM_LENGTH) {
-                32 // Space character
-            } else {
-                header[i].toInt()
-            }
+            val value =
+                if (i in CHECKSUM_OFFSET until CHECKSUM_OFFSET + CHECKSUM_LENGTH) {
+                    32 // Space character
+                } else {
+                    header[i].toInt()
+                }
 
             unsignedSum += value and 0xFF
             signedSum += value.toByte().toInt()
@@ -200,14 +201,18 @@ class TarArchiveInputStream(
             mode = mode,
             size = size,
             typeFlag = typeFlag,
-            linkName = linkName
+            linkName = linkName,
         )
     }
 
     /**
      * Parse string field from header
      */
-    private fun parseString(bytes: ByteArray, offset: Int, length: Int): String {
+    private fun parseString(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): String {
         var end = offset
         while (end < offset + length && bytes[end] != 0.toByte()) {
             end++
@@ -218,7 +223,11 @@ class TarArchiveInputStream(
     /**
      * Parse octal number from header field
      */
-    private fun parseOctal(bytes: ByteArray, offset: Int, length: Int): Long {
+    private fun parseOctal(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Long {
         var result = 0L
         var i = offset
         val end = offset + length
@@ -243,7 +252,11 @@ class TarArchiveInputStream(
     /**
      * Parse numeric field (supports both octal and base-256 encoding)
      */
-    private fun parseNumeric(bytes: ByteArray, offset: Int, length: Int): Long {
+    private fun parseNumeric(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Long {
         // Check for base-256 encoding (high bit set)
         if ((bytes[offset].toInt() and 0x80) != 0) {
             return parseBase256(bytes, offset, length)
@@ -254,7 +267,11 @@ class TarArchiveInputStream(
     /**
      * Parse base-256 encoded number (for files > 8GB)
      */
-    private fun parseBase256(bytes: ByteArray, offset: Int, length: Int): Long {
+    private fun parseBase256(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Long {
         var result = 0L
 
         // Skip first byte (marker) and read big-endian
@@ -281,8 +298,10 @@ class TarArchiveInputStream(
         skipPadding(size)
 
         // Remove trailing NUL
-        val nameLength = nameBytes.indexOfFirst { it == 0.toByte() }
-            .takeIf { it >= 0 } ?: nameBytes.size
+        val nameLength =
+            nameBytes
+                .indexOfFirst { it == 0.toByte() }
+                .takeIf { it >= 0 } ?: nameBytes.size
 
         return String(nameBytes, 0, nameLength, Charsets.UTF_8)
     }
@@ -335,7 +354,8 @@ class TarArchiveInputStream(
         if (normalized.contains("../") ||
             normalized.contains("/..") ||
             normalized == ".." ||
-            normalized.startsWith("../")) {
+            normalized.startsWith("../")
+        ) {
             throw SecurityException("Path traversal detected: ${entry.name}")
         }
 
@@ -354,7 +374,7 @@ data class TarArchiveEntry(
     val mode: Int,
     val size: Long,
     val typeFlag: Char,
-    val linkName: String
+    val linkName: String,
 ) {
     val isDirectory: Boolean
         get() = typeFlag == '5' || name.endsWith('/')
