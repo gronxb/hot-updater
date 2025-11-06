@@ -14,7 +14,7 @@ datasource db {
 
 // --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
 model bundles {
-  id String @db.VarChar(36) @id
+  id String @db.Uuid @id
   platform String
   should_force_update Boolean
   enabled Boolean
