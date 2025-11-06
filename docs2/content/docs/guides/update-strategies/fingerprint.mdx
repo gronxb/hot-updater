@@ -1,14 +1,10 @@
 ---
 title: "Fingerprint Update Strategy"
-description: Use fingerprint hashing for precise update targeting
+description: "The Fingerprint strategy uses Expo's [`@expo/fingerprint`](https://expo.dev/blog/fingerprint-your-native-runtime) library to track native code changes in your project. It prevents incompatible JavaScript bundles from being delivered to users by automatically detecting when native code has changed."
 icon: Fingerprint
 ---
 
 import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
-
-# Fingerprint Update Strategy
-
-The "Fingerprint" update strategy in `hot-updater` leverages Expo's [`@expo/fingerprint`](https://expo.dev/blog/fingerprint-your-native-runtime) library to track and manage changes in your project's native code. This mechanism significantly enhances the stability of app updates by preventing the delivery of JavaScript bundles incompatible with the native code.
 
 ## Why Choose Fingerprint Strategy?
 

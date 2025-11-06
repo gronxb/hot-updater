@@ -1,12 +1,9 @@
 ---
 title: "AWS S3 Database"
-description: Use aws database with hot-updater
+description: Store your Hot Updater bundle metadata as JSON files in S3, served via CloudFront CDN.
+
 icon: aws
 ---
-
-# AWS S3 Database
-
-Store your Hot Updater bundle metadata as JSON files in S3, served via CloudFront CDN.
 
 ## Installation
 
@@ -69,14 +66,6 @@ export default defineConfig({
 - Global CDN distribution via CloudFront
 - Automatic cache invalidation
 - No database management required
-
-## Environment Variables
-
-```bash
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-CLOUDFRONT_DISTRIBUTION_ID=E1234567890ABC
-```
 
 ## Complete Example
 

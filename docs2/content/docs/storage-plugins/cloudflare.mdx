@@ -1,14 +1,46 @@
 ---
 title: "Cloudflare R2 Storage"
-description: Use Cloudflare R2 storage with hot-updater
+description: Store your Hot Updater bundles in Cloudflare R2 using the Wrangler CLI.
 icon: cloudflare
 ---
 
-# Cloudflare R2 Storage
+## Protocol
 
-Store your Hot Updater bundles in Cloudflare R2 using the Wrangler CLI.
+`r2://`
 
-> **⚠️ Recommendation**: For better compatibility and full feature support, use the `s3Storage` plugin from `@hot-updater/aws` instead. R2 is S3-compatible and works seamlessly with the AWS plugin. See the [AWS S3 Storage](/docs/storage-plugins/aws#cloudflare-r2) documentation.
+This prefix is stored in the `storageUri` field in the database.
+
+<Callout title="Recommended Approach">
+For full R2 feature support including presigned URLs and better performance, use the S3-compatible AWS plugin. See the [AWS S3 Storage documentation](/docs/storage-plugins/aws) for more details.
+
+Install the AWS plugin:
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+Configure with R2:
+
+```typescript
+import { s3Storage } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: 'https://your-account-id.r2.cloudflarestorage.com',
+    credentials: {
+      accessKeyId: 'your-r2-access-key-id',
+      secretAccessKey: 'your-r2-secret-access-key'
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+This approach provides full R2 compatibility with better performance and all S3 features.
+</Callout>
 
 ## Installation
 
@@ -52,37 +84,9 @@ export default defineConfig({
 ## Key Features
 
 - Uses Wrangler CLI for R2 operations
-- Protocol: `r2://`
 
 ## Limitations
 
-- **Does not support `getDownloadUrl()`** - bundles cannot be downloaded via presigned URLs
+- Does not support getDownloadUrl() - bundles cannot be downloaded via presigned URLs
 - Uses CLI instead of SDK (slower performance)
 - Limited compared to S3-compatible approach
-
-## Environment Variables
-
-```bash
-CLOUDFLARE_ACCOUNT_ID=your-account-id
-CLOUDFLARE_API_TOKEN=your-api-token
-```
-
-## Alternative: Use AWS Plugin
-
-For full R2 support, use the S3-compatible approach:
-
-```typescript
-import { s3Storage } from '@hot-updater/aws';
-
-export default defineConfig({
-  storage: s3Storage({
-    region: 'auto',
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
-    },
-    bucketName: 'my-r2-bucket'
-  })
-});
-```

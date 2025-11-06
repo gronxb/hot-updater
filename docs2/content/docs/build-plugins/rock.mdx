@@ -1,12 +1,8 @@
 ---
 title: "Rock Plugin"
-description: Use hot-updater with Rock
+description: Build plugin for projects using [Rock](https://www.rockjs.dev/) framework, a React Native framework created by Callstack.
 icon: Blocks
 ---
-
-# Rock Build Plugin
-
-Build plugin for React Native projects using Rock bundler. Rock is a modern, faster alternative to Metro bundler.
 
 ## Installation
 
@@ -41,26 +37,34 @@ export default defineConfig({
 });
 ```
 
-## Rock Setup
+## Re.Pack Integration (Recommended)
 
-Ensure Rock is installed and configured in your project:
+Rock framework uses [Re.Pack](https://re-pack.dev/) bundler. It's recommended to use the Re.Pack plugin to set bundle ID at build time.
+
+Install the Re.Pack plugin:
 
 ```package-install
-npm install @rock-js/cli --save-dev
+npm install @hot-updater/repack --save-dev
 ```
 
-Create a `rock.config.js` in your project root if needed.
+Add the plugin to your `rspack.config.mjs`:
+
+```js title="rspack.config.mjs"
+import { HotUpdaterPlugin } from "@hot-updater/repack";
+
+export default {
+  // ...
+  plugins: [
+    new Repack.RepackPlugin(),
+    new HotUpdaterPlugin() // [!code ++]
+  ],
+};
+```
+
+See the [Re.Pack integration documentation](/docs/integration-plugins/repack) for more details.
 
 ## Key Features
 
-- Modern bundler with faster build performance than Metro
-- Built-in Hermes support via `--hermes` flag
-- Compatible with React Native projects
-- Supports custom entry files and output directories
-- Improved build times for large codebases
-
-## Environment Variables
-
-```bash
-# No specific environment variables required
-```
+- Build plugin for [Rock framework](https://www.rockjs.dev/)
+- Supports Hermes compilation
+- Configurable output directory and entry files

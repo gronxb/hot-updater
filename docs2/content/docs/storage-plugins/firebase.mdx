@@ -1,12 +1,14 @@
 ---
 title: "Firebase Storage"
-description: Use Firebase Storage with hot-updater
+description: Store your Hot Updater bundles in Firebase Cloud Storage.
 icon: firebase
 ---
 
-# Firebase Storage Plugin
+## Protocol
 
-Store your Hot Updater bundles in Firebase Cloud Storage.
+`gs://`
+
+This prefix is stored in the `storageUri` field in the database.
 
 ## Installation
 
@@ -56,15 +58,6 @@ export default defineConfig({
 - Signed URLs with 1-hour expiry
 - Reuses existing Firebase Admin app if initialized
 - Automatic file upload with content-type detection
-- Protocol: `gs://`
-
-## Environment Variables
-
-```bash
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_STORAGE_BUCKET=your-bucket.appspot.com
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-```
 
 ## Dependencies
 

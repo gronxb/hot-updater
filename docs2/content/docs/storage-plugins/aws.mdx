@@ -1,12 +1,14 @@
 ---
 title: "AWS S3 Storage"
-description: Use aws storage with hot-updater
+description: Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
 icon: aws
 ---
 
-# AWS S3 Storage
+## Protocol
 
-Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
+`s3://`
+
+This prefix is stored in the `storageUri` field in the database.
 
 ## Installation
 
@@ -78,17 +80,3 @@ export default defineConfig({
 - Works with AWS S3 and S3-compatible storage
 - Presigned URLs for downloads (1-hour expiry)
 - Multi-part upload support for large files
-- Protocol: `s3://`
-
-## Environment Variables
-
-```bash
-# For AWS S3
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-
-# For Cloudflare R2
-CLOUDFLARE_ACCOUNT_ID=your-account-id
-R2_ACCESS_KEY_ID=your-r2-access-key
-R2_SECRET_ACCESS_KEY=your-r2-secret-key
-```

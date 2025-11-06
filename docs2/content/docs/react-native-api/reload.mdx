@@ -1,20 +1,19 @@
 ---
 title: "reload"
-description: Reload the app with the updated bundle
+description: "By default, the `shouldForceUpdate` flag is `false`, the bundle is downloaded but not applied until the user restarts the app."
 icon: RefreshCw
 ---
 
-# `HotUpdater.reload()`
 
-By default, the `shouldForceUpdate` flag is `false`, the bundle is downloaded but not applied until the user restarts the app.
+
+## Usage
 
 Calling `HotUpdater.reload()` reloads the app. If there is a completed update bundle ready to be applied, it will be applied immediately.
+
 
 <Callout>
 The `shouldForceUpdate` flag simply downloads the bundle and calls reload immediately.
 </Callout>
-
-## Usage
 
 You can use it as shown below, but it is recommended to use it together with the `useHotUpdaterStore().progress value.
 

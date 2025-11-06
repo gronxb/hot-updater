@@ -1,12 +1,9 @@
 ---
 title: "Cloudflare D1 Database"
-description: Use cloudflare database with hot-updater
+description: Store your Hot Updater bundle metadata in Cloudflare D1, a serverless SQLite database running at the edge.
+
 icon: cloudflare
 ---
-
-# Cloudflare D1 Database
-
-Store your Hot Updater bundle metadata in Cloudflare D1, a serverless SQLite database running at the edge.
 
 ## Installation
 
@@ -57,14 +54,6 @@ The plugin uses a snake_case schema compatible with SQLite. Check the package's 
 - Global distribution via Cloudflare network
 - Optimized SQL queries with pg-minify
 - Uses Cloudflare SDK for API operations
-
-## Environment Variables
-
-```bash
-D1_DATABASE_ID=your-d1-database-id
-CLOUDFLARE_ACCOUNT_ID=your-account-id
-CLOUDFLARE_API_TOKEN=your-api-token
-```
 
 ## Complete Example
 

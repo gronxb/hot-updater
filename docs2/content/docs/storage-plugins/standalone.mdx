@@ -1,12 +1,15 @@
 ---
 title: "Standalone Storage"
-description: Use your own custom storage backend with hot-updater
+description: Store your Hot Updater bundles in your custom self-hosted storage backend by implementing HTTP API endpoints.
 icon: server
 ---
 
-# Standalone Storage
 
-Store your Hot Updater bundles in your custom self-hosted storage backend by implementing HTTP API endpoints.
+## Protocol
+
+`http://` or `https://`
+
+This prefix is stored in the `storageUri` field in the database.
 
 ## Installation
 
@@ -119,11 +122,3 @@ standaloneStorage({
 - Full control over your storage backend
 - Custom authentication and authorization
 - Flexible endpoint configuration
-- Protocol: `http://` or `https://`
-
-## Environment Variables
-
-```bash
-STORAGE_API_URL=https://api.example.com
-API_TOKEN=your-api-token
-```

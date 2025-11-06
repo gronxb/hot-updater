@@ -1,16 +1,12 @@
 ---
 title: "App Version Update Strategy"
-description: Target specific native app versions for updates
+description: "The App Version strategy lets you target specific native app versions when deploying updates. You specify which app version should receive updates using the `-t` (or `--target-app-version`) option with the `hot-updater deploy` command."
 icon: Hash
 ---
 
-# App Version Update Strategy
-
-The "App Version" update strategy in `hot-updater` allows you to target specific native app versions when deploying updates. Unlike the `fingerprint` strategy, which compares hash values to check for native code changes, this strategy applies updates only to the app version specified with the `-t` (or `--target-app-version`) option during the `hot-updater deploy` command.
-
 ## When to Use It?
 
-- You might choose this strategy if managing fingerprints feels cumbersome or if you prefer to specify update targets more explicitly.
+- Choose this strategy if you prefer manual control over which app versions receive updates, rather than automatic fingerprint-based compatibility checks.
 
 ## Configuration
 
