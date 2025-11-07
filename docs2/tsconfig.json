@@ -14,8 +14,10 @@
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
+    "baseUrl":".",
     "paths": {
-      "@/*": ["./src/*"],
+      "@/*": ["src/*"],
+      "@/.source": [".source"]
     }
   },
   "exclude": ["node_modules", "dist"]

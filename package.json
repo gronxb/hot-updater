@@ -13,7 +13,7 @@
     "build": "nx run-many --target=build --projects=packages/*,plugins/*",
     "build:dev": "node scripts/build-dev.mjs",
     "fingerprint:create": "nx run-many --target='fingerprint:create' --projects=examples/*",
-    "test:type": "nx run-many --target=test:type --projects=packages/*,plugins/*",
+    "test:type": "nx run-many --target=test:type --projects=packages/*,plugins/*,docs2",
     "release:test": "nx release --dry-run",
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
     "publish:all": "nx release publish",

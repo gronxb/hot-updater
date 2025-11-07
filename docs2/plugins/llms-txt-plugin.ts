@@ -67,7 +67,7 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
 
   function getCategoryFromPath(url: string): string {
     const match = url.match(/\/docs\/([^/]+)/);
-    if (!match) return "Documentation";
+    if (!match || !match[1]) return "Documentation";
     const key = match[1];
     return categoryMap[key] || humanizeDirectoryName(key);
   }
@@ -160,13 +160,13 @@ async function collectMDXFiles(dir: string, baseDir = dir): Promise<MDXPage[]> {
         let title = entry.name.replace(/\.mdx?$/, "");
         let description = "";
 
-        if (frontmatterMatch) {
+        if (frontmatterMatch && frontmatterMatch[1]) {
           const frontmatter = frontmatterMatch[1];
           const titleMatch = frontmatter.match(/title:\s*(.+)/);
           const descMatch = frontmatter.match(/description:\s*(.+)/);
 
-          if (titleMatch) title = titleMatch[1].trim();
-          if (descMatch) description = descMatch[1].trim();
+          if (titleMatch && titleMatch[1]) title = titleMatch[1].trim();
+          if (descMatch && descMatch[1]) description = descMatch[1].trim();
         }
 
         const body = content.replace(/^---\n[\s\S]*?\n---\n/, "");
@@ -205,7 +205,7 @@ function generateLLMsSummary(
 
   for (const page of pages) {
     const match = page.url.match(/\/docs\/([^/]+)/);
-    const category = match ? match[1] : "other";
+    const category = match && match[1] ? match[1] : "other";
 
     if (!categories.has(category)) {
       categories.set(category, []);

@@ -64,13 +64,14 @@ export class ClackRenderer {
   };
 
   async spinner(text: string, duration: number): Promise<void> {
-    const frames = ["◒", "◐", "◓", "◑"];
+    const frames = ["◒", "◐", "◓", "◑"] as const;
     const startTime = Date.now();
     let frameIndex = 0;
 
     this.terminal.write(`${S_BAR}\r\n`);
     while (Date.now() - startTime < duration) {
-      this.terminal.write(`\r${magenta(frames[frameIndex])}  ${text}`);
+      const frame = frames[frameIndex % frames.length];
+      this.terminal.write(`\r${magenta(frame)}  ${text}`);
       frameIndex = (frameIndex + 1) % frames.length;
       await sleep(80);
     }

@@ -3,6 +3,7 @@ import mdx from "fumadocs-mdx/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "waku/config";
 import { llmsTxtPlugin } from "./plugins/llms-txt-plugin";
+import { deadLinkCheckerPlugin } from "./plugins/dead-link-checker-plugin";
 import * as MdxConfig from "./source.config.js";
 
 export default defineConfig({
@@ -16,6 +17,12 @@ export default defineConfig({
         githubRepo: "https://github.com/gronxb/hot-updater",
         outputDir: "dist/public",
       }),
-    ],
+      deadLinkCheckerPlugin({
+        contentDir: "content/docs",
+        failOnError: false,
+        exclude: [/^https?:\/\//, /^#/, /^mailto:/],
+        checkOnDev: true,
+      }),
+    ] as any,
   },
 });

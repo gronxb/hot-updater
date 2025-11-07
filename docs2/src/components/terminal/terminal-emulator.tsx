@@ -76,6 +76,7 @@ export function TerminalEmulator({ config, onReady }: TerminalEmulatorProps) {
 
     (async () => {
       const { Terminal } = await import("@xterm/xterm");
+      // @ts-expect-error - CSS import
       await import("@xterm/xterm/css/xterm.css");
 
       if (!terminalRef.current || xtermRef.current) return;
