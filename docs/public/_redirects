@@ -4,7 +4,3 @@
 
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
-
-# 404 fallback - serve custom 404 page for non-existent routes
-# This preserves SSG benefits while handling true 404s
-/* /404.html 404
