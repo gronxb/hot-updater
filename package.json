@@ -10,7 +10,7 @@
     "biome:check": "biome check packages/** plugins/**",
     "clear": "rimraf --glob **/dist .nx",
     "test": "vitest",
-    "build": "nx run-many --target=build --projects=packages/*,plugins/*",
+    "build": "nx run-many --target=build --projects=packages/*,plugins/*,docs",
     "build:dev": "node scripts/build-dev.mjs",
     "fingerprint:create": "nx run-many --target='fingerprint:create' --projects=examples/*",
     "test:type": "nx run-many --target=test:type --projects=packages/*,plugins/*,docs",
