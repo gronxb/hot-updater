@@ -1,0 +1,504 @@
+---
+title: "Custom Storage Plugin"
+description: Create your own storage plugin for Hot Updater to use custom storage backends like private file servers, internal object storage, or custom CDNs.
+icon: Code
+---
+
+## Overview
+
+If you want to use your own storage backend (e.g., a private file server, internal object storage, or a custom CDN), you can create a custom storage plugin by implementing the Hot Updater Storage Plugin Protocol.
+
+This guide will walk you through creating a custom storage plugin from scratch.
+
+## Prerequisites
+
+```package-install
+npm install @hot-updater/plugin-core --save-dev
+```
+
+## Storage Plugin Interface
+
+A storage plugin must implement the `StoragePlugin` interface:
+
+```typescript
+interface StoragePlugin {
+  /**
+   * Plugin name for identification
+   */
+  name: string;
+
+  /**
+   * Protocol this storage plugin can resolve.
+   * @example "s3", "r2", "supabase-storage", "my-storage"
+   */
+  supportedProtocol: string;
+
+  /**
+   * Upload a file to storage
+   * @param key - The unique identifier for this bundle
+   * @param filePath - Absolute path to the file to upload
+   * @returns Object containing the storage URI
+   */
+  upload: (
+    key: string,
+    filePath: string,
+  ) => Promise<{
+    storageUri: string;
+  }>;
+
+  /**
+   * Delete a file from storage
+   * @param storageUri - The storage URI to delete
+   */
+  delete: (storageUri: string) => Promise<void>;
+
+  /**
+   * Get a download URL for a file
+   * @param storageUri - The storage URI to generate download URL for
+   * @returns Object containing the file URL
+   */
+  getDownloadUrl: (storageUri: string) => Promise<{
+    fileUrl: string;
+  }>;
+}
+```
+
+## Step-by-Step Implementation
+
+### 1. Define Your Storage Protocol
+
+Each bundle entry stored in your database includes a `storageUri` field. This value identifies how the bundle should be retrieved from your storage.
+
+For your custom plugin, define a unique protocol name. For example, if you're creating a plugin for a custom file server, you might use `my-storage`:
+
+```typescript
+const PROTOCOL = "my-storage";
+```
+
+This protocol will appear in your database like:
+
+```
+my-storage://<bucket-or-container>/<resource-path>
+```
+
+### 2. Create the Plugin Function
+
+Create a factory function that returns your storage plugin. This function typically accepts configuration and returns a function that takes `BasePluginArgs`:
+
+```typescript
+import type {
+  BasePluginArgs,
+  StoragePlugin,
+  StoragePluginHooks
+} from "@hot-updater/plugin-core";
+import {
+  createStorageKeyBuilder,
+  getContentType,
+  parseStorageUri
+} from "@hot-updater/plugin-core";
+import fs from "fs/promises";
+import path from "path";
+
+export interface MyStorageConfig {
+  // Your custom configuration
+  endpoint: string;
+  apiKey: string;
+  bucketName: string;
+  basePath?: string;  // Optional base path within bucket
+}
+
+export const myStorage = (
+  config: MyStorageConfig,
+  hooks?: StoragePluginHooks
+) => (_: BasePluginArgs): StoragePlugin => {
+  const { endpoint, apiKey, bucketName, basePath } = config;
+
+  // Create storage key builder for consistent path generation
+  const getStorageKey = createStorageKeyBuilder(basePath);
+
+  return {
+    name: "myStorage",
+    supportedProtocol: "my-storage",
+
+    async upload(key, filePath) {
+      // Implementation below
+    },
+
+    async delete(storageUri) {
+      // Implementation below
+    },
+
+    async getDownloadUrl(storageUri) {
+      // Implementation below
+    },
+  };
+};
+```
+
+### 3. Implement the Upload Method
+
+The `upload` method receives a key and a file path, uploads the file to your storage, and returns a storage URI.
+
+```typescript
+async upload(key, filePath) {
+  // Read the file
+  const fileBuffer = await fs.readFile(filePath);
+
+  // Get the content type (e.g., "application/zip")
+  const contentType = getContentType(filePath);
+
+  // Get the filename (e.g., "bundle.zip")
+  const filename = path.basename(filePath);
+
+  // Build the storage key (combines basePath, key, and filename)
+  const storageKey = getStorageKey(key, filename);
+
+  // Upload to your storage backend
+  const response = await fetch(`${endpoint}/upload`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": contentType,
+    },
+    body: JSON.stringify({
+      bucket: bucketName,
+      key: storageKey,
+      data: fileBuffer.toString("base64"),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.statusText}`);
+  }
+
+  // Call the hook if provided
+  await hooks?.onStorageUploaded?.();
+
+  // Return the storage URI with your custom protocol
+  return {
+    storageUri: `my-storage://${bucketName}/${storageKey}`,
+  };
+}
+```
+
+### 4. Implement the Delete Method
+
+The `delete` method receives a storage URI and deletes the corresponding file.
+
+```typescript
+async delete(storageUri) {
+  // Parse the storage URI to extract bucket and key
+  const { bucket, key } = parseStorageUri(storageUri, "my-storage");
+
+  // Validate bucket name matches configuration
+  if (bucket !== bucketName) {
+    throw new Error(
+      `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`
+    );
+  }
+
+  // Delete from your storage backend
+  const response = await fetch(`${endpoint}/delete`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      bucket,
+      key,
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("Bundle not found");
+    }
+    throw new Error(`Delete failed: ${response.statusText}`);
+  }
+}
+```
+
+### 5. Implement the Get Download URL Method
+
+The `getDownloadUrl` method receives a storage URI and returns a publicly accessible download URL.
+
+```typescript
+async getDownloadUrl(storageUri) {
+  // Parse and validate the storage URI
+  const url = new URL(storageUri);
+  const protocol = url.protocol.replace(":", "");
+
+  if (protocol !== "my-storage") {
+    throw new Error("Invalid storage URI protocol");
+  }
+
+  const bucket = url.hostname;
+  const key = url.pathname.slice(1); // Remove leading '/'
+
+  if (!bucket || !key) {
+    throw new Error("Invalid storage URI: missing bucket or key");
+  }
+
+  // Generate download URL from your storage backend
+  const response = await fetch(`${endpoint}/sign-url`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      bucket,
+      key,
+      expiresIn: 3600, // 1 hour
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to generate download URL: ${response.statusText}`);
+  }
+
+  const { signedUrl } = await response.json();
+
+  if (!signedUrl) {
+    throw new Error("Failed to generate download URL");
+  }
+
+  return { fileUrl: signedUrl };
+}
+```
+
+## Complete Example
+
+Here's a complete example combining all the pieces:
+
+```typescript
+// my-storage.ts
+import type {
+  BasePluginArgs,
+  StoragePlugin,
+  StoragePluginHooks
+} from "@hot-updater/plugin-core";
+import {
+  createStorageKeyBuilder,
+  getContentType,
+  parseStorageUri
+} from "@hot-updater/plugin-core";
+import fs from "fs/promises";
+import path from "path";
+
+export interface MyStorageConfig {
+  endpoint: string;
+  apiKey: string;
+  bucketName: string;
+  basePath?: string;
+}
+
+export const myStorage = (
+  config: MyStorageConfig,
+  hooks?: StoragePluginHooks
+) => (_: BasePluginArgs): StoragePlugin => {
+  const { endpoint, apiKey, bucketName, basePath } = config;
+  const getStorageKey = createStorageKeyBuilder(basePath);
+
+  return {
+    name: "myStorage",
+    supportedProtocol: "my-storage",
+
+    async upload(key, filePath) {
+      const fileBuffer = await fs.readFile(filePath);
+      const contentType = getContentType(filePath);
+      const filename = path.basename(filePath);
+      const storageKey = getStorageKey(key, filename);
+
+      const response = await fetch(`${endpoint}/upload`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": contentType,
+        },
+        body: JSON.stringify({
+          bucket: bucketName,
+          key: storageKey,
+          data: fileBuffer.toString("base64"),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      await hooks?.onStorageUploaded?.();
+
+      return {
+        storageUri: `my-storage://${bucketName}/${storageKey}`,
+      };
+    },
+
+    async delete(storageUri) {
+      const { bucket, key } = parseStorageUri(storageUri, "my-storage");
+
+      if (bucket !== bucketName) {
+        throw new Error(
+          `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`
+        );
+      }
+
+      const response = await fetch(`${endpoint}/delete`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ bucket, key }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Bundle not found");
+        }
+        throw new Error(`Delete failed: ${response.statusText}`);
+      }
+    },
+
+    async getDownloadUrl(storageUri) {
+      const url = new URL(storageUri);
+      const protocol = url.protocol.replace(":", "");
+
+      if (protocol !== "my-storage") {
+        throw new Error("Invalid storage URI protocol");
+      }
+
+      const bucket = url.hostname;
+      const key = url.pathname.slice(1);
+
+      if (!bucket || !key) {
+        throw new Error("Invalid storage URI: missing bucket or key");
+      }
+
+      const response = await fetch(`${endpoint}/sign-url`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          bucket,
+          key,
+          expiresIn: 3600,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to generate download URL: ${response.statusText}`
+        );
+      }
+
+      const { signedUrl } = await response.json();
+
+      if (!signedUrl) {
+        throw new Error("Failed to generate download URL");
+      }
+
+      return { fileUrl: signedUrl };
+    },
+  };
+};
+```
+
+## Using Your Custom Storage Plugin
+
+Once you've created your custom storage plugin, use it in your `hot-updater.config.ts`:
+
+```typescript
+import { defineConfig } from 'hot-updater';
+import { myStorage } from './my-storage';
+
+export default defineConfig({
+  storage: myStorage({
+    endpoint: process.env.MY_STORAGE_ENDPOINT,
+    apiKey: process.env.MY_STORAGE_API_KEY,
+    bucketName: 'my-bundles',
+    basePath: 'production',
+  }),
+  // ... other config
+});
+```
+
+## Helper Utilities
+
+The `@hot-updater/plugin-core` package provides several helper utilities:
+
+### `createStorageKeyBuilder(basePath?: string)`
+
+Creates a function that builds storage keys by combining basePath with provided arguments:
+
+```typescript
+const getStorageKey = createStorageKeyBuilder("production");
+getStorageKey("bundle-123", "bundle.zip");
+// Returns: "production/bundle-123/bundle.zip"
+```
+
+### `parseStorageUri(storageUri: string, expectedProtocol: string)`
+
+Parses a storage URI and validates the protocol:
+
+```typescript
+const { protocol, bucket, key } = parseStorageUri(
+  "my-storage://my-bucket/path/to/file.zip",
+  "my-storage"
+);
+// protocol: "my-storage"
+// bucket: "my-bucket"
+// key: "path/to/file.zip"
+```
+
+### `getContentType(filePath: string)`
+
+Gets the MIME type for a file with 3-tier fallback:
+
+```typescript
+getContentType("/path/to/bundle.zip");
+// Returns: "application/zip"
+
+getContentType("/path/to/bundle.tar.br");
+// Returns: "application/x-tar"
+```
+
+## Storage Plugin Hooks
+
+You can provide optional hooks for your storage plugin:
+
+```typescript
+export interface StoragePluginHooks {
+  onStorageUploaded?: () => Promise<void>;
+}
+```
+
+Example usage:
+
+```typescript
+const plugin = myStorage(config, {
+  onStorageUploaded: async () => {
+    console.log("Bundle uploaded successfully!");
+    // Trigger cache invalidation, send notifications, etc.
+  },
+});
+```
+
+## Best Practices
+
+1. **Error Handling**: Provide clear error messages that help users debug issues
+2. **Validation**: Always validate the storage URI protocol in `delete` and `getDownloadUrl`
+3. **Security**: Never expose sensitive credentials in error messages or logs
+4. **Content Type**: Use the `getContentType` helper to properly set content types
+5. **Path Building**: Use `createStorageKeyBuilder` for consistent path generation
+6. **Hooks**: Call `onStorageUploaded` after successful uploads
+7. **Testing**: Test your plugin with different compression formats (zip, tar.br, tar.gz)
+
+## Protocol
+
+When implementing your custom storage plugin, the protocol you define (e.g., `my-storage://`) will be stored in the `storageUri` field in the database. This allows Hot Updater to route storage operations to the correct plugin.
+
+## Next Steps
+
+- See the [AWS S3 Storage](/docs/storage-plugins/aws) implementation for a real-world example
+- Learn about [Database Plugins](/docs/database-plugins) to complete your backend setup
+- Explore [Build Plugins](/docs/build-plugins) to customize your build process
