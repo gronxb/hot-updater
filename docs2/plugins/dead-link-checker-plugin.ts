@@ -62,11 +62,16 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
     // Match markdown links: [text](path)
     const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
 
+    // Match JSX/HTML image/video sources
+    const jsxSrcRegex = /src=\{["']([^"']+)["']\}/g;
+    const htmlSrcRegex = /src=["']([^"']+)["']/g;
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!line) continue;
-      let match: RegExpExecArray | null;
 
+      // Check markdown links
+      let match: RegExpExecArray | null;
       while ((match = linkRegex.exec(line)) !== null) {
         const linkText = match[1];
         const linkPath = match[2];
@@ -93,9 +98,120 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
           });
         }
       }
+
+      // Check JSX-style src attributes (e.g., <img src={"/path"} /> or <video src={"/path"} />)
+      const isImageOrVideoLine = /<(img|video)\s/.test(line);
+      if (isImageOrVideoLine) {
+        // Try JSX style first
+        jsxSrcRegex.lastIndex = 0;
+        let srcMatch: RegExpExecArray | null;
+        while ((srcMatch = jsxSrcRegex.exec(line)) !== null) {
+          const srcPath = srcMatch[1];
+          if (!srcPath) continue;
+
+          // Skip excluded links
+          if (isExcluded(srcPath)) {
+            continue;
+          }
+
+          const assetType = line.includes("<img") ? "Image" : "Video";
+          const issue = validateAssetLink(filePath, srcPath, assetType);
+          if (issue) {
+            issues.push({
+              ...issue,
+              line: i + 1,
+            });
+          }
+        }
+
+        // Try HTML style
+        htmlSrcRegex.lastIndex = 0;
+        while ((srcMatch = htmlSrcRegex.exec(line)) !== null) {
+          const srcPath = srcMatch[1];
+          if (!srcPath) continue;
+
+          // Skip excluded links
+          if (isExcluded(srcPath)) {
+            continue;
+          }
+
+          const assetType = line.includes("<img") ? "Image" : "Video";
+          const issue = validateAssetLink(filePath, srcPath, assetType);
+          if (issue) {
+            issues.push({
+              ...issue,
+              line: i + 1,
+            });
+          }
+        }
+      }
     }
 
     return issues;
+  }
+
+  function validateAssetLink(
+    sourceFile: string,
+    assetPath: string,
+    assetType: "Image" | "Video",
+  ): Omit<LinkIssue, "line"> | null {
+    // Handle absolute paths that map to public/ directory
+    let resolvedPath: string;
+
+    if (assetPath.startsWith("/")) {
+      // Absolute path - maps to public/ directory
+      // e.g., "/docs/deploy/deploy.mov" -> "public/docs/deploy/deploy.mov"
+      resolvedPath = resolve(config.root, "public", assetPath.substring(1));
+    } else if (assetPath.startsWith(".")) {
+      // Relative path - resolve from source file directory
+      const sourceDir = dirname(sourceFile);
+      resolvedPath = resolve(sourceDir, assetPath);
+    } else {
+      // Other paths (shouldn't happen for assets, but handle gracefully)
+      return null;
+    }
+
+    const contentRoot = resolve(config.root, contentDir);
+    const displayPath = assetPath;
+
+    // Check if file exists
+    if (existsSync(resolvedPath) && statSync(resolvedPath).isFile()) {
+      // Validate file extension
+      const validImageExts = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
+      const validVideoExts = [".mov", ".mp4", ".webm", ".ogg"];
+      const validExts =
+        assetType === "Image" ? validImageExts : validVideoExts;
+
+      const hasValidExt = validExts.some((ext) =>
+        resolvedPath.toLowerCase().endsWith(ext),
+      );
+
+      if (!hasValidExt) {
+        return {
+          file: relative(config.root, sourceFile),
+          link: `${assetType} asset`,
+          rawLink: assetPath,
+          resolvedPath: displayPath,
+          issue: `${assetType} file has unsupported extension`,
+          suggestion: `Use one of: ${validExts.join(", ")}`,
+        };
+      }
+
+      return null; // Valid asset
+    }
+
+    // File doesn't exist
+    return {
+      file: relative(config.root, sourceFile),
+      link: `${assetType} asset`,
+      rawLink: assetPath,
+      resolvedPath: displayPath,
+      issue: `${assetType} file does not exist`,
+      suggestion:
+        assetPath.startsWith("/")
+          ? `Check if file exists in public${assetPath}`
+          : "Check the path or create the missing file",
+    };
   }
 
   function validateLink(

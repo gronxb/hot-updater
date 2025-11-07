@@ -4,9 +4,42 @@ import { join } from "node:path";
 import type { Plugin, ResolvedConfig } from "vite";
 
 interface LLMPluginOptions {
-  baseUrl?: string;
+  baseUrl: string;
   githubRepo?: string;
+  contentDir?: string;
   outputDir?: string;
+}
+
+interface PackageJson {
+  name?: string;
+  description?: string;
+  repository?: string | { url?: string };
+}
+
+function getPackageInfo(): { name: string; description: string; repo?: string } {
+  try {
+    const pkgPath = join(process.cwd(), "package.json");
+    if (existsSync(pkgPath)) {
+      const pkg: PackageJson = JSON.parse(readFileSync(pkgPath, "utf-8"));
+
+      let repo: string | undefined;
+      if (typeof pkg.repository === "string") {
+        repo = pkg.repository;
+      } else if (pkg.repository?.url) {
+        repo = pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
+      }
+
+      return {
+        name: pkg.name || "Documentation",
+        description: pkg.description || "",
+        repo,
+      };
+    }
+  } catch (error) {
+    console.warn("Failed to read package.json:", error);
+  }
+
+  return { name: "Documentation", description: "" };
 }
 
 function humanizeDirectoryName(dirName: string): string {
@@ -54,12 +87,16 @@ function getCategoryMetadata(contentDir: string): Record<string, string> {
   return categoryMap;
 }
 
-export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
+export function llmsTxtPlugin(options: LLMPluginOptions): Plugin {
   const {
-    baseUrl = "https://hot-updater.dev",
-    githubRepo = "https://github.com/gronxb/hot-updater",
+    baseUrl,
+    githubRepo: userGithubRepo,
+    contentDir: userContentDir = "content/docs",
     outputDir = ".output/public",
   } = options;
+
+  const pkgInfo = getPackageInfo();
+  const githubRepo = userGithubRepo || pkgInfo.repo;
 
   let config: ResolvedConfig;
   let categoryMap: Record<string, string> = {};
@@ -74,7 +111,7 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
 
   async function generateFiles() {
     try {
-      const contentDir = join(process.cwd(), "content", "docs");
+      const contentDir = join(process.cwd(), userContentDir);
 
       // Generate category map from directory structure
       categoryMap = getCategoryMetadata(contentDir);
@@ -86,6 +123,7 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
       const llmsSummary = generateLLMsSummary(
         pages,
         baseUrl,
+        pkgInfo,
         categoryMap,
         categoryOrder,
         getCategoryFromPath,
@@ -95,6 +133,7 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
       const llmsFull = generateLLMsFull(
         pages,
         baseUrl,
+        pkgInfo,
         githubRepo,
         getCategoryFromPath,
       );
@@ -196,6 +235,7 @@ async function collectMDXFiles(dir: string, baseDir = dir): Promise<MDXPage[]> {
 function generateLLMsSummary(
   pages: MDXPage[],
   baseUrl: string,
+  pkgInfo: { name: string; description: string },
   categoryMap: Record<string, string>,
   categoryOrder: string[],
   _getCategoryFromPath: (url: string) => string,
@@ -213,13 +253,13 @@ function generateLLMsSummary(
     categories.get(category)?.push(page);
   }
 
-  let summary = `# Hot Updater Documentation
+  let summary = `# ${pkgInfo.name} Documentation\n`;
 
-Hot Updater is a self-hostable OTA (Over-The-Air) updates solution for React Native apps.
+  if (pkgInfo.description) {
+    summary += `\n${pkgInfo.description}\n`;
+  }
 
-## Documentation Structure
-
-`;
+  summary += `\n## Documentation Structure\n\n`;
 
   // Use dynamically generated category order
   for (const categoryKey of categoryOrder) {
@@ -243,15 +283,7 @@ Hot Updater is a self-hostable OTA (Over-The-Air) updates solution for React Nat
     summary += "\n";
   }
 
-  summary += `
-## Quick Links
-
-- Getting Started: ${baseUrl}/docs/get-started/introduction
-- API Reference: ${baseUrl}/docs/react-native-api/wrap
-- Managed Providers: ${baseUrl}/docs/managed-providers/supabase
-
-For full documentation, see: ${baseUrl}/docs
-`;
+  summary += `\nFor full documentation, see: ${baseUrl}/docs\n`;
 
   return summary;
 }
@@ -259,28 +291,34 @@ For full documentation, see: ${baseUrl}/docs
 function generateLLMsFull(
   pages: MDXPage[],
   baseUrl: string,
-  githubRepo: string,
+  pkgInfo: { name: string; description: string },
+  githubRepo: string | undefined,
   getCategoryFromPath: (url: string) => string,
 ): string {
-  let fullContent = `# Hot Updater - Complete Documentation
+  let fullContent = `# ${pkgInfo.name} - Complete Documentation\n\n`;
 
-This file contains the full documentation for Hot Updater, a self-hostable OTA updates solution for React Native apps.
+  if (pkgInfo.description) {
+    fullContent += `${pkgInfo.description}\n\n`;
+  }
 
----
-
-`;
+  fullContent += `---\n\n`;
 
   for (const page of pages) {
     const category = getCategoryFromPath(page.url);
     const title = page.title || "Untitled";
     const description = page.description || "";
     const url = `${baseUrl}${page.url}`;
-    const sourcePath = page.path.replace(/^\//, "");
-    const sourceUrl = `${githubRepo}/blob/main/content/docs/${sourcePath}.mdx`;
 
     fullContent += `# ${category}: ${title}\n`;
     fullContent += `URL: ${url}\n`;
-    fullContent += `Source: ${sourceUrl}\n\n`;
+
+    if (githubRepo) {
+      const sourcePath = page.path.replace(/^\//, "");
+      const sourceUrl = `${githubRepo}/blob/main/content/docs/${sourcePath}.mdx`;
+      fullContent += `Source: ${sourceUrl}\n`;
+    }
+
+    fullContent += `\n`;
 
     if (description) {
       fullContent += `${description}\n\n`;

@@ -30,10 +30,10 @@ This interactive CLI will guide you through:
 
 1. **Build Plugin Selection**: Choose your build system (Bare/React Native CLI, Re.Pack, or Expo)
 2. **Provider Selection**: Select from available providers:
-   - [Supabase](/docs/managed-providers/supabase)
-   - [Firebase](/docs/managed-providers/firebase)
-   - [Cloudflare](/docs/managed-providers/cloudflare)
-   - [AWS](/docs/managed-providers/aws)
+   - [Supabase](/docs/managed-hosting/supabase)
+   - [Firebase](/docs/managed-hosting/firebase)
+   - [Cloudflare](/docs/managed-hosting/cloudflare)
+   - [AWS](/docs/managed-hosting/aws)
 
 3. **Provider Configuration**: Follow provider-specific prompts for authentication and resource setup.
 
@@ -75,7 +75,7 @@ export default defineConfig({
 ```
 
 <Callout type="info">
-For detailed provider-specific setup instructions, see the [Managed Providers](/docs/managed-providers/supabase) documentation.
+For detailed provider-specific setup instructions, see the [Managed Hosting](/docs/managed-hosting/supabase) documentation.
 </Callout>
 
 <Callout type="warn">
@@ -98,9 +98,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("https://your-update-server-url/api/check-update", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  source: getUpdateSource("https://your-update-server-url/api/check-update", { // [!code ++]
+    updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
+  }), // [!code ++]
   requestHeaders: {
     // Optional: Add custom headers if needed
   },

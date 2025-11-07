@@ -10,10 +10,16 @@ The docs2 directory uses Fumadocs (a modern documentation framework) with the fo
 docs2/
 ├── content/
 │   └── docs/
+│       ├── get-started/        # Getting started guides
+│       ├── managed-hosting/    # Managed cloud provider guides (Supabase, Firebase, Cloudflare, AWS)
+│       ├── self-hosting/       # Self-hosting server setup guides
 │       ├── build-plugins/      # Build plugin documentation
 │       ├── storage-plugins/    # Storage plugin documentation
 │       ├── database-plugins/   # Database plugin documentation
-│       └── integration-plugins/ # Integration plugin documentation
+│       ├── react-native-api/   # Client-side API reference
+│       ├── guides/             # Advanced topics and guides
+│       ├── cli-reference/      # CLI command documentation
+│       └── policy/             # Security and best practices
 ├── src/                        # Documentation site source
 ├── public/                     # Static assets
 └── waku.config.ts             # Waku configuration
@@ -55,21 +61,16 @@ Each directory with documentation pages needs a `meta.json` file:
 }
 ```
 
-**Multi-page section** (`content/docs/self-hosted/meta.json`):
+**Multi-page section** (`content/docs/self-hosting/meta.json`):
 ```json
 {
-  "title": "Self-Hosted",
-  "description": "Self-hosted server setup",
+  "title": "Self-Hosting",
+  "description": "Self-hosting server setup",
   "icon": "Server",
   "pages": [
     "overview",
-    "hono",
-    "express",
-    "elysia",
-    "drizzle",
-    "prisma",
-    "kysely",
-    "mongodb"
+    "quick-start",
+    "cli-configuration"
   ]
 }
 ```
@@ -188,7 +189,23 @@ VARIABLE_NAME=value
 - **Scannable content**: Use headings, bullet points, and code examples to break up text
 - **Clear hierarchy**: Organize sections logically (Overview → Setup → Usage → Advanced)
 
-## Plugin Types
+## Documentation Sections
+
+### Managed Hosting
+Located in `content/docs/managed-hosting/`
+- supabase.mdx - Supabase setup guide
+- firebase.mdx - Firebase setup guide
+- cloudflare.mdx - Cloudflare setup guide
+- aws.mdx - AWS setup guide
+
+### Self-Hosting
+Located in `content/docs/self-hosting/`
+- overview.mdx - Self-hosting architecture overview
+- quick-start.mdx - Quick start guide
+- cli-configuration.mdx - CLI configuration
+- database/ - Database adapter guides (Drizzle, Prisma, Kysely, MongoDB)
+- frameworks/ - Server framework guides (Hono, Express, Elysia)
+- hosting/ - Deployment platform guides (Docker, Cloudflare Workers, Vercel)
 
 ### Build Plugins
 Located in `content/docs/build-plugins/`
@@ -241,6 +258,49 @@ pnpm dev
 pnpm build
 ```
 
+## 404 Page Guidelines
+
+### Global 404 Page
+Located at `src/pages/404.tsx` - handles all unmatched routes.
+
+**Structure:**
+- Uses HomeLayout for consistent navigation and branding
+- Center-aligned content with proper spacing
+- Includes "Go Back Home" link
+- Theme-aware colors (dark/light mode support)
+
+**When to modify:**
+- Update styling to match site theme changes
+- Add custom error tracking if needed
+- Maintain consistent branding with other pages
+
+### Inline 404 Handler
+Located in `src/pages/docs/[...slugs].tsx:14-24` - handles missing documentation pages.
+
+**Purpose:**
+- Shows 404 within docs layout when a doc page doesn't exist
+- Preserves sidebar and navigation for better UX
+- Different from global 404 (no layout redirect needed)
+
+**Key differences:**
+- **Global 404**: Unmatched routes (e.g., `/random`) → Full layout with navigation
+- **Inline 404**: Missing docs (e.g., `/docs/invalid`) → Shows within docs layout
+
+## Documentation URL Patterns
+
+When referencing documentation in code, comments, or other docs, use these patterns:
+
+- **Managed hosting**: `/docs/managed-hosting/{provider}` (e.g., `/docs/managed-hosting/supabase`)
+- **Self-hosting**: `/docs/self-hosting/{topic}` (e.g., `/docs/self-hosting/quick-start`)
+- **Database adapters**: `/docs/self-hosting/database/{adapter}` (e.g., `/docs/self-hosting/database/drizzle`)
+- **Server frameworks**: `/docs/self-hosting/frameworks/{framework}` (e.g., `/docs/self-hosting/frameworks/hono`)
+- **Hosting platforms**: `/docs/self-hosting/hosting/{platform}` (e.g., `/docs/self-hosting/hosting/docker`)
+- **Storage plugins**: `/docs/storage-plugins/{provider}` (e.g., `/docs/storage-plugins/aws`)
+- **Database plugins**: `/docs/database-plugins/{provider}` (e.g., `/docs/database-plugins/cloudflare`)
+- **Build plugins**: `/docs/build-plugins/{bundler}` (e.g., `/docs/build-plugins/expo`)
+- **React Native API**: `/docs/react-native-api/{topic}` (e.g., `/docs/react-native-api/wrap`)
+- **Guides**: `/docs/guides/{topic}` (e.g., `/docs/guides/update-strategies`)
+
 ## Notes for Claude
 
 - Always use `package-install` code blocks for package installation
@@ -255,3 +315,4 @@ pnpm build
 - Show complete working examples with imports
 - Keep consistent structure across all plugin docs
 - Organize content logically: Overview → Setup → Usage → Advanced
+- **Important**: Documentation folder names are `managed-hosting` (not managed-providers) and `self-hosting` (not self-hosted)
