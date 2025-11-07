@@ -10,6 +10,9 @@ export function baseOptions(): BaseLayoutProps {
             src="/logo.webp"
             alt="Hot Updater"
             className="w-6 h-6 object-contain shrink-0 mt-1.25"
+            loading="eager"
+            fetchpriority="high"
+            decoding="sync"
           />
           <span>Hot Updater</span>
         </div>
@@ -18,7 +21,7 @@ export function baseOptions(): BaseLayoutProps {
     links: [
       {
         text: "Docs",
-        url: "/docs",
+        url: "/docs/get-started/introduction",
       },
       {
         text: "GitHub",

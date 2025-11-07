@@ -24,6 +24,9 @@ export function LandingHero() {
                     src="/logo.webp"
                     alt="Hot Updater Logo"
                     className="h-10 mt-3.5 sm:h-14 lg:h-16 xl:h-20 object-contain shrink-0"
+                    loading="eager"
+                    fetchpriority="high"
+                    decoding="sync"
                   />
                   <span className="bg-linear-to-r from-orange-400 via-orange-400 to-orange-500 bg-clip-text text-transparent">
                     Hot Updater

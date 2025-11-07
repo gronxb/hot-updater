@@ -3,11 +3,14 @@ import type { ReactNode } from "react";
 import { Provider } from "@/components/provider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const siteUrl = "https://hot-updater.dev";
+  const ogImageUrl = `${siteUrl}/og.png`;
+
   return (
     <>
       <meta charSet="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Hot Updater Docs</title>
+      <title>Hot Updater - Self-hosted OTA updates for React Native</title>
 
       {/* Favicon */}
       <link rel="icon" type="image/x-icon" href="/favicon.ico" />
@@ -32,32 +35,46 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       {/* Preload Logo */}
       <link rel="preload" as="image" href="/logo.webp" type="image/webp" />
 
-      {/* Open Graph */}
-      <meta property="og:type" content="website" />
-      <meta property="og:site_name" content="Hot Updater" />
-      <meta property="og:title" content="Hot Updater" />
+      {/* Primary Meta Tags */}
       <meta
-        property="og:description"
-        content="Self-hosted over-the-air updates for React Native"
+        name="title"
+        content="Hot Updater - Self-hosted OTA updates for React Native"
       />
-      <meta property="og:image" content="https://hot-updater.dev/og.png" />
-      <meta property="og:url" content="https://hot-updater.dev" />
-
-      {/* Twitter Card */}
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content="Hot Updater" />
-      <meta
-        name="twitter:description"
-        content="Self-hosted over-the-air updates for React Native"
-      />
-      <meta name="twitter:image" content="https://hot-updater.dev/og.png" />
-
-      {/* Additional Meta Tags */}
       <meta
         name="description"
         content="Self-hosted over-the-air updates for React Native"
       />
       <meta name="theme-color" content="#f97316" />
+
+      {/* Open Graph / Facebook */}
+      <meta property="og:type" content="website" />
+      <meta property="og:url" content={siteUrl} />
+      <meta
+        property="og:title"
+        content="Hot Updater - Self-hosted OTA updates for React Native"
+      />
+      <meta
+        property="og:description"
+        content="Self-hosted over-the-air updates for React Native"
+      />
+      <meta property="og:image" content={ogImageUrl} />
+      <meta property="og:image:width" content="4800" />
+      <meta property="og:image:height" content="2520" />
+      <meta property="og:image:type" content="image/png" />
+      <meta property="og:site_name" content="Hot Updater" />
+
+      {/* Twitter */}
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:url" content={siteUrl} />
+      <meta
+        name="twitter:title"
+        content="Hot Updater - Self-hosted OTA updates for React Native"
+      />
+      <meta
+        name="twitter:description"
+        content="Self-hosted over-the-air updates for React Native"
+      />
+      <meta name="twitter:image" content={ogImageUrl} />
 
       <Provider>{children}</Provider>
     </>
