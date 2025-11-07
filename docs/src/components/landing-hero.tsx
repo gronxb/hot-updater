@@ -1,15 +1,10 @@
 "use client";
-import type { Terminal } from "@xterm/xterm";
 import { Github } from "lucide-react";
 import { Link } from "waku";
 import { runDeployDemo } from "./terminal/deploy-demo";
 import { TerminalEmulator } from "./terminal/terminal-emulator";
 
 export function LandingHero() {
-  const handleTerminalReady = (terminal: Terminal) => {
-    runDeployDemo(terminal);
-  };
-
   return (
     <div className="relative overflow-hidden bg-fd-background">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-24 lg:py-32">
@@ -98,7 +93,7 @@ export function LandingHero() {
 
               {/* XTerm Terminal */}
               <div className="p-2 sm:p-4 min-h-[166px] sm:min-h-[258px] lg:min-h-[333px]">
-                <TerminalEmulator onReady={handleTerminalReady} />
+                <TerminalEmulator onReady={runDeployDemo} />
               </div>
             </div>
           </div>

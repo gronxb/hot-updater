@@ -74,7 +74,7 @@ export function TerminalEmulator({ config, onReady }: TerminalEmulatorProps) {
     // Dynamically import xterm only on client side
     let term: Terminal | null = null;
 
-    (async () => {
+    const init = async () => {
       const { Terminal } = await import("@xterm/xterm");
       await import("@xterm/xterm/css/xterm.css");
 
@@ -99,7 +99,8 @@ export function TerminalEmulator({ config, onReady }: TerminalEmulatorProps) {
       if (onReady) {
         onReady(term);
       }
-    })();
+    };
+    void init().catch(console.error);
 
     return () => {
       isInitializedRef.current = false;

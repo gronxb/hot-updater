@@ -16,7 +16,7 @@ export interface TerminalConfig {
 
 export interface TerminalEmulatorProps {
   config?: TerminalConfig;
-  onReady?: (terminal: Terminal) => void;
+  onReady?: (terminal: Terminal) => void | Promise<void>;
 }
 
 export interface ClackRendererProps {
