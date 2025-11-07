@@ -1,8 +1,10 @@
   # Hot Updater
   
 [![NPM](https://img.shields.io/npm/v/hot-updater)](https://www.npmjs.com/package/hot-updater)
+  
+  
+  <img width="2594" height="1264" alt="image" src="https://github.com/user-attachments/assets/82c52334-a0c2-48d4-a9f1-8d9c45e79bb2" />
 
-  A self-hostable OTA update solution for React Native **(Alternative to CodePush)**
 
   ![hot-updater](https://raw.githubusercontent.com/gronxb/hot-updater/main/demo.gif)
 

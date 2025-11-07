@@ -1,8 +1,7 @@
 package com.hotupdater
 
 import android.util.Log
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.compressors.brotli.BrotliCompressorInputStream
+import org.brotli.dec.BrotliInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -10,6 +9,7 @@ import java.io.FileOutputStream
 
 /**
  * Strategy for handling TAR+Brotli compressed files
+ * Uses native Brotli decoder and custom TAR parser
  */
 class TarBrDecompressionStrategy : DecompressionStrategy {
     companion object {
@@ -55,16 +55,16 @@ class TarBrDecompressionStrategy : DecompressionStrategy {
 
             FileInputStream(filePath).use { fileInputStream ->
                 BufferedInputStream(fileInputStream).use { bufferedInputStream ->
-                    BrotliCompressorInputStream(bufferedInputStream).use { brotliInputStream ->
+                    BrotliInputStream(bufferedInputStream).use { brotliInputStream ->
                         TarArchiveInputStream(brotliInputStream).use { tarInputStream ->
-                            var entry = tarInputStream.nextEntry
+                            var entry = tarInputStream.getNextEntry()
 
                             while (entry != null) {
                                 val file = File(destinationPath, entry.name)
 
                                 if (!file.canonicalPath.startsWith(destinationDir.canonicalPath)) {
                                     Log.w(TAG, "Skipping potentially malicious tar entry: ${entry.name}")
-                                    entry = tarInputStream.nextEntry
+                                    entry = tarInputStream.getNextEntry()
                                     continue
                                 }
 
@@ -87,7 +87,7 @@ class TarBrDecompressionStrategy : DecompressionStrategy {
                                 val progress = processedBytes.toDouble() / (totalSize * 2.0)
                                 progressCallback.invoke(progress.coerceIn(0.0, 1.0))
 
-                                entry = tarInputStream.nextEntry
+                                entry = tarInputStream.getNextEntry()
                             }
                         }
                     }

@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/server",
-  "version": "0.21.5",
+  "version": "0.21.6",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -52,7 +52,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "fumadb": "0.1.2",
+    "fumadb": "0.2.0",
     "rou3": "0.7.9",
     "semver": "^7.7.2"
   },
@@ -69,6 +69,7 @@
     "execa": "^9.5.2",
     "kysely": "^0.28.5",
     "kysely-pglite-dialect": "^1.2.0",
-    "msw": "^2.7.0"
+    "msw": "^2.7.0",
+    "uuidv7": "^1.0.2"
   }
 }
