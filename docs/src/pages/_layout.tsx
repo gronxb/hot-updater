@@ -53,7 +53,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         property="og:description"
         content="Self-hosted over-the-air updates for React Native"
       />
-      <meta property="og:image" content="/og.png" />
+      <meta property="og:image" content="https://hot-updater.dev/og.png" />
       <meta property="og:image:width" content="4800" />
       <meta property="og:image:height" content="2520" />
       <meta property="og:image:type" content="image/png" />
@@ -72,7 +72,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         name="twitter:description"
         content="Self-hosted over-the-air updates for React Native"
       />
-      <meta name="twitter:image" content="/og.png" />
+      <meta name="twitter:image" content="https://hot-updater.dev/og.png" />
 
       <Provider>{children}</Provider>
     </>
