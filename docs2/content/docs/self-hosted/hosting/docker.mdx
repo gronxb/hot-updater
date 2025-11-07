@@ -1,0 +1,244 @@
+---
+title: "Docker"
+description: Deploy Hot Updater server using Docker containers.
+icon: Container
+---
+
+## Prerequisites
+
+- Docker Or OrbStack: Install it via [Docker](https://docs.docker.com/get-docker/) or [OrbStack](https://orbstack.dev/).
+- Docker Compose (included with Docker Desktop)
+- PostgreSQL database or use Docker Compose setup below
+
+## Installation
+
+Install required dependencies.
+
+```package-install
+npm install @hot-updater/server hono @hono/node-server
+```
+
+Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
+
+Install Drizzle ORM with PostgreSQL driver.
+
+```package-install
+npm install drizzle-orm postgres
+```
+
+```package-install
+npm install -D drizzle-kit tsx typescript @types/node
+```
+
+## Database Setup
+
+Create the database connection file.
+
+```typescript title="src/drizzle.ts"
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+
+const client = postgres(process.env.DATABASE_URL!);
+export const db = drizzle(client);
+```
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance.
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { db } from "./drizzle";
+
+export const hotUpdater = createHotUpdater({
+  database: drizzleAdapter({ db, provider: "postgres" }),
+  storagePlugins: [
+    // Configure your storage plugin - examples:
+    // s3Storage({ /* S3 or R2 config */ }),
+    // supabaseStorage({ /* Supabase config */ }),
+    // firebaseStorage({ /* Firebase config */ }),
+    // myCustomStorage({ /* custom config */ }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+## Server Setup
+
+Create the server entry point.
+
+```typescript title="src/index.ts"
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { hotUpdater } from "./hotUpdater";
+
+const app = new Hono();
+
+app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => {
+  return hotUpdater.handler(c.req.raw);
+});
+
+const port = Number(process.env.PORT) || 3000;
+
+serve({ fetch: app.fetch, port }, (info) => {
+  console.log(`Server running at http://localhost:${info.port}`);
+});
+```
+
+## Schema Generation
+
+Generate the Drizzle schema for Hot Updater tables.
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+## Dockerfile
+
+Create `Dockerfile` for production builds.
+
+```dockerfile
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 3000
+
+CMD ["node", "dist/index.js"]
+```
+
+Create `.dockerignore`:
+
+```
+node_modules
+dist
+.git
+.env
+*.log
+```
+
+## Build and Run
+
+Build the Docker image.
+
+```bash
+docker build -t hot-updater-server .
+```
+
+Run the container with environment variables.
+
+```bash
+docker run -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
+  hot-updater-server
+```
+
+## Docker Compose
+
+Create `docker-compose.yml` for complete setup with PostgreSQL.
+
+```yaml
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hot_updater
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hot-updater:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hot_updater
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+```
+
+## Run with Docker Compose
+
+Start all services.
+
+```bash
+docker-compose up -d
+```
+
+Run database migrations.
+
+```bash
+docker-compose exec hot-updater npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+View logs.
+
+```bash
+docker-compose logs -f hot-updater
+```
+
+Stop all services.
+
+```bash
+docker-compose down
+```
+
+## CLI Configuration
+
+Configure your CLI to use this server.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { bare } from "@hot-updater/bare";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: bare(),
+  storage: {
+    // Configure your storage plugin - examples:
+    // s3Storage({ /* S3 or R2 config */ }),
+    // supabaseStorage({ /* Supabase config */ }),
+    // firebaseStorage({ /* Firebase config */ }),
+    // myCustomStorage({ /* custom config */ }),
+  },
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+  }),
+});
+```
+
+<Callout type="warn">
+The `storage` plugin must match the `storagePlugins` in your server's `createHotUpdater`.
+</Callout>

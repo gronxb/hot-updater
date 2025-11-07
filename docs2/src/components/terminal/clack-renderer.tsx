@@ -70,7 +70,7 @@ export class ClackRenderer {
 
     this.terminal.write(`${S_BAR}\r\n`);
     while (Date.now() - startTime < duration) {
-      const frame = frames[frameIndex % frames.length];
+      const frame = frames[frameIndex % frames.length] ?? "◒";
       this.terminal.write(`\r${magenta(frame)}  ${text}`);
       frameIndex = (frameIndex + 1) % frames.length;
       await sleep(80);

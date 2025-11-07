@@ -1,6 +1,6 @@
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import type { Plugin, ResolvedConfig } from "vite";
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { join, dirname, resolve, relative } from "node:path";
 
 interface DeadLinkCheckerOptions {
   contentDir: string;
@@ -19,9 +19,7 @@ interface LinkIssue {
   suggestion?: string;
 }
 
-export function deadLinkCheckerPlugin(
-  options: DeadLinkCheckerOptions,
-): Plugin {
+export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
   let config: ResolvedConfig;
 
   const {
@@ -66,11 +64,16 @@ export function deadLinkCheckerPlugin(
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      if (!line) continue;
       let match: RegExpExecArray | null;
 
       while ((match = linkRegex.exec(line)) !== null) {
         const linkText = match[1];
         const linkPath = match[2];
+
+        if (!linkText || !linkPath) {
+          continue;
+        }
 
         // Skip excluded links
         if (isExcluded(linkPath)) {
@@ -155,7 +158,7 @@ export function deadLinkCheckerPlugin(
               suggestion: `Use [${linkText}](${linkPath}/${firstPage})`,
             };
           }
-        } catch (e) {
+        } catch (_e) {
           // Invalid meta.json, continue to return error
         }
       }
@@ -205,9 +208,7 @@ export function deadLinkCheckerPlugin(
 
   function reportIssues(issues: LinkIssue[]) {
     if (issues.length === 0) {
-      console.log(
-        "\x1b[32m✓\x1b[0m [dead-link-checker] No dead links found!",
-      );
+      console.log("\x1b[32m✓\x1b[0m [dead-link-checker] No dead links found!");
       return;
     }
 
@@ -221,7 +222,10 @@ export function deadLinkCheckerPlugin(
         if (!acc[issue.file]) {
           acc[issue.file] = [];
         }
-        acc[issue.file].push(issue);
+        const fileIssues = acc[issue.file];
+        if (fileIssues) {
+          fileIssues.push(issue);
+        }
         return acc;
       },
       {} as Record<string, LinkIssue[]>,
@@ -230,7 +234,9 @@ export function deadLinkCheckerPlugin(
     for (const [file, fileIssues] of Object.entries(byFile)) {
       console.log(`\x1b[36m${file}\x1b[0m`);
       for (const issue of fileIssues) {
-        console.log(`  \x1b[31m✗\x1b[0m Line ${issue.line}: [${issue.link}](${issue.rawLink})`);
+        console.log(
+          `  \x1b[31m✗\x1b[0m Line ${issue.line}: [${issue.link}](${issue.rawLink})`,
+        );
         console.log(`    Resolved to: ${issue.resolvedPath}`);
         console.log(`    Issue: ${issue.issue}`);
         if (issue.suggestion) {
