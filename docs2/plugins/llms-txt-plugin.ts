@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Plugin } from "vite";
+import type { Plugin, ResolvedConfig } from "vite";
 
 interface LLMPluginOptions {
   baseUrl?: string;
@@ -61,7 +61,7 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
     outputDir = ".output/public",
   } = options;
 
-  let config: any;
+  let config: ResolvedConfig;
   let categoryMap: Record<string, string> = {};
   let categoryOrder: string[] = [];
 
@@ -121,13 +121,13 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
   return {
     name: "llms-txt-plugin",
 
-    configResolved(resolvedConfig) {
+    configResolved(resolvedConfig: ResolvedConfig) {
       config = resolvedConfig;
     },
 
     async closeBundle() {
       // Only generate files during production build
-      if (config.command === "build") {
+      if (config?.command === "build") {
         await generateFiles();
       }
     },

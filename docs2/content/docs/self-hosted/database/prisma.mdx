@@ -103,6 +103,37 @@ Generate Prisma Client:
 npx prisma generate
 ```
 
+## CLI Configuration
+
+Configure your CLI to use this self-hosted server.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: bare(),
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+  }),
+});
+```
+
+<Callout type="warn">
+The `storage` plugin must match the `storagePlugins` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+</Callout>
+
 ## API Endpoints
 
 The server automatically creates these endpoints:

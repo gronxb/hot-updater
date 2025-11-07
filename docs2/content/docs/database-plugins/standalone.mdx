@@ -1,9 +1,18 @@
 ---
 title: "Standalone Database"
-description: Store your Hot Updater bundle metadata in your custom self-hosted database by implementing HTTP API endpoints.
-icon: server
+description: Connect your CLI to a self-hosted Hot Updater server.
+icon: Server
 ---
 
+## Overview
+
+The `standaloneRepository` plugin connects your Hot Updater CLI to a self-hosted backend server. This is the **client-side configuration** for connecting to your server.
+
+<Callout type="info">
+**Building a Self-Hosted Server?**
+
+See the [Self-Hosted Guide](../self-hosted/overview) for complete server implementation instructions using `@hot-updater/server` with database adapters (Drizzle, Prisma, Kysely, MongoDB) and frameworks (Hono, Express, Elysia).
+</Callout>
 
 ## Installation
 
@@ -11,160 +20,81 @@ icon: server
 npm install @hot-updater/standalone --save-dev
 ```
 
-## Configuration
-
-```typescript
-interface StandaloneRepositoryConfig {
-  baseUrl: string;                        // Your API base URL
-  commonHeaders?: Record<string, string>; // Headers sent with all requests
-  routes?: Routes;                        // Optional custom route configuration
-}
-
-interface Routes {
-  upsert: () => RouteConfig;
-  list: () => RouteConfig;
-  retrieve: (bundleId: string) => RouteConfig;
-  delete: (bundleId: string) => RouteConfig;
-}
-```
-
 ## Usage
 
-```typescript
-import { standaloneRepository } from '@hot-updater/standalone';
-import { defineConfig } from 'hot-updater';
+Configure your CLI to connect to your self-hosted server:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConfig({
+  build: /* your build plugin */,
+  storage: /* your storage plugin */,
   database: standaloneRepository({
-    baseUrl: process.env.DATABASE_API_URL,
-    commonHeaders: {
-      'Authorization': `Bearer ${process.env.API_TOKEN}`
-    }
+    baseUrl: "http://localhost:3000/hot-updater",
   }),
-  // ... other config
 });
 ```
 
-## API Endpoints
+## Configuration
 
-Your backend must implement these endpoints:
-
-### POST /bundles
-Create or update bundle(s).
-
-**Request:**
-- Method: `POST`
-- Content-Type: `application/json`
-- Body: Array of bundle objects
-
-**Response:**
-```json
-{
-  "success": true
-}
-```
-
-### GET /bundles
-List all bundles (with optional filtering).
-
-**Request:**
-- Method: `GET`
-- Headers: `Cache-Control: no-cache`
-
-**Response:**
-```json
-[
-  {
-    "id": "bundle-id",
-    "channel": "production",
-    "platform": "ios",
-    // ... other bundle fields
-  }
-]
-```
-
-### GET /bundles/:bundleId
-Retrieve a specific bundle by ID.
-
-**Request:**
-- Method: `GET`
-- Headers: `Accept: application/json`
-
-**Response:**
-```json
-{
-  "id": "bundle-id",
-  "channel": "production",
-  // ... bundle fields
-}
-```
-
-### DELETE /bundles/:bundleId
-Delete a specific bundle.
-
-**Request:**
-- Method: `DELETE`
-
-**Response:** 200 OK or 404 Not Found
-
-## Custom Routes
-
-You can customize the endpoint paths and headers:
+The `standaloneRepository` plugin accepts the following options:
 
 ```typescript
-standaloneRepository({
-  baseUrl: 'https://api.example.com',
+interface StandaloneRepositoryConfig {
+  baseUrl: string;                        // Your server URL
+  commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
+  routes?: Routes;                        // Optional custom route configuration
+}
+```
+
+### Basic Example
+
+```typescript
+database: standaloneRepository({
+  baseUrl: "http://localhost:3000/hot-updater",
+})
+```
+
+### With Authentication
+
+```typescript
+database: standaloneRepository({
+  baseUrl: process.env.HOT_UPDATER_SERVER_URL!,
+  commonHeaders: {
+    "Authorization": `Bearer ${process.env.API_TOKEN}`
+  }
+})
+```
+
+### With Custom Routes
+
+```typescript
+database: standaloneRepository({
+  baseUrl: "https://api.example.com",
   routes: {
     upsert: () => ({
-      path: '/v1/metadata/bundles',
-      headers: { 'X-Custom-Header': 'value' }
+      path: "/v1/hot-updater/bundles",
+      headers: { "X-Custom-Header": "value" }
     }),
     list: () => ({
-      path: '/v1/metadata/bundles',
-      headers: { 'Cache-Control': 'no-store' }
+      path: "/v1/hot-updater/bundles"
     }),
     retrieve: (bundleId) => ({
-      path: `/v1/metadata/bundles/${bundleId}`,
-      headers: { 'Accept': 'application/json' }
+      path: `/v1/hot-updater/bundles/${bundleId}`
     }),
     delete: (bundleId) => ({
-      path: `/v1/metadata/bundles/${bundleId}`
+      path: `/v1/hot-updater/bundles/${bundleId}`
     })
   }
 })
 ```
 
-## Bundle Object Schema
+## Next Steps
 
-Your API should handle bundle objects with these fields:
-- `id` - Unique bundle identifier
-- `channel` - Deployment channel (e.g., "production", "staging")
-- `platform` - Platform ("ios" or "android")
-- `storageUri` - URI where bundle files are stored
-- `createdAt` - Timestamp
-- Other metadata fields
-
-## Complete Example
-
-Combined standalone storage and database:
-
-```typescript
-import { standaloneStorage, standaloneRepository } from '@hot-updater/standalone';
-import { defineConfig } from 'hot-updater';
-
-export default defineConfig({
-  storage: standaloneStorage({
-    baseUrl: process.env.STORAGE_API_URL,
-    commonHeaders: {
-      'Authorization': `Bearer ${process.env.API_TOKEN}`
-    }
-  }),
-  database: standaloneRepository({
-    baseUrl: process.env.DATABASE_API_URL,
-    commonHeaders: {
-      'Authorization': `Bearer ${process.env.API_TOKEN}`
-    }
-  }),
-  // ... other config
-});
-```
+- [CLI Configuration](../self-hosted/cli-configuration) - Complete CLI configuration guide
+- [Self-Hosted Overview](../self-hosted/overview) - Learn about the architecture
+- [Quick Start Guide](../self-hosted/quick-start) - Set up a server in 5 minutes
+- [Database Adapters](../self-hosted/database) - Choose your ORM (Drizzle, Prisma, Kysely, MongoDB)
+- [Server Frameworks](../self-hosted/frameworks) - Choose your framework (Hono, Express, Elysia)

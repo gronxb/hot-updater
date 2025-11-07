@@ -9,7 +9,9 @@ icon: Rocket
 Install all required dependencies at once.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 @types/better-sqlite3 --save-dev
+npm install @hot-updater/server @hot-updater/aws 
+npm install hono @hono/node-server
+npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
 ```
 
 ## Database Setup
@@ -91,6 +93,37 @@ node src/index.ts
 ```
 
 Your Hot Updater server is now running at `http://localhost:3000/hot-updater`!
+
+## CLI Configuration
+
+Configure your Hot Updater CLI to connect to this self-hosted server.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: bare(),
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+  }),
+});
+```
+
+<Callout type="warn">
+The `storage` plugin here must match the `storagePlugins` in your server's `createHotUpdater` configuration. Both use `s3Storage` in this example.
+</Callout>
 
 ## React Native Setup
 
