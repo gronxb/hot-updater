@@ -1,5 +1,13 @@
 # @hot-updater/aws
 
+## 0.21.7
+
+### Patch Changes
+
+- 2b408f2: docs: revamp hot-updater.dev
+- Updated dependencies [2b408f2]
+  - @hot-updater/plugin-core@0.21.7
+
 ## 0.21.6
 
 ### Patch Changes

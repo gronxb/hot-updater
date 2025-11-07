@@ -1,5 +1,13 @@
 # @hot-updater/sentry-plugin
 
+## 0.21.7
+
+### Patch Changes
+
+- Updated dependencies [2b408f2]
+  - @hot-updater/plugin-core@0.21.7
+  - @hot-updater/core@0.21.7
+
 ## 0.21.6
 
 ### Patch Changes

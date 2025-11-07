@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/example-react-native-v81",
-  "version": "0.21.6",
+  "version": "0.21.7",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
