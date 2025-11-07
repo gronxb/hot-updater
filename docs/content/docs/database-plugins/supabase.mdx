@@ -1,0 +1,69 @@
+---
+title: "Supabase Database"
+description: Store your Hot Updater bundle metadata in Supabase PostgreSQL database.
+icon: supabase
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/supabase --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed/supabase) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface SupabaseDatabaseConfig {
+  supabaseUrl: string;       // Your Supabase project URL
+  supabaseAnonKey: string;   // Your Supabase anon/public key
+}
+```
+
+## Usage
+
+```typescript
+import { supabaseDatabase } from '@hot-updater/supabase';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: supabaseDatabase({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+import { supabaseStorage, supabaseDatabase } from '@hot-updater/supabase';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: supabaseStorage({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    bucketName: 'hot-updater-bundles'
+  }),
+  database: supabaseDatabase({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  }),
+  // ... other config
+});
+```

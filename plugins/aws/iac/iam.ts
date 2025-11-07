@@ -86,7 +86,10 @@ export class IAMManager {
           AssumeRolePolicyDocument: assumeRolePolicyDocument,
           Description: "Role for Lambda@Edge to access S3 and SSM",
         });
-        const lambdaRoleArn = createRoleResp.Role?.Arn!;
+        if (!createRoleResp.Role?.Arn) {
+          throw new Error("Failed to create IAM role: No ARN returned");
+        }
+        const lambdaRoleArn = createRoleResp.Role.Arn;
         p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
 
         // Attach required managed policies

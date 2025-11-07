@@ -1,0 +1,132 @@
+---
+title: "Overview"
+description: Build a custom backend server for Hot Updater database with any framework and ORM.
+icon: Server
+---
+
+## Installation
+
+Install the server package and standalone plugin.
+
+```package-install
+npm install @hot-updater/server @hot-updater/standalone --save-dev
+```
+
+## Architecture
+
+Self-hosted mode lets you control the database layer while using existing cloud storage plugins.
+
+**How it works:**
+- **CLI**: Uses `standaloneRepository` in hot-updater.config.ts to send requests to your server
+- **Server**: Handles database operations with `@hot-updater/server`
+- **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
+
+This approach gives you full control over metadata while leveraging reliable cloud storage.
+
+## CLI Configuration
+
+Configure your Hot Updater CLI to use the self-hosted database.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: bare(),
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+  }),
+});
+```
+
+## Storage Plugins
+
+The `storagePlugins` field in your server configuration acts as a decoder/interpreter for storage URIs. Here's how it works:
+
+1. When you run `npx hot-updater deploy` from your `hot-updater.config.ts`, the bundle is uploaded and a `storageUri` is saved to the database
+2. When the API returns bundle information, the server decodes the `storageUri` using the storage plugin to generate a download URL
+3. React Native clients download the bundle using this URL
+
+### Multiple Storage Plugins
+
+`storagePlugins` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin acts as a decoder for its specific storage URI format.
+
+**Use cases:**
+- Bundles stored across different storage providers
+- Migrating between storage providers (old and new bundles coexist)
+- Multi-region deployments with different storage backends
+
+**Example with multiple plugins:**
+```typescript title="src/hotUpdater.ts"
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  storagePlugins: [
+    s3Storage({ /* AWS S3 config */ }),
+    supabaseStorage({ /* Supabase config */ }),
+    myCustomStorage({ /* My Custom Storage */})
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+The server automatically uses the correct plugin to decode each `storageUri` based on its format.
+
+<Callout type="warn">
+**Recommendation: Match Your CLI Configuration**
+
+For most use cases, use only the storage plugin that matches your CLI's `hot-updater.config.ts`.
+
+**CLI (hot-updater.config.ts):**
+```typescript
+storage: s3Storage({ ... })
+```
+
+**Server (src/hotUpdater.ts):**
+```typescript
+storagePlugins: [s3Storage({ ... })]
+```
+
+This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
+</Callout>
+
+**Available official plugins:**
+- [s3Storage](../storage-plugins/aws) - AWS S3 and Cloudflare R2
+- [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
+- [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage
+
+## Database Adapters
+
+Start by setting up your database adapter. Choose the ORM that fits your project:
+
+- [Drizzle](./database/drizzle) - TypeScript ORM with SQL-like syntax
+- [Prisma](./database/prisma) - Next-generation ORM with intuitive data modeling
+- [Kysely](./database/kysely) - Type-safe SQL query builder
+- [MongoDB](./database/mongodb) - Native MongoDB driver
+
+## Server Frameworks
+
+After configuring your database, choose the framework that fits your stack:
+
+- [Hono](./frameworks/hono) - Lightweight Web Standard framework
+- [Express](./frameworks/express) - Popular Node.js framework
+- [Elysia](./frameworks/elysia) - Modern Bun-first framework
+
+## Key Features
+
+- **Framework Agnostic**: Use Hono, Express, Elysia, or any Web Standard framework
+- **ORM choice**: Drizzle, Prisma, Kysely, or native MongoDB driver
+- **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
+- **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
+- **Type safety**: Full TypeScript support across all adapters
+- **Production ready**: Built-in graceful shutdown and error handling

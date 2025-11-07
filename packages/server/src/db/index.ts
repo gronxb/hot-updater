@@ -45,7 +45,7 @@ export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
 
   adapterName: string;
-  createMigrator: HotUpdaterClient["createMigrator"];
+  createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
 };
 

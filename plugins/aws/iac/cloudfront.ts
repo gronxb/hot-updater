@@ -118,7 +118,12 @@ export class CloudFrontManager {
             SigningProtocol: "sigv4",
           },
         });
-        oacId = createOacResp.OriginAccessControl?.Id!;
+        if (!createOacResp.OriginAccessControl?.Id) {
+          throw new Error(
+            "Failed to create Origin Access Control: No ID returned",
+          );
+        }
+        oacId = createOacResp.OriginAccessControl.Id;
       }
     } catch {
       throw new Error("Failed to get or create Origin Access Control");
@@ -489,8 +494,13 @@ export class CloudFrontManager {
       const distResp = await cloudfrontClient.createDistribution({
         DistributionConfig: finalDistributionConfig,
       });
-      const distributionId = distResp.Distribution?.Id!;
-      const distributionDomain = distResp.Distribution?.DomainName!;
+      if (!distResp.Distribution?.Id || !distResp.Distribution?.DomainName) {
+        throw new Error(
+          "Failed to create CloudFront distribution: No ID or DomainName returned",
+        );
+      }
+      const distributionId = distResp.Distribution.Id;
+      const distributionDomain = distResp.Distribution.DomainName;
       p.log.success(
         `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
       );
