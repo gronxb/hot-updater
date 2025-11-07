@@ -32,7 +32,7 @@
     "@types/react-dom": "^19.2.2",
     "tailwindcss": "^4.1.16",
     "typescript": "^5.9.3",
-    "vite": "^7.1.12",
+    "vite": "npm:rolldown-vite@latest",
     "vite-tsconfig-paths": "^5.1.4"
   }
 }
