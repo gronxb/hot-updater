@@ -5,6 +5,7 @@ import { Provider } from "@/components/provider";
 export default function RootLayout({ children }: { children: ReactNode }) {
   const siteUrl = "https://hot-updater.dev";
   const ogImageUrl = `${siteUrl}/og.png`;
+  const logoUrl = `${siteUrl}/logo.webp`;
 
   return (
     <>
@@ -62,6 +63,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <meta property="og:image:height" content="2520" />
       <meta property="og:image:type" content="image/png" />
       <meta property="og:site_name" content="Hot Updater" />
+      <meta property="og:locale" content="en_US" />
+      <meta property="og:logo" content={logoUrl} />
 
       {/* Twitter */}
       <meta name="twitter:card" content="summary_large_image" />

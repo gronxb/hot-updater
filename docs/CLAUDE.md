@@ -11,8 +11,8 @@ docs/
 ├── content/
 │   └── docs/
 │       ├── get-started/        # Getting started guides
-│       ├── managed-hosting/    # Managed cloud provider guides (Supabase, Firebase, Cloudflare, AWS)
-│       ├── self-hosting/       # Self-hosting server setup guides
+│       ├── managed/            # Self-Hosting (Managed) - Managed cloud provider guides (Supabase, Firebase, Cloudflare, AWS)
+│       ├── custom/             # Self-Hosting (Custom) - Custom server setup guides
 │       ├── build-plugins/      # Build plugin documentation
 │       ├── storage-plugins/    # Storage plugin documentation
 │       ├── database-plugins/   # Database plugin documentation
@@ -61,11 +61,11 @@ Each directory with documentation pages needs a `meta.json` file:
 }
 ```
 
-**Multi-page section** (`content/docs/self-hosting/meta.json`):
+**Multi-page section** (`content/docs/custom/meta.json`):
 ```json
 {
-  "title": "Self-Hosting",
-  "description": "Self-hosting server setup",
+  "title": "Self Hosting (Custom)",
+  "description": "Self-hosted server setup",
   "icon": "Server",
   "pages": [
     "overview",
@@ -191,15 +191,15 @@ VARIABLE_NAME=value
 
 ## Documentation Sections
 
-### Managed Hosting
-Located in `content/docs/managed-hosting/`
+### Self-Hosting (Managed)
+Located in `content/docs/managed/`
 - supabase.mdx - Supabase setup guide
 - firebase.mdx - Firebase setup guide
 - cloudflare.mdx - Cloudflare setup guide
 - aws.mdx - AWS setup guide
 
-### Self-Hosting
-Located in `content/docs/self-hosting/`
+### Self-Hosting (Custom)
+Located in `content/docs/custom/`
 - overview.mdx - Self-hosting architecture overview
 - quick-start.mdx - Quick start guide
 - cli-configuration.mdx - CLI configuration
@@ -290,11 +290,11 @@ Located in `src/pages/docs/[...slugs].tsx:14-24` - handles missing documentation
 
 When referencing documentation in code, comments, or other docs, use these patterns:
 
-- **Managed hosting**: `/docs/managed-hosting/{provider}` (e.g., `/docs/managed-hosting/supabase`)
-- **Self-hosting**: `/docs/self-hosting/{topic}` (e.g., `/docs/self-hosting/quick-start`)
-- **Database adapters**: `/docs/self-hosting/database/{adapter}` (e.g., `/docs/self-hosting/database/drizzle`)
-- **Server frameworks**: `/docs/self-hosting/frameworks/{framework}` (e.g., `/docs/self-hosting/frameworks/hono`)
-- **Hosting platforms**: `/docs/self-hosting/hosting/{platform}` (e.g., `/docs/self-hosting/hosting/docker`)
+- **Self-Hosting (Managed)**: `/docs/managed/{provider}` (e.g., `/docs/managed/supabase`)
+- **Self-Hosting (Custom)**: `/docs/custom/{topic}` (e.g., `/docs/custom/quick-start`)
+- **Database adapters**: `/docs/custom/database/{adapter}` (e.g., `/docs/custom/database/drizzle`)
+- **Server frameworks**: `/docs/custom/frameworks/{framework}` (e.g., `/docs/custom/frameworks/hono`)
+- **Hosting platforms**: `/docs/custom/hosting/{platform}` (e.g., `/docs/custom/hosting/docker`)
 - **Storage plugins**: `/docs/storage-plugins/{provider}` (e.g., `/docs/storage-plugins/aws`)
 - **Database plugins**: `/docs/database-plugins/{provider}` (e.g., `/docs/database-plugins/cloudflare`)
 - **Build plugins**: `/docs/build-plugins/{bundler}` (e.g., `/docs/build-plugins/expo`)
@@ -315,4 +315,4 @@ When referencing documentation in code, comments, or other docs, use these patte
 - Show complete working examples with imports
 - Keep consistent structure across all plugin docs
 - Organize content logically: Overview → Setup → Usage → Advanced
-- **Important**: Documentation folder names are `managed-hosting` (not managed-providers) and `self-hosting` (not self-hosted)
+- **Important**: Documentation folder names are `managed` (Self-Hosting (Managed)) and `custom` (Self-Hosting (Custom))

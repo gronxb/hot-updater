@@ -1,5 +1,5 @@
 {
-  "title": "Self Hosting",
+  "title": "Self Hosting (Custom)",
   "description": "Self-hosted server setup",
   "icon": "Server",
   "pages": ["overview", "quick-start", "database", "frameworks", "cli-configuration", "hosting"]

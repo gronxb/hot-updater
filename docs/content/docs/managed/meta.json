@@ -1,5 +1,5 @@
 {
-  "title": "Managed Hosting",
+  "title": "Self Hosting (Managed)",
   "description": "Managed cloud providers",
   "icon": "Cloud",
   "pages": ["supabase", "cloudflare", "aws", "firebase"]
