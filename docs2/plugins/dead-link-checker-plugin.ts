@@ -171,7 +171,7 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
       return null;
     }
 
-    const contentRoot = resolve(config.root, contentDir);
+    const _contentRoot = resolve(config.root, contentDir);
     const displayPath = assetPath;
 
     // Check if file exists
@@ -179,8 +179,7 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
       // Validate file extension
       const validImageExts = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
       const validVideoExts = [".mov", ".mp4", ".webm", ".ogg"];
-      const validExts =
-        assetType === "Image" ? validImageExts : validVideoExts;
+      const validExts = assetType === "Image" ? validImageExts : validVideoExts;
 
       const hasValidExt = validExts.some((ext) =>
         resolvedPath.toLowerCase().endsWith(ext),
@@ -207,10 +206,9 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
       rawLink: assetPath,
       resolvedPath: displayPath,
       issue: `${assetType} file does not exist`,
-      suggestion:
-        assetPath.startsWith("/")
-          ? `Check if file exists in public${assetPath}`
-          : "Check the path or create the missing file",
+      suggestion: assetPath.startsWith("/")
+        ? `Check if file exists in public${assetPath}`
+        : "Check the path or create the missing file",
     };
   }
 
