@@ -383,20 +383,51 @@ export const myStorage = (
 
 ### Server-Side Configuration
 
-Once you've created your custom storage plugin, use it in your `hot-updater.config.ts`:
+Once you've created your custom storage plugin, use it in your `createHotUpdater` instance. This is the server-side configuration that handles update requests from your React Native app:
 
-```typescript
-import { defineConfig } from 'hot-updater';
-import { myStorage } from './my-storage';
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { myStorage } from "./my-storage";
+import { db } from "./kysely";
+
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  storagePlugins: [
+    myStorage({
+      endpoint: process.env.MY_STORAGE_ENDPOINT,
+      apiKey: process.env.MY_STORAGE_API_KEY,
+      bucketName: "my-bundles",
+      basePath: "production",
+    }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+For a complete server setup example, see the [Quick Start](/docs/custom/quick-start) guide.
+
+### CLI Configuration
+
+To deploy bundles using your custom storage plugin, configure your CLI in `hot-updater.config.ts`:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { bare } from "@hot-updater/bare";
+import { myStorage } from "./my-storage";
+import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConfig({
+  build: bare(),
   storage: myStorage({
     endpoint: process.env.MY_STORAGE_ENDPOINT,
     apiKey: process.env.MY_STORAGE_API_KEY,
-    bucketName: 'my-bundles',
-    basePath: 'production',
+    bucketName: "my-bundles",
+    basePath: "production",
   }),
-  // ... other config
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+  }),
 });
 ```
 
@@ -447,13 +478,13 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-The `source` parameter should point to your update server's check-update endpoint, which uses your custom storage plugin to serve bundles. The update server is responsible for:
+The `source` parameter should point to your update server's endpoint (configured with `createHotUpdater`). The update server uses your custom storage plugin to serve bundles:
 
-1. Checking if updates are available for the client's current version/channel
-2. Using your custom storage plugin's `getDownloadUrl()` method to generate download URLs
-3. Serving bundle metadata to the client
+1. Checks if updates are available for the client's current version/channel
+2. Uses your custom storage plugin's `getDownloadUrl()` method to generate download URLs
+3. Serves bundle metadata to the client
 
-For more information on setting up an update server, see the [Standalone Storage Plugin](/docs/storage-plugins/standalone) documentation.
+For more information on setting up an update server, see the [Quick Start](/docs/custom/quick-start) guide.
 
 ## Helper Utilities
 
