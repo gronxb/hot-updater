@@ -5,5 +5,6 @@
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
 
-# Ensure trailing slash consistency (optional)
-/docs/* /docs/:splat 200
+# 404 fallback - serve custom 404 page for non-existent routes
+# This preserves SSG benefits while handling true 404s
+/* /404.html 404
