@@ -1,0 +1,9 @@
+# Cloudflare Pages Redirects for Hot Updater Docs
+# Format: <source> <destination> [<status_code>]
+# Status codes: 301 (permanent), 302 (temporary), 308 (permanent, no method change)
+
+# Redirect root docs to introduction
+/docs /docs/get-started/introduction 302
+
+# Ensure trailing slash consistency (optional)
+/docs/* /docs/:splat 200

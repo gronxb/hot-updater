@@ -3,10 +3,6 @@ import type { ReactNode } from "react";
 import { Provider } from "@/components/provider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  const siteUrl = "https://hot-updater.dev";
-  const ogImageUrl = `${siteUrl}/og.png`;
-  const logoUrl = `${siteUrl}/logo.webp`;
-
   return (
     <>
       <meta charSet="utf-8" />
@@ -49,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
       {/* Open Graph / Facebook */}
       <meta property="og:type" content="website" />
-      <meta property="og:url" content={siteUrl} />
+      <meta property="og:url" content={"https://hot-updater.dev"} />
       <meta
         property="og:title"
         content="Hot Updater - Self-hosted OTA updates for React Native"
@@ -58,17 +54,17 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         property="og:description"
         content="Self-hosted over-the-air updates for React Native"
       />
-      <meta property="og:image" content={ogImageUrl} />
+      <meta property="og:image" content="/og.png" />
       <meta property="og:image:width" content="4800" />
       <meta property="og:image:height" content="2520" />
       <meta property="og:image:type" content="image/png" />
       <meta property="og:site_name" content="Hot Updater" />
       <meta property="og:locale" content="en_US" />
-      <meta property="og:logo" content={logoUrl} />
+      <meta property="og:logo" content="/logo.webp" />
 
       {/* Twitter */}
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:url" content={siteUrl} />
+      <meta name="twitter:url" content="https://hot-updater.dev" />
       <meta
         name="twitter:title"
         content="Hot Updater - Self-hosted OTA updates for React Native"
@@ -77,7 +73,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         name="twitter:description"
         content="Self-hosted over-the-air updates for React Native"
       />
-      <meta name="twitter:image" content={ogImageUrl} />
+      <meta name="twitter:image" content="/og.png" />
 
       <Provider>{children}</Provider>
     </>
