@@ -30,7 +30,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       />
 
       {/* Preload Logo */}
-      <link rel="preload" as="image" href="/logo.webp" type="image/webp" />
+      <link
+        rel="preload"
+        href="/logo.webp"
+        as="image"
+        type="image/webp"
+      />
 
       {/* Primary Meta Tags */}
       <meta
