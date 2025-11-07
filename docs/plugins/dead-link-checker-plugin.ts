@@ -84,11 +84,13 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
 
         // Skip excluded links
         if (isExcluded(linkPath)) {
+          match = linkRegex.exec(line);
           continue;
         }
 
         // Only check relative links
         if (!linkPath.startsWith(".")) {
+          match = linkRegex.exec(line);
           continue;
         }
 
@@ -99,6 +101,8 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
             line: i + 1,
           });
         }
+
+        match = linkRegex.exec(line);
       }
 
       // Check JSX-style src attributes (e.g., <img src={"/path"} /> or <video src={"/path"} />)
@@ -106,13 +110,17 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
       if (isImageOrVideoLine) {
         // Try JSX style first
         jsxSrcRegex.lastIndex = 0;
-        let srcMatch: RegExpExecArray | null;
-        while ((srcMatch = jsxSrcRegex.exec(line)) !== null) {
+        let srcMatch = jsxSrcRegex.exec(line);
+        while (srcMatch !== null) {
           const srcPath = srcMatch[1];
-          if (!srcPath) continue;
+          if (!srcPath) {
+            srcMatch = jsxSrcRegex.exec(line);
+            continue;
+          }
 
           // Skip excluded links
           if (isExcluded(srcPath)) {
+            srcMatch = jsxSrcRegex.exec(line);
             continue;
           }
 
@@ -124,16 +132,23 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
               line: i + 1,
             });
           }
+
+          srcMatch = jsxSrcRegex.exec(line);
         }
 
         // Try HTML style
         htmlSrcRegex.lastIndex = 0;
-        while ((srcMatch = htmlSrcRegex.exec(line)) !== null) {
+        srcMatch = htmlSrcRegex.exec(line);
+        while (srcMatch !== null) {
           const srcPath = srcMatch[1];
-          if (!srcPath) continue;
+          if (!srcPath) {
+            srcMatch = htmlSrcRegex.exec(line);
+            continue;
+          }
 
           // Skip excluded links
           if (isExcluded(srcPath)) {
+            srcMatch = htmlSrcRegex.exec(line);
             continue;
           }
 
@@ -145,6 +160,8 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
               line: i + 1,
             });
           }
+
+          srcMatch = htmlSrcRegex.exec(line);
         }
       }
     }
