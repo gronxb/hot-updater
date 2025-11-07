@@ -1,0 +1,125 @@
+---
+title: "Prisma"
+description: Build a self-hosted Hot Updater server with Prisma ORM.
+icon: Database
+---
+
+## Installation
+
+Install Prisma and initialize your project.
+
+```package-install
+npm install prisma @prisma/client --save-dev
+```
+
+Initialize Prisma:
+```bash
+npx prisma init
+```
+
+For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
+
+## Setup
+
+Create a database connection file:
+
+```typescript title="src/prisma.ts"
+import { PrismaClient } from "@prisma/client";
+
+export const prisma = new PrismaClient();
+```
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance:
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
+import { s3Storage } from "@hot-updater/aws";
+import { prisma } from "./prisma";
+
+export const hotUpdater = createHotUpdater({
+  database: prismaAdapter({ prisma, provider: "sqlite" }),
+  storagePlugins: [
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+## Schema Generation
+
+Generate the Prisma schema for Hot Updater tables.
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+This command generates the schema. Copy it into your `prisma/schema.prisma` file.
+
+**Example schema.prisma:**
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Bundle {
+  id                 String   @id
+  platform           String
+  shouldForceUpdate  Boolean
+  enabled            Boolean
+  fileHash           String
+  storageUri         String
+  gitCommitHash      String?
+  message            String?
+  channel            String
+  targetAppVersion   String?
+  fingerprintHash    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([channel])
+  @@index([platform])
+}
+```
+
+Run migrations:
+```bash
+npx prisma migrate dev --name init
+```
+
+Generate Prisma Client:
+```bash
+npx prisma generate
+```
+
+## API Endpoints
+
+The server automatically creates these endpoints:
+
+### App Update Endpoints
+- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
+- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
+
+### Bundle Management
+- `POST /hot-updater/bundles` - Create or update bundles
+- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
+- `GET /hot-updater/bundles/:id` - Get bundle by ID
+- `DELETE /hot-updater/bundles/:id` - Delete bundle
+
+### Channels
+- `GET /hot-updater/channels` - List all available channels

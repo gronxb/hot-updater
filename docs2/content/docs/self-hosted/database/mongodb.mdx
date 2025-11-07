@@ -1,0 +1,80 @@
+---
+title: "MongoDB"
+description: Build a self-hosted Hot Updater server with MongoDB.
+icon: Database
+---
+
+## Installation
+
+Install the MongoDB native driver.
+
+```package-install
+npm install mongodb --save-dev
+```
+
+## Setup
+
+Create a database connection file:
+
+```typescript title="src/mongodb.ts"
+import { MongoClient } from "mongodb";
+
+export const client = new MongoClient(process.env.MONGODB_URI!);
+
+// Connect to MongoDB
+await client.connect();
+```
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance:
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
+import { s3Storage } from "@hot-updater/aws";
+import { client } from "./mongodb";
+
+export const hotUpdater = createHotUpdater({
+  database: mongoAdapter({ client }),
+  storagePlugins: [
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+## Schema Generation
+
+Run the database migration to create the MongoDB collection and indexes.
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+```
+
+This command targets the `src/hotUpdater.ts` file and creates the `bundles` collection with necessary indexes.
+
+## API Endpoints
+
+The server automatically creates these endpoints:
+
+### App Update Endpoints
+- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
+- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
+
+### Bundle Management
+- `POST /hot-updater/bundles` - Create or update bundles
+- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
+- `GET /hot-updater/bundles/:id` - Get bundle by ID
+- `DELETE /hot-updater/bundles/:id` - Delete bundle
+
+### Channels
+- `GET /hot-updater/channels` - List all available channels

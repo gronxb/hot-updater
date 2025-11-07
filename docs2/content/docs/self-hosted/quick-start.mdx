@@ -1,0 +1,120 @@
+---
+title: "Quick Start"
+description: Get started with a self-hosted Hot Updater server in 5 minutes.
+icon: Rocket
+---
+
+## Installation
+
+Install all required dependencies at once.
+
+```package-install
+npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 @types/better-sqlite3 --save-dev
+```
+
+## Database Setup
+
+Create the database connection file.
+
+```typescript title="src/kysely.ts"
+import { Kysely, SqliteDialect } from "kysely";
+import Database from "better-sqlite3";
+
+export const db = new Kysely({
+  dialect: new SqliteDialect({
+    database: new Database("./data/database.db"),
+  }),
+});
+```
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](./overview#storage-plugins)).
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { s3Storage } from "@hot-updater/aws";
+import { db } from "./kysely";
+
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  storagePlugins: [
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+## Server Setup
+
+Create the server entry point.
+
+```typescript title="src/index.ts"
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
+
+const app = new Hono();
+
+app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
+  return hotUpdater.handler(c.req.raw); // [!code ++]
+}); // [!code ++]
+
+serve({ fetch: app.fetch, port: 3000 }, (info) => {
+  console.log(`Server running at http://localhost:${info.port}`);
+});
+```
+
+## Schema Generation
+
+Generate the database schema.
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+## Run Server
+
+Start your server.
+
+```bash
+node src/index.ts
+```
+
+Your Hot Updater server is now running at `http://localhost:3000/hot-updater`!
+
+## React Native Setup
+
+Configure your React Native app to connect to this server. Use `getUpdateSource` with your server URL.
+
+```typescript title="App.tsx"
+import { HotUpdater } from '@hot-updater/react-native';
+import { getUpdateSource } from '@hot-updater/react-native';
+
+export default HotUpdater.wrap({
+  source: getUpdateSource('http://localhost:3000/hot-updater', { // [!code ++]
+    updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
+  }), // [!code ++]
+  fallbackComponent: ({ progress, status }) => (
+    // ... Custom loading UI
+  ),
+  onError: error => {
+    // ... Error handling
+  },
+})(App);
+```
+
+## Next Steps
+
+- Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
+- Explore other [Database Adapters](./database) (Drizzle, Prisma, MongoDB)
+- Try different [Server Frameworks](./frameworks) (Express, Elysia)

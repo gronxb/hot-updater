@@ -1,0 +1,89 @@
+---
+title: "Kysely"
+description: Build a self-hosted Hot Updater server with Kysely query builder.
+icon: Database
+---
+
+## Installation
+
+Install Kysely and SQLite driver.
+
+```package-install
+npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
+```
+
+For other databases, see [Kysely's dialect documentation](https://kysely.dev/docs/dialects).
+
+## Setup
+
+Create a database connection file:
+
+```typescript title="src/kysely.ts"
+import { Kysely, SqliteDialect } from "kysely";
+import Database from "better-sqlite3";
+
+export const db = new Kysely({
+  dialect: new SqliteDialect({
+    database: new Database("./data/database.db"),
+  }),
+});
+```
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance:
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { s3Storage } from "@hot-updater/aws";
+import { db } from "./kysely";
+
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  storagePlugins: [
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+## Schema Generation
+
+Generate the Kysely type definitions for Hot Updater tables.
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+<Callout>
+**Generate vs Migrate**
+
+- `npx hot-updater db generate` - Creates SQL migration files for manual review
+- `npx hot-updater db migrate` - Runs Kysely migrator to apply migrations to the database
+</Callout>
+
+## API Endpoints
+
+The server automatically creates these endpoints:
+
+### App Update Endpoints
+- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
+- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
+
+### Bundle Management
+- `POST /hot-updater/bundles` - Create or update bundles
+- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
+- `GET /hot-updater/bundles/:id` - Get bundle by ID
+- `DELETE /hot-updater/bundles/:id` - Delete bundle
+
+### Channels
+- `GET /hot-updater/channels` - List all available channels

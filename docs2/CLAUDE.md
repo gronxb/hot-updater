@@ -19,6 +19,70 @@ docs2/
 └── waku.config.ts             # Waku configuration
 ```
 
+## Sidebar Configuration (meta.json)
+
+**IMPORTANT**: Every documentation section MUST have a `meta.json` file to appear in the sidebar.
+
+### meta.json Structure
+
+Each directory with documentation pages needs a `meta.json` file:
+
+```json
+{
+  "title": "Section Title",
+  "description": "Brief description of the section",
+  "icon": "IconName",
+  "pages": ["page1", "page2", "page3"]
+}
+```
+
+### meta.json Rules
+
+- **File references**: List page filenames WITHOUT the `.mdx` extension
+- **Page order**: Pages appear in the sidebar in the array order
+- **Icon names**: Use Lucide icon names (e.g., "Server", "Database", "Hammer", "Plug")
+- **Required fields**: All fields (title, description, icon, pages) are required
+
+### Examples
+
+**Plugin section** (`content/docs/storage-plugins/meta.json`):
+```json
+{
+  "title": "Storage Plugins",
+  "description": "Storage provider plugins",
+  "icon": "Database",
+  "pages": ["supabase", "cloudflare", "firebase", "aws"]
+}
+```
+
+**Multi-page section** (`content/docs/self-hosted/meta.json`):
+```json
+{
+  "title": "Self-Hosted",
+  "description": "Self-hosted server setup",
+  "icon": "Server",
+  "pages": [
+    "overview",
+    "hono",
+    "express",
+    "elysia",
+    "drizzle",
+    "prisma",
+    "kysely",
+    "mongodb"
+  ]
+}
+```
+
+### When to Update meta.json
+
+- When adding new documentation pages
+- When removing documentation pages
+- When reordering pages in the sidebar
+- When changing section metadata
+
+**Remember**: If a page is not listed in `pages` array, it won't appear in the sidebar!
+
 ## Documentation Standards
 
 ### File Format

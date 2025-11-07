@@ -1,0 +1,71 @@
+---
+title: "Hono"
+description: Build a self-hosted Hot Updater server with Hono framework.
+icon: Sparkles
+---
+
+## Installation
+
+Install Hono.
+
+```package-install
+npm install hono --save-dev
+```
+
+## Setup
+
+Make sure you've set up your database adapter first (see [Database Adapters](../database)).
+
+Import the Hot Updater instance and mount it to your Hono app:
+
+```typescript
+import { Hono } from "hono";
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
+
+const app = new Hono();
+
+app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
+  return hotUpdater.handler(c.req.raw); // [!code ++]
+}); // [!code ++]
+
+export default app;
+```
+
+## API Endpoints
+
+The server automatically creates these endpoints:
+
+### App Update Endpoints
+- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
+- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
+
+### Bundle Management
+- `POST /hot-updater/bundles` - Create or update bundles
+- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
+- `GET /hot-updater/bundles/:id` - Get bundle by ID
+- `DELETE /hot-updater/bundles/:id` - Delete bundle
+
+### Channels
+- `GET /hot-updater/channels` - List all available channels
+
+## React Native Setup
+
+Configure your React Native app to connect to this server. Use `getUpdateSource` with your server URL.
+
+```typescript
+// App.tsx
+import { HotUpdater } from '@hot-updater/react-native';
+import { getUpdateSource } from '@hot-updater/react-native';
+
+export default HotUpdater.wrap({
+  source: getUpdateSource('http://localhost:3000/hot-updater', { // [!code ++]
+    updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
+  }), // [!code ++]
+  fallbackComponent: ({ progress, status }) => (
+    // ... Custom loading UI
+  ),
+  onError: error => {
+    // ... Error handling
+  },
+})(App);
+```

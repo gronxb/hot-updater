@@ -6,6 +6,7 @@ import type { Plugin } from "vite";
 interface LLMPluginOptions {
   baseUrl?: string;
   githubRepo?: string;
+  outputDir?: string;
 }
 
 function humanizeDirectoryName(dirName: string): string {
@@ -57,8 +58,10 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
   const {
     baseUrl = "https://hot-updater.dev",
     githubRepo = "https://github.com/gronxb/hot-updater",
+    outputDir = ".output/public",
   } = options;
 
+  let config: any;
   let categoryMap: Record<string, string> = {};
   let categoryOrder: string[] = [];
 
@@ -96,19 +99,15 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
         getCategoryFromPath,
       );
 
-      // Write to public directory for dev server
-      const publicDir = join(process.cwd(), "public");
-      await mkdir(publicDir, { recursive: true });
-      await writeFile(join(publicDir, "llms.txt"), llmsSummary, "utf-8");
-      await writeFile(join(publicDir, "llms-full.txt"), llmsFull, "utf-8");
+      // Write to build output directory only
+      const outputPath = join(process.cwd(), outputDir);
+      await mkdir(outputPath, { recursive: true });
+      await writeFile(join(outputPath, "llms.txt"), llmsSummary, "utf-8");
+      await writeFile(join(outputPath, "llms-full.txt"), llmsFull, "utf-8");
 
-      // Also write to build output directory
-      const outputDir = join(process.cwd(), ".output", "public");
-      await mkdir(outputDir, { recursive: true });
-      await writeFile(join(outputDir, "llms.txt"), llmsSummary, "utf-8");
-      await writeFile(join(outputDir, "llms-full.txt"), llmsFull, "utf-8");
-
-      console.log("✓ Generated llms.txt and llms-full.txt");
+      console.log(
+        "✓ Generated llms.txt and llms-full.txt for production build",
+      );
       console.log(
         `  Found ${Object.keys(categoryMap).length} categories:`,
         Object.keys(categoryMap).join(", "),
@@ -122,14 +121,15 @@ export function llmsTxtPlugin(options: LLMPluginOptions = {}): Plugin {
   return {
     name: "llms-txt-plugin",
 
-    async buildStart() {
-      // Generate files at build start for dev mode
-      await generateFiles();
+    configResolved(resolvedConfig) {
+      config = resolvedConfig;
     },
 
     async closeBundle() {
-      // Generate files after build for production
-      await generateFiles();
+      // Only generate files during production build
+      if (config.command === "build") {
+        await generateFiles();
+      }
     },
   };
 }

@@ -1,0 +1,66 @@
+---
+title: "Elysia"
+description: Build a self-hosted Hot Updater server with Elysia framework.
+icon: Code
+---
+
+## Installation
+
+Install Elysia.
+
+```package-install
+npm install elysia --save-dev
+```
+
+## Setup
+
+Make sure you've set up your database adapter first (see [Database Adapters](../database)).
+
+Import the Hot Updater instance and mount it to your Elysia app:
+
+```typescript
+import { Elysia } from "elysia";
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
+
+new Elysia()
+  .mount("/hot-updater", hotUpdater.handler) // [!code ++]
+  .listen(3000);
+```
+
+## API Endpoints
+
+The server automatically creates these endpoints:
+
+### App Update Endpoints
+- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
+- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
+
+### Bundle Management
+- `POST /hot-updater/bundles` - Create or update bundles
+- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
+- `GET /hot-updater/bundles/:id` - Get bundle by ID
+- `DELETE /hot-updater/bundles/:id` - Delete bundle
+
+### Channels
+- `GET /hot-updater/channels` - List all available channels
+
+## React Native Setup
+
+Configure your React Native app to connect to this server. Use `getUpdateSource` with your server URL.
+
+```typescript title="App.tsx"
+import { HotUpdater } from '@hot-updater/react-native';
+import { getUpdateSource } from '@hot-updater/react-native';
+
+export default HotUpdater.wrap({
+  source: getUpdateSource('http://localhost:3000/hot-updater', { // [!code ++]
+    updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
+  }), // [!code ++]
+  fallbackComponent: ({ progress, status }) => (
+    // ... Custom loading UI
+  ),
+  onError: error => {
+    // ... Error handling
+  },
+})(App);
+```

@@ -14,6 +14,7 @@ export default defineConfig({
       llmsTxtPlugin({
         baseUrl: "https://hot-updater.dev",
         githubRepo: "https://github.com/gronxb/hot-updater",
+        outputDir: "dist/public",
       }),
     ],
   },
