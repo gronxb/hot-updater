@@ -381,6 +381,8 @@ export const myStorage = (
 
 ## Using Your Custom Storage Plugin
 
+### Server-Side Configuration
+
 Once you've created your custom storage plugin, use it in your `hot-updater.config.ts`:
 
 ```typescript
@@ -397,6 +399,61 @@ export default defineConfig({
   // ... other config
 });
 ```
+
+### Client-Side Usage (React Native)
+
+When using a self-hosted custom storage backend, you need to configure your React Native app to fetch updates from your update server. Use `HotUpdater.wrap()` with `getUpdateSource()` to specify your update server endpoint:
+
+```typescript
+// App.tsx
+import React from 'react';
+import { HotUpdater, getUpdateSource } from '@hot-updater/react-native';
+import { View, Text, Modal } from 'react-native';
+
+function App() {
+  return (
+    <View>
+      <Text>My App</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: getUpdateSource(
+    'https://your-update-server.com/api/check-update',
+    {
+      updateStrategy: 'appVersion', // or 'fingerprint'
+    }
+  ),
+  fallbackComponent: ({ progress, status }) => (
+    <Modal transparent visible={true}>
+      <View style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)'
+      }}>
+        <Text style={{ color: 'white', fontSize: 20 }}>
+          {status === 'UPDATING' ? 'Updating...' : 'Checking for Update...'}
+        </Text>
+        {progress > 0 && (
+          <Text style={{ color: 'white', fontSize: 20 }}>
+            {Math.round(progress * 100)}%
+          </Text>
+        )}
+      </View>
+    </Modal>
+  ),
+})(App);
+```
+
+The `source` parameter should point to your update server's check-update endpoint, which uses your custom storage plugin to serve bundles. The update server is responsible for:
+
+1. Checking if updates are available for the client's current version/channel
+2. Using your custom storage plugin's `getDownloadUrl()` method to generate download URLs
+3. Serving bundle metadata to the client
+
+For more information on setting up an update server, see the [Standalone Storage Plugin](/docs/storage-plugins/standalone) documentation.
 
 ## Helper Utilities
 
