@@ -70,7 +70,7 @@ importers:
     devDependencies:
       '@rspress/plugin-llms':
         specifier: ^2.0.0-beta.8
-        version: 2.0.0-beta.8(@rspress/core@2.0.0-beta.8(@types/react@19.2.2)(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))
+        version: 2.0.0-beta.8(@rspress/core@2.0.0-beta.8(@types/react@19.2.2)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))
       '@shikijs/transformers':
         specifier: ^3.4.2
         version: 3.4.2
@@ -79,7 +79,7 @@ importers:
         version: 20.19.11
       rspress:
         specifier: ^2.0.0-beta.8
-        version: 2.0.0-beta.8(@types/react@19.2.2)(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
+        version: 2.0.0-beta.8(@types/react@19.2.2)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       wrangler:
         specifier: ^4.26.0
         version: 4.26.0(@cloudflare/workers-types@4.20250828.1)
@@ -150,6 +150,9 @@ importers:
       vite-tsconfig-paths:
         specifier: ^5.1.4
         version: 5.1.4(rolldown-vite@7.2.2(@types/node@24.10.0)(esbuild@0.25.12)(jiti@2.6.1)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))(typescript@5.9.3)
+      wrangler:
+        specifier: ^4.46.0
+        version: 4.46.0
 
   examples-server/elysia-drizzle-libsql:
     dependencies:
@@ -574,7 +577,7 @@ importers:
         version: 0.80.1(@babel/core@7.26.0)
       '@react-native/eslint-config':
         specifier: 0.80.1
-        version: 0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)
+        version: 0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)
       '@react-native/typescript-config':
         specifier: 0.80.1
         version: 0.80.1
@@ -616,7 +619,7 @@ importers:
         version: link:../../packages/hot-updater
       jest:
         specifier: ^29.6.3
-        version: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.0.4))
+        version: 29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4))
       prettier:
         specifier: 2.8.8
         version: 2.8.8
@@ -671,19 +674,19 @@ importers:
         version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@react-native/eslint-config':
         specifier: 0.74.83
-        version: 0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3)))(prettier@2.8.8)(typescript@5.9.3)
+        version: 0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)))(prettier@2.8.8)(typescript@5.9.3)
       '@react-native/gradle-plugin':
         specifier: 0.74.83
         version: 0.74.83
       '@react-native/metro-config':
         specifier: 0.74.83
-        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
+        version: 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
       '@react-native/typescript-config':
         specifier: 0.74.83
         version: 0.74.83
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
+        version: 2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
         version: 0.2.1
@@ -713,7 +716,7 @@ importers:
         version: 2.2.4
       jest:
         specifier: ^29.6.3
-        version: 29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3))
+        version: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
       metro:
         specifier: 0.80.9
         version: 0.80.9(encoding@0.1.13)
@@ -1083,7 +1086,7 @@ importers:
         version: 0.1.2(hono@4.6.3)(typia@8.0.3(@samchon/openapi@3.1.0)(typescript@5.8.3))
       '@hono/vite-dev-server':
         specifier: ^0.18.1
-        version: 0.18.1(hono@4.6.3)(miniflare@4.20250902.0)(wrangler@4.34.0)
+        version: 0.18.1(hono@4.6.3)(miniflare@4.20251105.0)(wrangler@4.46.0)
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../../plugins/mock
@@ -1349,7 +1352,7 @@ importers:
         version: 0.79.1(@babel/core@7.28.5)(@react-native-community/cli@18.0.0(typescript@5.8.3))(@types/react@19.1.3)(react@19.1.0)
       react-native-builder-bob:
         specifier: ^0.40.10
-        version: 0.40.10
+        version: 0.40.10(encoding@0.1.13)
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -3711,6 +3714,15 @@ packages:
       workerd:
         optional: true
 
+  '@cloudflare/unenv-preset@2.7.9':
+    resolution: {integrity: sha512-Drm7qlTKnvncEv+DANiQNEonq0H0LyIsoFZYJ6tJ8OhAoy5udIE8yp6BsVDYcIjcYLIybp4M7c/P7ly/56SoHg==}
+    peerDependencies:
+      unenv: 2.0.0-rc.24
+      workerd: ^1.20250927.0
+    peerDependenciesMeta:
+      workerd:
+        optional: true
+
   '@cloudflare/vitest-pool-workers@0.8.70':
     resolution: {integrity: sha512-8ZzV4wL4gdloABp2wWaDx5J5mU9Eo3x6fsQCFsvT1TSwNQuFXU+YQt3wk/1vEPpmI9zp4/6ORVI1Jj1U5k4CmA==}
     peerDependencies:
@@ -3736,6 +3748,12 @@ packages:
     cpu: [x64]
     os: [darwin]
 
+  '@cloudflare/workerd-darwin-64@1.20251105.0':
+    resolution: {integrity: sha512-nztUP35wTtUKM+681dBWtUNSySNWELTV+LY43oWy7ZhK19/iBJPQoFY7xpvF7zy4qOOShtise259B65DS4/71Q==}
+    engines: {node: '>=16'}
+    cpu: [x64]
+    os: [darwin]
+
   '@cloudflare/workerd-darwin-arm64@1.20250712.0':
     resolution: {integrity: sha512-7sFzn6rvAcnLy7MktFL42dYtzL0Idw/kiUmNf2P3TvsBRoShhLK5ZKhbw+NAhvU8e4pXWm5lkE0XmpieA0zNjw==}
     engines: {node: '>=16'}
@@ -3750,6 +3768,12 @@ packages:
 
   '@cloudflare/workerd-darwin-arm64@1.20250902.0':
     resolution: {integrity: sha512-5Wr6a5/ixoXuMPOvbprN8k9HhAHDBh8f7H5V4DN/Xb4ORoGkI9AbC5QPpYV0wa3Ncf+CRSGobdmZNyO24hRccA==}
+    engines: {node: '>=16'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@cloudflare/workerd-darwin-arm64@1.20251105.0':
+    resolution: {integrity: sha512-WS/dvPYTW/+gs8s0UvDqDY7wcuIAg/hUpjrMNGepr+Mo38vMU39FYhJQOly99oJCXxMluQqAnRKg09b/9Gr+Rg==}
     engines: {node: '>=16'}
     cpu: [arm64]
     os: [darwin]
@@ -3772,6 +3796,12 @@ packages:
     cpu: [x64]
     os: [linux]
 
+  '@cloudflare/workerd-linux-64@1.20251105.0':
+    resolution: {integrity: sha512-RdHRHo/hpjR6sNw529FkmslVSz/K3Pb1+i3fIoqUrHCrZOUYzFyz3nLeZh4EYaAhcztLWiSTwBv54bcl4sG3wA==}
+    engines: {node: '>=16'}
+    cpu: [x64]
+    os: [linux]
+
   '@cloudflare/workerd-linux-arm64@1.20250712.0':
     resolution: {integrity: sha512-rG8JUleddhUHQVwpXOYv0VbL0S9kOtR9PNKecgVhFpxEhC8aTeg2HNBBjo8st7IfcUvY8WaW3pD3qdAMZ05UwQ==}
     engines: {node: '>=16'}
@@ -3790,6 +3820,12 @@ packages:
     cpu: [arm64]
     os: [linux]
 
+  '@cloudflare/workerd-linux-arm64@1.20251105.0':
+    resolution: {integrity: sha512-5zkxQCqLjwrqZVVJh92J2Drv6xifkP8kN2ltjHdwZQlVzfDW48d7tAtCm1ZooUv204ixvZFarusCfL+IRjExZg==}
+    engines: {node: '>=16'}
+    cpu: [arm64]
+    os: [linux]
+
   '@cloudflare/workerd-windows-64@1.20250712.0':
     resolution: {integrity: sha512-qS8H5RCYwE21Om9wo5/F807ClBJIfknhuLBj16eYxvJcj9JqgAKWi12BGgjyGxHuJJjeoQ63lr4wHAdbFntDDg==}
     engines: {node: '>=16'}
@@ -3804,6 +3840,12 @@ packages:
 
   '@cloudflare/workerd-windows-64@1.20250902.0':
     resolution: {integrity: sha512-DT/o8ZSkmze1YGI7vgVt4ST+VYGb3tNChiFnOM9Z8YOejqKqbVvATB4gi/xMSnNR9CsKFqH4hHWDDtz+wf4uZg==}
+    engines: {node: '>=16'}
+    cpu: [x64]
+    os: [win32]
+
+  '@cloudflare/workerd-windows-64@1.20251105.0':
+    resolution: {integrity: sha512-6BpkfjBIbGR+4FBOcZGcWDLM0XQuoI6R9Dublj/BKf4pv0/xJ4zHdnaYUb5NIlC75L55Ouqw0CEJasoKlMjgnw==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]
@@ -4637,7 +4679,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {'0': node >=0.10.0}
+    engines: {node: '>=0.10.0'}
 
   '@expo/cli@0.17.13':
     resolution: {integrity: sha512-n13yxOmI3I0JidzMdFCH68tYKGDtK4XlDFk1vysZX7AIRKeDVRsSbHhma5jCla2bDt25RKmJBHA9KtzielwzAA==}
@@ -14833,6 +14875,11 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
+  miniflare@4.20251105.0:
+    resolution: {integrity: sha512-n+lCQbGLPjHFm5EKMohxCl+hLIki9rIlJSU9FkYKdJ62cGacetmTH5IgWUZhUFFM+NqhqZLOuWXTAsoZTm0hog==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   minimatch@3.1.2:
     resolution: {integrity: sha512-J7p63hRiAjw1NDEww1W7i37+ByIrOWO5XQQAzZ3VOcL0PNybwpfmV/N05zFAzwQ9USyEcX6t3UO+K5aqBQOIHw==}
 
@@ -15574,10 +15621,6 @@ packages:
 
   path-to-regexp@6.3.0:
     resolution: {integrity: sha512-Yhpw4T9C6hPpgPeA28us07OJeqZ5EzQTkbfwuhsUg0c237RomFoETJgmp2sa3F/41gfLE6G5cqcYwznmeEeOlQ==}
-
-  path-to-regexp@8.2.0:
-    resolution: {integrity: sha512-TdrF7fW9Rphjq4RjrW0Kp2AW0Ahwu9sRGTkS6bvDi0SCwZlEZYmcfDbEsTz8RVk0EHIS/Vd1bv3JhG+1xZuAyQ==}
-    engines: {node: '>=16'}
 
   path-to-regexp@8.3.0:
     resolution: {integrity: sha512-7jdwVIRtsP8MYpdXSwOS0YdD0Du+qOoF/AEPIt88PcCFrZCzx41oxku1jD88hZBwbNUIEfpqvuhjFaMAqMTWnA==}
@@ -18131,6 +18174,10 @@ packages:
     resolution: {integrity: sha512-GrKEsc3ughskmGA9jevVlIOPMiiAHJ4OFUtaAH+NhfTUSiZ1wMPIQqQvAJUrJspFXJt3EBWgpAeoHEDVT1IBug==}
     engines: {node: '>=20.18.1'}
 
+  undici@7.14.0:
+    resolution: {integrity: sha512-Vqs8HTzjpQXZeXdpsfChQTlafcMQaaIwnGwLam1wudSSjlJeQ3bw1j+TLPePgrCnCpUXx7Ba5Pdpf5OBih62NQ==}
+    engines: {node: '>=20.18.1'}
+
   unenv@2.0.0-rc.17:
     resolution: {integrity: sha512-B06u0wXkEd+o5gOCMl/ZHl5cfpYbDZKAT+HWTL+Hws6jWu7dCiqBBXXXzMFcFVJb8D4ytAnYmxJA83uwOQRSsg==}
 
@@ -18139,6 +18186,9 @@ packages:
 
   unenv@2.0.0-rc.20:
     resolution: {integrity: sha512-8tn4tAl9vD5nWoggAAPz28vf0FY8+pQAayhU94qD+ZkIbVKCBAH/E1MWEEmhb9Whn5EgouYVfBJB20RsTLRDdg==}
+
+  unenv@2.0.0-rc.24:
+    resolution: {integrity: sha512-i7qRCmY42zmCwnYlh9H2SvLEypEFGye5iRmEMKjcGi7zk9UquigRjFtTLz0TYqr0ZGLZhaMHl/foy1bZR+Cwlw==}
 
   unhead@2.0.10:
     resolution: {integrity: sha512-GT188rzTCeSKt55tYyQlHHKfUTtZvgubrXiwzGeXg6UjcKO3FsagaMzQp6TVDrpDY++3i7Qt0t3pnCc/ebg5yQ==}
@@ -18788,6 +18838,11 @@ packages:
     engines: {node: '>=16'}
     hasBin: true
 
+  workerd@1.20251105.0:
+    resolution: {integrity: sha512-8D1UmsxrRr3Go7enbYCsYoiWeGn66u1WFNojPSgtjp7z8pV2cXskjr05vQ1OOzl7+rg1hDDofnCJqVwChMym8g==}
+    engines: {node: '>=16'}
+    hasBin: true
+
   workspace-tools@0.18.4:
     resolution: {integrity: sha512-ZdhlB4NEC3uJ4eW7snyHKOfzMC00HXWO2QbIU3aY8XBdtE+VrU2ajv+oxDUIZfCLD4Wlk3ltWaPt4Jk6IC9bMA==}
 
@@ -18820,6 +18875,16 @@ packages:
     hasBin: true
     peerDependencies:
       '@cloudflare/workers-types': ^4.20250902.0
+    peerDependenciesMeta:
+      '@cloudflare/workers-types':
+        optional: true
+
+  wrangler@4.46.0:
+    resolution: {integrity: sha512-WRROO7CL+MW/E44RMT4X7w32qPjufiPpGdey5D6H7iKzzVqfUkTRULxYBfWANiU1yGnsiCXQtu3Ap0G2TmohtA==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+    peerDependencies:
+      '@cloudflare/workers-types': ^4.20251014.0
     peerDependenciesMeta:
       '@cloudflare/workers-types':
         optional: true
@@ -22946,6 +23011,12 @@ snapshots:
     optionalDependencies:
       workerd: 1.20250902.0
 
+  '@cloudflare/unenv-preset@2.7.9(unenv@2.0.0-rc.24)(workerd@1.20251105.0)':
+    dependencies:
+      unenv: 2.0.0-rc.24
+    optionalDependencies:
+      workerd: 1.20251105.0
+
   '@cloudflare/vitest-pool-workers@0.8.70(@cloudflare/workers-types@4.20250828.1)(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@2.1.8(@types/node@20.19.11)(jsdom@25.0.1)(lightningcss@1.30.2)(msw@2.7.0(@types/node@20.19.11)(typescript@5.8.3))(sass-embedded@1.83.0)(terser@5.31.0))':
     dependencies:
       '@vitest/runner': 3.2.4
@@ -22989,6 +23060,9 @@ snapshots:
   '@cloudflare/workerd-darwin-64@1.20250902.0':
     optional: true
 
+  '@cloudflare/workerd-darwin-64@1.20251105.0':
+    optional: true
+
   '@cloudflare/workerd-darwin-arm64@1.20250712.0':
     optional: true
 
@@ -22996,6 +23070,9 @@ snapshots:
     optional: true
 
   '@cloudflare/workerd-darwin-arm64@1.20250902.0':
+    optional: true
+
+  '@cloudflare/workerd-darwin-arm64@1.20251105.0':
     optional: true
 
   '@cloudflare/workerd-linux-64@1.20250712.0':
@@ -23007,6 +23084,9 @@ snapshots:
   '@cloudflare/workerd-linux-64@1.20250902.0':
     optional: true
 
+  '@cloudflare/workerd-linux-64@1.20251105.0':
+    optional: true
+
   '@cloudflare/workerd-linux-arm64@1.20250712.0':
     optional: true
 
@@ -23016,6 +23096,9 @@ snapshots:
   '@cloudflare/workerd-linux-arm64@1.20250902.0':
     optional: true
 
+  '@cloudflare/workerd-linux-arm64@1.20251105.0':
+    optional: true
+
   '@cloudflare/workerd-windows-64@1.20250712.0':
     optional: true
 
@@ -23023,6 +23106,9 @@ snapshots:
     optional: true
 
   '@cloudflare/workerd-windows-64@1.20250902.0':
+    optional: true
+
+  '@cloudflare/workerd-windows-64@1.20251105.0':
     optional: true
 
   '@cloudflare/workers-types@4.20250828.1': {}
@@ -24677,14 +24763,14 @@ snapshots:
       hono: 4.6.3
       typia: 8.0.3(@samchon/openapi@3.1.0)(typescript@5.8.3)
 
-  '@hono/vite-dev-server@0.18.1(hono@4.6.3)(miniflare@4.20250902.0)(wrangler@4.34.0)':
+  '@hono/vite-dev-server@0.18.1(hono@4.6.3)(miniflare@4.20251105.0)(wrangler@4.46.0)':
     dependencies:
       '@hono/node-server': 1.19.5(hono@4.6.3)
       hono: 4.6.3
       minimatch: 9.0.4
     optionalDependencies:
-      miniflare: 4.20250902.0
-      wrangler: 4.34.0(@cloudflare/workers-types@4.20250828.1)
+      miniflare: 4.20251105.0
+      wrangler: 4.46.0
 
   '@hot-updater/react-native@file:packages/react-native(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0))(react@19.1.0))(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0))(react@19.1.0))(hot-updater@packages+hot-updater)(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -25117,6 +25203,41 @@ snapshots:
       - supports-color
       - ts-node
 
+  '@jest/core@29.7.0(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))':
+    dependencies:
+      '@jest/console': 29.7.0
+      '@jest/reporters': 29.7.0
+      '@jest/test-result': 29.7.0
+      '@jest/transform': 29.7.0
+      '@jest/types': 29.6.3
+      '@types/node': 20.19.11
+      ansi-escapes: 4.3.2
+      chalk: 4.1.2
+      ci-info: 3.9.0
+      exit: 0.1.2
+      graceful-fs: 4.2.11
+      jest-changed-files: 29.7.0
+      jest-config: 29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
+      jest-haste-map: 29.7.0
+      jest-message-util: 29.7.0
+      jest-regex-util: 29.6.3
+      jest-resolve: 29.7.0
+      jest-resolve-dependencies: 29.7.0
+      jest-runner: 29.7.0
+      jest-runtime: 29.7.0
+      jest-snapshot: 29.7.0
+      jest-util: 29.7.0
+      jest-validate: 29.7.0
+      jest-watcher: 29.7.0
+      micromatch: 4.0.8
+      pretty-format: 29.7.0
+      slash: 3.0.0
+      strip-ansi: 6.0.1
+    transitivePeerDependencies:
+      - babel-plugin-macros
+      - supports-color
+      - ts-node
+
   '@jest/create-cache-key-function@29.7.0':
     dependencies:
       '@jest/types': 29.6.3
@@ -25426,9 +25547,9 @@ snapshots:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
-  '@mdx-js/loader@3.1.0(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))':
+  '@mdx-js/loader@3.1.0(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))':
     dependencies:
-      '@mdx-js/mdx': 3.1.0(acorn@8.14.0)
+      '@mdx-js/mdx': 3.1.0
       source-map: 0.7.4
     optionalDependencies:
       webpack: 5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))
@@ -25436,7 +25557,7 @@ snapshots:
       - acorn
       - supports-color
 
-  '@mdx-js/mdx@3.1.0(acorn@8.14.0)':
+  '@mdx-js/mdx@3.1.0':
     dependencies:
       '@types/estree': 1.0.6
       '@types/estree-jsx': 1.0.5
@@ -25450,7 +25571,7 @@ snapshots:
       hast-util-to-jsx-runtime: 2.3.6
       markdown-extensions: 2.0.0
       recma-build-jsx: 1.0.0
-      recma-jsx: 1.0.0(acorn@8.14.0)
+      recma-jsx: 1.0.0
       recma-stringify: 1.0.0
       rehype-recma: 1.0.0
       remark-mdx: 3.1.0
@@ -28008,7 +28129,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@react-native/eslint-config@0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3)))(prettier@2.8.8)(typescript@5.9.3)':
+  '@react-native/eslint-config@0.74.83(eslint@8.57.0)(jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)))(prettier@2.8.8)(typescript@5.9.3)':
     dependencies:
       '@babel/core': 7.26.0
       '@babel/eslint-parser': 7.24.5(@babel/core@7.26.0)(eslint@8.57.0)
@@ -28019,7 +28140,7 @@ snapshots:
       eslint-config-prettier: 8.10.0(eslint@8.57.0)
       eslint-plugin-eslint-comments: 3.2.0(eslint@8.57.0)
       eslint-plugin-ft-flow: 2.0.3(@babel/eslint-parser@7.24.5(@babel/core@7.26.0)(eslint@8.57.0))(eslint@8.57.0)
-      eslint-plugin-jest: 26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3)))(typescript@5.9.3)
+      eslint-plugin-jest: 26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)))(typescript@5.9.3)
       eslint-plugin-prettier: 4.2.1(eslint-config-prettier@8.10.0(eslint@8.57.0))(eslint@8.57.0)(prettier@2.8.8)
       eslint-plugin-react: 7.34.1(eslint@8.57.0)
       eslint-plugin-react-hooks: 4.6.2(eslint@8.57.0)
@@ -28073,7 +28194,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@react-native/eslint-config@0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)':
+  '@react-native/eslint-config@0.80.1(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4)))(prettier@2.8.8)(typescript@5.0.4)':
     dependencies:
       '@babel/core': 7.26.0
       '@babel/eslint-parser': 7.25.9(@babel/core@7.26.0)(eslint@8.57.0)
@@ -28084,7 +28205,7 @@ snapshots:
       eslint-config-prettier: 8.10.0(eslint@8.57.0)
       eslint-plugin-eslint-comments: 3.2.0(eslint@8.57.0)
       eslint-plugin-ft-flow: 2.0.3(@babel/eslint-parser@7.25.9(@babel/core@7.26.0)(eslint@8.57.0))(eslint@8.57.0)
-      eslint-plugin-jest: 27.9.0(@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.0.4)))(typescript@5.0.4)
+      eslint-plugin-jest: 27.9.0(@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(typescript@5.0.4))(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4)))(typescript@5.0.4)
       eslint-plugin-react: 7.34.1(eslint@8.57.0)
       eslint-plugin-react-hooks: 5.2.0(eslint@8.57.0)
       eslint-plugin-react-native: 4.1.0(eslint@8.57.0)
@@ -28211,7 +28332,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)':
+  '@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
       '@react-native/js-polyfills': 0.74.83
       '@react-native/metro-babel-transformer': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
@@ -28220,10 +28341,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
-      - encoding
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))':
     dependencies:
@@ -28257,9 +28375,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.81.0(@babel/core@7.28.5)':
     dependencies:
@@ -28393,7 +28509,7 @@ snapshots:
 
   '@rnx-kit/console@2.0.0': {}
 
-  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
+  '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@rnx-kit/tools-node': 3.0.0
       '@rnx-kit/tools-react-native': 2.0.0
@@ -28401,7 +28517,7 @@ snapshots:
       react: 18.2.0
       react-native: 0.74.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@types/react@18.3.20)(encoding@0.1.13)(react@18.2.0)
     optionalDependencies:
-      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(encoding@0.1.13)
+      '@react-native/metro-config': 0.74.83(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))
 
   '@rnx-kit/metro-config@2.0.1(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0)))(react-native@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@react-native-community/cli-server-api@20.0.0)(@types/react@18.3.20)(encoding@0.1.13)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -28901,10 +29017,10 @@ snapshots:
       html-entities: 2.6.0
       react-refresh: 0.17.0
 
-  '@rspress/core@2.0.0-beta.8(@types/react@19.2.2)(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))':
+  '@rspress/core@2.0.0-beta.8(@types/react@19.2.2)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))':
     dependencies:
-      '@mdx-js/loader': 3.1.0(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
-      '@mdx-js/mdx': 3.1.0(acorn@8.14.0)
+      '@mdx-js/loader': 3.1.0(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
+      '@mdx-js/mdx': 3.1.0
       '@mdx-js/react': 3.1.0(@types/react@19.2.2)(react@19.2.0)
       '@rsbuild/core': 1.3.22
       '@rsbuild/plugin-react': 1.3.1(@rsbuild/core@1.3.22)
@@ -28993,9 +29109,9 @@ snapshots:
     dependencies:
       '@rspress/shared': 2.0.0-beta.8
 
-  '@rspress/plugin-llms@2.0.0-beta.8(@rspress/core@2.0.0-beta.8(@types/react@19.2.2)(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))':
+  '@rspress/plugin-llms@2.0.0-beta.8(@rspress/core@2.0.0-beta.8(@types/react@19.2.2)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))':
     dependencies:
-      '@rspress/core': 2.0.0-beta.8(@types/react@19.2.2)(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
+      '@rspress/core': 2.0.0-beta.8(@types/react@19.2.2)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@rspress/shared': 2.0.0-beta.8
       remark-mdx: 3.1.0
       remark-parse: 11.0.0
@@ -32696,6 +32812,21 @@ snapshots:
       - supports-color
       - ts-node
 
+  create-jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)):
+    dependencies:
+      '@jest/types': 29.6.3
+      chalk: 4.1.2
+      exit: 0.1.2
+      graceful-fs: 4.2.11
+      jest-config: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
+      jest-util: 29.7.0
+      prompts: 2.4.2
+    transitivePeerDependencies:
+      - '@types/node'
+      - babel-plugin-macros
+      - supports-color
+      - ts-node
+
   create-require@1.1.1:
     optional: true
 
@@ -33356,7 +33487,7 @@ snapshots:
   esast-util-from-js@2.0.1:
     dependencies:
       '@types/estree-jsx': 1.0.5
-      acorn: 8.14.0
+      acorn: 8.15.0
       esast-util-from-estree: 2.0.0
       vfile-message: 4.0.2
 
@@ -33549,13 +33680,13 @@ snapshots:
       lodash: 4.17.21
       string-natural-compare: 3.0.1
 
-  eslint-plugin-jest@26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(jest@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3)))(typescript@5.9.3):
+  eslint-plugin-jest@26.9.0(@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)))(typescript@5.9.3):
     dependencies:
       '@typescript-eslint/utils': 5.62.0(eslint@8.57.0)(typescript@5.9.3)
       eslint: 8.57.0
     optionalDependencies:
       '@typescript-eslint/eslint-plugin': 6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(typescript@5.9.3)
-      jest: 29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3))
+      jest: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -36203,6 +36334,25 @@ snapshots:
       - supports-color
       - ts-node
 
+  jest-cli@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)):
+    dependencies:
+      '@jest/core': 29.7.0(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
+      '@jest/test-result': 29.7.0
+      '@jest/types': 29.6.3
+      chalk: 4.1.2
+      create-jest: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
+      exit: 0.1.2
+      import-local: 3.1.0
+      jest-config: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
+      jest-util: 29.7.0
+      jest-validate: 29.7.0
+      yargs: 17.7.2
+    transitivePeerDependencies:
+      - '@types/node'
+      - babel-plugin-macros
+      - supports-color
+      - ts-node
+
   jest-config@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.0.4)):
     dependencies:
       '@babel/core': 7.26.0
@@ -36327,6 +36477,37 @@ snapshots:
       - babel-plugin-macros
       - supports-color
 
+  jest-config@29.7.0(@types/node@20.19.11)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)):
+    dependencies:
+      '@babel/core': 7.26.0
+      '@jest/test-sequencer': 29.7.0
+      '@jest/types': 29.6.3
+      babel-jest: 29.7.0(@babel/core@7.26.0)
+      chalk: 4.1.2
+      ci-info: 3.9.0
+      deepmerge: 4.3.1
+      glob: 7.2.3
+      graceful-fs: 4.2.11
+      jest-circus: 29.7.0(babel-plugin-macros@3.1.0)
+      jest-environment-node: 29.7.0
+      jest-get-type: 29.6.3
+      jest-regex-util: 29.6.3
+      jest-resolve: 29.7.0
+      jest-runner: 29.7.0
+      jest-util: 29.7.0
+      jest-validate: 29.7.0
+      micromatch: 4.0.8
+      parse-json: 5.2.0
+      pretty-format: 29.7.0
+      slash: 3.0.0
+      strip-json-comments: 3.1.1
+    optionalDependencies:
+      '@types/node': 20.19.11
+      ts-node: 10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)
+    transitivePeerDependencies:
+      - babel-plugin-macros
+      - supports-color
+
   jest-config@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.0.4)):
     dependencies:
       '@babel/core': 7.26.0
@@ -36385,6 +36566,37 @@ snapshots:
     optionalDependencies:
       '@types/node': 24.10.0
       ts-node: 10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.8.3)
+    transitivePeerDependencies:
+      - babel-plugin-macros
+      - supports-color
+
+  jest-config@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)):
+    dependencies:
+      '@babel/core': 7.26.0
+      '@jest/test-sequencer': 29.7.0
+      '@jest/types': 29.6.3
+      babel-jest: 29.7.0(@babel/core@7.26.0)
+      chalk: 4.1.2
+      ci-info: 3.9.0
+      deepmerge: 4.3.1
+      glob: 7.2.3
+      graceful-fs: 4.2.11
+      jest-circus: 29.7.0(babel-plugin-macros@3.1.0)
+      jest-environment-node: 29.7.0
+      jest-get-type: 29.6.3
+      jest-regex-util: 29.6.3
+      jest-resolve: 29.7.0
+      jest-runner: 29.7.0
+      jest-util: 29.7.0
+      jest-validate: 29.7.0
+      micromatch: 4.0.8
+      parse-json: 5.2.0
+      pretty-format: 29.7.0
+      slash: 3.0.0
+      strip-json-comments: 3.1.1
+    optionalDependencies:
+      '@types/node': 24.10.0
+      ts-node: 10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)
     transitivePeerDependencies:
       - babel-plugin-macros
       - supports-color
@@ -36652,6 +36864,18 @@ snapshots:
       '@jest/types': 29.6.3
       import-local: 3.1.0
       jest-cli: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.8.3))
+    transitivePeerDependencies:
+      - '@types/node'
+      - babel-plugin-macros
+      - supports-color
+      - ts-node
+
+  jest@29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3)):
+    dependencies:
+      '@jest/core': 29.7.0(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
+      '@jest/types': 29.6.3
+      import-local: 3.1.0
+      jest-cli: 29.7.0(@types/node@24.10.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3))
     transitivePeerDependencies:
       - '@types/node'
       - babel-plugin-macros
@@ -38836,6 +39060,24 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  miniflare@4.20251105.0:
+    dependencies:
+      '@cspotcode/source-map-support': 0.8.1
+      acorn: 8.14.0
+      acorn-walk: 8.3.2
+      exit-hook: 2.2.1
+      glob-to-regexp: 0.4.1
+      sharp: 0.33.5
+      stoppable: 1.1.0
+      undici: 7.14.0
+      workerd: 1.20251105.0
+      ws: 8.18.0
+      youch: 4.1.0-beta.10
+      zod: 3.22.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   minimatch@3.1.2:
     dependencies:
       brace-expansion: 1.1.11
@@ -39143,7 +39385,7 @@ snapshots:
       '@sinonjs/fake-timers': 13.0.5
       '@sinonjs/text-encoding': 0.7.3
       just-extend: 6.2.0
-      path-to-regexp: 8.2.0
+      path-to-regexp: 8.3.0
 
   nocache@3.0.4: {}
 
@@ -39746,8 +39988,6 @@ snapshots:
 
   path-to-regexp@6.3.0: {}
 
-  path-to-regexp@8.2.0: {}
-
   path-to-regexp@8.3.0: {}
 
   path-type@4.0.0: {}
@@ -40330,7 +40570,7 @@ snapshots:
       react: 19.2.0
       react-dom: 19.2.0(react@19.2.0)
 
-  react-native-builder-bob@0.40.10:
+  react-native-builder-bob@0.40.10(encoding@0.1.13):
     dependencies:
       '@babel/core': 7.26.0
       '@babel/plugin-transform-flow-strip-types': 7.27.1(@babel/core@7.26.0)
@@ -40356,7 +40596,10 @@ snapshots:
       which: 2.0.2
       yargs: 17.7.2
     transitivePeerDependencies:
+      - bufferutil
+      - encoding
       - supports-color
+      - utf-8-validate
 
   react-native-dotenv@3.4.11(@babel/runtime@7.26.0):
     dependencies:
@@ -40971,6 +41214,16 @@ snapshots:
       estree-util-build-jsx: 3.0.1
       vfile: 6.0.3
 
+  recma-jsx@1.0.0:
+    dependencies:
+      acorn-jsx: 5.3.2(acorn@8.10.0)
+      estree-util-to-js: 2.0.0
+      recma-parse: 1.0.0
+      recma-stringify: 1.0.0
+      unified: 11.0.5
+    transitivePeerDependencies:
+      - acorn
+
   recma-jsx@1.0.0(acorn@8.14.0):
     dependencies:
       acorn-jsx: 5.3.2(acorn@8.14.0)
@@ -41409,7 +41662,7 @@ snapshots:
       depd: 2.0.0
       is-promise: 4.0.0
       parseurl: 1.3.3
-      path-to-regexp: 8.2.0
+      path-to-regexp: 8.3.0
     transitivePeerDependencies:
       - supports-color
 
@@ -41422,10 +41675,10 @@ snapshots:
     dependencies:
       fs-extra: 11.3.0
 
-  rspress@2.0.0-beta.8(@types/react@19.2.2)(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))):
+  rspress@2.0.0-beta.8(@types/react@19.2.2)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))):
     dependencies:
       '@rsbuild/core': 1.3.22
-      '@rspress/core': 2.0.0-beta.8(@types/react@19.2.2)(acorn@8.14.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
+      '@rspress/core': 2.0.0-beta.8(@types/react@19.2.2)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@rspress/shared': 2.0.0-beta.8
       cac: 6.7.14
       chokidar: 3.6.0
@@ -42834,6 +43087,27 @@ snapshots:
       '@swc/core': 1.13.5(@swc/helpers@0.5.17)
     optional: true
 
+  ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.10.0)(typescript@5.9.3):
+    dependencies:
+      '@cspotcode/source-map-support': 0.8.1
+      '@tsconfig/node10': 1.0.11
+      '@tsconfig/node12': 1.0.11
+      '@tsconfig/node14': 1.0.3
+      '@tsconfig/node16': 1.0.4
+      '@types/node': 24.10.0
+      acorn: 8.15.0
+      acorn-walk: 8.3.2
+      arg: 4.1.3
+      create-require: 1.1.1
+      diff: 4.0.2
+      make-error: 1.3.6
+      typescript: 5.9.3
+      v8-compile-cache-lib: 3.0.1
+      yn: 3.1.1
+    optionalDependencies:
+      '@swc/core': 1.13.5(@swc/helpers@0.5.17)
+    optional: true
+
   ts-regex-builder@1.8.2: {}
 
   tsconfck@3.1.5(typescript@5.8.3):
@@ -43068,6 +43342,8 @@ snapshots:
 
   undici@7.12.0: {}
 
+  undici@7.14.0: {}
+
   unenv@2.0.0-rc.17:
     dependencies:
       defu: 6.1.4
@@ -43091,6 +43367,10 @@ snapshots:
       ohash: 2.0.11
       pathe: 2.0.3
       ufo: 1.6.1
+
+  unenv@2.0.0-rc.24:
+    dependencies:
+      pathe: 2.0.3
 
   unhead@2.0.10:
     dependencies:
@@ -43987,6 +44267,14 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20250902.0
       '@cloudflare/workerd-windows-64': 1.20250902.0
 
+  workerd@1.20251105.0:
+    optionalDependencies:
+      '@cloudflare/workerd-darwin-64': 1.20251105.0
+      '@cloudflare/workerd-darwin-arm64': 1.20251105.0
+      '@cloudflare/workerd-linux-64': 1.20251105.0
+      '@cloudflare/workerd-linux-arm64': 1.20251105.0
+      '@cloudflare/workerd-windows-64': 1.20251105.0
+
   workspace-tools@0.18.4:
     dependencies:
       '@yarnpkg/lockfile': 1.1.0
@@ -44053,6 +44341,22 @@ snapshots:
       workerd: 1.20250902.0
     optionalDependencies:
       '@cloudflare/workers-types': 4.20250828.1
+      fsevents: 2.3.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  wrangler@4.46.0:
+    dependencies:
+      '@cloudflare/kv-asset-handler': 0.4.0
+      '@cloudflare/unenv-preset': 2.7.9(unenv@2.0.0-rc.24)(workerd@1.20251105.0)
+      blake3-wasm: 2.1.5
+      esbuild: 0.25.4
+      miniflare: 4.20251105.0
+      path-to-regexp: 6.3.0
+      unenv: 2.0.0-rc.24
+      workerd: 1.20251105.0
+    optionalDependencies:
       fsevents: 2.3.3
     transitivePeerDependencies:
       - bufferutil

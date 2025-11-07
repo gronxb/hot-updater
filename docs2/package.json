@@ -8,6 +8,7 @@
     "build": "waku build",
     "test:type": "tsc --noEmit",
     "start": "waku start",
+    "preview": "wrangler pages dev ./dist/public",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "tailwindcss": "^4.1.16",
     "typescript": "^5.9.3",
     "vite": "npm:rolldown-vite@latest",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "wrangler": "^4.46.0"
   }
 }
