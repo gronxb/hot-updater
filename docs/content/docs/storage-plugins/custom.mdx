@@ -224,20 +224,8 @@ The `getDownloadUrl` method receives a storage URI and returns a publicly access
 
 ```typescript
 async getDownloadUrl(storageUri) {
-  // Parse and validate the storage URI
-  const url = new URL(storageUri);
-  const protocol = url.protocol.replace(":", "");
-
-  if (protocol !== "my-storage") {
-    throw new Error("Invalid storage URI protocol");
-  }
-
-  const bucket = url.hostname;
-  const key = url.pathname.slice(1); // Remove leading '/'
-
-  if (!bucket || !key) {
-    throw new Error("Invalid storage URI: missing bucket or key");
-  }
+  // Parse the storage URI to extract bucket and key
+  const { bucket, key } = parseStorageUri(storageUri, "my-storage");
 
   // Generate download URL from your storage backend
   const response = await fetch(`${endpoint}/sign-url`, {
@@ -359,19 +347,7 @@ export const myStorage = (
     },
 
     async getDownloadUrl(storageUri) {
-      const url = new URL(storageUri);
-      const protocol = url.protocol.replace(":", "");
-
-      if (protocol !== "my-storage") {
-        throw new Error("Invalid storage URI protocol");
-      }
-
-      const bucket = url.hostname;
-      const key = url.pathname.slice(1);
-
-      if (!bucket || !key) {
-        throw new Error("Invalid storage URI: missing bucket or key");
-      }
+      const { bucket, key } = parseStorageUri(storageUri, "my-storage");
 
       const response = await fetch(`${endpoint}/sign-url`, {
         method: "POST",
