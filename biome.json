@@ -13,7 +13,8 @@
       "!**/*.js",
       "!**/ios",
       "!**/android",
-      "!**/.source"
+      "!**/.source",
+      "!**/pages.gen.ts"
     ]
   },
   "formatter": {
