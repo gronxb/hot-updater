@@ -11,7 +11,7 @@ export function baseOptions(): BaseLayoutProps {
             alt="Hot Updater"
             className="w-6 h-6 object-contain shrink-0 mt-1.25"
             loading="eager"
-            fetchpriority="high"
+            fetchPriority="high"
             decoding="sync"
           />
           <span>Hot Updater</span>
