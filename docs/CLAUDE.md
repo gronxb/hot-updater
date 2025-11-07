@@ -140,7 +140,6 @@ Each plugin documentation should follow this structure:
 
 3. **Usage** (H2)
    - Complete working example with `defineConfig`
-   - Show environment variable usage
 
 4. **Setup** (H2) - Optional
    - Provider-specific setup steps (minimal)
