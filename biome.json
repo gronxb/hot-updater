@@ -12,7 +12,8 @@
       "!**/node_modules",
       "!**/*.js",
       "!**/ios",
-      "!**/android"
+      "!**/android",
+      "!**/.source"
     ]
   },
   "formatter": {
