@@ -56,19 +56,25 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-## Schema Generation
+## Schema Management
 
-Generate the Kysely type definitions for Hot Updater tables.
+Generate SQL migration files for Hot Updater tables:
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
+Apply migrations to the database:
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+```
+
 <Callout>
 **Generate vs Migrate**
 
-- `npx hot-updater db generate` - Creates SQL migration files for manual review
-- `npx hot-updater db migrate` - Runs Kysely migrator to apply migrations to the database
+- `generate` - Creates SQL migration files for manual review before applying to database
+- `migrate` - Runs Kysely migrator to directly apply migrations to the database
 </Callout>
 
 ## API Endpoints

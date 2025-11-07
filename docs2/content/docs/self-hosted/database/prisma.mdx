@@ -78,22 +78,18 @@ datasource db {
 }
 
 model Bundle {
-  id                 String   @id
-  platform           String
-  shouldForceUpdate  Boolean
-  enabled            Boolean
-  fileHash           String
-  storageUri         String
-  gitCommitHash      String?
-  message            String?
-  channel            String
-  targetAppVersion   String?
-  fingerprintHash    String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  @@index([channel])
-  @@index([platform])
+  id String @db.Uuid @id
+  platform String
+  should_force_update Boolean
+  enabled Boolean
+  file_hash String
+  git_commit_hash String?
+  message String?
+  channel String
+  storage_uri String
+  target_app_version String?
+  fingerprint_hash String?
+  metadata Json
 }
 ```
 
