@@ -1,0 +1,15 @@
+{
+  "title": "React Native API",
+  "description": "React Native client-side integration",
+  "icon": "Smartphone",
+  "pages": [
+    "wrap",
+    "checkForUpdate",
+    "updateBundle",
+    "reload",
+    "getChannel",
+    "useHotUpdaterStore",
+    "addListener",
+    "isUpdateDownloaded"
+  ]
+}

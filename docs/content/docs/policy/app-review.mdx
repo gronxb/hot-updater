@@ -1,0 +1,81 @@
+---
+title: "When to Submit Your App for Review"
+description: "`HotUpdater` enables seamless updates to JavaScript (JS) files and assets required by your app, bypassing the app store review process in many cases. However, certain changes, particularly those involving native code (e.g., written in Swift/Objective-C for iOS or Kotlin/Java for Android), require app store review. Below, we outline when you need to submit your app for review and when `HotUpdater` can handle updates independently."
+icon: FileCheck
+---
+
+## Scenarios Requiring App Store Review (Native Code Changes)
+
+
+1. **Initial Integration of `HotUpdater`**  
+   During the first integration of `HotUpdater`, native code modifications are required. This necessitates submitting your app for app store review.
+
+2. **Native Code Changes**  
+   Any updates to native code, such as Swift, Objective-C, Kotlin, or Java, require an app store review before the changes can be distributed.
+
+3. **Installing Native-Dependent Libraries**  
+   When using third-party libraries in React Native that modify native code, your app must go through app store review. A key indicator of native changes is the need for commands like:
+   ```bash
+   cd ios && pod install && cd ..
+   ```
+
+
+## Scenarios Compatible with HotUpdater (No App Store Review)
+
+Certain updates can be performed entirely via HotUpdater, allowing you to bypass the app store review process:
+
+### JavaScript Code Updates
+
+Updates that only modify JS code can be handled by HotUpdater without review.
+
+```tsx
+   export default function App() {
+       return (
+           <View>
+             <Text>Hello</Text> // [!code --]
+             <Text>Update Hello</Text> // [!code ++]
+           </View>
+       );
+   }
+   ```
+
+### Asset Updates via `require`
+
+Changes to assets referenced using `require` (e.g., images or media files) can also be distributed via HotUpdater.
+
+```tsx
+   <Image source={require("../assets/image.png")} /> // [!code --]
+   <Image source={require("../assets/new_image.png")} /> // [!code ++]
+   ```
+
+
+### JavaScript Library Updates
+
+Updates that involve only JS library changes are compatible with HotUpdater:
+
+```sh
+> npm install lodash zustand ...
+```
+
+## Understanding HotUpdater Package Versioning
+
+The HotUpdater versioning system helps determine whether app store review is necessary:
+| **Version Type** | **Example**       | **Changes**                                                                 | **Review Required?**        |
+|-------------------|-------------------|-----------------------------------------------------------------------------|-----------------------------|
+| Patch Version     | `0.5.10 → 0.5.11` | Only JS logic is updated.                                                  | No                          |
+| Minor Version     | `0.5.10 → 0.6.0` | Updates include JS changes and minor optimizations in the native code.     | Yes                         |
+| Major Version     | `0.5.10 → 1.0.0` | Significant changes to native code, often involving feature enhancements.  | Yes                         |
+
+If the version change only affects the `0.5.x` part of the package (patch version), you can update the `hot-updater` package without requiring an app store review, as the updates are limited to JS logic. However, if the `0.x.0` portion changes (major or minor version), it indicates changes in the native code. In these cases, the app must go through the app store review process.
+
+### Key Notes on Versioning
+-	Patch Versions (x.x.Patch): Updates limited to JS logic (e.g., bug fixes or performance improvements). No app store review required.
+-	Minor Versions (x.Minor.x): May include minor changes to native code, requiring app store review.
+-	Major Versions (Major.x.x): Introduce significant updates to native code, always requiring app store review.
+
+### Summary
+
+To ensure a smooth update process:
+-	Use HotUpdater for JS updates and asset changes to avoid app store reviews.
+-	Submit your app for review when native code changes or third-party libraries affecting native code are integrated.
+-	Follow HotUpdater versioning guidelines to determine when a review is required.

@@ -1,0 +1,89 @@
+---
+title: "AWS S3 Database"
+description: Store your Hot Updater bundle metadata as JSON files in S3, served via CloudFront CDN.
+
+icon: aws
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/managed-hosting/aws) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface S3DatabaseConfig {
+  region: string;                    // AWS region
+  bucketName: string;                // S3 bucket for metadata
+  cloudfrontDistributionId: string;  // CloudFront distribution ID
+  apiBasePath?: string;              // API path (default: "/api/check-update")
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+## Usage
+
+```typescript
+import { s3Database } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+import { s3Storage, s3Database } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-bundles-bucket'
+  }),
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```

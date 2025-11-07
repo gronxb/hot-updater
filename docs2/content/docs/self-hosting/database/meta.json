@@ -1,6 +1,0 @@
-{
-  "title": "Database Adapters",
-  "description": "ORMs and database drivers for Hot Updater",
-  "icon": "Database",
-  "pages": ["drizzle", "prisma", "kysely", "mongodb"]
-}

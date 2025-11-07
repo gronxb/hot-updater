@@ -1,6 +1,0 @@
-{
-  "title": "Server Frameworks",
-  "description": "Web frameworks for building Hot Updater servers",
-  "icon": "Code",
-  "pages": ["hono", "express", "elysia"]
-}

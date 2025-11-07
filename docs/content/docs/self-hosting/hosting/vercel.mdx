@@ -1,0 +1,134 @@
+---
+title: "Vercel"
+description: Deploy Hot Updater server to Vercel with serverless functions.
+icon: vercel
+---
+
+## Prerequisites
+
+- Vercel account at [vercel.com](https://vercel.com)
+- PostgreSQL database (Vercel Postgres, Supabase, or Neon)
+- Cloud storage (S3, R2, Supabase, Firebase, or custom)
+
+## Installation
+
+Install required dependencies.
+
+```package-install
+npm install @hot-updater/server hono
+```
+
+Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
+
+Install Drizzle ORM with PostgreSQL driver.
+
+```package-install
+npm install drizzle-orm @vercel/postgres
+```
+
+```package-install
+npm install -D drizzle-kit
+```
+
+## Database Setup
+
+Create the database connection file.
+
+```typescript title="src/drizzle.ts"
+import { drizzle } from "drizzle-orm/vercel-postgres";
+import { sql } from "@vercel/postgres";
+
+export const db = drizzle(sql);
+```
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance.
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { db } from "./drizzle";
+
+export const hotUpdater = createHotUpdater({
+  database: drizzleAdapter({ db, provider: "postgres" }),
+  storagePlugins: [
+    // Configure your storage plugin - examples:
+    // s3Storage({ /* S3 or R2 config */ }),
+    // supabaseStorage({ /* Supabase config */ }),
+    // firebaseStorage({ /* Firebase config */ }),
+    // myCustomStorage({ /* custom config */ }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+## Serverless Function
+
+Create Vercel serverless function with Hono.
+
+```typescript title="src/index.ts"
+import { Hono } from "hono";
+import { hotUpdater } from "./hotUpdater";
+
+const app = new Hono();
+
+app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => {
+  return hotUpdater.handler(c.req.raw);
+});
+
+export default app;
+```
+
+## Schema Generation
+
+Generate the Drizzle schema for Hot Updater tables.
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+## Development
+
+Run the development server locally.
+
+```bash
+npx vercel dev
+```
+
+Server runs at `http://localhost:3000`.
+
+## Deploy
+
+Deploy to Vercel.
+
+```bash
+npx vercel deploy --prod
+```
+
+Your Hot Updater server will be available at `https://your-project.vercel.app/hot-updater`.
+
+## CLI Configuration
+
+Configure your CLI to use this deployed server.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: bare(),
+  storage: s3Storage({
+    /* your config */
+  }),
+  database: standaloneRepository({
+    baseUrl: "https://your-project.vercel.app/hot-updater",
+  }),
+});
+```
+
+<Callout type="warn">
+The `storage` plugin must match the `storagePlugins` in your server's `createHotUpdater`.
+</Callout>

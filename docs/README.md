@@ -1,3 +1,13 @@
-# Hot Updater
+# waku-hot-updater-docs
 
-A self-hostable OTA (Over-The-Air) update solution for React Native.
+This is a Waku application generated with [Create Fumadocs](https://github.com/fuma-nama/fumadocs).
+
+Run development server:
+
+```bash
+npm run dev
+# or
+pnpm dev
+# or
+yarn dev
+```

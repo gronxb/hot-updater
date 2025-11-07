@@ -1,0 +1,6 @@
+{
+  "title": "Concepts",
+  "description": "Core concepts and architecture",
+  "icon": "BookOpen",
+  "pages": ["how-it-works", "plugin-system"]
+}

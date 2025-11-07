@@ -1,6 +1,0 @@
-{
-  "title": "Update Strategies",
-  "description": "Different update strategies",
-  "icon": "GitBranch",
-  "pages": ["app-version", "fingerprint"]
-}

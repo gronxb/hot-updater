@@ -1,0 +1,37 @@
+---
+title: "How does it work?"
+description: Understanding the core infrastructure and update decision logic
+icon: Cog
+---
+
+## Core Infrastructure
+
+`hot-updater` consists of three key components:
+
+- **Storage**: A place where JavaScript bundles are stored, supporting AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage, etc.
+- **Database**: Stores metadata about deployed bundles (version information, etc.) and manages update information.
+- **Server**: Determines whether updates are required based on the app's current state, operating through AWS Lambda@Edge, Cloudflare Workers, Supabase Edge Functions, or Firebase Cloud Functions.
+
+Storage and Database are configured using plugins defined in `hot-updater.config.ts`. The Server is initialized and deployed using the `hot-updater init` command.
+
+## Update Decision Logic
+
+`hot-updater` primarily uses UUIDv7 for its operations, with the following update determination process:
+
+### 1. Bundle ID Generation and Management
+- Running `hot-updater deploy` invokes a Babel plugin to generate a UUIDv7-formatted Bundle ID.
+- This Bundle ID includes the deployment timestamp and is uniquely generated per bundle.
+
+### 2. Initial Native App Build
+- The first version of the native app does not have an initial Bundle ID, as it isn't created by `hot-updater deploy` but by the native build process.
+- In this case, a minimal Bundle ID (`minBundleId`) in UUIDv7 format, based on the app build timestamp, is used.
+
+### 3. Communication with the Update Server
+- The app communicates with the server using the current Bundle ID to verify if the bundle is activated (`enabled=true`).
+- If the bundle isn't active, the app forcibly updates (rollbacks) to a previously active bundle.
+- If an active bundle newer than the current app version exists, the app updates to the latest available bundle.
+
+### 4. Usage of minBundleId
+- The `minBundleId` is determined based on the native app's build timestamp.
+- The existence of a native app build ensures the embedded bundle is the latest at that point. Bundles older than the `minBundleId` are ignored.
+- Every new deployment generates a new Bundle ID, ensuring accurate and reliable updates.

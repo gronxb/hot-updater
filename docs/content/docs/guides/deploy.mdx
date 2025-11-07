@@ -1,0 +1,100 @@
+---
+title: "Deploy"
+description: "This command is used to deploy the update to the specified platform."
+icon: Upload
+---
+
+<video src={"/docs/deploy/deploy.mov"}  controls autoPlay loop muted />
+
+## Checklist
+1. Ensure `hot-updater.config.ts` is properly configured.
+2. Wrap your components using `HotUpdater.wrap`.
+3. Register the `babel-plugin`.
+4. Include the native code.
+
+If you haven't completed these steps, refer to the [Supabase Provider](/docs/managed-hosting/supabase) guide.
+
+## Options
+
+```
+Options:
+  -p, --platform <platform>                    specify the platform (choices: "ios", "android")
+  -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
+  -f, --force-update                           force update the app (default: false)
+  -o, --bundle-output-path <bundleOutputPath>  the path where the bundle.zip will be generated
+  -i, --interactive                            interactive mode (default: false)
+  -c, --channel <channel>                      specify the channel to deploy (default: "production")
+  -m, --message <message>                      Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
+  -h, --help                                   display help for command
+```
+
+## Usage
+
+### Interactive Mode
+
+Interactive mode guides you through the deployment steps via keyboard inputs.
+
+Execute the following command:
+
+```package-install
+npx hot-updater deploy -i
+```
+
+The `-i` (or `--interactive`) flag enables interactive keyboard input.
+- This mode allows you to proceed through deployment steps interactively.
+
+### For Continuous Deployment (CD) Pipelines
+
+Use this mode for automating deployment in CI/CD pipelines.
+
+Run the following command:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android">
+```
+
+- This mode is suitable for Continuous Deployment (CD) pipelines.
+
+### Force Update
+
+Deploy a forced update for emergency purposes. This will immediately apply the update.
+
+Run the following command:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -f
+```
+
+The `-f` (or `--force-update`) flag enables force update.
+
+### Channel
+
+The `-c` (or `--channel`) flag specifies the release channel.
+
+Run the following command:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
+```
+
+The `-c` (or `--channel`) flag specifies the release channel. The default value is `production`.
+
+For more details about channels, refer to the [Channel Guide](/docs/guides/channel-management).
+
+### Message
+
+The `-m` (or `--message`) flag specifies the message.
+
+Run the following command:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -m "<message>"
+```
+
+## Force Update Flag Difference
+
+| Update Type   | When Applied                                              | How to Enable                              |
+|---------------|----------------------------------------------------------|-------------------------------------------|
+| Default       | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
+| Force Update  | Downloads the update bundle and applies it immediately.   | Use the `--force-update` flag or console. |
+

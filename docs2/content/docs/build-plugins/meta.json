@@ -1,6 +1,0 @@
-{
-  "title": "Build Plugins",
-  "description": "Build system plugins",
-  "icon": "Hammer",
-  "pages": ["bare", "expo", "rock"]
-}

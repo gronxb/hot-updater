@@ -1,0 +1,82 @@
+---
+title: "AWS S3 Storage"
+description: Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
+icon: aws
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/managed-hosting/aws) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface S3StorageConfig {
+  region: string;           // AWS region or 'auto' for R2
+  bucketName: string;       // S3 bucket name
+  basePath?: string;        // Optional base path within bucket
+  endpoint?: string;        // Custom endpoint for S3-compatible services
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+## Usage
+
+### AWS S3
+
+```typescript
+import { s3Storage } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-hot-updater-bucket'
+  }),
+  // ... other config
+});
+```
+
+### Cloudflare R2
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+## Protocol
+
+`s3://`
+
+This prefix is stored in the `storageUri` field in the database.

@@ -1,0 +1,57 @@
+---
+title: "Supabase Storage"
+description: Store your Hot Updater bundles in Supabase Storage buckets.
+icon: supabase
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/supabase --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed-hosting/supabase) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface SupabaseStorageConfig {
+  supabaseUrl: string;       // Your Supabase project URL
+  supabaseAnonKey: string;   // Your Supabase anon/public key
+  bucketName: string;        // Storage bucket name
+  basePath?: string;         // Optional base path within bucket
+}
+```
+
+## Usage
+
+```typescript
+import { supabaseStorage } from '@hot-updater/supabase';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: supabaseStorage({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    bucketName: 'hot-updater-bundles',
+    basePath: 'bundles'  // Optional
+  }),
+  // ... other config
+});
+```
+
+## Protocol
+
+`supabase-storage://`
+
+This prefix is stored in the `storageUri` field in the database.
