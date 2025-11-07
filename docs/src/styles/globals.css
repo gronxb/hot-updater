@@ -96,8 +96,13 @@ svg[data-brand] {
   --font-geist-mono: "Geist Mono", "Fira Code", "Courier New", monospace;
 }
 
+html {
+  background-color: var(--color-fd-background);
+}
+
 body {
   font-family: var(--font-geist-sans);
+  background-color: var(--color-fd-background);
 }
 
 code,
