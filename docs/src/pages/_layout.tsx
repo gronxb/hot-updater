@@ -41,8 +41,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         name="description"
         content="Self-hosted over-the-air updates for React Native"
       />
-      <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)" />
-      <meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)" />
 
       {/* Open Graph / Facebook */}
       <meta property="og:type" content="website" />
