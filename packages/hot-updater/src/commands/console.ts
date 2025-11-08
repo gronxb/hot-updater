@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
-import app from "@hot-updater/console";
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
+import app from "@hot-updater/console";
 
 import type { AddressInfo } from "net";
 
