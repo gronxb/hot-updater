@@ -24,7 +24,7 @@ vi.mock("path", () => ({
   },
 }));
 
-vi.mock("@hot-updater/plugin-core", () => ({
+vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(),
 }));
 

@@ -12,7 +12,7 @@ import { getNativeAppVersion } from "./getNativeAppVersion";
 vi.mock("fs/promises");
 vi.mock("path");
 vi.mock("@bacons/xcode");
-vi.mock("@hot-updater/plugin-core");
+vi.mock("@hot-updater/cli-tools");
 
 vi.mock("fast-glob", () => ({
   default: {

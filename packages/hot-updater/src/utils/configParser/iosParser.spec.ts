@@ -31,7 +31,7 @@ vi.mock("plist", () => ({
   },
 }));
 
-vi.mock("@hot-updater/plugin-core", () => ({
+vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(),
 }));
 
