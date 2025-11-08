@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.21.8
+
+### Patch Changes
+
+- 3fe8c81: feat(plugin-core): reduced deps for edge-runtime
+  - @hot-updater/core@0.21.8
+
 ## 0.21.7
 
 ### Patch Changes

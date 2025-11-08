@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.21.8
+
+### Patch Changes
+
+- Updated dependencies [3fe8c81]
+  - hot-updater@0.21.8
+  - @hot-updater/plugin-core@0.21.8
+  - @hot-updater/cli-tools@0.21.8
+  - @hot-updater/core@0.21.8
+  - @hot-updater/js@0.21.8
+
 ## 0.21.7
 
 ### Patch Changes
