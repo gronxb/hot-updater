@@ -49,6 +49,7 @@
   },
   "devDependencies": {
     "@clack/prompts": "catalog:",
+    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",

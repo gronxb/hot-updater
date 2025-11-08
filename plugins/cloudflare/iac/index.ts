@@ -1,14 +1,13 @@
 import * as p from "@clack/prompts";
 import {
-  type BuildType,
   ConfigBuilder,
   copyDirToTmp,
   getCwd,
   link,
   makeEnv,
-  type ProviderConfig,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
+import type { BuildType, ProviderConfig } from "@hot-updater/plugin-core";
 import { Cloudflare } from "cloudflare";
 import crypto from "crypto";
 import dayjs from "dayjs";

@@ -1045,6 +1045,52 @@ importers:
         specifier: ^4.30.0
         version: 4.30.0(@cloudflare/workers-types@4.20250828.1)
 
+  packages/cli-tools:
+    dependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
+      boxen:
+        specifier: ^8.0.1
+        version: 8.0.1
+      cosmiconfig:
+        specifier: 9.0.0
+        version: 9.0.0(typescript@5.8.2)
+      cosmiconfig-typescript-loader:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@20.19.11)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
+      es-toolkit:
+        specifier: ^1.32.0
+        version: 1.32.0
+      fast-glob:
+        specifier: 3.3.3
+        version: 3.3.3
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
+      oxc-transform:
+        specifier: 0.82.1
+        version: 0.82.1
+      picocolors:
+        specifier: 'catalog:'
+        version: 1.1.1
+      tar:
+        specifier: ^7.5.1
+        version: 7.5.1
+      workspace-tools:
+        specifier: ^0.36.4
+        version: 0.36.4
+    devDependencies:
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../test-utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.11
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+
   packages/console:
     dependencies:
       '@hot-updater/core':
@@ -1168,6 +1214,9 @@ importers:
       '@expo/fingerprint':
         specifier: 0.13.4
         version: 0.13.4
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../cli-tools
       '@hot-updater/console':
         specifier: workspace:*
         version: link:../console
@@ -1461,6 +1510,9 @@ importers:
       '@clack/prompts':
         specifier: 'catalog:'
         version: 0.10.0
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1535,6 +1587,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20250828.1
         version: 4.20250828.1
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -1637,6 +1692,9 @@ importers:
       '@clack/prompts':
         specifier: 'catalog:'
         version: 0.10.0
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
@@ -1717,27 +1775,15 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
-      cosmiconfig:
-        specifier: 9.0.0
-        version: 9.0.0(typescript@5.8.2)
-      cosmiconfig-typescript-loader:
-        specifier: 5.0.0
-        version: 5.0.0(@types/node@20.19.11)(cosmiconfig@9.0.0(typescript@5.8.2))(typescript@5.8.2)
-      fast-glob:
-        specifier: 3.3.3
-        version: 3.3.3
+      es-toolkit:
+        specifier: ^1.32.0
+        version: 1.32.0
       mime:
         specifier: ^4.0.4
         version: 4.0.4
-      oxc-transform:
-        specifier: 0.82.1
-        version: 0.82.1
       semver:
         specifier: ^7.7.2
         version: 7.7.2
-      tar:
-        specifier: ^7.5.1
-        version: 7.5.1
     devDependencies:
       '@hot-updater/plugin-core':
         specifier: workspace:*
@@ -1751,24 +1797,9 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.5.8
-      boxen:
-        specifier: ^8.0.1
-        version: 8.0.1
-      es-toolkit:
-        specifier: ^1.32.0
-        version: 1.32.0
-      jszip:
-        specifier: ^3.10.1
-        version: 3.10.1
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
       typescript:
         specifier: 5.8.2
         version: 5.8.2
-      workspace-tools:
-        specifier: ^0.36.4
-        version: 0.36.4
 
   plugins/postgres:
     dependencies:
@@ -3886,26 +3917,17 @@ packages:
   '@emnapi/core@1.4.3':
     resolution: {integrity: sha512-4m62DuCE07lw01soJwPiBGC0nAww0Q+RY70VZ+n49yDIO13yyinhbWCeNnaob0lakDtWQzSdtNWzJeOJt2ma+g==}
 
-  '@emnapi/core@1.4.5':
-    resolution: {integrity: sha512-XsLw1dEOpkSX/WucdqUhPWP7hDxSvZiY+fsUC14h+FtQ2Ifni4znbBt8punRX+Uj2JG/uDb8nEHVKvrVlvdZ5Q==}
-
   '@emnapi/core@1.5.0':
     resolution: {integrity: sha512-sbP8GzB1WDzacS8fgNPpHlp6C9VZe+SJP3F90W9rLemaQj2PzIuTEl1qDOYQf58YIpyjViI24y9aPWCjEzY2cg==}
 
   '@emnapi/runtime@1.4.3':
     resolution: {integrity: sha512-pBPWdu6MLKROBX05wSNKcNb++m5Er+KQ9QkB+WVM+pW2Kx9hoSrVTnu3BdkI5eBLZoKu/J6mW/B6i6bJB2ytXQ==}
 
-  '@emnapi/runtime@1.4.5':
-    resolution: {integrity: sha512-++LApOtY0pEEz1zrd9vy1/zXVaVJJ/EbAF3u0fXIzPJEDtnITsBGbbK0EkM72amhl/R5b+5xx0Y/QhcVOpuulg==}
-
   '@emnapi/runtime@1.7.0':
     resolution: {integrity: sha512-oAYoQnCYaQZKVS53Fq23ceWMRxq5EhQsE0x0RdQ55jT7wagMu5k+fS39v1fiSLrtrLQlXwVINenqhLMtTrV/1Q==}
 
   '@emnapi/wasi-threads@1.0.2':
     resolution: {integrity: sha512-5n3nTJblwRi8LlXkJ9eBzu+kZR8Yxcc7ubakyQTFzPMtIhFpUBRbsnc2Dv88IZDIbCDlBiWrknhB4Lsz7mg6BA==}
-
-  '@emnapi/wasi-threads@1.0.4':
-    resolution: {integrity: sha512-PJR+bOmMOPH8AtcTGAyYNiuJ3/Fcoj2XN/gBEWzDIKh254XO+mM9XoXHk5GNEhodxeMznbg7BlRojVbKN+gC6g==}
 
   '@emnapi/wasi-threads@1.1.0':
     resolution: {integrity: sha512-WI0DdZ8xFSbgMjR1sFsKABJ/C5OnRrjT06JXbZKexJGrDuPTzZdDYfFlsgcCXCyf+suG5QU2e/y1Wo2V/OapLQ==}
@@ -5744,9 +5766,6 @@ packages:
 
   '@napi-rs/wasm-runtime@0.2.4':
     resolution: {integrity: sha512-9zESzOO5aDByvhIAsOy9TbpZ0Ur2AJbUI7UT73kcUTS2mxAMHOBaa1st/jAymNoCtvrit99kkzT1FZuXVcgfIQ==}
-
-  '@napi-rs/wasm-runtime@1.0.3':
-    resolution: {integrity: sha512-rZxtMsLwjdXkMUGC3WwsPwLNVqVqnTJT6MNIB6e+5fhMcSCPP0AOsNWuMQ5mdCq6HNjs/ZeWAEchpqeprqBD2Q==}
 
   '@napi-rs/wasm-runtime@1.0.7':
     resolution: {integrity: sha512-SeDnOO0Tk7Okiq6DbXmmBODgOAb9dp9gjlphokTUxmt8U3liIP1ZsozBahH69j/RJv+Rfs6IwUKHTgQYJ/HBAw==}
@@ -8687,9 +8706,6 @@ packages:
 
   '@tsconfig/node16@1.0.4':
     resolution: {integrity: sha512-vxhUy4J8lyeyinH7Azl1pdd43GJhZH/tP2weN8TntQblOY+A0XbT8DJk1/oCPuOOyg/Ja757rG0CgHcWC8OfMA==}
-
-  '@tybys/wasm-util@0.10.0':
-    resolution: {integrity: sha512-VyyPYFlOMNylG45GoAe0xDoLwWuowvf92F9kySqzYh8vmYm7D2u4iUJKa1tOUpS70Ku13ASrOkS4ScXFsTaCNQ==}
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -22776,12 +22792,6 @@ snapshots:
       '@emnapi/wasi-threads': 1.0.2
       tslib: 2.8.1
 
-  '@emnapi/core@1.4.5':
-    dependencies:
-      '@emnapi/wasi-threads': 1.0.4
-      tslib: 2.8.1
-    optional: true
-
   '@emnapi/core@1.5.0':
     dependencies:
       '@emnapi/wasi-threads': 1.1.0
@@ -22792,11 +22802,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@emnapi/runtime@1.4.5':
-    dependencies:
-      tslib: 2.8.1
-    optional: true
-
   '@emnapi/runtime@1.7.0':
     dependencies:
       tslib: 2.8.1
@@ -22805,11 +22810,6 @@ snapshots:
   '@emnapi/wasi-threads@1.0.2':
     dependencies:
       tslib: 2.8.1
-
-  '@emnapi/wasi-threads@1.0.4':
-    dependencies:
-      tslib: 2.8.1
-    optional: true
 
   '@emnapi/wasi-threads@1.1.0':
     dependencies:
@@ -25188,13 +25188,6 @@ snapshots:
       '@emnapi/runtime': 1.4.3
       '@tybys/wasm-util': 0.9.0
 
-  '@napi-rs/wasm-runtime@1.0.3':
-    dependencies:
-      '@emnapi/core': 1.4.5
-      '@emnapi/runtime': 1.4.5
-      '@tybys/wasm-util': 0.10.0
-    optional: true
-
   '@napi-rs/wasm-runtime@1.0.7':
     dependencies:
       '@emnapi/core': 1.5.0
@@ -25465,7 +25458,7 @@ snapshots:
 
   '@oxc-transform/binding-wasm32-wasi@0.82.1':
     dependencies:
-      '@napi-rs/wasm-runtime': 1.0.3
+      '@napi-rs/wasm-runtime': 1.0.7
     optional: true
 
   '@oxc-transform/binding-win32-arm64-msvc@0.82.1':
@@ -28129,7 +28122,7 @@ snapshots:
       nano-spawn: 0.2.1
       picocolors: 1.1.1
       string-argv: 0.3.2
-      tar: 7.4.3
+      tar: 7.5.1
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
@@ -28146,7 +28139,7 @@ snapshots:
       nano-spawn: 0.2.1
       picocolors: 1.1.1
       string-argv: 0.3.2
-      tar: 7.4.3
+      tar: 7.5.1
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
@@ -29502,11 +29495,6 @@ snapshots:
     optional: true
 
   '@tsconfig/node16@1.0.4':
-    optional: true
-
-  '@tybys/wasm-util@0.10.0':
-    dependencies:
-      tslib: 2.8.1
     optional: true
 
   '@tybys/wasm-util@0.10.1':
