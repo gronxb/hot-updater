@@ -1,8 +1,5 @@
-import {
-  type BasePluginArgs,
-  type BuildPlugin,
-  getCwd,
-} from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
+import type { BasePluginArgs, BuildPlugin } from "@hot-updater/plugin-core";
 import type { SentryCliOptions } from "@sentry/cli";
 import SentryCli from "@sentry/cli";
 import fs from "fs";

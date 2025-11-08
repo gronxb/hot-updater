@@ -1,10 +1,9 @@
-import * as p from "@clack/prompts";
 import {
   type FingerprintSource,
   type Options,
   SourceSkips,
 } from "@expo/fingerprint";
-import { loadConfig } from "@hot-updater/plugin-core";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import { processExtraSources } from "./processExtraSources";
 
 export const ensureFingerprintConfig = async () => {

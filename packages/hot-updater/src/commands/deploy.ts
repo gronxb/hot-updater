@@ -1,17 +1,17 @@
-import * as p from "@clack/prompts";
 import {
+  colors,
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
   getCwd,
   loadConfig,
-  type Platform,
-} from "@hot-updater/plugin-core";
+  p,
+} from "@hot-updater/cli-tools";
+import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import path from "path";
-import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import { getPlatform } from "@/prompts/getPlatform";
 import {
@@ -292,7 +292,7 @@ export const deploy = async (options: DeployOptions) => {
           fileHash = await getFileHashFromFile(bundlePath);
 
           p.log.success(
-            `Bundle stored at ${picocolors.blueBright(path.relative(cwd, bundlePath))}`,
+            `Bundle stored at ${colors.blueBright(path.relative(cwd, bundlePath))}`,
           );
 
           return `✅ Build Complete (${buildPlugin.name})`;

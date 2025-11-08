@@ -1,8 +1,8 @@
 {
-  "name": "@hot-updater/sentry-plugin",
+  "name": "@hot-updater/cli-tools",
   "version": "0.21.7",
   "type": "module",
-  "description": "React Native OTA solution for self-hosted",
+  "description": "CLI utilities for Hot Updater",
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -43,12 +43,22 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/core": "workspace:*",
+    "@clack/prompts": "catalog:",
     "@hot-updater/plugin-core": "workspace:*",
-    "@sentry/cli": "2.46.0"
+    "boxen": "^8.0.1",
+    "cosmiconfig": "9.0.0",
+    "cosmiconfig-typescript-loader": "5.0.0",
+    "es-toolkit": "^1.32.0",
+    "fast-glob": "3.3.3",
+    "jszip": "^3.10.1",
+    "oxc-transform": "0.82.1",
+    "picocolors": "catalog:",
+    "tar": "^7.5.1",
+    "workspace-tools": "^0.36.4"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "5.8.2"
   }
 }

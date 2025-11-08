@@ -1,6 +1,6 @@
+import { getCwd } from "@hot-updater/cli-tools";
 import {
   generateMinBundleId,
-  getCwd,
   type NativeBuildArgs,
   type RequiredDeep,
 } from "@hot-updater/plugin-core";

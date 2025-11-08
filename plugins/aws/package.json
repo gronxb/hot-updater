@@ -50,11 +50,10 @@
     "es-toolkit": "^1.32.0",
     "execa": "catalog:",
     "hono": "^4.6.3",
-    "mime": "^4.0.4",
-    "picocolors": "catalog:",
-    "@clack/prompts": "catalog:"
+    "mime": "^4.0.4"
   },
   "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
     "@aws-sdk/client-cloudfront": "3.772.0",
     "@aws-sdk/client-iam": "3.772.0",
     "@aws-sdk/client-lambda": "3.772.0",

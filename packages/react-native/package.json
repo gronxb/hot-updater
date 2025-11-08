@@ -130,6 +130,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",

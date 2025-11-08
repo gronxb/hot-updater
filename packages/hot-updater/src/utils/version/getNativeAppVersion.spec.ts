@@ -1,7 +1,7 @@
 // __tests__/getNativeAppVersion.test.ts
 
 import { XcodeProject } from "@bacons/xcode";
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
 import fg from "fast-glob";
 import fs from "fs/promises";
 import path from "path";
@@ -12,7 +12,7 @@ import { getNativeAppVersion } from "./getNativeAppVersion";
 vi.mock("fs/promises");
 vi.mock("path");
 vi.mock("@bacons/xcode");
-vi.mock("@hot-updater/plugin-core");
+vi.mock("@hot-updater/cli-tools");
 
 vi.mock("fast-glob", () => ({
   default: {

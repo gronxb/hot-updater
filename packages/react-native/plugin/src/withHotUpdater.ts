@@ -1,4 +1,4 @@
-import { loadConfig } from "@hot-updater/plugin-core";
+import { loadConfig } from "@hot-updater/cli-tools";
 import type { ExpoConfig } from "expo/config";
 import {
   createRunOncePlugin,

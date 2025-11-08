@@ -47,16 +47,15 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:*",
     "@supabase/supabase-js": "^2.76.1"
   },
   "devDependencies": {
-    "@clack/prompts": "catalog:",
     "@hot-updater/postgres": "workspace:*",
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:",
     "@types/node": "catalog:",
-    "mime": "^4.0.4",
-    "picocolors": "catalog:"
+    "mime": "^4.0.4"
   }
 }

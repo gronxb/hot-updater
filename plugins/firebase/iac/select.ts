@@ -1,11 +1,11 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   ConfigBuilder,
   link,
   makeEnv,
   type ProviderConfig,
-} from "@hot-updater/plugin-core";
+  p,
+} from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 

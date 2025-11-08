@@ -1,5 +1,4 @@
-import * as p from "@clack/prompts";
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd, p } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import { readPackageUp } from "read-package-up";
 import { version } from "@/packageJson";

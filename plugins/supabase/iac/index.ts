@@ -1,4 +1,3 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   ConfigBuilder,
@@ -6,9 +5,10 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
+  p,
   transformEnv,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";

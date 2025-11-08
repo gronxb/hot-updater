@@ -7,7 +7,7 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     exports: true,
-    unbundle: true,
     failOnWarn: true,
+    unbundle: true,
   },
 ]);

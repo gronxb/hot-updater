@@ -1,14 +1,14 @@
 import { fromSSO } from "@aws-sdk/credential-providers";
-import * as p from "@clack/prompts";
 import {
   type BuildType,
+  colors,
   link,
   makeEnv,
+  p,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
-import picocolors from "picocolors";
 import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
@@ -54,21 +54,21 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   });
   if (p.isCancel(mode)) process.exit(1);
 
-  p.log.message(picocolors.blue("The following permissions are required:"));
+  p.log.message(colors.blue("The following permissions are required:"));
   p.log.message(
-    `${picocolors.blue("AmazonS3FullAccess")}: Create and read S3 buckets`,
+    `${colors.blue("AmazonS3FullAccess")}: Create and read S3 buckets`,
   );
   p.log.message(
-    `${picocolors.blue("AWSLambda_FullAccess")}: Create and update Lambda functions`,
+    `${colors.blue("AWSLambda_FullAccess")}: Create and update Lambda functions`,
   );
   p.log.message(
-    `${picocolors.blue("CloudFrontFullAccess")}: Create and update CloudFront distributions`,
+    `${colors.blue("CloudFrontFullAccess")}: Create and update CloudFront distributions`,
   );
   p.log.message(
-    `${picocolors.blue("IAMFullAccess")}: Get or create IAM roles for Lambda@Edge`,
+    `${colors.blue("IAMFullAccess")}: Get or create IAM roles for Lambda@Edge`,
   );
   p.log.message(
-    `${picocolors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
+    `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
 
   if (mode === "sso") {

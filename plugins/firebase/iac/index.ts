@@ -1,11 +1,11 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   copyDirToTmp,
   link,
+  p,
   transformEnv,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import fs from "fs";

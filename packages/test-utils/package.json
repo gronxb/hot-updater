@@ -45,7 +45,6 @@
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
     "@types/node": "catalog:",
-    "workspace-tools": "^0.18.4",
     "execa": "catalog:",
     "vitest": "^3.2.4"
   }

@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import path from "path";
 import { fileURLToPath } from "url";
-import * as p from "@clack/prompts";
+import { colors, p } from "@hot-updater/cli-tools";
 import chokidar from "chokidar";
 import { execa } from "execa";
-import picocolors from "picocolors";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -18,7 +17,7 @@ const runBuild = async () => {
     p.log.info("Build cancelled - new build starting");
   }
 
-  p.log.info(picocolors.cyan("🔨 Building packages..."));
+  p.log.info(colors.cyan("🔨 Building packages..."));
 
   try {
     buildProcess = execa("pnpm", ["-w", "build"], {
@@ -82,17 +81,17 @@ watcher.on("ready", () => {
 });
 
 watcher.on("change", (filePath) => {
-  p.log.info(picocolors.blueBright(`📝 Changed: ${filePath}`));
+  p.log.info(colors.blueBright(`📝 Changed: ${filePath}`));
   runBuild();
 });
 
 watcher.on("add", (filePath) => {
-  p.log.info(picocolors.greenBright(`➕ Added: ${filePath}`));
+  p.log.info(colors.greenBright(`➕ Added: ${filePath}`));
   runBuild();
 });
 
 watcher.on("unlink", (filePath) => {
-  p.log.info(picocolors.red(`➖ Removed: ${filePath}`));
+  p.log.info(colors.red(`➖ Removed: ${filePath}`));
   runBuild();
 });
 

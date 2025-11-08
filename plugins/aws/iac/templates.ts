@@ -2,7 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   type ProviderConfig,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 
 export const getConfigTemplate = (
   build: BuildType,

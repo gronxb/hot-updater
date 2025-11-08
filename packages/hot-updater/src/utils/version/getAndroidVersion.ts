@@ -1,4 +1,4 @@
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
 import fs from "fs/promises";
 import path from "path";
 import semverValid from "semver/ranges/valid";
