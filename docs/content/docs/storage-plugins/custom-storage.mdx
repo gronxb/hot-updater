@@ -58,7 +58,7 @@ export interface CustomStorageConfig {
 
 export const customStorage =
   (config: CustomStorageConfig, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
+  ({ cwd }: BasePluginArgs): StoragePlugin => {
     const { bucketName, apiKey, endpoint } = config;
 
     return {
