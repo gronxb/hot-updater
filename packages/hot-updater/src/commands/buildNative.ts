@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
-import { getCwd, loadConfig, type Platform } from "@hot-updater/plugin-core";
+import { getCwd, loadConfig } from "@hot-updater/cli-tools";
+import type { Platform } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import fs from "fs";
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
-import { banner, log } from "@hot-updater/plugin-core";
+import { banner, log } from "@hot-updater/cli-tools";
 import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import {

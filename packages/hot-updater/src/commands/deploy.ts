@@ -5,8 +5,8 @@ import {
   createZipTargetFiles,
   getCwd,
   loadConfig,
-  type Platform,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
+import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
 import open from "open";
