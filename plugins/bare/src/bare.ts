@@ -1,9 +1,9 @@
-import {
-  type BasePluginArgs,
-  type BuildPlugin,
-  type BuildPluginConfig,
-} from "@hot-updater/plugin-core";
 import { log } from "@hot-updater/cli-tools";
+import type {
+  BasePluginArgs,
+  BuildPlugin,
+  BuildPluginConfig,
+} from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 import path from "path";

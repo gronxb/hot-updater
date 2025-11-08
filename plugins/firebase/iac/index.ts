@@ -1,10 +1,10 @@
 import * as p from "@clack/prompts";
 import {
+  type BuildType,
   copyDirToTmp,
   link,
   transformEnv,
   transformTemplate,
-  type BuildType,
 } from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
