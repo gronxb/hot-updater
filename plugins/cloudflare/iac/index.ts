@@ -1,4 +1,3 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   ConfigBuilder,
@@ -7,6 +6,7 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
+  prompts as p,
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { Cloudflare } from "cloudflare";

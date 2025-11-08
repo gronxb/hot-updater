@@ -6,7 +6,7 @@ import {
   type S3Client,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import picocolors from "picocolors";
+import { colors as picocolors } from "@hot-updater/cli-tools";
 
 interface MigrationRecord {
   name: string;

@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
-import { banner, log } from "@hot-updater/cli-tools";
-import picocolors from "picocolors";
+import {
+  banner,
+  log,
+  prompts as p,
+  colors as picocolors,
+} from "@hot-updater/cli-tools";
 import semverValid from "semver/ranges/valid";
 import {
   interactiveCommandOption,

@@ -1,8 +1,11 @@
-import * as p from "@clack/prompts";
-import { getCwd, loadConfig } from "@hot-updater/cli-tools";
+import {
+  getCwd,
+  loadConfig,
+  prompts as p,
+  colors as picocolors,
+} from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
-import picocolors from "picocolors";
 import {
   createAndInjectFingerprintFiles,
   type FingerprintResult,

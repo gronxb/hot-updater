@@ -1,5 +1,5 @@
-import * as p from "@clack/prompts";
 import type { BuildType } from "@hot-updater/cli-tools";
+import { prompts as p } from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { appendToProjectRootGitignore } from "@/utils/git";

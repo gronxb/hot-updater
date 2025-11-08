@@ -1,11 +1,13 @@
-import * as p from "@clack/prompts";
-import { getCwd, loadConfig } from "@hot-updater/cli-tools";
+import {
+  getCwd,
+  loadConfig,
+  prompts as p,
+  colors as picocolors,
+} from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import fs from "fs";
-
 import path from "path";
-import picocolors from "picocolors";
 import { getPlatform } from "@/prompts/getPlatform";
 import {
   createAndInjectFingerprintFiles,

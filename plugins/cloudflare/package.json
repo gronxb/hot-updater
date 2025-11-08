@@ -53,7 +53,6 @@
     "cloudflare": "4.2.0"
   },
   "devDependencies": {
-    "@clack/prompts": "catalog:",
     "@cloudflare/vitest-pool-workers": "^0.8.70",
     "@cloudflare/workers-types": "^4.20250828.1",
     "@hot-updater/test-utils": "workspace:*",
@@ -64,7 +63,6 @@
     "hono": "^4.6.3",
     "mime": "^4.0.4",
     "pg-minify": "^1.6.5",
-    "picocolors": "catalog:",
     "semver": "^7.6.3",
     "toml": "^3.0.0",
     "typescript": "^5.5.2",

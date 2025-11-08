@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { prompts as p } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";

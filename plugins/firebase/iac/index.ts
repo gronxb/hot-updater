@@ -1,8 +1,8 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   copyDirToTmp,
   link,
+  prompts as p,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";

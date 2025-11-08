@@ -1,7 +1,7 @@
+import { colors as picocolors } from "@hot-updater/cli-tools";
 import type { Compiler, RspackPluginInstance } from "@rspack/core";
 import fs from "fs";
 import path from "path";
-import picocolors from "picocolors";
 import { uuidv7 } from "uuidv7";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";

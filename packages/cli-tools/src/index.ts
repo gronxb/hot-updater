@@ -1,5 +1,6 @@
 export * from "./banner";
 export * from "./ConfigBuilder";
+export * from "./colors";
 export * from "./copyDirToTmp";
 export * from "./createTarBr";
 export * from "./createTarGz";
@@ -10,5 +11,6 @@ export * from "./getAndroidSdkPath";
 export * from "./loadConfig";
 export * from "./log";
 export * from "./makeEnv";
+export * from "./prompts";
 export * from "./transformEnv";
 export * from "./transformTemplate";

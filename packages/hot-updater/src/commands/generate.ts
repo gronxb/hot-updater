@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { prompts as p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 import { createHash } from "crypto";
 import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";

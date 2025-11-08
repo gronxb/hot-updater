@@ -1,8 +1,10 @@
-import * as p from "@clack/prompts";
 import type { FingerprintDiffItem, FingerprintSource } from "@expo/fingerprint";
 import { diffFingerprintChangesAsync } from "@expo/fingerprint";
-import { getCwd } from "@hot-updater/cli-tools";
-import picocolors from "picocolors";
+import {
+  getCwd,
+  prompts as p,
+  colors as picocolors,
+} from "@hot-updater/cli-tools";
 import {
   type FingerprintOptions,
   type FingerprintResult,

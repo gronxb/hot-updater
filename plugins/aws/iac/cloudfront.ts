@@ -2,7 +2,7 @@ import {
   CloudFront,
   type DistributionConfig,
 } from "@aws-sdk/client-cloudfront";
-import * as p from "@clack/prompts";
+import { prompts as p } from "@hot-updater/cli-tools";
 import crypto from "crypto";
 import { delay, merge } from "es-toolkit";
 import type { AwsRegion } from "./regionLocationMap";

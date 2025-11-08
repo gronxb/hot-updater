@@ -1047,6 +1047,9 @@ importers:
 
   packages/cli-tools:
     dependencies:
+      '@clack/prompts':
+        specifier: 'catalog:'
+        version: 0.10.0
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
@@ -1211,9 +1214,6 @@ importers:
 
   packages/hot-updater:
     dependencies:
-      '@clack/prompts':
-        specifier: 'catalog:'
-        version: 0.10.0
       '@expo/fingerprint':
         specifier: 0.13.4
         version: 0.13.4
@@ -1329,9 +1329,6 @@ importers:
       open:
         specifier: ^10.1.0
         version: 10.1.0
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
       plist:
         specifier: ^3.1.0
         version: 3.1.0
@@ -1516,9 +1513,6 @@ importers:
       '@aws-sdk/cloudfront-signer':
         specifier: 3.772.0
         version: 3.772.0
-      '@clack/prompts':
-        specifier: 'catalog:'
-        version: 0.10.0
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1549,9 +1543,6 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.0.4
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
 
   plugins/bare:
     dependencies:
@@ -1590,9 +1581,6 @@ importers:
         specifier: 4.2.0
         version: 4.2.0(encoding@0.1.13)
     devDependencies:
-      '@clack/prompts':
-        specifier: 'catalog:'
-        version: 0.10.0
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.8.70
         version: 0.8.70(@cloudflare/workers-types@4.20250828.1)(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@2.1.8(@types/node@20.19.11)(jsdom@25.0.1)(lightningcss@1.30.2)(msw@2.7.0(@types/node@20.19.11)(typescript@5.8.3))(sass-embedded@1.83.0)(terser@5.31.0))
@@ -1623,9 +1611,6 @@ importers:
       pg-minify:
         specifier: ^1.6.5
         version: 1.6.5
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
       semver:
         specifier: ^7.6.3
         version: 7.7.2
@@ -1666,9 +1651,6 @@ importers:
 
   plugins/expo:
     dependencies:
-      '@clack/prompts':
-        specifier: 'catalog:'
-        version: 0.10.0
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../bare
@@ -1704,9 +1686,6 @@ importers:
         specifier: ^11.3.1
         version: 11.6.0
     devDependencies:
-      '@clack/prompts':
-        specifier: 'catalog:'
-        version: 0.10.0
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
@@ -1743,9 +1722,6 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.0.4
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
 
   plugins/js:
     dependencies:
@@ -1849,6 +1825,9 @@ importers:
 
   plugins/repack:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -1865,9 +1844,6 @@ importers:
       es-toolkit:
         specifier: ^1.32.0
         version: 1.32.0
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
       uuidv7:
         specifier: ^1.0.2
         version: 1.0.2
@@ -1956,9 +1932,6 @@ importers:
         specifier: ^2.76.1
         version: 2.76.1
     devDependencies:
-      '@clack/prompts':
-        specifier: 'catalog:'
-        version: 0.10.0
       '@hot-updater/postgres':
         specifier: workspace:*
         version: link:../postgres
@@ -1977,9 +1950,6 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.0.4
-      picocolors:
-        specifier: 'catalog:'
-        version: 1.1.1
 
 packages:
 

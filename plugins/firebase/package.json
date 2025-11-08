@@ -49,7 +49,6 @@
     "access": "public"
   },
   "devDependencies": {
-    "@clack/prompts": "catalog:",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
@@ -61,8 +60,7 @@
     "firebase-tools": "^13.32.0",
     "fkill": "^9.0.0",
     "hono": "^4.6.3",
-    "mime": "^4.0.4",
-    "picocolors": "catalog:"
+    "mime": "^4.0.4"
   },
   "peerDependencies": {
     "firebase-admin": "*"

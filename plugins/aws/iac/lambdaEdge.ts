@@ -1,9 +1,9 @@
 import { Lambda } from "@aws-sdk/client-lambda";
-import * as p from "@clack/prompts";
 import {
   copyDirToTmp,
   createZip,
   getCwd,
+  prompts as p,
   transformEnv,
 } from "@hot-updater/cli-tools";
 import fs from "fs/promises";

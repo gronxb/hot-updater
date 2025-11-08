@@ -1,17 +1,17 @@
-import * as p from "@clack/prompts";
 import {
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
   getCwd,
   loadConfig,
+  prompts as p,
+  colors as picocolors,
 } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import path from "path";
-import picocolors from "picocolors";
 import semverValid from "semver/ranges/valid";
 import { getPlatform } from "@/prompts/getPlatform";
 import {

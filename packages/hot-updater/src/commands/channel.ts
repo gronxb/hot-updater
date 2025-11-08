@@ -1,5 +1,4 @@
-import * as p from "@clack/prompts";
-import picocolors from "picocolors";
+import { prompts as p, colors as picocolors } from "@hot-updater/cli-tools";
 import { getChannel, setChannel } from "@/utils/setChannel";
 
 export const handleChannel = async () => {

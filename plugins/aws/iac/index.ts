@@ -1,14 +1,14 @@
 import { fromSSO } from "@aws-sdk/credential-providers";
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   link,
   makeEnv,
+  prompts as p,
+  colors as picocolors,
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
-import picocolors from "picocolors";
 import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
 import { LambdaEdgeDeployer } from "./lambdaEdge";

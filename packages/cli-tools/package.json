@@ -43,6 +43,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@clack/prompts": "catalog:",
     "@hot-updater/plugin-core": "workspace:*",
     "boxen": "^8.0.1",
     "cosmiconfig": "9.0.0",
