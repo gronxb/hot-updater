@@ -1,4 +1,8 @@
-import type { ConfigInput, Platform } from "@hot-updater/plugin-core";
+import type {
+  ConfigInput,
+  Platform,
+  RequiredDeep,
+} from "@hot-updater/plugin-core";
 import {
   type CosmiconfigResult,
   cosmiconfig,
@@ -9,10 +13,6 @@ import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import path from "path";
 import { getCwd } from "./cwd.js";
-
-type RequiredDeep<T> = T extends object
-  ? { [K in keyof T]-?: RequiredDeep<T[K]> }
-  : T;
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
