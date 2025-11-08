@@ -1,10 +1,10 @@
 ---
-"hot-updater": patch
-"@hot-updater/plugin-core": patch
-"@hot-updater/cli-tools": patch
-"@hot-updater/cloudflare": patch
-"@hot-updater/firebase": patch
-"@hot-updater/aws": patch
+"hot-updater": minor
+"@hot-updater/plugin-core": minor
+"@hot-updater/cli-tools": minor
+"@hot-updater/cloudflare": minor
+"@hot-updater/firebase": minor
+"@hot-updater/aws": minor
 ---
 
-feat: separate package cli-tools from plugin-core
+feat(plugin-core): reduced deps for edge-runtime
