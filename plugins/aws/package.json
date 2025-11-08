@@ -41,7 +41,6 @@
   },
   "devDependencies": {
     "@aws-sdk/cloudfront-signer": "3.772.0",
-    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
@@ -56,6 +55,7 @@
     "@clack/prompts": "catalog:"
   },
   "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
     "@aws-sdk/client-cloudfront": "3.772.0",
     "@aws-sdk/client-iam": "3.772.0",
     "@aws-sdk/client-lambda": "3.772.0",

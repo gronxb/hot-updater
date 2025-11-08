@@ -8,7 +8,7 @@ import {
   type ProviderConfig,
   transformEnv,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";

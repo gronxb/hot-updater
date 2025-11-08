@@ -46,6 +46,7 @@
     "dev": "wrangler dev worker/src/index.ts"
   },
   "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
@@ -55,7 +56,6 @@
     "@clack/prompts": "catalog:",
     "@cloudflare/vitest-pool-workers": "^0.8.70",
     "@cloudflare/workers-types": "^4.20250828.1",
-    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",

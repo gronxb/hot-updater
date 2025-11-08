@@ -1077,9 +1077,6 @@ importers:
       tar:
         specifier: ^7.5.1
         version: 7.5.1
-      workspace-tools:
-        specifier: ^0.36.4
-        version: 0.36.4
     devDependencies:
       '@hot-updater/test-utils':
         specifier: workspace:*
@@ -1090,9 +1087,15 @@ importers:
       typescript:
         specifier: 5.8.2
         version: 5.8.2
+      workspace-tools:
+        specifier: ^0.36.4
+        version: 0.36.4
 
   packages/console:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core
@@ -1344,6 +1347,9 @@ importers:
 
   packages/react-native:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core
@@ -1497,6 +1503,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.772.0
         version: 3.772.0
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -1510,9 +1519,6 @@ importers:
       '@clack/prompts':
         specifier: 'catalog:'
         version: 0.10.0
-      '@hot-updater/cli-tools':
-        specifier: workspace:*
-        version: link:../../packages/cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1549,6 +1555,9 @@ importers:
 
   plugins/bare:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -1565,6 +1574,9 @@ importers:
 
   plugins/cloudflare:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1587,9 +1599,6 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20250828.1
         version: 4.20250828.1
-      '@hot-updater/cli-tools':
-        specifier: workspace:*
-        version: link:../../packages/cli-tools
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -1663,6 +1672,9 @@ importers:
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../bare
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -1679,6 +1691,9 @@ importers:
 
   plugins/firebase:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1692,9 +1707,6 @@ importers:
       '@clack/prompts':
         specifier: 'catalog:'
         version: 0.10.0
-      '@hot-updater/cli-tools':
-        specifier: workspace:*
-        version: link:../../packages/cli-tools
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
@@ -1862,6 +1874,9 @@ importers:
 
   plugins/rock:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -1878,6 +1893,9 @@ importers:
 
   plugins/sentry-plugin:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1925,6 +1943,9 @@ importers:
 
   plugins/supabase:
     dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -24334,6 +24355,7 @@ snapshots:
 
   '@hot-updater/react-native@file:packages/react-native(expo@52.0.46(@babel/core@7.26.0)(@babel/preset-env@7.26.0(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0)))(encoding@0.1.13)(graphql@16.10.0)(react-native-webview@13.12.5(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0))(react@19.1.0))(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0))(react@19.1.0))(hot-updater@packages+hot-updater)(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.0.0(typescript@5.0.4))(@types/react@19.1.3)(react@19.1.0))(react@19.1.0)':
     dependencies:
+      '@hot-updater/cli-tools': link:packages/cli-tools
       '@hot-updater/core': link:packages/core
       '@hot-updater/js': link:plugins/js
       '@hot-updater/plugin-core': link:plugins/plugin-core

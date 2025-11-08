@@ -40,6 +40,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "firebase": "^11.3.1"
@@ -49,7 +50,6 @@
   },
   "devDependencies": {
     "@clack/prompts": "catalog:",
-    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",

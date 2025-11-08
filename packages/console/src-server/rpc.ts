@@ -1,12 +1,14 @@
 import { typiaValidator } from "@hono/typia-validator";
 import {
   type Bundle,
-  type ConfigResponse,
   type DatabasePlugin,
-  getCwd,
-  loadConfig,
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
+import {
+  type ConfigResponse,
+  getCwd,
+  loadConfig,
+} from "@hot-updater/cli-tools";
 import { Hono } from "hono";
 import typia from "typia";
 

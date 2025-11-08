@@ -6,8 +6,9 @@ import {
   link,
   makeEnv,
   transformTemplate,
+  type BuildType,
+  type ProviderConfig,
 } from "@hot-updater/cli-tools";
-import type { BuildType, ProviderConfig } from "@hot-updater/plugin-core";
 import { Cloudflare } from "cloudflare";
 import crypto from "crypto";
 import dayjs from "dayjs";

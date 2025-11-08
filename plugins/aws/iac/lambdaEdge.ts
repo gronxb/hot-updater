@@ -5,7 +5,7 @@ import {
   createZip,
   getCwd,
   transformEnv,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import fs from "fs/promises";
 import path from "path";
 

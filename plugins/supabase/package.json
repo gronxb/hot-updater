@@ -47,6 +47,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:*",
     "@supabase/supabase-js": "^2.76.1"
   },
   "devDependencies": {

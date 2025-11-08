@@ -4,8 +4,8 @@ import {
   link,
   transformEnv,
   transformTemplate,
+  type BuildType,
 } from "@hot-updater/cli-tools";
-import type { BuildType } from "@hot-updater/plugin-core";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import fs from "fs";

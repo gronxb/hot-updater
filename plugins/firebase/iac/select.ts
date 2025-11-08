@@ -5,7 +5,7 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 

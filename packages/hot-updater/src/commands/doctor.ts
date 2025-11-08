@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
 import { merge } from "es-toolkit";
 import fs from "fs";
 import { readPackageUp } from "read-package-up";

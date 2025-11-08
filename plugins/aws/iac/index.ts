@@ -1,7 +1,11 @@
 import { fromSSO } from "@aws-sdk/credential-providers";
 import * as p from "@clack/prompts";
-import { link, makeEnv, transformTemplate } from "@hot-updater/cli-tools";
-import type { BuildType } from "@hot-updater/plugin-core";
+import {
+  link,
+  makeEnv,
+  transformTemplate,
+  type BuildType,
+} from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import picocolors from "picocolors";

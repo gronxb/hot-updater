@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import type { FingerprintDiffItem, FingerprintSource } from "@expo/fingerprint";
 import { diffFingerprintChangesAsync } from "@expo/fingerprint";
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
 import picocolors from "picocolors";
 import {
   type FingerprintOptions,

@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@hot-updater/bare": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@clack/prompts": "catalog:"
   },

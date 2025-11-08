@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { getCwd, loadConfig } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
 import picocolors from "picocolors";

@@ -3,8 +3,8 @@ import {
   type BasePluginArgs,
   type BuildPlugin,
   type BuildPluginConfig,
-  log,
 } from "@hot-updater/plugin-core";
+import { log } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";

@@ -1,3 +1,4 @@
+import type { ConfigInput, Platform } from "@hot-updater/plugin-core";
 import {
   type CosmiconfigResult,
   cosmiconfig,
@@ -7,7 +8,6 @@ import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import path from "path";
-import type { ConfigInput, Platform } from "@hot-updater/plugin-core";
 import { getCwd } from "./cwd.js";
 
 type RequiredDeep<T> = T extends object
