@@ -1,11 +1,11 @@
 import {
+  colors,
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
   getCwd,
   loadConfig,
-  prompts as p,
-  colors as picocolors,
+  p,
 } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
@@ -292,7 +292,7 @@ export const deploy = async (options: DeployOptions) => {
           fileHash = await getFileHashFromFile(bundlePath);
 
           p.log.success(
-            `Bundle stored at ${picocolors.blueBright(path.relative(cwd, bundlePath))}`,
+            `Bundle stored at ${colors.blueBright(path.relative(cwd, bundlePath))}`,
           );
 
           return `✅ Build Complete (${buildPlugin.name})`;

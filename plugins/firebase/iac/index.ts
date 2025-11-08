@@ -2,7 +2,7 @@ import {
   type BuildType,
   copyDirToTmp,
   link,
-  prompts as p,
+  p,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";

@@ -1,5 +1,5 @@
 import { ParameterNotFound, SSM } from "@aws-sdk/client-ssm";
-import { prompts as p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 import crypto from "crypto";
 import type { AwsRegion } from "./regionLocationMap";
 

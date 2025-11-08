@@ -3,7 +3,7 @@ import {
   type Options,
   SourceSkips,
 } from "@expo/fingerprint";
-import { loadConfig, prompts as p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import { processExtraSources } from "./processExtraSources";
 
 export const ensureFingerprintConfig = async () => {

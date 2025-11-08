@@ -1,4 +1,4 @@
-import { prompts as p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 import type { HotUpdaterInstance } from "./load-hot-updater";
 

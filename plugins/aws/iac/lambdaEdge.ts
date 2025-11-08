@@ -3,7 +3,7 @@ import {
   copyDirToTmp,
   createZip,
   getCwd,
-  prompts as p,
+  p,
   transformEnv,
 } from "@hot-updater/cli-tools";
 import fs from "fs/promises";

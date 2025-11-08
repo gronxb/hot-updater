@@ -1,7 +1,7 @@
 import type { PluginObj } from "@babel/core";
 import type { NodePath } from "@babel/traverse";
 import type * as babelTypes from "@babel/types";
-import { colors as picocolors } from "@hot-updater/cli-tools";
+import { colors } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
 import { uuidv7 } from "uuidv7";
@@ -22,9 +22,7 @@ const getBundleId = () => {
     bundleId = fs.readFileSync(bundleIdPath, "utf-8");
   } else {
     fs.writeFileSync(bundleIdPath, bundleId);
-    console.log(
-      picocolors.green(`[HotUpdater] Generated bundle ID: ${bundleId}`),
-    );
+    console.log(colors.green(`[HotUpdater] Generated bundle ID: ${bundleId}`));
   }
 
   return bundleId;

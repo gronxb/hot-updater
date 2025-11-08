@@ -1,11 +1,6 @@
 #!/usr/bin/env node
 import { Command, Option } from "@commander-js/extra-typings";
-import {
-  banner,
-  log,
-  prompts as p,
-  colors as picocolors,
-} from "@hot-updater/cli-tools";
+import { banner, colors, log, p } from "@hot-updater/cli-tools";
 import semverValid from "semver/ranges/valid";
 import {
   interactiveCommandOption,
@@ -120,8 +115,8 @@ program
 
     await openConsole(port, (info) => {
       console.log(
-        `Server running on ${picocolors.magenta(
-          picocolors.underline(`http://localhost:${info.port}`),
+        `Server running on ${colors.magenta(
+          colors.underline(`http://localhost:${info.port}`),
         )}`,
       );
     });

@@ -4,7 +4,7 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
-  prompts as p,
+  p,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";

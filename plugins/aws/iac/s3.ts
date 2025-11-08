@@ -1,5 +1,5 @@
 import { type BucketLocationConstraint, S3 } from "@aws-sdk/client-s3";
-import { prompts as p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 import { type S3Migration, S3Migrator } from "./migrations/migrator";
 import type { AwsRegion } from "./regionLocationMap";
 

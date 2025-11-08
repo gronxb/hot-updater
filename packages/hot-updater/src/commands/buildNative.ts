@@ -1,9 +1,4 @@
-import {
-  getCwd,
-  loadConfig,
-  prompts as p,
-  colors as picocolors,
-} from "@hot-updater/cli-tools";
+import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import fs from "fs";
@@ -88,7 +83,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
 
     if (!isFingerprintEquals(localFingerprint, generatedFingerprint)) {
       p.log.info(
-        `${picocolors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
+        `${colors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
       );
     }
     target.fingerprintHash = generatedFingerprint.hash;
@@ -172,7 +167,7 @@ export const nativeBuild = async (options: NativeBuildOptions) => {
           await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
 
           p.log.success(
-            `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), artifactResultStorePath))}.`,
+            `Artifact stored at ${colors.blueBright(path.relative(getCwd(), artifactResultStorePath))}.`,
           );
 
           await fs.promises.rm(artifactResultStorePath, {

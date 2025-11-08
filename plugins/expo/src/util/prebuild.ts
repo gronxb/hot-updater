@@ -1,4 +1,4 @@
-import { prompts as p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 

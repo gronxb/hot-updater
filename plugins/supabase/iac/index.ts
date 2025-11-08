@@ -5,7 +5,7 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
-  prompts as p,
+  p,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";

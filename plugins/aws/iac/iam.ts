@@ -1,6 +1,6 @@
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
-import { prompts as p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 
 export class IAMManager {
   private region: string;

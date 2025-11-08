@@ -6,7 +6,7 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
-  prompts as p,
+  p,
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { Cloudflare } from "cloudflare";

@@ -6,7 +6,7 @@ import {
   type S3Client,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { colors as picocolors } from "@hot-updater/cli-tools";
+import { colors } from "@hot-updater/cli-tools";
 
 interface MigrationRecord {
   name: string;
@@ -92,7 +92,7 @@ export abstract class S3Migration {
       }
       return null;
     } catch (error) {
-      console.error(picocolors.red(`Error reading file ${key}:`), error);
+      console.error(colors.red(`Error reading file ${key}:`), error);
       return null;
     }
   }
@@ -104,7 +104,7 @@ export abstract class S3Migration {
       try {
         return JSON.parse(content);
       } catch (e) {
-        console.error(picocolors.red(`Error parsing JSON from ${key}:`), e);
+        console.error(colors.red(`Error parsing JSON from ${key}:`), e);
       }
     }
     return null;
@@ -139,9 +139,7 @@ export abstract class S3Migration {
     const normalizedKey = key.startsWith("/") ? key.substring(1) : key;
     if (this.dryRun) {
       console.log(
-        picocolors.yellow(
-          `[DRY RUN] Updated ${picocolors.bold(normalizedKey)}`,
-        ),
+        colors.yellow(`[DRY RUN] Updated ${colors.bold(normalizedKey)}`),
       );
       return;
     }
@@ -153,7 +151,7 @@ export abstract class S3Migration {
     await this.doUpdateFile(normalizedKey, content, {
       cacheControl,
     });
-    console.log(picocolors.green(`Updated ${picocolors.bold(normalizedKey)}`));
+    console.log(colors.green(`Updated ${colors.bold(normalizedKey)}`));
   }
 
   // Moves a single file from one location to another.
@@ -163,9 +161,7 @@ export abstract class S3Migration {
   protected async moveFile(from: string, to: string): Promise<void> {
     if (this.dryRun) {
       console.log(
-        picocolors.yellow(
-          `[DRY RUN] ${picocolors.bold(from)} -> ${picocolors.bold(to)}`,
-        ),
+        colors.yellow(`[DRY RUN] ${colors.bold(from)} -> ${colors.bold(to)}`),
       );
       return;
     }
@@ -181,7 +177,7 @@ export abstract class S3Migration {
       await this.s3.send(copyCommand);
     } catch (error) {
       console.error(
-        picocolors.red(`Error copying file from ${from} to ${to}:`),
+        colors.red(`Error copying file from ${from} to ${to}:`),
         error,
       );
       throw error;
@@ -195,16 +191,14 @@ export abstract class S3Migration {
     } catch (error: any) {
       if (error?.message?.includes("NoSuchKey")) {
         console.warn(
-          picocolors.yellow(`Key ${from} not found during deletion, ignoring.`),
+          colors.yellow(`Key ${from} not found during deletion, ignoring.`),
         );
       } else {
-        console.error(picocolors.red(`Error deleting file ${from}:`), error);
+        console.error(colors.red(`Error deleting file ${from}:`), error);
         throw error;
       }
     }
-    console.log(
-      picocolors.green(`${picocolors.bold(from)} -> ${picocolors.bold(to)}`),
-    );
+    console.log(colors.green(`${colors.bold(from)} -> ${colors.bold(to)}`));
   }
 
   // Deletes a backup file
@@ -220,7 +214,7 @@ export abstract class S3Migration {
       await this.s3.send(deleteCommand);
     } catch (error) {
       console.error(
-        picocolors.red(`Error deleting backup file ${backupKey}:`),
+        colors.red(`Error deleting backup file ${backupKey}:`),
         error,
       );
     }
@@ -242,28 +236,24 @@ export abstract class S3Migration {
   // Rollback method: restores files from backups stored in backupMapping
   public async rollback(): Promise<void> {
     console.log(
-      picocolors.magenta(`Starting rollback for migration ${this.name}...`),
+      colors.magenta(`Starting rollback for migration ${this.name}...`),
     );
     for (const [originalKey, backupKey] of this.backupMapping.entries()) {
       const backupContent = await this.readFile(backupKey);
       if (backupContent !== null) {
         console.log(
-          picocolors.blue(
-            `Restoring backup for ${originalKey} from ${backupKey}`,
-          ),
+          colors.blue(`Restoring backup for ${originalKey} from ${backupKey}`),
         );
         await this.doUpdateFile(originalKey, backupContent);
       } else {
         console.error(
-          picocolors.red(
+          colors.red(
             `Failed to read backup for ${originalKey} at ${backupKey}`,
           ),
         );
       }
     }
-    console.log(
-      picocolors.green(`Rollback completed for migration ${this.name}.`),
-    );
+    console.log(colors.green(`Rollback completed for migration ${this.name}.`));
   }
 
   abstract migrate(): Promise<void>;
@@ -299,7 +289,7 @@ export class S3Migrator {
           this.migrationRecords = JSON.parse(bodyContents);
         } catch (jsonError) {
           console.error(
-            picocolors.red("Failed to parse migration records JSON:"),
+            colors.red("Failed to parse migration records JSON:"),
             jsonError,
           );
           this.migrationRecords = [];
@@ -373,9 +363,7 @@ export class S3Migrator {
         continue;
       }
 
-      console.log(
-        picocolors.magenta(`Applying migration ${migration.name}...`),
-      );
+      console.log(colors.magenta(`Applying migration ${migration.name}...`));
       migration.s3 = this.s3;
       migration.bucketName = this.bucketName;
       migration.dryRun = dryRun;
@@ -388,22 +376,22 @@ export class S3Migrator {
             appliedAt: new Date().toISOString(),
           });
           console.log(
-            picocolors.green(
-              `${picocolors.bold(migration.name)} applied successfully.`,
+            colors.green(
+              `${colors.bold(migration.name)} applied successfully.`,
             ),
           );
 
           await migration.cleanupBackups();
         } else {
           console.log(
-            picocolors.yellow(
-              `[DRY RUN] ${picocolors.bold(migration.name)} applied successfully`,
+            colors.yellow(
+              `[DRY RUN] ${colors.bold(migration.name)} applied successfully`,
             ),
           );
         }
       } catch (error) {
         console.error(
-          picocolors.red(
+          colors.red(
             `Migration ${migration.name} failed. Initiating rollback...`,
           ),
           error,
@@ -415,7 +403,7 @@ export class S3Migrator {
 
     await this.saveMigrationRecords(dryRun);
     if (!dryRun) {
-      console.log(picocolors.blue("All migrations applied."));
+      console.log(colors.blue("All migrations applied."));
     }
   }
 }

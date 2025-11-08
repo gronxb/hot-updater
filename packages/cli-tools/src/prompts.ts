@@ -1,2 +1,2 @@
-import * as prompts from "@clack/prompts";
-export { prompts };
+import * as p from "@clack/prompts";
+export { p };
