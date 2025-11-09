@@ -1,5 +1,5 @@
-import * as p from "@clack/prompts";
-import { getCwd, type NativeBuildIosScheme } from "@hot-updater/plugin-core";
+import { getCwd, p } from "@hot-updater/cli-tools";
+import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
 

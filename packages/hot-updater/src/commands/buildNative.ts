@@ -1,7 +1,6 @@
-import * as p from "@clack/prompts";
 import { buildAndroid } from "@hot-updater/android-helper";
 import { buildIos } from "@hot-updater/apple-helper";
-import { getCwd } from "@hot-updater/cli-tools";
+import { getCwd, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";

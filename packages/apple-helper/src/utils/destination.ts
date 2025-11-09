@@ -1,6 +1,9 @@
-import type {ApplePlatform, IosBuildDestination,} from "@hot-updater/plugin-core";
-import type {AppleDeviceType} from "../types";
-import {platformConfigs} from "./platform";
+import type {
+  ApplePlatform,
+  IosBuildDestination,
+} from "@hot-updater/plugin-core";
+import type { AppleDeviceType } from "../types";
+import { platformConfigs } from "./platform";
 
 const buildDestinationString = ({
   deviceType,

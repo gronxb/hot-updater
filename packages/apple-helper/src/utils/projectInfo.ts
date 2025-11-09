@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import { XMLParser } from "fast-xml-parser";
 import fs from "fs";

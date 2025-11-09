@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 import {
   type ConfigResponse,
   getCwd,

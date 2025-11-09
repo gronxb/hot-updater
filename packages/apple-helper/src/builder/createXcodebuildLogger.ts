@@ -1,4 +1,4 @@
-import { BuildLogger } from "@hot-updater/plugin-core";
+import { BuildLogger } from "@hot-updater/cli-tools";
 
 export const createXcodebuildLogger = () =>
   new BuildLogger({

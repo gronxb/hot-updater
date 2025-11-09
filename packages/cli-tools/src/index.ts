@@ -1,3 +1,4 @@
+export * from "./BuildLogger";
 export * from "./banner";
 export * from "./ConfigBuilder";
 export * from "./colors";

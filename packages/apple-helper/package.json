@@ -29,11 +29,10 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@clack/prompts": "catalog:",
+    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "execa": "catalog:",
-    "fast-xml-parser": "^5.2.3",
-    "picocolors": "catalog:"
+    "fast-xml-parser": "5.2.3"
   },
   "devDependencies": {
     "@types/node": "catalog:"

@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 import type { ApplePlatform } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import path from "path";

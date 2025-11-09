@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import type { AndroidDevice } from "../types";
 import { Device } from "../utils/device";

@@ -1,6 +1,6 @@
 import os from "node:os";
-import * as p from "@clack/prompts";
 import { spinner } from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import path from "path";
 import type { AndroidDevice } from "../types";

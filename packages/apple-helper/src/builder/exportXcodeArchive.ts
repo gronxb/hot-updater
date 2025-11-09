@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import { prettifyXcodebuildError } from "./prettifyXcodebuildError";

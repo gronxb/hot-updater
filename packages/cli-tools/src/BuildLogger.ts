@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 
 export interface BuildLoggerConfig {
   /** Patterns that indicate build failure (string or regex) */
