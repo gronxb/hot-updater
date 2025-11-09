@@ -1,6 +1,6 @@
+import { getCwd } from "@hot-updater/cli-tools";
 import {
   generateMinBundleId,
-  getCwd,
   type NativeBuildAndroidScheme,
 } from "@hot-updater/plugin-core";
 import path from "path";

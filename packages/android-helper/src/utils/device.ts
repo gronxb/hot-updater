@@ -1,5 +1,4 @@
 import os from "node:os";
-import { spinner } from "@clack/prompts";
 import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import path from "path";
@@ -153,7 +152,7 @@ const checkEmulatorBootStatus = async ({
 }: {
   port: number;
   emulatorName: string;
-  loader: ReturnType<typeof spinner>;
+  loader: ReturnType<typeof p.spinner>;
   onBooted: (deviceId: string) => void;
 }) => {
   const devices = await getConnectedDevices();
@@ -173,7 +172,7 @@ const checkEmulatorBootStatus = async ({
 const launchEmulator = async (
   emulatorName: string,
   port: number,
-  loader: ReturnType<typeof spinner>,
+  loader: ReturnType<typeof p.spinner>,
 ): Promise<string> => {
   const manualCommand = `${emulatorCommand} -avd ${emulatorName}`;
   const timeout = 120;
@@ -258,7 +257,7 @@ const getAvailableDevicePort = async (
  */
 const tryLaunchEmulator = async (name?: string) => {
   const port = await getAvailableDevicePort();
-  const loader = spinner();
+  const loader = p.spinner();
   loader.start("Looking for available emulators");
 
   const emulators = await getEmulatorNames();

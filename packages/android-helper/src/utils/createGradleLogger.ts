@@ -1,4 +1,4 @@
-import { BuildLogger } from "@hot-updater/plugin-core";
+import { BuildLogger } from "@hot-updater/cli-tools";
 
 export const createGradleLogger = () =>
   // FIXME: I don't know what should be written
