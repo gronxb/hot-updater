@@ -1,6 +1,5 @@
-import { p } from "@hot-updater/cli-tools";
+import { colors, p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
-import pc from "picocolors";
 import {
   showMigrateUnsupportedError,
   validateMigratorSupport,
@@ -76,7 +75,7 @@ function formatOperations(operations: MigrationOperation[]): string[] {
             for (const col of columns) {
               const paddedName = col.name.padEnd(maxNameLength);
               changes.push(
-                `    ${pc.cyan(paddedName)}  ${pc.yellow(col.type)}`,
+                `    ${colors.cyan(paddedName)}  ${colors.yellow(col.type)}`,
               );
             }
           }

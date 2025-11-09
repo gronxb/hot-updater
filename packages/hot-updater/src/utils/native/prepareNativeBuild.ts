@@ -1,13 +1,12 @@
-import { p } from "@hot-updater/cli-tools";
 import {
   type ConfigResponse,
+  colors,
   getCwd,
   loadConfig,
-  type NativeBuildOptions,
-  type Platform,
-} from "@hot-updater/plugin-core";
+  p,
+} from "@hot-updater/cli-tools";
+import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
 import path from "path";
-import picocolors from "picocolors";
 import {
   createAndInjectFingerprintFiles,
   isFingerprintEquals,
@@ -61,7 +60,7 @@ export async function prepareNativeBuild(
 
   if (!(scheme in config.nativeBuild[platform])) {
     p.log.error(
-      `scheme ${picocolors.blueBright(options.scheme)} is not in predefined schemes [${picocolors.blueBright(availableSchemes.join(", "))}]`,
+      `scheme ${colors.blueBright(options.scheme)} is not in predefined schemes [${colors.blueBright(availableSchemes.join(", "))}]`,
     );
     return null;
   }
@@ -94,7 +93,7 @@ export async function prepareNativeBuild(
 
     if (!isFingerprintEquals(localFingerprint, generatedFingerprint)) {
       p.log.info(
-        `${picocolors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
+        `${colors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
       );
     }
     target.fingerprintHash = generatedFingerprint.hash;

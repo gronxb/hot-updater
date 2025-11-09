@@ -1,9 +1,8 @@
-import { p } from "@hot-updater/cli-tools";
+import { colors, getCwd, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/core";
-import { type BuildPlugin, getCwd } from "@hot-updater/plugin-core";
+import type { BuildPlugin } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
-import picocolors from "picocolors";
 
 export const createNativeBuild = async ({
   platform,
@@ -35,6 +34,6 @@ export const createNativeBuild = async ({
   });
 
   p.log.info(
-    `Artifact stored at ${picocolors.blueBright(path.relative(getCwd(), outputPath))}.`,
+    `Artifact stored at ${colors.blueBright(path.relative(getCwd(), outputPath))}.`,
   );
 };
