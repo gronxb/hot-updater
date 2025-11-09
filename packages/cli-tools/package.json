@@ -1,0 +1,64 @@
+{
+  "name": "@hot-updater/cli-tools",
+  "version": "0.21.8",
+  "type": "module",
+  "description": "CLI utilities for Hot Updater",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@clack/prompts": "catalog:",
+    "@hot-updater/plugin-core": "workspace:*",
+    "boxen": "^8.0.1",
+    "cosmiconfig": "9.0.0",
+    "cosmiconfig-typescript-loader": "5.0.0",
+    "es-toolkit": "^1.32.0",
+    "fast-glob": "3.3.3",
+    "jszip": "^3.10.1",
+    "oxc-transform": "0.82.1",
+    "picocolors": "catalog:",
+    "tar": "^7.5.1",
+    "workspace-tools": "^0.36.4"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "5.8.2"
+  }
+}

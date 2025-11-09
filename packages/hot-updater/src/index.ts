@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-import * as p from "@clack/prompts";
 import { Command, Option } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, log, type NativeBuildOptions } from "@hot-updater/plugin-core";
-import picocolors from "picocolors";
+import { banner, colors, log, p } from "@hot-updater/cli-tools";
+import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 import {
   appIdSuffixCommandOption,
@@ -125,8 +124,8 @@ program
 
     await openConsole(port, (info) => {
       console.log(
-        `Server running on ${picocolors.magenta(
-          picocolors.underline(`http://localhost:${info.port}`),
+        `Server running on ${colors.magenta(
+          colors.underline(`http://localhost:${info.port}`),
         )}`,
       );
     });

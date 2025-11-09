@@ -1,18 +1,41 @@
 {
   "name": "@hot-updater/docs",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "private": true,
-  "homepage": "https://hot-updater.dev/",
+  "sideEffects": false,
+  "type": "module",
   "scripts": {
-    "dev": "rspress dev",
-    "build": "rspress build",
-    "preview": "rspress preview"
+    "dev": "waku dev",
+    "build": "waku build",
+    "test:type": "tsc --noEmit",
+    "start": "waku start",
+    "preview": "wrangler pages dev ./dist/public",
+    "postinstall": "fumadocs-mdx"
+  },
+  "dependencies": {
+    "@orama/orama": "^3.1.16",
+    "@xterm/xterm": "^5.5.0",
+    "fumadocs-core": "16.0.7",
+    "fumadocs-mdx": "13.0.5",
+    "fumadocs-ui": "16.0.7",
+    "geist": "^1.5.1",
+    "lucide-react": "^0.552.0",
+    "lucide-static": "^0.548.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-server-dom-webpack": "^19.2.0",
+    "waku": "^0.27.0"
   },
   "devDependencies": {
-    "@rspress/plugin-llms": "^2.0.0-beta.8",
-    "@types/node": "catalog:",
-    "@shikijs/transformers": "^3.4.2",
-    "rspress": "^2.0.0-beta.8",
-    "wrangler": "^4.26.0"
+    "@tailwindcss/vite": "^4.1.16",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "^24.9.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "tailwindcss": "^4.1.16",
+    "typescript": "^5.9.3",
+    "vite": "npm:rolldown-vite@latest",
+    "vite-tsconfig-paths": "^5.1.4",
+    "wrangler": "^4.46.0"
   }
 }

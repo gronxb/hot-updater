@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/test-utils",
   "private": true,
-  "version": "0.21.5",
+  "version": "0.21.8",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
@@ -45,7 +45,6 @@
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
     "@types/node": "catalog:",
-    "workspace-tools": "^0.18.4",
     "execa": "catalog:",
     "vitest": "^3.2.4"
   }

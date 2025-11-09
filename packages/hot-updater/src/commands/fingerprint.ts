@@ -1,8 +1,6 @@
-import * as p from "@clack/prompts";
-import { getCwd, loadConfig } from "@hot-updater/plugin-core";
+import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
-import picocolors from "picocolors";
 import {
   createAndInjectFingerprintFiles,
   type FingerprintResult,
@@ -114,22 +112,22 @@ export const handleCreateFingerprint = async () => {
 
   if (diffChanged && result) {
     if (result.androidPaths.length > 0) {
-      p.log.info(picocolors.bold("Changed Android paths:"));
+      p.log.info(colors.bold("Changed Android paths:"));
       for (const path of result.androidPaths) {
-        p.log.info(`  ${picocolors.green(path)}`);
+        p.log.info(`  ${colors.green(path)}`);
       }
     }
 
     if (result.iosPaths.length > 0) {
-      p.log.info(picocolors.bold("Changed iOS paths:"));
+      p.log.info(colors.bold("Changed iOS paths:"));
       for (const path of result.iosPaths) {
-        p.log.info(`  ${picocolors.green(path)}`);
+        p.log.info(`  ${colors.green(path)}`);
       }
     }
 
     p.log.success(
-      picocolors.bold(
-        `${picocolors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
+      colors.bold(
+        `${colors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
       ),
     );
 
@@ -171,7 +169,7 @@ export const handleCreateFingerprint = async () => {
     }
   } else {
     p.log.success(
-      picocolors.bold(`${picocolors.blue("fingerprint.json")} is up to date.`),
+      colors.bold(`${colors.blue("fingerprint.json")} is up to date.`),
     );
   }
 };

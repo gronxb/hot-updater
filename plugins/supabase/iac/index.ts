@@ -1,4 +1,3 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   ConfigBuilder,
@@ -6,9 +5,10 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
+  p,
   transformEnv,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
@@ -456,7 +456,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/guide/getting-started/quick-start-with-supabase.html#step-4-add-hotupdater-to-your-project",
+      "https://hot-updater.dev/docs/managed/supabase#step-4-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");

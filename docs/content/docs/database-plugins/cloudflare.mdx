@@ -1,0 +1,78 @@
+---
+title: "Cloudflare D1 Database"
+description: Store your Hot Updater bundle metadata in Cloudflare D1, a serverless SQLite database running at the edge.
+
+icon: cloudflare
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/cloudflare --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed/cloudflare) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface D1DatabaseConfig {
+  databaseId: string;           // D1 database ID
+  accountId: string;            // Cloudflare account ID
+  cloudflareApiToken: string;   // Cloudflare API token
+}
+```
+
+## Usage
+
+```typescript
+import { d1Database } from '@hot-updater/cloudflare';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: d1Database({
+    databaseId: process.env.D1_DATABASE_ID,
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined R2 storage and D1 database:
+
+```typescript
+import { d1Database } from '@hot-updater/cloudflare';
+import { s3Storage } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  database: d1Database({
+    databaseId: process.env.D1_DATABASE_ID,
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
+  }),
+  // ... other config
+});
+```

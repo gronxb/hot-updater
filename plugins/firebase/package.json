@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/firebase",
   "type": "module",
-  "version": "0.21.5",
+  "version": "0.21.8",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "types": "dist/index.d.ts",
@@ -40,6 +40,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "firebase": "^11.3.1"
@@ -48,7 +49,6 @@
     "access": "public"
   },
   "devDependencies": {
-    "@clack/prompts": "catalog:",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
@@ -60,8 +60,7 @@
     "firebase-tools": "^13.32.0",
     "fkill": "^9.0.0",
     "hono": "^4.6.3",
-    "mime": "^4.0.4",
-    "picocolors": "catalog:"
+    "mime": "^4.0.4"
   },
   "peerDependencies": {
     "firebase-admin": "*"

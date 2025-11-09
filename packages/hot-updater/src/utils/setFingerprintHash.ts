@@ -1,4 +1,4 @@
-import { loadConfig } from "@hot-updater/plugin-core";
+import { loadConfig } from "@hot-updater/cli-tools";
 import { AndroidConfigParser } from "./configParser/androidParser";
 import { IosConfigParser } from "./configParser/iosParser";
 

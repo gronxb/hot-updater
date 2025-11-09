@@ -1,5 +1,38 @@
 # @hot-updater/react-native
 
+## 0.21.8
+
+### Patch Changes
+
+- Updated dependencies [3fe8c81]
+  - hot-updater@0.21.8
+  - @hot-updater/plugin-core@0.21.8
+  - @hot-updater/cli-tools@0.21.8
+  - @hot-updater/core@0.21.8
+  - @hot-updater/js@0.21.8
+
+## 0.21.7
+
+### Patch Changes
+
+- 2b408f2: docs: revamp hot-updater.dev
+- Updated dependencies [2b408f2]
+  - @hot-updater/plugin-core@0.21.7
+  - hot-updater@0.21.7
+  - @hot-updater/core@0.21.7
+  - @hot-updater/js@0.21.7
+
+## 0.21.6
+
+### Patch Changes
+
+- 3e9681c: fix(android): Android API 25 compatibility with TarStream
+- Updated dependencies [b12394d]
+  - hot-updater@0.21.6
+  - @hot-updater/core@0.21.6
+  - @hot-updater/js@0.21.6
+  - @hot-updater/plugin-core@0.21.6
+
 ## 0.21.5
 
 ### Patch Changes

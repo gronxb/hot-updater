@@ -1,8 +1,10 @@
   # Hot Updater
   
 [![NPM](https://img.shields.io/npm/v/hot-updater)](https://www.npmjs.com/package/hot-updater)
+  
+  
+  <img width="2594" height="1264" alt="image" src="https://github.com/user-attachments/assets/82c52334-a0c2-48d4-a9f1-8d9c45e79bb2" />
 
-  A self-hostable OTA update solution for React Native **(Alternative to CodePush)**
 
   ![hot-updater](https://raw.githubusercontent.com/gronxb/hot-updater/main/demo.gif)
 
@@ -34,7 +36,7 @@
 
   ### Configuration Example
 
-  * [Supabase](https://hot-updater.dev/guide/providers/1_supabase.html)
+  * [Supabase](https://hot-updater.dev/docs/managed/supabase)
   ```tsx
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
@@ -57,7 +59,7 @@
   });
   ```
 
-* [Cloudflare](https://hot-updater.dev/guide/providers/2_cloudflare.html)
+* [Cloudflare](https://hot-updater.dev/docs/managed/cloudflare)
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
@@ -81,7 +83,7 @@ export default defineConfig({
 });
 ```
 
-* [AWS S3 + Lambda@Edge](https://hot-updater.dev/guide/providers/3_aws-s3-lambda-edge.html)
+* [AWS S3 + Lambda@Edge](https://hot-updater.dev/docs/managed/aws)
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
@@ -106,7 +108,7 @@ export default defineConfig({
 });
 ```
 
-* [Firebase](https://hot-updater.dev/guide/providers/4_firebase.html)
+* [Firebase](https://hot-updater.dev/docs/managed/firebase)
 ```tsx
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';

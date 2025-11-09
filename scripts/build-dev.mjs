@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import path from "path";
 import { fileURLToPath } from "url";
-import * as p from "@clack/prompts";
+import { colors, p } from "@hot-updater/cli-tools";
 import chokidar from "chokidar";
 import { execa } from "execa";
-import picocolors from "picocolors";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -20,7 +19,7 @@ const runBuild = async () => {
     p.log.info("Build cancelled - new build starting");
   }
 
-  p.log.info(picocolors.cyan("🔨 Building packages..."));
+  p.log.info(colors.cyan("🔨 Building packages..."));
 
   try {
     buildProcess = execa("pnpm", ["-w", "build"], {

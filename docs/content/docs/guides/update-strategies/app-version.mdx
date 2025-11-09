@@ -1,0 +1,94 @@
+---
+title: "App Version Update Strategy"
+description: "Manually target specific app versions for OTA updates instead of using automatic compatibility checks."
+icon: Hash
+---
+
+## Overview
+
+The App Version strategy gives you manual control over which app versions receive updates. You specify exact versions or ranges when deploying, rather than relying on automatic fingerprint detection.
+
+**When to use it**: Choose this if you prefer explicit version targeting over automated compatibility checks.
+
+## Setup
+
+Configure the strategy in your Hot Updater config:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  updateStrategy: "appVersion",
+});
+```
+
+## Version Targeting
+
+Use version ranges to control which app versions receive updates. The `-t` option accepts various expressions:
+
+| Range | Who gets the update |
+| :--- | :--- |
+| `1.2.3` | Only version `1.2.3` |
+| `*` | All versions |
+| `1.2.x` | Any patch version of `1.2` |
+| `1.2.3 - 1.2.7` | Versions `1.2.3` through `1.2.7` (inclusive) |
+| `>=1.2.3 <1.2.7` | Versions `1.2.3` (inclusive) to `1.2.7` (exclusive) |
+| `1.2` | Same as `>=1.2.0 <1.3.0` |
+| `~1.2.3` | Same as `>=1.2.3 <1.3.0` |
+| `^1.2.3` | Same as `>=1.2.3 <2.0.0` |
+
+## Deployment
+
+Specify the target version when deploying:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -t "1.x.x"
+```
+
+Examples:
+- `npx hot-updater deploy -p ios -t "1.0.0"` - Only version 1.0.0
+- `npx hot-updater deploy -p android -t ">=1.2.0"` - Version 1.2.0 and above
+- `npx hot-updater deploy -p ios -t "*"` - All versions
+
+## Client Setup
+
+Configure your React Native app:
+
+```tsx title="App.tsx"
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  source: getUpdateSource("https://your-update-server.com/api/update-check", {
+    updateStrategy: "appVersion", // [!code ++]
+  }),
+})(App);
+```
+
+The client automatically constructs this endpoint:
+```
+GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
+```
+
+## Testing the Endpoint
+
+Test your update endpoint using curl:
+
+```bash
+curl "https://your-update-endpoint.com/check-update/app-version/ios/1.0.0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
+```
+
+Parameters:
+- `:platform` - `ios` or `android`
+- `:appVersion` - Current app version (e.g., `1.0.0`)
+- `:channel` - Channel name (e.g., `production`, `staging`)
+- `:minBundleId` - Minimum supported bundle ID
+- `:bundleId` - Current bundle ID

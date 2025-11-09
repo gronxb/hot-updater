@@ -1,4 +1,3 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   ConfigBuilder,
@@ -7,8 +6,9 @@ import {
   link,
   makeEnv,
   type ProviderConfig,
+  p,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { Cloudflare } from "cloudflare";
 import crypto from "crypto";
 import dayjs from "dayjs";
@@ -443,7 +443,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/guide/providers/2_cloudflare.html#step-4-add-hotupdater-to-your-project",
+      "https://hot-updater.dev/docs/managed/cloudflare#step-4-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");

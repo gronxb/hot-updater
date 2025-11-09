@@ -1,11 +1,11 @@
-import * as p from "@clack/prompts";
 import {
   type BuildType,
   copyDirToTmp,
   link,
+  p,
   transformEnv,
   transformTemplate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
@@ -446,7 +446,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/guide/providers/4_firebase.html#step-3-generated-configurations",
+      "https://hot-updater.dev/docs/managed/firebase#step-3-generated-configurations",
     )}`,
   );
   p.log.message(

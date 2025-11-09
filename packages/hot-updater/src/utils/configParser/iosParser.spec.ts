@@ -1,4 +1,4 @@
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
 import plist from "plist";
@@ -31,7 +31,7 @@ vi.mock("plist", () => ({
   },
 }));
 
-vi.mock("@hot-updater/plugin-core", () => ({
+vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(),
 }));
 

@@ -1,0 +1,45 @@
+---
+title: "Introduction"
+description: "Self-hostable OTA update solution for React Native apps, alternative to CodePush."
+icon: BookOpen
+---
+
+<video src={"/docs/deploy/deploy.mov"}  controls autoPlay loop muted />
+
+## What is Hot Updater?
+
+Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Native apps. Deploy JavaScript bundle updates instantly without going through app stores.
+
+## Why Hot Updater?
+
+CodePush depended on Microsoft's AppCenter, which had limitations:
+- No CDN support, causing slow downloads in some regions
+- Only supports Metro bundler, excluding newer alternatives like Re.Pack
+- AppCenter has been discontinued
+
+Hot Updater solves these problems with two core principles:
+
+**1. Deploy Anywhere**
+Use any infrastructure you want - AWS, Cloudflare, Supabase, Firebase, or your own servers.
+
+**2. Use Any Bundler**
+Works with Metro, Re.Pack or any bundler through the plugin system.
+
+## How It Works
+
+Hot Updater uses a [Plugin System](../concepts/plugin-system) that separates concerns:
+- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo, Rock)
+- **Storage Plugins**: Store bundles anywhere (S3, R2, Supabase, Firebase)
+- **Database Plugins**: Manage metadata (PostgreSQL, D1, Firestore)
+
+This architecture gives you complete control over your deployment infrastructure.
+
+## Key Features
+
+- **Self-Hosting**: Full control over your update infrastructure
+- **Multi-Platform**: Seamless iOS and Android support
+- **Web Console**: Intuitive update management interface
+- **Version Control**: Robust versioning with semantic versioning support
+- **Forced Updates**: Push critical updates when needed
+- **Channel Management**: Separate environments (dev, staging, production)
+- **Fingerprint Strategy**: Automatic native compatibility checking

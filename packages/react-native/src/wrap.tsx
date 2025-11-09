@@ -18,7 +18,7 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
    * When an update exists and the bundle is being downloaded, this component will block access
    * to the entry point and show download progress.
    *
-   * @see {@link https://hot-updater.dev/guide/hot-updater/wrap.html#fallback-component}
+   * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#fallback-component}
    *
    * ```tsx
    * HotUpdater.wrap({
@@ -50,7 +50,7 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
   /**
    * Callback function that is called when the update process is completed.
    *
-   * @see {@link https://hot-updater.dev/guide/hot-updater/wrap.html#onupdateprocesscompleted}
+   * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#onupdateprocesscompleted}
    */
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 }

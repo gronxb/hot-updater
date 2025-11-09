@@ -1,0 +1,76 @@
+---
+title: "Console (Rollback & Force Update)"
+description: "Opens a localhost server based on plugins configured in `hot-updater.config.ts`. For security reasons, only localhost server is supported at the moment."
+icon: Terminal
+---
+
+**The console provides the following features:**
+- Rollback
+- Force update flag
+- Quick access to git history for updates
+
+<video src={"/docs/console/console.mov"} controls autoPlay loop muted />
+
+## Configuration (Optional)
+
+This is a console configuration that does not affect the bundle.
+
+You can configure additional console settings in the `hot-updater.config.ts` file.
+
+The `storage` and `database` plugins must be exist.
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `console.gitUrl` | Enables commit shortcuts by linking to git commit hashes | - |
+| `console.port` | Sets the console server port | `1422` |
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  console: { // [!code hl]
+    port: 3000, // [!code hl]
+  }, // [!code hl]
+  build: ...,
+  storage: ...,
+  database: ...,
+});
+
+```
+
+## Usage
+Execute the following command:
+
+```package-install
+npx hot-updater console
+```
+
+
+
+## Rollback
+
+When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.
+
+<img src={"/docs/console/enabled.png"} />
+
+## Force Update
+When you set a bundle's `shouldForceUpdate` status to `true` in the console, users who have that bundle will immediately force update to the **latest bundle**.
+
+<img src={"/docs/console/enabled.png"} />
+
+## Git URL
+
+You can set the git URL in the `hot-updater.config.ts` file.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  console: {
+    gitUrl: "<your-repo>", // e.g. https://github.com/gronxb/hot-updater // [!code hl]
+  },
+});
+```
+When you set the git URL, the commit hash will be clickable and redirect you to the corresponding commit in your repository.
+
+<img src={"/docs/console/git-url.png"} />

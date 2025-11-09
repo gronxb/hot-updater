@@ -1,4 +1,4 @@
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
 import fg from "fast-glob";
 import path from "path";
 

@@ -1,0 +1,246 @@
+---
+title: "Custom Storage Plugin"
+description: Create your own storage plugin for any storage provider
+icon: Hammer
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/plugin-core --save-dev
+```
+
+## Overview
+
+Build a custom storage plugin to integrate any storage provider. This guide shows how to implement the `StoragePlugin` interface and use it in your project.
+
+## StoragePlugin Interface
+
+All storage plugins must implement this interface:
+
+```typescript
+import type { StoragePlugin } from "@hot-updater/plugin-core";
+
+interface StoragePlugin {
+  // Plugin identifier (e.g., "s3Storage", "customStorage")
+  name: string;
+  // Storage protocol prefix (e.g., "s3", "custom")
+  supportedProtocol: string;
+  // Uploads a file to storage and returns storage URI
+  upload: (key: string, filePath: string) => Promise<{ storageUri: string }>;
+  // Deletes all files at the storage URI path
+  delete: (storageUri: string) => Promise<void>;
+  // Generates a download URL for clients to fetch bundles
+  getDownloadUrl: (storageUri: string) => Promise<{ fileUrl: string }>;
+}
+```
+
+## Implementation Example
+
+Here's a complete custom storage plugin implementation:
+
+```typescript title="customStorage.ts"
+import {
+  type BasePluginArgs,
+  getContentType,
+  parseStorageUri,
+  type StoragePlugin,
+  type StoragePluginHooks,
+} from "@hot-updater/plugin-core";
+import fs from "fs/promises";
+import path from "path";
+
+export interface CustomStorageConfig {
+  bucketName: string;
+  apiKey: string;
+  endpoint: string;
+}
+
+export const customStorage =
+  (config: CustomStorageConfig, hooks?: StoragePluginHooks) =>
+  ({ cwd }: BasePluginArgs): StoragePlugin => {
+    const { bucketName, apiKey, endpoint } = config;
+
+    return {
+      name: "customStorage",
+      supportedProtocol: "custom",
+
+      async upload(key, filePath) {
+        const fileContent = await fs.readFile(filePath);
+        const contentType = getContentType(filePath);
+        const filename = path.basename(filePath);
+        const storageKey = `${key}/${filename}`;
+
+        // Your upload logic here
+        const response = await fetch(`${endpoint}/upload`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": contentType,
+          },
+          body: fileContent,
+        });
+
+        if (!response.ok) {
+          throw new Error("Upload failed");
+        }
+
+        hooks?.onStorageUploaded?.();
+
+        return {
+          storageUri: `custom://${bucketName}/${storageKey}`,
+        };
+      },
+
+      async delete(storageUri) {
+        const { bucket, key } = parseStorageUri(storageUri, "custom");
+
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket mismatch: expected "${bucketName}", got "${bucket}"`
+          );
+        }
+
+        // Your delete logic here
+        const response = await fetch(`${endpoint}/delete`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({ key }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Delete failed");
+        }
+      },
+
+      async getDownloadUrl(storageUri) {
+        const url = new URL(storageUri);
+
+        if (url.protocol.replace(":", "") !== "custom") {
+          throw new Error("Invalid protocol");
+        }
+
+        const bucket = url.host;
+        const key = url.pathname.slice(1);
+
+        if (!bucket || !key) {
+          throw new Error("Invalid storage URI");
+        }
+
+        // Your URL generation logic here
+        const response = await fetch(`${endpoint}/presign`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ bucket, key }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate download URL");
+        }
+
+        const { url: fileUrl } = await response.json();
+
+        return { fileUrl };
+      },
+    };
+  };
+```
+
+## Helper Utilities
+
+The `@hot-updater/plugin-core` package provides helper functions:
+
+### parseStorageUri
+
+Parses storage URIs into bucket and key components:
+
+```typescript
+const { bucket, key } = parseStorageUri(
+  "custom://my-bucket/path/file.bundle",
+  "custom"
+);
+// bucket: "my-bucket"
+// key: "path/file.bundle"
+```
+
+### getContentType
+
+Returns MIME type based on file extension:
+
+```typescript
+const contentType = getContentType("bundle.js");
+// Result: "application/javascript"
+```
+
+## CLI Configuration
+
+Use your custom plugin in `hot-updater.config.ts`:
+
+```typescript
+import { defineConfig } from "@hot-updater/core";
+import { customStorage } from "./customStorage";
+
+export default defineConfig({
+  storage: customStorage({
+    bucketName: process.env.CUSTOM_BUCKET_NAME!,
+    apiKey: process.env.CUSTOM_API_KEY!,
+    endpoint: process.env.CUSTOM_ENDPOINT!,
+  }),
+  // ... other config
+});
+```
+
+## Custom Server Usage
+
+Use your plugin with `createHotUpdater` for self-hosted servers:
+
+```typescript
+import { createHotUpdater } from "@hot-updater/core";
+import { customStorage } from "./customStorage";
+import { drizzleDatabase } from "@hot-updater/plugin-drizzle";
+
+const hotUpdater = createHotUpdater({
+  storagePlugins: [
+    customStorage({
+      bucketName: process.env.CUSTOM_BUCKET_NAME!,
+      apiKey: process.env.CUSTOM_API_KEY!,
+      endpoint: process.env.CUSTOM_ENDPOINT!,
+      basePath: "bundles",
+    }),
+  ]
+  // ... other options
+});
+
+```
+
+### Security
+
+- Never hardcode credentials in plugin code
+- Use environment variables for sensitive data
+- Validate storage URIs before processing
+- Implement proper authentication headers
+
+### Storage URI Format
+
+Use a consistent URI format: `protocol://bucket/path/to/file`
+
+```typescript
+return {
+  storageUri: `${supportedProtocol}://${bucketName}/${storageKey}`,
+};
+```
+
+### Hooks
+
+Call `onStorageUploaded` after successful uploads:
+
+```typescript
+hooks?.onStorageUploaded?.();
+```
+
+This allows tracking upload events for monitoring and analytics.

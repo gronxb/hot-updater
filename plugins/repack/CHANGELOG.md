@@ -1,5 +1,26 @@
 # @hot-updater/repack
 
+## 0.21.8
+
+### Patch Changes
+
+- Updated dependencies [3fe8c81]
+  - @hot-updater/plugin-core@0.21.8
+  - @hot-updater/cli-tools@0.21.8
+
+## 0.21.7
+
+### Patch Changes
+
+- Updated dependencies [2b408f2]
+  - @hot-updater/plugin-core@0.21.7
+
+## 0.21.6
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.21.6
+
 ## 0.21.5
 
 ### Patch Changes

@@ -1,15 +1,15 @@
 package com.hotupdater
 
 import android.util.Log
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.zip.GZIPInputStream
 
 /**
  * Strategy for handling TAR+GZIP compressed files
+ * Uses native GZIP decoder and custom TAR parser
  */
 class TarGzDecompressionStrategy : DecompressionStrategy {
     companion object {
@@ -68,16 +68,16 @@ class TarGzDecompressionStrategy : DecompressionStrategy {
 
             FileInputStream(filePath).use { fileInputStream ->
                 BufferedInputStream(fileInputStream).use { bufferedInputStream ->
-                    GzipCompressorInputStream(bufferedInputStream).use { gzipInputStream ->
+                    GZIPInputStream(bufferedInputStream).use { gzipInputStream ->
                         TarArchiveInputStream(gzipInputStream).use { tarInputStream ->
-                            var entry = tarInputStream.nextEntry
+                            var entry = tarInputStream.getNextEntry()
 
                             while (entry != null) {
                                 val file = File(destinationPath, entry.name)
 
                                 if (!file.canonicalPath.startsWith(destinationDir.canonicalPath)) {
                                     Log.w(TAG, "Skipping potentially malicious tar entry: ${entry.name}")
-                                    entry = tarInputStream.nextEntry
+                                    entry = tarInputStream.getNextEntry()
                                     continue
                                 }
 
@@ -100,7 +100,7 @@ class TarGzDecompressionStrategy : DecompressionStrategy {
                                 val progress = processedBytes.toDouble() / (totalSize * 2.0)
                                 progressCallback.invoke(progress.coerceIn(0.0, 1.0))
 
-                                entry = tarInputStream.nextEntry
+                                entry = tarInputStream.getNextEntry()
                             }
                         }
                     }

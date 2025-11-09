@@ -1,6 +1,6 @@
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
-import * as p from "@clack/prompts";
+import { p } from "@hot-updater/cli-tools";
 
 export class IAMManager {
   private region: string;
@@ -86,7 +86,10 @@ export class IAMManager {
           AssumeRolePolicyDocument: assumeRolePolicyDocument,
           Description: "Role for Lambda@Edge to access S3 and SSM",
         });
-        const lambdaRoleArn = createRoleResp.Role?.Arn!;
+        if (!createRoleResp.Role?.Arn) {
+          throw new Error("Failed to create IAM role: No ARN returned");
+        }
+        const lambdaRoleArn = createRoleResp.Role.Arn;
         p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
 
         // Attach required managed policies

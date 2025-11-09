@@ -1,8 +1,6 @@
-import * as p from "@clack/prompts";
 import type { FingerprintDiffItem, FingerprintSource } from "@expo/fingerprint";
 import { diffFingerprintChangesAsync } from "@expo/fingerprint";
-import { getCwd } from "@hot-updater/plugin-core";
-import picocolors from "picocolors";
+import { colors, getCwd, p } from "@hot-updater/cli-tools";
 import {
   type FingerprintOptions,
   type FingerprintResult,
@@ -30,9 +28,9 @@ function getSourcePath(source: FingerprintSource): string {
 
 export function formatDiffItem(item: FingerprintDiffItem): string {
   const typeColor = {
-    added: picocolors.green,
-    removed: picocolors.red,
-    changed: picocolors.yellow,
+    added: colors.green,
+    removed: colors.red,
+    changed: colors.yellow,
   };
 
   const color = typeColor[item.op];
@@ -62,7 +60,7 @@ export function showFingerprintDiff(
     return;
   }
 
-  p.log.info(`${picocolors.bold(`${platform} Fingerprint Changes:`)}`);
+  p.log.info(`${colors.bold(`${platform} Fingerprint Changes:`)}`);
 
   const added = diff.filter((item) => item.op === "added");
   const removed = diff.filter((item) => item.op === "removed");
@@ -70,19 +68,19 @@ export function showFingerprintDiff(
 
   if (added.length > 0) {
     p.log.info(
-      `  ${picocolors.green("Added:")} ${added.map((item) => getSourcePath(item.addedSource)).join(", ")}`,
+      `  ${colors.green("Added:")} ${added.map((item) => getSourcePath(item.addedSource)).join(", ")}`,
     );
   }
 
   if (removed.length > 0) {
     p.log.info(
-      `  ${picocolors.red("Removed:")} ${removed.map((item) => getSourcePath(item.removedSource)).join(", ")}`,
+      `  ${colors.red("Removed:")} ${removed.map((item) => getSourcePath(item.removedSource)).join(", ")}`,
     );
   }
 
   if (changed.length > 0) {
     p.log.info(
-      `  ${picocolors.yellow("Changed:")} ${changed.map((item) => getSourcePath(item.beforeSource)).join(", ")}`,
+      `  ${colors.yellow("Changed:")} ${changed.map((item) => getSourcePath(item.beforeSource)).join(", ")}`,
     );
   }
 }

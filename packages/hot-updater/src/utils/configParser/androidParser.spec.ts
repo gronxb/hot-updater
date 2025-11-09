@@ -1,4 +1,4 @@
-import { getCwd } from "@hot-updater/plugin-core";
+import { getCwd } from "@hot-updater/cli-tools";
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
 import fs from "fs";
 import path from "path";
@@ -24,7 +24,7 @@ vi.mock("path", () => ({
   },
 }));
 
-vi.mock("@hot-updater/plugin-core", () => ({
+vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(),
 }));
 
