@@ -14,9 +14,9 @@ const getResponsiveConfig = (width: number) => {
   // Mobile
   if (width < 640) {
     return {
-      fontSize: 9,
+      fontSize: 10,
       rows: 15,
-      cols: 35,
+      cols: 50,
     };
   }
   // Tablet
