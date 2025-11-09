@@ -15,7 +15,5 @@ onlyBuiltDependencies:
   - workerd
 
 catalog:
-  "@clack/prompts": 0.10.0
   "@types/node": ^20
   "execa": 9.5.2
-  "picocolors": 1.1.1
