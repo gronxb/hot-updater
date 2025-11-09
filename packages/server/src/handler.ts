@@ -4,6 +4,7 @@ import type {
   Bundle,
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
+import { addRoute, createRouter, findRoute } from "rou3";
 import type { PaginationInfo } from "./types";
 
 // Narrow API surface needed by the handler to avoid circular types
@@ -30,6 +31,139 @@ export interface HandlerOptions {
   basePath?: string;
 }
 
+type RouteHandler = (
+  params: Record<string, string>,
+  request: Request,
+  api: HandlerAPI,
+) => Promise<Response>;
+
+// Route handlers
+const handleUpdate: RouteHandler = async (_params, request, api) => {
+  const body = (await request.json()) as
+    | AppVersionGetBundlesArgs
+    | FingerprintGetBundlesArgs;
+  const updateInfo = await api.getAppUpdateInfo(body);
+
+  return new Response(JSON.stringify(updateInfo), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
+  const updateInfo = await api.getAppUpdateInfo({
+    _updateStrategy: "fingerprint",
+    platform: params.platform as "ios" | "android",
+    fingerprintHash: params.fingerprintHash,
+    channel: params.channel,
+    minBundleId: params.minBundleId,
+    bundleId: params.bundleId,
+  });
+
+  return new Response(JSON.stringify(updateInfo), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleAppVersionUpdate: RouteHandler = async (params, _request, api) => {
+  const updateInfo = await api.getAppUpdateInfo({
+    _updateStrategy: "appVersion",
+    platform: params.platform as "ios" | "android",
+    appVersion: params.appVersion,
+    channel: params.channel,
+    minBundleId: params.minBundleId,
+    bundleId: params.bundleId,
+  });
+
+  return new Response(JSON.stringify(updateInfo), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleGetBundle: RouteHandler = async (params, _request, api) => {
+  const bundle = await api.getBundleById(params.id);
+
+  if (!bundle) {
+    return new Response(JSON.stringify({ error: "Bundle not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify(bundle), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleGetBundles: RouteHandler = async (_params, request, api) => {
+  const url = new URL(request.url);
+  const channel = url.searchParams.get("channel") ?? undefined;
+  const platform = url.searchParams.get("platform") ?? undefined;
+  const limit = Number(url.searchParams.get("limit")) || 50;
+  const offset = Number(url.searchParams.get("offset")) || 0;
+
+  const result = await api.getBundles({
+    where: {
+      ...(channel && { channel }),
+      ...(platform && { platform }),
+    },
+    limit,
+    offset,
+  });
+
+  return new Response(JSON.stringify(result.data), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleCreateBundles: RouteHandler = async (_params, request, api) => {
+  const body = await request.json();
+  const bundles = Array.isArray(body) ? body : [body];
+
+  for (const bundle of bundles) {
+    await api.insertBundle(bundle as Bundle);
+  }
+
+  return new Response(JSON.stringify({ success: true }), {
+    status: 201,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleDeleteBundle: RouteHandler = async (params, _request, api) => {
+  await api.deleteBundleById(params.id);
+
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleGetChannels: RouteHandler = async (_params, _request, api) => {
+  const channels = await api.getChannels();
+
+  return new Response(JSON.stringify({ channels }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+// Route handlers map
+const routes: Record<string, RouteHandler> = {
+  update: handleUpdate,
+  fingerprintUpdate: handleFingerprintUpdate,
+  appVersionUpdate: handleAppVersionUpdate,
+  getBundle: handleGetBundle,
+  getBundles: handleGetBundles,
+  createBundles: handleCreateBundles,
+  deleteBundle: handleDeleteBundle,
+  getChannels: handleGetChannels,
+};
+
 /**
  * Creates a Web Standard Request handler for Hot Updater API
  * This handler is framework-agnostic and works with any framework
@@ -40,6 +174,29 @@ export function createHandler(
   options: HandlerOptions = {},
 ): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
+
+  // Create and configure router
+  const router = createRouter();
+
+  // Register routes
+  addRoute(router, "POST", "/update", "update");
+  addRoute(
+    router,
+    "GET",
+    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+    "fingerprintUpdate",
+  );
+  addRoute(
+    router,
+    "GET",
+    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
+    "appVersionUpdate",
+  );
+  addRoute(router, "GET", "/bundles/:id", "getBundle");
+  addRoute(router, "GET", "/bundles", "getBundles");
+  addRoute(router, "POST", "/bundles", "createBundles");
+  addRoute(router, "DELETE", "/bundles/:id", "deleteBundle");
+  addRoute(router, "GET", "/channels", "getChannels");
 
   return async (request: Request): Promise<Response> => {
     try {
@@ -52,168 +209,26 @@ export function createHandler(
         ? path.slice(basePath.length)
         : path;
 
-      // POST /api/update - Client checks for updates
-      if (routePath === "/update" && method === "POST") {
-        const body = (await request.json()) as
-          | AppVersionGetBundlesArgs
-          | FingerprintGetBundlesArgs;
-        const updateInfo = await api.getAppUpdateInfo(body);
+      // Find matching route
+      const match = findRoute(router, method, routePath);
 
-        if (!updateInfo) {
-          return new Response(JSON.stringify(null), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        return new Response(JSON.stringify(updateInfo), {
-          status: 200,
+      if (!match) {
+        return new Response(JSON.stringify({ error: "Not found" }), {
+          status: 404,
           headers: { "Content-Type": "application/json" },
         });
       }
 
-      // GET /api/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
-      const fingerprintMatch = routePath.match(
-        /^\/fingerprint\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/,
-      );
-      if (fingerprintMatch && method === "GET") {
-        const [, platform, fingerprintHash, channel, minBundleId, bundleId] =
-          fingerprintMatch;
-
-        const updateInfo = await api.getAppUpdateInfo({
-          _updateStrategy: "fingerprint",
-          platform: platform as "ios" | "android",
-          fingerprintHash,
-          channel,
-          minBundleId,
-          bundleId,
-        });
-
-        if (!updateInfo) {
-          return new Response(JSON.stringify(null), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        return new Response(JSON.stringify(updateInfo), {
-          status: 200,
+      // Get handler and execute
+      const handler = routes[match.data as string];
+      if (!handler) {
+        return new Response(JSON.stringify({ error: "Handler not found" }), {
+          status: 500,
           headers: { "Content-Type": "application/json" },
         });
       }
 
-      // GET /api/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
-      const appVersionMatch = routePath.match(
-        /^\/app-version\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/,
-      );
-      if (appVersionMatch && method === "GET") {
-        const [, platform, appVersion, channel, minBundleId, bundleId] =
-          appVersionMatch;
-
-        const updateInfo = await api.getAppUpdateInfo({
-          _updateStrategy: "appVersion",
-          platform: platform as "ios" | "android",
-          appVersion,
-          channel,
-          minBundleId,
-          bundleId,
-        });
-
-        if (!updateInfo) {
-          return new Response(JSON.stringify(null), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        return new Response(JSON.stringify(updateInfo), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // GET /api/bundles/:id - Get single bundle
-      const getBundleMatch = routePath.match(/^\/bundles\/([^/]+)$/);
-      if (getBundleMatch && method === "GET") {
-        const id = getBundleMatch[1];
-        const bundle = await api.getBundleById(id);
-
-        if (!bundle) {
-          return new Response(JSON.stringify({ error: "Bundle not found" }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        return new Response(JSON.stringify(bundle), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // GET /api/bundles - List bundles
-      if (routePath === "/bundles" && method === "GET") {
-        const channel = url.searchParams.get("channel") ?? undefined;
-        const platform = url.searchParams.get("platform") ?? undefined;
-        const limit = Number(url.searchParams.get("limit")) || 50;
-        const offset = Number(url.searchParams.get("offset")) || 0;
-
-        const result = await api.getBundles({
-          where: {
-            ...(channel && { channel }),
-            ...(platform && { platform }),
-          },
-          limit,
-          offset,
-        });
-
-        return new Response(JSON.stringify(result.data), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // POST /api/bundles - Create new bundle(s)
-      if (routePath === "/bundles" && method === "POST") {
-        const body = await request.json();
-        const bundles = Array.isArray(body) ? body : [body];
-
-        for (const bundle of bundles) {
-          await api.insertBundle(bundle as Bundle);
-        }
-
-        return new Response(JSON.stringify({ success: true }), {
-          status: 201,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // DELETE /api/bundles/:id - Delete bundle
-      if (routePath.startsWith("/bundles/") && method === "DELETE") {
-        const id = routePath.slice("/bundles/".length);
-        await api.deleteBundleById(id);
-
-        return new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // GET /api/channels - List all channels
-      if (routePath === "/channels" && method === "GET") {
-        const channels = await api.getChannels();
-
-        return new Response(JSON.stringify({ channels }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // 404 Not Found
-      return new Response(JSON.stringify({ error: "Not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return await handler(match.params || {}, request, api);
     } catch (error) {
       console.error("Hot Updater handler error:", error);
       return new Response(

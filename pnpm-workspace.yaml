@@ -3,6 +3,7 @@ packages:
   - plugins/*
   - docs
   - examples/*
+  - examples-server/*
 
 catalog:
   '@clack/prompts': 0.10.0

@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.21.5
+
+### Patch Changes
+
+- fc2bd56: feat: Add disabled option to deploy command
+- a253498: chore(cli): replace es-git with native Git commands
+  - @hot-updater/console@0.21.5
+  - @hot-updater/core@0.21.5
+  - @hot-updater/aws@0.21.5
+  - @hot-updater/cloudflare@0.21.5
+  - @hot-updater/firebase@0.21.5
+  - @hot-updater/plugin-core@0.21.5
+  - @hot-updater/supabase@0.21.5
+
 ## 0.21.4
 
 ### Patch Changes
