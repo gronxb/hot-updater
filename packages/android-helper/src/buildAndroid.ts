@@ -13,14 +13,14 @@ export const buildAndroid = async ({
   schemeConfig: NativeBuildAndroidScheme;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   const androidProjectPath = path.join(getCwd(), "android");
-  const bundleId = generateMinBundleId();
+  const minBundleId = generateMinBundleId();
 
   const schemeConfig = await enrichNativeBuildAndroidScheme({
     schemeConfig: _schemeConfig,
   });
 
   return runGradle({
-    args: { extraParams: [`-PMIN_BUNDLE_ID=${bundleId}`] },
+    args: { extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`] },
     appModuleName: schemeConfig.appModuleName,
     tasks: schemeConfig.aab
       ? [`bundle${schemeConfig.variant}`]
