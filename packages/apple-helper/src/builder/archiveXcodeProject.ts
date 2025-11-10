@@ -1,7 +1,8 @@
 import { p } from "@hot-updater/cli-tools";
-import type {
-  ApplePlatform,
-  NativeBuildIosScheme,
+import {
+  type ApplePlatform,
+  generateMinBundleId,
+  type NativeBuildIosScheme,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import path from "path";
@@ -98,6 +99,7 @@ const prepareArchiveArgs = ({
     "archive",
     "-archivePath",
     archivePath,
+    `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId()}`,
   ];
 
   if (schemeConfig.xcconfig) {

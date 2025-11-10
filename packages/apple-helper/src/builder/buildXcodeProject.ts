@@ -1,5 +1,8 @@
 import { p } from "@hot-updater/cli-tools";
-import type { ApplePlatform } from "@hot-updater/plugin-core";
+import {
+  type ApplePlatform,
+  generateMinBundleId,
+} from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import path from "path";
 import type { AppleDeviceType } from "../types";
@@ -41,15 +44,15 @@ export const buildXcodeProject = async ({
   const derivedDataPath = await createRandomTmpDir();
 
   const buildArgs = prepareBuildArgs({
-    xcodeProject,
-    sourceDir,
+    configuration,
+    derivedDataPath,
+    deviceType,
+    extraParams,
     platform,
     scheme,
-    configuration,
-    deviceType,
+    sourceDir,
     udid,
-    derivedDataPath,
-    extraParams,
+    xcodeProject,
   });
 
   p.log.info(`Xcode Build Settings:
@@ -76,14 +79,14 @@ Command        xcodebuild ${buildArgs.join(" ")}
     logger.stop("Build completed successfully");
 
     return await getBuildSettings({
-      xcodeProject,
-      sourceDir,
+      configuration,
+      derivedDataPath,
+      deviceType,
       platform,
       scheme,
-      configuration,
-      deviceType,
+      sourceDir,
       udid,
-      derivedDataPath,
+      xcodeProject,
     });
   } catch (error) {
     logger.stop("Build failed", false);
@@ -102,15 +105,15 @@ const prepareBuildArgs = ({
   derivedDataPath,
   extraParams,
 }: {
-  xcodeProject: XcodeProjectInfo;
-  sourceDir: string;
+  configuration: string;
+  derivedDataPath: string;
+  deviceType: "device" | "simulator";
+  extraParams?: string[];
   platform: ApplePlatform;
   scheme: string;
-  configuration: string;
-  deviceType: "device" | "simulator";
+  sourceDir: string;
   udid?: string;
-  derivedDataPath: string;
-  extraParams?: string[];
+  xcodeProject: XcodeProjectInfo;
 }): string[] => {
   const sdk =
     deviceType === "simulator"
@@ -136,6 +139,7 @@ const prepareBuildArgs = ({
     destination,
     "-derivedDataPath",
     derivedDataPath,
+    `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId}`,
     "build",
   ];
 
@@ -156,14 +160,14 @@ const getBuildSettings = async ({
   udid,
   derivedDataPath,
 }: {
-  xcodeProject: XcodeProjectInfo;
-  sourceDir: string;
+  configuration: string;
+  derivedDataPath: string;
+  deviceType: AppleDeviceType;
   platform: ApplePlatform;
   scheme: string;
-  configuration: string;
-  deviceType: AppleDeviceType;
+  sourceDir: string;
   udid?: string;
-  derivedDataPath: string;
+  xcodeProject: XcodeProjectInfo;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const sdk =
     deviceType === "simulator"
