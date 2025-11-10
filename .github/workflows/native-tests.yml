@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload iOS Coverage
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ios-coverage
           path: packages/react-native/coverage-ios.txt
@@ -83,7 +83,7 @@ jobs:
 
       - name: Upload Android Test Results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-test-results
           path: packages/react-native/android/build/reports/tests/
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload Android Test Coverage
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-coverage
           path: packages/react-native/android/build/reports/jacoco/
