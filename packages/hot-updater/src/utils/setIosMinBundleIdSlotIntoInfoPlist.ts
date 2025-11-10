@@ -6,7 +6,10 @@ export const setIosMinBundleIdSlotIntoInfoPlist = async ({
   infoPlistPaths?: string[];
 }) => {
   const iosParser = new IosConfigParser(infoPlistPaths);
-  return await iosParser.set(
+  if (!(await iosParser.exists())) {
+    throw new Error("No iOS Info.plist files found");
+  }
+  await iosParser.set(
     "HOT_UPDATER_MIN_BUNDLE_ID",
     "$(HOT_UPDATER_MIN_BUNDLE_ID)",
   );
