@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
+		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
+		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>en</string>
 		<key>CFBundleDisplayName</key>
@@ -48,6 +50,6 @@
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>c28e1078c439152fa231bfd354cbf8c5535abeb6</string>
+		<string>3f80f8c70d8bd25d649b2e47f08320a8c36e25ec</string>
 	</dict>
 </plist>

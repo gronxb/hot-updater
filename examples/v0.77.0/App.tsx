@@ -5,17 +5,14 @@
  * @format
  */
 
+import { HOT_UPDATER_SUPABASE_URL } from "@env";
 import {
-  HotUpdater,
   getUpdateSource,
+  HotUpdater,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
-
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
-
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -34,10 +31,13 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
+  const [minBundleId, setMinBundleId] = useState<string | null>(null);
 
   useEffect(() => {
     const bundleId = HotUpdater.getBundleId();
     setBundleId(bundleId);
+    const minBundleId = HotUpdater.getMinBundleId();
+    setMinBundleId(minBundleId);
   }, []);
 
   const progress = useHotUpdaterStore((state) => state.progress);
@@ -78,6 +78,16 @@ function App(): React.JSX.Element {
         }}
       >
         BundleId: {bundleId}
+      </Text>
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        MinBundleId: {minBundleId}
       </Text>
 
       <Image
