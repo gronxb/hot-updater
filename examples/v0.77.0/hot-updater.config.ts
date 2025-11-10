@@ -21,13 +21,13 @@ export default defineConfig({
       release: {
         scheme: "HotUpdaterExample",
         configuration: "Release",
-        installPods: false,
+        installPods: true,
         // exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
       },
       debug: {
         scheme: "HotUpdaterExample",
         configuration: "Debug",
-        installPods: false,
+        installPods: true,
         // exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
       },
     },
