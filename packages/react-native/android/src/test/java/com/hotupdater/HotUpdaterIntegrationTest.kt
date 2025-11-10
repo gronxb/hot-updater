@@ -3,10 +3,11 @@ package com.hotupdater
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
@@ -19,7 +20,6 @@ import java.util.zip.ZipOutputStream
  */
 @DisplayName("HotUpdater Integration Tests")
 class HotUpdaterIntegrationTest {
-
     private lateinit var mockWebServer: MockWebServer
     private lateinit var testDir: File
 
@@ -29,10 +29,11 @@ class HotUpdaterIntegrationTest {
         mockWebServer.start()
 
         // Create temporary test directory
-        testDir = File.createTempFile("hot-updater-test", "").apply {
-            delete()
-            mkdir()
-        }
+        testDir =
+            File.createTempFile("hot-updater-test", "").apply {
+                delete()
+                mkdir()
+            }
     }
 
     @AfterEach
@@ -48,7 +49,7 @@ class HotUpdaterIntegrationTest {
      */
     private fun createTestBundleZip(
         bundleContent: String = "// Test bundle content",
-        fileName: String = "index.android.bundle"
+        fileName: String = "index.android.bundle",
     ): ByteArray {
         val outputStream = ByteArrayOutputStream()
         ZipOutputStream(outputStream).use { zipOut ->
@@ -63,9 +64,7 @@ class HotUpdaterIntegrationTest {
     /**
      * Helper to create a corrupted ZIP
      */
-    private fun createCorruptedZip(): ByteArray {
-        return byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0xFF.toByte(), 0xFF.toByte())
-    }
+    private fun createCorruptedZip(): ByteArray = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0xFF.toByte(), 0xFF.toByte())
 
     /**
      * Helper to calculate SHA-256 hash
@@ -338,8 +337,12 @@ class HotUpdaterIntegrationTest {
         val zipData2 = createTestBundleZip(bundleContent = bundle2Content)
 
         // Simulate network delay
-        mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData1)).setBodyDelay(100, java.util.concurrent.TimeUnit.MILLISECONDS))
-        mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData2)).setBodyDelay(100, java.util.concurrent.TimeUnit.MILLISECONDS))
+        mockWebServer.enqueue(
+            MockResponse().setBody(okio.Buffer().write(zipData1)).setBodyDelay(100, java.util.concurrent.TimeUnit.MILLISECONDS),
+        )
+        mockWebServer.enqueue(
+            MockResponse().setBody(okio.Buffer().write(zipData2)).setBodyDelay(100, java.util.concurrent.TimeUnit.MILLISECONDS),
+        )
 
         // TODO: Start two updates concurrently
         // TODO: Verify they are handled sequentially without race conditions
