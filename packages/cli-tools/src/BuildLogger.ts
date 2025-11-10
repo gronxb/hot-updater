@@ -1,4 +1,4 @@
-import { p } from "@hot-updater/cli-tools";
+import { p } from "./prompts";
 
 export interface BuildLoggerConfig {
   /** Patterns that indicate build failure (string or regex) */
