@@ -37,6 +37,12 @@ class URLSessionDownloadService: NSObject, DownloadService {
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }
 
+    // Test-only initializer with custom configuration
+    init(configuration: URLSessionConfiguration) {
+        super.init()
+        self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }
+
     func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void) {
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
