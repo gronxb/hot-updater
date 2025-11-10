@@ -10,8 +10,7 @@ let package = Package(
     products: [
         .library(
             name: "HotUpdater",
-            // targets: ["HotUpdater"]
-            targets: ["HotUpdaterTest"]
+            targets: ["HotUpdater"]
         )
     ],
     dependencies: [
@@ -19,20 +18,26 @@ let package = Package(
         .package(url: "https://github.com/tsolomko/SWCompression.git", from: "4.8.0"),
     ],
     targets: [
-        // Target for Swift code
-        // Since React Native doesn't support SPM yet, we can't build properly. Will add proper unit tests when it's officially supported
-        // .target(
-        //     name: "HotUpdater",
-        //     path: "Internal",
-        //     exclude: [
-        //         "HotUpdater.mm",
-        //         "HotUpdater-Bridging-Header.h",
-        //     ]
-        // ),
+        // Target for Swift code (for testing purposes only)
+        .target(
+            name: "HotUpdater",
+            path: "Internal",
+            exclude: [
+                "HotUpdater.mm",
+                "HotUpdater-Bridging-Header.h",
+            ]
+        ),
+        // Legacy test target (kept for backwards compatibility)
         .testTarget(
             name: "HotUpdaterTest",
-            // dependencies: ["HotUpdater"],
+            dependencies: ["HotUpdater"],
             path: "Test"
+        ),
+        // Integration test target for OTA flow
+        .testTarget(
+            name: "HotUpdaterIntegrationTests",
+            dependencies: ["HotUpdater"],
+            path: "Tests"
         ),
     ]
 ) 

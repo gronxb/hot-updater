@@ -92,6 +92,15 @@ android {
     targetCompatibility JavaVersion.VERSION_1_8
   }
 
+  testOptions {
+    unitTests {
+      includeAndroidResources = true
+      all {
+        useJUnitPlatform()
+      }
+    }
+  }
+
   sourceSets {
     main {
       if (!isNewArchitectureEnabled()) {
@@ -132,6 +141,13 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation "org.brotli:dec:0.1.2"
+
+  // Test dependencies
+  testImplementation "org.junit.jupiter:junit-jupiter-api:5.10.0"
+  testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.10.0"
+  testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
+  testImplementation "io.mockk:mockk:1.13.8"
+  testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3"
 }
 
 if (isNewArchitectureEnabled()) {
