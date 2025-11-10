@@ -44,10 +44,10 @@ const prepareExportArgs = ({
   exportExtraParams,
   exportOptionsPlist,
 }: {
-  exportPath: string;
   archivePath: string;
-  exportOptionsPlist: string;
   exportExtraParams?: string[];
+  exportOptionsPlist: string;
+  exportPath: string;
 }): string[] => {
   const args = [
     "-exportArchive",
