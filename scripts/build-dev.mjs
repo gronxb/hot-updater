@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import path from "path";
 import { fileURLToPath } from "url";
-import { colors, p } from "@hot-updater/cli-tools";
 import chokidar from "chokidar";
 import { execa } from "execa";
 
@@ -16,10 +15,10 @@ const runBuild = async () => {
   // Cancel existing build if running
   if (buildProcess) {
     buildProcess.kill();
-    p.log.info("Build cancelled - new build starting");
+    console.log("Build cancelled - new build starting");
   }
 
-  p.log.info(colors.cyan("🔨 Building packages..."));
+  console.log("Building packages...");
 
   try {
     buildProcess = execa("pnpm", ["-w", "build"], {
@@ -33,7 +32,7 @@ const runBuild = async () => {
 
     await buildProcess;
     buildProcess = null;
-    p.log.success("✅ Build completed successfully");
+    console.log("Build completed successfully");
   } catch (error) {
     buildProcess = null;
   }
@@ -54,10 +53,10 @@ const debouncedRunBuild = () => {
 
 const watchPaths = ["docs", "packages", "plugins"];
 
-p.intro("🚀 Hot Updater Build Watcher");
+console.log("Hot Updater Build Watcher");
 
-p.log.info(`👀 Watching: ${watchPaths.join(", ")}`);
-p.log.info("🚫 Ignoring: dist, node_modules, .git, logs, fingerprint.json");
+console.log(`Watching: ${watchPaths.join(", ")}`);
+console.log("Ignoring: dist, node_modules, .git, logs, fingerprint.json");
 
 const watcher = chokidar.watch(watchPaths, {
   ignoreInitial: true,
@@ -91,31 +90,31 @@ const watcher = chokidar.watch(watchPaths, {
 });
 
 watcher.on("ready", () => {
-  p.log.success("✨ File watcher ready");
+  console.log("File watcher ready");
   runBuild();
 });
 
 watcher.on("change", (filePath) => {
-  p.log.info(picocolors.blueBright(`📝 Changed: ${filePath}`));
+  console.log(`Changed: ${filePath}`);
   debouncedRunBuild();
 });
 
 watcher.on("add", (filePath) => {
-  p.log.info(picocolors.greenBright(`➕ Added: ${filePath}`));
+  console.log(`Added: ${filePath}`);
   debouncedRunBuild();
 });
 
 watcher.on("unlink", (filePath) => {
-  p.log.info(picocolors.red(`➖ Removed: ${filePath}`));
+  console.log(`Removed: ${filePath}`);
   debouncedRunBuild();
 });
 
 watcher.on("error", (error) => {
-  p.log.error(`Watcher error: ${error.message}`);
+  console.error(`Watcher error: ${error.message}`);
 });
 
 process.on("SIGINT", () => {
-  p.log.warn("\n🛑 Stopping file watcher...");
+  console.warn("\nStopping file watcher...");
   if (buildProcess) {
     buildProcess.kill();
   }
@@ -123,9 +122,9 @@ process.on("SIGINT", () => {
     clearTimeout(debounceTimeout);
   }
   watcher.close().then(() => {
-    p.outro("👋 File watcher stopped");
+    console.log("File watcher stopped");
     process.exit(0);
   });
 });
 
-p.note("Press Ctrl+C to stop", "Instructions");
+console.log("Press Ctrl+C to stop");
