@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
-		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
-		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>en</string>
 		<key>CFBundleDisplayName</key>
@@ -51,5 +49,7 @@
 		<false/>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
 		<string>3f80f8c70d8bd25d649b2e47f08320a8c36e25ec</string>
+		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
+		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
 	</dict>
 </plist>

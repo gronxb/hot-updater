@@ -13,6 +13,7 @@ import {
   readLocalFingerprint,
 } from "@/utils/fingerprint";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
+import { setIosMinBundleIdSlotIntoInfoPlist } from "@/utils/setIosMinBundleIdSlotIntoInfoPlist";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 export async function prepareNativeBuild(
@@ -30,8 +31,7 @@ export async function prepareNativeBuild(
     return null;
   }
 
-  // TODO: handle channel or determine channel is not related in this context
-  const config = await loadConfig({ platform, channel: "DUMMY" });
+  const config = await loadConfig({ platform, channel: "" });
   if (!config) {
     p.log.error("No config found. Please run `hot-updater init` first.");
     return null;
@@ -120,6 +120,12 @@ export async function prepareNativeBuild(
   const resolvedOutputPath = path.isAbsolute(artifactResultStorePath)
     ? artifactResultStorePath
     : path.join(cwd, artifactResultStorePath);
+
+  if (platform === "ios") {
+    await setIosMinBundleIdSlotIntoInfoPlist({
+      infoPlistPaths: config.platform?.ios.infoPlistPaths,
+    });
+  }
 
   return { outputPath: resolvedOutputPath, config, scheme };
 }

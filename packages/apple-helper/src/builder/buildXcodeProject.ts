@@ -139,7 +139,7 @@ const prepareBuildArgs = ({
     destination,
     "-derivedDataPath",
     derivedDataPath,
-    `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId}`,
+    `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId()}`,
     "build",
   ];
 
