@@ -2,6 +2,17 @@
 
 This document describes the native unit testing infrastructure for the `@hot-updater/react-native` package.
 
+## Current Status
+
+**⚠️ IMPORTANT**: The native unit tests have been scaffolded but are **not yet enabled in CI**.
+
+The tests require a React Native project context to run properly. Running them standalone would require modifying package configuration (Kotlin version, minSdkVersion, etc.), which violates the principle that test infrastructure should not affect existing package configurations.
+
+**Next Steps**:
+- Integrate tests into an example app project (e.g., `examples/v0.77.0`) where a proper React Native context exists
+- Run tests as part of the example app's test suite
+- OR create a dedicated test harness app specifically for running these tests
+
 ## Overview
 
 The native unit tests verify the **end-to-end OTA update flow** with the following characteristics:
