@@ -2,7 +2,6 @@ import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import path from "path";
 import type { AppleDevice } from "../types";
-import { readKeyFromPlist } from "../utils/plistManager";
 
 export interface SimulatorRunnerOptions {
   sourceDir?: string;
@@ -85,43 +84,6 @@ export const launchAppOnSimulator = async (
   }
 };
 
-export const uninstallFromSimulator = async (
-  device: AppleDevice,
-  bundleId: string,
-  options: SimulatorRunnerOptions = {},
-) => {
-  const spinner = p.spinner();
-  spinner.start(`Uninstalling app from "${device.name}"`);
-
-  try {
-    await execa("xcrun", ["simctl", "uninstall", device.udid, bundleId], {
-      cwd: options.sourceDir,
-    });
-    spinner.stop(`Successfully uninstalled app from "${device.name}"`);
-  } catch (error) {
-    spinner.stop(`Failed to uninstall app from "${device.name}"`);
-    throw new Error(`Failed to uninstall the app from simulator: ${error}`);
-  }
-};
-
-export const resetSimulator = async (
-  device: AppleDevice,
-  options: SimulatorRunnerOptions = {},
-) => {
-  const spinner = p.spinner();
-  spinner.start(`Resetting simulator "${device.name}"`);
-
-  try {
-    await execa("xcrun", ["simctl", "erase", device.udid], {
-      cwd: options.sourceDir,
-    });
-    spinner.stop(`Successfully reset simulator "${device.name}"`);
-  } catch (error) {
-    spinner.stop(`Failed to reset simulator "${device.name}"`);
-    throw new Error(`Failed to reset simulator: ${error}`);
-  }
-};
-
 const bootSimulator = async (device: AppleDevice) => {
   try {
     await execa("xcrun", ["simctl", "boot", device.udid]);
@@ -141,6 +103,7 @@ const extractBundleId = async (appPath: string, infoPlistPath?: string) => {
   const plistPath = infoPlistPath || path.join(appPath, "Info.plist");
 
   try {
+    // todo bring me the plist parser!!!!!!!!
     return await readKeyFromPlist(plistPath, "CFBundleIdentifier");
   } catch (error) {
     throw new Error(`Failed to extract bundle ID from ${plistPath}: ${error}`);

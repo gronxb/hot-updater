@@ -267,7 +267,6 @@ export const Device = {
 
 // TODO: Add advanced device discovery features
 // - Device availability validation (check if device is ready for deployment)
-// - Automatic simulator boot functionality
 // - Device pairing status checking for physical devices
 // - Network device discovery support
 // - Device capability detection (iOS version, architecture, etc.)
