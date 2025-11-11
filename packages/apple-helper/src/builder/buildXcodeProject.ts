@@ -10,9 +10,9 @@ import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import { platformConfigs } from "../utils/platform";
 import {
-  discoverXcodeProject,
+  parseXcodeProjectInfo,
   type XcodeProjectInfo,
-} from "../utils/projectInfo";
+} from "../utils/parseXcodeProjectInfo";
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
 import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
 
@@ -35,7 +35,7 @@ export const buildXcodeProject = async ({
   installPods?: boolean;
   extraParams?: string[];
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
-  const xcodeProject = await discoverXcodeProject(sourceDir);
+  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
   if (installPods ?? true) {
     await installPodsIfNeeded(sourceDir);

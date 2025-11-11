@@ -14,9 +14,9 @@ import {
   resolveDestinations,
 } from "../utils/destination";
 import {
-  discoverXcodeProject,
+  parseXcodeProjectInfo,
   type XcodeProjectInfo,
-} from "../utils/projectInfo";
+} from "../utils/parseXcodeProjectInfo";
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
 import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
 
@@ -29,7 +29,7 @@ export const archiveXcodeProject = async ({
   schemeConfig: NativeBuildIosScheme;
   platform: ApplePlatform;
 }): Promise<{ archivePath: string }> => {
-  const xcodeProject = await discoverXcodeProject(sourceDir);
+  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
   if (schemeConfig.installPods ?? true) {
     await installPodsIfNeeded(sourceDir);
