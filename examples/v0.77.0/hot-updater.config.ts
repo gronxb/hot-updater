@@ -7,6 +7,7 @@ import { defineConfig } from "hot-updater";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
+  platform: {},
   nativeBuild: {
     android: {
       debugApk: {
@@ -19,12 +20,14 @@ export default defineConfig({
     },
     ios: {
       release: {
+        bundleIdentifier: "com.hotupdaterexample",
         scheme: "HotUpdaterExample",
         configuration: "Release",
         installPods: true,
         // exportOptionsPlist: "./ios/HotUpdaterExample/ExportOptions.plist",
       },
       debug: {
+        bundleIdentifier: "com.hotupdaterexample",
         scheme: "HotUpdaterExample",
         configuration: "Debug",
         installPods: true,
