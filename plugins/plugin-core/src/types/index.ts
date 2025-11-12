@@ -139,7 +139,11 @@ export type ApplePlatform =
  */
 export interface NativeBuildIosScheme {
   /**
-   * The apple platform for build & archive
+   * The bundle identifier of the app.
+   */
+  bundleIdentifier: string;
+  /**
+   * Apple platform for build & archive
    *
    * @default ios
    */

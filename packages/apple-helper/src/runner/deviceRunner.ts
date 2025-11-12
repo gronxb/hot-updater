@@ -6,30 +6,37 @@ import type { AppleDevice } from "../types";
 export interface DeviceRunnerOptions {
   sourceDir?: string;
   launch?: boolean;
-  bundleId?: string;
+  bundleIdentifier: string;
 }
 
-export const installAndLaunchOnDevice = async (
-  device: AppleDevice,
-  appPath: string,
-  options: DeviceRunnerOptions = {},
-) => {
-  await installOnDevice(device, appPath, options);
+export const installAndLaunchOnDevice = async ({
+  device,
+  appPath,
+  options,
+}: {
+  device: AppleDevice;
+  appPath: string;
+  options: DeviceRunnerOptions;
+}) => {
+  await installOnDevice({ device: device, appPath: appPath, options: options });
 
   if (options.launch !== false) {
-    await launchAppOnDevice(
+    await launchAppOnDevice({
       device,
-      options.bundleId || (await extractBundleId(appPath)),
       options,
-    );
+    });
   }
 };
 
-export const installOnDevice = async (
-  device: AppleDevice,
-  appPath: string,
-  options: DeviceRunnerOptions = {},
-) => {
+export const installOnDevice = async ({
+  device,
+  appPath,
+  options,
+}: {
+  device: AppleDevice;
+  appPath: string;
+  options: DeviceRunnerOptions;
+}) => {
   const deviceCtlArgs = [
     "devicectl",
     "device",
@@ -54,11 +61,13 @@ export const installOnDevice = async (
   }
 };
 
-export const launchAppOnDevice = async (
-  device: AppleDevice,
-  bundleId: string,
-  options: DeviceRunnerOptions = {},
-) => {
+export const launchAppOnDevice = async ({
+  device,
+  options,
+}: {
+  device: AppleDevice;
+  options: DeviceRunnerOptions;
+}) => {
   const deviceCtlArgs = [
     "devicectl",
     "device",
@@ -66,7 +75,7 @@ export const launchAppOnDevice = async (
     "launch",
     "--device",
     device.udid,
-    bundleId,
+    options.bundleIdentifier,
   ];
 
   const spinner = p.spinner();
@@ -80,49 +89,5 @@ export const launchAppOnDevice = async (
   } catch (error) {
     spinner.stop(`Failed to launch app on ${device.name}`);
     throw new Error(`Failed to launch the app on ${device.name}: ${error}`);
-  }
-};
-
-export const uninstallFromDevice = async (
-  device: AppleDevice,
-  bundleId: string,
-  options: DeviceRunnerOptions = {},
-) => {
-  const deviceCtlArgs = [
-    "devicectl",
-    "device",
-    "uninstall",
-    "app",
-    "--device",
-    device.udid,
-    bundleId,
-  ];
-
-  const spinner = p.spinner();
-  spinner.start(`Uninstalling app from ${device.name}`);
-
-  try {
-    await execa("xcrun", deviceCtlArgs, {
-      cwd: options.sourceDir,
-    });
-    spinner.stop(`Successfully uninstalled app from ${device.name}`);
-  } catch (error) {
-    spinner.stop(`Failed to uninstall app from ${device.name}`);
-    throw new Error(
-      `Failed to uninstall the app from ${device.name}: ${error}`,
-    );
-  }
-};
-
-const extractBundleId = async (appPath: string) => {
-  try {
-    const { stdout } = await execa("/usr/libexec/PlistBuddy", [
-      "-c",
-      "Print:CFBundleIdentifier",
-      `${appPath}/Info.plist`,
-    ]);
-    return stdout.trim();
-  } catch (error) {
-    throw new Error(`Failed to extract bundle ID from ${appPath}: ${error}`);
   }
 };

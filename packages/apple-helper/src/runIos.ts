@@ -60,16 +60,17 @@ export const runIos = async ({
     });
 
     const runnerOptions: SimulatorRunnerOptions = {
+      bundleIdentifier: schemeConfig.bundleIdentifier,
       sourceDir: iosProjectPath,
       launch: true,
       infoPlistPath: result.infoPlistPath,
     };
 
-    await installAndLaunchOnSimulator(
-      selectedDevice,
-      result.appPath,
-      runnerOptions,
-    );
+    await installAndLaunchOnSimulator({
+      device: selectedDevice,
+      appPath: result.appPath,
+      options: runnerOptions,
+    });
 
     p.outro("Success 🎉");
     return result;
@@ -89,17 +90,26 @@ export const runIos = async ({
   });
 
   const runnerOptions: DeviceRunnerOptions | SimulatorRunnerOptions = {
+    bundleIdentifier: schemeConfig.bundleIdentifier,
     sourceDir: iosProjectPath,
     launch: true,
   };
 
   if (device.type === "simulator") {
-    await installAndLaunchOnSimulator(device, result.appPath, {
-      ...runnerOptions,
-      infoPlistPath: result.infoPlistPath,
+    await installAndLaunchOnSimulator({
+      device: device,
+      appPath: result.appPath,
+      options: {
+        ...runnerOptions,
+        infoPlistPath: result.infoPlistPath,
+      },
     });
   } else {
-    await installAndLaunchOnDevice(device, result.appPath, runnerOptions);
+    await installAndLaunchOnDevice({
+      device: device,
+      appPath: result.appPath,
+      options: runnerOptions,
+    });
   }
 
   p.outro("Success 🎉");

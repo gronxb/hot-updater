@@ -1,32 +1,36 @@
 import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
-import path from "path";
 import type { AppleDevice } from "../types";
 
 export interface SimulatorRunnerOptions {
-  sourceDir?: string;
-  launch?: boolean;
-  bundleId?: string;
+  bundleIdentifier: string;
   infoPlistPath?: string;
+  launch?: boolean;
+  sourceDir?: string;
 }
 
-export const installAndLaunchOnSimulator = async (
-  device: AppleDevice,
-  appPath: string,
-  options: SimulatorRunnerOptions = {},
-) => {
-  await launchSimulator(device);
-  await installOnSimulator(device, appPath, options);
+export const installAndLaunchOnSimulator = async ({
+  device,
+  appPath,
+  options,
+}: {
+  device: AppleDevice;
+  appPath: string;
+  options: SimulatorRunnerOptions;
+}) => {
+  await launchSimulator({ device: device });
+  await installOnSimulator({
+    device: device,
+    appPath: appPath,
+    options: options,
+  });
 
   if (options.launch !== false) {
-    const bundleId =
-      options.bundleId ||
-      (await extractBundleId(appPath, options.infoPlistPath));
-    await launchAppOnSimulator(device, bundleId, options);
+    await launchAppOnSimulator({ device: device, options: options });
   }
 };
 
-export const launchSimulator = async (device: AppleDevice) => {
+export const launchSimulator = async ({ device }: { device: AppleDevice }) => {
   if (device.type !== "simulator") {
     return;
   }
@@ -42,15 +46,19 @@ export const launchSimulator = async (device: AppleDevice) => {
   ]);
 
   if (device.state !== "Booted") {
-    await bootSimulator(device);
+    await bootSimulator({ device: device });
   }
 };
 
-export const installOnSimulator = async (
-  device: AppleDevice,
-  appPath: string,
-  options: SimulatorRunnerOptions = {},
-) => {
+export const installOnSimulator = async ({
+  device,
+  appPath,
+  options,
+}: {
+  device: AppleDevice;
+  appPath: string;
+  options: SimulatorRunnerOptions;
+}) => {
   const spinner = p.spinner();
   spinner.start(`Installing app on "${device.name}"`);
 
@@ -65,18 +73,24 @@ export const installOnSimulator = async (
   }
 };
 
-export const launchAppOnSimulator = async (
-  device: AppleDevice,
-  bundleId: string,
-  options: SimulatorRunnerOptions = {},
-) => {
+export const launchAppOnSimulator = async ({
+  device,
+  options,
+}: {
+  device: AppleDevice;
+  options: SimulatorRunnerOptions;
+}) => {
   const spinner = p.spinner();
   spinner.start(`Launching app on "${device.name}"`);
 
   try {
-    await execa("xcrun", ["simctl", "launch", device.udid, bundleId], {
-      cwd: options.sourceDir,
-    });
+    await execa(
+      "xcrun",
+      ["simctl", "launch", device.udid, options.bundleIdentifier],
+      {
+        cwd: options.sourceDir,
+      },
+    );
     spinner.stop(`Successfully launched app on "${device.name}"`);
   } catch (error) {
     spinner.stop(`Failed to launch app on "${device.name}"`);
@@ -84,7 +98,7 @@ export const launchAppOnSimulator = async (
   }
 };
 
-const bootSimulator = async (device: AppleDevice) => {
+const bootSimulator = async ({ device }: { device: AppleDevice }) => {
   try {
     await execa("xcrun", ["simctl", "boot", device.udid]);
   } catch (error) {
@@ -96,16 +110,5 @@ const bootSimulator = async (device: AppleDevice) => {
       return;
     }
     throw new Error(`Failed to boot simulator: ${error}`);
-  }
-};
-
-const extractBundleId = async (appPath: string, infoPlistPath?: string) => {
-  const plistPath = infoPlistPath || path.join(appPath, "Info.plist");
-
-  try {
-    // todo bring me the plist parser!!!!!!!!
-    return await readKeyFromPlist(plistPath, "CFBundleIdentifier");
-  } catch (error) {
-    throw new Error(`Failed to extract bundle ID from ${plistPath}: ${error}`);
   }
 };
