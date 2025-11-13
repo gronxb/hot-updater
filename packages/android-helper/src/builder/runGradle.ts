@@ -2,7 +2,7 @@ import { p } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
-import { createGradleLogger } from "./createGradleLogger";
+import { createGradleLogger } from "../utils/createGradleLogger";
 
 type RunGradleArgs = {
   tasks: string[];

@@ -4,12 +4,12 @@ import {
   type NativeBuildAndroidScheme,
 } from "@hot-updater/plugin-core";
 import path from "path";
+import { runGradle } from "./builder/runGradle";
 import { tryInstallAppOnDevice } from "./runner/tryInstallAppOnDevice";
 import { tryLaunchAppOnDevice } from "./runner/tryLaunchAppOnDevice";
 import type { AndroidNativeRunOptions } from "./types";
 import { Device } from "./utils/device";
 import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
-import { runGradle } from "./utils/gradle";
 
 export const runAndroid = async ({
   schemeConfig: _schemeConfig,

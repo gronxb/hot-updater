@@ -9,6 +9,7 @@ import path from "path";
 
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
+import { createXcodebuildLogger } from "../utils/createXcodebuildLogger";
 import {
   getDefaultDestination,
   resolveDestinations,
@@ -17,8 +18,7 @@ import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
 } from "../utils/parseXcodeProjectInfo";
-import { createXcodebuildLogger } from "./createXcodebuildLogger";
-import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
+import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 
 export const archiveXcodeProject = async ({
   sourceDir,

@@ -1,7 +1,7 @@
 import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
-import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
+import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 
 export const exportXcodeArchive = async ({
   archivePath,

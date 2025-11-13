@@ -8,13 +8,13 @@ import path from "path";
 import type { AppleDeviceType } from "../types";
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
-import { platformConfigs } from "../utils/platform";
+import { createXcodebuildLogger } from "../utils/createXcodebuildLogger";
 import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
 } from "../utils/parseXcodeProjectInfo";
-import { createXcodebuildLogger } from "./createXcodebuildLogger";
-import { prettifyXcodebuildError } from "./prettifyXcodebuildError";
+import { platformConfigs } from "../utils/platform";
+import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 
 export const buildXcodeProject = async ({
   sourceDir,

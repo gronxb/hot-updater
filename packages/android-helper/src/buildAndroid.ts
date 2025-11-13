@@ -4,8 +4,8 @@ import {
   type NativeBuildAndroidScheme,
 } from "@hot-updater/plugin-core";
 import path from "path";
+import { runGradle } from "./builder/runGradle";
 import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
-import { runGradle } from "./utils/gradle";
 
 export const buildAndroid = async ({
   schemeConfig: _schemeConfig,
