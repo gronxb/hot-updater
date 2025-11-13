@@ -1,5 +1,13 @@
 # @hot-updater/server
 
+## 0.21.10
+
+### Patch Changes
+
+- 5289b17: only include valid where clauses during building /bundles orm command
+  - @hot-updater/plugin-core@0.21.10
+  - @hot-updater/core@0.21.10
+
 ## 0.21.9
 
 ### Patch Changes
