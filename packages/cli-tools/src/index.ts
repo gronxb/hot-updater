@@ -9,6 +9,7 @@ export * from "./createZip";
 export * from "./crypto";
 export * from "./cwd";
 export * from "./getAndroidSdkPath";
+export * from "./getReactNativeMetadatas";
 export * from "./loadConfig";
 export * from "./log";
 export * from "./makeEnv";

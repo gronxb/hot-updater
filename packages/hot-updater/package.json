@@ -63,10 +63,10 @@
     "cosmiconfig": "9.0.0",
     "jiti": "2.6.1",
     "sql-formatter": "15.6.10",
-    "cosmiconfig-typescript-loader": "5.0.0"
+    "cosmiconfig-typescript-loader": "5.0.0",
+    "semver": "^7.6.3"
   },
   "devDependencies": {
-    "semver": "^7.6.3",
     "fast-xml-parser": "^5.2.3",
     "fast-glob": "3.3.3",
     "@bacons/xcode": "1.0.0-alpha.24",

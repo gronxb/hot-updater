@@ -1,4 +1,4 @@
-import { getCwd, p } from "@hot-updater/cli-tools";
+import { getCwd, getReactNativeMetadatas, p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import fs from "fs";
 import path from "path";
@@ -33,12 +33,18 @@ export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
 
       const podSpinner = p.spinner();
       podSpinner.start("Installing CocoaPods dependencies");
-      await execa("bundle", ["exec", "pod", "install"], { cwd: sourceDir });
+      await execa("bundle", ["exec", "pod", "install"], {
+        cwd: sourceDir,
+        env: preparePodInstallEnvVars(),
+      });
       podSpinner.stop("CocoaPods dependencies installed");
     } else {
       const spinner = p.spinner();
       spinner.start("Installing CocoaPods dependencies");
-      await execa("pod", ["install"], { cwd: sourceDir });
+      await execa("pod", ["install"], {
+        cwd: sourceDir,
+        env: preparePodInstallEnvVars(),
+      });
       spinner.stop("CocoaPods dependencies installed");
     }
   } catch (error) {
@@ -57,4 +63,25 @@ const checkShouldUseBundler = async (gemfilePath: string): Promise<boolean> => {
   } catch (_error) {
     return false;
   }
+};
+
+const preparePodInstallEnvVars = (): Record<string, string> => {
+  const { minor } = getReactNativeMetadatas().version;
+  const usePrebuiltReactNative = minor >= 81;
+
+  return {
+    RCT_IGNORE_PODS_DEPRECATION: "1",
+    RCT_USE_RN_DEP:
+      process.env["RCT_USE_RN_DEP"] !== undefined
+        ? String(process.env["RCT_USE_RN_DEP"])
+        : usePrebuiltReactNative
+          ? "1"
+          : "0",
+    RCT_USE_PREBUILT_RNCORE:
+      process.env["RCT_USE_PREBUILT_RNCORE"] !== undefined
+        ? String(process.env["RCT_USE_PREBUILT_RNCORE"])
+        : usePrebuiltReactNative
+          ? "1"
+          : "0",
+  };
 };

@@ -1,3 +1,4 @@
+import { getReactNativeMetadatas } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 import fs from "fs";
 import path from "path";
@@ -27,26 +28,10 @@ function getHermesOSExe(): string {
 }
 
 /**
- * Returns the path to the react-native package.
- * Uses require.resolve to locate the path directly.
- */
-function getReactNativePackagePath(cwd: string): string {
-  try {
-    return path.dirname(
-      require.resolve("react-native/package.json", {
-        paths: [cwd],
-      }),
-    );
-  } catch {
-    return path.join("node_modules", "react-native");
-  }
-}
-
-/**
  * Returns the path to the react-native compose-source-maps.js script.
  */
 function getComposeSourceMapsPath(cwd: string): string | null {
-  const rnPackagePath = getReactNativePackagePath(cwd);
+  const rnPackagePath = getReactNativeMetadatas(cwd).packagePath;
   const composeSourceMaps = path.join(
     rnPackagePath,
     "scripts",
@@ -73,7 +58,7 @@ export async function getHermesCommand(cwd: string): Promise<string> {
 
   // Since react-native 0.69, Hermes is bundled with it.
   const bundledHermesEngine = path.join(
-    getReactNativePackagePath(cwd),
+    getReactNativeMetadatas(cwd).packagePath,
     "sdks",
     "hermesc",
     getHermesOSBin(),
