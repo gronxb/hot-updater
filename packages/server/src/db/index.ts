@@ -382,16 +382,16 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
           "fingerprint_hash",
           "metadata",
         ],
-        where: (b) =>
-          b.and(
-            b.isNotNull("id"),
-            where?.channel
-              ? b("channel", "=", where.channel)
-              : b.isNotNull("id"),
-            where?.platform
-              ? b("platform", "=", where.platform)
-              : b.isNotNull("id"),
-          ),
+        where: (b) => {
+          const conditions = [];
+          if (where?.channel) {
+            conditions.push(b("channel", "=", where.channel));
+          }
+          if (where?.platform) {
+            conditions.push(b("platform", "=", where.platform));
+          }
+          return conditions.length > 0 ? b.and(...conditions) : true;
+        },
       });
 
       const all: Bundle[] = rows
