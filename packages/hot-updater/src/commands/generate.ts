@@ -435,7 +435,7 @@ async function generateStandaloneSQL(options: {
     });
 
     // Create dialect based on selected database type
-    let dialect;
+    let dialect: PostgresDialect | MysqlDialect | SqliteDialect;
     switch (dbType) {
       case "postgresql":
         dialect = new PostgresDialect({ pool: createDummyPool() as never });
