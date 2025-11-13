@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
 import fs from "fs";
 import path from "path";
-import semverMajor from "semver/functions/major";
-import semverMinor from "semver/functions/minor";
-import semverPatch from "semver/functions/patch";
+import semverMajor from "semver/functions/major.js";
+import semverMinor from "semver/functions/minor.js";
+import semverPatch from "semver/functions/patch.js";
 import { getCwd } from "./cwd";
 import { p } from "./prompts";
 
