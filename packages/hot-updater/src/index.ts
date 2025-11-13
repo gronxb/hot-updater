@@ -152,16 +152,28 @@ dbCommand
 dbCommand
   .command("generate")
   .description("Generate SQL migration file (does not execute)")
-  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .argument(
+    "[configPath]",
+    "path to the config file that exports hotUpdater (not required with --sql)",
+  )
   .argument("[outputDir]", "output directory (default: hot-updater_migrations)")
   .option("-y, --yes", "skip confirmation prompt", false)
+  .option(
+    "--sql [provider]",
+    "generate standalone SQL file without reading config. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
+  )
   .action(
     async (
-      configPath: string,
+      configPath: string | undefined,
       outputDir: string | undefined,
-      options: { yes: boolean },
+      options: { yes: boolean; sql?: string | true },
     ) => {
-      await generate({ configPath, outputDir, skipConfirm: options.yes });
+      await generate({
+        configPath: configPath || "",
+        outputDir,
+        skipConfirm: options.yes,
+        sql: options.sql === true ? true : options.sql || false,
+      });
     },
   );
 

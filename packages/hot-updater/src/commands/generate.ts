@@ -1,7 +1,9 @@
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator } from "@hot-updater/server";
+import { HotUpdaterDB, type Migrator } from "@hot-updater/server";
 import { createHash } from "crypto";
 import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { kyselyAdapter } from "fumadb/adapters/kysely";
+import { Kysely, MysqlDialect, PostgresDialect, SqliteDialect } from "kysely";
 import path from "path";
 import { format } from "sql-formatter";
 import {
@@ -15,10 +17,25 @@ export interface GenerateOptions {
   configPath: string;
   outputDir?: string;
   skipConfirm?: boolean;
+  sql?: boolean | string;
 }
 
 export async function generate(options: GenerateOptions) {
-  const { configPath, outputDir = undefined, skipConfirm = false } = options;
+  const {
+    configPath,
+    outputDir = undefined,
+    skipConfirm = false,
+    sql = false,
+  } = options;
+
+  // If --sql flag is set, use standalone SQL generation
+  if (sql) {
+    return generateStandaloneSQL({
+      outputDir: outputDir || ".",
+      skipConfirm,
+      provider: typeof sql === "string" ? sql : undefined,
+    });
+  }
 
   try {
     // Start spinner early to show progress during config loading
@@ -342,4 +359,186 @@ async function generatePrismaSchema(
   p.log.info(
     "Next steps:\n  1. Run: npx prisma generate\n  2. Run: npx prisma migrate dev",
   );
+}
+
+/**
+ * Generate standalone SQL file using Kysely preset without reading config
+ */
+async function generateStandaloneSQL(options: {
+  outputDir: string;
+  skipConfirm: boolean;
+  provider?: string;
+}) {
+  const { outputDir, skipConfirm, provider } = options;
+
+  try {
+    // Validate provider if specified
+    const validProviders = ["postgresql", "mysql", "sqlite"];
+    let dbType: "postgresql" | "mysql" | "sqlite";
+
+    if (provider) {
+      if (!validProviders.includes(provider)) {
+        p.log.error(
+          `Invalid provider: ${provider}\nValid options: postgresql, mysql, sqlite`,
+        );
+        process.exit(1);
+      }
+      dbType = provider as "postgresql" | "mysql" | "sqlite";
+    } else if (skipConfirm) {
+      // Default to postgresql when --yes is used without provider
+      dbType = "postgresql";
+    } else {
+      // Ask user to select database type
+      const selected = await p.select({
+        message: "Select database type",
+        options: [
+          { value: "postgresql", label: "PostgreSQL" },
+          { value: "mysql", label: "MySQL" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      });
+
+      if (p.isCancel(selected)) {
+        p.cancel("Operation cancelled");
+        process.exit(0);
+      }
+
+      dbType = selected as "postgresql" | "mysql" | "sqlite";
+    }
+
+    const s = p.spinner();
+    s.start("Generating SQL from Kysely preset schema");
+
+    // Create a dummy Kysely instance based on selected database type
+    // We need to provide a minimal pool/database implementation that satisfies the interface
+    // but won't actually be used for SQL generation in from-schema mode
+    const createDummyPool = () => ({
+      connect: async () => ({
+        query: async () => ({
+          rows: [],
+          command: "SELECT" as const,
+          rowCount: 0,
+        }),
+        release: () => {},
+      }),
+      end: async () => {},
+    });
+
+    const createDummySqliteDatabase = () => ({
+      close: async () => {},
+      prepare: () => ({
+        all: async () => [],
+        get: async () => undefined,
+        run: async () => ({ changes: 0 }),
+        finalize: async () => {},
+      }),
+    });
+
+    // Create dialect based on selected database type
+    let dialect;
+    switch (dbType) {
+      case "postgresql":
+        dialect = new PostgresDialect({ pool: createDummyPool() as never });
+        break;
+      case "mysql":
+        dialect = new MysqlDialect({ pool: createDummyPool() as never });
+        break;
+      case "sqlite":
+        dialect = new SqliteDialect({
+          database: createDummySqliteDatabase() as never,
+        });
+        break;
+    }
+
+    const db = new Kysely({ dialect });
+
+    // Create the adapter with selected provider
+    const adapter = kyselyAdapter({
+      db,
+      provider: dbType,
+    });
+
+    // Create fumadb client
+    const client = HotUpdaterDB.client(adapter);
+
+    // Create migrator
+    const migrator = client.createMigrator();
+
+    // Generate SQL from schema
+    const result = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: false,
+    });
+
+    s.stop("SQL generation complete");
+
+    // Get SQL
+    if (!result.getSQL) {
+      p.log.error(
+        "Migration result does not support SQL generation. " +
+          "This should not happen with Kysely adapter.",
+      );
+      process.exit(1);
+    }
+
+    const sql = result.getSQL();
+
+    if (!sql || sql.trim() === "") {
+      p.log.error("Failed to generate SQL from preset schema");
+      process.exit(1);
+    }
+
+    // Format SQL for better readability
+    const languageMap = {
+      postgresql: "postgresql",
+      mysql: "mysql",
+      sqlite: "sqlite",
+    } as const;
+
+    const formattedSql = format(sql, {
+      language: languageMap[dbType],
+      tabWidth: 2,
+      keywordCase: "upper",
+    });
+
+    // Create output directory
+    const absoluteOutputDir = path.resolve(process.cwd(), outputDir);
+    await mkdir(absoluteOutputDir, { recursive: true });
+
+    // Fixed filename
+    const filename = "hot-updater.sql";
+    const outputPath = path.join(absoluteOutputDir, filename);
+
+    // Confirm before writing SQL file
+    if (!skipConfirm) {
+      // Show SQL preview before confirmation
+      p.log.info("\nGenerated SQL preview:\n");
+      console.log(formattedSql);
+      console.log("");
+
+      const shouldContinue = await p.confirm({
+        message: `Save to ${filename}?`,
+        initialValue: true,
+      });
+
+      if (p.isCancel(shouldContinue) || !shouldContinue) {
+        p.cancel("Operation cancelled");
+        process.exit(0);
+      }
+    }
+
+    // Write SQL file
+    await writeFile(outputPath, formattedSql, "utf-8");
+
+    p.log.success(`SQL file created: ${outputPath}`);
+  } catch (error) {
+    p.log.error("Failed to generate standalone SQL");
+    if (error instanceof Error) {
+      p.log.error(error.message);
+      if (process.env["DEBUG"]) {
+        console.error(error.stack);
+      }
+    }
+    process.exit(1);
+  }
 }

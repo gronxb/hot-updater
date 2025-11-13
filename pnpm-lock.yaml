@@ -1217,15 +1217,24 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../server
       cosmiconfig:
         specifier: 9.0.0
         version: 9.0.0(typescript@5.9.3)
       cosmiconfig-typescript-loader:
         specifier: 5.0.0
         version: 5.0.0(@types/node@20.19.11)(cosmiconfig@9.0.0(typescript@5.9.3))(typescript@5.9.3)
+      fumadb:
+        specifier: 0.2.0
+        version: 0.2.0(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3)))(mongodb@6.20.0(@aws-sdk/credential-providers@3.772.0)(socks@2.8.4))(prisma@6.18.0(typescript@5.9.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.772.0)(socks@2.8.4))(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3)))
       jiti:
         specifier: 2.6.1
         version: 2.6.1
+      kysely:
+        specifier: ^0.28.5
+        version: 0.28.8
       sql-formatter:
         specifier: 15.6.10
         version: 15.6.10
@@ -1263,9 +1272,6 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../server
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase

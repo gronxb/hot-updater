@@ -58,8 +58,11 @@
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "cosmiconfig": "9.0.0",
+    "fumadb": "0.2.0",
     "jiti": "2.6.1",
+    "kysely": "^0.28.5",
     "sql-formatter": "15.6.10",
     "cosmiconfig-typescript-loader": "5.0.0"
   },
