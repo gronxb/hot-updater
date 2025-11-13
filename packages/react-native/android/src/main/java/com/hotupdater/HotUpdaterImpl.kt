@@ -98,7 +98,12 @@ class HotUpdaterImpl(
      * Get minimum bundle ID string
      * @return The minimum bundle ID string
      */
-    fun getMinBundleId(): String = BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
+    fun getMinBundleId(): String {
+        if (BuildConfig.DEBUG) {
+            return "00000000-0000-0000-0000-000000000000"
+        }
+        return BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
+    }
 
     /**
      * Generates a bundle ID based on build timestamp

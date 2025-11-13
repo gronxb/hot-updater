@@ -1033,6 +1033,44 @@ importers:
         specifier: ^4.30.0
         version: 4.30.0(@cloudflare/workers-types@4.20250828.1)
 
+  packages/android-helper:
+    dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../cli-tools
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
+      execa:
+        specifier: 'catalog:'
+        version: 9.5.2
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.11
+
+  packages/apple-helper:
+    dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../cli-tools
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
+      execa:
+        specifier: 'catalog:'
+        version: 9.5.2
+      fast-xml-parser:
+        specifier: 5.2.3
+        version: 5.2.3
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.11
+
   packages/cli-tools:
     dependencies:
       '@clack/prompts':
@@ -1205,6 +1243,12 @@ importers:
       '@expo/fingerprint':
         specifier: 0.13.4
         version: 0.13.4
+      '@hot-updater/android-helper':
+        specifier: workspace:*
+        version: link:../android-helper
+      '@hot-updater/apple-helper':
+        specifier: workspace:*
+        version: link:../apple-helper
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../cli-tools

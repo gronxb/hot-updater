@@ -2,14 +2,18 @@ import { p } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
+import { createGradleLogger } from "../utils/createGradleLogger";
 
-export type RunGradleArgs = {
+type RunGradleArgs = {
   tasks: string[];
   appModuleName: string;
   args: { extraParams?: string[]; port?: string | number };
   androidProjectPath: string;
 };
 
+/**
+ * Clean up gradle error message by removing common noise
+ */
 const getCleanedErrorMessage = (error: ExecaError) => {
   const gradleLinesToRemove = [
     "FAILURE: Build failed with an exception.",
@@ -30,19 +34,31 @@ const getCleanedErrorMessage = (error: ExecaError) => {
     .trim();
 };
 
+/**
+ * Generate gradle task names with module prefix
+ */
 function getTaskNames(moduleName: string, tasks: string[]): Array<string> {
   return tasks.map((task) => `${moduleName}:${task}`);
 }
 
+/**
+ * Get gradle wrapper command based on platform
+ */
 const getGradleWrapper = () =>
   process.platform.startsWith("win") ? "gradlew.bat" : "./gradlew";
 
+/**
+ * Run gradle build with specified tasks and arguments
+ */
 export async function runGradle({
   tasks,
   args,
   androidProjectPath,
   appModuleName,
-}: RunGradleArgs): Promise<{ buildDirectory: string; outputFile: string }> {
+}: RunGradleArgs): Promise<{
+  buildDirectory: string;
+  buildArtifactPath: string;
+}> {
   const gradleArgs = getTaskNames(appModuleName, tasks);
 
   gradleArgs.push("-x", "lint");
@@ -62,11 +78,24 @@ Args       ${gradleArgs.join(" ")}
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
   }
 
+  const logger = createGradleLogger();
+  logger.start(`${appModuleName}`);
+
   try {
-    await execa(getGradleWrapper(), gradleArgs, {
+    const process = execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectPath,
     });
+
+    for await (const line of process) {
+      if (line) {
+        logger.processLine(line);
+      }
+    }
+
+    logger.stop();
   } catch (e) {
+    logger.stop("Build failed", false);
+
     if (e instanceof ExecaError) {
       p.log.error(getCleanedErrorMessage(e));
     } else if (e instanceof Error) {
@@ -74,7 +103,7 @@ Args       ${gradleArgs.join(" ")}
     }
 
     throw new Error(
-      "Faild to build the app. See the error above for details from Gradle.",
+      "Failed to build the app. See the error above for details from Gradle.",
     );
   }
 
@@ -85,6 +114,9 @@ Args       ${gradleArgs.join(" ")}
   });
 }
 
+/**
+ * Find the build output directory and artifact path
+ */
 async function findBuildDirectory({
   moduleName,
   tasks,
@@ -95,7 +127,7 @@ async function findBuildDirectory({
   androidProjectPath: string;
 }): Promise<{
   buildDirectory: string;
-  outputFile: string;
+  buildArtifactPath: string;
 }> {
   const selectedTask = tasks.find(
     (t) =>
@@ -124,17 +156,20 @@ async function findBuildDirectory({
     throw new Error("Failed to find Android gradle build directory.");
   }
 
-  const outputFile = await getOutputFilePath({
+  const buildArtifactPath = await getBuildOutputFilePath({
     aab: isAabOutput,
     appModuleName: moduleName,
     buildDirectory,
     variant,
   });
 
-  return { buildDirectory, outputFile };
+  return { buildDirectory, buildArtifactPath };
 }
 
-async function getOutputFilePath({
+/**
+ * Get the path to the build output file (APK or AAB)
+ */
+async function getBuildOutputFilePath({
   aab,
   appModuleName,
   buildDirectory,

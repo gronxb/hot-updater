@@ -224,6 +224,32 @@ describe("IosConfigParser", () => {
       });
     });
 
+    it("should skip update when value is already set", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
+      const mockPlistObject = { TEST_KEY: "test_value" };
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(
+        fs.promises.readFile,
+      ).mockResolvedValue(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+</dict>
+</plist>`);
+      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
+      vi.mocked(plist.build).mockReturnValue("new plist content");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      const result = await parser.set("TEST_KEY", "test_value");
+
+      expect(plist.build).not.toHaveBeenCalled();
+      expect(fs.promises.writeFile).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        paths: [],
+      });
+    });
+
     it("should handle file read errors", async () => {
       const parser = new IosConfigParser([mockPlistPath]);
       vi.mocked(fs.existsSync).mockReturnValue(true);
