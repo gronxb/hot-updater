@@ -1,0 +1,75 @@
+---
+title: "SQL Export"
+description: Export Hot Updater table schemas as plain SQL.
+icon: table
+---
+
+## Overview
+
+Export Hot Updater table schemas as plain SQL files without requiring a config file. Use this when you need standalone SQL for manual database setup.
+
+<Callout>
+For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the respective adapter documentation pages.
+</Callout>
+
+## Interactive Mode
+
+Run the command and select your database:
+
+```bash
+npx hot-updater db generate --sql
+```
+
+You'll be prompted to select:
+- PostgreSQL
+- MySQL
+- SQLite
+
+## Direct Provider Selection
+
+Specify the database dialect directly:
+
+```bash
+# PostgreSQL
+npx hot-updater db generate --sql postgresql
+
+# MySQL
+npx hot-updater db generate --sql mysql
+
+# SQLite
+npx hot-updater db generate --sql sqlite
+```
+
+## Output
+
+Generates a single file: `hot-updater.sql`
+
+The SQL file includes:
+- Hot Updater table definitions
+- Dialect-specific syntax for your selected database
+
+## Preview Before Saving
+
+Without the `--yes` flag, you'll see a preview before the file is created:
+
+```bash
+npx hot-updater db generate --sql postgresql
+```
+
+The command will:
+1. Generate SQL
+2. Show formatted preview
+3. Warn if file already exists
+4. Prompt for confirmation
+
+## Skip Confirmation
+
+Use `--yes` to skip confirmation and overwrite existing files:
+
+```bash
+npx hot-updater db generate --sql postgresql --yes
+```
+
+<Callout type="warn">
+If `hot-updater.sql` already exists, it will be overwritten. The command shows a warning before overwriting.
+</Callout>
