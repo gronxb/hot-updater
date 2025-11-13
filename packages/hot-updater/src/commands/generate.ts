@@ -1,8 +1,8 @@
 import { p } from "@hot-updater/cli-tools";
 import { HotUpdaterDB, type Migrator } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { createHash } from "crypto";
 import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
-import { kyselyAdapter } from "fumadb/adapters/kysely";
 import {
   type Dialect,
   Kysely,
@@ -478,7 +478,6 @@ async function generateStandaloneSQL(options: {
       provider: dbType,
     });
 
-    // Create fumadb client
     const client = HotUpdaterDB.client(adapter);
 
     // Create migrator
