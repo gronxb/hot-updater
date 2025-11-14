@@ -25,6 +25,8 @@ let package = Package(
             exclude: [
                 "HotUpdater.mm",
                 "HotUpdater-Bridging-Header.h",
+                "HotUpdaterImpl.swift",
+                "HotUpdaterFactory.swift",
             ]
         ),
         // Legacy test target (kept for backwards compatibility)

@@ -1,6 +1,8 @@
 package com.hotupdater
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.content.res.Resources
 import io.mockk.every
 import io.mockk.mockk
@@ -62,11 +64,29 @@ class HotUpdaterIntegrationTest {
     private fun createMockContext(): Context {
         val context = mockk<Context>(relaxed = true)
         val resources = mockk<Resources>(relaxed = true)
+        val applicationInfo = mockk<ApplicationInfo>(relaxed = true)
+        val sharedPrefs = mockk<SharedPreferences>(relaxed = true)
+        val sharedPrefsEditor = mockk<SharedPreferences.Editor>(relaxed = true)
 
+        // Setup application info with data directory
+        applicationInfo.dataDir = testDir.absolutePath
+        every { context.applicationInfo } returns applicationInfo
+
+        // Setup external files directory
         every { context.getExternalFilesDir(null) } returns testDir
+
+        // Setup resources
         every { context.resources } returns resources
         every { resources.getIdentifier(any(), any(), any()) } returns 0
         every { context.packageName } returns "com.test.hotupdater"
+
+        // Setup SharedPreferences
+        every { context.getSharedPreferences(any(), any()) } returns sharedPrefs
+        every { sharedPrefs.getString(any(), any()) } returns null
+        every { sharedPrefs.edit() } returns sharedPrefsEditor
+        every { sharedPrefsEditor.putString(any(), any()) } returns sharedPrefsEditor
+        every { sharedPrefsEditor.remove(any()) } returns sharedPrefsEditor
+        every { sharedPrefsEditor.apply() } returns Unit
 
         return context
     }
@@ -774,7 +794,6 @@ class HotUpdaterIntegrationTest {
 
             val bundleContent = "// Bundle requiring space"
             val zipData = createTestBundleZip(bundleContent = bundleContent)
-            val bundleId = "bundle-no-space"
 
             mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
 
