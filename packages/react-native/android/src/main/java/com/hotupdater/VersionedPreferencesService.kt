@@ -24,6 +24,12 @@ interface PreferencesService {
         key: String,
         value: String?,
     )
+
+    /**
+     * Gets the isolation key
+     * @return The isolation key
+     */
+    fun getIsolationKey(): String
 }
 
 /**
@@ -65,4 +71,6 @@ class VersionedPreferencesService(
             apply()
         }
     }
+
+    override fun getIsolationKey(): String = isolationKey
 }

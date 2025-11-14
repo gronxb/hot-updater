@@ -9,6 +9,7 @@ enum PreferencesError: Error {
 protocol PreferencesService {
     func setItem(_ value: String?, forKey key: String) throws
     func getItem(forKey key: String) throws -> String?
+    func getIsolationKey() -> String
 }
 
 class VersionedPreferencesService: PreferencesService {
@@ -78,5 +79,13 @@ class VersionedPreferencesService: PreferencesService {
             NSLog("[PreferencesService] Error getting key '\(key)': \(error)")
             throw PreferencesError.getItemError(key)
         }
+    }
+
+    /**
+     * Gets the isolation key.
+     * @return The isolation key
+     */
+    func getIsolationKey() -> String {
+        return isolationKey
     }
 }

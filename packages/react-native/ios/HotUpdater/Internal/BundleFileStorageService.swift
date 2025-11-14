@@ -59,7 +59,16 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     // MARK: - Directory Management
-    
+
+    /**
+     * Creates a safe directory name from the isolation key by replacing special characters.
+     * @param isolationKey The isolation key to convert
+     * @return A safe directory name
+     */
+    private func safeDirName(from isolationKey: String) -> String {
+        return isolationKey.replacingOccurrences(of: "|", with: "_")
+    }
+
     /**
      * Ensures a directory exists at the specified path. Creates it if necessary.
      * Executes synchronously on the calling thread.
@@ -76,12 +85,15 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     /**
-     * Gets the path to the bundle store directory.
+     * Gets the path to the bundle store directory for the current isolation key.
      * Executes synchronously on the calling thread.
      * @return Result with the directory path or error
      */
     func bundleStoreDir() -> Result<String, Error> {
-        let path = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-store")
+        let isolationKey = preferences.getIsolationKey()
+        let safeDirName = safeDirName(from: isolationKey)
+        let basePath = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-store")
+        let path = (basePath as NSString).appendingPathComponent(safeDirName)
         return ensureDirectoryExists(path: path)
     }
     
