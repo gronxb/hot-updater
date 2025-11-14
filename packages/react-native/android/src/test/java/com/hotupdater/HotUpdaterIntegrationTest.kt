@@ -93,7 +93,6 @@ class HotUpdaterIntegrationTest {
     // MARK: - Basic OTA Flow Tests
 
     @Test
-    @DisplayName("Complete OTA update - First install")
     fun testCompleteOTAUpdate_FirstInstall() =
         runBlocking {
             // Setup: Create valid test bundle
@@ -140,7 +139,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Complete OTA update - Upgrade from existing")
     fun testCompleteOTAUpdate_Upgrade() =
         runBlocking {
             // Setup: Install first bundle, then upgrade
@@ -203,7 +201,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Update with progress tracking")
     fun testUpdateWithProgress() =
         runBlocking {
             val bundleContent = "// Bundle with progress"
@@ -256,7 +253,6 @@ class HotUpdaterIntegrationTest {
     // MARK: - File System Isolation Tests
 
     @Test
-    @DisplayName("Isolation - Different app versions")
     fun testIsolation_DifferentAppVersions() =
         runBlocking {
             val bundleContent1 = "// Bundle for app v1"
@@ -331,7 +327,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Isolation - Different fingerprints")
     fun testIsolation_DifferentFingerprints() =
         runBlocking {
             val bundleContent1 = "// Bundle for fingerprint A"
@@ -406,7 +401,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Isolation - Different channels")
     fun testIsolation_DifferentChannels() =
         runBlocking {
             val bundleContent1 = "// Bundle for production"
@@ -483,7 +477,6 @@ class HotUpdaterIntegrationTest {
     // MARK: - Cache & Persistence Tests
 
     @Test
-    @DisplayName("Bundle persistence after restart")
     fun testBundlePersistence_AfterRestart() =
         runBlocking {
             val bundleContent = "// Persistent bundle"
@@ -543,7 +536,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Update with same bundle ID - No re-download")
     fun testUpdateBundle_SameBundleId() =
         runBlocking {
             val bundleContent = "// Same bundle"
@@ -597,7 +589,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Rollback to fallback bundle")
     fun testRollback_ToFallback() {
         val fileSystem = FileManagerService(mockContext)
         val preferences = VersionedPreferencesService(mockContext, "test-fallback")
@@ -623,7 +614,6 @@ class HotUpdaterIntegrationTest {
     // MARK: - Error Handling Tests
 
     @Test
-    @DisplayName("Update failure - Network error")
     fun testUpdateFailure_NetworkError() =
         runBlocking {
             val bundleId = "bundle-network-fail"
@@ -663,7 +653,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Update failure - Corrupted bundle")
     fun testUpdateFailure_CorruptedBundle() =
         runBlocking {
             val bundleId = "bundle-corrupted"
@@ -710,7 +699,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Update failure - Invalid bundle structure")
     fun testUpdateFailure_InvalidBundleStructure() =
         runBlocking {
             // Create ZIP without proper bundle file
@@ -751,7 +739,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Update failure - Insufficient disk space")
     fun testUpdateFailure_InsufficientDiskSpace() =
         runBlocking {
             // This test verifies that the update process handles failures gracefully
@@ -796,7 +783,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Update interruption and retry")
     fun testUpdateInterruption_AndRetry() =
         runBlocking {
             val bundleContent = "// Retry bundle"
@@ -860,7 +846,6 @@ class HotUpdaterIntegrationTest {
     // MARK: - Hash Verification Tests
 
     @Test
-    @DisplayName("Update with hash verification - Success")
     fun testUpdateWithHashVerification_Success() =
         runBlocking {
             val bundleContent = "// Hashed bundle"
@@ -903,7 +888,6 @@ class HotUpdaterIntegrationTest {
         }
 
     @Test
-    @DisplayName("Update with hash verification - Failure")
     fun testUpdateWithHashVerification_Failure() =
         runBlocking {
             val bundleContent = "// Hashed bundle fail"
@@ -954,7 +938,6 @@ class HotUpdaterIntegrationTest {
     // MARK: - Concurrency Tests
 
     @Test
-    @DisplayName("Concurrent updates - Sequential handling")
     fun testConcurrentUpdates_Sequential() =
         runBlocking {
             val bundle1Content = "// Bundle 1"
