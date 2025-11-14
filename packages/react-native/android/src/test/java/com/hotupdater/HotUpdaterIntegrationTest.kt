@@ -17,7 +17,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.robolectric.annotation.Config
-import org.robolectric.junit.jupiter.RobolectricExtension
+import tech.apter.junit.jupiter.robolectric.RobolectricExtension
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
