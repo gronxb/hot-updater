@@ -254,7 +254,7 @@ class HotUpdaterIntegrationTest {
             // Create services
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-isolation-2")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -313,7 +313,7 @@ class HotUpdaterIntegrationTest {
             // Create services
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-isolation-3")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -366,7 +366,7 @@ class HotUpdaterIntegrationTest {
             // Create first storage with app version 1.0.0
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "1.0.0_default_production")
-            val downloadService1 = OkHttpDownloadService()
+            val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
 
             val bundleStorage1 =
@@ -380,7 +380,7 @@ class HotUpdaterIntegrationTest {
             // Create second storage with app version 2.0.0
             val fileSystem2 = TestFileManagerService(testDir)
             val preferences2 = VersionedPreferencesService(mockContext, "2.0.0_default_production")
-            val downloadService2 = OkHttpDownloadService()
+            val downloadService2 = MockDownloadService()
             val decompressService2 = DecompressService()
 
             val bundleStorage2 =
@@ -440,7 +440,7 @@ class HotUpdaterIntegrationTest {
             // Create first storage with fingerprint A
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "1.0.0_fingerprintA_production")
-            val downloadService1 = OkHttpDownloadService()
+            val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
 
             val bundleStorage1 =
@@ -454,7 +454,7 @@ class HotUpdaterIntegrationTest {
             // Create second storage with fingerprint B
             val fileSystem2 = TestFileManagerService(testDir)
             val preferences2 = VersionedPreferencesService(mockContext, "1.0.0_fingerprintB_production")
-            val downloadService2 = OkHttpDownloadService()
+            val downloadService2 = MockDownloadService()
             val decompressService2 = DecompressService()
 
             val bundleStorage2 =
@@ -514,7 +514,7 @@ class HotUpdaterIntegrationTest {
             // Create first storage with production channel
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "1.0.0_default_production")
-            val downloadService1 = OkHttpDownloadService()
+            val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
 
             val bundleStorage1 =
@@ -528,7 +528,7 @@ class HotUpdaterIntegrationTest {
             // Create second storage with staging channel
             val fileSystem2 = TestFileManagerService(testDir)
             val preferences2 = VersionedPreferencesService(mockContext, "1.0.0_default_staging")
-            val downloadService2 = OkHttpDownloadService()
+            val downloadService2 = MockDownloadService()
             val decompressService2 = DecompressService()
 
             val bundleStorage2 =
@@ -588,7 +588,7 @@ class HotUpdaterIntegrationTest {
             // Create first storage instance and install bundle
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "test-persistence")
-            val downloadService1 = OkHttpDownloadService()
+            val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
 
             val bundleStorage1 =
@@ -614,7 +614,7 @@ class HotUpdaterIntegrationTest {
             // Simulate app restart by creating new storage instance with same isolation key
             val fileSystem2 = TestFileManagerService(testDir)
             val preferences2 = VersionedPreferencesService(mockContext, "test-persistence")
-            val downloadService2 = OkHttpDownloadService()
+            val downloadService2 = MockDownloadService()
             val decompressService2 = DecompressService()
 
             val bundleStorage2 =
@@ -647,7 +647,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-same-bundle")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -692,7 +692,7 @@ class HotUpdaterIntegrationTest {
     fun testRollback_ToFallback() {
         val fileSystem = TestFileManagerService(testDir)
         val preferences = VersionedPreferencesService(mockContext, "test-fallback")
-        val downloadService = OkHttpDownloadService()
+        val downloadService = MockDownloadService()
         val decompressService = DecompressService()
 
         val bundleStorage =
@@ -723,7 +723,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-network-error")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -762,7 +762,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-corrupted")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -809,7 +809,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-invalid-structure")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -852,7 +852,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-disk-space")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -895,7 +895,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-retry")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -957,7 +957,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-hash-success")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -999,7 +999,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-hash-fail")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
@@ -1055,7 +1055,7 @@ class HotUpdaterIntegrationTest {
 
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-concurrency")
-            val downloadService = OkHttpDownloadService()
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
 
             val bundleStorage =
