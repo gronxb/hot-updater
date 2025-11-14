@@ -65,6 +65,7 @@ class BundleFileStorageService(
         // Lock object for synchronizing cleanup operations across all instances
         private val cleanupLock = Any()
     }
+
     override fun setBundleURL(localPath: String?): Boolean {
         preferences.setItem("HotUpdaterBundleURL", localPath)
         return true
@@ -135,15 +136,16 @@ class BundleFileStorageService(
                 // Cleanup old bundles (keep only the current bundleId), synchronized to avoid race conditions
                 synchronized(cleanupLock) {
                     try {
-                        bundleStoreDir.listFiles { file ->
-                            file.isDirectory && !file.name.endsWith(".tmp") && file.name != bundleId
-                        }?.forEach { it.deleteRecursively() }
+                        bundleStoreDir
+                            .listFiles { file ->
+                                file.isDirectory && !file.name.endsWith(".tmp") && file.name != bundleId
+                            }?.forEach { it.deleteRecursively() }
                     } catch (e: Exception) {
                         Log.e("BundleStorage", "Error during cleanup: ${e.message}")
                     }
                 }
                 return true
-            } else{
+            } else {
                 // If index.android.bundle is missing, delete and re-download
                 finalBundleDir.deleteRecursively()
             }
@@ -298,27 +300,29 @@ class BundleFileStorageService(
                     // 12) Remove old bundles (keep only the current bundleId), synchronized to avoid race conditions
                     synchronized(cleanupLock) {
                         try {
-                            bundleStoreDir.listFiles { file ->
-                                file.isDirectory && !file.name.endsWith(".tmp") && file.name != bundleId
-                            }?.forEach { oldBundle ->
-                                try {
-                                    Log.d("BundleStorage", "Removing old bundle: ${oldBundle.name}")
-                                    oldBundle.deleteRecursively()
-                                } catch (e: Exception) {
-                                    Log.e("BundleStorage", "Error removing bundle ${oldBundle.name}: ${e.message}")
+                            bundleStoreDir
+                                .listFiles { file ->
+                                    file.isDirectory && !file.name.endsWith(".tmp") && file.name != bundleId
+                                }?.forEach { oldBundle ->
+                                    try {
+                                        Log.d("BundleStorage", "Removing old bundle: ${oldBundle.name}")
+                                        oldBundle.deleteRecursively()
+                                    } catch (e: Exception) {
+                                        Log.e("BundleStorage", "Error removing bundle ${oldBundle.name}: ${e.message}")
+                                    }
                                 }
-                            }
 
                             // Remove any leftover .tmp directories
-                            bundleStoreDir.listFiles { file ->
-                                file.isDirectory && file.name.endsWith(".tmp")
-                            }?.forEach { staleTmp ->
-                                try {
-                                    staleTmp.deleteRecursively()
-                                } catch (e: Exception) {
-                                    Log.e("BundleStorage", "Error removing tmp directory: ${e.message}")
+                            bundleStoreDir
+                                .listFiles { file ->
+                                    file.isDirectory && file.name.endsWith(".tmp")
+                                }?.forEach { staleTmp ->
+                                    try {
+                                        staleTmp.deleteRecursively()
+                                    } catch (e: Exception) {
+                                        Log.e("BundleStorage", "Error removing tmp directory: ${e.message}")
+                                    }
                                 }
-                            }
                         } catch (e: Exception) {
                             Log.e("BundleStorage", "Error during cleanup: ${e.message}")
                         }
@@ -331,5 +335,4 @@ class BundleFileStorageService(
             }
         }
     }
-
 }
