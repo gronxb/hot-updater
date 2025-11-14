@@ -85,4 +85,4 @@ jobs:
         run: pnpm build
 
       - name: Run Android Unit Tests
-        run: cd examples/v0.76.1-new-arch/android && ./gradlew :react-native-hot-updater:test --build-cache
+        run: cd examples/v0.76.1-new-arch/android && ./gradlew :hot-updater_react-native:test --build-cache
