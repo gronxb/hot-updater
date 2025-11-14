@@ -6,18 +6,17 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNotEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import tech.apter.junit.jupiter.robolectric.RobolectricExtension
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
@@ -29,15 +28,14 @@ import kotlin.system.measureTimeMillis
  * Integration tests for HotUpdater OTA update flow
  * These tests verify the end-to-end update process without mocking file operations or extraction
  */
-@ExtendWith(RobolectricExtension::class)
+@RunWith(RobolectricTestRunner::class)
 @Config(sdk = intArrayOf(28), manifest = Config.NONE)
-@DisplayName("HotUpdater Integration Tests")
 class HotUpdaterIntegrationTest {
     private lateinit var mockWebServer: MockWebServer
     private lateinit var testDir: File
     private lateinit var mockContext: Context
 
-    @BeforeEach
+    @Before
     fun setup() {
         mockWebServer = MockWebServer()
         mockWebServer.start()
@@ -53,7 +51,7 @@ class HotUpdaterIntegrationTest {
             }
     }
 
-    @AfterEach
+    @After
     fun tearDown() {
         mockWebServer.shutdown()
         testDir.deleteRecursively()
