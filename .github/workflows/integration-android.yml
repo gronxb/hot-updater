@@ -4,9 +4,11 @@ on:
       - main
     paths:
       - "packages/react-native/android/**"
+      - ".github/workflows/integration-android.yml"
   pull_request:
     paths:
       - "packages/react-native/android/**"
+      - ".github/workflows/integration-android.yml"
 
 name: Android Integration
 
