@@ -29,7 +29,7 @@ import kotlin.system.measureTimeMillis
  * These tests verify the end-to-end update process without mocking file operations or extraction
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33], manifest = Config.NONE)
+@Config(sdk = [28], manifest = Config.NONE)
 class HotUpdaterIntegrationTest {
     private lateinit var testDir: File
     private lateinit var mockContext: Context

@@ -99,6 +99,10 @@ class BundleFileStorageService(
         }
 
         val baseDir = fileSystem.getExternalFilesDir()
+        if (baseDir == null) {
+            Log.d("BundleStorage", "External files directory is null")
+            return false
+        }
         val isolationKey = preferences.getIsolationKey()
         val safeDirName = isolationKey.replace("|", "_")
         val baseBundleStoreDir = File(baseDir, "bundle-store")
