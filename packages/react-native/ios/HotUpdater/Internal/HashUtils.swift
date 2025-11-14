@@ -1,5 +1,10 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
+#if canImport(CommonCrypto)
+import CommonCrypto
+#endif
 
 /**
  * Utility class for file hash operations
@@ -23,6 +28,7 @@ class HashUtils {
             try? fileHandle.close()
         }
 
+        #if canImport(CryptoKit)
         var hasher = SHA256()
 
         // Read file in chunks with autoreleasepool for memory efficiency
@@ -38,6 +44,28 @@ class HashUtils {
 
         let digest = hasher.finalize()
         return digest.map { String(format: "%02x", $0) }.joined()
+        #else
+        // Fallback to CommonCrypto for platforms without CryptoKit (e.g., Linux)
+        var context = CC_SHA256_CTX()
+        CC_SHA256_Init(&context)
+
+        // Read file in chunks with autoreleasepool for memory efficiency
+        while autoreleasepool(invoking: {
+            let data = fileHandle.readData(ofLength: BUFFER_SIZE)
+            if data.count > 0 {
+                data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+                    _ = CC_SHA256_Update(&context, bytes.baseAddress, CC_LONG(data.count))
+                }
+                return true
+            } else {
+                return false
+            }
+        }) { }
+
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        CC_SHA256_Final(&hash, &context)
+        return hash.map { String(format: "%02x", $0) }.joined()
+        #endif
     }
 
     /**

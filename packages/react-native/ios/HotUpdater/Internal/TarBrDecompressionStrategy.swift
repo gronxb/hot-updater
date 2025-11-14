@@ -1,6 +1,8 @@
 import Foundation
 import SWCompression
+#if canImport(Compression)
 import Compression
+#endif
 
 /**
  * Strategy for handling TAR+Brotli compressed files
