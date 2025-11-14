@@ -986,9 +986,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
             )
         }
 
-        XCTAssertTrue(throws: (any Error).self) {
-            try result1.get()
-        }
+        XCTAssertThrowsError(try result1.get())
         XCTAssertEqual(attemptCount, 1)
 
         // Verify .tmp cleanup
@@ -1220,7 +1218,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
         if let url = bundleURL {
             let content = try String(contentsOf: url, encoding: .utf8)
             // The content should be from one of the bundles (last one wins)
-            XCTAssertEqual(content == bundle1Content || content, bundle2Content)
+            XCTAssertTrue(content == bundle1Content || content == bundle2Content)
         }
     }
 }
