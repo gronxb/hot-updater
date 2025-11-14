@@ -3,6 +3,7 @@ package com.hotupdater
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.async
+import org.robolectric.RuntimeEnvironment
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -41,7 +42,7 @@ class HotUpdaterIntegrationTest {
         mockWebServer.start()
 
         // Get Robolectric application context
-        mockContext = ApplicationProvider.getApplicationContext()
+        mockContext = RuntimeEnvironment.getApplication()
 
         // Create temporary test directory
         testDir =
