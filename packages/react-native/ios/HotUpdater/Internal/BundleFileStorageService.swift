@@ -246,9 +246,11 @@ class BundleFileStorageService: BundleStorageService {
      */
     func getCachedBundleURL() -> URL? {
         do {
-            guard let savedURLString = try self.preferences.getItem(forKey: "HotUpdaterBundleURL"),
-                  let bundleURL = URL(string: savedURLString),
-                  self.fileSystem.fileExists(atPath: bundleURL.path) else {
+            guard let savedURLString = try self.preferences.getItem(forKey: "HotUpdaterBundleURL") else {
+                return nil
+            }
+            let bundleURL = URL(fileURLWithPath: savedURLString)
+            guard self.fileSystem.fileExists(atPath: bundleURL.path) else {
                 return nil
             }
             return bundleURL
