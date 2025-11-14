@@ -3,8 +3,6 @@ package com.hotupdater
 import android.content.Context
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,15 +30,12 @@ import kotlin.system.measureTimeMillis
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = intArrayOf(28), manifest = Config.NONE)
 class HotUpdaterIntegrationTest {
-    private lateinit var mockWebServer: MockWebServer
     private lateinit var testDir: File
     private lateinit var mockContext: Context
+    private var urlCounter = 0
 
     @Before
     fun setup() {
-        mockWebServer = MockWebServer()
-        mockWebServer.start()
-
         // Create temporary test directory
         testDir =
             File.createTempFile("hot-updater-test", "").apply {
@@ -53,12 +48,22 @@ class HotUpdaterIntegrationTest {
 
         // Get Robolectric application context
         mockContext = RuntimeEnvironment.getApplication()
+
+        urlCounter = 0
     }
 
     @After
     fun tearDown() {
-        mockWebServer.shutdown()
         testDir.deleteRecursively()
+    }
+
+    /**
+     * Helper to register mock response and return URL
+     */
+    private fun MockDownloadService.mockUrl(data: ByteArray): String {
+        val url = "http://localhost/bundle${++urlCounter}.zip"
+        mockResponses[url] = Pair(data, null)
+        return url
     }
 
     // MARK: - Test Infrastructure
@@ -198,15 +203,15 @@ class HotUpdaterIntegrationTest {
             val bundleContent = "// First install bundle"
             val zipData = createTestBundleZip(bundleContent = bundleContent)
             val bundleId = "bundle-v1.0.0"
-            val fileUrl = "http://localhost/bundle.zip"
 
             // Create services
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-isolation-1")
-            val downloadService = MockDownloadService().apply {
-                mockResponses[fileUrl] = Pair(zipData, null)
-            }
+            val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
