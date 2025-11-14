@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import CommonCrypto
 @testable import HotUpdater
 
 /// Integration tests for HotUpdater OTA update flow
@@ -27,7 +28,21 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
             do {
                 let (response, data) = try handler(request)
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+
+                // For HEAD requests or when data is provided, include Content-Length header
+                var headers = response.allHeaderFields as? [String: String] ?? [:]
+                if let data = data, headers["Content-Length"] == nil {
+                    headers["Content-Length"] = "\(data.count)"
+                }
+
+                let responseWithHeaders = HTTPURLResponse(
+                    url: response.url!,
+                    statusCode: response.statusCode,
+                    httpVersion: nil,
+                    headerFields: headers
+                ) ?? response
+
+                client?.urlProtocol(self, didReceive: responseWithHeaders, cacheStoragePolicy: .notAllowed)
                 if let data = data {
                     client?.urlProtocol(self, didLoad: data)
                 }
@@ -1247,6 +1262,3 @@ class HotUpdaterIntegrationTests: XCTestCase {
         }
     }
 }
-
-// MARK: - CommonCrypto Import for SHA-256
-import CommonCrypto
