@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.10
 import PackageDescription
 
 let package = Package(
@@ -21,10 +21,15 @@ let package = Package(
         // Target for Swift code (for testing purposes only)
         .target(
             name: "HotUpdater",
+            dependencies: [
+                .product(name: "SWCompression", package: "SWCompression"),
+            ],
             path: "Internal",
             exclude: [
                 "HotUpdater.mm",
                 "HotUpdater-Bridging-Header.h",
+                "HotUpdaterImpl.swift",
+                "HotUpdaterFactory.swift",
             ]
         ),
         // Legacy test target (kept for backwards compatibility)

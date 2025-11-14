@@ -1,6 +1,8 @@
 import Foundation
 import SWCompression
+#if canImport(Compression)
 import Compression
+#endif
 
 /**
  * Strategy for handling TAR+GZIP compressed files
@@ -35,7 +37,8 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
             fileHandle.closeFile()
         }
 
-        guard let header = try? fileHandle.read(upToCount: 2), header.count == 2 else {
+        let header = fileHandle.readData(ofLength: 2)
+        guard header.count == 2 else {
             NSLog("[TarGzStrategy] Invalid file: cannot read header")
             return false
         }

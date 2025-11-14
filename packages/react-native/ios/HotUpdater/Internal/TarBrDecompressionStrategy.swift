@@ -1,6 +1,8 @@
 import Foundation
 import SWCompression
+#if canImport(Compression)
 import Compression
+#endif
 
 /**
  * Strategy for handling TAR+Brotli compressed files
@@ -95,6 +97,7 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
     }
 
     private func decompressBrotli(_ data: Data) throws -> Data {
+        #if canImport(Compression)
         let bufferSize = 64 * 1024
         var decompressedData = Data()
         let count = data.count
@@ -163,6 +166,15 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
         }
 
         return decompressedData
+        #else
+        // Brotli decompression is not available on this platform
+        // This is primarily for unit tests on Linux - production iOS/macOS will use the Compression framework
+        throw NSError(
+            domain: "TarBrDecompressionStrategy",
+            code: 7,
+            userInfo: [NSLocalizedDescriptionKey: "Brotli decompression not available on this platform"]
+        )
+        #endif
     }
 
     private func extractTarEntry(_ entry: TarEntry, to destination: String) throws {
