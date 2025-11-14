@@ -18,6 +18,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowEnvironment
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.URL
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
