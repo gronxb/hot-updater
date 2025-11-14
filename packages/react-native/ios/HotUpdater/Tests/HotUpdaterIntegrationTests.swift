@@ -104,6 +104,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
         // Create test services
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "test-first-install|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -164,6 +165,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "test-upgrade|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -239,6 +241,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "test-progress|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -644,6 +647,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updatebundle_samebundleid|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -696,6 +700,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "rollback_tofallback|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -734,6 +739,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updatefailure_networkerror|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -788,6 +794,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updatefailure_corruptedbundle|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -848,6 +855,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updatefailure_invalidbundlestructure|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -905,6 +913,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updatefailure_insufficientdiskspace|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -963,6 +972,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updateinterruption_andretry|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -1043,6 +1053,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updatewithhashverification_success|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -1096,6 +1107,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "updatewithhashverification_failure|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
@@ -1166,6 +1178,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
+        preferences.configure(isolationKey: "concurrentupdates_sequential|default|default")
         let downloadService = URLSessionDownloadService(configuration: config)
         let decompressService = DecompressService()
 
