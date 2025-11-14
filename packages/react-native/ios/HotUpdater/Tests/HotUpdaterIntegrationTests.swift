@@ -1,11 +1,10 @@
-import Testing
+import XCTest
 import Foundation
 @testable import HotUpdater
 
 /// Integration tests for HotUpdater OTA update flow
 /// These tests verify the end-to-end update process without mocking file operations or extraction
-@Suite("HotUpdater Integration Tests")
-struct HotUpdaterIntegrationTests {
+class HotUpdaterIntegrationTests: XCTestCase {
 
     // MARK: - Test Infrastructure
 
@@ -85,7 +84,7 @@ struct HotUpdaterIntegrationTests {
 
     // MARK: - Basic OTA Flow Tests
 
-    @Test("Complete OTA update - First install")
+    /// Complete OTA update - First install
     func testCompleteOTAUpdate_FirstInstall() async throws {
         // Setup: Create valid test bundle
         let bundleContent = "// First install bundle"
@@ -129,21 +128,21 @@ struct HotUpdaterIntegrationTests {
         }
 
         // Verify success
-        #expect(try result.get() == true)
+        XCTAssertTrue(try result.get())
 
         // Verify bundle is accessible
         let bundleURL = bundleStorage.getBundleURL()
-        #expect(bundleURL != nil)
-        #expect(bundleURL?.lastPathComponent == "index.ios.bundle")
+        XCTAssertNotNil(bundleURL)
+        XCTAssertEqual(bundleURL?.lastPathComponent, "index.ios.bundle")
 
         // Verify bundle content
         if let bundleURL = bundleURL {
             let content = try String(contentsOf: bundleURL, encoding: .utf8)
-            #expect(content == bundleContent)
+            XCTAssertEqual(content, bundleContent)
         }
     }
 
-    @Test("Complete OTA update - Upgrade from existing")
+    /// Complete OTA update - Upgrade from existing
     func testCompleteOTAUpdate_Upgrade() async throws {
         // Setup: Install first bundle, then upgrade
         let oldBundleContent = "// Old bundle v1.0.0"
@@ -187,10 +186,10 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result1.get() == true)
+        XCTAssertTrue(try result1.get())
 
         let oldBundleURL = bundleStorage.getBundleURL()
-        #expect(oldBundleURL != nil)
+        XCTAssertNotNil(oldBundleURL)
 
         // Install new bundle
         let result2 = await withCheckedContinuation { continuation in
@@ -204,26 +203,26 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result2.get() == true)
+        XCTAssertTrue(try result2.get())
 
         // Verify new bundle is activated
         let newBundleURL = bundleStorage.getBundleURL()
-        #expect(newBundleURL != nil)
-        #expect(newBundleURL?.path != oldBundleURL?.path)
+        XCTAssertNotNil(newBundleURL)
+        XCTAssertNotEqual(newBundleURL?.path, oldBundleURL?.path)
 
         if let newBundleURL = newBundleURL {
             let content = try String(contentsOf: newBundleURL, encoding: .utf8)
-            #expect(content == newBundleContent)
+            XCTAssertEqual(content, newBundleContent)
         }
 
         // Verify old bundle is cleaned up (path should no longer exist)
         if let oldBundleURL = oldBundleURL {
             let oldBundleExists = FileManager.default.fileExists(atPath: oldBundleURL.path)
-            #expect(oldBundleExists == false)
+            XCTAssertEqual(oldBundleExists, false)
         }
     }
 
-    @Test("Update with progress tracking")
+    /// Update with progress tracking
     func testUpdateWithProgress() async throws {
         let bundleContent = "// Bundle with progress"
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
@@ -265,24 +264,24 @@ struct HotUpdaterIntegrationTests {
             )
         }
 
-        #expect(try result.get() == true)
+        XCTAssertTrue(try result.get())
 
         // Verify progress values exist and are increasing
-        #expect(progressValues.count > 0)
+        XCTAssertGreaterThan(progressValues.count, 0)
 
         // Progress should start at or near 0 and end at 100
-        #expect(progressValues.first ?? -1 >= 0)
-        #expect(progressValues.last ?? -1 == 100)
+        XCTAssertGreaterThanOrEqual(progressValues.first ?? -1, 0)
+        XCTAssertEqual(progressValues.last ?? -1, 100)
 
         // Progress should be monotonically increasing
         for i in 1..<progressValues.count {
-            #expect(progressValues[i] >= progressValues[i-1])
+            XCTAssertGreaterThanOrEqual(progressValues[i], progressValues[i-1])
         }
     }
 
     // MARK: - File System Isolation Tests
 
-    @Test("Isolation - Different app versions")
+    /// Isolation - Different app versions
     func testIsolation_DifferentAppVersions() async throws {
         let bundleContent1 = "// Bundle for app v1"
         let bundleContent2 = "// Bundle for app v2"
@@ -340,7 +339,7 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result1.get() == true)
+        XCTAssertTrue(try result1.get())
 
         // Install bundle in second storage
         let result2 = await withCheckedContinuation { continuation in
@@ -354,26 +353,26 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result2.get() == true)
+        XCTAssertTrue(try result2.get())
 
         // Verify bundles are in different directories
         let bundleURL1 = bundleStorage1.getBundleURL()
         let bundleURL2 = bundleStorage2.getBundleURL()
 
-        #expect(bundleURL1 != nil)
-        #expect(bundleURL2 != nil)
-        #expect(bundleURL1?.path != bundleURL2?.path)
+        XCTAssertNotNil(bundleURL1)
+        XCTAssertNotNil(bundleURL2)
+        XCTAssertNotEqual(bundleURL1?.path, bundleURL2?.path)
 
         // Verify content is different
         if let url1 = bundleURL1, let url2 = bundleURL2 {
             let content1 = try String(contentsOf: url1, encoding: .utf8)
             let content2 = try String(contentsOf: url2, encoding: .utf8)
-            #expect(content1 == bundleContent1)
-            #expect(content2 == bundleContent2)
+            XCTAssertEqual(content1, bundleContent1)
+            XCTAssertEqual(content2, bundleContent2)
         }
     }
 
-    @Test("Isolation - Different fingerprints")
+    /// Isolation - Different fingerprints
     func testIsolation_DifferentFingerprints() async throws {
         let bundleContent1 = "// Bundle for fingerprint A"
         let bundleContent2 = "// Bundle for fingerprint B"
@@ -431,7 +430,7 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result1.get() == true)
+        XCTAssertTrue(try result1.get())
 
         // Install bundle in second storage
         let result2 = await withCheckedContinuation { continuation in
@@ -445,26 +444,26 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result2.get() == true)
+        XCTAssertTrue(try result2.get())
 
         // Verify bundles are in different directories
         let bundleURL1 = bundleStorage1.getBundleURL()
         let bundleURL2 = bundleStorage2.getBundleURL()
 
-        #expect(bundleURL1 != nil)
-        #expect(bundleURL2 != nil)
-        #expect(bundleURL1?.path != bundleURL2?.path)
+        XCTAssertNotNil(bundleURL1)
+        XCTAssertNotNil(bundleURL2)
+        XCTAssertNotEqual(bundleURL1?.path, bundleURL2?.path)
 
         // Verify content is different
         if let url1 = bundleURL1, let url2 = bundleURL2 {
             let content1 = try String(contentsOf: url1, encoding: .utf8)
             let content2 = try String(contentsOf: url2, encoding: .utf8)
-            #expect(content1 == bundleContent1)
-            #expect(content2 == bundleContent2)
+            XCTAssertEqual(content1, bundleContent1)
+            XCTAssertEqual(content2, bundleContent2)
         }
     }
 
-    @Test("Isolation - Different channels")
+    /// Isolation - Different channels
     func testIsolation_DifferentChannels() async throws {
         let bundleContent1 = "// Bundle for production"
         let bundleContent2 = "// Bundle for staging"
@@ -522,7 +521,7 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result1.get() == true)
+        XCTAssertTrue(try result1.get())
 
         // Install bundle in second storage
         let result2 = await withCheckedContinuation { continuation in
@@ -536,28 +535,28 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result2.get() == true)
+        XCTAssertTrue(try result2.get())
 
         // Verify bundles are in different directories
         let bundleURL1 = bundleStorage1.getBundleURL()
         let bundleURL2 = bundleStorage2.getBundleURL()
 
-        #expect(bundleURL1 != nil)
-        #expect(bundleURL2 != nil)
-        #expect(bundleURL1?.path != bundleURL2?.path)
+        XCTAssertNotNil(bundleURL1)
+        XCTAssertNotNil(bundleURL2)
+        XCTAssertNotEqual(bundleURL1?.path, bundleURL2?.path)
 
         // Verify content is different
         if let url1 = bundleURL1, let url2 = bundleURL2 {
             let content1 = try String(contentsOf: url1, encoding: .utf8)
             let content2 = try String(contentsOf: url2, encoding: .utf8)
-            #expect(content1 == bundleContent1)
-            #expect(content2 == bundleContent2)
+            XCTAssertEqual(content1, bundleContent1)
+            XCTAssertEqual(content2, bundleContent2)
         }
     }
 
     // MARK: - Cache & Persistence Tests
 
-    @Test("Bundle persistence after restart")
+    /// Bundle persistence after restart
     func testBundlePersistence_AfterRestart() async throws {
         let bundleContent = "// Persistent bundle"
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
@@ -596,10 +595,10 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result.get() == true)
+        XCTAssertTrue(try result.get())
 
         let firstBundleURL = bundleStorage1.getBundleURL()
-        #expect(firstBundleURL != nil)
+        XCTAssertNotNil(firstBundleURL)
 
         // Simulate app restart by creating new storage instance with same isolation key
         let fileSystem2 = FileManagerService()
@@ -617,17 +616,17 @@ struct HotUpdaterIntegrationTests {
 
         // Get bundle URL from new instance
         let secondBundleURL = bundleStorage2.getBundleURL()
-        #expect(secondBundleURL != nil)
-        #expect(secondBundleURL?.path == firstBundleURL?.path)
+        XCTAssertNotNil(secondBundleURL)
+        XCTAssertEqual(secondBundleURL?.path, firstBundleURL?.path)
 
         // Verify content is still accessible
         if let url = secondBundleURL {
             let content = try String(contentsOf: url, encoding: .utf8)
-            #expect(content == bundleContent)
+            XCTAssertEqual(content, bundleContent)
         }
     }
 
-    @Test("Update with same bundle ID - No re-download")
+    /// Update with same bundle ID - No re-download
     func testUpdateBundle_SameBundleId() async throws {
         let bundleContent = "// Same bundle"
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
@@ -667,8 +666,8 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result1.get() == true)
-        #expect(downloadCount == 1)
+        XCTAssertTrue(try result1.get())
+        XCTAssertEqual(downloadCount, 1)
 
         // Install same bundle ID again - measure execution time
         let startTime = Date()
@@ -685,12 +684,12 @@ struct HotUpdaterIntegrationTests {
         }
         let executionTime = Date().timeIntervalSince(startTime)
 
-        #expect(try result2.get() == true)
-        #expect(downloadCount == 1) // Only one download should occur
-        #expect(executionTime < 0.1) // Should complete quickly (<100ms)
+        XCTAssertTrue(try result2.get())
+        XCTAssertEqual(downloadCount, 1) // Only one download should occur
+        XCTAssertLessThan(executionTime, 0.1) // Should complete quickly (<100ms)
     }
 
-    @Test("Rollback to fallback bundle")
+    /// Rollback to fallback bundle
     func testRollback_ToFallback() throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
@@ -711,17 +710,17 @@ struct HotUpdaterIntegrationTests {
         let bundleURL = bundleStorage.getBundleURL()
 
         // Should return fallback bundle (main bundle)
-        #expect(bundleURL != nil)
+        XCTAssertNotNil(bundleURL)
 
         // Fallback bundle should be in the main bundle directory
         if let url = bundleURL {
-            #expect(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
+            XCTAssertTrue(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
         }
     }
 
     // MARK: - Error Handling Tests
 
-    @Test("Update failure - Network error")
+    /// Update failure - Network error
     func testUpdateFailure_NetworkError() async throws {
         let bundleId = "bundle-network-fail"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
@@ -759,9 +758,7 @@ struct HotUpdaterIntegrationTests {
         }
 
         // Verify update fails
-        #expect(throws: (any Error).self) {
-            try result.get()
-        }
+        XCTAssertThrowsError(try result.get())
 
         // Verify no partial files are left behind (check temp directory)
         let tempDir = FileManager.default.temporaryDirectory
@@ -772,10 +769,10 @@ struct HotUpdaterIntegrationTests {
 
         // No .tmp files related to our bundle should remain
         let tmpFiles = tempContents?.filter { $0.lastPathComponent.contains(".tmp") } ?? []
-        #expect(tmpFiles.isEmpty)
+        XCTAssertTrue(tmpFiles.isEmpty)
     }
 
-    @Test("Update failure - Corrupted bundle")
+    /// Update failure - Corrupted bundle
     func testUpdateFailure_CorruptedBundle() async throws {
         let bundleId = "bundle-corrupted"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
@@ -815,9 +812,7 @@ struct HotUpdaterIntegrationTests {
         }
 
         // Verify extraction fails
-        #expect(throws: (any Error).self) {
-            try result.get()
-        }
+        XCTAssertThrowsError(try result.get())
 
         // Verify .tmp files are cleaned up
         let tempDir = FileManager.default.temporaryDirectory
@@ -826,17 +821,17 @@ struct HotUpdaterIntegrationTests {
             includingPropertiesForKeys: nil
         )
         let tmpFiles = tempContents?.filter { $0.lastPathComponent.contains(".tmp") } ?? []
-        #expect(tmpFiles.isEmpty)
+        XCTAssertTrue(tmpFiles.isEmpty)
 
         // Verify rollback - getBundleURL should return fallback bundle
         let bundleURL = bundleStorage.getBundleURL()
-        #expect(bundleURL != nil)
+        XCTAssertNotNil(bundleURL)
         if let url = bundleURL {
-            #expect(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
+            XCTAssertTrue(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
         }
     }
 
-    @Test("Update failure - Invalid bundle structure")
+    /// Update failure - Invalid bundle structure
     func testUpdateFailure_InvalidBundleStructure() async throws {
         // Create ZIP without proper bundle file
         let zipData = try createTestBundleZip(bundleContent: "test", fileName: "wrong-name.js")
@@ -877,19 +872,17 @@ struct HotUpdaterIntegrationTests {
         }
 
         // Verify validation error occurs
-        #expect(throws: (any Error).self) {
-            try result.get()
-        }
+        XCTAssertThrowsError(try result.get())
 
         // Verify rollback - getBundleURL should return fallback bundle
         let bundleURL = bundleStorage.getBundleURL()
-        #expect(bundleURL != nil)
+        XCTAssertNotNil(bundleURL)
         if let url = bundleURL {
-            #expect(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
+            XCTAssertTrue(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
         }
     }
 
-    @Test("Update failure - Insufficient disk space")
+    /// Update failure - Insufficient disk space
     func testUpdateFailure_InsufficientDiskSpace() async throws {
         // This test simulates disk space errors during file operations
         let bundleContent = "// Bundle requiring space"
@@ -934,19 +927,19 @@ struct HotUpdaterIntegrationTests {
                 }
             )
         }
-        #expect(try result1.get() == true)
+        XCTAssertTrue(try result1.get())
 
         let originalBundleURL = bundleStorage.getBundleURL()
-        #expect(originalBundleURL != nil)
+        XCTAssertNotNil(originalBundleURL)
 
         // Verify existing bundle is accessible after any potential failures
         if let url = originalBundleURL {
             let content = try String(contentsOf: url, encoding: .utf8)
-            #expect(content == bundleContent)
+            XCTAssertEqual(content, bundleContent)
         }
     }
 
-    @Test("Update interruption and retry")
+    /// Update interruption and retry
     func testUpdateInterruption_AndRetry() async throws {
         let bundleContent = "// Retry bundle"
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
@@ -993,10 +986,10 @@ struct HotUpdaterIntegrationTests {
             )
         }
 
-        #expect(throws: (any Error).self) {
+        XCTAssertTrue(throws: (any Error).self) {
             try result1.get()
         }
-        #expect(attemptCount == 1)
+        XCTAssertEqual(attemptCount, 1)
 
         // Verify .tmp cleanup
         let tempDir = FileManager.default.temporaryDirectory
@@ -1005,7 +998,7 @@ struct HotUpdaterIntegrationTests {
             includingPropertiesForKeys: nil
         )
         let tmpFiles = tempContents?.filter { $0.lastPathComponent.contains(".tmp") } ?? []
-        #expect(tmpFiles.isEmpty)
+        XCTAssertTrue(tmpFiles.isEmpty)
 
         // Retry update (succeeds)
         let result2 = await withCheckedContinuation { continuation in
@@ -1020,21 +1013,21 @@ struct HotUpdaterIntegrationTests {
             )
         }
 
-        #expect(try result2.get() == true)
-        #expect(attemptCount == 2)
+        XCTAssertTrue(try result2.get())
+        XCTAssertEqual(attemptCount, 2)
 
         // Verify bundle is installed correctly
         let bundleURL = bundleStorage.getBundleURL()
-        #expect(bundleURL != nil)
+        XCTAssertNotNil(bundleURL)
         if let url = bundleURL {
             let content = try String(contentsOf: url, encoding: .utf8)
-            #expect(content == bundleContent)
+            XCTAssertEqual(content, bundleContent)
         }
     }
 
     // MARK: - Hash Verification Tests
 
-    @Test("Update with hash verification - Success")
+    /// Update with hash verification - Success
     func testUpdateWithHashVerification_Success() async throws {
         let bundleContent = "// Hashed bundle"
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
@@ -1076,18 +1069,18 @@ struct HotUpdaterIntegrationTests {
         }
 
         // Verify hash is verified and bundle is installed
-        #expect(try result.get() == true)
+        XCTAssertTrue(try result.get())
 
         let bundleURL = bundleStorage.getBundleURL()
-        #expect(bundleURL != nil)
+        XCTAssertNotNil(bundleURL)
 
         if let url = bundleURL {
             let content = try String(contentsOf: url, encoding: .utf8)
-            #expect(content == bundleContent)
+            XCTAssertEqual(content, bundleContent)
         }
     }
 
-    @Test("Update with hash verification - Failure")
+    /// Update with hash verification - Failure
     func testUpdateWithHashVerification_Failure() async throws {
         let bundleContent = "// Hashed bundle fail"
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
@@ -1129,9 +1122,7 @@ struct HotUpdaterIntegrationTests {
         }
 
         // Verify hash mismatch error
-        #expect(throws: (any Error).self) {
-            try result.get()
-        }
+        XCTAssertThrowsError(try result.get())
 
         // Verify downloaded file is deleted (no .tmp files)
         let tempDir = FileManager.default.temporaryDirectory
@@ -1140,19 +1131,19 @@ struct HotUpdaterIntegrationTests {
             includingPropertiesForKeys: nil
         )
         let tmpFiles = tempContents?.filter { $0.lastPathComponent.contains(".tmp") } ?? []
-        #expect(tmpFiles.isEmpty)
+        XCTAssertTrue(tmpFiles.isEmpty)
 
         // Verify fallback - getBundleURL should return fallback bundle
         let bundleURL = bundleStorage.getBundleURL()
-        #expect(bundleURL != nil)
+        XCTAssertNotNil(bundleURL)
         if let url = bundleURL {
-            #expect(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
+            XCTAssertTrue(url.path.contains("main.jsbundle") || url.path.contains("index.ios.bundle"))
         }
     }
 
     // MARK: - Concurrency Tests
 
-    @Test("Concurrent updates - Sequential handling")
+    /// Concurrent updates - Sequential handling
     func testConcurrentUpdates_Sequential() async throws {
         let bundle1Content = "// Bundle 1"
         let bundle2Content = "// Bundle 2"
@@ -1216,20 +1207,20 @@ struct HotUpdaterIntegrationTests {
         let (res1, res2) = await (result1, result2)
 
         // Verify both succeeded
-        #expect(try res1.get() == true)
-        #expect(try res2.get() == true)
+        XCTAssertTrue(try res1.get())
+        XCTAssertTrue(try res2.get())
 
         // Verify both requests were made
-        #expect(requestOrder.count == 2)
+        XCTAssertEqual(requestOrder.count, 2)
 
         // Verify the final bundle URL points to the last installed bundle
         let bundleURL = bundleStorage.getBundleURL()
-        #expect(bundleURL != nil)
+        XCTAssertNotNil(bundleURL)
 
         if let url = bundleURL {
             let content = try String(contentsOf: url, encoding: .utf8)
             // The content should be from one of the bundles (last one wins)
-            #expect(content == bundle1Content || content == bundle2Content)
+            XCTAssertEqual(content == bundle1Content || content, bundle2Content)
         }
     }
 }
