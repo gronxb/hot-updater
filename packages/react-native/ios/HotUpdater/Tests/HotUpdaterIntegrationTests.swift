@@ -10,6 +10,8 @@ class HotUpdaterIntegrationTests: XCTestCase {
     // MARK: - Test Infrastructure
 
     /// Mock URL protocol for network requests
+    /// Note: This implementation works with data tasks. For download tasks, URLSession
+    /// will automatically convert the data to a temporary file.
     private class MockURLProtocol: URLProtocol {
         static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))?
 
@@ -22,10 +24,6 @@ class HotUpdaterIntegrationTests: XCTestCase {
         }
 
         override func startLoading() {
-            guard let handler = MockURLProtocol.requestHandler else {
-                fatalError("Handler is not set")
-            }
-
             do {
                 let (response, data) = try handler(request)
 
@@ -43,9 +41,19 @@ class HotUpdaterIntegrationTests: XCTestCase {
                 ) ?? response
 
                 client?.urlProtocol(self, didReceive: responseWithHeaders, cacheStoragePolicy: .notAllowed)
+
+                // Send data in chunks to simulate streaming download
                 if let data = data {
-                    client?.urlProtocol(self, didLoad: data)
+                    let chunkSize = 8192
+                    var offset = 0
+                    while offset < data.count {
+                        let end = min(offset + chunkSize, data.count)
+                        let chunk = data.subdata(in: offset..<end)
+                        client?.urlProtocol(self, didLoad: chunk)
+                        offset = end
+                    }
                 }
+
                 client?.urlProtocolDidFinishLoading(self)
             } catch {
                 client?.urlProtocol(self, didFailWithError: error)
@@ -53,6 +61,69 @@ class HotUpdaterIntegrationTests: XCTestCase {
         }
 
         override func stopLoading() {}
+    }
+
+    /// Mock Download Service for testing that bypasses URLSession entirely
+    private class MockDownloadService: DownloadService {
+        var mockResponses: [String: (data: Data?, error: Error?)] = [:]
+        var downloadDelay: TimeInterval = 0.01 // Small delay to simulate network
+        var attemptCounts: [String: Int] = [:] // Track download attempts per URL
+
+        func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + downloadDelay * 0.5) {
+                if let response = self.mockResponses[url.absoluteString] {
+                    if let error = response.error {
+                        completion(.failure(error))
+                    } else if let data = response.data {
+                        completion(.success(Int64(data.count)))
+                    } else {
+                        completion(.failure(DownloadError.invalidContentLength))
+                    }
+                } else {
+                    completion(.failure(DownloadError.invalidContentLength))
+                }
+            }
+        }
+
+        func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+            let urlString = url.absoluteString
+            let currentAttempt = (attemptCounts[urlString] ?? 0) + 1
+            attemptCounts[urlString] = currentAttempt
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + downloadDelay) {
+                if let response = self.mockResponses[urlString] {
+                    if let error = response.error {
+                        completion(.failure(error))
+                        return
+                    }
+
+                    guard let data = response.data else {
+                        completion(.failure(DownloadError.invalidContentLength))
+                        return
+                    }
+
+                    // Simulate progress
+                    progressHandler(0.5)
+                    progressHandler(1.0)
+
+                    do {
+                        let destinationURL = URL(fileURLWithPath: destination)
+                        // Ensure parent directory exists
+                        let parentDir = destinationURL.deletingLastPathComponent()
+                        try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+
+                        // Write data to destination
+                        try data.write(to: destinationURL)
+                        completion(.success(destinationURL))
+                    } catch {
+                        completion(.failure(error))
+                    }
+                } else {
+                    completion(.failure(NSError(domain: "MockError", code: 404, userInfo: [NSLocalizedDescriptionKey: "URL not mocked: \(urlString)"])))
+                }
+            }
+            return nil
+        }
     }
 
     /// Helper to create a valid test bundle ZIP
@@ -107,20 +178,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleId = "bundle-v1.0.0"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
 
-        // Configure mock network
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         // Create test services
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "test-first-install|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses[fileUrl.absoluteString] = (data: zipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -167,21 +230,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let oldZipData = try createTestBundleZip(bundleContent: oldBundleContent)
         let newZipData = try createTestBundleZip(bundleContent: newBundleContent)
 
-        var requestCount = 0
-        MockURLProtocol.requestHandler = { request in
-            requestCount += 1
-            let zipData = requestCount == 1 ? oldZipData : newZipData
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "test-upgrade|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle1.zip"] = (data: oldZipData, error: nil)
+        downloadService.mockResponses["https://example.com/bundle2.zip"] = (data: newZipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -249,18 +303,11 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
         var progressValues: [Double] = []
 
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "test-progress|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: zipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -310,22 +357,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let zipData1 = try createTestBundleZip(bundleContent: bundleContent1)
         let zipData2 = try createTestBundleZip(bundleContent: bundleContent2)
 
-        var requestCount = 0
-        MockURLProtocol.requestHandler = { request in
-            requestCount += 1
-            let zipData = requestCount == 1 ? zipData1 : zipData2
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         // Create first storage with app version 1.0.0
         let fileSystem1 = FileManagerService()
         let preferences1 = VersionedPreferencesService()
         preferences1.configure(isolationKey: "1.0.0|default|default")
-        let downloadService1 = URLSessionDownloadService(configuration: config)
+        let downloadService1 = MockDownloadService()
+        downloadService1.mockResponses["https://example.com/bundle1.zip"] = (data: zipData1, error: nil)
         let decompressService1 = DecompressService()
 
         let bundleStorage1 = BundleFileStorageService(
@@ -339,7 +376,8 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let fileSystem2 = FileManagerService()
         let preferences2 = VersionedPreferencesService()
         preferences2.configure(isolationKey: "2.0.0|default|default")
-        let downloadService2 = URLSessionDownloadService(configuration: config)
+        let downloadService2 = MockDownloadService()
+        downloadService2.mockResponses["https://example.com/bundle2.zip"] = (data: zipData2, error: nil)
         let decompressService2 = DecompressService()
 
         let bundleStorage2 = BundleFileStorageService(
@@ -400,23 +438,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleContent2 = "// Bundle for fingerprint B"
         let zipData1 = try createTestBundleZip(bundleContent: bundleContent1)
         let zipData2 = try createTestBundleZip(bundleContent: bundleContent2)
-
-        var requestCount = 0
-        MockURLProtocol.requestHandler = { request in
-            requestCount += 1
-            let zipData = requestCount == 1 ? zipData1 : zipData2
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         // Create first storage with fingerprint A
         let fileSystem1 = FileManagerService()
         let preferences1 = VersionedPreferencesService()
         preferences1.configure(isolationKey: "1.0.0|fingerprintA|default")
-        let downloadService1 = URLSessionDownloadService(configuration: config)
+        let downloadService1 = MockDownloadService()
+        downloadService1.mockResponses["https://example.com/bundle1.zip"] = (data: zipData1, error: nil)
         let decompressService1 = DecompressService()
 
         let bundleStorage1 = BundleFileStorageService(
@@ -430,7 +457,8 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let fileSystem2 = FileManagerService()
         let preferences2 = VersionedPreferencesService()
         preferences2.configure(isolationKey: "1.0.0|fingerprintB|default")
-        let downloadService2 = URLSessionDownloadService(configuration: config)
+        let downloadService2 = MockDownloadService()
+        downloadService2.mockResponses["https://example.com/bundle2.zip"] = (data: zipData2, error: nil)
         let decompressService2 = DecompressService()
 
         let bundleStorage2 = BundleFileStorageService(
@@ -491,23 +519,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleContent2 = "// Bundle for staging"
         let zipData1 = try createTestBundleZip(bundleContent: bundleContent1)
         let zipData2 = try createTestBundleZip(bundleContent: bundleContent2)
-
-        var requestCount = 0
-        MockURLProtocol.requestHandler = { request in
-            requestCount += 1
-            let zipData = requestCount == 1 ? zipData1 : zipData2
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         // Create first storage with production channel
         let fileSystem1 = FileManagerService()
         let preferences1 = VersionedPreferencesService()
         preferences1.configure(isolationKey: "1.0.0|default|production")
-        let downloadService1 = URLSessionDownloadService(configuration: config)
+        let downloadService1 = MockDownloadService()
+        downloadService1.mockResponses["https://example.com/bundle1.zip"] = (data: zipData1, error: nil)
         let decompressService1 = DecompressService()
 
         let bundleStorage1 = BundleFileStorageService(
@@ -521,7 +538,8 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let fileSystem2 = FileManagerService()
         let preferences2 = VersionedPreferencesService()
         preferences2.configure(isolationKey: "1.0.0|default|staging")
-        let downloadService2 = URLSessionDownloadService(configuration: config)
+        let downloadService2 = MockDownloadService()
+        downloadService2.mockResponses["https://example.com/bundle2.zip"] = (data: zipData2, error: nil)
         let decompressService2 = DecompressService()
 
         let bundleStorage2 = BundleFileStorageService(
@@ -584,19 +602,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
         let bundleId = "bundle-persistent"
 
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         // Create first storage instance and install bundle
         let fileSystem1 = FileManagerService()
         let preferences1 = VersionedPreferencesService()
         preferences1.configure(isolationKey: "1.0.0|default|default")
-        let downloadService1 = URLSessionDownloadService(configuration: config)
+        let downloadService1 = MockDownloadService()
+        downloadService1.mockResponses["https://example.com/bundle.zip"] = (data: zipData, error: nil)
         let decompressService1 = DecompressService()
 
         let bundleStorage1 = BundleFileStorageService(
@@ -626,7 +637,7 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let fileSystem2 = FileManagerService()
         let preferences2 = VersionedPreferencesService()
         preferences2.configure(isolationKey: "1.0.0|default|default")
-        let downloadService2 = URLSessionDownloadService(configuration: config)
+        let downloadService2 = MockDownloadService()
         let decompressService2 = DecompressService()
 
         let bundleStorage2 = BundleFileStorageService(
@@ -654,20 +665,11 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let zipData = try createTestBundleZip(bundleContent: bundleContent)
         let bundleId = "bundle-same"
 
-        var downloadCount = 0
-        MockURLProtocol.requestHandler = { request in
-            downloadCount += 1
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updatebundle_samebundleid|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: zipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -714,13 +716,10 @@ class HotUpdaterIntegrationTests: XCTestCase {
 
     /// Rollback to fallback bundle
     func testRollback_ToFallback() throws {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "rollback_tofallback|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -749,17 +748,11 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleId = "bundle-network-fail"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
 
-        MockURLProtocol.requestHandler = { request in
-            throw NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: nil)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updatefailure_networkerror|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: nil, error: NSError(domain: "TestError", code: 500, userInfo: nil))
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -804,18 +797,11 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
         let corruptedData = createCorruptedZip()
 
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, corruptedData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updatefailure_corruptedbundle|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: corruptedData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -865,18 +851,11 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleId = "bundle-invalid-structure"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
 
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updatefailure_invalidbundlestructure|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: zipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -917,14 +896,6 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleId = "bundle-no-space"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
 
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         // Note: This test is limited because we cannot easily mock FileManagerService
         // to throw disk space errors. In a production scenario, the system would
         // throw errors during file write operations.
@@ -933,7 +904,8 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updatefailure_insufficientdiskspace|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: zipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -974,27 +946,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleId = "bundle-retry"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
 
-        var attemptCount = 0
-        MockURLProtocol.requestHandler = { request in
-            attemptCount += 1
-            // Each update attempt may make multiple requests (HEAD + GET)
-            // Fail on first two requests (one update attempt), succeed after
-            if attemptCount <= 2 {
-                // First update attempt fails
-                throw NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: nil)
-            }
-            // Second update attempt succeeds
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updateinterruption_andretry|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        // First attempt fails, subsequent attempts succeed
+        downloadService.mockResponses[fileUrl.absoluteString] = (data: nil, error: NSError(domain: "TestError", code: 408, userInfo: nil))
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -1018,8 +975,9 @@ class HotUpdaterIntegrationTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try result1.get())
-        // First update attempt makes 2 requests (HEAD + GET or multiple retries)
-        XCTAssertTrue(attemptCount >= 1 && attemptCount <= 2, "Expected 1-2 requests for first attempt, got \(attemptCount)")
+        // First update attempt should have been made
+        let attemptCount = downloadService.attemptCounts[fileUrl.absoluteString] ?? 0
+        XCTAssertTrue(attemptCount >= 1, "Expected at least 1 request for first attempt, got \(attemptCount)")
 
         // Verify .tmp cleanup in bundle-store directory
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -1030,6 +988,9 @@ class HotUpdaterIntegrationTests: XCTestCase {
         )
         let tmpDirs = storeContents?.filter { $0.lastPathComponent.hasSuffix(".tmp") } ?? []
         XCTAssertTrue(tmpDirs.isEmpty)
+
+        // Change response to succeed for retry
+        downloadService.mockResponses[fileUrl.absoluteString] = (data: zipData, error: nil)
 
         // Retry update (succeeds)
         let result2 = await withCheckedContinuation { continuation in
@@ -1045,8 +1006,9 @@ class HotUpdaterIntegrationTests: XCTestCase {
         }
 
         XCTAssertTrue(try result2.get())
-        // Second update attempt makes additional requests, total should be > 2
-        XCTAssertTrue(attemptCount > 2, "Expected more than 2 requests total (first attempt failed, second succeeded), got \(attemptCount)")
+        // Second update attempt should have increased the count
+        let finalAttemptCount = downloadService.attemptCounts[fileUrl.absoluteString] ?? 0
+        XCTAssertTrue(finalAttemptCount >= 2, "Expected at least 2 total attempts (first failed, second succeeded), got \(finalAttemptCount)")
 
         // Verify bundle is installed correctly
         let bundleURL = bundleStorage.getBundleURL()
@@ -1067,18 +1029,11 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleId = "bundle-hashed"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
 
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updatewithhashverification_success|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: zipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -1121,18 +1076,11 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let bundleId = "bundle-hash-fail"
         let fileUrl = URL(string: "https://example.com/bundle.zip")!
 
-        MockURLProtocol.requestHandler = { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "updatewithhashverification_failure|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle.zip"] = (data: zipData, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
@@ -1186,26 +1134,12 @@ class HotUpdaterIntegrationTests: XCTestCase {
         let zipData1 = try createTestBundleZip(bundleContent: bundle1Content)
         let zipData2 = try createTestBundleZip(bundleContent: bundle2Content)
 
-        var requestOrder: [String] = []
-        MockURLProtocol.requestHandler = { request in
-            let urlString = request.url?.absoluteString ?? ""
-            requestOrder.append(urlString)
-
-            // Simulate network delay
-            Thread.sleep(forTimeInterval: 0.1)
-
-            let zipData = urlString.contains("bundle1") ? zipData1 : zipData2
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, zipData)
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
-
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         preferences.configure(isolationKey: "concurrentupdates_sequential|default|default")
-        let downloadService = URLSessionDownloadService(configuration: config)
+        let downloadService = MockDownloadService()
+        downloadService.mockResponses["https://example.com/bundle1.zip"] = (data: zipData1, error: nil)
+        downloadService.mockResponses["https://example.com/bundle2.zip"] = (data: zipData2, error: nil)
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(

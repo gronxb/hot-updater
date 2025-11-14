@@ -30,7 +30,7 @@ import kotlin.system.measureTimeMillis
  * These tests verify the end-to-end update process without mocking file operations or extraction
  */
 @ExtendWith(RobolectricExtension::class)
-@Config(sdk = [28], manifest = Config.NONE)
+@Config(sdk = intArrayOf(28), manifest = Config.NONE)
 @DisplayName("HotUpdater Integration Tests")
 class HotUpdaterIntegrationTest {
     private lateinit var mockWebServer: MockWebServer
