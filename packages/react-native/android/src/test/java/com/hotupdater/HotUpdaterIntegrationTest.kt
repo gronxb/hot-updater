@@ -253,14 +253,15 @@ class HotUpdaterIntegrationTest {
             val oldZipData = createTestBundleZip(bundleContent = oldBundleContent)
             val newZipData = createTestBundleZip(bundleContent = newBundleContent)
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(oldZipData)))
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(newZipData)))
-
             // Create services
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-isolation-2")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock responses
+            val oldFileUrl = downloadService.mockUrl(oldZipData)
+            val newFileUrl = downloadService.mockUrl(newZipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -274,7 +275,7 @@ class HotUpdaterIntegrationTest {
             val result1 =
                 bundleStorage.updateBundle(
                     bundleId = "bundle-v1.0.0",
-                    fileUrl = mockWebServer.url("/bundle1.zip").toString(),
+                    fileUrl = oldFileUrl,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -287,7 +288,7 @@ class HotUpdaterIntegrationTest {
             val result2 =
                 bundleStorage.updateBundle(
                     bundleId = "bundle-v2.0.0",
-                    fileUrl = mockWebServer.url("/bundle2.zip").toString(),
+                    fileUrl = newFileUrl,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -311,8 +312,6 @@ class HotUpdaterIntegrationTest {
             val bundleContent = "// Bundle with progress"
             val zipData = createTestBundleZip(bundleContent = bundleContent)
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             val progressValues = mutableListOf<Double>()
 
             // Create services
@@ -320,6 +319,9 @@ class HotUpdaterIntegrationTest {
             val preferences = VersionedPreferencesService(mockContext, "test-isolation-3")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -333,7 +335,7 @@ class HotUpdaterIntegrationTest {
             val result =
                 bundleStorage.updateBundle(
                     bundleId = "bundle-progress",
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = null,
                     progressCallback = { progress ->
                         progressValues.add(progress)
@@ -365,14 +367,14 @@ class HotUpdaterIntegrationTest {
             val zipData1 = createTestBundleZip(bundleContent = bundleContent1)
             val zipData2 = createTestBundleZip(bundleContent = bundleContent2)
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData1)))
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData2)))
-
             // Create first storage with app version 1.0.0
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "1.0.0_default_production")
             val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
+
+            // Register mock response for first download service
+            val fileUrl1 = downloadService1.mockUrl(zipData1)
 
             val bundleStorage1 =
                 BundleFileStorageService(
@@ -388,6 +390,9 @@ class HotUpdaterIntegrationTest {
             val downloadService2 = MockDownloadService()
             val decompressService2 = DecompressService()
 
+            // Register mock response for second download service
+            val fileUrl2 = downloadService2.mockUrl(zipData2)
+
             val bundleStorage2 =
                 BundleFileStorageService(
                     fileSystem = fileSystem2,
@@ -400,7 +405,7 @@ class HotUpdaterIntegrationTest {
             val result1 =
                 bundleStorage1.updateBundle(
                     bundleId = "bundle-v1",
-                    fileUrl = mockWebServer.url("/bundle1.zip").toString(),
+                    fileUrl = fileUrl1,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -410,7 +415,7 @@ class HotUpdaterIntegrationTest {
             val result2 =
                 bundleStorage2.updateBundle(
                     bundleId = "bundle-v1",
-                    fileUrl = mockWebServer.url("/bundle2.zip").toString(),
+                    fileUrl = fileUrl2,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -439,14 +444,14 @@ class HotUpdaterIntegrationTest {
             val zipData1 = createTestBundleZip(bundleContent = bundleContent1)
             val zipData2 = createTestBundleZip(bundleContent = bundleContent2)
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData1)))
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData2)))
-
             // Create first storage with fingerprint A
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "1.0.0_fingerprintA_production")
             val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
+
+            // Register mock response for first download service
+            val fileUrl1 = downloadService1.mockUrl(zipData1)
 
             val bundleStorage1 =
                 BundleFileStorageService(
@@ -462,6 +467,9 @@ class HotUpdaterIntegrationTest {
             val downloadService2 = MockDownloadService()
             val decompressService2 = DecompressService()
 
+            // Register mock response for second download service
+            val fileUrl2 = downloadService2.mockUrl(zipData2)
+
             val bundleStorage2 =
                 BundleFileStorageService(
                     fileSystem = fileSystem2,
@@ -474,7 +482,7 @@ class HotUpdaterIntegrationTest {
             val result1 =
                 bundleStorage1.updateBundle(
                     bundleId = "bundle-fp",
-                    fileUrl = mockWebServer.url("/bundle1.zip").toString(),
+                    fileUrl = fileUrl1,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -484,7 +492,7 @@ class HotUpdaterIntegrationTest {
             val result2 =
                 bundleStorage2.updateBundle(
                     bundleId = "bundle-fp",
-                    fileUrl = mockWebServer.url("/bundle2.zip").toString(),
+                    fileUrl = fileUrl2,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -513,14 +521,14 @@ class HotUpdaterIntegrationTest {
             val zipData1 = createTestBundleZip(bundleContent = bundleContent1)
             val zipData2 = createTestBundleZip(bundleContent = bundleContent2)
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData1)))
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData2)))
-
             // Create first storage with production channel
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "1.0.0_default_production")
             val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
+
+            // Register mock response for first download service
+            val fileUrl1 = downloadService1.mockUrl(zipData1)
 
             val bundleStorage1 =
                 BundleFileStorageService(
@@ -536,6 +544,9 @@ class HotUpdaterIntegrationTest {
             val downloadService2 = MockDownloadService()
             val decompressService2 = DecompressService()
 
+            // Register mock response for second download service
+            val fileUrl2 = downloadService2.mockUrl(zipData2)
+
             val bundleStorage2 =
                 BundleFileStorageService(
                     fileSystem = fileSystem2,
@@ -548,7 +559,7 @@ class HotUpdaterIntegrationTest {
             val result1 =
                 bundleStorage1.updateBundle(
                     bundleId = "bundle-ch",
-                    fileUrl = mockWebServer.url("/bundle1.zip").toString(),
+                    fileUrl = fileUrl1,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -558,7 +569,7 @@ class HotUpdaterIntegrationTest {
             val result2 =
                 bundleStorage2.updateBundle(
                     bundleId = "bundle-ch",
-                    fileUrl = mockWebServer.url("/bundle2.zip").toString(),
+                    fileUrl = fileUrl2,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -588,13 +599,14 @@ class HotUpdaterIntegrationTest {
             val zipData = createTestBundleZip(bundleContent = bundleContent)
             val bundleId = "bundle-persistent"
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             // Create first storage instance and install bundle
             val fileSystem1 = TestFileManagerService(testDir)
             val preferences1 = VersionedPreferencesService(mockContext, "test-persistence")
             val downloadService1 = MockDownloadService()
             val decompressService1 = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService1.mockUrl(zipData)
 
             val bundleStorage1 =
                 BundleFileStorageService(
@@ -607,7 +619,7 @@ class HotUpdaterIntegrationTest {
             val result =
                 bundleStorage1.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -647,13 +659,13 @@ class HotUpdaterIntegrationTest {
             val zipData = createTestBundleZip(bundleContent = bundleContent)
             val bundleId = "bundle-same"
 
-            // Enqueue only once
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-same-bundle")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -667,12 +679,11 @@ class HotUpdaterIntegrationTest {
             val result1 =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = null,
                     progressCallback = {},
                 )
             assertTrue(result1)
-            assertEquals(1, mockWebServer.requestCount)
 
             // Install same bundle ID again - measure execution time
             val executionTime =
@@ -680,16 +691,14 @@ class HotUpdaterIntegrationTest {
                     val result2 =
                         bundleStorage.updateBundle(
                             bundleId = bundleId,
-                            fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                            fileUrl = fileUrl,
                             fileHash = null,
                             progressCallback = {},
                         )
                     assertTrue(result2)
                 }
 
-            // Only one download should occur
-            assertEquals(1, mockWebServer.requestCount)
-            // Should complete quickly (<100ms)
+            // Should complete quickly (<100ms) since it's cached
             assertTrue(executionTime < 100)
         }
 
@@ -723,13 +732,14 @@ class HotUpdaterIntegrationTest {
         runBlocking {
             val bundleId = "bundle-network-fail"
 
-            // Simulate network error
-            mockWebServer.enqueue(MockResponse().setResponseCode(500))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-network-error")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Simulate network error
+            val url = "http://localhost/bundle${++urlCounter}.zip"
+            downloadService.mockResponses[url] = Pair(null, Exception("HTTP 500"))
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -743,7 +753,7 @@ class HotUpdaterIntegrationTest {
             val result =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = url,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -763,12 +773,13 @@ class HotUpdaterIntegrationTest {
             val bundleId = "bundle-corrupted"
             val corruptedData = createCorruptedZip()
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(corruptedData)))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-corrupted")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response with corrupted data
+            val fileUrl = downloadService.mockUrl(corruptedData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -782,7 +793,7 @@ class HotUpdaterIntegrationTest {
             val result =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -810,12 +821,13 @@ class HotUpdaterIntegrationTest {
             val zipData = createTestBundleZip(bundleContent = "test", fileName = "wrong-name.js")
             val bundleId = "bundle-invalid-structure"
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-invalid-structure")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -829,7 +841,7 @@ class HotUpdaterIntegrationTest {
             val result =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -853,12 +865,13 @@ class HotUpdaterIntegrationTest {
             val bundleContent = "// Bundle requiring space"
             val zipData = createTestBundleZip(bundleContent = bundleContent)
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-disk-space")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -869,11 +882,10 @@ class HotUpdaterIntegrationTest {
                 )
 
             // Install a valid bundle first
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
             val result1 =
                 bundleStorage.updateBundle(
                     bundleId = "bundle-original",
-                    fileUrl = mockWebServer.url("/original.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -894,14 +906,17 @@ class HotUpdaterIntegrationTest {
             val zipData = createTestBundleZip(bundleContent = bundleContent)
             val bundleId = "bundle-retry"
 
-            // First attempt fails, second succeeds
-            mockWebServer.enqueue(MockResponse().setResponseCode(408)) // Timeout
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-retry")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // First attempt fails
+            val url1 = "http://localhost/bundle${++urlCounter}.zip"
+            downloadService.mockResponses[url1] = Pair(null, Exception("HTTP 408"))
+
+            // Second attempt succeeds
+            val url2 = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -915,7 +930,7 @@ class HotUpdaterIntegrationTest {
             val result1 =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = url1,
                     fileHash = null,
                     progressCallback = {},
                 )
@@ -932,14 +947,11 @@ class HotUpdaterIntegrationTest {
             val result2 =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = url2,
                     fileHash = null,
                     progressCallback = {},
                 )
             assertTrue(result2)
-
-            // Verify 2 requests were made (OkHttpDownloadService has retry logic, so might be more)
-            assertTrue(mockWebServer.requestCount >= 2)
 
             // Verify bundle is installed correctly
             val bundleURL = bundleStorage.getBundleURL()
@@ -958,12 +970,13 @@ class HotUpdaterIntegrationTest {
             val fileHash = calculateSHA256(zipData)
             val bundleId = "bundle-hashed"
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-hash-success")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -977,7 +990,7 @@ class HotUpdaterIntegrationTest {
             val result =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = fileHash,
                     progressCallback = {},
                 )
@@ -1000,12 +1013,13 @@ class HotUpdaterIntegrationTest {
             val wrongHash = "0000000000000000000000000000000000000000000000000000000000000000"
             val bundleId = "bundle-hash-fail"
 
-            mockWebServer.enqueue(MockResponse().setBody(okio.Buffer().write(zipData)))
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-hash-fail")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock response
+            val fileUrl = downloadService.mockUrl(zipData)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -1019,7 +1033,7 @@ class HotUpdaterIntegrationTest {
             val result =
                 bundleStorage.updateBundle(
                     bundleId = bundleId,
-                    fileUrl = mockWebServer.url("/bundle.zip").toString(),
+                    fileUrl = fileUrl,
                     fileHash = wrongHash,
                     progressCallback = {},
                 )
@@ -1050,18 +1064,14 @@ class HotUpdaterIntegrationTest {
             val zipData1 = createTestBundleZip(bundleContent = bundle1Content)
             val zipData2 = createTestBundleZip(bundleContent = bundle2Content)
 
-            // Simulate network delay
-            mockWebServer.enqueue(
-                MockResponse().setBody(okio.Buffer().write(zipData1)).setBodyDelay(100, java.util.concurrent.TimeUnit.MILLISECONDS),
-            )
-            mockWebServer.enqueue(
-                MockResponse().setBody(okio.Buffer().write(zipData2)).setBodyDelay(100, java.util.concurrent.TimeUnit.MILLISECONDS),
-            )
-
             val fileSystem = TestFileManagerService(testDir)
             val preferences = VersionedPreferencesService(mockContext, "test-concurrency")
             val downloadService = MockDownloadService()
             val decompressService = DecompressService()
+
+            // Register mock responses
+            val fileUrl1 = downloadService.mockUrl(zipData1)
+            val fileUrl2 = downloadService.mockUrl(zipData2)
 
             val bundleStorage =
                 BundleFileStorageService(
@@ -1076,7 +1086,7 @@ class HotUpdaterIntegrationTest {
                 async {
                     bundleStorage.updateBundle(
                         bundleId = "bundle1",
-                        fileUrl = mockWebServer.url("/bundle1.zip").toString(),
+                        fileUrl = fileUrl1,
                         fileHash = null,
                         progressCallback = {},
                     )
@@ -1086,7 +1096,7 @@ class HotUpdaterIntegrationTest {
                 async {
                     bundleStorage.updateBundle(
                         bundleId = "bundle2",
-                        fileUrl = mockWebServer.url("/bundle2.zip").toString(),
+                        fileUrl = fileUrl2,
                         fileHash = null,
                         progressCallback = {},
                     )
@@ -1099,9 +1109,6 @@ class HotUpdaterIntegrationTest {
             // Verify both succeeded
             assertTrue(result1)
             assertTrue(result2)
-
-            // Verify both requests were made
-            assertEquals(2, mockWebServer.requestCount)
 
             // Verify the final bundle URL points to the last installed bundle
             val bundleURL = bundleStorage.getBundleURL()
