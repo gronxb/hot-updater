@@ -1,11 +1,7 @@
 package com.hotupdater
 
 import android.content.Context
-import android.content.SharedPreferences
-import android.content.pm.ApplicationInfo
-import android.content.res.Resources
-import io.mockk.every
-import io.mockk.mockk
+import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
@@ -19,6 +15,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.robolectric.annotation.Config
+import org.robolectric.junit.jupiter.RobolectricExtension
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
@@ -30,6 +29,8 @@ import kotlin.system.measureTimeMillis
  * Integration tests for HotUpdater OTA update flow
  * These tests verify the end-to-end update process without mocking file operations or extraction
  */
+@ExtendWith(RobolectricExtension::class)
+@Config(sdk = [28], manifest = Config.NONE)
 @DisplayName("HotUpdater Integration Tests")
 class HotUpdaterIntegrationTest {
     private lateinit var mockWebServer: MockWebServer
@@ -41,54 +42,21 @@ class HotUpdaterIntegrationTest {
         mockWebServer = MockWebServer()
         mockWebServer.start()
 
+        // Get Robolectric application context
+        mockContext = ApplicationProvider.getApplicationContext()
+
         // Create temporary test directory
         testDir =
             File.createTempFile("hot-updater-test", "").apply {
                 delete()
                 mkdir()
             }
-
-        // Create mock context
-        mockContext = createMockContext()
     }
 
     @AfterEach
     fun tearDown() {
         mockWebServer.shutdown()
         testDir.deleteRecursively()
-    }
-
-    /**
-     * Helper to create a mock Android Context for testing
-     */
-    private fun createMockContext(): Context {
-        val context = mockk<Context>(relaxed = true)
-        val resources = mockk<Resources>(relaxed = true)
-        val applicationInfo = mockk<ApplicationInfo>(relaxed = true)
-        val sharedPrefs = mockk<SharedPreferences>(relaxed = true)
-        val sharedPrefsEditor = mockk<SharedPreferences.Editor>(relaxed = true)
-
-        // Setup application info with data directory
-        applicationInfo.dataDir = testDir.absolutePath
-        every { context.applicationInfo } returns applicationInfo
-
-        // Setup external files directory
-        every { context.getExternalFilesDir(null) } returns testDir
-
-        // Setup resources
-        every { context.resources } returns resources
-        every { resources.getIdentifier(any(), any(), any()) } returns 0
-        every { context.packageName } returns "com.test.hotupdater"
-
-        // Setup SharedPreferences
-        every { context.getSharedPreferences(any(), any()) } returns sharedPrefs
-        every { sharedPrefs.getString(any(), any()) } returns null
-        every { sharedPrefs.edit() } returns sharedPrefsEditor
-        every { sharedPrefsEditor.putString(any(), any()) } returns sharedPrefsEditor
-        every { sharedPrefsEditor.remove(any()) } returns sharedPrefsEditor
-        every { sharedPrefsEditor.apply() } returns Unit
-
-        return context
     }
 
     // MARK: - Test Infrastructure

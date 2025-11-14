@@ -21,6 +21,9 @@ let package = Package(
         // Target for Swift code (for testing purposes only)
         .target(
             name: "HotUpdater",
+            dependencies: [
+                .product(name: "SWCompression", package: "SWCompression"),
+            ],
             path: "Internal",
             exclude: [
                 "HotUpdater.mm",
