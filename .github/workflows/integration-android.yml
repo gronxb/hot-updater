@@ -64,3 +64,23 @@ jobs:
         run: cd examples/v0.74.1/android && ./gradlew assembleDebug --build-cache && cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    name: Android Unit Tests
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install
+
+      - name: Library Build
+        run: pnpm build
+
+      - name: Run Android Unit Tests
+        run: cd examples/v0.76.1-new-arch/android && ./gradlew :react-native-hot-updater:test --build-cache

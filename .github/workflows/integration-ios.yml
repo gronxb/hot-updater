@@ -64,3 +64,25 @@ jobs:
           cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
+
+  unit-tests:
+    runs-on: macos-14
+    name: iOS Unit Tests
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install
+
+      - name: Library Build
+        run: pnpm build
+
+      - name: Run iOS Unit Tests
+        run: |
+          cd packages/react-native/ios/HotUpdater
+          swift test
