@@ -43,14 +43,17 @@ class VersionedPreferencesService(
     private val prefs: SharedPreferences
 
     init {
-
-        val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-        if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
-            sharedPrefsDir.listFiles()?.forEach { file ->
-                if (file.name.startsWith("HotUpdaterPrefs_") && file.name != "$isolationKey.xml") {
-                    file.delete()
+        try {
+            val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+            if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
+                sharedPrefsDir.listFiles()?.forEach { file ->
+                    if (file.name.startsWith("HotUpdaterPrefs_") && file.name != "$isolationKey.xml") {
+                        file.delete()
+                    }
                 }
             }
+        } catch (e: Exception) {
+            // May fail in test environments - ignore and continue
         }
 
         prefs = context.getSharedPreferences(isolationKey, Context.MODE_PRIVATE)
