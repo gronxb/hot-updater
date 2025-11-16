@@ -4,6 +4,7 @@ packages:
   - docs
   - examples/*
   - examples-server/*
+  - fixtures/*
 onlyBuiltDependencies:
   - "@sentry/cli"
   - "@swc/core"
