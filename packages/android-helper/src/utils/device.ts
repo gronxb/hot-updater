@@ -327,7 +327,11 @@ const listDevices = async (): Promise<AndroidDevice[]> => {
     allDevices.push(emulatorData);
   }
 
-  return allDevices;
+  return allDevices.sort((a, b) => {
+    if (a.type === "phone" && b.type === "emulator") return -1;
+    if (a.type === "emulator" && b.type === "phone") return 1;
+    return 0;
+  });
 };
 
 const matchingDevice = (devices: Array<AndroidDevice>, deviceArg: string) => {

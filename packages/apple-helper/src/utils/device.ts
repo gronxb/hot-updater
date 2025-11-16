@@ -143,7 +143,7 @@ const listDevices = async (
       getDevices().catch(() => []),
     ]);
 
-    let allDevices = [...simulators, ...devices].filter(
+    let allDevices = [...devices, ...simulators].filter(
       (device) => device.platform === platform,
     );
 
