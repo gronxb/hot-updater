@@ -8,7 +8,8 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
+import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
@@ -25,6 +26,8 @@ export const HotUpdaterDB = fumadb({
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
 
 export type DatabaseAdapter = Parameters<typeof HotUpdaterDB.client>[0];
+
+export type DatabasePluginFactory = (args: { cwd: string }) => DatabasePlugin;
 
 export interface DatabaseAPI {
   getBundleById(id: string): Promise<Bundle | null>;
@@ -54,20 +57,32 @@ export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
 export type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
 
 export interface HotUpdaterOptions {
-  database: DatabaseAdapter;
+  database: DatabaseAdapter | DatabasePlugin | DatabasePluginFactory;
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
   cwd?: string;
 }
 
 export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
-  const client = HotUpdaterDB.client(options.database);
   const cwd = options.cwd ?? process.cwd();
 
   // Initialize storage plugins - call factories if they are functions
   const storagePlugins = (options?.storagePlugins ?? []).map((plugin) =>
     typeof plugin === "function" ? plugin({ cwd }) : plugin,
   );
+
+  const isDatabasePluginFactory =
+    typeof options.database === "function" &&
+    // FumaDB adapters are plain objects; plugin factories are functions
+    // that accept `{ cwd }` and return a DatabasePlugin.
+    options.database.length >= 1;
+
+  const isDatabasePluginObject =
+    typeof options.database === "object" &&
+    options.database !== null &&
+    "getBundleById" in options.database &&
+    "getBundles" in options.database &&
+    "getChannels" in options.database;
 
   const resolveFileUrl = async (
     storageUri: string | null,
@@ -91,6 +106,116 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     }
     return fileUrl;
   };
+
+  if (isDatabasePluginFactory || isDatabasePluginObject) {
+    const plugin: DatabasePlugin = isDatabasePluginFactory
+      ? (options.database as DatabasePluginFactory)({ cwd })
+      : (options.database as DatabasePlugin);
+
+    const getAllBundles = async (): Promise<Bundle[]> => {
+      const pageSize = 500;
+      let offset = 0;
+      const allBundles: Bundle[] = [];
+
+      // Paginate through all bundles using the plugin API.
+      // The JS-level getUpdateInfo re-applies filtering, so we don't need
+      // to pass `where` filters here.
+      while (true) {
+        const { data, pagination } = await plugin.getBundles({
+          limit: pageSize,
+          offset,
+        });
+        allBundles.push(...data);
+        if (!pagination.hasNextPage) {
+          break;
+        }
+        offset += pageSize;
+      }
+
+      return allBundles;
+    };
+
+    const api: DatabaseAPI = {
+      async getBundleById(id: string): Promise<Bundle | null> {
+        return plugin.getBundleById(id);
+      },
+
+      async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
+        const bundles = await getAllBundles();
+        return getUpdateInfoJS(bundles, args);
+      },
+
+      async getAppUpdateInfo(
+        args: GetBundlesArgs,
+      ): Promise<AppUpdateInfo | null> {
+        const info = await this.getUpdateInfo(args);
+        if (!info) return null;
+        const { storageUri, ...rest } = info as UpdateInfo & {
+          storageUri: string | null;
+        };
+        const fileUrl = await resolveFileUrl(storageUri ?? null);
+        return { ...rest, fileUrl };
+      },
+
+      async getChannels(): Promise<string[]> {
+        return plugin.getChannels();
+      },
+
+      async getBundles(options: {
+        where?: { channel?: string; platform?: string };
+        limit: number;
+        offset: number;
+      }): Promise<{ data: Bundle[]; pagination: PaginationInfo }> {
+        return plugin.getBundles(options);
+      },
+
+      async insertBundle(bundle: Bundle): Promise<void> {
+        await plugin.appendBundle(bundle);
+        await plugin.commitBundle();
+      },
+
+      async updateBundleById(
+        bundleId: string,
+        newBundle: Partial<Bundle>,
+      ): Promise<void> {
+        await plugin.updateBundle(bundleId, newBundle);
+        await plugin.commitBundle();
+      },
+
+      async deleteBundleById(bundleId: string): Promise<void> {
+        const bundle = await plugin.getBundleById(bundleId);
+        if (!bundle) {
+          throw new Error("targetBundleId not found");
+        }
+        await plugin.deleteBundle(bundle);
+        await plugin.commitBundle();
+      },
+    };
+
+    return {
+      ...api,
+      handler: createHandler(
+        api,
+        options?.basePath ? { basePath: options.basePath } : {},
+      ),
+
+      // For plugin-based databases, migrations/schema generation are not
+      // applicable. Expose stubs that clearly signal misuse at runtime.
+      adapterName: plugin.name,
+      createMigrator: (() => {
+        throw new Error(
+          "createMigrator is only available for FumaDB-based database adapters.",
+        );
+      }) as unknown as () => Migrator,
+      generateSchema: (() => {
+        throw new Error(
+          "generateSchema is only available for FumaDB-based database adapters.",
+        );
+      }) as HotUpdaterClient["generateSchema"],
+    };
+  }
+
+  const client = HotUpdaterDB.client(options.database as DatabaseAdapter);
 
   const api = {
     async getBundleById(id: string): Promise<Bundle | null> {
