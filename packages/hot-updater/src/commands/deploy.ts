@@ -214,12 +214,8 @@ export const deploy = async (options: DeployOptions) => {
     config.build({
       cwd,
     }),
-    config.storage({
-      cwd,
-    }),
-    config.database({
-      cwd,
-    }),
+    config.storage(),
+    config.database(),
   ]);
 
   try {
