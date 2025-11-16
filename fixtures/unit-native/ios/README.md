@@ -5,8 +5,25 @@ This directory contains native unit tests for the `@hot-updater/react-native` iO
 ## Prerequisites
 
 - Xcode 15.0 or later
-- Swift 6.0 or later
+- Swift 6.0 or later (installed via mise)
 - macOS 10.15 or later
+
+### Installing Swift 6 with mise
+
+This project uses [mise](https://mise.jdx.dev/) to manage Swift version.
+
+```bash
+# Install mise (if not already installed)
+curl https://mise.run | sh
+
+# Install Swift 6 (defined in .mise.toml)
+cd fixtures/unit-native
+mise install
+
+# Verify Swift version
+mise exec -- swift --version
+# Should output: Swift version 6.0.3 or later
+```
 
 ## Test Structure
 
@@ -30,13 +47,23 @@ From the repository root:
 
 ```bash
 cd fixtures/unit-native
+
+# If using mise (recommended)
+mise exec -- pnpm test:ios
+
+# Or without mise (requires Swift 6.0+ installed globally)
 pnpm test:ios
 ```
 
-Or directly from this directory:
+Or directly with Swift Package Manager:
 
 ```bash
 cd fixtures/unit-native
+
+# With mise
+mise exec -- swift test --package-path ios
+
+# Without mise
 swift test --package-path ios
 ```
 
