@@ -13,6 +13,7 @@ import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import { calculatePagination } from "../calculatePagination";
+import { createConsoleHandler } from "../console-handler";
 import { createHandler } from "../handler";
 import { v0_21_0 } from "../schema/v0_21_0";
 import type { PaginationInfo } from "../types";
@@ -43,6 +44,9 @@ export interface DatabaseAPI {
 
 export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
+  console: {
+    handler: (request: Request) => Promise<Response>;
+  };
 
   adapterName: string;
   createMigrator: () => Migrator;
@@ -58,12 +62,6 @@ export interface HotUpdaterOptions {
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
   cwd?: string;
-  /**
-   * Enable console UI integration
-   * When enabled, serves the web console at /console
-   * @default false
-   */
-  enableConsole?: boolean;
 }
 
 export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
@@ -494,8 +492,10 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     ...api,
     handler: createHandler(api, {
       basePath: options?.basePath,
-      enableConsole: options?.enableConsole,
     }),
+    console: {
+      handler: createConsoleHandler(api),
+    },
 
     // private method
     adapterName: client.adapter.name,

@@ -17,8 +17,6 @@ export const hotUpdater = createHotUpdater({
   database: mongoAdapter({
     client,
   }),
-  // Enable console UI at /console
-  enableConsole: true,
   storagePlugins: [
     mockStorage({}),
     s3Storage({
