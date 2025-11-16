@@ -1,32 +1,76 @@
 plugins {
-    id 'org.jetbrains.kotlin.jvm' version '1.9.20'
+    id 'com.android.library' version '8.1.0'
+    id 'org.jetbrains.kotlin.android' version '1.9.20'
 }
 
-group = 'com.hotupdater.tests'
-version = '0.21.0'
+android {
+    namespace 'com.hotupdater.tests'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 21
+        targetSdk 34
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    sourceSets {
+        test {
+            java {
+                srcDir 'src/test/kotlin'
+            }
+            resources {
+                srcDir 'src/test/resources'
+            }
+        }
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            returnDefaultValues = true
+        }
+    }
+}
 
 repositories {
     mavenCentral()
     google()
 }
 
-// Source sets to include test source files
-sourceSets {
-    main {
-        kotlin {
-            srcDir 'src/main/kotlin'
-        }
-    }
-    test {
-        kotlin {
-            srcDir 'src/test/kotlin'
-        }
-    }
-}
-
 dependencies {
     // Kotlin standard library
     implementation 'org.jetbrains.kotlin:kotlin-stdlib'
+
+    // Android dependencies
+    implementation 'androidx.annotation:annotation:1.7.0'
+    implementation 'androidx.core:core-ktx:1.12.0'
+
+    // Kotlin coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // Network - OkHttp
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // Compression libraries
+    implementation 'org.apache.commons:commons-compress:1.24.0'
+    implementation 'org.brotli:dec:0.1.2'
 
     // JUnit 5 (Jupiter)
     testImplementation platform('org.junit:junit-bom:5.10.1')
@@ -43,17 +87,23 @@ dependencies {
 
     // Coroutines test
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+
+    // MockWebServer for HTTP mocking
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+
+    // Robolectric for Android testing
+    testImplementation 'org.robolectric:robolectric:4.11.1'
+
+    // AndroidX Test
+    testImplementation 'androidx.test:core:1.5.0'
+    testImplementation 'androidx.test.ext:junit:1.1.5'
 }
 
-tasks.named('test') {
+tasks.withType(Test).configureEach {
     useJUnitPlatform()
     testLogging {
         events "passed", "skipped", "failed"
         exceptionFormat "full"
         showStandardStreams = false
     }
-}
-
-kotlin {
-    jvmToolchain(17)
 }

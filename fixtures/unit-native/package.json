@@ -4,7 +4,7 @@
   "private": true,
   "description": "Native unit tests for @hot-updater/react-native",
   "scripts": {
-    "test:ios": "swift test --package-path ios",
+    "test:ios": "cd ios && mise exec -- tuist install && mise exec -- tuist test",
     "test:android": "cd android && ./gradlew test",
     "test": "pnpm test:ios && pnpm test:android"
   },

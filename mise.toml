@@ -1,3 +1,4 @@
 [tools]
 node = "24"
 swift = "6.0.3"
+tuist = "4.104.6"
