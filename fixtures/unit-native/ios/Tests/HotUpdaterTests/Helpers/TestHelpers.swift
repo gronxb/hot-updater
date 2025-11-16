@@ -255,3 +255,236 @@ struct AsyncTestUtils {
         }
     }
 }
+
+// MARK: - Async Expectation
+
+final class AsyncExpectation {
+    private var continuation: CheckedContinuation<Bool, Error>?
+    private let lock = NSLock()
+
+    func fulfill(with result: Result<Bool, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cont = continuation {
+            switch result {
+            case .success(let value):
+                cont.resume(returning: value)
+            case .failure(let error):
+                cont.resume(throwing: error)
+            }
+            continuation = nil
+        }
+    }
+
+    func value(timeout: TimeInterval) async throws -> Bool {
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+            lock.lock()
+            self.continuation = continuation
+            lock.unlock()
+
+            // Set timeout
+            Task {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                lock.lock()
+                defer { lock.unlock() }
+                if let cont = self.continuation {
+                    cont.resume(throwing: NSError(
+                        domain: "AsyncExpectation",
+                        code: 408,
+                        userInfo: [NSLocalizedDescriptionKey: "Timeout after \(timeout)s"]
+                    ))
+                    self.continuation = nil
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Test Preferences Service
+
+final class TestPreferencesService: PreferencesService {
+    private var storage: [String: String] = [:]
+    private var isolationKey: String = ""
+    private let baseDir: String
+
+    init(baseDir: String) {
+        self.baseDir = baseDir
+    }
+
+    func configure(isolationKey: String) {
+        self.isolationKey = isolationKey
+    }
+
+    private func prefixedKey(forKey key: String) throws -> String {
+        guard !isolationKey.isEmpty else {
+            throw PreferencesError.configurationError
+        }
+        return "\(isolationKey)\(key)"
+    }
+
+    func setItem(_ value: String?, forKey key: String) throws {
+        let fullKey = try prefixedKey(forKey: key)
+        if let valueToSet = value {
+            storage[fullKey] = valueToSet
+        } else {
+            storage.removeValue(forKey: fullKey)
+        }
+    }
+
+    func getItem(forKey key: String) throws -> String? {
+        let fullKey = try prefixedKey(forKey: key)
+        return storage[fullKey]
+    }
+}
+
+// MARK: - Test File System Service
+
+final class TestFileSystemService: FileSystemService {
+    private let fileManager = FileManager.default
+    private let documentsDir: String
+
+    init(documentsDir: String) {
+        self.documentsDir = documentsDir
+    }
+
+    func fileExists(atPath path: String) -> Bool {
+        return fileManager.fileExists(atPath: path)
+    }
+
+    func createDirectory(atPath path: String) -> Bool {
+        do {
+            try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeItem(atPath path: String) throws {
+        try fileManager.removeItem(atPath: path)
+    }
+
+    func moveItem(atPath srcPath: String, toPath dstPath: String) throws {
+        try fileManager.moveItem(atPath: srcPath, toPath: dstPath)
+    }
+
+    func copyItem(atPath srcPath: String, toPath dstPath: String) throws {
+        try fileManager.copyItem(atPath: srcPath, toPath: dstPath)
+    }
+
+    func contentsOfDirectory(atPath path: String) throws -> [String] {
+        return try fileManager.contentsOfDirectory(atPath: path)
+    }
+
+    func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
+        return try fileManager.attributesOfItem(atPath: path)
+    }
+
+    func documentsPath() -> String {
+        return documentsDir
+    }
+}
+
+// MARK: - Test Download Service
+
+/// A test download service that uses MockURLProtocol for network interception
+final class TestURLSessionDownloadService: NSObject, DownloadService {
+    private var session: URLSession!
+    private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
+    private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
+    private var destinations: [URLSessionTask: String] = [:]
+
+    override init() {
+        super.init()
+        let configuration = URLSessionConfiguration.mockConfiguration
+        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }
+
+    func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+
+        let task = session.dataTask(with: request) { _, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(DownloadError.invalidContentLength))
+                return
+            }
+
+            let contentLength = httpResponse.expectedContentLength
+            if contentLength > 0 {
+                completion(.success(contentLength))
+            } else {
+                completion(.failure(DownloadError.invalidContentLength))
+            }
+        }
+        task.resume()
+    }
+
+    func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+        let task = session.downloadTask(with: url)
+        progressHandlers[task] = progressHandler
+        completionHandlers[task] = completion
+        destinations[task] = destination
+        task.resume()
+        return task
+    }
+}
+
+extension TestURLSessionDownloadService: URLSessionDownloadDelegate {
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        let completion = completionHandlers[downloadTask]
+        let destination = destinations[downloadTask]
+
+        defer {
+            progressHandlers.removeValue(forKey: downloadTask)
+            completionHandlers.removeValue(forKey: downloadTask)
+            destinations.removeValue(forKey: downloadTask)
+        }
+
+        guard let destination = destination else {
+            completion?(.failure(NSError(domain: "HotUpdaterError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Destination path not found"])))
+            return
+        }
+
+        do {
+            let destinationURL = URL(fileURLWithPath: destination)
+
+            if FileManager.default.fileExists(atPath: destination) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+
+            try FileManager.default.copyItem(at: location, to: destinationURL)
+            completion?(.success(destinationURL))
+        } catch {
+            completion?(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            let completion = completionHandlers[task]
+            defer {
+                progressHandlers.removeValue(forKey: task)
+                completionHandlers.removeValue(forKey: task)
+                destinations.removeValue(forKey: task)
+            }
+            completion?(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        let progressHandler = progressHandlers[downloadTask]
+
+        if totalBytesExpectedToWrite > 0 {
+            let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+            progressHandler?(progress)
+        } else {
+            progressHandler?(0)
+        }
+    }
+}

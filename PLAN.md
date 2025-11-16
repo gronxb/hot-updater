@@ -1,72 +1,94 @@
-# Native Unit Testing Plan for Hot Updater React Native Package (Core OTA Only)
+# Native E2E Integration Testing Plan for Hot Updater React Native Package
 
 ## Overview
-This document focuses on unit testing for the **core OTA functionality** of the `@hot-updater/react-native` package.
+This document describes **E2E integration tests** for the core OTA functionality of the `@hot-updater/react-native` package.
 
-Tests are implemented in the `fixtures/unit-native` directory, completely separate from the main package to avoid modifying production code.
+Tests are implemented in the `fixtures/unit-native` directory, completely separate from the main package. Tests use **real implementation code** with **mocked network only**.
 
 ## Test Infrastructure
 
 ### Location
-All native unit tests are located in:
+All native tests are located in:
 ```
 fixtures/unit-native/
-├── ios/          # iOS Swift tests
-└── android/      # Android Kotlin tests
+├── ios/          # iOS Swift tests (E2E with Tuist)
+├── android/      # Android Kotlin tests (Placeholder)
+└── test-resources/  # Shared test bundle files
 ```
 
-### iOS (Swift)
-- **Framework**: Swift Testing (modern testing framework for Swift 6.0+)
+### iOS (Swift) - Full E2E Tests
+- **Framework**: Swift Testing (modern async testing framework)
+- **Build System**: Tuist (project generation tool)
 - **Location**: `fixtures/unit-native/ios/`
-- **Test Runner**: Swift Package Manager
-- **Command**: `pnpm test:ios` or `swift test --package-path ios`
+- **Source Strategy**: References original implementation from `packages/react-native/ios/HotUpdater/Internal/` directly (no file copying)
+- **Excluded Files**: React Native dependent files (HotUpdaterImpl.swift, HotUpdaterFactory.swift, HotUpdater.kt)
+- **Dependencies**: SWCompression (for TAR.GZ/TAR.BR decompression)
+- **Command**: `pnpm test:ios` or `cd ios && mise exec -- tuist test`
+- **Prerequisites**: Requires `mise` tool manager with Tuist installed
 
-### Android (Kotlin)
+### Android (Kotlin) - Placeholder Tests
 - **Framework**: JUnit 5 (Jupiter)
+- **Build System**: Android Gradle Plugin 8.1.0
 - **Location**: `fixtures/unit-native/android/`
-- **Build Tool**: Gradle
-- **Command**: `pnpm test:android` or `./gradlew test`
+- **Current Status**: Placeholder tests only (basic infrastructure verification)
+- **Limitation**: Android Gradle Plugin cannot selectively include/exclude source files like Tuist
+- **Command**: `pnpm test:android` or `cd android && ./gradlew test`
+- **Note**: Full E2E tests require React Native environment due to Gradle source set limitations
 
-## 🎯 Core OTA Test Scenarios (Reduced Scope)
+## 🎯 E2E Test Scenarios
 
-### Integration Tests (End-to-End OTA Flow)
+### Current Implementation Status
 
-#### iOS: `HotUpdaterIntegrationTests.swift` & Android: `HotUpdaterIntegrationTest.kt`
+#### iOS: `HotUpdaterIntegrationTests.swift` ✅
+- **Status**: Infrastructure ready, basic tests passing
+- **Tests**: 2 basic validation tests
+  - ✅ Basic test - Check if test framework works
+  - ✅ Check if original sources are accessible
+- **Ready for**: Full E2E scenario implementation
 
-**1. Basic OTA Flow (3 tests)**
+#### Android: `PlaceholderTest.kt` ⚠️
+- **Status**: Placeholder tests only
+- **Tests**: 2 infrastructure tests
+  - ✅ Basic test - Verify test framework works
+  - ✅ Test infrastructure is properly configured
+- **Limitation**: Cannot reference original sources without React Native dependencies
 
-✓ **testCompleteOTAUpdate_FirstInstall** - Complete first-time OTA update flow
-✓ **testCompleteOTAUpdate_Upgrade** - Upgrade from existing bundle to new version
-✓ **testUpdateWithProgress** - Track complete progress (0% → 80% download, 80% → 100% extraction)
+### Planned E2E Test Scenarios (iOS Only)
 
-**2. File System Isolation (3 tests)**
+**1. Basic OTA Flow (3 tests)** - TO BE IMPLEMENTED
 
-✓ **testIsolation_DifferentAppVersions** - Isolation by app version (1.0.0 vs 2.0.0)
-✓ **testIsolation_DifferentFingerprints** - Isolation by fingerprint hash (abc123 vs def456)
-✓ **testIsolation_DifferentChannels** - Isolation by channel (production vs staging)
+⏳ **testCompleteOTAUpdate_FirstInstall** - Complete first-time OTA update flow
+⏳ **testCompleteOTAUpdate_Upgrade** - Upgrade from existing bundle to new version
+⏳ **testUpdateWithProgress** - Track complete progress (0% → 80% download, 80% → 100% extraction)
 
-**3. Cache & Persistence (3 tests)**
+**2. File System Isolation (3 tests)** - TO BE IMPLEMENTED
 
-✓ **testBundlePersistence_AfterRestart** - Preserve OTA bundle after app restart
-✓ **testUpdateBundle_SameBundleId** - Reinstall with same bundleId (cache reuse)
-✓ **testRollback_ToFallback** - Rollback to fallback bundle
+⏳ **testIsolation_DifferentAppVersions** - Isolation by app version (1.0.0 vs 2.0.0)
+⏳ **testIsolation_DifferentFingerprints** - Isolation by fingerprint hash (abc123 vs def456)
+⏳ **testIsolation_DifferentChannels** - Isolation by channel (production vs staging)
 
-**4. Error Handling (5 tests)**
+**3. Cache & Persistence (3 tests)** - TO BE IMPLEMENTED
 
-✓ **testUpdateFailure_NetworkError** - Handle network errors during download
-✓ **testUpdateFailure_CorruptedBundle** - Handle corrupted bundle files (extraction fails)
-✓ **testUpdateFailure_InvalidBundleStructure** - Handle invalid bundle structure (missing index.*.bundle)
-✓ **testUpdateFailure_InsufficientDiskSpace** - Handle insufficient disk space (required: fileSize * 2)
-✓ **testUpdateInterruption_AndRetry** - Retry after interrupted update (.tmp cleanup)
+⏳ **testBundlePersistence_AfterRestart** - Preserve OTA bundle after app restart
+⏳ **testUpdateBundle_SameBundleId** - Reinstall with same bundleId (cache reuse)
+⏳ **testRollback_ToFallback** - Rollback to fallback bundle
 
-**5. Hash Verification (2 tests)**
+**4. Error Handling (5 tests)** - TO BE IMPLEMENTED
 
-✓ **testUpdateWithHashVerification_Success** - Complete OTA flow with hash verification
-✓ **testUpdateWithHashVerification_Failure** - Handle hash mismatch (file deletion)
+⏳ **testUpdateFailure_NetworkError** - Handle network errors during download
+⏳ **testUpdateFailure_CorruptedBundle** - Handle corrupted bundle files (extraction fails)
+⏳ **testUpdateFailure_InvalidBundleStructure** - Handle invalid bundle structure (missing index.*.bundle)
+⏳ **testUpdateFailure_InsufficientDiskSpace** - Handle insufficient disk space (required: fileSize * 2)
+⏳ **testUpdateInterruption_AndRetry** - Retry after interrupted update (.tmp cleanup)
 
-**6. Concurrency (1 test)**
+**5. Hash Verification (2 tests)** - TO BE IMPLEMENTED
 
-✓ **testConcurrentUpdates_Sequential** - Sequential update handling without conflicts
+⏳ **testUpdateWithHashVerification_Success** - Complete OTA flow with hash verification
+⏳ **testUpdateWithHashVerification_Failure** - Handle hash mismatch (file deletion)
+
+**6. Concurrency (1 test)** - TO BE IMPLEMENTED
+
+⏳ **testConcurrentUpdates_Sequential** - Sequential update handling without conflicts
 
 ---
 
@@ -144,25 +166,32 @@ fixtures/unit-native/
 
 ## Test Execution Strategy
 
-### 1. Mock Strategy
-- **Network**: Mock HTTP server serving actual bundle ZIP files (iOS: URLProtocol, Android: MockWebServer)
-- **File System**: Real file system in temp directory with guaranteed cleanup
-- **Dependencies**: Real services (FileManagerService, DecompressService, BundleFileStorageService), mock network only
+### 1. Mock Strategy (iOS Only)
+- **Network**: Mock HTTP server using URLProtocol (to be implemented with MockURLProtocol.swift helper)
+- **File System**: Real file system operations using FileManagerService
+- **Dependencies**: Real implementation services (FileManagerService, DecompressService, etc.)
+- **Source Code**: References original implementation from `packages/react-native/ios/` via Tuist glob patterns
 
-### 2. Test Data
-- **Bundle Files**: Small ZIP files with actual React Native bundles (index.ios.bundle / index.android.bundle)
-- **Hash Values**: Pre-calculated SHA256 hashes
-- **Mock Server**: Local server serving actual ZIP files
+### 2. Test Data (Prepared)
+- **Location**: `fixtures/unit-native/test-resources/`
+- **Bundle Files**:
+  - `index.ios.bundle` - Minimal React Native iOS bundle
+  - `index.android.bundle` - Minimal React Native Android bundle
+- **ZIP Archives**:
+  - `test-bundle-valid.zip` - Valid bundle for success scenarios
+  - `test-bundle-corrupted.zip` - Corrupted file for error handling tests
+  - `test-bundle-invalid.zip` - Invalid structure for validation tests
+- **Hash Values**: Pre-calculated SHA256 hashes documented in `test-resources/HASHES.md`
 
-### 3. CI Integration
+### 3. CI Integration (To be configured)
 
-Tests are automatically run in GitHub Actions workflows:
+Tests will run in GitHub Actions workflows:
 
 **iOS** (`.github/workflows/integration-ios.yml`):
 ```yaml
 unit-tests:
   runs-on: macos-14
-  name: iOS Unit Tests
+  name: iOS Native E2E Tests
   steps:
     - uses: actions/checkout@v3
     - name: Setup pnpm
@@ -174,7 +203,17 @@ unit-tests:
         cache: "pnpm"
     - run: pnpm install
 
-    - name: Run iOS Native Unit Tests
+    # Install mise and Tuist
+    - name: Install mise
+      run: |
+        curl https://mise.run | sh
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+    - name: Install Tuist via mise
+      run: |
+        mise install tuist@latest
+        mise use tuist@latest
+
+    - name: Run iOS Native E2E Tests
       run: |
         cd fixtures/unit-native
         pnpm test:ios
@@ -184,7 +223,7 @@ unit-tests:
 ```yaml
 unit-tests:
   runs-on: ubuntu-latest
-  name: Android Unit Tests
+  name: Android Placeholder Tests
   steps:
     - uses: actions/checkout@v3
     - name: Setup pnpm
@@ -196,7 +235,7 @@ unit-tests:
         cache: "pnpm"
     - run: pnpm install
 
-    - name: Run Android Native Unit Tests
+    - name: Run Android Placeholder Tests
       run: |
         cd fixtures/unit-native
         pnpm test:android
@@ -204,16 +243,17 @@ unit-tests:
 
 **Triggers**:
 - iOS tests run when files change in:
-  - `packages/react-native/ios/**`
+  - `packages/react-native/ios/HotUpdater/Internal/**`
   - `fixtures/unit-native/ios/**`
+  - `fixtures/unit-native/test-resources/**`
 - Android tests run when files change in:
-  - `packages/react-native/android/**`
   - `fixtures/unit-native/android/**`
 
 ### 4. Coverage Goals
-- **Target**: 100% coverage of core OTA flow
-- **Focus**: Integration tests for complete flow
-- **Tools**: iOS: `swift test --enable-code-coverage`, Android: JaCoCo
+- **iOS Target**: E2E coverage of core OTA flow (17 scenarios)
+- **Android Target**: Infrastructure validation only
+- **Focus**: Integration tests for complete user flows
+- **Tools**: Tuist test coverage reports (iOS only)
 
 ## Test File Structure
 
@@ -222,92 +262,114 @@ fixtures/unit-native/
 ├── .gitignore                              # Excludes build artifacts
 ├── README.md                               # Main testing guide
 ├── package.json                            # Test scripts (test:ios, test:android, test)
-├── ios/
-│   ├── Package.swift                       # Swift Package Manager config
-│   ├── README.md                           # iOS testing guide
-│   ├── Sources/
-│   │   └── HotUpdaterStub.swift           # Stub file for SPM
+├── test-resources/                         # ✅ Shared test data
+│   ├── HASHES.md                          # SHA256 hashes for test bundles
+│   ├── index.ios.bundle                   # Minimal iOS bundle
+│   ├── index.android.bundle               # Minimal Android bundle
+│   ├── test-bundle-valid.zip              # Valid bundle
+│   ├── test-bundle-corrupted.zip          # Corrupted file
+│   └── test-bundle-invalid.zip            # Invalid structure
+├── ios/                                    # ✅ Tuist-based E2E tests
+│   ├── Project.swift                      # Tuist project configuration
+│   ├── Tuist/
+│   │   ├── Config.swift                   # Tuist settings
+│   │   └── Package.swift                  # External dependencies (SWCompression)
+│   ├── README.md                          # iOS testing guide
 │   └── Tests/HotUpdaterTests/
-│       ├── HotUpdaterIntegrationTests.swift    # (TO BE IMPLEMENTED)
-│       ├── HotUpdaterImplTests.swift           # Placeholder tests
-│       ├── BundleFileStorageServiceTests.swift # Placeholder tests
-│       ├── DecompressServiceTests.swift        # Placeholder tests
-│       ├── HashUtilsTests.swift                # Placeholder tests
-│       ├── FileManagerServiceTests.swift       # Placeholder tests
-│       └── Resources/test-bundle.zip           # (TO BE ADDED)
-└── android/
-    ├── build.gradle                        # Gradle build configuration
-    ├── settings.gradle                     # Project settings
-    ├── gradle.properties                   # Gradle properties
-    ├── gradlew & gradlew.bat              # Gradle wrapper scripts
+│       ├── HotUpdaterIntegrationTests.swift # ✅ Basic infrastructure tests (2 passing)
+│       ├── Helpers/
+│       │   ├── MockURLProtocol.swift      # ✅ HTTP mocking helper
+│       │   └── TestHelpers.swift          # ✅ Test utility functions
+│       └── Resources/                     # Symlinks to test-resources/
+└── android/                                # ✅ Placeholder tests only
+    ├── build.gradle                        # Android Gradle Plugin 8.1.0
+    ├── settings.gradle                     # Plugin management
+    ├── gradle.properties                   # AndroidX enabled
+    ├── gradle/wrapper/                     # Gradle 8.2 wrapper
+    ├── gradlew & gradlew.bat              # Wrapper scripts
     ├── README.md                           # Android testing guide
     └── src/test/kotlin/com/hotupdater/
-        ├── HotUpdaterIntegrationTest.kt        # (TO BE IMPLEMENTED)
-        ├── HotUpdaterImplTest.kt               # Placeholder tests
-        ├── BundleFileStorageServiceTest.kt     # Placeholder tests
-        ├── DecompressServiceTest.kt            # Placeholder tests
-        ├── HashUtilsTest.kt                    # Placeholder tests
-        ├── FileManagerServiceTest.kt           # Placeholder tests
-        └── resources/test-bundle.zip           # (TO BE ADDED)
+        └── PlaceholderTest.kt              # ✅ Basic infrastructure tests (2 passing)
 ```
 
 ### Current Status
-- ✅ Test infrastructure set up
-- ✅ Placeholder test files created
-- ✅ CI/CD workflows configured
-- ✅ `.gitignore` configured to exclude build artifacts
-- ⏳ Integration tests to be implemented (17 scenarios per platform)
+- ✅ **iOS Infrastructure**: Tuist-based, references original sources, tests passing
+- ✅ **Android Infrastructure**: Gradle-based, placeholder tests passing
+- ✅ **Test Resources**: Bundle files and ZIPs created with documented hashes
+- ✅ **Test Helpers**: MockURLProtocol, TestHelpers utilities ready
+- ✅ **Package Scripts**: Both `pnpm test:ios` and `pnpm test:android` working
+- ⏳ **E2E Scenarios**: 17 iOS scenarios to be implemented
+- ⏳ **CI/CD**: Workflows need Tuist setup for iOS
 
 ## Implementation Priority
 
 **Phase 0: Infrastructure Setup (COMPLETED ✅)**
-- ✅ Created `fixtures/unit-native` directory structure
-- ✅ Set up Swift Package Manager for iOS tests
-- ✅ Set up Gradle for Android tests
-- ✅ Created placeholder test files
+- ✅ Migrated from Swift Package Manager to Tuist for iOS
+- ✅ Created Tuist project with direct source references (no file copying)
+- ✅ Configured Android Gradle Plugin 8.1.0 with AndroidX
+- ✅ Created test bundle resources (index.ios.bundle, index.android.bundle)
+- ✅ Generated test ZIP files (valid, corrupted, invalid)
+- ✅ Calculated SHA256 hashes and documented in HASHES.md
+- ✅ Created test helper utilities (MockURLProtocol, TestHelpers)
 - ✅ Configured `.gitignore` for build artifacts
-- ✅ Updated `pnpm-workspace.yaml` to include fixtures
-- ✅ Added CI/CD workflows for automated testing
-- ✅ Updated README files with proper paths
+- ✅ Updated package.json with working test scripts
+- ✅ Verified both iOS and Android tests pass
 
-**Phase 1: Test Setup (1-3 days)**
-- Configure mock HTTP server (iOS: URLProtocol, Android: MockWebServer)
-- Create test bundle ZIP files (normal, corrupted, invalid structure)
-- Add test resources to `fixtures/unit-native/ios/Tests/HotUpdaterTests/Resources/`
-- Add test resources to `fixtures/unit-native/android/src/test/resources/`
-- Write test helper functions
+**Phase 1: iOS E2E Test Implementation (Next - 1-2 weeks)**
+- ⏳ Implement 3 Basic OTA Flow tests
+- ⏳ Implement 3 File System Isolation tests
+- ⏳ Implement 3 Cache & Persistence tests
+- ⏳ Implement 5 Error Handling tests
+- ⏳ Implement 2 Hash Verification tests
+- ⏳ Implement 1 Concurrency test
+- ⏳ Verify all 17 scenarios pass
 
-**Phase 2: Core Integration Tests (1-1.5 weeks)**
-- Write HotUpdaterIntegrationTests.swift (iOS)
-- Write HotUpdaterIntegrationTest.kt (Android)
-- Implement 17 scenarios: Basic (3), Isolation (3), Cache (3), Errors (5), Hash (2), Concurrency (1)
-- Verify tests pass in CI/CD workflows
+**Phase 2: CI/CD Integration (After Phase 1)**
+- ⏳ Update `.github/workflows/integration-ios.yml` with Tuist setup
+- ⏳ Configure mise installation in GitHub Actions
+- ⏳ Test workflow runs successfully
+- ⏳ Set up proper path triggers for iOS tests
 
 ## Success Criteria
 
-✅ 17 core integration tests pass (iOS 17 + Android 17 = 34 total)
-✅ Tests run automatically in CI
-✅ E2E flow of OTA updates verified
-✅ File system isolation works (by app version, fingerprint, channel)
-✅ Error scenarios handled (network, corrupted bundle, invalid structure, hash mismatch, disk space, interruption)
-✅ Progress tracking accurate
-✅ Bundle persistence after restart verified
-✅ Cache reuse for same bundleId verified
+### Phase 0 (Infrastructure) - ✅ COMPLETED
+- ✅ iOS test infrastructure using Tuist with direct source references
+- ✅ Android test infrastructure with placeholder tests
+- ✅ Test resources created (bundles, ZIPs, hashes)
+- ✅ Test helpers implemented (MockURLProtocol, TestHelpers)
+- ✅ Both `pnpm test:ios` and `pnpm test:android` working
+
+### Phase 1 (E2E Tests) - ⏳ PENDING
+- ⏳ 17 iOS E2E integration tests implemented and passing
+- ⏳ E2E flow of OTA updates verified
+- ⏳ File system isolation works (by app version, fingerprint, channel)
+- ⏳ Error scenarios handled (network, corrupted bundle, invalid structure, hash mismatch, disk space, interruption)
+- ⏳ Progress tracking accurate
+- ⏳ Bundle persistence after restart verified
+- ⏳ Cache reuse for same bundleId verified
+
+### Phase 2 (CI/CD) - ⏳ PENDING
+- ⏳ iOS tests run automatically in GitHub Actions
+- ⏳ Tuist and mise properly installed in CI environment
+- ⏳ Tests triggered on relevant file changes
 
 ## Summary
 
-### Before (Full Scope)
-- **Total Tests**: ~115 tests across 7 categories
-- **Estimated Time**: 5-8 weeks
+### Architecture Decision
+- **iOS**: Full E2E tests with Tuist (references original sources directly)
+- **Android**: Placeholder tests only (Gradle limitation prevents selective source inclusion)
+- **Total**: 2 infrastructure tests (iOS) + 2 placeholder tests (Android) = 4 tests passing
+- **Planned**: 17 E2E scenarios for iOS
 
-### Current (Core OTA Only)
-- **Total Tests**: 34 tests (iOS 17 + Android 17)
-- **Test Categories**: 1 (End-to-End OTA Flow)
-- **Estimated Time**: 1-2 weeks
+### Test Scope
 
-### Test Coverage
+**✅ Phase 0 Completed (Infrastructure)**:
+- Tuist-based iOS test project
+- Direct source references (no file copying)
+- Test resources and helpers
+- Working test commands
 
-**✅ Included (17 scenarios)**:
+**⏳ Phase 1 Planned (17 iOS E2E scenarios)**:
 1. Basic OTA Flow (3): First install, Upgrade, Progress tracking
 2. File System Isolation (3): By app version, fingerprint, channel
 3. Cache & Persistence (3): After restart, Same bundleId reuse, Fallback rollback
@@ -315,23 +377,37 @@ fixtures/unit-native/
 5. Hash Verification (2): Success, Failure
 6. Concurrency (1): Sequential updates
 
-**❌ Excluded**:
-- Individual service unit tests (DownloadService, DecompressService, etc.)
-- Multiple compression formats (TAR.GZ, TAR.BR - ZIP only)
-- File permission/security tests
-- Individual function-level tests
+**❌ Out of Scope**:
+- Android E2E tests (Gradle limitation)
+- Individual service unit tests
+- Multiple compression formats beyond what implementation supports
+- File permission/security-specific tests
 
-## Notes
+## Key Technical Decisions
 
-- **Fixture-based testing**: All tests are in `fixtures/unit-native`, completely isolated from `packages/react-native`
-- **No package modifications**: The main `@hot-updater/react-native` package remains untouched
-- **Real implementation testing**: Mock network only, use real implementation for everything else
-- **Test bundles**: Small ZIP files with actual React Native bundles
-- **Temp directory**: Tests run in temp with cleanup
-- **CI Integration**: Run automatically in GitHub Actions (`.github/workflows/integration-ios.yml` and `integration-android.yml`)
-- **Build artifacts**: Excluded via `.gitignore` (`.build/`, `.gradle/`, `build/`, etc.)
+### Why Tuist for iOS?
+1. **Direct Source References**: Can reference files from `packages/react-native/ios/` without copying
+2. **Selective Inclusion**: Glob patterns allow excluding React Native dependent files
+3. **Modern Tooling**: Better than SPM for complex source layouts
+4. **No File Duplication**: Maintains single source of truth
+
+### Why Placeholder Tests for Android?
+1. **Gradle Limitation**: Android Gradle Plugin includes ALL files in a srcDir
+2. **Cannot Exclude**: No equivalent to Tuist's exclude patterns that actually work
+3. **React Native Dependency**: Original sources require React Native classes
+4. **Pragmatic Choice**: Infrastructure validation is valuable, full E2E requires RN environment
+
+### Test Data Strategy
+- **Minimal Bundles**: Smallest valid React Native bundles (< 1KB each)
+- **Real ZIP Files**: Actual compressed archives, not mocked
+- **Pre-calculated Hashes**: SHA256 values documented for verification tests
+- **Shared Resources**: Both platforms can use same test bundles
 
 ## Quick Start
+
+### Prerequisites
+- **iOS**: Requires `mise` tool manager installed (`curl https://mise.run | sh`)
+- **Android**: Standard Java/Gradle setup (JDK 17+)
 
 ### Running Tests Locally
 
@@ -339,7 +415,11 @@ fixtures/unit-native/
 # From repository root
 cd fixtures/unit-native
 
-# Run all tests
+# Install Tuist (iOS only, first time)
+mise install tuist@latest
+mise use tuist@latest
+
+# Run all tests (iOS + Android)
 pnpm test
 
 # Run iOS tests only
@@ -351,8 +431,13 @@ pnpm test:android
 
 ### Current Test Status
 
-**iOS**: 19 placeholder tests passing ✅
-**Android**: 5 placeholder tests passing ✅
+**iOS**: 2 infrastructure tests passing ✅
+- Basic test - Check if test framework works
+- Check if original sources are accessible (FileManagerService, DecompressService)
 
-All tests are currently placeholders. Integration tests (17 scenarios per platform) need to be implemented in Phase 2.
+**Android**: 2 placeholder tests passing ✅
+- Basic test - Verify test framework works
+- Test infrastructure is properly configured
+
+**Next**: Implement 17 E2E scenarios for iOS
 
