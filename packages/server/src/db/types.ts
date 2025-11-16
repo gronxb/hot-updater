@@ -8,7 +8,7 @@ import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
 import type { FumaDBAdapter } from "fumadb/adapters";
 import type { PaginationInfo } from "../types";
 
-export type DatabasePluginFactory = (args: { cwd: string }) => DatabasePlugin;
+export type DatabasePluginFactory = () => DatabasePlugin;
 
 export type DatabaseAdapter =
   | FumaDBAdapter
@@ -54,4 +54,4 @@ export interface DatabaseAPI {
   deleteBundleById(bundleId: string): Promise<void>;
 }
 
-export type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
+export type StoragePluginFactory = () => StoragePlugin;

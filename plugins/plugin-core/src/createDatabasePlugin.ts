@@ -1,15 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
 import { memoize, merge } from "es-toolkit";
 import type {
-  BasePluginArgs,
   DatabasePlugin,
   DatabasePluginHooks,
   PaginationInfo,
 } from "./types";
-
-export interface BaseDatabaseUtils {
-  cwd: string;
-}
 
 export interface AbstractDatabasePlugin<TContext = object> {
   getContext?: () => TContext;
@@ -80,7 +75,7 @@ export function createDatabasePlugin<TContext = object>(
   name: string,
   abstractPlugin: AbstractDatabasePlugin<TContext>,
   hooks?: DatabasePluginHooks,
-): (options: BasePluginArgs) => DatabasePlugin {
+): () => DatabasePlugin {
   const changedMap = new Map<
     string,
     {
@@ -99,7 +94,8 @@ export function createDatabasePlugin<TContext = object>(
   const memoizedContext = memoize(
     abstractPlugin?.getContext ?? ((() => {}) as () => TContext),
   );
-  return (_: BasePluginArgs) => ({
+
+  return () => ({
     name,
 
     async getBundleById(bundleId: string) {

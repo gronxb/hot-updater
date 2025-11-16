@@ -2,9 +2,6 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "paths": {
-      "@hot-updater/js": ["../../plugins/js/src"]
-    }
   },
   "include": ["src/**/*", "vitest.config.ts"],
   "exclude": ["node_modules"]

@@ -1,5 +1,4 @@
 import {
-  type BasePluginArgs,
   createStorageKeyBuilder,
   getContentType,
   parseStorageUri,
@@ -20,7 +19,7 @@ export interface FirebaseStorageConfig extends admin.AppOptions {
 
 export const firebaseStorage =
   (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
+  (): StoragePlugin => {
     let app: admin.app.App;
     try {
       app = admin.app();

@@ -146,19 +146,18 @@ afterEach(() => {
 describe("s3Database plugin", () => {
   const bucketName = "test-bucket";
   const s3Config = {};
-  // Create plugin: Pass BasePluginArgs like { cwd: "" }
   let plugin = s3Database({
     bucketName,
     ...s3Config,
     cloudfrontDistributionId: "test-distribution-id",
-  })({ cwd: "" });
+  })();
 
   beforeEach(async () => {
     plugin = s3Database({
       bucketName,
       ...s3Config,
       cloudfrontDistributionId: "test-distribution-id",
-    })({ cwd: "" });
+    })();
   });
 
   it("should append a new bundle and commit to S3", async () => {

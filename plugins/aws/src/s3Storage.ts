@@ -8,7 +8,6 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
-  type BasePluginArgs,
   createStorageKeyBuilder,
   getContentType,
   parseStorageUri,
@@ -28,7 +27,7 @@ export interface S3StorageConfig extends S3ClientConfig {
 
 export const s3Storage =
   (config: S3StorageConfig, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
+  (): StoragePlugin => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 

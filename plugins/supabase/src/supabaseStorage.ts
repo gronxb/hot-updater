@@ -1,5 +1,4 @@
 import {
-  type BasePluginArgs,
   createStorageKeyBuilder,
   getContentType,
   parseStorageUri,
@@ -23,7 +22,7 @@ export interface SupabaseStorageConfig {
 
 export const supabaseStorage =
   (config: SupabaseStorageConfig, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
+  (): StoragePlugin => {
     const supabase = createClient<Database>(
       config.supabaseUrl,
       config.supabaseAnonKey,

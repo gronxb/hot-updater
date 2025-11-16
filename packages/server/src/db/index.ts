@@ -36,11 +36,9 @@ interface HotUpdaterOptions {
 }
 
 export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
-  const cwd = options.cwd ?? process.cwd();
-
   // Initialize storage plugins - call factories if they are functions
   const storagePlugins = (options?.storagePlugins ?? []).map((plugin) =>
-    typeof plugin === "function" ? plugin({ cwd }) : plugin,
+    typeof plugin === "function" ? plugin() : plugin,
   );
 
   const resolveFileUrl = async (
@@ -71,9 +69,7 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
   const database = options.database;
 
   if (isDatabasePluginFactory(database) || isDatabasePlugin(database)) {
-    const plugin = isDatabasePluginFactory(database)
-      ? database({ cwd })
-      : database;
+    const plugin = isDatabasePluginFactory(database) ? database() : database;
     core = createPluginDatabaseCore(plugin, resolveFileUrl);
   } else {
     core = createOrmDatabaseCore({

@@ -210,6 +210,6 @@ export type ConfigInput = {
   platform?: PlatformConfig;
   nativeBuild?: NativeBuildArgs;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
-  database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;
+  storage: () => Promise<StoragePlugin> | StoragePlugin;
+  database: () => Promise<DatabasePlugin> | DatabasePlugin;
 };
