@@ -30,7 +30,7 @@ export type EnrichedNativeBuildIosScheme = NativeBuildIosScheme &
   Required<
     Pick<
       NativeBuildIosScheme,
-      "platform" | "installPods" | "configuration" | "verbose" | "destination"
+      "platform" | "installPods" | "configuration" | "destination"
     >
   >;
 export const enrichNativeBuildIosScheme = async (
@@ -40,7 +40,6 @@ export const enrichNativeBuildIosScheme = async (
     platform: "ios",
     installPods: true,
     configuration: "Release",
-    verbose: false,
     destination: [],
     ...scheme,
     exportOptionsPlist: resolveExportOptionsPlist(scheme.exportOptionsPlist),

@@ -202,13 +202,6 @@ export interface NativeBuildIosScheme {
    * @example ["-allowProvisioningUpdates"]
    */
   exportExtraParams?: string[];
-
-  /**
-   * Enable verbose logging for build process.
-   *
-   * @default false
-   */
-  verbose?: boolean;
 }
 
 export interface PlatformConfig {
