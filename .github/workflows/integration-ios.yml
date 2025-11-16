@@ -73,16 +73,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install mise
+      - name: Install mise and setup
         uses: jdx/mise-action@v2
         with:
-          install: false
+          install: true
+          cache: true
+          experimental: true
 
-      - name: Setup Swift 6 via mise
-        run: |
-          cd fixtures/unit-native
-          mise install
-          mise exec -- swift --version
+      - name: Verify Swift version
+        run: swift --version
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
@@ -98,4 +97,4 @@ jobs:
       - name: Run iOS Native Unit Tests
         run: |
           cd fixtures/unit-native
-          mise exec -- pnpm test:ios
+          pnpm test:ios

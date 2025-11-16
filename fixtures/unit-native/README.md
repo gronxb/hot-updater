@@ -18,23 +18,25 @@ This fixture provides a dedicated testing environment for the native code in the
 # From repository root
 cd fixtures/unit-native
 
-# Run all tests (requires mise for iOS)
-mise exec -- pnpm test
+# Run all tests
+pnpm test
 
 # Or run individually
-mise exec -- pnpm test:ios   # iOS with Swift 6
-pnpm test:android             # Android
+pnpm test:ios      # iOS with Swift 6
+pnpm test:android  # Android
 ```
 
 ### Run Platform-Specific Tests
 
 ```bash
-# iOS only (with mise)
-mise exec -- pnpm test:ios
+# iOS only
+pnpm test:ios
 
 # Android only
 pnpm test:android
 ```
+
+> **Note**: Swift 6 is automatically activated when you run commands in `fixtures/unit-native` if mise is installed.
 
 ## Project Structure
 
@@ -76,18 +78,18 @@ Both iOS and Android tests cover:
 
 ### Swift Version Management
 
-This project uses **mise** to manage Swift 6.0 for iOS tests:
+This project uses **mise** to manage Swift 6.0 for iOS tests. Swift 6 is automatically installed and activated when you enter the `fixtures/unit-native` directory.
 
 ```bash
-# Install mise
+# Install mise (one-time setup)
 curl https://mise.run | sh
 
-# Install Swift 6 (from .mise.toml)
+# Navigate to the directory (Swift 6 auto-activates)
 cd fixtures/unit-native
-mise install
 
-# Verify
-mise exec -- swift --version
+# Verify Swift version
+swift --version
+# Should output: Swift version 6.0.x
 ```
 
 ## Platform-Specific Guides

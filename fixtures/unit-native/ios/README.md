@@ -10,19 +10,18 @@ This directory contains native unit tests for the `@hot-updater/react-native` iO
 
 ### Installing Swift 6 with mise
 
-This project uses [mise](https://mise.jdx.dev/) to manage Swift version.
+This project uses [mise](https://mise.jdx.dev/) to manage Swift version. Swift 6 is automatically activated when you're in the `fixtures/unit-native` directory.
 
 ```bash
-# Install mise (if not already installed)
+# Install mise (one-time setup)
 curl https://mise.run | sh
 
-# Install Swift 6 (defined in .mise.toml)
+# Navigate to the directory (Swift 6 auto-installs and activates)
 cd fixtures/unit-native
-mise install
 
 # Verify Swift version
-mise exec -- swift --version
-# Should output: Swift version 6.0.3 or later
+swift --version
+# Should output: Swift version 6.0.x or later
 ```
 
 ## Test Structure
@@ -47,11 +46,6 @@ From the repository root:
 
 ```bash
 cd fixtures/unit-native
-
-# If using mise (recommended)
-mise exec -- pnpm test:ios
-
-# Or without mise (requires Swift 6.0+ installed globally)
 pnpm test:ios
 ```
 
@@ -59,13 +53,10 @@ Or directly with Swift Package Manager:
 
 ```bash
 cd fixtures/unit-native
-
-# With mise
-mise exec -- swift test --package-path ios
-
-# Without mise
 swift test --package-path ios
 ```
+
+> **Note**: Swift 6 is automatically activated by mise when you're in the `fixtures/unit-native` directory.
 
 ### Xcode
 
