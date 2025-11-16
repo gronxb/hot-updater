@@ -85,13 +85,7 @@ const getDefaultConfig = (): ConfigInput => {
       port: 1422,
     },
     platform: getDefaultPlatformConfig(),
-    nativeBuild: {
-      android: {
-        aab: true,
-        variant: "Release",
-        appModuleName: "app",
-      },
-    },
+    nativeBuild: { android: {}, ios: {} },
     build: () => {
       throw new Error("build plugin is required");
     },
