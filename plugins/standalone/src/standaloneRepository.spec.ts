@@ -1,4 +1,4 @@
-import type { BasePluginArgs, Bundle } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -94,9 +94,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
   beforeEach(() => {
     onDatabaseUpdated = vi.fn();
-    repo = standaloneRepository(config, { onDatabaseUpdated })(
-      {} as BasePluginArgs,
-    );
+    repo = standaloneRepository(config, { onDatabaseUpdated })();
   });
 
   it("getBundles: GET /hot-updater/bundles fetches bundle list", async () => {
@@ -494,7 +492,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     };
 
     beforeEach(() => {
-      customRepo = standaloneRepository(customConfig)({} as BasePluginArgs);
+      customRepo = standaloneRepository(customConfig)();
     });
 
     it("getBundles: uses custom list route and headers", async () => {
