@@ -1,15 +1,12 @@
 import { s3Storage } from "@hot-updater/aws";
-import { r2Storage } from "@hot-updater/cloudflare";
-// import { firebaseStorage } from "@hot-updater/firebase";
-import { supabaseStorage } from "@hot-updater/supabase";
-
+// import { firebaseStorage } from "@hot-updater/fir
 // import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
-import { client, closeDatabase as closeMongo } from "./mongodb";
-import path from "path";
 import { config } from "dotenv";
+import path from "path";
+import { client, closeDatabase as closeMongo } from "./mongodb";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 config({ path: path.join(__dirname, ".env.hotupdater") });
@@ -20,6 +17,8 @@ export const hotUpdater = createHotUpdater({
   database: mongoAdapter({
     client,
   }),
+  // Enable console UI at /console
+  enableConsole: true,
   storagePlugins: [
     mockStorage({}),
     s3Storage({

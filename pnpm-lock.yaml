@@ -1384,6 +1384,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@hot-updater/console':
+        specifier: workspace:*
+        version: link:../console
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core

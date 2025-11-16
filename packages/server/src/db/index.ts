@@ -58,6 +58,12 @@ export interface HotUpdaterOptions {
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
   cwd?: string;
+  /**
+   * Enable console UI integration
+   * When enabled, serves the web console at /console
+   * @default false
+   */
+  enableConsole?: boolean;
 }
 
 export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
@@ -486,10 +492,10 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
 
   return {
     ...api,
-    handler: createHandler(
-      api,
-      options?.basePath ? { basePath: options.basePath } : {},
-    ),
+    handler: createHandler(api, {
+      basePath: options?.basePath,
+      enableConsole: options?.enableConsole,
+    }),
 
     // private method
     adapterName: client.adapter.name,
