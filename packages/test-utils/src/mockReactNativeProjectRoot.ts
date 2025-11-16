@@ -13,9 +13,7 @@ export interface MockedReactNativeProjectRoot {
 type Example = "rn-77";
 
 const resolveWorkspaceInfoFromExample = (example: Example) => {
-  const workspaces = getPnpmWorkspaces(getCwd()).filter((ws) =>
-    ws.path.includes("hot-updater/examples"),
-  );
+  const workspaces = getPnpmWorkspaces(getCwd());
   switch (example) {
     case "rn-77":
       return workspaces.find(
