@@ -6,13 +6,18 @@ import type {
 } from "@hot-updater/core";
 import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import type { HotUpdaterCoreInternal } from "./index";
+import type { DatabaseAPI } from "./types";
 
 export function createPluginDatabaseCore(
   plugin: DatabasePlugin,
   resolveFileUrl: (storageUri: string | null) => Promise<string | null>,
-): HotUpdaterCoreInternal {
-  const api = {
+): {
+  api: DatabaseAPI;
+  adapterName: string;
+  createMigrator: () => never;
+  generateSchema: () => never;
+} {
+  const api: DatabaseAPI = {
     async getBundleById(id: string): Promise<Bundle | null> {
       return plugin.getBundleById(id);
     },
@@ -100,15 +105,15 @@ export function createPluginDatabaseCore(
   return {
     api,
     adapterName: plugin.name,
-    createMigrator: (() => {
+    createMigrator: () => {
       throw new Error(
         "createMigrator is only available for Kysely/Prisma/Drizzle database adapters.",
       );
-    }) as unknown as HotUpdaterCoreInternal["createMigrator"],
-    generateSchema: (() => {
+    },
+    generateSchema: () => {
       throw new Error(
         "generateSchema is only available for Kysely/Prisma/Drizzle database adapters.",
       );
-    }) as HotUpdaterCoreInternal["generateSchema"],
+    },
   };
 }

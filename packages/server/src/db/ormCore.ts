@@ -15,7 +15,7 @@ import type { FumaDBAdapter } from "fumadb/adapters";
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
 import type { PaginationInfo } from "../types";
-import type { HotUpdaterCoreInternal } from "./index";
+import type { DatabaseAPI } from "./types";
 
 export const HotUpdaterDB = fumadb({
   namespace: "hot_updater",
@@ -32,10 +32,15 @@ export function createOrmDatabaseCore({
 }: {
   database: FumaDBAdapter;
   resolveFileUrl: (storageUri: string | null) => Promise<string | null>;
-}): HotUpdaterCoreInternal {
+}): {
+  api: DatabaseAPI;
+  adapterName: string;
+  createMigrator: () => Migrator;
+  generateSchema: HotUpdaterClient["generateSchema"];
+} {
   const client = HotUpdaterDB.client(database);
 
-  const api = {
+  const api: DatabaseAPI = {
     async getBundleById(id: string): Promise<Bundle | null> {
       const version = await client.version();
       const orm = client.orm(version);

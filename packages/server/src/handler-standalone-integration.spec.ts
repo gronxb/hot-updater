@@ -1,7 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { kyselyAdapter } from "./adapters/kysely";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";

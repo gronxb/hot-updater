@@ -1,62 +1,38 @@
-import type {
-  AppUpdateInfo,
-  Bundle,
-  GetBundlesArgs,
-  UpdateInfo,
-} from "@hot-updater/core";
 import type { StoragePlugin } from "@hot-updater/plugin-core";
 import { createHandler } from "../handler";
-import type { PaginationInfo } from "../types";
-import type { HotUpdaterClient, Migrator } from "./ormCore";
-import { createOrmDatabaseCore } from "./ormCore";
+import {
+  createOrmDatabaseCore,
+  type HotUpdaterClient,
+  type Migrator,
+} from "./ormCore";
 import { createPluginDatabaseCore } from "./pluginCore";
 import {
   type DatabaseAdapter,
+  type DatabaseAPI,
   isDatabasePlugin,
   isDatabasePluginFactory,
+  type StoragePluginFactory,
 } from "./types";
 
 export type { HotUpdaterClient, Migrator } from "./ormCore";
-
 export { HotUpdaterDB } from "./ormCore";
 
-export interface DatabaseAPI {
-  getBundleById(id: string): Promise<Bundle | null>;
-  getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
-  getAppUpdateInfo(args: GetBundlesArgs): Promise<AppUpdateInfo | null>;
-  getChannels(): Promise<string[]>;
-  getBundles(options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }): Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
-  insertBundle(bundle: Bundle): Promise<void>;
-  updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
-  deleteBundleById(bundleId: string): Promise<void>;
-}
+type OrmCore = ReturnType<typeof createOrmDatabaseCore>;
+type PluginCore = ReturnType<typeof createPluginDatabaseCore>;
+type HotUpdaterCoreInternal = OrmCore | PluginCore;
 
-type HotUpdaterAPI = DatabaseAPI & {
+export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
-
   adapterName: string;
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
 };
-
-type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
 
 interface HotUpdaterOptions {
   database: DatabaseAdapter;
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
   cwd?: string;
-}
-
-interface HotUpdaterCoreInternal {
-  api: DatabaseAPI;
-  adapterName: string;
-  createMigrator: () => Migrator;
-  generateSchema: HotUpdaterClient["generateSchema"];
 }
 
 export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
