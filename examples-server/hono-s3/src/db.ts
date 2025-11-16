@@ -28,9 +28,8 @@ export const hotUpdater = createHotUpdater({
       secretAccessKey,
     },
     bucketName: metadataBucket,
-    // For local development we don't need CloudFront invalidation.
-    // Leaving this empty skips invalidation calls.
-    cloudfrontDistributionId: "",
+    // localstack s3
+    forcePathStyle: true,
   }),
   storagePlugins: [
     mockStorage({}),
@@ -42,6 +41,8 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey,
       },
       bucketName: bundlesBucket,
+      // localstack s3
+      forcePathStyle: true,
     }),
   ],
   basePath: "/hot-updater",

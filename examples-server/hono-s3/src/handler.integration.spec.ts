@@ -1,16 +1,16 @@
 import {
+  CreateBucketCommand,
+  HeadBucketCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
   cleanupServer,
   createGetUpdateInfo,
   killPort,
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/test-utils/node";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import {
-  CreateBucketCommand,
-  HeadBucketCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
 import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -110,4 +110,3 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
     getUpdateInfo,
   });
 });
-
