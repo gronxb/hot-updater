@@ -1,0 +1,10 @@
+<!-- Add these to your android/app/src/main/AndroidManifest.xml -->
+
+<!-- In the <application> tag, add: -->
+<application
+    android:networkSecurityConfig="@xml/network_security_config"
+    ...other attributes...>
+
+    <!-- Your existing application content -->
+
+</application>

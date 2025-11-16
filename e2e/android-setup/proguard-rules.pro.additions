@@ -1,0 +1,12 @@
+# Add these to android/app/proguard-rules.pro
+
+# Detox ProGuard rules
+-dontwarn com.wix.detox.**
+-keep class com.wix.detox.** { *; }
+
+# Keep test-related classes
+-keep class androidx.test.** { *; }
+-dontwarn androidx.test.**
+
+# Keep Kotlin metadata
+-keep class kotlin.Metadata { *; }

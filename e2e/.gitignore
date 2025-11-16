@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+build/
+dist/
+
+# Test artifacts
+artifacts/
+*.log
+
+# Detox
+.detox/
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
