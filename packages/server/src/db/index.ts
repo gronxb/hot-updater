@@ -112,36 +112,43 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
       ? (options.database as DatabasePluginFactory)({ cwd })
       : (options.database as DatabasePlugin);
 
-    const getAllBundles = async (): Promise<Bundle[]> => {
-      const pageSize = 500;
-      let offset = 0;
-      const allBundles: Bundle[] = [];
-
-      // Paginate through all bundles using the plugin API.
-      // The JS-level getUpdateInfo re-applies filtering, so we don't need
-      // to pass `where` filters here.
-      while (true) {
-        const { data, pagination } = await plugin.getBundles({
-          limit: pageSize,
-          offset,
-        });
-        allBundles.push(...data);
-        if (!pagination.hasNextPage) {
-          break;
-        }
-        offset += pageSize;
-      }
-
-      return allBundles;
-    };
-
     const api: DatabaseAPI = {
       async getBundleById(id: string): Promise<Bundle | null> {
         return plugin.getBundleById(id);
       },
 
       async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
-        const bundles = await getAllBundles();
+        // Narrow bundles by platform/channel before applying JS-level strategy.
+        // This avoids loading unnecessary data across other channels/platforms.
+        const where: { channel?: string; platform?: string } = {};
+
+        if ("platform" in args && args.platform) {
+          where.platform = args.platform;
+        }
+
+        const channel =
+          "channel" in args && args.channel ? args.channel : "production";
+        where.channel = channel;
+
+        // First call with limit=1 to discover total matching bundles.
+        const { pagination } = await plugin.getBundles({
+          where,
+          limit: 1,
+          offset: 0,
+        });
+
+        if (pagination.total === 0) {
+          return getUpdateInfoJS([], args);
+        }
+
+        // Then fetch all bundles for this platform/channel in a single call.
+        const { data } = await plugin.getBundles({
+          where,
+          limit: pagination.total,
+          offset: 0,
+        });
+
+        const bundles = data;
         return getUpdateInfoJS(bundles, args);
       },
 
