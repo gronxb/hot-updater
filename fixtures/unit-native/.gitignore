@@ -43,9 +43,6 @@ local.properties
 *.hprof
 captures/
 
-# Gradle wrapper jar (keep scripts)
-gradle-wrapper.jar
-
 # Test reports
 **/test-results/
 **/reports/
