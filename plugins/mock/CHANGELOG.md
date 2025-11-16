@@ -1,5 +1,20 @@
 # @hot-updater/mock
 
+## 0.21.10
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.21.10
+- @hot-updater/core@0.21.10
+
+## 0.21.9
+
+### Patch Changes
+
+- Updated dependencies [aa399a6]
+  - @hot-updater/plugin-core@0.21.9
+  - @hot-updater/core@0.21.9
+
 ## 0.21.8
 
 ### Patch Changes

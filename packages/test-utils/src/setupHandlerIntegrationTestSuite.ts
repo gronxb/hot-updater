@@ -10,7 +10,7 @@ export interface TestApiConfig {
 
 /**
  * Creates getUpdateInfo function for integration tests
- * This is used with setupGetUpdateInfoTestSuite from @hot-updater/core/test-utils
+ * This is used with setupGetUpdateInfoTestSuite from @hot-updater/test-utils
  */
 export function createGetUpdateInfo(
   config: TestApiConfig,
@@ -38,7 +38,16 @@ export function createGetUpdateInfo(
         }
       }
 
-      // Step 2: Construct GET URL based on updateStrategy
+      // Step 2: List bundles via GET
+      const listResponse = await fetch(buildUrl("/bundles"), {
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!listResponse.ok) {
+        throw new Error(`Failed to list bundle: ${listResponse.statusText}`);
+      }
+
+      // Step 3: Construct GET URL based on updateStrategy
       const channel = options.channel || "production";
       const minBundleId = options.minBundleId || NIL_UUID;
 
@@ -55,7 +64,7 @@ export function createGetUpdateInfo(
         );
       }
 
-      // Step 3: Check for updates via GET
+      // Step 4: Check for updates via GET
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to check for updates: ${response.statusText}`);
@@ -63,7 +72,7 @@ export function createGetUpdateInfo(
 
       const data = (await response.json()) as AppUpdateInfo | null;
 
-      // Step 4: Clean up via DELETE
+      // Step 5: Clean up via DELETE
       for (const bundle of bundles) {
         await fetch(buildUrl(`/bundles/${bundle.id}`), {
           method: "DELETE",

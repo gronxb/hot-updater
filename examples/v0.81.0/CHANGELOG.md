@@ -1,5 +1,17 @@
 # @hot-updater/example-react-native-v81
 
+## 0.21.10
+
+### Patch Changes
+
+- @hot-updater/react-native@0.21.10
+
+## 0.21.9
+
+### Patch Changes
+
+- @hot-updater/react-native@0.21.9
+
 ## 0.21.8
 
 ### Patch Changes

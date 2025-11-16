@@ -1267,6 +1267,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../server
       cosmiconfig:
         specifier: 9.0.0
         version: 9.0.0(typescript@5.9.3)
@@ -1276,6 +1279,9 @@ importers:
       jiti:
         specifier: 2.6.1
         version: 2.6.1
+      kysely:
+        specifier: 0.28.8
+        version: 0.28.8
       sql-formatter:
         specifier: 15.6.10
         version: 15.6.10
@@ -1313,9 +1319,6 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../server
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase

@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.21.8",
+  "version": "0.21.10",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -60,8 +60,10 @@
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "cosmiconfig": "9.0.0",
     "jiti": "2.6.1",
+    "kysely": "0.28.8",
     "sql-formatter": "15.6.10",
     "cosmiconfig-typescript-loader": "5.0.0"
   },

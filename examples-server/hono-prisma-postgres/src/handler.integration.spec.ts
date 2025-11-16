@@ -1,16 +1,16 @@
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+
 import {
   cleanupServer,
   createGetUpdateInfo,
-  createTestDbPath,
   killPort,
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/test-utils/node";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import { afterAll, beforeAll, describe } from "vitest";
+import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
-import { execa } from "execa";
+import { afterAll, beforeAll, describe } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
