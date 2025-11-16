@@ -1,0 +1,60 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Swift Package Manager (iOS)
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+*.playground
+Package.resolved
+
+# Xcode
+build/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+
+# Android/Gradle
+.gradle/
+build/
+.cxx/
+local.properties
+*.iml
+.idea/
+.classpath
+.project
+.settings/
+*.hprof
+captures/
+
+# Gradle wrapper jar (keep scripts)
+gradle-wrapper.jar
+
+# Test reports
+**/test-results/
+**/reports/
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log

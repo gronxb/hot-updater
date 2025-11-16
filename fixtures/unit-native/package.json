@@ -1,0 +1,14 @@
+{
+  "name": "unit-native",
+  "version": "0.21.0",
+  "private": true,
+  "description": "Native unit tests for @hot-updater/react-native",
+  "scripts": {
+    "test:ios": "swift test --package-path ios",
+    "test:android": "cd android && ./gradlew test",
+    "test": "pnpm test:ios && pnpm test:android"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
