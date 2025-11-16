@@ -18,6 +18,8 @@ import {
 
 export type { HotUpdaterClient, Migrator } from "./ormCore";
 
+export { HotUpdaterDB } from "./ormCore";
+
 export interface DatabaseAPI {
   getBundleById(id: string): Promise<Bundle | null>;
   getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
@@ -33,7 +35,7 @@ export interface DatabaseAPI {
   deleteBundleById(bundleId: string): Promise<void>;
 }
 
-export type HotUpdaterAPI = DatabaseAPI & {
+type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
 
   adapterName: string;
@@ -41,16 +43,16 @@ export type HotUpdaterAPI = DatabaseAPI & {
   generateSchema: HotUpdaterClient["generateSchema"];
 };
 
-export type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
+type StoragePluginFactory = (args: { cwd: string }) => StoragePlugin;
 
-export interface HotUpdaterOptions {
+interface HotUpdaterOptions {
   database: DatabaseAdapter;
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
   cwd?: string;
 }
 
-export interface HotUpdaterCoreInternal {
+interface HotUpdaterCoreInternal {
   api: DatabaseAPI;
   adapterName: string;
   createMigrator: () => Migrator;
