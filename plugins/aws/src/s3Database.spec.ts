@@ -803,7 +803,7 @@ describe("s3Database plugin", () => {
         cloudfrontDistributionId: "test-distribution-id",
       },
       { onDatabaseUpdated },
-    )({ cwd: "" });
+    )();
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
     await pluginWithHook.commitBundle();
