@@ -29,3 +29,19 @@ jobs:
         run: pnpm biome:check
       - name: Unit test
         run: pnpm test
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "5.9"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Native unit tests
+        run: |
+          cd examples/unit-native
+          ./run-tests.sh

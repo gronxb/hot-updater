@@ -1,0 +1,14 @@
+# iOS
+ios/.build/
+ios/.swiftpm/
+ios/Package.resolved
+
+# Android
+android/.gradle/
+android/build/
+android/.idea/
+android/*.iml
+android/local.properties
+
+# Test outputs
+*.log
