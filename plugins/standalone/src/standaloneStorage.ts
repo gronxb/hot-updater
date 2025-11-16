@@ -1,4 +1,7 @@
-import type { StoragePlugin, StoragePluginHooks } from "@hot-updater/plugin-core";
+import type {
+  StoragePlugin,
+  StoragePluginHooks,
+} from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import mime from "mime";
 import path from "path";

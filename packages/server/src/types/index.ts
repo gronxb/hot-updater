@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
+
 export type { Bundle } from "@hot-updater/core";
 export type { HotUpdaterAPI } from "../db";
 
