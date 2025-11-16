@@ -149,7 +149,9 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
         args: GetBundlesArgs,
       ): Promise<AppUpdateInfo | null> {
         const info = await this.getUpdateInfo(args);
-        if (!info) return null;
+        if (!info) {
+          return null;
+        }
         const { storageUri, ...rest } = info as UpdateInfo & {
           storageUri: string | null;
         };
@@ -204,12 +206,12 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
       adapterName: plugin.name,
       createMigrator: (() => {
         throw new Error(
-          "createMigrator is only available for FumaDB-based database adapters.",
+          "createMigrator is only available for Kysely/Prisma/Drizzle database adapters.",
         );
       }) as unknown as () => Migrator,
       generateSchema: (() => {
         throw new Error(
-          "generateSchema is only available for FumaDB-based database adapters.",
+          "generateSchema is only available for Kysely/Prisma/Drizzle database adapters.",
         );
       }) as HotUpdaterClient["generateSchema"],
     };
