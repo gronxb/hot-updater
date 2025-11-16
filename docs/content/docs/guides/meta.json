@@ -4,6 +4,7 @@
   "icon": "BookOpenCheck",
   "pages": [
     "deploy",
+    "native-build",
     "console",
     "simulator-test",
     "channel-management",
