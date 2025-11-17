@@ -4,7 +4,6 @@ import { r2Storage } from "@hot-updater/cloudflare";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { firebaseStorage } from "@hot-updater/firebase";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { supabaseStorage } from "@hot-updater/supabase";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
@@ -19,6 +18,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { kyselyAdapter } from "../adapters/kysely";
 import { createHotUpdater } from "./index";
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {

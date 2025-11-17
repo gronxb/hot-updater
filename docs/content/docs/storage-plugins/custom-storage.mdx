@@ -41,7 +41,6 @@ Here's a complete custom storage plugin implementation:
 
 ```typescript title="customStorage.ts"
 import {
-  type BasePluginArgs,
   getContentType,
   parseStorageUri,
   type StoragePlugin,
@@ -58,7 +57,7 @@ export interface CustomStorageConfig {
 
 export const customStorage =
   (config: CustomStorageConfig, hooks?: StoragePluginHooks) =>
-  ({ cwd }: BasePluginArgs): StoragePlugin => {
+  (): StoragePlugin => {
     const { bucketName, apiKey, endpoint } = config;
 
     return {

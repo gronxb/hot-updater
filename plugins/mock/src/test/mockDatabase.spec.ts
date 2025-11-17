@@ -44,11 +44,11 @@ describe("mockDatabase", () => {
 
   beforeEach(() => {
     DEFAULT_BUNDLES_MOCK = JSON.parse(JSON.stringify(DEFAULT_BUNDLES));
-    plugin = mockDatabase({ latency: DEFAULT_LATENCY })({ cwd: "" });
+    plugin = mockDatabase({ latency: DEFAULT_LATENCY })();
     pluginWithBundles = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: DEFAULT_BUNDLES_MOCK,
-    })({ cwd: "" });
+    })();
   });
 
   it("should return a database plugin", async () => {
@@ -231,7 +231,7 @@ describe("mockDatabase", () => {
     const singleBundlePlugin = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
-    })({ cwd: "" });
+    })();
 
     await singleBundlePlugin.updateBundle(DEFAULT_BUNDLES_MOCK[0].id, {
       enabled: false,
@@ -263,7 +263,7 @@ describe("mockDatabase", () => {
     const singleBundlePlugin = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
-    })({ cwd: "" });
+    })();
 
     await expect(
       singleBundlePlugin.updateBundle("00000000-0000-0000-0000-000000000001", {
@@ -340,7 +340,7 @@ describe("mockDatabase", () => {
       {
         onDatabaseUpdated: mockHook,
       },
-    )({ cwd: "" });
+    )();
 
     await pluginWithHook.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
     await pluginWithHook.commitBundle();
@@ -392,7 +392,7 @@ describe("mockDatabase", () => {
     const testPlugin = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: testBundles,
-    })({ cwd: "" });
+    })();
 
     // Verify both channels exist
     const channelsBefore = await testPlugin.getChannels();
@@ -430,7 +430,7 @@ describe("mockDatabase", () => {
     const testPlugin = mockDatabase({
       latency: DEFAULT_LATENCY,
       initialBundles: testBundles,
-    })({ cwd: "" });
+    })();
 
     // Delete middle bundle
     const bundleToDelete = testBundles.find((b) => b.id === "bundle-2")!;
@@ -453,7 +453,7 @@ describe("mockDatabase", () => {
     const latencyPlugin = mockDatabase({
       latency: { min: 10, max: 20 },
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
-    })({ cwd: "" });
+    })();
 
     const startTime = Date.now();
     await latencyPlugin.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);

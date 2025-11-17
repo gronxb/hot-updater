@@ -18,7 +18,14 @@ import { streamToString } from "./utils/streamToString";
 
 export interface S3DatabaseConfig extends S3ClientConfig {
   bucketName: string;
-  cloudfrontDistributionId: string;
+  /**
+   * CloudFront distribution ID used for cache invalidation.
+   *
+   * If omitted or an empty string, CloudFront invalidation is skipped.
+   * This is useful for local development environments (e.g. Localstack)
+   * where CloudFront is not available.
+   */
+  cloudfrontDistributionId?: string;
   apiBasePath?: string;
 }
 
@@ -143,19 +150,18 @@ export const s3Database = (
     apiBasePath = "/api/check-update",
     ...s3Config
   } = config;
-  if (!cloudfrontDistributionId) {
-    throw new Error("cloudfrontDistributionId is missing in s3Database");
-  }
 
   return createBlobDatabasePlugin({
     name: "s3Database",
     apiBasePath,
     getContext: () => ({
       client: new S3Client(s3Config),
-      cloudfrontClient: new CloudFrontClient({
-        credentials: s3Config.credentials,
-        region: s3Config.region,
-      }),
+      cloudfrontClient: cloudfrontDistributionId
+        ? new CloudFrontClient({
+            credentials: s3Config.credentials,
+            region: s3Config.region,
+          })
+        : undefined,
     }),
     listObjects: (context, prefix: string) =>
       listObjectsInS3(context.client, bucketName, prefix),

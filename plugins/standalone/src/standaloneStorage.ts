@@ -1,5 +1,4 @@
 import type {
-  BasePluginArgs,
   StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
@@ -45,7 +44,7 @@ export interface StandaloneStorageConfig {
 
 export const standaloneStorage =
   (config: StandaloneStorageConfig, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
+  (): StoragePlugin => {
     const routes: StorageRoutes = {
       upload: (key: string, filePath: string) =>
         createRoute(

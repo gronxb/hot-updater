@@ -1,5 +1,4 @@
 import {
-  type BasePluginArgs,
   createStorageKeyBuilder,
   getContentType,
   parseStorageUri,
@@ -46,7 +45,7 @@ export interface R2StorageConfig {
  */
 export const r2Storage =
   (config: R2StorageConfig, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
+  (): StoragePlugin => {
     const { bucketName, cloudflareApiToken, accountId } = config;
     const wrangler = createWrangler({
       accountId,
