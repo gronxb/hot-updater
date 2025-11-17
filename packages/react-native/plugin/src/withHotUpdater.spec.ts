@@ -1,4 +1,10 @@
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import {
+  transformAndroidOldKotlin,
+  transformAndroidRN082Kotlin,
+  transformIOSObjectiveC,
+  transformIOSSwift,
+} from "./transformers";
 
 describe("withHotUpdater - Test Cases", () => {
   describe("Android", () => {
@@ -63,9 +69,8 @@ class MainApplication : Application(), ReactApplication {
   }
 }`;
 
-      // TODO: Implement transformation
-      // const result = applyHotUpdaterPattern(input);
-      // expect(result).toBe(expected);
+      const result = transformAndroidRN082Kotlin(_input);
+      expect(result).toBe(_expected);
     });
 
     it("RN 0.81 Kotlin: input -> output", () => {
@@ -155,9 +160,8 @@ class MainApplication : Application(), ReactApplication {
   }
 }`;
 
-      // TODO: Implement transformation
-      // const result = applyHotUpdaterPattern(input);
-      // expect(result).toBe(expected);
+      const result = transformAndroidOldKotlin(_input);
+      expect(result).toBe(_expected);
     });
 
     it("Expo 54 Kotlin: input -> output", () => {
@@ -282,9 +286,8 @@ class MainApplication : Application(), ReactApplication {
   }
 }`;
 
-      // TODO: Implement transformation
-      // const result = applyHotUpdaterPattern(input);
-      // expect(result).toBe(expected);
+      const result = transformAndroidOldKotlin(_input);
+      expect(result).toBe(_expected);
     });
   });
 
@@ -351,9 +354,8 @@ class MainApplication : Application(), ReactApplication {
 
 @end`;
 
-      // TODO: Implement transformation
-      // const result = applyHotUpdaterPattern(input);
-      // expect(result).toBe(expected);
+      const result = transformIOSObjectiveC(_input);
+      expect(result).toBe(_expected);
     });
 
     it("Swift AppDelegate: input -> output", () => {
@@ -424,9 +426,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   }
 }`;
 
-      // TODO: Implement transformation
-      // const result = applyHotUpdaterPattern(input);
-      // expect(result).toBe(expected);
+      const result = transformIOSSwift(_input);
+      expect(result).toBe(_expected);
     });
 
     it("Expo 54 Swift: input -> output", () => {
@@ -531,9 +532,8 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
   }
 }`;
 
-      // TODO: Implement transformation
-      // const result = applyHotUpdaterPattern(input);
-      // expect(result).toBe(expected);
+      const result = transformIOSSwift(_input);
+      expect(result).toBe(_expected);
     });
   });
 });
