@@ -1084,12 +1084,22 @@ importers:
 
   packages/cli-tools:
     dependencies:
-      '@clack/prompts':
-        specifier: 0.11.0
-        version: 0.11.0
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
+      oxc-transform:
+        specifier: 0.82.1
+        version: 0.82.1
+    devDependencies:
+      '@clack/prompts':
+        specifier: 0.11.0
+        version: 0.11.0
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../test-utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.11
       boxen:
         specifier: ^8.0.1
         version: 8.0.1
@@ -1108,28 +1118,18 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
-      oxc-transform:
-        specifier: 0.82.1
-        version: 0.82.1
       picocolors:
         specifier: 1.1.1
         version: 1.1.1
       tar:
         specifier: ^7.5.1
         version: 7.5.1
-      workspace-tools:
-        specifier: ^0.36.4
-        version: 0.36.4
-    devDependencies:
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../test-utils
-      '@types/node':
-        specifier: 'catalog:'
-        version: 20.19.11
       typescript:
         specifier: 5.8.2
         version: 5.8.2
+      workspace-tools:
+        specifier: ^0.36.4
+        version: 0.36.4
 
   packages/console:
     dependencies:

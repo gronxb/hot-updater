@@ -59,7 +59,7 @@ export function createOrmDatabaseCore({
           "fingerprint_hash",
           "metadata",
         ],
-        where: (b) => b.and(b.isNotNull("id"), b("id", "=", id)),
+        where: (b) => b("id", "=", id),
       });
       if (!result) return null;
       const bundle: Bundle = {
@@ -301,7 +301,6 @@ export function createOrmDatabaseCore({
       const orm = client.orm(version);
       const rows = await orm.findMany("bundles", {
         select: ["channel"],
-        where: (b) => b.isNotNull("channel"),
       });
       const set = new Set(rows?.map((r) => r.channel) ?? []);
       return Array.from(set);
