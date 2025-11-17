@@ -53,7 +53,7 @@ import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgres" }),
-  storagePlugins: [
+  storages: [
     // Configure your storage plugin - examples:
     // s3Storage({ /* S3 or R2 config */ }),
     // supabaseStorage({ /* Supabase config */ }),
@@ -240,5 +240,5 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storagePlugins` in your server's `createHotUpdater`.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`.
 </Callout>

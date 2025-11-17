@@ -204,7 +204,7 @@ import { customStorage } from "./customStorage";
 import { drizzleDatabase } from "@hot-updater/plugin-drizzle";
 
 const hotUpdater = createHotUpdater({
-  storagePlugins: [
+  storages: [
     customStorage({
       bucketName: process.env.CUSTOM_BUCKET_NAME!,
       apiKey: process.env.CUSTOM_API_KEY!,

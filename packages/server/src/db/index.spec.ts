@@ -31,7 +31,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       db: kysely,
       provider: "postgresql",
     }),
-    storagePlugins: [
+    storages: [
       s3Storage({
         region: "us-east-1",
         credentials: {

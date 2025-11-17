@@ -10,7 +10,7 @@ export const hotUpdater = createHotUpdater({
     prisma,
     provider: "sqlite",
   }),
-  storagePlugins: [
+  storages: [
     mockStorage({}),
     s3Storage({
       region: "auto",

@@ -30,6 +30,13 @@ export type HotUpdaterAPI = DatabaseAPI & {
 
 interface HotUpdaterOptions {
   database: DatabaseAdapter;
+  /**
+   * Storage plugins for handling file uploads and downloads.
+   */
+  storages?: (StoragePlugin | StoragePluginFactory)[];
+  /**
+   * @deprecated Use `storages` instead. This field will be removed in a future version.
+   */
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
   cwd?: string;
@@ -37,9 +44,11 @@ interface HotUpdaterOptions {
 
 export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
   // Initialize storage plugins - call factories if they are functions
-  const storagePlugins = (options?.storagePlugins ?? []).map((plugin) =>
-    typeof plugin === "function" ? plugin() : plugin,
-  );
+  const storagePlugins = (
+    options?.storages ??
+    options?.storagePlugins ??
+    []
+  ).map((plugin) => (typeof plugin === "function" ? plugin() : plugin));
 
   const resolveFileUrl = async (
     storageUri: string | null,

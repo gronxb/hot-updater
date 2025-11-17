@@ -37,7 +37,7 @@ import { client } from "./mongodb";
 
 export const hotUpdater = createHotUpdater({
   database: mongoAdapter({ client }),
-  storagePlugins: [
+  storages: [
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,
@@ -90,7 +90,7 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storagePlugins` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints

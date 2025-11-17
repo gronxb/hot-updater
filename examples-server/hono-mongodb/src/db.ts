@@ -17,7 +17,7 @@ export const hotUpdater = createHotUpdater({
   database: mongoAdapter({
     client,
   }),
-  storagePlugins: [
+  storages: [
     mockStorage({}),
     s3Storage({
       region: "auto",
