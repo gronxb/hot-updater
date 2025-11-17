@@ -24,11 +24,23 @@ function detectExampleApps() {
 
     if (!hasIos && !hasAndroid) continue;
 
+    // Detect iOS scheme name
+    let iosSchemeName = null;
+    if (hasIos) {
+      const iosDir = path.join(appPath, "ios");
+      const iosFiles = fs.readdirSync(iosDir);
+      const workspaceFile = iosFiles.find((f) => f.endsWith(".xcworkspace"));
+      if (workspaceFile) {
+        iosSchemeName = workspaceFile.replace(".xcworkspace", "");
+      }
+    }
+
     apps.push({
       key: entry.name,
       folderName: entry.name,
       hasIos,
       hasAndroid,
+      iosSchemeName,
     });
   }
 
@@ -49,23 +61,24 @@ function generateAppsConfig() {
     const configKey = getConfigKey(app.folderName);
     const examplePath = `../examples/${app.folderName}`;
 
-    if (app.hasIos) {
-      config[`${configKey}.ios.debug`] = {
+    if (app.hasIos && app.iosSchemeName) {
+      const schemeName = app.iosSchemeName;
+      config[`${configKey}.ios.release`] = {
         type: "ios.app",
-        binaryPath: `${examplePath}/ios/build/Build/Products/Debug-iphonesimulator/${configKey}.app`,
+        binaryPath: `${examplePath}/ios/build/Build/Products/Release-iphonesimulator/${schemeName}.app`,
         build: app.folderName.startsWith("expo")
-          ? `cd ${examplePath} && npx expo prebuild && xcodebuild -workspace ios/${configKey}.xcworkspace -scheme ${configKey} -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build`
-          : `cd ${examplePath} && xcodebuild -workspace ios/${configKey}.xcworkspace -scheme ${configKey} -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build`,
+          ? `cd ${examplePath} && npx expo prebuild && xcodebuild -workspace ios/${schemeName}.xcworkspace -scheme ${schemeName} -configuration Release -sdk iphonesimulator -derivedDataPath ios/build`
+          : `cd ${examplePath} && xcodebuild -workspace ios/${schemeName}.xcworkspace -scheme ${schemeName} -configuration Release -sdk iphonesimulator -derivedDataPath ios/build`,
       };
     }
 
     if (app.hasAndroid) {
-      config[`${configKey}.android.debug`] = {
+      config[`${configKey}.android.release`] = {
         type: "android.apk",
-        binaryPath: `${examplePath}/android/app/build/outputs/apk/debug/app-debug.apk`,
+        binaryPath: `${examplePath}/android/app/build/outputs/apk/release/app-release.apk`,
         build: app.folderName.startsWith("expo")
-          ? `cd ${examplePath} && npx expo prebuild && cd android && ./gradlew assembleDebug assembleAndroidTest -DtestBuildType=debug`
-          : `cd ${examplePath}/android && ./gradlew assembleDebug assembleAndroidTest -DtestBuildType=debug`,
+          ? `cd ${examplePath} && npx expo prebuild && cd android && ./gradlew assembleRelease assembleAndroidTest -DtestBuildType=release`
+          : `cd ${examplePath}/android && ./gradlew assembleRelease assembleAndroidTest -DtestBuildType=release`,
         reversePorts: [8081],
       };
     }
@@ -81,17 +94,17 @@ function generateConfigurations() {
   for (const app of apps) {
     const configKey = getConfigKey(app.folderName);
 
-    if (app.hasIos) {
+    if (app.hasIos && app.iosSchemeName) {
       config[`${configKey}.ios`] = {
         device: "simulator",
-        app: `${configKey}.ios.debug`,
+        app: `${configKey}.ios.release`,
       };
     }
 
     if (app.hasAndroid) {
       config[`${configKey}.android`] = {
         device: "emulator",
-        app: `${configKey}.android.debug`,
+        app: `${configKey}.android.release`,
       };
     }
   }

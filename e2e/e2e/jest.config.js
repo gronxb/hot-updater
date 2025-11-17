@@ -1,11 +1,11 @@
 /** @type {import('@jest/types').Config.InitialOptions} */
 module.exports = {
   rootDir: "..",
-  testMatch: ["<rootDir>/e2e/tests/**/*.e2e.ts", "<rootDir>/e2e/tests/**/*.e2e.js"],
+  testMatch: ["<rootDir>/tests/**/*.e2e.ts", "<rootDir>/tests/**/*.e2e.js"],
   testTimeout: 120000,
   maxWorkers: 1,
-  globalSetup: "detox/runners/jest/globalSetup",
-  globalTeardown: "detox/runners/jest/globalTeardown",
+  globalSetup: "<rootDir>/scripts/setup-test-env.ts",
+  globalTeardown: "<rootDir>/scripts/teardown-test-env.ts",
   reporters: ["detox/runners/jest/reporter"],
   testEnvironment: "detox/runners/jest/testEnvironment",
   verbose: true,

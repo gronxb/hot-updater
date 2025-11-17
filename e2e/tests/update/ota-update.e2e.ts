@@ -1,17 +1,27 @@
 import {
+  checkServerHealth,
+  deployBundle,
   device,
-  element,
-  by,
-  detoxExpect,
-  waitForAppReady,
-  terminateApp,
-  takeScreenshot,
-  sleep,
   sendToBackgroundAndResume,
+  sleep,
+  takeScreenshot,
+  terminateApp,
+  waitForAppReady,
 } from "../helpers/test-utils";
 
 describe("OTA Update Flow Tests", () => {
   beforeAll(async () => {
+    // Verify server is running
+    const isServerHealthy = await checkServerHealth();
+    if (!isServerHealthy) {
+      throw new Error(
+        "Hot Updater server is not running. Please run the server first.",
+      );
+    }
+
+    // Deploy initial bundle before starting tests
+    await deployBundle({ appName: "v0.81.0", platform: "ios" });
+
     await waitForAppReady();
   });
 

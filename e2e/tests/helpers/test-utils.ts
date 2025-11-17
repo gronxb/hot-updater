@@ -146,3 +146,12 @@ export async function sendToBackgroundAndResume(duration = 2000) {
 export { element, by, device, waitFor };
 
 export const detoxExpect = expect;
+
+export type { DeployOptions } from "./deployment";
+// Re-export deployment helpers for easy access in tests
+export {
+  checkServerHealth,
+  deployBundle,
+  getServerPort,
+  getServerUrl,
+} from "./deployment";

@@ -17,6 +17,7 @@ interface AppInfo {
   path: string;
   hasIos: boolean;
   hasAndroid: boolean;
+  iosSchemeName: string | null;
 }
 
 const EXAMPLES_DIR = path.resolve(__dirname, "../../examples");
@@ -52,12 +53,24 @@ function detectExampleApps(): AppInfo[] {
       // Use folder name if package.json can't be read
     }
 
+    // Detect iOS scheme name
+    let iosSchemeName: string | null = null;
+    if (hasIos) {
+      const iosDir = path.join(appPath, "ios");
+      const iosFiles = fs.readdirSync(iosDir);
+      const workspaceFile = iosFiles.find((f) => f.endsWith(".xcworkspace"));
+      if (workspaceFile) {
+        iosSchemeName = workspaceFile.replace(".xcworkspace", "");
+      }
+    }
+
     apps.push({
       key: entry.name,
       name: displayName,
       path: appPath,
       hasIos,
       hasAndroid,
+      iosSchemeName,
     });
   }
 
@@ -88,7 +101,12 @@ function getConfigKey(folderName: string): string {
 function buildIOS(app: AppInfo) {
   console.log(`\n🍎 Building iOS for ${app.name}...`);
 
-  const configKey = getConfigKey(app.key);
+  if (!app.iosSchemeName) {
+    console.error(`❌ No iOS scheme found for ${app.name}`);
+    throw new Error(`No iOS scheme found for ${app.name}`);
+  }
+
+  const schemeName = app.iosSchemeName;
 
   // Install npm dependencies if node_modules doesn't exist
   const nodeModulesPath = path.join(app.path, "node_modules");
@@ -109,7 +127,7 @@ function buildIOS(app: AppInfo) {
   }
 
   // Build the app
-  const buildCommand = `xcodebuild -workspace ios/${configKey}.xcworkspace -scheme ${configKey} -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build`;
+  const buildCommand = `xcodebuild -workspace ios/${schemeName}.xcworkspace -scheme ${schemeName} -configuration Release -sdk iphonesimulator -derivedDataPath ios/build`;
   execCommand(buildCommand, app.path);
 
   console.log(`✅ iOS build completed for ${app.name}`);
@@ -133,7 +151,7 @@ function buildAndroid(app: AppInfo) {
   // Build the APK
   const androidPath = path.join(app.path, "android");
   execCommand(
-    "./gradlew assembleDebug assembleAndroidTest -DtestBuildType=debug",
+    "./gradlew assembleRelease assembleAndroidTest -DtestBuildType=release",
     androidPath,
   );
 

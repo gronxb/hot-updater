@@ -10,6 +10,9 @@
     "test": "detox test",
     "test:ios": "detox test --configuration ios",
     "test:android": "detox test --configuration android",
+    "test:setup": "tsx scripts/setup-test-env.ts",
+    "test:teardown": "tsx scripts/teardown-test-env.ts",
+    "test:full": "pnpm test:setup && pnpm test && pnpm test:teardown",
     "clean": "tsx scripts/cleanup.ts"
   },
   "devDependencies": {
