@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -86,7 +86,7 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 describe("Standalone Repository Plugin (Default Routes)", () => {
-  let repo: ReturnType<ReturnType<typeof standaloneRepository>>;
+  let repo: DatabasePlugin;
   let onDatabaseUpdated: () => Promise<void>;
   const config: StandaloneRepositoryConfig = {
     baseUrl: "http://localhost/hot-updater",
@@ -467,7 +467,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
   // ─── Custom Routes Tests ────────────────────────────────
   describe("Standalone Repository Plugin (Custom Routes)", () => {
-    let customRepo: ReturnType<ReturnType<typeof standaloneRepository>>;
+    let customRepo: DatabasePlugin;
     const customConfig: StandaloneRepositoryConfig = {
       baseUrl: "http://localhost/api",
       commonHeaders: { Authorization: "Bearer token" },

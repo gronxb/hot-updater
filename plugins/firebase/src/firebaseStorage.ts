@@ -1,9 +1,8 @@
 import {
   createStorageKeyBuilder,
+  createStoragePlugin,
   getContentType,
   parseStorageUri,
-  type StoragePlugin,
-  type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import * as admin from "firebase-admin";
 import fs from "fs/promises";
@@ -17,9 +16,10 @@ export interface FirebaseStorageConfig extends admin.AppOptions {
   basePath?: string;
 }
 
-export const firebaseStorage =
-  (config: FirebaseStorageConfig, hooks?: StoragePluginHooks) =>
-  (): StoragePlugin => {
+export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
+  name: "firebaseStorage",
+  supportedProtocol: "gs",
+  factory: (config) => {
     let app: admin.app.App;
     try {
       app = admin.app();
@@ -29,9 +29,8 @@ export const firebaseStorage =
     const bucket = app.storage().bucket(config.storageBucket);
 
     const getStorageKey = createStorageKeyBuilder(config.basePath);
+
     return {
-      name: "firebaseStorage",
-      supportedProtocol: "gs",
       async delete(storageUri) {
         const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
         if (bucketName !== config.storageBucket) {
@@ -62,8 +61,6 @@ export const firebaseStorage =
               contentType: contentType,
             },
           });
-
-          hooks?.onStorageUploaded?.();
 
           return {
             storageUri: `gs://${config.storageBucket}/${storageKey}`,
@@ -97,4 +94,5 @@ export const firebaseStorage =
         return { fileUrl: signedUrl };
       },
     };
-  };
+  },
+});

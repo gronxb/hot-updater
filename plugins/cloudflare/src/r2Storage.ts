@@ -1,9 +1,8 @@
 import {
   createStorageKeyBuilder,
+  createStoragePlugin,
   getContentType,
   parseStorageUri,
-  type StoragePlugin,
-  type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
@@ -43,9 +42,10 @@ export interface R2StorageConfig {
  * })
  * ```
  */
-export const r2Storage =
-  (config: R2StorageConfig, hooks?: StoragePluginHooks) =>
-  (): StoragePlugin => {
+export const r2Storage = createStoragePlugin<R2StorageConfig>({
+  name: "r2Storage",
+  supportedProtocol: "r2",
+  factory: (config) => {
     const { bucketName, cloudflareApiToken, accountId } = config;
     const wrangler = createWrangler({
       accountId,
@@ -56,8 +56,6 @@ export const r2Storage =
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
-      name: "r2Storage",
-      supportedProtocol: "r2",
       async delete(storageUri) {
         const { bucket, key } = parseStorageUri(storageUri, "r2");
         if (bucket !== bucketName) {
@@ -107,8 +105,6 @@ export const r2Storage =
           throw error;
         }
 
-        hooks?.onStorageUploaded?.();
-
         return {
           storageUri: `r2://${bucketName}/${Key}`,
         };
@@ -129,4 +125,5 @@ export const r2Storage =
         );
       },
     };
-  };
+  },
+});

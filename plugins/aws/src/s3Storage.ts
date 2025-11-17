@@ -9,10 +9,9 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageKeyBuilder,
+  createStoragePlugin,
   getContentType,
   parseStorageUri,
-  type StoragePlugin,
-  type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import path from "path";
@@ -25,17 +24,15 @@ export interface S3StorageConfig extends S3ClientConfig {
   basePath?: string;
 }
 
-export const s3Storage =
-  (config: S3StorageConfig, hooks?: StoragePluginHooks) =>
-  (): StoragePlugin => {
+export const s3Storage = createStoragePlugin<S3StorageConfig>({
+  name: "s3Storage",
+  supportedProtocol: "s3",
+  factory: (config) => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
-
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
-      name: "s3Storage",
-      supportedProtocol: "s3",
       async delete(storageUri) {
         const { bucket, key } = parseStorageUri(storageUri, "s3");
         if (bucket !== bucketName) {
@@ -92,7 +89,6 @@ export const s3Storage =
           throw new Error("Upload Failed");
         }
 
-        hooks?.onStorageUploaded?.();
         return {
           storageUri: `s3://${bucketName}/${Key}`,
         };
@@ -124,4 +120,5 @@ export const s3Storage =
         }
       },
     };
-  };
+  },
+});

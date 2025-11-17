@@ -346,7 +346,7 @@ describe("mockDatabase", () => {
     await pluginWithHook.commitBundle();
 
     // Hook should be called only once from commitBundle
-    expect(mockHook).toHaveBeenCalledTimes(2);
+    expect(mockHook).toHaveBeenCalledTimes(1);
   });
 
   it("should delete bundles and update getBundleById results", async () => {

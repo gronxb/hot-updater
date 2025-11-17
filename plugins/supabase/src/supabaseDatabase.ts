@@ -1,8 +1,4 @@
-import type {
-  Bundle,
-  DatabasePluginHooks,
-  Platform,
-} from "@hot-updater/plugin-core";
+import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -15,21 +11,17 @@ export interface SupabaseDatabaseConfig {
   supabaseAnonKey: string;
 }
 
-export const supabaseDatabase = (
-  config: SupabaseDatabaseConfig,
-  hooks?: DatabasePluginHooks,
-) =>
-  createDatabasePlugin(
-    "supabaseDatabase",
-    {
-      getContext: () => ({
-        supabase: createClient<Database>(
-          config.supabaseUrl,
-          config.supabaseAnonKey,
-        ),
-      }),
-      async getBundleById(context, bundleId) {
-        const { data, error } = await context.supabase
+export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
+  name: "supabaseDatabase",
+  factory: (config) => {
+    const supabase = createClient<Database>(
+      config.supabaseUrl,
+      config.supabaseAnonKey,
+    );
+
+    return {
+      async getBundleById(bundleId) {
+        const { data, error } = await supabase
           .from("bundles")
           .select(
             "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata",
@@ -56,10 +48,10 @@ export const supabaseDatabase = (
         } as Bundle;
       },
 
-      async getBundles(context, options) {
+      async getBundles(options) {
         const { where, limit, offset } = options ?? {};
 
-        let countQuery = context.supabase
+        let countQuery = supabase
           .from("bundles")
           .select("*", { count: "exact", head: true });
 
@@ -72,7 +64,7 @@ export const supabaseDatabase = (
 
         const { count: total = 0 } = await countQuery;
 
-        let query = context.supabase
+        let query = supabase
           .from("bundles")
           .select(
             "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata",
@@ -122,15 +114,15 @@ export const supabaseDatabase = (
         };
       },
 
-      async getChannels(context) {
-        const { data, error } = await context.supabase.rpc("get_channels");
+      async getChannels() {
+        const { data, error } = await supabase.rpc("get_channels");
         if (error) {
           throw error;
         }
         return data.map((bundle: { channel: string }) => bundle.channel);
       },
 
-      async commitBundle(context, { changedSets }) {
+      async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
@@ -139,7 +131,7 @@ export const supabaseDatabase = (
         for (const op of changedSets) {
           if (op.operation === "delete") {
             // Handle delete operation
-            const { error } = await context.supabase
+            const { error } = await supabase
               .from("bundles")
               .delete()
               .eq("id", op.data.id);
@@ -150,7 +142,7 @@ export const supabaseDatabase = (
           } else if (op.operation === "insert" || op.operation === "update") {
             // Handle insert and update operations
             const bundle = op.data;
-            const { error } = await context.supabase.from("bundles").upsert(
+            const { error } = await supabase.from("bundles").upsert(
               {
                 id: bundle.id,
                 channel: bundle.channel,
@@ -173,10 +165,7 @@ export const supabaseDatabase = (
             }
           }
         }
-
-        // Trigger hooks after all operations
-        hooks?.onDatabaseUpdated?.();
       },
-    },
-    hooks,
-  );
+    };
+  },
+});

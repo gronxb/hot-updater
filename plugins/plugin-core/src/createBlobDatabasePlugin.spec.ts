@@ -86,12 +86,12 @@ afterEach(() => {
 });
 
 describe("blobDatabase plugin", () => {
-  async function listObjects(_context: any, prefix: string): Promise<string[]> {
+  async function listObjects(prefix: string): Promise<string[]> {
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
     return keys;
   }
 
-  async function loadObject<T>(_context: any, path: string): Promise<T | null> {
+  async function loadObject<T>(path: string): Promise<T | null> {
     const data = fakeStore[path];
     if (data) {
       return JSON.parse(data);
@@ -99,44 +99,42 @@ describe("blobDatabase plugin", () => {
     return null;
   }
 
-  async function uploadObject<T>(
-    _context: any,
-    path: string,
-    data: T,
-  ): Promise<void> {
+  async function uploadObject<T>(path: string, data: T): Promise<void> {
     fakeStore[path] = JSON.stringify(data);
   }
 
-  async function deleteObject(_context: any, path: string): Promise<void> {
+  async function deleteObject(path: string): Promise<void> {
     delete fakeStore[path];
   }
 
-  async function invalidatePaths(_context: any, paths: string[]) {
+  async function invalidatePaths(paths: string[]) {
     cloudfrontInvalidations.push({ paths });
   }
 
   let plugin = createBlobDatabasePlugin({
     name: "blobDatabase",
-    apiBasePath: "/api/check-update",
-    getContext: () => ({}),
-    listObjects,
-    loadObject,
-    uploadObject,
-    deleteObject,
-    invalidatePaths,
-  })();
-
-  beforeEach(async () => {
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
+    factory: () => ({
       apiBasePath: "/api/check-update",
-      getContext: () => ({}),
       listObjects,
       loadObject,
       uploadObject,
       deleteObject,
       invalidatePaths,
-    })();
+    }),
+  })({});
+
+  beforeEach(async () => {
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({});
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -643,15 +641,15 @@ describe("blobDatabase plugin", () => {
 
     const pluginWithHook = createBlobDatabasePlugin({
       name: "blobDatabase",
-      apiBasePath: "/api/check-update",
-      getContext: () => ({}),
-      listObjects,
-      loadObject,
-      uploadObject,
-      deleteObject,
-      invalidatePaths,
-      hooks: { onDatabaseUpdated },
-    })();
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({}, { onDatabaseUpdated });
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
     await pluginWithHook.commitBundle();

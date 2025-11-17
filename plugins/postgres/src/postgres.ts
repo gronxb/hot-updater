@@ -1,8 +1,4 @@
-import type {
-  Bundle,
-  DatabasePluginHooks,
-  Platform,
-} from "@hot-updater/plugin-core";
+import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -13,34 +9,20 @@ import type { Database } from "./types";
 
 export interface PostgresConfig extends PoolConfig {}
 
-export const postgres = (
-  config: PostgresConfig,
-  hooks?: DatabasePluginHooks,
-) => {
-  return createDatabasePlugin(
-    "postgres",
-    {
-      getContext: () => {
-        const pool = new Pool(config);
+export const postgres = createDatabasePlugin<PostgresConfig>({
+  name: "postgres",
+  factory: (config) => {
+    const pool = new Pool(config);
+    const dialect = new PostgresDialect({ pool });
+    const db = new Kysely<Database>({ dialect });
 
-        const dialect = new PostgresDialect({
-          pool,
-        });
-
-        const db = new Kysely<Database>({
-          dialect,
-        });
-        return {
-          db,
-          pool,
-        };
+    return {
+      async onUnmount() {
+        await db.destroy();
+        await pool.end();
       },
-      async onUnmount(context) {
-        await context.db.destroy();
-        await context.pool.end();
-      },
-      async getBundleById(context, bundleId) {
-        const data = await context.db
+      async getBundleById(bundleId) {
+        const data = await db
           .selectFrom("bundles")
           .selectAll()
           .where("id", "=", bundleId)
@@ -64,10 +46,10 @@ export const postgres = (
         } as Bundle;
       },
 
-      async getBundles(context, options) {
+      async getBundles(options) {
         const { where, limit, offset } = options ?? {};
 
-        let countQuery = context.db.selectFrom("bundles");
+        let countQuery = db.selectFrom("bundles");
         if (where?.channel) {
           countQuery = countQuery.where("channel", "=", where.channel);
         }
@@ -80,11 +62,11 @@ export const postgres = (
         }
 
         const countResult = await countQuery
-          .select(context.db.fn.count<number>("id").as("total"))
+          .select(db.fn.count<number>("id").as("total"))
           .executeTakeFirst();
         const total = countResult?.total || 0;
 
-        let query = context.db.selectFrom("bundles").orderBy("id", "desc");
+        let query = db.selectFrom("bundles").orderBy("id", "desc");
         if (where?.channel) {
           query = query.where("channel", "=", where.channel);
         }
@@ -125,8 +107,8 @@ export const postgres = (
         };
       },
 
-      async getChannels(context) {
-        const data = await context.db
+      async getChannels() {
+        const data = await db
           .selectFrom("bundles")
           .select("channel")
           .groupBy("channel")
@@ -134,12 +116,12 @@ export const postgres = (
         return data.map((bundle) => bundle.channel);
       },
 
-      async commitBundle(context, { changedSets }) {
+      async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
 
-        await context.db.transaction().execute(async (tx) => {
+        await db.transaction().execute(async (tx) => {
           // Process each operation sequentially
           for (const op of changedSets) {
             if (op.operation === "delete") {
@@ -189,11 +171,7 @@ export const postgres = (
             }
           }
         });
-
-        // Trigger hooks after all operations
-        hooks?.onDatabaseUpdated?.();
       },
-    },
-    hooks,
-  );
-};
+    };
+  },
+});

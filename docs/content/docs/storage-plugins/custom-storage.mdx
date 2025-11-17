@@ -41,113 +41,90 @@ Here's a complete custom storage plugin implementation:
 
 ```typescript title="customStorage.ts"
 import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  createStoragePlugin,
   getContentType,
   parseStorageUri,
-  type StoragePlugin,
-  type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import path from "path";
 
 export interface CustomStorageConfig {
+  region: string;
+  credentials: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
   bucketName: string;
-  apiKey: string;
-  endpoint: string;
 }
 
-export const customStorage =
-  (config: CustomStorageConfig, hooks?: StoragePluginHooks) =>
-  (): StoragePlugin => {
-    const { bucketName, apiKey, endpoint } = config;
+export const customStorage = createStoragePlugin<CustomStorageConfig>({
+  name: "customStorage",
+  supportedProtocol: "s3",
+  factory: (config) => {
+    const { bucketName, ...s3Config } = config;
+    const client = new S3Client(s3Config);
 
     return {
-      name: "customStorage",
-      supportedProtocol: "custom",
-
       async upload(key, filePath) {
-        const fileContent = await fs.readFile(filePath);
-        const contentType = getContentType(filePath);
+        const Body = await fs.readFile(filePath);
+        const ContentType = getContentType(filePath);
         const filename = path.basename(filePath);
-        const storageKey = `${key}/${filename}`;
+        const Key = `${key}/${filename}`;
 
-        // Your upload logic here
-        const response = await fetch(`${endpoint}/upload`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": contentType,
+        const upload = new Upload({
+          client,
+          params: {
+            Bucket: bucketName,
+            Key,
+            Body,
+            ContentType,
           },
-          body: fileContent,
         });
 
-        if (!response.ok) {
-          throw new Error("Upload failed");
-        }
-
-        hooks?.onStorageUploaded?.();
+        await upload.done();
 
         return {
-          storageUri: `custom://${bucketName}/${storageKey}`,
+          storageUri: `s3://${bucketName}/${Key}`,
         };
       },
 
       async delete(storageUri) {
-        const { bucket, key } = parseStorageUri(storageUri, "custom");
+        const { bucket, key } = parseStorageUri(storageUri, "s3");
 
         if (bucket !== bucketName) {
-          throw new Error(
-            `Bucket mismatch: expected "${bucketName}", got "${bucket}"`
-          );
+          throw new Error(`Bucket mismatch: expected "${bucketName}"`);
         }
 
-        // Your delete logic here
-        const response = await fetch(`${endpoint}/delete`, {
-          method: "DELETE",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({ key }),
+        const command = new DeleteObjectCommand({
+          Bucket: bucketName,
+          Key: key,
         });
 
-        if (!response.ok) {
-          throw new Error("Delete failed");
-        }
+        await client.send(command);
       },
 
       async getDownloadUrl(storageUri) {
         const url = new URL(storageUri);
-
-        if (url.protocol.replace(":", "") !== "custom") {
-          throw new Error("Invalid protocol");
-        }
-
         const bucket = url.host;
         const key = url.pathname.slice(1);
 
-        if (!bucket || !key) {
-          throw new Error("Invalid storage URI");
-        }
-
-        // Your URL generation logic here
-        const response = await fetch(`${endpoint}/presign`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ bucket, key }),
+        const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+        const signedUrl = await getSignedUrl(client, command, {
+          expiresIn: 3600,
         });
 
-        if (!response.ok) {
-          throw new Error("Failed to generate download URL");
-        }
-
-        const { url: fileUrl } = await response.json();
-
-        return { fileUrl };
+        return { fileUrl: signedUrl };
       },
     };
-  };
+  },
+});
 ```
 
 ## Helper Utilities
@@ -160,8 +137,8 @@ Parses storage URIs into bucket and key components:
 
 ```typescript
 const { bucket, key } = parseStorageUri(
-  "custom://my-bucket/path/file.bundle",
-  "custom"
+  "s3://my-bucket/path/file.bundle",
+  "s3"
 );
 // bucket: "my-bucket"
 // key: "path/file.bundle"
@@ -186,9 +163,12 @@ import { customStorage } from "./customStorage";
 
 export default defineConfig({
   storage: customStorage({
-    bucketName: process.env.CUSTOM_BUCKET_NAME!,
-    apiKey: process.env.CUSTOM_API_KEY!,
-    endpoint: process.env.CUSTOM_ENDPOINT!,
+    region: "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.BUCKET_NAME!,
   }),
   // ... other config
 });
@@ -201,20 +181,20 @@ Use your plugin with `createHotUpdater` for self-hosted servers:
 ```typescript
 import { createHotUpdater } from "@hot-updater/core";
 import { customStorage } from "./customStorage";
-import { drizzleDatabase } from "@hot-updater/plugin-drizzle";
 
 const hotUpdater = createHotUpdater({
   storagePlugins: [
     customStorage({
-      bucketName: process.env.CUSTOM_BUCKET_NAME!,
-      apiKey: process.env.CUSTOM_API_KEY!,
-      endpoint: process.env.CUSTOM_ENDPOINT!,
-      basePath: "bundles",
+      region: "us-east-1",
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.BUCKET_NAME!,
     }),
-  ]
+  ],
   // ... other options
 });
-
 ```
 
 ### Security
@@ -233,13 +213,3 @@ return {
   storageUri: `${supportedProtocol}://${bucketName}/${storageKey}`,
 };
 ```
-
-### Hooks
-
-Call `onStorageUploaded` after successful uploads:
-
-```typescript
-hooks?.onStorageUploaded?.();
-```
-
-This allows tracking upload events for monitoring and analytics.
