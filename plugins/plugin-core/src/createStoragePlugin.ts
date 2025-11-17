@@ -64,21 +64,32 @@ export const createStoragePlugin = <TConfig>(
 ) => {
   return (config: TConfig, hooks?: StoragePluginHooks) => {
     return (): StoragePlugin => {
-      const methods = options.factory(config);
-
-      // Wrap upload method to automatically call onStorageUploaded hook
-      const originalUpload = methods.upload;
-      const wrappedUpload: typeof originalUpload = async (key, filePath) => {
-        const result = await originalUpload(key, filePath);
-        await hooks?.onStorageUploaded?.();
-        return result;
+      // Lazy initialization: factory is only called on first method invocation
+      let cachedMethods: StoragePluginMethods | null = null;
+      const getMethods = () => {
+        if (!cachedMethods) {
+          cachedMethods = options.factory(config);
+        }
+        return cachedMethods;
       };
 
       return {
         name: options.name,
         supportedProtocol: options.supportedProtocol,
-        ...methods,
-        upload: wrappedUpload,
+
+        async upload(key, filePath) {
+          const result = await getMethods().upload(key, filePath);
+          await hooks?.onStorageUploaded?.();
+          return result;
+        },
+
+        async delete(storageUri) {
+          return getMethods().delete(storageUri);
+        },
+
+        async getDownloadUrl(storageUri) {
+          return getMethods().getDownloadUrl(storageUri);
+        },
       };
     };
   };

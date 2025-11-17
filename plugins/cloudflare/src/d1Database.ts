@@ -1,9 +1,5 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabasePluginHooks,
-  PaginationOptions,
-} from "@hot-updater/plugin-core";
+import type { Bundle, PaginationOptions } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -76,43 +72,41 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
   };
 }
 
-export const d1Database = (
-  config: D1DatabaseConfig,
-  hooks?: DatabasePluginHooks,
-) => {
-  let bundles: Bundle[] = [];
-
-  // Helper function to get total count
-  async function getTotalCount(
-    context: { cf: Cloudflare },
-    conditions: QueryConditions,
-  ): Promise<number> {
-    const { sql: whereClause, params } = buildWhereClause(conditions);
-    const countSql = minify(
-      `SELECT COUNT(*) as total FROM bundles${whereClause}`,
-    );
-
-    const countResult = await context.cf.d1.database.query(config.databaseId, {
-      account_id: config.accountId,
-      sql: countSql,
-      params,
+export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
+  name: "d1Database",
+  factory: (config) => {
+    let bundles: Bundle[] = [];
+    const cf = new Cloudflare({
+      apiToken: config.cloudflareApiToken,
     });
 
-    const rows = await resolvePage<{ total: number }>(countResult);
-    return rows[0]?.total || 0;
-  }
+    // Helper function to get total count
+    async function getTotalCount(conditions: QueryConditions): Promise<number> {
+      const { sql: whereClause, params } = buildWhereClause(conditions);
+      const countSql = minify(
+        `SELECT COUNT(*) as total FROM bundles${whereClause}`,
+      );
 
-  // Helper function to get paginated bundles
-  async function getPaginatedBundles(
-    context: { cf: Cloudflare },
-    conditions: QueryConditions,
-    limit: number,
-    offset: number,
-  ): Promise<Bundle[]> {
-    const { sql: whereClause, params } = buildWhereClause(conditions);
+      const countResult = await cf.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        sql: countSql,
+        params,
+      });
 
-    // Build the complete query
-    const sql = minify(`
+      const rows = await resolvePage<{ total: number }>(countResult);
+      return rows[0]?.total || 0;
+    }
+
+    // Helper function to get paginated bundles
+    async function getPaginatedBundles(
+      conditions: QueryConditions,
+      limit: number,
+      offset: number,
+    ): Promise<Bundle[]> {
+      const { sql: whereClause, params } = buildWhereClause(conditions);
+
+      // Build the complete query
+      const sql = minify(`
       SELECT * FROM bundles
       ${whereClause}
       ORDER BY id DESC
@@ -120,29 +114,21 @@ export const d1Database = (
       OFFSET ?
     `);
 
-    // Add pagination params
-    params.push(limit, offset);
+      // Add pagination params
+      params.push(limit, offset);
 
-    const result = await context.cf.d1.database.query(config.databaseId, {
-      account_id: config.accountId,
-      sql,
-      params,
-    });
+      const result = await cf.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        sql,
+        params,
+      });
 
-    const rows = await resolvePage<SnakeCaseBundle>(result);
-    return rows.map(transformRowToBundle);
-  }
+      const rows = await resolvePage<SnakeCaseBundle>(result);
+      return rows.map(transformRowToBundle);
+    }
 
-  return createDatabasePlugin(
-    "d1Database",
-    {
-      getContext: () => ({
-        cf: new Cloudflare({
-          apiToken: config.cloudflareApiToken,
-        }),
-      }),
-
-      async getBundleById(context, bundleId) {
+    return {
+      async getBundleById(bundleId) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
           return found;
@@ -150,14 +136,11 @@ export const d1Database = (
 
         const sql = minify(/* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`);
-        const singlePage = await context.cf.d1.database.query(
-          config.databaseId,
-          {
-            account_id: config.accountId,
-            sql,
-            params: [bundleId],
-          },
-        );
+        const singlePage = await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+          params: [bundleId],
+        });
 
         const rows = await resolvePage<SnakeCaseBundle>(singlePage);
 
@@ -168,21 +151,14 @@ export const d1Database = (
         return transformRowToBundle(rows[0]);
       },
 
-      async getBundles(
-        context,
-        options: {
-          where?: QueryConditions;
-          limit: number;
-          offset: number;
-        },
-      ) {
+      async getBundles(options) {
         const { where = {}, limit, offset } = options;
 
         // 1. Get total count for pagination
-        const totalCount = await getTotalCount(context, where);
+        const totalCount = await getTotalCount(where);
 
         // 2. Get paginated bundles
-        bundles = await getPaginatedBundles(context, where, limit, offset);
+        bundles = await getPaginatedBundles(where, limit, offset);
 
         // 3. Calculate pagination metadata
         const paginationOptions: PaginationOptions = { limit, offset };
@@ -194,24 +170,21 @@ export const d1Database = (
         };
       },
 
-      async getChannels(context) {
+      async getChannels() {
         const sql = minify(/* sql */ `
           SELECT channel FROM bundles GROUP BY channel
         `);
-        const singlePage = await context.cf.d1.database.query(
-          config.databaseId,
-          {
-            account_id: config.accountId,
-            sql,
-            params: [],
-          },
-        );
+        const singlePage = await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+          params: [],
+        });
 
         const rows = await resolvePage<{ channel: string }>(singlePage);
         return rows.map((row) => row.channel);
       },
 
-      async commitBundle(context, { changedSets }) {
+      async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
@@ -224,7 +197,7 @@ export const d1Database = (
               DELETE FROM bundles WHERE id = ?
             `);
 
-            await context.cf.d1.database.query(config.databaseId, {
+            await cf.d1.database.query(config.databaseId, {
               account_id: config.accountId,
               sql: deleteSql,
               params: [op.data.id],
@@ -270,18 +243,14 @@ export const d1Database = (
                 : JSON.stringify({}),
             ];
 
-            await context.cf.d1.database.query(config.databaseId, {
+            await cf.d1.database.query(config.databaseId, {
               account_id: config.accountId,
               sql: upsertSql,
               params: params as string[],
             });
           }
         }
-
-        // Trigger hooks after all operations
-        hooks?.onDatabaseUpdated?.();
       },
-    },
-    hooks,
-  );
-};
+    };
+  },
+});

@@ -1,5 +1,5 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -23,39 +23,29 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   metadata: firestoreData?.metadata ?? {},
 });
 
-export const firebaseDatabase = (
-  config: admin.AppOptions,
-  hooks?: DatabasePluginHooks,
-) => {
-  let bundles: Bundle[] = [];
+export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
+  name: "firebaseDatabase",
+  factory: (config) => {
+    let bundles: Bundle[] = [];
 
-  return createDatabasePlugin(
-    "firebaseDatabase",
-    {
-      getContext: () => {
-        let app: admin.app.App;
-        try {
-          app = admin.app();
-        } catch {
-          app = admin.initializeApp(config);
-        }
+    let app: admin.app.App;
+    try {
+      app = admin.app();
+    } catch {
+      app = admin.initializeApp(config);
+    }
 
-        const db = admin.firestore(app);
-        const bundlesCollection = db.collection("bundles");
+    const db = admin.firestore(app);
+    const bundlesCollection = db.collection("bundles");
 
-        return {
-          db,
-          bundlesCollection,
-        };
-      },
-
-      async getBundleById(context, bundleId) {
+    return {
+      async getBundleById(bundleId) {
         const found = bundles.find((b) => b.id === bundleId);
         if (found) {
           return found;
         }
 
-        const bundleRef = context.bundlesCollection.doc(bundleId);
+        const bundleRef = bundlesCollection.doc(bundleId);
         const bundleSnap = await bundleRef.get();
 
         if (!bundleSnap.exists) {
@@ -66,11 +56,10 @@ export const firebaseDatabase = (
         return convertToBundle(firestoreData);
       },
 
-      async getBundles(context, options) {
+      async getBundles(options) {
         const { where, limit, offset } = options;
 
-        let query: admin.firestore.Query<FirestoreData> =
-          context.bundlesCollection;
+        let query: admin.firestore.Query<FirestoreData> = bundlesCollection;
 
         if (where?.channel) {
           query = query.where("channel", "==", where.channel);
@@ -107,8 +96,8 @@ export const firebaseDatabase = (
         };
       },
 
-      async getChannels(context) {
-        const channelsCollection = context.db.collection("channels");
+      async getChannels() {
+        const channelsCollection = db.collection("channels");
         const querySnapshot = await channelsCollection.get();
 
         if (querySnapshot.empty) {
@@ -126,7 +115,7 @@ export const firebaseDatabase = (
         return Array.from(channels);
       },
 
-      async commitBundle(context, { changedSets }) {
+      async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
@@ -134,15 +123,13 @@ export const firebaseDatabase = (
         let isTargetAppVersionChanged = false;
         const deletedBundleIds = new Set<string>();
 
-        await context.db.runTransaction(async (transaction) => {
-          const bundlesSnapshot = await transaction.get(
-            context.bundlesCollection,
-          );
+        await db.runTransaction(async (transaction) => {
+          const bundlesSnapshot = await transaction.get(bundlesCollection);
           const targetVersionsSnapshot = await transaction.get(
-            context.db.collection("target_app_versions"),
+            db.collection("target_app_versions"),
           );
           const channelsSnapshot = await transaction.get(
-            context.db.collection("channels"),
+            db.collection("channels"),
           );
 
           const bundlesMap: { [id: string]: any } = {};
@@ -173,9 +160,7 @@ export const firebaseDatabase = (
               } as SnakeCaseBundle;
 
               // Add channel to channels collection
-              const channelRef = context.db
-                .collection("channels")
-                .doc(data.channel);
+              const channelRef = db.collection("channels").doc(data.channel);
               transaction.set(
                 channelRef,
                 {
@@ -209,7 +194,7 @@ export const firebaseDatabase = (
 
           // Execute database operations
           for (const { operation, data } of changedSets) {
-            const bundleRef = context.bundlesCollection.doc(data.id);
+            const bundleRef = bundlesCollection.doc(data.id);
 
             if (operation === "insert" || operation === "update") {
               transaction.set(
@@ -233,7 +218,7 @@ export const firebaseDatabase = (
 
               if (data.targetAppVersion) {
                 const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
-                const targetAppVersionsRef = context.db
+                const targetAppVersionsRef = db
                   .collection("target_app_versions")
                   .doc(versionDocId);
                 transaction.set(
@@ -273,11 +258,7 @@ export const firebaseDatabase = (
         for (const bundleId of deletedBundleIds) {
           bundles = bundles.filter((b) => b.id !== bundleId);
         }
-
-        // Call hook if available
-        hooks?.onDatabaseUpdated?.();
       },
-    },
-    hooks,
-  );
-};
+    };
+  },
+});
