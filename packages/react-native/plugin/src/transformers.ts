@@ -27,8 +27,8 @@ function addLinesOnce(
 }
 
 /**
- * Android: handle getDefaultReactHost pattern (RN 0.82+ 스타일)
- * jsBundleFilePath 파라미터를 추가한다.
+ * Android: handle getDefaultReactHost pattern (RN 0.82+ style).
+ * Adds jsBundleFilePath parameter to the call.
  */
 function transformAndroidReactHost(contents: string): string {
   const kotlinImport = "import com.hotupdater.HotUpdater";
@@ -113,8 +113,8 @@ function transformAndroidReactHost(contents: string): string {
 }
 
 /**
- * Android: DefaultReactNativeHost 패턴(RN 0.81 / Expo 54)
- * getJSBundleFile() override 를 추가한다.
+ * Android: DefaultReactNativeHost pattern (RN 0.81 / Expo 54).
+ * Adds getJSBundleFile() override to the host.
  */
 function transformAndroidDefaultHost(contents: string): string {
   const kotlinImport = "import com.hotupdater.HotUpdater";
@@ -242,8 +242,8 @@ export function transformAndroid(contents: string): string {
 }
 
 /**
- * iOS: Objective-C AppDelegate 코드 변환
- * NSBundle 기반 bundleURL 을 HotUpdater bundleURL 로 교체.
+ * iOS: Objective-C AppDelegate transformation.
+ * Replaces NSBundle-based bundleURL with HotUpdater bundleURL.
  */
 function transformIOSObjC(contents: string): string {
   const iosImport = "#import <HotUpdater/HotUpdater.h>";
@@ -276,8 +276,8 @@ function transformIOSObjC(contents: string): string {
 }
 
 /**
- * iOS: Swift / Expo AppDelegate 코드 변환
- * Bundle.main.url 기반 bundleURL 을 HotUpdater.bundleURL() 로 교체.
+ * iOS: Swift / Expo AppDelegate transformation.
+ * Replaces Bundle.main.url-based bundleURL with HotUpdater.bundleURL().
  */
 function transformIOSSwift(contents: string): string {
   const swiftImport = "import HotUpdater";
