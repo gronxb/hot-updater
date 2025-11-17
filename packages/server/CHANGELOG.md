@@ -1,5 +1,17 @@
 # @hot-updater/server
 
+## 0.21.11
+
+### Patch Changes
+
+- 7ee2830: fix(prisma): remove redundant isNotNull checks causing Prisma validat…
+- e2b67d7: fix(cli-tools): esm only package bundle
+- 2905e47: feat(server): supports hot-updater database plugin style
+- Updated dependencies [e2b67d7]
+  - @hot-updater/core@0.21.11
+  - @hot-updater/js@0.21.11
+  - @hot-updater/plugin-core@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes
