@@ -60,5 +60,13 @@
     "workspace-tools": "^0.36.4",
     "@types/node": "catalog:",
     "typescript": "5.8.2"
+  },
+  "peerDependencies": {
+    "typescript": "*"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   }
 }
