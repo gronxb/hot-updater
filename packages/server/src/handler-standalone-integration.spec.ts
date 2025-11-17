@@ -108,7 +108,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository pointing to our test server
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     const bundleId = uuidv7();
     const bundle = createTestBundle({
@@ -146,7 +146,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     // Use standalone repository to retrieve
     const retrieved = await repo.getBundleById(bundleId);
@@ -173,7 +173,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     // Delete via standalone repository
     await repo.deleteBundle(bundle);
@@ -199,7 +199,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     // Get all bundles
     const result = await repo.getBundles({ limit: 50, offset: 0 });
@@ -220,7 +220,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Full E2E: create → retrieve → update → delete via standalone", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     // Step 1: Create bundle via standalone
     const bundleId = uuidv7();
@@ -258,7 +258,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Multiple bundles in single commit (standalone sends array)", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     // Append multiple bundles
     const bundleId1 = uuidv7();
@@ -316,7 +316,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository with matching basePath
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/api/v2`,
-    });
+    })();
 
     // Test create and retrieve
     const bundleId = uuidv7();
@@ -336,7 +336,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Handler returns 404 when bundle not found (standalone handles gracefully)", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     // Try to get non-existent bundle
     const result = await repo.getBundleById("non-existent-bundle");
