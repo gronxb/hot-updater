@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.21.12
+
+### Patch Changes
+
+- 5c4b98e: feat(storage): createStoragePlugin
+  - @hot-updater/core@0.21.12
+
 ## 0.21.11
 
 ### Patch Changes

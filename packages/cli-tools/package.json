@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/cli-tools",
-  "version": "0.21.11",
+  "version": "0.21.12",
   "type": "module",
   "description": "CLI utilities for Hot Updater",
   "sideEffects": false,

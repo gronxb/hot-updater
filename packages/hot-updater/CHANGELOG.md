@@ -1,5 +1,22 @@
 # hot-updater
 
+## 0.21.12
+
+### Patch Changes
+
+- 56e849b: chore(server): storagePlugins to storages
+- Updated dependencies [56e849b]
+- Updated dependencies [5c4b98e]
+  - @hot-updater/server@0.21.12
+  - @hot-updater/plugin-core@0.21.12
+  - @hot-updater/cloudflare@0.21.12
+  - @hot-updater/firebase@0.21.12
+  - @hot-updater/supabase@0.21.12
+  - @hot-updater/aws@0.21.12
+  - @hot-updater/cli-tools@0.21.12
+  - @hot-updater/console@0.21.12
+  - @hot-updater/core@0.21.12
+
 ## 0.21.11
 
 ### Patch Changes

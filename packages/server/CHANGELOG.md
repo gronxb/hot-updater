@@ -1,5 +1,15 @@
 # @hot-updater/server
 
+## 0.21.12
+
+### Patch Changes
+
+- 56e849b: chore(server): storagePlugins to storages
+- Updated dependencies [5c4b98e]
+  - @hot-updater/plugin-core@0.21.12
+  - @hot-updater/core@0.21.12
+  - @hot-updater/js@0.21.12
+
 ## 0.21.11
 
 ### Patch Changes
