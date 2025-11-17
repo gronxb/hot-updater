@@ -4,16 +4,31 @@ packages:
   - docs
   - examples/*
   - examples-server/*
+
+catalog:
+  '@types/node': ^20
+  execa: 9.5.2
+
+ignoredBuiltDependencies:
+  - '@firebase/util'
+  - cpu-features
+  - protobufjs
+  - re2
+  - ssh2
+
 onlyBuiltDependencies:
-  - "@sentry/cli"
-  - "@swc/core"
+  - '@biomejs/biome'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - '@sentry/cli'
+  - '@swc/core'
+  - aws-sdk
+  - better-sqlite3
   - core-js-pure
   - esbuild
+  - msw
   - nx
+  - prisma
   - sharp
   - typia
   - workerd
-
-catalog:
-  "@types/node": ^20
-  "execa": 9.5.2
