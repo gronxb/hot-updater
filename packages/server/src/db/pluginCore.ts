@@ -95,7 +95,7 @@ export function createPluginDatabaseCore(
     async deleteBundleById(bundleId: string): Promise<void> {
       const bundle = await plugin.getBundleById(bundleId);
       if (!bundle) {
-        throw new Error("targetBundleId not found");
+        return;
       }
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();

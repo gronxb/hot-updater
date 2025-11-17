@@ -3,6 +3,7 @@ import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/pglite";
 import path from "path";
 import { fileURLToPath } from "url";
+import * as schema from "../hot-updater-schema";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,14 +17,6 @@ const client = new PGlite(dbPath);
 
 // Wait for PGlite to be ready
 await client.waitReady;
-
-// Try to load schema, use empty object if not generated yet
-let schema: any = {};
-try {
-  schema = await import("../hot-updater-schema.js");
-} catch {
-  // Schema not generated yet, use empty schema
-}
 
 export const db = drizzle({ client, schema, casing: "snake_case" });
 

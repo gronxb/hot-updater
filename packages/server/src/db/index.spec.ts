@@ -88,6 +88,104 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
 
+  describe("getBundleById", () => {
+    it("should retrieve bundle by id without Prisma validation errors", async () => {
+      const bundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000010",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "test-hash",
+        gitCommitHash: null,
+        message: "Test bundle for getBundleById",
+        channel: "production",
+        storageUri: "s3://test-bucket/test.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      };
+
+      await hotUpdater.insertBundle(bundle);
+
+      // This should not throw a Prisma validation error
+      const retrieved = await hotUpdater.getBundleById(bundle.id);
+
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.id).toBe(bundle.id);
+      expect(retrieved?.platform).toBe(bundle.platform);
+      expect(retrieved?.fileHash).toBe(bundle.fileHash);
+    });
+
+    it("should return null for non-existent bundle id", async () => {
+      const retrieved = await hotUpdater.getBundleById(
+        "99999999-9999-9999-9999-999999999999",
+      );
+
+      expect(retrieved).toBeNull();
+    });
+  });
+
+  describe("getChannels", () => {
+    it("should retrieve all unique channels without Prisma validation errors", async () => {
+      const bundles: Bundle[] = [
+        {
+          id: "00000000-0000-0000-0000-000000000020",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash1",
+          gitCommitHash: null,
+          message: "Bundle 1",
+          channel: "production",
+          storageUri: "s3://test/1.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000021",
+          platform: "android",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash2",
+          gitCommitHash: null,
+          message: "Bundle 2",
+          channel: "staging",
+          storageUri: "s3://test/2.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000022",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash3",
+          gitCommitHash: null,
+          message: "Bundle 3",
+          channel: "production",
+          storageUri: "s3://test/3.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        },
+      ];
+
+      for (const bundle of bundles) {
+        await hotUpdater.insertBundle(bundle);
+      }
+
+      // This should not throw a Prisma validation error
+      const channels = await hotUpdater.getChannels();
+
+      expect(channels).toHaveLength(2);
+      expect(channels).toContain("production");
+      expect(channels).toContain("staging");
+    });
+
+    it("should return empty array when no bundles exist", async () => {
+      const channels = await hotUpdater.getChannels();
+      expect(channels).toEqual([]);
+    });
+  });
+
   describe("getAppUpdateInfo with storage plugins", () => {
     beforeEach(() => {
       // Fix time for deterministic signed URLs

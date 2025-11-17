@@ -1,4 +1,9 @@
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import type { Bundle } from "@hot-updater/core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 
 import {
   cleanupServer,
@@ -22,6 +27,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   let baseUrl: string;
   let testDbName: string;
   const port = 13583;
+  let hotUpdater: HotUpdaterAPI;
 
   beforeAll(async () => {
     // Kill any process using the port before starting
@@ -30,6 +36,9 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     // Generate unique test database name
     testDbName = `hot_updater_test_${Date.now()}`;
     const testDatabaseUrl = `postgresql://hot_updater:hot_updater_dev@localhost:5433/${testDbName}`;
+
+    process.env.TEST_DATABASE_URL = testDatabaseUrl;
+    process.env.DATABASE_URL = testDatabaseUrl;
 
     baseUrl = `http://localhost:${port}`;
 
@@ -96,6 +105,9 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     });
 
     await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+
+    const db = await import("./db.js");
+    hotUpdater = db.hotUpdater;
   }, 120000);
 
   afterAll(async () => {
@@ -139,5 +151,16 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
   setupGetUpdateInfoTestSuite({
     getUpdateInfo,
+  });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id: string) => hotUpdater.getBundleById(id),
+    getChannels: () => hotUpdater.getChannels(),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    getBundles: (options) => hotUpdater.getBundles(options),
+    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
+      hotUpdater.updateBundleById(bundleId, newBundle),
+    deleteBundleById: (bundleId: string) =>
+      hotUpdater.deleteBundleById(bundleId),
   });
 });
