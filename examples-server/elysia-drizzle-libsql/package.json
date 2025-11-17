@@ -1,5 +1,5 @@
 {
-  "name": "elysia-drizzle-libsql",
+  "name": "@examples-server/elysia-drizzle-libsql",
   "private": true,
   "type": "module",
   "scripts": {

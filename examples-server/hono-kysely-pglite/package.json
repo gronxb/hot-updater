@@ -1,5 +1,5 @@
 {
-  "name": "hono-kysely-pglite",
+  "name": "@examples-server/hono-kysely-pglite",
   "private": true,
   "type": "module",
   "scripts": {

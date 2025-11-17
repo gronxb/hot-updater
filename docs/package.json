@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/docs",
+  "name": "hot-updater-docs",
   "version": "0.1.0",
   "private": true,
   "sideEffects": false,

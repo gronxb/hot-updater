@@ -1,5 +1,5 @@
 {
-  "name": "express-prisma-sqlite",
+  "name": "@examples-server/express-prisma-sqlite",
   "private": true,
   "type": "module",
   "scripts": {

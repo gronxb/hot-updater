@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/example-react-native-v74",
+  "name": "@examples/react-native-v74",
   "version": "0.17.0",
   "private": true,
   "scripts": {

@@ -1,5 +1,5 @@
 {
-  "name": "hono-s3",
+  "name": "@examples-server/hono-s3",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,5 +1,5 @@
 {
-  "name": "hono-mongodb",
+  "name": "@examples-server/hono-mongodb",
   "private": true,
   "type": "module",
   "scripts": {

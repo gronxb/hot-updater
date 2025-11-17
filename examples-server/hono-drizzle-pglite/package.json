@@ -1,5 +1,5 @@
 {
-  "name": "hono-drizzle-pglite",
+  "name": "@examples-server/hono-drizzle-pglite",
   "private": true,
   "type": "module",
   "scripts": {

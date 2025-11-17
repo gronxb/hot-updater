@@ -1,5 +1,5 @@
 {
-  "name": "hono-prisma-postgres",
+  "name": "@examples-server/hono-prisma-postgres",
   "private": true,
   "type": "module",
   "scripts": {
