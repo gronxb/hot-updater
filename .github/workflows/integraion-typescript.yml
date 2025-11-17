@@ -22,6 +22,12 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Generate Prisma clients for examples
+        run: |
+          cd examples-server/hono-prisma-postgres && pnpm exec prisma generate
+          cd ../express-prisma-sqlite && pnpm exec prisma generate
+          cd ../..
+
       - name: TypeScript type check
         run: pnpm test:type
 

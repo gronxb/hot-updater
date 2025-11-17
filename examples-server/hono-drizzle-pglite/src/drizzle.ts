@@ -20,6 +20,7 @@ await client.waitReady;
 // Try to load schema, use empty object if not generated yet
 let schema: any = {};
 try {
+  // @ts-ignore - Schema file may not exist during development or type checking
   schema = await import("../hot-updater-schema.js");
 } catch {
   // Schema not generated yet, use empty schema
