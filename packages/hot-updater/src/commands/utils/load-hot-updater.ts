@@ -98,7 +98,7 @@ export async function loadHotUpdater(
         "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
         "  export const hotUpdater = createHotUpdater({\n" +
         "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
-        "    storagePlugins: [...],\n" +
+        "    storages: [...],\n" +
         "  });",
     );
     process.exit(1);

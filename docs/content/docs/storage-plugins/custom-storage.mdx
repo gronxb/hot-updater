@@ -183,7 +183,7 @@ import { createHotUpdater } from "@hot-updater/core";
 import { customStorage } from "./customStorage";
 
 const hotUpdater = createHotUpdater({
-  storagePlugins: [
+  storages: [
     customStorage({
       region: "us-east-1",
       credentials: {

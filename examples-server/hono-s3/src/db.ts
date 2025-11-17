@@ -31,7 +31,7 @@ export const hotUpdater = createHotUpdater({
     // localstack s3
     forcePathStyle: true,
   }),
-  storagePlugins: [
+  storages: [
     mockStorage({}),
     s3Storage({
       region,
