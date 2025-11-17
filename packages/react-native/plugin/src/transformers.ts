@@ -27,44 +27,27 @@ function addLinesOnce(
 }
 
 /**
- * Helper to replace content only if the target content exists and hasn't been replaced yet.
+ * Android: handle getDefaultReactHost pattern (RN 0.82+ 스타일)
+ * jsBundleFilePath 파라미터를 추가한다.
  */
-function replaceContentOnce(
-  contents: string,
-  searchRegex: RegExp,
-  replacement: string,
-  checkIfAlreadyReplaced: string,
-): string {
-  // If the replacement content is already present, assume it's done.
-  if (contents.includes(checkIfAlreadyReplaced)) {
-    return contents;
-  }
-  // Otherwise, perform the replacement if the search target exists.
-  return contents.replace(searchRegex, replacement);
-}
-
-/**
- * Transform Android code for RN 0.82+ pattern
- * Injects jsBundleFilePath parameter into getDefaultReactHost()
- */
-export function transformAndroidRN082Kotlin(contents: string): string {
+function transformAndroidReactHost(contents: string): string {
   const kotlinImport = "import com.hotupdater.HotUpdater";
   const kotlinImportAnchor = "import com.facebook.react.ReactApplication";
   const kotlinMethodCheck = "HotUpdater.getJSBundleFile(applicationContext)";
 
-  // Detect RN 0.82+ new pattern (getDefaultReactHost with packageList)
-  const newPatternKotlinDetector =
-    /getDefaultReactHost\s*\(\s*\n?\s*context\s*=\s*applicationContext\s*,\s*\n?\s*packageList\s*=/;
-  const hasNewKotlinPattern = newPatternKotlinDetector.test(contents);
-
-  if (!hasNewKotlinPattern) {
+  // Quick pattern detection: only touch files using getDefaultReactHost
+  // with the new RN 0.82+ parameter style.
+  if (
+    !contents.includes("getDefaultReactHost(") ||
+    !contents.includes("packageList =")
+  ) {
     return contents;
   }
 
-  // 1. Add import if missing
-  let result = addLinesOnce(contents, kotlinImportAnchor, [kotlinImport]);
+  // 1. Ensure HotUpdater import exists (idempotent via addLinesOnce)
+  const result = addLinesOnce(contents, kotlinImportAnchor, [kotlinImport]);
 
-  // 2. Check if jsBundleFilePath with HotUpdater is already present
+  // 2. If jsBundleFilePath is already wired to HotUpdater, do nothing
   if (
     result.includes(kotlinMethodCheck) &&
     result.includes("jsBundleFilePath")
@@ -72,29 +55,68 @@ export function transformAndroidRN082Kotlin(contents: string): string {
     return result;
   }
 
-  // Find the getDefaultReactHost closing pattern and add jsBundleFilePath before it
-  // Look for the pattern: },<whitespace>)<whitespace>} which is the end of packageList
-  const getDefaultReactHostEnd = /(\},\s*)\n(\s*)\)/;
+  const lines = result.split("\n");
 
-  if (getDefaultReactHostEnd.test(result)) {
-    result = result.replace(
-      getDefaultReactHostEnd,
-      (_match, prefix, closingIndent) => {
-        // The jsBundleFilePath should have same indentation as other parameters (2 spaces more than closing paren)
-        const paramIndent = `${closingIndent}  `;
-        return `${prefix}\n${paramIndent}jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),\n${closingIndent})`;
-      },
-    );
+  const callIndex = lines.findIndex((line) =>
+    line.includes("getDefaultReactHost("),
+  );
+  if (callIndex === -1) {
+    return result;
   }
 
-  return result;
+  // Determine the indentation used for parameters (e.g. "      ")
+  let paramIndent = "";
+  for (let i = callIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    if (trimmed.startsWith(")")) {
+      // No parameters detected, give up safely.
+      return result;
+    }
+    const indentMatch = line.match(/^(\s*)/);
+    paramIndent = indentMatch ? indentMatch[1] : "";
+    break;
+  }
+
+  if (!paramIndent) {
+    return result;
+  }
+
+  // Find the closing line of the call (a line that is just ")" with indentation).
+  let closingIndex = -1;
+  for (let i = callIndex + 1; i < lines.length; i += 1) {
+    if (lines[i].trim() === ")") {
+      closingIndex = i;
+      break;
+    }
+  }
+
+  if (closingIndex === -1) {
+    return result;
+  }
+
+  // Avoid inserting twice if jsBundleFilePath already added somewhere in the call.
+  for (let i = callIndex; i < closingIndex; i += 1) {
+    if (lines[i].includes("jsBundleFilePath")) {
+      return result;
+    }
+  }
+
+  const jsBundleLine = `${paramIndent}jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),`;
+
+  lines.splice(closingIndex, 0, jsBundleLine);
+
+  return lines.join("\n");
 }
 
 /**
- * Transform Android code for RN 0.81 and Expo 54 pattern (old pattern)
- * Adds getJSBundleFile() override method to DefaultReactNativeHost
+ * Android: DefaultReactNativeHost 패턴(RN 0.81 / Expo 54)
+ * getJSBundleFile() override 를 추가한다.
  */
-export function transformAndroidOldKotlin(contents: string): string {
+function transformAndroidDefaultHost(contents: string): string {
   const kotlinImport = "import com.hotupdater.HotUpdater";
   const kotlinImportAnchor = "import com.facebook.react.ReactApplication";
   const kotlinReactNativeHostAnchor = "object : DefaultReactNativeHost(this) {";
@@ -119,57 +141,90 @@ export function transformAndroidOldKotlin(contents: string): string {
     // Remove potentially existing (different) override first
     result = result.replace(kotlinExistingMethodRegex, "");
 
-    // Determine the anchor and its indentation
-    let anchorLine = "";
-    if (result.includes(kotlinHermesAnchor)) {
-      anchorLine = kotlinHermesAnchor;
-    } else if (result.includes(kotlinNewArchAnchor)) {
-      anchorLine = kotlinNewArchAnchor;
+    const lines = result.split("\n");
+
+    const findLineIndex = (needle: string) => {
+      for (let i = 0; i < lines.length; i += 1) {
+        if (lines[i].includes(needle)) {
+          return i;
+        }
+      }
+      return -1;
+    };
+
+    // Prefer inserting after Hermes line, then after new architecture line
+    let anchorIndex = findLineIndex(kotlinHermesAnchor);
+    if (anchorIndex === -1) {
+      anchorIndex = findLineIndex(kotlinNewArchAnchor);
     }
 
-    if (anchorLine) {
-      // Find the indentation of the anchor line
-      const anchorMatch = result.match(
-        new RegExp(
-          `^(\\s*)${anchorLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-          "m",
-        ),
+    if (anchorIndex !== -1) {
+      const indentMatch = lines[anchorIndex].match(/^\s*/);
+      const indent = indentMatch ? indentMatch[0] : "";
+
+      const objectLine = lines.find((line) =>
+        line.includes("object : DefaultReactNativeHost"),
       );
-      if (anchorMatch) {
-        const indent = anchorMatch[1];
-
-        // Detect indent size by finding object : DefaultReactNativeHost line
-        const objectMatch = result.match(
-          /^(\s*)object\s*:\s*DefaultReactNativeHost/m,
-        );
-        let indentSize = 2; // default
-        if (objectMatch) {
-          const objectIndent = objectMatch[1].length;
-          const propertyIndent = indent.length;
-          indentSize = propertyIndent - objectIndent;
+      let indentSize = 2;
+      if (objectLine) {
+        const objectIndent = (objectLine.match(/^\s*/)?.[0] || "").length;
+        const propertyIndent = indent.length;
+        const diff = propertyIndent - objectIndent;
+        if (diff > 0) {
+          indentSize = diff;
         }
-
-        // Use consistent 2-space or 4-space indentation based on detected indent size
-        const spaces = indentSize === 2 ? "  " : "    ";
-        const bodyIndent = indent + spaces;
-
-        // Create method with proper formatting - use \n\n to add blank line before method
-        const kotlinNewMethod = `\n\n${indent}override fun getJSBundleFile(): String? {\n${bodyIndent}return HotUpdater.getJSBundleFile(applicationContext)\n${indent}}`;
-
-        result = result.replace(anchorLine, `${anchorLine}${kotlinNewMethod}`);
       }
+      const spaces = indentSize === 2 ? "  " : "    ";
+      const bodyIndent = indent + spaces;
+
+      const methodLines = [
+        "", // blank line
+        `${indent}override fun getJSBundleFile(): String? {`,
+        `${bodyIndent}return HotUpdater.getJSBundleFile(applicationContext)`,
+        `${indent}}`,
+      ];
+
+      const insertIndex = anchorIndex + 1;
+      lines.splice(insertIndex, 0, ...methodLines);
+      result = lines.join("\n");
     } else {
-      // Fallback: Add before the closing brace of the object
-      const rnHostEndRegex =
-        /(\s*object\s*:\s*DefaultReactNativeHost\s*\([\s\S]*?\n)(\s*\})\s*$/m;
-      if (rnHostEndRegex.test(result)) {
-        const kotlinNewMethod = `\n        override fun getJSBundleFile(): String? {\n          return HotUpdater.getJSBundleFile(applicationContext)\n        }`;
-        result = result.replace(rnHostEndRegex, `$1${kotlinNewMethod}\n$2`);
-      } else {
+      // Fallback: insert before the closing brace of the object block
+      const hostStartIndex = lines.findIndex((line) =>
+        line.includes("object : DefaultReactNativeHost"),
+      );
+
+      if (hostStartIndex === -1) {
         throw new Error(
-          "[transformAndroidOldKotlin] Could not find anchor to insert getJSBundleFile.",
+          "[transformAndroidDefaultHost] Could not find DefaultReactNativeHost block.",
         );
       }
+
+      let hostEndIndex = -1;
+      for (let i = lines.length - 1; i > hostStartIndex; i -= 1) {
+        if (lines[i].trim() === "}") {
+          hostEndIndex = i;
+          break;
+        }
+      }
+
+      if (hostEndIndex === -1) {
+        throw new Error(
+          "[transformAndroidDefaultHost] Could not find end of DefaultReactNativeHost block.",
+        );
+      }
+
+      const indentMatch = lines[hostEndIndex].match(/^\s*/);
+      const indent = indentMatch ? indentMatch[0] : "";
+      const bodyIndent = `${indent}  `;
+
+      const methodLines = [
+        `${indent}override fun getJSBundleFile(): String? {`,
+        `${bodyIndent}return HotUpdater.getJSBundleFile(applicationContext)`,
+        `${indent}}`,
+      ];
+
+      lines.splice(hostEndIndex, 0, ...methodLines);
+      result = lines.join("\n");
     }
   }
 
@@ -177,10 +232,20 @@ export function transformAndroidOldKotlin(contents: string): string {
 }
 
 /**
- * Transform iOS Objective-C AppDelegate code
- * Replaces NSBundle bundleURL with HotUpdater bundleURL
+ * Public Android transformer that applies all Android-specific transforms.
  */
-export function transformIOSObjectiveC(contents: string): string {
+export function transformAndroid(contents: string): string {
+  let result = contents;
+  result = transformAndroidReactHost(result);
+  result = transformAndroidDefaultHost(result);
+  return result;
+}
+
+/**
+ * iOS: Objective-C AppDelegate 코드 변환
+ * NSBundle 기반 bundleURL 을 HotUpdater bundleURL 로 교체.
+ */
+function transformIOSObjC(contents: string): string {
   const iosImport = "#import <HotUpdater/HotUpdater.h>";
   const iosBundleUrl = "[HotUpdater bundleURL]";
   const iosOriginalBundleUrlRegex =
@@ -192,31 +257,35 @@ export function transformIOSObjectiveC(contents: string): string {
     return contents;
   }
 
-  // 1. Add import if missing
-  let result = addLinesOnce(contents, iosAppDelegateHeader, [iosImport]);
+  let result = contents;
 
-  // 2. Replace bundleURL provider if the original exists and hasn't been replaced
-  result = replaceContentOnce(
-    result,
-    iosOriginalBundleUrlRegex,
-    iosBundleUrl,
-    iosBundleUrl,
-  );
+  // 1. Ensure HotUpdater import is present
+  if (!result.includes(iosImport)) {
+    result = addLinesOnce(result, iosAppDelegateHeader, [iosImport]);
+  }
+
+  // 2. Swap NSBundle-based URL with HotUpdater bundleURL, but only once
+  if (
+    !result.includes(iosBundleUrl) &&
+    iosOriginalBundleUrlRegex.test(result)
+  ) {
+    result = result.replace(iosOriginalBundleUrlRegex, iosBundleUrl);
+  }
 
   return result;
 }
 
 /**
- * Transform iOS Swift AppDelegate code
- * Replaces Bundle.main.url with HotUpdater.bundleURL()
+ * iOS: Swift / Expo AppDelegate 코드 변환
+ * Bundle.main.url 기반 bundleURL 을 HotUpdater.bundleURL() 로 교체.
  */
-export function transformIOSSwift(contents: string): string {
+function transformIOSSwift(contents: string): string {
   const swiftImport = "import HotUpdater";
   const swiftBundleUrl = "HotUpdater.bundleURL()";
   const swiftOriginalBundleUrlRegex =
     /Bundle\.main\.url\(forResource: "?main"?, withExtension: "jsbundle"\)/g;
 
-  // Check if it's likely Swift (look for import statements)
+  // Check if it's likely Swift AppDelegate code
   if (!contents.includes("import ")) {
     return contents;
   }
@@ -233,12 +302,22 @@ export function transformIOSSwift(contents: string): string {
   }
 
   // 2. Replace bundleURL provider if the original exists and hasn't been replaced
-  result = replaceContentOnce(
-    result,
-    swiftOriginalBundleUrlRegex,
-    swiftBundleUrl,
-    swiftBundleUrl,
-  );
+  if (
+    !result.includes(swiftBundleUrl) &&
+    swiftOriginalBundleUrlRegex.test(result)
+  ) {
+    result = result.replace(swiftOriginalBundleUrlRegex, swiftBundleUrl);
+  }
 
+  return result;
+}
+
+/**
+ * Public iOS transformer that applies both Objective-C and Swift transforms.
+ */
+export function transformIOS(contents: string): string {
+  let result = contents;
+  result = transformIOSObjC(result);
+  result = transformIOSSwift(result);
   return result;
 }

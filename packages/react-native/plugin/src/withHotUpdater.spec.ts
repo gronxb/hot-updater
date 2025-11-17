@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  transformAndroidOldKotlin,
-  transformAndroidRN082Kotlin,
-  transformIOSObjectiveC,
-  transformIOSSwift,
-} from "./transformers";
+import { transformAndroid, transformIOS } from "./transformers";
 
 describe("withHotUpdater - Test Cases", () => {
   describe("Android", () => {
@@ -69,7 +64,7 @@ class MainApplication : Application(), ReactApplication {
   }
 }`;
 
-      const result = transformAndroidRN082Kotlin(_input);
+      const result = transformAndroid(_input);
       expect(result).toBe(_expected);
     });
 
@@ -160,7 +155,7 @@ class MainApplication : Application(), ReactApplication {
   }
 }`;
 
-      const result = transformAndroidOldKotlin(_input);
+      const result = transformAndroid(_input);
       expect(result).toBe(_expected);
     });
 
@@ -286,7 +281,7 @@ class MainApplication : Application(), ReactApplication {
   }
 }`;
 
-      const result = transformAndroidOldKotlin(_input);
+      const result = transformAndroid(_input);
       expect(result).toBe(_expected);
     });
   });
@@ -354,7 +349,7 @@ class MainApplication : Application(), ReactApplication {
 
 @end`;
 
-      const result = transformIOSObjectiveC(_input);
+      const result = transformIOS(_input);
       expect(result).toBe(_expected);
     });
 
@@ -426,7 +421,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   }
 }`;
 
-      const result = transformIOSSwift(_input);
+      const result = transformIOS(_input);
       expect(result).toBe(_expected);
     });
 
@@ -532,7 +527,7 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
   }
 }`;
 
-      const result = transformIOSSwift(_input);
+      const result = transformIOS(_input);
       expect(result).toBe(_expected);
     });
   });
