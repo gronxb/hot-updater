@@ -41,10 +41,9 @@ Here's a complete custom storage plugin implementation:
 
 ```typescript title="customStorage.ts"
 import {
+  createStoragePlugin,
   getContentType,
   parseStorageUri,
-  type StoragePlugin,
-  type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import path from "path";
@@ -55,15 +54,13 @@ export interface CustomStorageConfig {
   endpoint: string;
 }
 
-export const customStorage =
-  (config: CustomStorageConfig, hooks?: StoragePluginHooks) =>
-  (): StoragePlugin => {
+export const customStorage = createStoragePlugin<CustomStorageConfig>({
+  name: "customStorage",
+  supportedProtocol: "custom",
+  factory: (config) => {
     const { bucketName, apiKey, endpoint } = config;
 
     return {
-      name: "customStorage",
-      supportedProtocol: "custom",
-
       async upload(key, filePath) {
         const fileContent = await fs.readFile(filePath);
         const contentType = getContentType(filePath);
@@ -83,8 +80,6 @@ export const customStorage =
         if (!response.ok) {
           throw new Error("Upload failed");
         }
-
-        hooks?.onStorageUploaded?.();
 
         return {
           storageUri: `custom://${bucketName}/${storageKey}`,
@@ -147,7 +142,8 @@ export const customStorage =
         return { fileUrl };
       },
     };
-  };
+  },
+});
 ```
 
 ## Helper Utilities
@@ -209,7 +205,6 @@ const hotUpdater = createHotUpdater({
       bucketName: process.env.CUSTOM_BUCKET_NAME!,
       apiKey: process.env.CUSTOM_API_KEY!,
       endpoint: process.env.CUSTOM_ENDPOINT!,
-      basePath: "bundles",
     }),
   ]
   // ... other options
@@ -233,13 +228,3 @@ return {
   storageUri: `${supportedProtocol}://${bucketName}/${storageKey}`,
 };
 ```
-
-### Hooks
-
-Call `onStorageUploaded` after successful uploads:
-
-```typescript
-hooks?.onStorageUploaded?.();
-```
-
-This allows tracking upload events for monitoring and analytics.

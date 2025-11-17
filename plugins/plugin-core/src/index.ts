@@ -3,6 +3,7 @@ export * from "./compressionFormat";
 export * from "./createBlobDatabasePlugin";
 export * from "./createDatabasePlugin";
 export * from "./createStorageKeyBuilder";
+export * from "./createStoragePlugin";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
