@@ -3,7 +3,12 @@ import {
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import type { Bundle } from "@hot-updater/core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import {
   cleanupServer,
   createGetUpdateInfo,
@@ -49,6 +54,7 @@ async function ensureBucketExists(bucketName: string) {
 describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
+  let hotUpdater: HotUpdaterAPI;
   const port = 13595;
 
   beforeAll(async () => {
@@ -69,6 +75,13 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
     await ensureBucketExists(METADATA_BUCKET);
     await ensureBucketExists(BUNDLES_BUCKET);
 
+    process.env.AWS_REGION = REGION;
+    process.env.AWS_ACCESS_KEY_ID = ACCESS_KEY_ID;
+    process.env.AWS_SECRET_ACCESS_KEY = SECRET_ACCESS_KEY;
+    process.env.AWS_S3_ENDPOINT = LOCALSTACK_ENDPOINT;
+    process.env.AWS_S3_METADATA_BUCKET = METADATA_BUCKET;
+    process.env.AWS_S3_BUNDLES_BUCKET = BUNDLES_BUCKET;
+
     // Start server
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
@@ -86,6 +99,9 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
     });
 
     await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+
+    const db = await import("./db.js");
+    hotUpdater = db.hotUpdater;
   }, 120000);
 
   afterAll(async () => {
@@ -108,5 +124,16 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
 
   setupGetUpdateInfoTestSuite({
     getUpdateInfo,
+  });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id: string) => hotUpdater.getBundleById(id),
+    getChannels: () => hotUpdater.getChannels(),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    getBundles: (options) => hotUpdater.getBundles(options),
+    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
+      hotUpdater.updateBundleById(bundleId, newBundle),
+    deleteBundleById: (bundleId: string) =>
+      hotUpdater.deleteBundleById(bundleId),
   });
 });
