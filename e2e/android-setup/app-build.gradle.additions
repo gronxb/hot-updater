@@ -1,0 +1,43 @@
+// Add these to your android/app/build.gradle file
+
+android {
+    // ... your existing android block
+
+    defaultConfig {
+        // ... your existing defaultConfig
+
+        // Add test instrumentation runner
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        // ... your existing buildTypes
+    }
+
+    // Add packaging options to avoid conflicts
+    packagingOptions {
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/NOTICE'
+    }
+}
+
+dependencies {
+    // ... your existing dependencies
+
+    // Detox dependencies
+    androidTestImplementation('com.wix:detox:+')
+    androidTestImplementation 'junit:junit:4.13.2'
+
+    // Required for Detox
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test:rules:1.5.0'
+}
+
+// Add this at the bottom of the file
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.test:core:1.5.0'
+        force 'androidx.test:runner:1.5.2'
+        force 'androidx.test:rules:1.5.0'
+    }
+}

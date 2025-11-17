@@ -4,6 +4,7 @@ packages:
   - docs
   - examples/*
   - examples-server/*
+  - e2e
 onlyBuiltDependencies:
   - "@sentry/cli"
   - "@swc/core"

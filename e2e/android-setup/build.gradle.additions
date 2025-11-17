@@ -1,0 +1,28 @@
+// Add these to your android/build.gradle file
+
+buildscript {
+    ext {
+        // ... your existing ext block
+        kotlinVersion = "2.1.20" // Make sure Kotlin version is set
+    }
+    repositories {
+        // ... your existing repositories
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // ... your existing dependencies
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+allprojects {
+    repositories {
+        // ... your existing repositories
+
+        // Add Detox repository
+        maven {
+            url "$rootDir/../node_modules/detox/Detox-android"
+        }
+    }
+}
