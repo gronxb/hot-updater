@@ -1,5 +1,25 @@
 # hot-updater
 
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+- 2905e47: feat(server): supports hot-updater database plugin style
+- Updated dependencies [d6c3a65]
+- Updated dependencies [7ee2830]
+- Updated dependencies [e2b67d7]
+- Updated dependencies [2905e47]
+  - @hot-updater/cli-tools@0.21.11
+  - @hot-updater/server@0.21.11
+  - @hot-updater/console@0.21.11
+  - @hot-updater/core@0.21.11
+  - @hot-updater/aws@0.21.11
+  - @hot-updater/cloudflare@0.21.11
+  - @hot-updater/firebase@0.21.11
+  - @hot-updater/plugin-core@0.21.11
+  - @hot-updater/supabase@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes

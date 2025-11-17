@@ -1,5 +1,13 @@
 # @hot-updater/js
 
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+- Updated dependencies [e2b67d7]
+  - @hot-updater/core@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes

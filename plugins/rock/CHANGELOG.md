@@ -1,5 +1,15 @@
 # @hot-updater/rnef
 
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+- Updated dependencies [d6c3a65]
+- Updated dependencies [e2b67d7]
+  - @hot-updater/cli-tools@0.21.11
+  - @hot-updater/plugin-core@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes
