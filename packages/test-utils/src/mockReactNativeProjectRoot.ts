@@ -16,9 +16,7 @@ const resolveWorkspaceInfoFromExample = (example: Example) => {
   const workspaces = getPnpmWorkspaces(getCwd());
   switch (example) {
     case "rn-77":
-      return workspaces.find(
-        (ws) => ws.name === "@hot-updater/example-react-native-v77",
-      )!;
+      return workspaces.find((ws) => ws.name === "@examples/react-native-v77")!;
   }
 };
 
