@@ -44,8 +44,8 @@
     "!**/.*"
   ],
   "scripts": {
-    "build": "bob build && tsc -p plugin/tsconfig.json",
-    "build:plugin": "tsc -p plugin/tsconfig.json",
+    "build": "bob build && tsc -p plugin/tsconfig.build.json",
+    "build:plugin": "tsc -p plugin/tsconfig.build.json",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
