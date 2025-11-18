@@ -12,25 +12,38 @@ npm install @hot-updater/plugin-core --save-dev
 
 ## Overview
 
-Build a custom storage plugin to integrate any storage provider. This guide shows how to implement the `StoragePlugin` interface and use it in your project.
+Build a custom storage plugin to integrate any storage provider. This guide shows how to use `createStoragePlugin` to build and configure your own storage plugin.
 
-## StoragePlugin Interface
+## Creating a Storage Plugin
 
-All storage plugins must implement this interface:
+Use `createStoragePlugin` to build custom storage plugins:
 
 ```typescript
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 
-interface StoragePlugin {
-  // Plugin identifier (e.g., "s3Storage", "customStorage")
-  name: string;
-  // Storage protocol prefix (e.g., "s3", "custom")
-  supportedProtocol: string;
-  // Uploads a file to storage and returns storage URI
+export const myStorage = createStoragePlugin<MyConfig>({
+  name: "myStorage",              // Plugin identifier
+  supportedProtocol: "custom",    // Storage URI protocol (e.g., "custom://...")
+  factory: (config) => ({
+    // Return these three required methods:
+    upload: async (key, filePath) => ({ storageUri: "..." }),
+    delete: async (storageUri) => { /* ... */ },
+    getDownloadUrl: async (storageUri) => ({ fileUrl: "..." })
+  })
+});
+```
+
+### Factory Function Return Type
+
+Your factory function must return an object with these methods:
+
+```typescript
+{
+  // Uploads file to storage and returns storage URI
   upload: (key: string, filePath: string) => Promise<{ storageUri: string }>;
   // Deletes all files at the storage URI path
   delete: (storageUri: string) => Promise<void>;
-  // Generates a download URL for clients to fetch bundles
+  // Generates download URL for clients to fetch bundles
   getDownloadUrl: (storageUri: string) => Promise<{ fileUrl: string }>;
 }
 ```
