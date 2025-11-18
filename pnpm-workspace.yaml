@@ -4,9 +4,14 @@ packages:
   - docs
   - examples/*
   - examples-server/*
+
+catalog:
+  '@types/node': ^20
+  execa: 9.5.2
+
 onlyBuiltDependencies:
-  - "@sentry/cli"
-  - "@swc/core"
+  - '@sentry/cli'
+  - '@swc/core'
   - core-js-pure
   - esbuild
   - nx
@@ -14,6 +19,5 @@ onlyBuiltDependencies:
   - typia
   - workerd
 
-catalog:
-  "@types/node": ^20
-  "execa": 9.5.2
+patchedDependencies:
+  fumadocs-core: patches/fumadocs-core.patch
