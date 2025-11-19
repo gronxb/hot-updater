@@ -27,10 +27,10 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface S3DatabaseConfig {
-  region: string;                    // AWS region
-  bucketName: string;                // S3 bucket for metadata
-  cloudfrontDistributionId: string;  // CloudFront distribution ID
-  apiBasePath?: string;              // API path (default: "/api/check-update")
+  region: string;                     // AWS region
+  bucketName: string;                 // S3 bucket for metadata
+  cloudfrontDistributionId?: string;  // CloudFront distribution ID for cache invalidation
+  apiBasePath?: string;               // API path (default: "/api/check-update")
   credentials?: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -87,3 +87,9 @@ export default defineConfig({
   // ... other config
 });
 ```
+
+## CloudFront Cache Invalidation
+
+The `cloudfrontDistributionId` option enables automatic CloudFront cache invalidation when bundles are updated. This is particularly useful when using Lambda@Edge for request handling.
+
+If omitted, cache invalidation is skipped
