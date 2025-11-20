@@ -1,5 +1,13 @@
 # @hot-updater/firebase
 
+## 0.21.13
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.21.13
+- @hot-updater/core@0.21.13
+- @hot-updater/plugin-core@0.21.13
+
 ## 0.21.12
 
 ### Patch Changes
