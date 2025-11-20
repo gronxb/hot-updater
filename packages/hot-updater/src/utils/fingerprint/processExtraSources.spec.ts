@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
-import path from "path";
 import { createFingerprintAsync } from "@expo/fingerprint";
-import { processExtraSources } from "./processExtraSources";
 import { getCwd } from "@hot-updater/cli-tools";
+import path from "path";
+import { describe, expect, it } from "vitest";
+import { processExtraSources } from "./processExtraSources";
 
 describe("processExtraSources", () => {
   it("should return relative paths, not absolute paths", () => {
