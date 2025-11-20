@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.21.14
+
+### Patch Changes
+
+- 0b0152a: fix(ios): implement CustomNSError protocol for better error reporting…
+  - hot-updater@0.21.14
+  - @hot-updater/cli-tools@0.21.14
+  - @hot-updater/core@0.21.14
+  - @hot-updater/js@0.21.14
+  - @hot-updater/plugin-core@0.21.14
+
 ## 0.21.13
 
 ### Patch Changes
