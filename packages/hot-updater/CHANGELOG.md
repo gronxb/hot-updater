@@ -1,5 +1,20 @@
 # hot-updater
 
+## 0.21.13
+
+### Patch Changes
+
+- 44f4e95: Fix processing of directory glob patterns on extraSources
+  - @hot-updater/cli-tools@0.21.13
+  - @hot-updater/console@0.21.13
+  - @hot-updater/core@0.21.13
+  - @hot-updater/server@0.21.13
+  - @hot-updater/aws@0.21.13
+  - @hot-updater/cloudflare@0.21.13
+  - @hot-updater/firebase@0.21.13
+  - @hot-updater/plugin-core@0.21.13
+  - @hot-updater/supabase@0.21.13
+
 ## 0.21.12
 
 ### Patch Changes
