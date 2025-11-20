@@ -1,6 +1,6 @@
 import Foundation
 
-public enum BundleStorageError: Error {
+public enum BundleStorageError: Error, CustomNSError {
     case bundleNotFound
     case directoryCreationFailed
     case downloadFailed(Error)
@@ -13,6 +13,92 @@ public enum BundleStorageError: Error {
     case copyOperationFailed(Error)
     case fileSystemError(Error)
     case unknown(Error?)
+
+    // CustomNSError protocol implementation
+    public static var errorDomain: String {
+        return "com.hotupdater.BundleStorageError"
+    }
+
+    public var errorCode: Int {
+        switch self {
+        case .bundleNotFound: return 1001
+        case .directoryCreationFailed: return 1002
+        case .downloadFailed: return 1003
+        case .extractionFailed: return 1004
+        case .invalidBundle: return 1005
+        case .invalidZipFile: return 1006
+        case .insufficientDiskSpace: return 1007
+        case .hashMismatch: return 1008
+        case .moveOperationFailed: return 1009
+        case .copyOperationFailed: return 1010
+        case .fileSystemError: return 1011
+        case .unknown: return 1099
+        }
+    }
+
+    public var errorUserInfo: [String: Any] {
+        var userInfo: [String: Any] = [:]
+
+        switch self {
+        case .bundleNotFound:
+            userInfo[NSLocalizedDescriptionKey] = "Bundle file not found in the downloaded archive"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Ensure the bundle archive contains index.ios.bundle or main.jsbundle"
+
+        case .directoryCreationFailed:
+            userInfo[NSLocalizedDescriptionKey] = "Failed to create required directory for bundle storage"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check app permissions and available disk space"
+
+        case .downloadFailed(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Failed to download bundle from server"
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check network connection and try again"
+
+        case .extractionFailed(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Failed to extract bundle archive"
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The downloaded file may be corrupted. Try downloading again"
+
+        case .invalidBundle:
+            userInfo[NSLocalizedDescriptionKey] = "Downloaded archive does not contain a valid React Native bundle"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Verify the bundle was built correctly with metro bundler"
+
+        case .invalidZipFile:
+            userInfo[NSLocalizedDescriptionKey] = "Downloaded file is not a valid ZIP archive"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The file may be corrupted during download"
+
+        case .insufficientDiskSpace:
+            userInfo[NSLocalizedDescriptionKey] = "Insufficient disk space to download and extract bundle"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Free up device storage and try again"
+
+        case .hashMismatch:
+            userInfo[NSLocalizedDescriptionKey] = "Downloaded bundle hash does not match expected hash"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The file may have been corrupted or tampered with. Try downloading again"
+
+        case .moveOperationFailed(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Failed to move bundle to final location"
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check file system permissions"
+
+        case .copyOperationFailed(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Failed to copy bundle files"
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check available disk space and permissions"
+
+        case .fileSystemError(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "File system operation failed"
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check app permissions and disk space"
+
+        case .unknown(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "An unknown error occurred during bundle update"
+            if let error = underlyingError {
+                userInfo[NSUnderlyingErrorKey] = error
+            }
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Please try again or contact support with error details"
+        }
+
+        return userInfo
+    }
 }
 
 /**
@@ -478,6 +564,35 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     /**
+     * Logs detailed diagnostic information about a file system path.
+     * @param path The path to diagnose
+     * @param context Additional context for logging
+     */
+    private func logFileSystemDiagnostics(path: String, context: String) {
+        let fileManager = FileManager.default
+
+        // Check if path exists
+        let exists = fileManager.fileExists(atPath: path)
+        NSLog("[BundleStorage] [\(context)] Path exists: \(exists) - \(path)")
+
+        if exists {
+            do {
+                let attributes = try fileManager.attributesOfItem(atPath: path)
+                let size = attributes[.size] as? Int64 ?? 0
+                let permissions = attributes[.posixPermissions] as? Int ?? 0
+                NSLog("[BundleStorage] [\(context)] Size: \(size) bytes, Permissions: \(String(permissions, radix: 8))")
+            } catch {
+                NSLog("[BundleStorage] [\(context)] Failed to get attributes: \(error.localizedDescription)")
+            }
+        }
+
+        // Check parent directory
+        let parentPath = (path as NSString).deletingLastPathComponent
+        let parentExists = fileManager.fileExists(atPath: parentPath)
+        NSLog("[BundleStorage] [\(context)] Parent directory exists: \(parentExists) - \(parentPath)")
+    }
+
+    /**
      * Processes a downloaded bundle file using the "tmp" rename approach.
      * This method is part of the asynchronous `updateBundle` flow and is expected to run on a background thread.
      * @param location URL of the downloaded file
@@ -504,6 +619,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // 1) Ensure the bundle file exists
         guard self.fileSystem.fileExists(atPath: location.path) else {
+            logFileSystemDiagnostics(path: location.path, context: "Download Location Missing")
             self.cleanupTemporaryFiles([tempDirectory])
             completion(.failure(BundleStorageError.fileSystemError(NSError(
                 domain: "HotUpdaterError",
@@ -527,6 +643,7 @@ class BundleFileStorageService: BundleStorageService {
             // 4) Create tmpDir
             try self.fileSystem.createDirectory(atPath: tmpDir)
             NSLog("[BundleStorage] Created tmpDir: \(tmpDir)")
+            logFileSystemDiagnostics(path: tmpDir, context: "TmpDir Created")
 
             // 5) Verify file hash if provided
             if let expectedHash = fileHash {
@@ -544,14 +661,18 @@ class BundleFileStorageService: BundleStorageService {
 
             // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
             NSLog("[BundleStorage] Extracting \(tempBundleFile) → \(tmpDir)")
+            logFileSystemDiagnostics(path: tempBundleFile, context: "Before Extraction")
             do {
                 try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
                     // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
                     progressHandler(0.8 + (unzipProgress * 0.2))
                 })
                 NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
+                logFileSystemDiagnostics(path: tmpDir, context: "After Extraction")
             } catch {
-                NSLog("[BundleStorage] Extraction failed: \(error.localizedDescription)")
+                let nsError = error as NSError
+                NSLog("[BundleStorage] Extraction failed - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+                logFileSystemDiagnostics(path: tmpDir, context: "Extraction Failed")
                 try? self.fileSystem.removeItem(atPath: tmpDir)
                 self.cleanupTemporaryFiles([tempDirectory])
                 completion(.failure(BundleStorageError.extractionFailed(error)))
@@ -565,6 +686,9 @@ class BundleFileStorageService: BundleStorageService {
             switch self.findBundleFile(in: tmpDir) {
             case .success(let maybeBundlePath):
                 if let bundlePathInTmp = maybeBundlePath {
+                    NSLog("[BundleStorage] Found valid bundle in tmpDir: \(bundlePathInTmp)")
+                    logFileSystemDiagnostics(path: bundlePathInTmp, context: "Bundle Found")
+
                     // 9) Remove any existing realDir
                     if self.fileSystem.fileExists(atPath: realDir) {
                         try self.fileSystem.removeItem(atPath: realDir)
@@ -572,8 +696,17 @@ class BundleFileStorageService: BundleStorageService {
                     }
 
                     // 10) Rename (move) tmpDir → realDir
-                    try self.fileSystem.moveItem(atPath: tmpDir, toPath: realDir)
-                    NSLog("[BundleStorage] Renamed tmpDir to realDir: \(realDir)")
+                    do {
+                        try self.fileSystem.moveItem(atPath: tmpDir, toPath: realDir)
+                        NSLog("[BundleStorage] Renamed tmpDir to realDir: \(realDir)")
+                        logFileSystemDiagnostics(path: realDir, context: "After Move")
+                    } catch {
+                        let nsError = error as NSError
+                        NSLog("[BundleStorage] Move operation failed - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+                        logFileSystemDiagnostics(path: tmpDir, context: "Move Failed - Source")
+                        logFileSystemDiagnostics(path: realDir, context: "Move Failed - Destination")
+                        throw BundleStorageError.moveOperationFailed(error)
+                    }
 
                     // 11) Construct final bundlePath for preferences
                     let finalBundlePath = (realDir as NSString).appendingPathComponent((bundlePathInTmp as NSString).lastPathComponent)
@@ -582,6 +715,7 @@ class BundleFileStorageService: BundleStorageService {
                     let setResult = self.setBundleURL(localPath: finalBundlePath)
                     switch setResult {
                     case .success:
+                        NSLog("[BundleStorage] Successfully set bundle URL: \(finalBundlePath)")
                         // 13) Clean up the temporary directory
                         self.cleanupTemporaryFiles([tempDirectory])
 
@@ -591,6 +725,8 @@ class BundleFileStorageService: BundleStorageService {
                         // 15) Complete with success
                         completion(.success(true))
                     case .failure(let err):
+                        let nsError = err as NSError
+                        NSLog("[BundleStorage] Failed to set bundle URL - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
                         // Preferences save failed → remove realDir and clean up
                         try? self.fileSystem.removeItem(atPath: realDir)
                         self.cleanupTemporaryFiles([tempDirectory])
@@ -598,11 +734,15 @@ class BundleFileStorageService: BundleStorageService {
                     }
                 } else {
                     // No valid .jsbundle found → delete tmpDir and fail
+                    NSLog("[BundleStorage] No valid bundle file found in tmpDir")
+                    logFileSystemDiagnostics(path: tmpDir, context: "Invalid Bundle")
                     try? self.fileSystem.removeItem(atPath: tmpDir)
                     self.cleanupTemporaryFiles([tempDirectory])
                     completion(.failure(BundleStorageError.invalidBundle))
                 }
             case .failure(let findError):
+                let nsError = findError as NSError
+                NSLog("[BundleStorage] Error finding bundle file - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
                 // Error scanning tmpDir → delete tmpDir and fail
                 try? self.fileSystem.removeItem(atPath: tmpDir)
                 self.cleanupTemporaryFiles([tempDirectory])
@@ -610,7 +750,9 @@ class BundleFileStorageService: BundleStorageService {
             }
         } catch let error {
             // Any failure during unzip or rename → clean tmpDir and fail
-            NSLog("[BundleStorage] Error during tmpDir processing: \(error)")
+            let nsError = error as NSError
+            NSLog("[BundleStorage] Error during tmpDir processing - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+            logFileSystemDiagnostics(path: tmpDir, context: "Processing Error")
             try? self.fileSystem.removeItem(atPath: tmpDir)
             self.cleanupTemporaryFiles([tempDirectory])
             completion(.failure(BundleStorageError.fileSystemError(error)))

@@ -174,15 +174,22 @@ import React
                         NSLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
                         resolve(true)
                     case .failure(let error):
-                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId): \(error.localizedDescription). Rejecting promise.")
-                        reject("UPDATE_ERROR", error.localizedDescription, error)
+                        let nsError = error as NSError
+                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId) - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+
+                        // Create a meaningful error code for React Native
+                        let errorCode = "BUNDLE_STORAGE_ERROR_\(nsError.code)"
+                        reject(errorCode, nsError.localizedDescription, nsError)
                     }
                 }
             }
         } catch let error {
             // Main error boundary - catch and convert all errors to JS rejection
-            NSLog("[HotUpdaterImpl] Error in updateBundleFromJS: \(error.localizedDescription)")
-            reject("UPDATE_ERROR", error.localizedDescription, error)
+            let nsError = error as NSError
+            NSLog("[HotUpdaterImpl] Error in updateBundleFromJS - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+
+            let errorCode = "UPDATE_ERROR_\(nsError.code)"
+            reject(errorCode, nsError.localizedDescription, nsError)
         }
     }
 }
