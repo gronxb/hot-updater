@@ -1,5 +1,14 @@
 # @hot-updater/server
 
+## 0.21.15
+
+### Patch Changes
+
+- a169f06: unique constraint violations
+  - @hot-updater/js@0.21.15
+  - @hot-updater/plugin-core@0.21.15
+  - @hot-updater/core@0.21.15
+
 ## 0.21.14
 
 ### Patch Changes
