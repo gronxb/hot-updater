@@ -1,5 +1,20 @@
 # hot-updater
 
+## 0.21.15
+
+### Patch Changes
+
+- Updated dependencies [a169f06]
+  - @hot-updater/server@0.21.15
+  - @hot-updater/cli-tools@0.21.15
+  - @hot-updater/aws@0.21.15
+  - @hot-updater/cloudflare@0.21.15
+  - @hot-updater/firebase@0.21.15
+  - @hot-updater/plugin-core@0.21.15
+  - @hot-updater/console@0.21.15
+  - @hot-updater/core@0.21.15
+  - @hot-updater/supabase@0.21.15
+
 ## 0.21.14
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @hot-updater/plugin-core
 
+## 0.21.15
+
+### Patch Changes
+
+- @hot-updater/core@0.21.15
+
 ## 0.21.14
 
 ### Patch Changes

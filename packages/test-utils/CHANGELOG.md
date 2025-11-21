@@ -1,5 +1,12 @@
 # @hot-updater/test-utils
 
+## 0.21.15
+
+### Patch Changes
+
+- a169f06: unique constraint violations
+  - @hot-updater/core@0.21.15
+
 ## 0.21.14
 
 ### Patch Changes
