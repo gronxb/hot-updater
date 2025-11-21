@@ -13,11 +13,6 @@ catalogs:
       specifier: 9.5.2
       version: 9.5.2
 
-patchedDependencies:
-  fumadocs-core:
-    hash: f59ce1295f3c6ccc83df2d4ea8b26fa33b907c75394d735fff0e9fdd233329a6
-    path: patches/fumadocs-core.patch
-
 importers:
 
   .:
@@ -68,14 +63,14 @@ importers:
         specifier: ^5.5.0
         version: 5.5.0
       fumadocs-core:
-        specifier: 16.0.7
-        version: 16.0.7(patch_hash=f59ce1295f3c6ccc83df2d4ea8b26fa33b907c75394d735fff0e9fdd233329a6)(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
+        specifier: 16.0.15
+        version: 16.0.15(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
       fumadocs-mdx:
         specifier: 13.0.5
-        version: 13.0.5(fumadocs-core@16.0.7(patch_hash=f59ce1295f3c6ccc83df2d4ea8b26fa33b907c75394d735fff0e9fdd233329a6)(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)(vite@7.2.2(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
+        version: 13.0.5(fumadocs-core@16.0.15(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)(vite@7.2.2(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
       fumadocs-ui:
-        specifier: 16.0.7
-        version: 16.0.7(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(tailwindcss@4.1.17)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
+        specifier: 16.0.15
+        version: 16.0.15(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(tailwindcss@4.1.17)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
       geist:
         specifier: ^1.5.1
         version: 1.5.1(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))
@@ -12008,8 +12003,8 @@ packages:
       typeorm:
         optional: true
 
-  fumadocs-core@16.0.7:
-    resolution: {integrity: sha512-kCkhwquhoy10SW3lqTpBD0XR0V1cMruBQdMN+/BrpQZfYFEGvd+QxLCXa/hUC4tnePUAXgMxMThZT1Ze1Nb+pg==}
+  fumadocs-core@16.0.15:
+    resolution: {integrity: sha512-WOXVebUDAMTHV60YnZJ++5TcP+jQgh2Iahtw4YT4UoH4gQkl4dCeDFvx85tNPMK8rBhkHBKFQjffUkf0ilc2GQ==}
     peerDependencies:
       '@mixedbread/sdk': ^0.19.0
       '@orama/core': 1.x.x
@@ -12021,7 +12016,7 @@ packages:
       react: ^19.2.0
       react-dom: ^19.2.0
       react-router: 7.x.x
-      waku: ^0.26.0
+      waku: ^0.26.0 || ^0.27.0
     peerDependenciesMeta:
       '@mixedbread/sdk':
         optional: true
@@ -12065,8 +12060,8 @@ packages:
       vite:
         optional: true
 
-  fumadocs-ui@16.0.7:
-    resolution: {integrity: sha512-SUEm3ThdTPZofSx/Yfc7BkS5EWkz3W/yvPhBBxEALxDKf9On4MC0uunDlkM5/WeHF5rzWw+bj5nliQ/QKcsfNw==}
+  fumadocs-ui@16.0.15:
+    resolution: {integrity: sha512-/43LQ1L08/86gIhpRaVFBIiY2mAE4KQstdOgNWqnQyrYb2xgoHJ2y3aiN9XQxMGylbQ74/uDbMRmtVnIVpmzuw==}
     peerDependencies:
       '@types/react': '*'
       next: 16.x.x
@@ -13260,6 +13255,10 @@ packages:
 
   js-yaml@4.1.0:
     resolution: {integrity: sha512-wpxZs9NoxZaJESJGIZTyDEaYpl0FKSA+FB9aJiyemKhMwkxQg63h4T1KJgUGHpTqPDNRcmmYLugrRjJlBtWvRA==}
+    hasBin: true
+
+  js-yaml@4.1.1:
+    resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
     hasBin: true
 
   jsbn@0.1.1:
@@ -17068,8 +17067,8 @@ packages:
   tailwind-merge@2.5.4:
     resolution: {integrity: sha512-0q8cfZHMu9nuYP/b5Shb7Y7Sh1B7Nnl5GqNr1U+n2p6+mybvRtayrQ+0042Z5byvTA8ihjlP8Odo8/VnHbZu4Q==}
 
-  tailwind-merge@3.3.1:
-    resolution: {integrity: sha512-gBXpgUm/3rp1lMZZrM/w7D8GKqshif0zAymAhbCyIt8KMe+0v9DQ7cdYLR4FHH/cKpdTXb+A/tKKU3eolfsI+g==}
+  tailwind-merge@3.4.0:
+    resolution: {integrity: sha512-uSaO4gnW+b3Y2aWoWfFpX62vn2sR3skfhbjsEnaBI81WD1wBLlHZe5sWf0AqjksNdYTbGBEd0UasQMT3SNV15g==}
 
   tailwindcss-animate@1.0.7:
     resolution: {integrity: sha512-bl6mpH3T7I3UFxuvDEXLxy/VuFxBk5bbzplh7tXI68mwMokNYd1t9qPBHlnyTwfa4JGC4zP516I1hYYtQ/vspA==}
@@ -17229,6 +17228,10 @@ packages:
 
   tinyexec@1.0.1:
     resolution: {integrity: sha512-5uC6DDlmeqiOwCPmK9jMSdOuZTh8bU39Ys6yidB+UTt5hfZUPGAypSgFRiEp+jbi9qH40BLDvy85jIU88wKSqw==}
+
+  tinyexec@1.0.2:
+    resolution: {integrity: sha512-W/KYk+NFhkmsYpuHq5JykngiOCnxeVL8v8dFnqxSD8qEEdRfXk1SDM6JzNqcERbcGYj9tMrDQBYV9cjgnunFIg==}
+    engines: {node: '>=18'}
 
   tinyglobby@0.2.13:
     resolution: {integrity: sha512-mEwzpUgrLySlveBwEVDMKk5B57bhLPYovRfPAXD5gA/98Opn0rCDj3GtLwFvCvH5RK9uPCExUROW5NjDwvqkxw==}
@@ -18656,7 +18659,7 @@ snapshots:
       '@jsdevtools/ono': 7.1.3
       '@types/json-schema': 7.0.15
       call-me-maybe: 1.0.2
-      js-yaml: 4.1.0
+      js-yaml: 4.1.1
 
   '@ark/schema@0.46.0':
     dependencies:
@@ -23670,7 +23673,7 @@ snapshots:
       '@babel/code-frame': 7.10.4
       chalk: 4.1.2
       find-up: 5.0.0
-      js-yaml: 4.1.0
+      js-yaml: 4.1.1
 
   '@fastify/ajv-compiler@3.5.0':
     dependencies:
@@ -32893,7 +32896,7 @@ snapshots:
 
   estree-walker@3.0.3:
     dependencies:
-      '@types/estree': 1.0.6
+      '@types/estree': 1.0.8
 
   esutils@2.0.3: {}
 
@@ -33970,7 +33973,7 @@ snapshots:
       prisma: 6.18.0(typescript@5.9.3)
       typeorm: 0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.772.0)(socks@2.8.4))(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3))
 
-  fumadocs-core@16.0.7(patch_hash=f59ce1295f3c6ccc83df2d4ea8b26fa33b907c75394d735fff0e9fdd233329a6)(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)):
+  fumadocs-core@16.0.15(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)):
     dependencies:
       '@formatjs/intl-localematcher': 0.6.2
       '@orama/orama': 3.1.16
@@ -34000,21 +34003,21 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fumadocs-mdx@13.0.5(fumadocs-core@16.0.7(patch_hash=f59ce1295f3c6ccc83df2d4ea8b26fa33b907c75394d735fff0e9fdd233329a6)(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)(vite@7.2.2(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)):
+  fumadocs-mdx@13.0.5(fumadocs-core@16.0.15(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)(vite@7.2.2(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)):
     dependencies:
       '@mdx-js/mdx': 3.1.1
       '@standard-schema/spec': 1.0.0
       chokidar: 4.0.3
       esbuild: 0.25.12
       estree-util-value-to-estree: 3.5.0
-      fumadocs-core: 16.0.7(patch_hash=f59ce1295f3c6ccc83df2d4ea8b26fa33b907c75394d735fff0e9fdd233329a6)(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
-      js-yaml: 4.1.0
+      fumadocs-core: 16.0.15(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
+      js-yaml: 4.1.1
       lru-cache: 11.2.2
       mdast-util-to-markdown: 2.1.2
       picocolors: 1.1.1
       picomatch: 4.0.3
       remark-mdx: 3.1.1
-      tinyexec: 1.0.1
+      tinyexec: 1.0.2
       tinyglobby: 0.2.15
       unified: 11.0.5
       unist-util-remove-position: 5.0.0
@@ -34027,7 +34030,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fumadocs-ui@16.0.7(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(tailwindcss@4.1.17)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)):
+  fumadocs-ui@16.0.15(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(tailwindcss@4.1.17)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)):
     dependencies:
       '@radix-ui/react-accordion': 1.2.12(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@radix-ui/react-collapsible': 1.1.12(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -34040,7 +34043,7 @@ snapshots:
       '@radix-ui/react-slot': 1.2.4(@types/react@19.2.2)(react@19.2.0)
       '@radix-ui/react-tabs': 1.1.13(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       class-variance-authority: 0.7.1
-      fumadocs-core: 16.0.7(patch_hash=f59ce1295f3c6ccc83df2d4ea8b26fa33b907c75394d735fff0e9fdd233329a6)(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
+      fumadocs-core: 16.0.15(@types/react@19.2.2)(lucide-react@0.552.0(react@19.2.0))(next@16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(waku@0.27.0(@swc/helpers@0.5.17)(@types/node@24.10.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-dom@19.2.0(react@19.2.0))(react-server-dom-webpack@19.2.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.91.0(@swc/core@1.13.5(@swc/helpers@0.5.17))))(react@19.2.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1))
       lodash.merge: 4.6.2
       next-themes: 0.4.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       postcss-selector-parser: 7.1.0
@@ -34048,7 +34051,7 @@ snapshots:
       react-dom: 19.2.0(react@19.2.0)
       react-medium-image-zoom: 5.4.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       scroll-into-view-if-needed: 3.1.0
-      tailwind-merge: 3.3.1
+      tailwind-merge: 3.4.0
     optionalDependencies:
       '@types/react': 19.2.2
       next: 16.0.1(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -35819,6 +35822,10 @@ snapshots:
       esprima: 4.0.1
 
   js-yaml@4.1.0:
+    dependencies:
+      argparse: 2.0.1
+
+  js-yaml@4.1.1:
     dependencies:
       argparse: 2.0.1
 
@@ -38443,7 +38450,7 @@ snapshots:
       consola: 3.4.2
       pathe: 2.0.3
       pkg-types: 2.3.0
-      tinyexec: 1.0.1
+      tinyexec: 1.0.2
 
   ob1@0.80.9: {}
 
@@ -39998,7 +40005,7 @@ snapshots:
 
   read-yaml-file@2.1.0:
     dependencies:
-      js-yaml: 4.1.0
+      js-yaml: 4.1.1
       strip-bom: 4.0.0
 
   readable-stream@2.3.8:
@@ -41375,7 +41382,7 @@ snapshots:
 
   tailwind-merge@2.5.4: {}
 
-  tailwind-merge@3.3.1: {}
+  tailwind-merge@3.4.0: {}
 
   tailwindcss-animate@1.0.7(tailwindcss@3.4.14(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.8.3))):
     dependencies:
@@ -41581,6 +41588,8 @@ snapshots:
   tinyexec@0.3.2: {}
 
   tinyexec@1.0.1: {}
+
+  tinyexec@1.0.2: {}
 
   tinyglobby@0.2.13:
     dependencies:

@@ -18,6 +18,3 @@ onlyBuiltDependencies:
   - sharp
   - typia
   - workerd
-
-patchedDependencies:
-  fumadocs-core: patches/fumadocs-core.patch
