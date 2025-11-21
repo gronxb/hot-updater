@@ -326,4 +326,142 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       );
     });
   });
+
+  describe("Issue #700: Bundle copy with dangling storage reference", () => {
+    it("reproduces bundle copy deletion scenario", async () => {
+      /**
+       * REPRODUCTION SCENARIO:
+       *
+       * 1. User creates Bundle A in production channel
+       *    - storageUri: "s3://test-bucket/bundle.zip"
+       *    - S3 file uploaded ✓
+       *
+       * 2. User COPIES Bundle A to beta channel (via promote-channel-dialog.tsx)
+       *    - Creates Bundle B with SAME storageUri: "s3://test-bucket/bundle.zip"
+       *    - Both bundles reference the same S3 file
+       *
+       * 3. User DELETES Bundle A from production (via console RPC)
+       *    - RPC calls: databasePlugin.deleteBundle() → DB entry removed ✓
+       *    - RPC calls: storagePlugin.delete(storageUri) → S3 file deleted ✓
+       *    - NO reference counting! File deleted even though Bundle B still needs it
+       *
+       * 4. Client requests update from beta channel
+       *    - getAppUpdateInfo returns Bundle B ✓
+       *    - Generates signed URL for "s3://test-bucket/bundle.zip" ✓
+       *    - But file was deleted in step 3!
+       *    - Client gets 404 error when downloading ✗
+       *
+       * ROOT CAUSE:
+       * - Copy operation copies storageUri reference (not the file)
+       * - Delete operation deletes storage file WITHOUT checking other references
+       * - No reference counting for shared storage URIs
+       */
+
+      const sharedStorageUri = "s3://test-bucket/shared-bundle.zip";
+
+      // Step 1 & 2: Both bundles exist with same storageUri (after copy)
+      const productionBundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000001",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-original",
+        gitCommitHash: null,
+        message: "Original bundle",
+        channel: "production",
+        storageUri: sharedStorageUri,
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      };
+
+      const betaBundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000002",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-copied",
+        gitCommitHash: null,
+        message: "Copied bundle",
+        channel: "beta",
+        storageUri: sharedStorageUri, // SAME storageUri after copy!
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      };
+
+      await hotUpdater.insertBundle(productionBundle);
+      await hotUpdater.insertBundle(betaBundle);
+
+      // Step 3: Simulate production bundle deletion
+      // In real scenario: RPC would call storagePlugin.delete(storageUri)
+      // This deletes the S3 file that BOTH bundles reference
+      await hotUpdater.deleteBundleById(productionBundle.id);
+      // Note: deleteBundleById only removes DB entry, not storage file
+      // But in RPC (packages/console/src-server/rpc.ts:182),
+      // it ALSO calls: await storagePlugin.delete(bundle.storageUri)
+      // We can't easily mock this here, but the conceptual problem remains
+
+      // Step 4: Client requests update from beta channel
+      const updateInfo = await hotUpdater.getAppUpdateInfo({
+        appVersion: "1.0.0",
+        bundleId: NIL_UUID,
+        platform: "ios",
+        channel: "beta",
+        _updateStrategy: "appVersion",
+      });
+
+      /**
+       * EXPECTED (after fix):
+       * - Should return null because storage file doesn't exist
+       * - Or validate file existence before returning
+       * - Or use reference counting to prevent premature deletion
+       *
+       * ACTUAL (current bug):
+       * - Returns Bundle B with signed URL
+       * - Storage plugin generates URL WITHOUT checking file existence
+       * - Clients receive 404 error when downloading
+       */
+      expect(updateInfo).toBeNull();
+    });
+
+    it("storage plugins generate signed URLs without validating file existence", async () => {
+      /**
+       * This test demonstrates the core technical issue:
+       * Storage plugins (S3, R2, Cloudflare, etc.) implement getDownloadUrl()
+       * which generates pre-signed URLs WITHOUT checking if the file exists.
+       *
+       * This is by design for performance (avoid extra S3 HEAD requests),
+       * but creates the Issue #700 problem when combined with:
+       * - Bundle copy sharing storageUri
+       * - Delete operation not checking references
+       */
+
+      const bundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000003",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-nonexistent",
+        gitCommitHash: null,
+        message: "Bundle referencing non-existent file",
+        channel: "production",
+        storageUri: "s3://test-bucket/this-file-never-existed.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      };
+
+      await hotUpdater.insertBundle(bundle);
+
+      const updateInfo = await hotUpdater.getAppUpdateInfo({
+        appVersion: "1.0.0",
+        bundleId: NIL_UUID,
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      });
+
+      // BUG: Returns signed URL for file that doesn't exist
+      // No validation step before generating URL
+      // Client will receive 404 when attempting download
+      expect(updateInfo).toBeNull();
+    });
+  });
 });
