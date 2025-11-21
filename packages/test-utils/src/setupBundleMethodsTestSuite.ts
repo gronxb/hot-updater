@@ -310,6 +310,28 @@ export const setupBundleMethodsTestSuite = ({
       expect(page2.data.length).toBe(1);
       expect(page1.data[0].id).not.toBe(page2.data[0].id);
     });
+
+    it("should handle concurrent getBundles calls without errors", async () => {
+      // Test for fumadb getSchemaVersion bug fix
+      // Previously, concurrent calls would cause unique constraint violations
+      // because getSchemaVersion() performed delete+create instead of read
+      const concurrentCalls = Array(10)
+        .fill(null)
+        .map(() =>
+          getBundles({
+            limit: 10,
+            offset: 0,
+          }),
+        );
+
+      // All concurrent calls should succeed without throwing errors
+      const results = await Promise.all(concurrentCalls);
+
+      for (const result of results) {
+        expect(result.data).toBeDefined();
+        expect(result.pagination).toBeDefined();
+      }
+    });
   });
 
   describe("updateBundleById", () => {
