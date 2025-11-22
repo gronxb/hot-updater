@@ -220,11 +220,6 @@ export interface BundleInfoForS3Reference {
   channel: string;
 }
 
-export interface BundleOriginalInfoForS3Reference {
-  channel: string;
-  bundleId: string;
-}
-
 export interface BundleWithOriginalInfoForS3Reference extends Bundle {
-  originalInfoForS3Reference?: BundleOriginalInfoForS3Reference;
+  originalInfoForS3Reference?: BundleInfoForS3Reference;
 }
