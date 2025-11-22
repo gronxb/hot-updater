@@ -36,6 +36,7 @@ The server automatically creates these endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
 | GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
 | GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
