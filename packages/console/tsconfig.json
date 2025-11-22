@@ -22,10 +22,9 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@/src-server/*": ["src-server/*"]
+      "@/*": ["src/*"]
     }
   },
-  "include": ["src", "src-server"],
+  "include": ["src"],
   "exclude": ["node_modules"]
 }

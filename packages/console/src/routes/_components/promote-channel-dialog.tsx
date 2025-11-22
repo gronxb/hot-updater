@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/core";
 import { CloseButton as AlertDialogCloseButton } from "@kobalte/core/alert-dialog";
 import { useSearchParams } from "@solidjs/router";
 import { useQueryClient } from "@tanstack/solid-query";
@@ -32,7 +32,11 @@ import {
 } from "@/components/ui/switch";
 import { TextField, TextFieldLabel } from "@/components/ui/text-field";
 import { showToast } from "@/components/ui/toast";
-import { api, useChannelsQuery } from "@/lib/api";
+import {
+  useBundleCreateMutation,
+  useBundleUpdateMutation,
+  useChannelsQuery,
+} from "@/lib/api";
 import { createUUIDv7WithSameTimestamp } from "@/lib/extract-timestamp-from-uuidv7";
 
 export interface PromoteChannelDialogProps {
@@ -42,14 +46,17 @@ export interface PromoteChannelDialogProps {
 export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
   const queryClient = useQueryClient();
   const channels = useChannelsQuery();
+  const createMutation = useBundleCreateMutation();
+  const updateMutation = useBundleUpdateMutation();
   const [, setSearchParams] = useSearchParams();
-  const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [selectedChannel, setSelectedChannel] = createSignal(bundle.channel);
   const [open, setOpen] = createSignal(false);
   const [shouldCopy, setShouldCopy] = createSignal(false);
 
+  const isSubmitting = () =>
+    createMutation.isPending || updateMutation.isPending;
+
   const handlePrompt = async () => {
-    setIsSubmitting(true);
     try {
       if (shouldCopy()) {
         // Copy: Create new bundle with new ID (preserving timestamp) and target channel
@@ -59,21 +66,7 @@ export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
           channel: selectedChannel(),
         };
 
-        const res = await api.bundles.$post({
-          json: newBundle,
-        });
-
-        if (res.status !== 200) {
-          const json = await res.json();
-          if ("error" in json) {
-            showToast({
-              title: "Error",
-              description: json.error,
-              variant: "error",
-            });
-          }
-          return;
-        }
+        await createMutation.mutateAsync(newBundle);
 
         showToast({
           title: "Success",
@@ -88,20 +81,10 @@ export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
         });
       } else {
         // Move: Update existing bundle's channel
-        const res = await api.bundles[":bundleId"].$patch({
-          param: { bundleId: bundle.id },
-          json: { channel: selectedChannel() },
+        await updateMutation.mutateAsync({
+          bundleId: bundle.id,
+          data: { channel: selectedChannel() },
         });
-
-        if (res.status !== 200) {
-          const json = (await res.json()) as { error: string };
-          showToast({
-            title: "Error",
-            description: json.error,
-            variant: "error",
-          });
-          return;
-        }
 
         showToast({
           title: "Success",
@@ -128,8 +111,6 @@ export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
           variant: "error",
         });
       }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
