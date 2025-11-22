@@ -31,18 +31,74 @@ new Elysia()
 
 The server automatically creates these endpoints:
 
-### App Update Endpoints
-- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
-- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create or update bundles |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |
 
-### Bundle Management
-- `POST /hot-updater/bundles` - Create or update bundles
-- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
-- `GET /hot-updater/bundles/:id` - Get bundle by ID
-- `DELETE /hot-updater/bundles/:id` - Delete bundle
+## Security
 
-### Channels
-- `GET /hot-updater/channels` - List all available channels
+The Hot Updater handler does not include built-in authentication. Protect admin endpoints at the framework level.
+
+### Protecting Endpoints
+
+Update endpoints are public for React Native clients. Bundle management endpoints (`/api/*`) require protection.
+
+Install the bearer plugin:
+
+```package-install
+npm install @elysiajs/bearer --save-dev
+```
+
+```typescript
+import { Elysia } from "elysia";
+import { bearer } from "@elysiajs/bearer"; // [!code ++]
+import { hotUpdater } from "./hotUpdater";
+
+new Elysia()
+  .use(bearer()) // [!code ++]
+  // Protect /api/* endpoints // [!code ++]
+  .onBeforeHandle(({ bearer, request }) => { // [!code ++]
+    if (new URL(request.url).pathname.includes("/api/")) { // [!code ++]
+      if (bearer !== process.env.API_KEY) { // [!code ++]
+        return new Response("Unauthorized", { status: 401 }); // [!code ++]
+      } // [!code ++]
+    } // [!code ++]
+  }) // [!code ++]
+  .all("/hot-updater/*", ({ request }) => hotUpdater.handler(request))
+  .listen(3000);
+```
+
+
+Set your API key in environment variables:
+
+```bash
+API_KEY=your-secret-api-key
+```
+
+### CLI Configuration
+
+Configure the CLI to include the API key when deploying bundles:
+
+```typescript title="hot-updater.config.ts"
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  // ...
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.API_KEY}`,
+    },
+  }),
+});
+```
 
 ## React Native Setup
 

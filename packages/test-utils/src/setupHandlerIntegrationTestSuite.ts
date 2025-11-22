@@ -25,7 +25,7 @@ export function createGetUpdateInfo(
     try {
       // Step 1: Create bundles via POST
       for (const bundle of bundles) {
-        const createResponse = await fetch(buildUrl("/bundles"), {
+        const createResponse = await fetch(buildUrl("/api/bundles"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(bundle),
@@ -39,7 +39,7 @@ export function createGetUpdateInfo(
       }
 
       // Step 2: List bundles via GET
-      const listResponse = await fetch(buildUrl("/bundles"), {
+      const listResponse = await fetch(buildUrl("/api/bundles"), {
         headers: { "Content-Type": "application/json" },
       });
 
@@ -74,7 +74,7 @@ export function createGetUpdateInfo(
 
       // Step 5: Clean up via DELETE
       for (const bundle of bundles) {
-        await fetch(buildUrl(`/bundles/${bundle.id}`), {
+        await fetch(buildUrl(`/api/bundles/${bundle.id}`), {
           method: "DELETE",
         });
       }

@@ -7,6 +7,8 @@ import type {
 import { addRoute, createRouter, findRoute } from "rou3";
 import type { PaginationInfo } from "./types";
 
+declare const __VERSION__: string;
+
 // Narrow API surface needed by the handler to avoid circular types
 export interface HandlerAPI {
   getAppUpdateInfo: (
@@ -38,13 +40,8 @@ type RouteHandler = (
 ) => Promise<Response>;
 
 // Route handlers
-const handleUpdate: RouteHandler = async (_params, request, api) => {
-  const body = (await request.json()) as
-    | AppVersionGetBundlesArgs
-    | FingerprintGetBundlesArgs;
-  const updateInfo = await api.getAppUpdateInfo(body);
-
-  return new Response(JSON.stringify(updateInfo), {
+const handleVersion: RouteHandler = async () => {
+  return new Response(JSON.stringify({ version: __VERSION__ }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -154,7 +151,7 @@ const handleGetChannels: RouteHandler = async (_params, _request, api) => {
 
 // Route handlers map
 const routes: Record<string, RouteHandler> = {
-  update: handleUpdate,
+  version: handleVersion,
   fingerprintUpdate: handleFingerprintUpdate,
   appVersionUpdate: handleAppVersionUpdate,
   getBundle: handleGetBundle,
@@ -179,7 +176,7 @@ export function createHandler(
   const router = createRouter();
 
   // Register routes
-  addRoute(router, "POST", "/update", "update");
+  addRoute(router, "GET", "/version", "version");
   addRoute(
     router,
     "GET",
@@ -192,11 +189,11 @@ export function createHandler(
     "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
     "appVersionUpdate",
   );
-  addRoute(router, "GET", "/bundles/:id", "getBundle");
-  addRoute(router, "GET", "/bundles", "getBundles");
-  addRoute(router, "POST", "/bundles", "createBundles");
-  addRoute(router, "DELETE", "/bundles/:id", "deleteBundle");
-  addRoute(router, "GET", "/channels", "getChannels");
+  addRoute(router, "GET", "/api/bundles/channels", "getChannels");
+  addRoute(router, "GET", "/api/bundles/:id", "getBundle");
+  addRoute(router, "GET", "/api/bundles", "getBundles");
+  addRoute(router, "POST", "/api/bundles", "createBundles");
+  addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
 
   return async (request: Request): Promise<Response> => {
     try {

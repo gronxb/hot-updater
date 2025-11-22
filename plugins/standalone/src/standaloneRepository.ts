@@ -18,18 +18,18 @@ export interface Routes {
 
 const defaultRoutes: Routes = {
   upsert: () => ({
-    path: "/bundles",
+    path: "/api/bundles",
   }),
   list: () => ({
-    path: "/bundles",
+    path: "/api/bundles",
     headers: { "Cache-Control": "no-cache" },
   }),
   retrieve: (bundleId: string) => ({
-    path: `/bundles/${bundleId}`,
+    path: `/api/bundles/${bundleId}`,
     headers: { Accept: "application/json" },
   }),
   delete: (bundleId: string) => ({
-    path: `/bundles/${bundleId}`,
+    path: `/api/bundles/${bundleId}`,
   }),
 };
 

@@ -62,16 +62,16 @@ beforeAll(async () => {
 
   server.use(
     // Specific routes
-    http.get(`${baseUrl}/hot-updater/bundles`, ({ request }) =>
+    http.get(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
       handleRequest(request),
     ),
-    http.get(`${baseUrl}/hot-updater/bundles/:id`, ({ request }) =>
+    http.get(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
       handleRequest(request),
     ),
-    http.post(`${baseUrl}/hot-updater/bundles`, ({ request }) =>
+    http.post(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
       handleRequest(request),
     ),
-    http.delete(`${baseUrl}/hot-updater/bundles/:id`, ({ request }) =>
+    http.delete(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
       handleRequest(request),
     ),
   );
@@ -121,9 +121,12 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await repo.commitBundle(); // Triggers actual commit
 
     // Verify via handler that bundle was created
-    const request = new Request(`${baseUrl}/hot-updater/bundles/${bundleId}`, {
-      method: "GET",
-    });
+    const request = new Request(
+      `${baseUrl}/hot-updater/api/bundles/${bundleId}`,
+      {
+        method: "GET",
+      },
+    );
 
     const response = await api.handler(request);
     expect(response.status).toBe(200);
