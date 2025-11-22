@@ -1,5 +1,12 @@
 # @hot-updater/bare
 
+## 0.22.0
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.22.0
+- @hot-updater/plugin-core@0.22.0
+
 ## 0.21.15
 
 ### Patch Changes
@@ -107,7 +114,7 @@
 - Updated dependencies [7b7bc48]
   - @hot-updater/plugin-core@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -118,7 +125,7 @@
 - Updated dependencies [610b2dd]
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - @hot-updater/plugin-core@1.0.0
+  - @hot-updater/plugin-core@0.22.0
 
 ## 0.20.15
 

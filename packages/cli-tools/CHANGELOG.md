@@ -1,5 +1,11 @@
 # @hot-updater/cli-tools
 
+## 0.22.0
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.22.0
+
 ## 0.21.15
 
 ### Patch Changes

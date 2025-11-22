@@ -1,5 +1,20 @@
 # hot-updater
 
+## 0.22.0
+
+### Patch Changes
+
+- Updated dependencies [32ad614]
+  - @hot-updater/server@0.22.0
+  - @hot-updater/cli-tools@0.22.0
+  - @hot-updater/console@0.22.0
+  - @hot-updater/core@0.22.0
+  - @hot-updater/aws@0.22.0
+  - @hot-updater/cloudflare@0.22.0
+  - @hot-updater/firebase@0.22.0
+  - @hot-updater/plugin-core@0.22.0
+  - @hot-updater/supabase@0.22.0
+
 ## 0.21.15
 
 ### Patch Changes
@@ -219,7 +234,7 @@
   - @hot-updater/supabase@0.21.1
   - @hot-updater/core@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -231,13 +246,13 @@
 - Updated dependencies [610b2dd]
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - @hot-updater/plugin-core@1.0.0
-  - @hot-updater/cloudflare@1.0.0
-  - @hot-updater/firebase@1.0.0
-  - @hot-updater/supabase@1.0.0
-  - @hot-updater/aws@1.0.0
-  - @hot-updater/console@1.0.0
-  - @hot-updater/core@1.0.0
+  - @hot-updater/plugin-core@0.22.0
+  - @hot-updater/cloudflare@0.22.0
+  - @hot-updater/firebase@0.22.0
+  - @hot-updater/supabase@0.22.0
+  - @hot-updater/aws@0.22.0
+  - @hot-updater/console@0.22.0
+  - @hot-updater/core@0.22.0
 
 ## 0.20.15
 
