@@ -117,8 +117,9 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
       async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
-          return;
+          return false;
         }
+        let shouldDeleteBundle = false;
 
         let isTargetAppVersionChanged = false;
         const deletedBundleIds = new Set<string>();
@@ -234,6 +235,13 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
             } else if (operation === "delete") {
               // Delete the bundle document
               transaction.delete(bundleRef);
+
+              const snapShot = await bundlesCollection
+                .where("storage_uri", "==", data.storageUri)
+                .count()
+                .get();
+
+              shouldDeleteBundle = snapShot.data().count === 0;
             }
           }
 
@@ -258,6 +266,8 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
         for (const bundleId of deletedBundleIds) {
           bundles = bundles.filter((b) => b.id !== bundleId);
         }
+
+        return shouldDeleteBundle;
       },
     };
   },
