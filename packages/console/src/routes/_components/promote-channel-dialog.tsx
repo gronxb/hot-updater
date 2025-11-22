@@ -56,11 +56,17 @@ export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
         const newBundle: Bundle = {
           ...bundle,
           id: createUUIDv7WithSameTimestamp(bundle.id),
-          channel: selectedChannel(),
+          channel: selectedChannel()
         };
 
         const res = await api.bundles.$post({
-          json: newBundle,
+          json: {
+            ...newBundle,
+            originalInfoForS3Reference: {
+              bundleId: bundle.id,
+              channel: bundle.channel,
+            },
+          },
         });
 
         if (res.status !== 200) {

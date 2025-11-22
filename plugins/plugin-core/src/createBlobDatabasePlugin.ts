@@ -2,7 +2,7 @@ import { orderBy } from "es-toolkit";
 import semver from "semver";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, DatabasePluginHooks } from "./types";
+import type { Bundle, BundleInfoForS3Reference, DatabasePluginHooks } from "./types";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
@@ -89,6 +89,12 @@ function getSemverNormalizedVersions(version: string): string[] {
   }
 
   return Array.from(versions);
+}
+
+const getOriginalBundleId = (storageUri?: string): string | undefined => {
+  if (!storageUri?.startsWith("s3://")) return undefined;
+  const strings = storageUri.split("/");
+  return strings[strings.length - 2];
 }
 
 export interface BlobOperations {
@@ -307,15 +313,23 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) return;
+          if (changedSets.length === 0) return false;
 
           const changedBundlesByKey: Record<string, Bundle[]> = {};
           const removalsByKey: Record<string, string[]> = {};
           const pathsToInvalidate: Set<string> = new Set();
 
+          // Variable for handling bundle removal when promoting by copy mode
+          const referencesByBundleIdForS3 = (await loadObject<Record<string, BundleInfoForS3Reference[]>>("references.json")) ?? {};
+          let shouldDeleteForS3 = false;
+
           let isTargetAppVersionChanged = false;
 
-          for (const { operation, data } of changedSets) {
+          for (const { operation, data: fullData } of changedSets) {
+            const { originalInfoForS3Reference, ...data } = fullData;
+            const originalBundleId = getOriginalBundleId(data.storageUri);
+            const references = originalBundleId ? referencesByBundleIdForS3[originalBundleId] || [] : [];
+
             if (data.targetAppVersion !== undefined) {
               isTargetAppVersionChanged = true;
             }
@@ -364,6 +378,21 @@ export const createBlobDatabasePlugin = <TConfig>({
                   }
                 }
               }
+
+              if (originalBundleId) {
+                referencesByBundleIdForS3[originalBundleId] = [
+                  ...(references.length > 0 ? references : 
+                    (originalInfoForS3Reference ? [{
+                    bundleId: originalInfoForS3Reference.bundleId,
+                    channel: originalInfoForS3Reference.channel,
+                  }] : [])), 
+                  {
+                    bundleId: data.id,
+                    channel: data.channel,
+                  }
+                ];
+              }
+              
               continue;
             }
 
@@ -409,6 +438,18 @@ export const createBlobDatabasePlugin = <TConfig>({
                   }
                 }
               }
+              if (!originalBundleId) {
+                shouldDeleteForS3 = true;
+                continue;
+              }
+              const filteredReferences = references.filter((reference) => reference.bundleId !== data.id);
+              if (filteredReferences.length > 1) {
+                referencesByBundleIdForS3[originalBundleId] = filteredReferences;
+              } else {
+                delete referencesByBundleIdForS3[originalBundleId];
+                shouldDeleteForS3 = filteredReferences.length === 0;
+              }
+
               continue;
             }
 
@@ -549,6 +590,20 @@ export const createBlobDatabasePlugin = <TConfig>({
                     }
                   }
                 }
+
+                if (!originalBundleId) continue;
+                
+                const updatedReferences = references.map((reference) => reference.bundleId === data.id ? {
+                  ...reference,
+                  channel: data.channel,
+                } : reference);
+
+                if (updatedReferences.length > 1) {
+                  referencesByBundleIdForS3[originalBundleId] = updatedReferences;
+                } else {
+                  delete referencesByBundleIdForS3[originalBundleId];
+                }
+
                 continue;
               }
 
@@ -675,6 +730,10 @@ export const createBlobDatabasePlugin = <TConfig>({
           await invalidatePaths(Array.from(encondedPaths));
 
           pendingBundlesMap.clear();
+
+          await uploadObject("references.json", referencesByBundleIdForS3);
+
+          return shouldDeleteForS3;
         },
       }),
     })({}, hooks)();

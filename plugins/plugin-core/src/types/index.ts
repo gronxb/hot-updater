@@ -35,8 +35,8 @@ export interface DatabasePlugin {
     targetBundleId: string,
     newBundle: Partial<Bundle>,
   ) => Promise<void>;
-  appendBundle: (insertBundle: Bundle) => Promise<void>;
-  commitBundle: () => Promise<void>;
+  appendBundle: (insertBundle: BundleWithOriginalInfoForS3Reference) => Promise<void>;
+  commitBundle: () => Promise<boolean>;
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (deleteBundle: Bundle) => Promise<void>;
@@ -213,3 +213,16 @@ export type ConfigInput = {
   storage: () => Promise<StoragePlugin> | StoragePlugin;
   database: () => Promise<DatabasePlugin> | DatabasePlugin;
 };
+export interface BundleInfoForS3Reference {
+  bundleId: string;
+  channel: string;
+}
+
+export interface BundleOriginalInfoForS3Reference {
+  channel: string;
+  bundleId: string;
+}
+
+export interface BundleWithOriginalInfoForS3Reference extends Bundle {
+  originalInfoForS3Reference?: BundleOriginalInfoForS3Reference;
+}
