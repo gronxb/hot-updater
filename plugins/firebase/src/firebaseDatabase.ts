@@ -68,11 +68,11 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
           query = query.where("platform", "==", where.platform);
         }
 
-        query = query.orderBy("id", "desc");
-
         const totalCountQuery = query;
-        const totalSnapshot = await totalCountQuery.get();
-        const total = totalSnapshot.size;
+        const totalSnapshot = await totalCountQuery.count().get();
+        const total = totalSnapshot.data().count;
+
+        query = query.orderBy("id", "desc");
 
         if (offset > 0) {
           query = query.offset(offset);
