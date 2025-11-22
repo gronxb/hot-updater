@@ -23,7 +23,11 @@ const paramBundleIdSchema = typia.createValidate<{
 }>();
 
 const updateBundleSchema = typia.createValidate<Partial<Bundle>>();
-const createBundleSchema = typia.createValidate<Bundle>();
+const createBundleSchema = typia.createValidate<
+  Bundle & {
+    _ref?: { bundleId: string; channel: string };
+  }
+>();
 
 let configPromise: Promise<{
   config: ConfigResponse;
@@ -175,8 +179,10 @@ export const rpc = new Hono()
           return c.json({ error: "Bundle not found" }, 404);
         }
         await databasePlugin.deleteBundle(deleteBundle);
-        await databasePlugin.commitBundle();
-        await storagePlugin.delete(deleteBundle.storageUri);
+        const shouldDeleteForS3 = await databasePlugin.commitBundle();
+        if (shouldDeleteForS3) {
+          await storagePlugin.delete(deleteBundle.storageUri);
+        }
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle deletion:", error);

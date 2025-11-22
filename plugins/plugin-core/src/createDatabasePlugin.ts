@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import { merge } from "es-toolkit";
 import type {
+  BundleWithOriginalInfoForS3Reference,
   DatabasePlugin,
   DatabasePluginHooks,
   PaginationInfo,
@@ -21,9 +22,9 @@ export interface AbstractDatabasePlugin {
   commitBundle: (params: {
     changedSets: {
       operation: "insert" | "update" | "delete";
-      data: Bundle;
+      data: BundleWithOriginalInfoForS3Reference;
     }[];
-  }) => Promise<void>;
+  }) => Promise<boolean | void>;
 }
 
 /**
@@ -99,13 +100,13 @@ export function createDatabasePlugin<TConfig>(
         string,
         {
           operation: "insert" | "update" | "delete";
-          data: Bundle;
+          data: BundleWithOriginalInfoForS3Reference;
         }
       >();
 
       const markChanged = (
         operation: "insert" | "update" | "delete",
-        data: Bundle,
+        data: BundleWithOriginalInfoForS3Reference,
       ) => {
         changedMap.set(data.id, { operation, data });
       };
@@ -134,11 +135,14 @@ export function createDatabasePlugin<TConfig>(
 
         async commitBundle() {
           const methods = getMethods();
-          await methods.commitBundle({
+          const shouldDeleteForS3 = await methods.commitBundle({
             changedSets: Array.from(changedMap.values()),
           });
           await hooks?.onDatabaseUpdated?.();
           changedMap.clear();
+          return typeof shouldDeleteForS3 === "boolean"
+            ? shouldDeleteForS3
+            : false;
         },
 
         async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
@@ -162,7 +166,7 @@ export function createDatabasePlugin<TConfig>(
           markChanged("update", updatedBundle);
         },
 
-        async appendBundle(inputBundle: Bundle) {
+        async appendBundle(inputBundle: BundleWithOriginalInfoForS3Reference) {
           markChanged("insert", inputBundle);
         },
 

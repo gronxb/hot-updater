@@ -124,8 +124,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
       async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
-          return;
+          return false;
         }
+        let shouldDeleteBundle = false;
 
         // Process each operation sequentially
         for (const op of changedSets) {
@@ -139,6 +140,13 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
             if (error) {
               throw new Error(`Failed to delete bundle: ${error.message}`);
             }
+
+            const { count: leftReferencesCnt } = await supabase
+              .from("bundles")
+              .select("*", { count: "exact", head: true })
+              .eq("storage_uri", op.data.storageUri);
+
+            shouldDeleteBundle = (leftReferencesCnt ?? 0) === 0;
           } else if (op.operation === "insert" || op.operation === "update") {
             // Handle insert and update operations
             const bundle = op.data;
@@ -165,6 +173,8 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
             }
           }
         }
+
+        return shouldDeleteBundle;
       },
     };
   },

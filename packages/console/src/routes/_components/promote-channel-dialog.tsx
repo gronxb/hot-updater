@@ -60,7 +60,13 @@ export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
         };
 
         const res = await api.bundles.$post({
-          json: newBundle,
+          json: {
+            ...newBundle,
+            _ref: {
+              bundleId: bundle.id,
+              channel: bundle.channel,
+            },
+          },
         });
 
         if (res.status !== 200) {

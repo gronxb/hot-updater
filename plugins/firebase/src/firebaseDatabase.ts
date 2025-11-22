@@ -68,11 +68,11 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
           query = query.where("platform", "==", where.platform);
         }
 
-        query = query.orderBy("id", "desc");
-
         const totalCountQuery = query;
-        const totalSnapshot = await totalCountQuery.get();
-        const total = totalSnapshot.size;
+        const totalSnapshot = await totalCountQuery.count().get();
+        const total = totalSnapshot.data().count;
+
+        query = query.orderBy("id", "desc");
 
         if (offset > 0) {
           query = query.offset(offset);
@@ -117,8 +117,9 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
       async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
-          return;
+          return false;
         }
+        let shouldDeleteBundle = false;
 
         let isTargetAppVersionChanged = false;
         const deletedBundleIds = new Set<string>();
@@ -232,8 +233,15 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                 );
               }
             } else if (operation === "delete") {
+              const snapShot = await bundlesCollection
+                .where("storage_uri", "==", data.storageUri)
+                .count()
+                .get();
               // Delete the bundle document
               transaction.delete(bundleRef);
+
+              // Since this is before applying the transaction, we're checking if this is the only reference
+              shouldDeleteBundle = snapShot.data().count === 1;
             }
           }
 
@@ -258,6 +266,8 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
         for (const bundleId of deletedBundleIds) {
           bundles = bundles.filter((b) => b.id !== bundleId);
         }
+
+        return shouldDeleteBundle;
       },
     };
   },
