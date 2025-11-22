@@ -142,15 +142,13 @@ The `storage` plugin must match the `storages` in your server's `createHotUpdate
 
 The server automatically creates these endpoints:
 
-### App Update Endpoints
-- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
-- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
-
-### Bundle Management
-- `POST /hot-updater/bundles` - Create or update bundles
-- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
-- `GET /hot-updater/bundles/:id` - Get bundle by ID
-- `DELETE /hot-updater/bundles/:id` - Delete bundle
-
-### Channels
-- `GET /hot-updater/channels` - List all available channels
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create or update bundles |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |

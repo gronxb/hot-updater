@@ -103,14 +103,13 @@ database: standaloneRepository({
 
 Your server must implement these endpoints (when using default routes):
 
-### Bundle Management
-- `POST /hot-updater/bundles` - Create or update bundles
-- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
-- `GET /hot-updater/bundles/:id` - Get bundle by ID
-- `DELETE /hot-updater/bundles/:id` - Delete bundle
-
-### Channels
-- `GET /hot-updater/channels` - List all available channels
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/hot-updater/api/bundles` | Create or update bundles |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |
 
 These endpoints are automatically created when you use `@hot-updater/server` with database adapters.
 

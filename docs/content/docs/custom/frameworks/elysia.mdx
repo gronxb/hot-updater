@@ -82,6 +82,24 @@ Set your API key in environment variables:
 API_KEY=your-secret-api-key
 ```
 
+### CLI Configuration
+
+Configure the CLI to include the API key when deploying bundles:
+
+```typescript title="hot-updater.config.ts"
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  // ...
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.API_KEY}`,
+    },
+  }),
+});
+```
+
 ## React Native Setup
 
 Configure your React Native app to connect to this server. Use `getUpdateSource` with your server URL.
