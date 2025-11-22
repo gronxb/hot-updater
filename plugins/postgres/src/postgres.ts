@@ -118,8 +118,9 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
 
       async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
-          return;
+          return false;
         }
+        let shouldDeleteBundle = false;
 
         await db.transaction().execute(async (tx) => {
           // Process each operation sequentially
@@ -135,6 +136,14 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
               if (result.numDeletedRows === 0n) {
                 throw new Error(`Bundle with id ${op.data.id} not found`);
               }
+
+              const leftReferencesCnt = await tx
+                .selectFrom("bundles")
+                .where("storage_uri", "=", op.data.storageUri)
+                .select(tx.fn.count<number>("id").as("cnt"))
+                .executeTakeFirst();
+
+              shouldDeleteBundle = (leftReferencesCnt?.cnt ?? 0) === 0;
             } else if (op.operation === "insert" || op.operation === "update") {
               // Handle insert and update operations
               const bundle = op.data;
@@ -171,6 +180,8 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
             }
           }
         });
+
+        return shouldDeleteBundle;
       },
     };
   },
