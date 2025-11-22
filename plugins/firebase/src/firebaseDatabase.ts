@@ -240,7 +240,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
               // Delete the bundle document
               transaction.delete(bundleRef);
 
-              // transaction 처리 전이기 때문에 1개인지 확인
+              // Since this is before applying the transaction, we're checking if this is the only reference
               shouldDeleteBundle = snapShot.data().count === 1;
             }
           }

@@ -142,7 +142,7 @@ export function createDatabasePlugin<TConfig>(
           changedMap.clear();
           return typeof shouldDeleteForS3 === "boolean"
             ? shouldDeleteForS3
-            : true;
+            : false;
         },
 
         async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
