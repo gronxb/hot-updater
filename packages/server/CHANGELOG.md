@@ -8,9 +8,9 @@
 
 ### Patch Changes
 
-- @hot-updater/core@1.0.0
-- @hot-updater/js@1.0.0
-- @hot-updater/plugin-core@1.0.0
+- @hot-updater/core@0.22.0
+- @hot-updater/js@0.22.0
+- @hot-updater/plugin-core@0.22.0
 
 ## 0.21.15
 
@@ -149,5 +149,5 @@
 - Updated dependencies [610b2dd]
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - @hot-updater/plugin-core@1.0.0
-  - @hot-updater/core@1.0.0
+  - @hot-updater/plugin-core@0.22.0
+  - @hot-updater/core@0.22.0
