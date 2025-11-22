@@ -186,8 +186,10 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
 
       async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
-          return;
+          return false;
         }
+
+        let shouldDeleteBundle = false;
 
         // Process each operation sequentially
         for (const op of changedSets) {
@@ -205,6 +207,19 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
 
             // Update local bundles array
             bundles = bundles.filter((b) => b.id !== op.data.id);
+
+            const leftReferencesCntSql = minify(
+              `SELECT COUNT(*) as count FROM bundles WHERE storage_uri = ?`
+            );
+
+            const leftReferencesCntResult = await cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql: leftReferencesCntSql,
+              params: [op.data.storageUri],
+            });
+
+            const rows = await resolvePage<{ count: number }>(leftReferencesCntResult);
+            shouldDeleteBundle = (rows[0]?.count ?? 0) === 0;
           } else if (op.operation === "insert" || op.operation === "update") {
             // Handle insert and update operations
             const bundle = op.data;
@@ -250,6 +265,8 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
             });
           }
         }
+
+        return shouldDeleteBundle;
       },
     };
   },
