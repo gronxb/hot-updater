@@ -333,7 +333,7 @@ export const createBlobDatabasePlugin = <TConfig>({
           let isTargetAppVersionChanged = false;
 
           for (const { operation, data: fullData } of changedSets) {
-            const { originalInfoForS3Reference, ...data } = fullData;
+            const { _ref, ...data } = fullData;
             const originalBundleId = getOriginalBundleId(data.storageUri);
             const references = originalBundleId
               ? referencesByBundleIdForS3[originalBundleId] || []
@@ -392,11 +392,11 @@ export const createBlobDatabasePlugin = <TConfig>({
                 referencesByBundleIdForS3[originalBundleId] = [
                   ...(references.length > 0
                     ? references
-                    : originalInfoForS3Reference
+                    : _ref
                       ? [
                           {
-                            bundleId: originalInfoForS3Reference.bundleId,
-                            channel: originalInfoForS3Reference.channel,
+                            bundleId: _ref.bundleId,
+                            channel: _ref.channel,
                           },
                         ]
                       : []),

@@ -62,7 +62,7 @@ export const PromoteChannelDialog = ({ bundle }: PromoteChannelDialogProps) => {
         const res = await api.bundles.$post({
           json: {
             ...newBundle,
-            originalInfoForS3Reference: {
+            _ref: {
               bundleId: bundle.id,
               channel: bundle.channel,
             },

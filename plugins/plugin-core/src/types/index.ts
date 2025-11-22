@@ -221,5 +221,5 @@ export interface BundleInfoForS3Reference {
 }
 
 export interface BundleWithOriginalInfoForS3Reference extends Bundle {
-  originalInfoForS3Reference?: BundleInfoForS3Reference;
+  _ref?: BundleInfoForS3Reference;
 }

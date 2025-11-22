@@ -25,7 +25,7 @@ const paramBundleIdSchema = typia.createValidate<{
 const updateBundleSchema = typia.createValidate<Partial<Bundle>>();
 const createBundleSchema = typia.createValidate<
   Bundle & {
-    originalInfoForS3Reference?: { bundleId: string; channel: string };
+    _ref?: { bundleId: string; channel: string };
   }
 >();
 
