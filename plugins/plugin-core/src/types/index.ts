@@ -35,7 +35,9 @@ export interface DatabasePlugin {
     targetBundleId: string,
     newBundle: Partial<Bundle>,
   ) => Promise<void>;
-  appendBundle: (insertBundle: BundleWithOriginalInfoForS3Reference) => Promise<void>;
+  appendBundle: (
+    insertBundle: BundleWithOriginalInfoForS3Reference,
+  ) => Promise<void>;
   commitBundle: () => Promise<boolean>;
   onUnmount?: () => Promise<void>;
   name: string;

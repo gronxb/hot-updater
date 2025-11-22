@@ -2,7 +2,11 @@ import { orderBy } from "es-toolkit";
 import semver from "semver";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, BundleInfoForS3Reference, DatabasePluginHooks } from "./types";
+import type {
+  Bundle,
+  BundleInfoForS3Reference,
+  DatabasePluginHooks,
+} from "./types";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
@@ -95,7 +99,7 @@ const getOriginalBundleId = (storageUri?: string): string | undefined => {
   if (!storageUri?.startsWith("s3://")) return undefined;
   const strings = storageUri.split("/");
   return strings[strings.length - 2];
-}
+};
 
 export interface BlobOperations {
   listObjects: (prefix: string) => Promise<string[]>;
@@ -320,7 +324,10 @@ export const createBlobDatabasePlugin = <TConfig>({
           const pathsToInvalidate: Set<string> = new Set();
 
           // Variable for handling bundle removal when promoting by copy mode
-          const referencesByBundleIdForS3 = (await loadObject<Record<string, BundleInfoForS3Reference[]>>("references.json")) ?? {};
+          const referencesByBundleIdForS3 =
+            (await loadObject<Record<string, BundleInfoForS3Reference[]>>(
+              "references.json",
+            )) ?? {};
           let shouldDeleteForS3 = false;
 
           let isTargetAppVersionChanged = false;
@@ -328,7 +335,9 @@ export const createBlobDatabasePlugin = <TConfig>({
           for (const { operation, data: fullData } of changedSets) {
             const { originalInfoForS3Reference, ...data } = fullData;
             const originalBundleId = getOriginalBundleId(data.storageUri);
-            const references = originalBundleId ? referencesByBundleIdForS3[originalBundleId] || [] : [];
+            const references = originalBundleId
+              ? referencesByBundleIdForS3[originalBundleId] || []
+              : [];
 
             if (data.targetAppVersion !== undefined) {
               isTargetAppVersionChanged = true;
@@ -381,18 +390,23 @@ export const createBlobDatabasePlugin = <TConfig>({
 
               if (originalBundleId) {
                 referencesByBundleIdForS3[originalBundleId] = [
-                  ...(references.length > 0 ? references : 
-                    (originalInfoForS3Reference ? [{
-                    bundleId: originalInfoForS3Reference.bundleId,
-                    channel: originalInfoForS3Reference.channel,
-                  }] : [])), 
+                  ...(references.length > 0
+                    ? references
+                    : originalInfoForS3Reference
+                      ? [
+                          {
+                            bundleId: originalInfoForS3Reference.bundleId,
+                            channel: originalInfoForS3Reference.channel,
+                          },
+                        ]
+                      : []),
                   {
                     bundleId: data.id,
                     channel: data.channel,
-                  }
+                  },
                 ];
               }
-              
+
               continue;
             }
 
@@ -442,9 +456,12 @@ export const createBlobDatabasePlugin = <TConfig>({
                 shouldDeleteForS3 = true;
                 continue;
               }
-              const filteredReferences = references.filter((reference) => reference.bundleId !== data.id);
+              const filteredReferences = references.filter(
+                (reference) => reference.bundleId !== data.id,
+              );
               if (filteredReferences.length > 1) {
-                referencesByBundleIdForS3[originalBundleId] = filteredReferences;
+                referencesByBundleIdForS3[originalBundleId] =
+                  filteredReferences;
               } else {
                 delete referencesByBundleIdForS3[originalBundleId];
                 shouldDeleteForS3 = filteredReferences.length === 0;
@@ -592,14 +609,19 @@ export const createBlobDatabasePlugin = <TConfig>({
                 }
 
                 if (!originalBundleId) continue;
-                
-                const updatedReferences = references.map((reference) => reference.bundleId === data.id ? {
-                  ...reference,
-                  channel: data.channel,
-                } : reference);
+
+                const updatedReferences = references.map((reference) =>
+                  reference.bundleId === data.id
+                    ? {
+                        ...reference,
+                        channel: data.channel,
+                      }
+                    : reference,
+                );
 
                 if (updatedReferences.length > 1) {
-                  referencesByBundleIdForS3[originalBundleId] = updatedReferences;
+                  referencesByBundleIdForS3[originalBundleId] =
+                    updatedReferences;
                 } else {
                   delete referencesByBundleIdForS3[originalBundleId];
                 }

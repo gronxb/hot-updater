@@ -21,7 +21,7 @@ export interface AbstractDatabasePlugin {
   onUnmount?: () => Promise<void>;
   commitBundle: (params: {
     changedSets: {
-      operation: "insert" | "update" | "delete";      
+      operation: "insert" | "update" | "delete";
       data: BundleWithOriginalInfoForS3Reference;
     }[];
   }) => Promise<boolean>;
