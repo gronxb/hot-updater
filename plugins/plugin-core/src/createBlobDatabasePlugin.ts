@@ -328,7 +328,7 @@ export const createBlobDatabasePlugin = <TConfig>({
             (await loadObject<Record<string, BundleInfoForS3Reference[]>>(
               "references.json",
             )) ?? {};
-          let shouldDeleteForS3 = false;
+          let shouldDeleteForS3 = true;
 
           let isTargetAppVersionChanged = false;
 
@@ -452,10 +452,8 @@ export const createBlobDatabasePlugin = <TConfig>({
                   }
                 }
               }
-              if (!originalBundleId) {
-                shouldDeleteForS3 = true;
-                continue;
-              }
+              if (!originalBundleId) continue;
+
               const filteredReferences = references.filter(
                 (reference) => reference.bundleId !== data.id,
               );
@@ -464,8 +462,9 @@ export const createBlobDatabasePlugin = <TConfig>({
                   filteredReferences;
               } else {
                 delete referencesByBundleIdForS3[originalBundleId];
-                shouldDeleteForS3 = filteredReferences.length === 0;
               }
+
+              shouldDeleteForS3 = filteredReferences.length === 0;
 
               continue;
             }

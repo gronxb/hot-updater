@@ -24,7 +24,7 @@ export interface AbstractDatabasePlugin {
       operation: "insert" | "update" | "delete";
       data: BundleWithOriginalInfoForS3Reference;
     }[];
-  }) => Promise<boolean>;
+  }) => Promise<boolean | void>;
 }
 
 /**
@@ -140,7 +140,9 @@ export function createDatabasePlugin<TConfig>(
           });
           await hooks?.onDatabaseUpdated?.();
           changedMap.clear();
-          return shouldDeleteForS3;
+          return typeof shouldDeleteForS3 === "boolean"
+            ? shouldDeleteForS3
+            : true;
         },
 
         async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
