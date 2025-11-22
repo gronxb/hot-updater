@@ -233,15 +233,15 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                 );
               }
             } else if (operation === "delete") {
-              // Delete the bundle document
-              transaction.delete(bundleRef);
-
               const snapShot = await bundlesCollection
                 .where("storage_uri", "==", data.storageUri)
                 .count()
                 .get();
+              // Delete the bundle document
+              transaction.delete(bundleRef);
 
-              shouldDeleteBundle = snapShot.data().count === 0;
+              // transaction 처리 전이기 때문에 1개인지 확인
+              shouldDeleteBundle = snapShot.data().count === 1;
             }
           }
 
