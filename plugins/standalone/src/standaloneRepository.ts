@@ -99,37 +99,46 @@ export const standaloneRepository =
         async getBundles(options) {
           const { where, limit, offset = 0 } = options ?? {};
           const { path, headers: routeHeaders } = routes.list();
-          const response = await fetch(buildUrl(path), {
+
+          // Build query string for server-side filtering
+          const params = new URLSearchParams();
+          if (where?.channel) params.set("channel", where.channel);
+          if (where?.platform) params.set("platform", where.platform);
+          if (limit) params.set("limit", String(limit));
+          if (offset) params.set("offset", String(offset));
+
+          const queryString = params.toString();
+          const url = queryString
+            ? `${buildUrl(path)}?${queryString}`
+            : buildUrl(path);
+
+          const response = await fetch(url, {
             method: "GET",
             headers: getHeaders(routeHeaders),
           });
           if (!response.ok) {
             throw new Error(`API Error: ${response.statusText}`);
           }
-          const bundles = (await response.json()) as Bundle[];
 
-          let filteredBundles = bundles;
-          if (where?.channel) {
-            filteredBundles = filteredBundles.filter(
-              (b) => b.channel === where.channel,
-            );
+          const result = await response.json();
+
+          // Handle both response formats:
+          // 1. New format: { data: Bundle[], pagination: { total, ... } }
+          // 2. Legacy format: Bundle[]
+          if (result && typeof result === "object" && "data" in result) {
+            return result as {
+              data: Bundle[];
+              pagination: ReturnType<typeof calculatePagination>;
+            };
           }
-          if (where?.platform) {
-            filteredBundles = filteredBundles.filter(
-              (b) => b.platform === where.platform,
-            );
-          }
 
-          const total = filteredBundles.length;
-          const data = limit
-            ? filteredBundles.slice(offset, offset + limit)
-            : filteredBundles;
-
-          const pagination = calculatePagination(total, { limit, offset });
+          // Legacy format: plain array
+          const bundles = result as Bundle[];
+          const total = bundles.length;
 
           return {
-            data,
-            pagination,
+            data: bundles,
+            pagination: calculatePagination(total, { limit, offset }),
           };
         },
         async getChannels(): Promise<string[]> {

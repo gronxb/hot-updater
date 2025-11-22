@@ -50,6 +50,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",

@@ -1,10 +1,10 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/core";
 import { createForm } from "@tanstack/solid-form";
 import { useQueryClient } from "@tanstack/solid-query";
 import { LoaderCircle } from "lucide-solid";
 import semverValid from "semver/ranges/valid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
-import { createMemo, createSignal, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import { Button } from "@/components/ui/button";
 import {
   Switch,
@@ -18,7 +18,7 @@ import {
   TextFieldLabel,
 } from "@/components/ui/text-field";
 import { showToast } from "@/components/ui/toast";
-import { api, useConfigQuery } from "@/lib/api";
+import { useBundleUpdateMutation, useConfigQuery } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export interface EditBundleSheetFormProps {
@@ -32,8 +32,8 @@ export const EditBundleSheetForm = ({
 }: EditBundleSheetFormProps) => {
   const queryClient = useQueryClient();
   const config = useConfigQuery();
+  const updateMutation = useBundleUpdateMutation();
 
-  const [isSubmitting, setIsSubmitting] = createSignal(false);
   const gitUrl = createMemo(() => config.data?.console?.gitUrl ?? null);
   const gitCommitHash = createMemo(() => bundle.gitCommitHash);
 
@@ -45,20 +45,12 @@ export const EditBundleSheetForm = ({
       shouldForceUpdate: bundle.shouldForceUpdate,
     } as Partial<Bundle>,
     onSubmit: async ({ value }) => {
-      setIsSubmitting(true);
       try {
-        const res = await api.bundles[":bundleId"].$patch({
-          param: { bundleId: bundle.id },
-          json: value,
-        });
-        if (res.status !== 200) {
-          const json = (await res.json()) as { error: string };
-          showToast({
-            title: "Error",
-            description: json.error,
-            variant: "error",
-          });
-        }
+        await updateMutation.mutateAsync({ bundleId: bundle.id, data: value });
+        queryClient.invalidateQueries({ queryKey: ["bundle", bundle.id] });
+        queryClient.invalidateQueries({ queryKey: ["bundles"] });
+        queryClient.invalidateQueries({ queryKey: ["channels"] });
+        onEditSuccess();
       } catch (e) {
         if (e instanceof Error) {
           showToast({
@@ -67,12 +59,6 @@ export const EditBundleSheetForm = ({
             variant: "error",
           });
         }
-      } finally {
-        setIsSubmitting(false);
-        queryClient.invalidateQueries({ queryKey: ["bundle", bundle.id] });
-        queryClient.invalidateQueries({ queryKey: ["bundles"] });
-        queryClient.invalidateQueries({ queryKey: ["channels"] });
-        onEditSuccess();
       }
     },
   }));
@@ -220,7 +206,7 @@ export const EditBundleSheetForm = ({
       </div>
 
       <Show
-        when={!isSubmitting()}
+        when={!updateMutation.isPending}
         fallback={
           <Button type="submit" class="mt-4" disabled>
             <LoaderCircle class="animate-spin" />

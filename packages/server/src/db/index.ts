@@ -1,4 +1,5 @@
 import type { StoragePlugin } from "@hot-updater/plugin-core";
+import { type ConsoleHandler, createConsoleHandler } from "../console";
 import { createHandler } from "../handler";
 import {
   createOrmDatabaseCore,
@@ -23,6 +24,7 @@ type HotUpdaterCoreInternal = OrmCore | PluginCore;
 
 export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
+  console: ConsoleHandler;
   adapterName: string;
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
@@ -39,6 +41,17 @@ interface HotUpdaterOptions {
    */
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
+  /**
+   * Base path for console routes (e.g., "/console")
+   */
+  consolePath?: string;
+  /**
+   * Console configuration (port, gitUrl, etc.)
+   */
+  consoleConfig?: {
+    port?: number;
+    gitUrl?: string;
+  };
   cwd?: string;
 }
 
@@ -87,12 +100,37 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     });
   }
 
+  // Create a deleteStorageFile function
+  const deleteStorageFile = async (storageUri: string) => {
+    const url = new URL(storageUri);
+    const protocol = url.protocol.replace(":", "");
+    if (protocol === "http" || protocol === "https") {
+      return; // Can't delete http/https URLs
+    }
+    const plugin = storagePlugins.find((p) => p.supportedProtocol === protocol);
+    if (plugin) {
+      await plugin.delete(storageUri);
+    }
+  };
+
+  // Create console handler (for static files only)
+  const consoleHandler = createConsoleHandler({
+    basePath: options?.consolePath,
+  });
+
   return {
     ...core.api,
     handler: createHandler(
-      core.api,
-      options?.basePath ? { basePath: options.basePath } : {},
+      {
+        ...core.api,
+        deleteStorageFile,
+      },
+      {
+        basePath: options?.basePath,
+        consoleConfig: options?.consoleConfig,
+      },
     ),
+    console: consoleHandler,
     adapterName: core.adapterName,
     createMigrator: core.createMigrator,
     generateSchema: core.generateSchema,

@@ -1,4 +1,4 @@
-import type { Platform } from "@hot-updater/plugin-core";
+import type { Platform } from "@hot-updater/core";
 import { useSearchParams } from "@solidjs/router";
 import { createMemo } from "solid-js";
 

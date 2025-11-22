@@ -1,20 +1,20 @@
-import { s3Storage } from '@hot-updater/aws';
-import { r2Storage } from '@hot-updater/cloudflare';
-import { firebaseStorage } from '@hot-updater/firebase';
-import * as admin from 'firebase-admin';
-import { bare } from '@hot-updater/bare';
-import { standaloneRepository } from '@hot-updater/standalone';
-import { supabaseStorage } from '@hot-updater/supabase';
-import { config } from 'dotenv';
-import { defineConfig } from 'hot-updater';
+import { s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { r2Storage } from "@hot-updater/cloudflare";
+import { firebaseStorage } from "@hot-updater/firebase";
+import { standaloneRepository } from "@hot-updater/standalone";
+import { supabaseStorage } from "@hot-updater/supabase";
+import { config } from "dotenv";
+import * as admin from "firebase-admin";
+import { defineConfig } from "hot-updater";
 
-config({ path: '.env.hotupdater' });
+config({ path: ".env.hotupdater" });
 
 const getStorage = () => {
   switch (process.env.STORAGE) {
-    case 'S3':
+    case "S3":
       return s3Storage({
-        region: 'auto',
+        region: "auto",
         endpoint: process.env.R2_ENDPOINT,
         credentials: {
           accessKeyId: process.env.R2_ACCESS_KEY_ID!,
@@ -22,13 +22,13 @@ const getStorage = () => {
         },
         bucketName: process.env.R2_BUCKET_NAME!,
       });
-    case 'R2':
+    case "R2":
       return r2Storage({
         bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
         accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
         cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
       });
-    case 'FIREBASE':
+    case "FIREBASE":
       return firebaseStorage({
         projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
         storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
@@ -36,7 +36,7 @@ const getStorage = () => {
           process.env.GOOGLE_APPLICATION_CREDENTIALS!,
         ),
       });
-    case 'SUPABASE':
+    case "SUPABASE":
       return supabaseStorage({
         supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
         supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
@@ -44,7 +44,7 @@ const getStorage = () => {
       });
     default:
       throw new Error(
-        'Please STORAGE=S3|R2|FIREBASE|SUPABASE pnpm hot-updater deploy',
+        "Please STORAGE=S3|R2|FIREBASE|SUPABASE pnpm hot-updater deploy",
       );
   }
 };
@@ -55,11 +55,11 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: getStorage(),
   database: standaloneRepository({
-    baseUrl: 'http://localhost:3006/hot-updater',
+    baseUrl: "http://localhost:3000/hot-updater",
   }),
   fingerprint: {
     debug: true,
   },
-  updateStrategy: 'appVersion',
-  compressStrategy: 'tar.br',
+  updateStrategy: "appVersion",
+  compressStrategy: "tar.br",
 });
