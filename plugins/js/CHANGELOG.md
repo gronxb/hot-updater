@@ -1,6 +1,6 @@
 # @hot-updater/js
 
-## 1.0.0
+## 0.22.0
 
 ### Patch Changes
 
@@ -98,7 +98,7 @@
 
 - @hot-updater/core@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 

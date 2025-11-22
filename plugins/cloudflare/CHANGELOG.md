@@ -1,6 +1,6 @@
 # @hot-updater/cloudflare
 
-## 1.0.0
+## 0.22.0
 
 ### Patch Changes
 
@@ -150,7 +150,7 @@
   - @hot-updater/core@0.21.1
   - @hot-updater/js@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
