@@ -1,5 +1,17 @@
 # @hot-updater/server
 
+## 1.0.0
+
+### Minor Changes
+
+- 32ad614: feat(server): integrate endpoint `/bundles/*` => `/api/bundles/*`
+
+### Patch Changes
+
+- @hot-updater/core@1.0.0
+- @hot-updater/js@1.0.0
+- @hot-updater/plugin-core@1.0.0
+
 ## 0.21.15
 
 ### Patch Changes
