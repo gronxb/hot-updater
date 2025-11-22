@@ -1,5 +1,11 @@
 # @hot-updater/plugin-core
 
+## 0.22.0
+
+### Patch Changes
+
+- @hot-updater/core@0.22.0
+
 ## 0.21.15
 
 ### Patch Changes
@@ -98,7 +104,7 @@
 - 7b7bc48: fix: zlib using node api
   - @hot-updater/core@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -110,7 +116,7 @@
 
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - @hot-updater/core@1.0.0
+  - @hot-updater/core@0.22.0
 
 ## 0.20.15
 

@@ -64,7 +64,7 @@
 
 - @hot-updater/react-native@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -76,7 +76,7 @@
 
 - Updated dependencies [610b2dd]
 - Updated dependencies [afb084b]
-  - @hot-updater/react-native@1.0.0
+  - @hot-updater/react-native@0.22.0
 
 ## 0.20.15
 
