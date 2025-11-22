@@ -34,18 +34,54 @@ app.listen(3000);
 
 The server automatically creates these endpoints:
 
-### App Update Endpoints
-- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
-- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create or update bundles |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |
 
-### Bundle Management
-- `POST /hot-updater/bundles` - Create or update bundles
-- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
-- `GET /hot-updater/bundles/:id` - Get bundle by ID
-- `DELETE /hot-updater/bundles/:id` - Delete bundle
+## Security
 
-### Channels
-- `GET /hot-updater/channels` - List all available channels
+The Hot Updater handler does not include built-in authentication. Protect admin endpoints at the framework level.
+
+### Protecting Admin Endpoints
+
+Update endpoints are public for React Native clients. Bundle management endpoints (`/api/*`) require protection.
+
+```typescript
+import express from "express";
+import { toNodeHandler } from "@hot-updater/server/node";
+import { hotUpdater } from "./hotUpdater";
+
+const app = express();
+const handler = toNodeHandler(hotUpdater);
+
+// Auth middleware // [!code ++]
+const authMiddleware = (req, res, next) => { // [!code ++]
+  const token = req.headers.authorization?.split(" ")[1]; // [!code ++]
+  if (token !== process.env.API_KEY) { // [!code ++]
+    return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
+  } // [!code ++]
+  next(); // [!code ++]
+}; // [!code ++]
+
+// Protect /api/* endpoints // [!code ++]
+app.use("/hot-updater/api", authMiddleware); // [!code ++]
+
+app.all("/hot-updater/*", handler);
+
+app.listen(3000);
+```
+
+Set your API key in environment variables:
+
+```bash
+API_KEY=your-secret-api-key
+```
 
 ## React Native Setup
 
