@@ -15,27 +15,35 @@ import java.security.spec.X509EncodedKeySpec
  * (`packages/react-native/src/types.ts`) to detect signature verification failures.
  * If you change these messages, update `isSignatureVerificationError()` in types.ts accordingly.
  */
-sealed class SignatureVerificationException(message: String) : Exception(message) {
-    class PublicKeyNotConfigured : SignatureVerificationException(
-        "Public key not configured for signature verification. " +
-        "Add 'hot_updater_public_key' to res/values/strings.xml"
-    )
+sealed class SignatureVerificationException(
+    message: String,
+) : Exception(message) {
+    class PublicKeyNotConfigured :
+        SignatureVerificationException(
+            "Public key not configured for signature verification. " +
+                "Add 'hot_updater_public_key' to res/values/strings.xml",
+        )
 
-    class InvalidPublicKeyFormat : SignatureVerificationException(
-        "Public key format is invalid. Ensure the public key is in PEM format (BEGIN PUBLIC KEY)"
-    )
+    class InvalidPublicKeyFormat :
+        SignatureVerificationException(
+            "Public key format is invalid. Ensure the public key is in PEM format (BEGIN PUBLIC KEY)",
+        )
 
-    class InvalidSignatureFormat : SignatureVerificationException(
-        "Signature format is invalid. The signature must be base64-encoded"
-    )
+    class InvalidSignatureFormat :
+        SignatureVerificationException(
+            "Signature format is invalid. The signature must be base64-encoded",
+        )
 
-    class VerificationFailed : SignatureVerificationException(
-        "Bundle signature verification failed. The bundle may be corrupted or tampered with"
-    )
+    class VerificationFailed :
+        SignatureVerificationException(
+            "Bundle signature verification failed. The bundle may be corrupted or tampered with",
+        )
 
-    class SecurityFrameworkError(cause: Throwable) : SignatureVerificationException(
-        "Security framework error during verification: ${cause.message}"
-    )
+    class SecurityFrameworkError(
+        cause: Throwable,
+    ) : SignatureVerificationException(
+            "Security framework error during verification: ${cause.message}",
+        )
 }
 
 /**
@@ -51,11 +59,12 @@ object SignatureVerifier {
      * @return Public key PEM string or null if not configured
      */
     private fun getPublicKeyFromConfig(context: Context): String? {
-        val resourceId = context.resources.getIdentifier(
-            "hot_updater_public_key",
-            "string",
-            context.packageName
-        )
+        val resourceId =
+            context.resources.getIdentifier(
+                "hot_updater_public_key",
+                "string",
+                context.packageName,
+            )
 
         if (resourceId == 0) {
             Log.d(TAG, "hot_updater_public_key not found in strings.xml")
@@ -80,14 +89,15 @@ object SignatureVerifier {
     private fun createPublicKey(publicKeyPEM: String): PublicKey {
         try {
             // Remove PEM headers/footers and whitespace
-            val publicKeyBase64 = publicKeyPEM
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
-                .replace("\\n", "")
-                .replace("\n", "")
-                .replace("\r", "")
-                .replace(" ", "")
-                .trim()
+            val publicKeyBase64 =
+                publicKeyPEM
+                    .replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replace("-----END PUBLIC KEY-----", "")
+                    .replace("\\n", "")
+                    .replace("\n", "")
+                    .replace("\r", "")
+                    .replace(" ", "")
+                    .trim()
 
             // Decode base64
             val keyBytes = Base64.decode(publicKeyBase64, Base64.DEFAULT)
@@ -121,8 +131,11 @@ object SignatureVerifier {
             val data = ByteArray(len / 2)
             var i = 0
             while (i < len) {
-                data[i / 2] = ((Character.digit(hexString[i], 16) shl 4) +
-                               Character.digit(hexString[i + 1], 16)).toByte()
+                data[i / 2] =
+                    (
+                        (Character.digit(hexString[i], 16) shl 4) +
+                            Character.digit(hexString[i + 1], 16)
+                    ).toByte()
                 i += 2
             }
             return data
@@ -142,7 +155,7 @@ object SignatureVerifier {
     fun verifySignature(
         context: Context,
         fileHash: String,
-        signatureBase64: String?
+        signatureBase64: String?,
     ) {
         // Get public key from config
         val publicKeyPEM = getPublicKeyFromConfig(context)
@@ -169,12 +182,13 @@ object SignatureVerifier {
             val publicKey = createPublicKey(publicKeyPEM)
 
             // Decode signature from base64
-            val signatureBytes = try {
-                Base64.decode(signatureBase64, Base64.DEFAULT)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to decode signature from base64", e)
-                throw SignatureVerificationException.InvalidSignatureFormat()
-            }
+            val signatureBytes =
+                try {
+                    Base64.decode(signatureBase64, Base64.DEFAULT)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decode signature from base64", e)
+                    throw SignatureVerificationException.InvalidSignatureFormat()
+                }
 
             // Convert hex fileHash to bytes
             val fileHashBytes = hexToByteArray(fileHash)

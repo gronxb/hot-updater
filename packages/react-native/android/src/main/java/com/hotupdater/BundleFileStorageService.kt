@@ -94,7 +94,10 @@ class BundleFileStorageService(
         signature: String?,
         progressCallback: (Double) -> Unit,
     ): Boolean {
-        Log.d("BundleStorage", "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash signature ${if (signature != null) "present" else "null"}")
+        Log.d(
+            "BundleStorage",
+            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash signature ${if (signature != null) "present" else "null"}",
+        )
 
         // If no URL is provided, reset to fallback
         if (fileUrl.isNullOrEmpty()) {
@@ -186,6 +189,7 @@ class BundleFileStorageService(
                     tempDir.deleteRecursively()
                     return@withContext false
                 }
+
                 is DownloadResult.Success -> {
                     Log.d("BundleStorage", "Download successful")
                     // 1) Verify file hash if provided
@@ -204,7 +208,7 @@ class BundleFileStorageService(
                             SignatureVerifier.verifySignature(
                                 context,
                                 fileHash,
-                                signature
+                                signature,
                             )
                             Log.d("BundleStorage", "Signature verification completed successfully")
                         } catch (e: SignatureVerificationException) {
