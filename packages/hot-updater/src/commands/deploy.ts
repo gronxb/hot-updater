@@ -31,6 +31,7 @@ import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputD
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
 import { signBundle } from "@/utils/signing/bundleSigning";
+import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { getConsolePort, openConsole } from "./console";
@@ -93,6 +94,36 @@ export const deploy = async (options: DeployOptions) => {
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
+  }
+
+  // Validate signing configuration
+  const signingValidation = await validateSigningConfig(config);
+
+  if (signingValidation.issues.length > 0) {
+    const errors = signingValidation.issues.filter((i) => i.type === "error");
+    const warnings = signingValidation.issues.filter((i) => i.type === "warning");
+
+    if (errors.length > 0) {
+      console.log("");
+      p.log.error("Signing configuration error:");
+      for (const issue of errors) {
+        p.log.error(`  ${issue.message}`);
+        p.log.info(`  Resolution: ${issue.resolution}`);
+      }
+      console.log("");
+      p.log.error("Deployment blocked. Fix the signing configuration and try again.");
+      process.exit(1);
+    }
+
+    if (warnings.length > 0) {
+      console.log("");
+      p.log.warn("Signing configuration warning:");
+      for (const warning of warnings) {
+        p.log.warn(`  ${warning.message}`);
+        p.log.info(`  Resolution: ${warning.resolution}`);
+      }
+      console.log("");
+    }
   }
 
   const target: {

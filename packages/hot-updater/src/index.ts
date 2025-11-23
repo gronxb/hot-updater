@@ -20,7 +20,7 @@ import {
   handleFingerprint,
 } from "./commands/fingerprint";
 import { generate } from "./commands/generate";
-import { keysExportPublic, keysGenerate } from "./commands/keys";
+import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 
 const DEFAULT_CHANNEL = "production";
@@ -99,6 +99,12 @@ keysCommand
   )
   .option("-y, --yes", "skip confirmation prompt when writing to native files")
   .action(keysExportPublic);
+
+keysCommand
+  .command("remove")
+  .description("Remove public keys from native configuration files")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(keysRemove);
 
 program
   .command("deploy")

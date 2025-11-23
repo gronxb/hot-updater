@@ -68,6 +68,44 @@ export class IosConfigParser implements ConfigParser {
     };
   }
 
+  async remove(key: string): Promise<{ paths: string[] }> {
+    const plistPaths = this.getPlistPaths();
+
+    if (plistPaths.length === 0) {
+      return { paths: [] };
+    }
+
+    const updatedPaths: string[] = [];
+
+    for (const plistFile of plistPaths) {
+      const relativePath = path.relative(getCwd(), plistFile);
+      try {
+        const plistXml = await fs.promises.readFile(plistFile, "utf-8");
+        const plistObject = plist.parse(plistXml) as Record<string, any>;
+
+        if (!(key in plistObject)) {
+          continue;
+        }
+
+        delete plistObject[key];
+
+        const newPlistXml = plist.build(plistObject, {
+          indent: "\t",
+          pretty: true,
+        });
+
+        await fs.promises.writeFile(plistFile, newPlistXml);
+        updatedPaths.push(relativePath);
+      } catch (error) {
+        throw new Error(
+          `Failed to remove key from Info.plist at '${relativePath}': ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return { paths: updatedPaths };
+  }
+
   async set(key: string, value: string): Promise<{ paths: string[] }> {
     const plistPaths = this.getPlistPaths();
 

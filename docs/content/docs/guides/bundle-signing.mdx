@@ -225,3 +225,182 @@ When rotating keys:
 3. Export new public key to native apps
 4. Release new native app version
 5. Maintain backward compatibility until users update
+
+## Configuration State Matrix
+
+Understanding the relationship between your config file and native app settings is critical for proper signing behavior.
+
+<Callout type="warn">
+**Configuration Mismatch Warning**: The config file (`signing.enabled`) and native files (public keys) must be in sync. Mismatches cause updates to fail.
+</Callout>
+
+| Config `signing.enabled` | Native Public Key | Behavior |
+|--------------------------|-------------------|----------|
+| `false` | Not present | ✅ Normal updates (no verification) |
+| `false` | **Present** | ❌ **Updates rejected** - app expects signatures |
+| `true` | Present | ✅ Signature verified, update proceeds |
+| `true` | **Not present** | ❌ **Error: PublicKeyNotConfigured** |
+
+## Troubleshooting
+
+### Updates Rejected - App Expects Signatures
+
+**Error**: Deployment succeeds but app rejects updates.
+
+**Cause**: Public key exists in native files but `signing.enabled` is `false` in config.
+
+**Solution**: Either enable signing in config, or remove public keys:
+```bash
+# Option 1: Enable signing
+# Set signing.enabled: true in hot-updater.config.ts
+
+# Option 2: Remove public keys (then rebuild native app)
+npx hot-updater keys remove
+```
+
+### PublicKeyNotConfigured Error
+
+**Error**: `PublicKeyNotConfigured` when app tries to verify bundle.
+
+**Cause**: `signing.enabled` is `true` but public key is missing from native files.
+
+**Solution**: Export public key to native files and rebuild:
+```bash
+npx hot-updater keys export-public
+# Then rebuild and release native app
+```
+
+### Signature Verification Failed
+
+**Error**: Bundle downloaded but signature verification fails.
+
+**Possible Causes**:
+1. Bundle was tampered with during transit
+2. Wrong public key in native app (key rotation issue)
+3. Bundle signed with different private key
+
+**Solution**: Verify you're using matching key pairs. Re-export public key if needed:
+```bash
+npx hot-updater keys export-public --print-only
+# Compare with key in native files
+```
+
+### Deploy Warning About Orphan Public Keys
+
+**Warning**: "Signing is disabled but public keys found in native files"
+
+**Cause**: Config has `signing.enabled: false` but native files contain public keys.
+
+**Solution**: Remove orphan public keys:
+```bash
+npx hot-updater keys remove
+# Then rebuild and release native app
+```
+
+## CLI Commands Reference
+
+### `keys generate`
+
+Generate RSA key pair for code signing.
+
+```bash
+npx hot-updater keys generate [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-o, --output <dir>` | Output directory for keys | `./keys` |
+| `-k, --key-size <size>` | RSA key size (2048 or 4096) | `4096` |
+
+### `keys export-public`
+
+Export public key to native configuration files.
+
+```bash
+npx hot-updater keys export-public [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i, --input <path>` | Override private key path (default: from config) |
+| `-p, --print-only` | Display key without modifying files |
+| `-y, --yes` | Skip confirmation prompt |
+
+### `keys remove`
+
+Remove public keys from native configuration files.
+
+```bash
+npx hot-updater keys remove [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-y, --yes` | Skip confirmation prompt |
+
+## Disabling Bundle Signing
+
+To disable bundle signing after it was previously enabled, you must update both the config file AND remove public keys from native apps.
+
+<Callout type="warn">
+**Both Steps Required**: If you only disable signing in config but leave public keys in native files, updates will fail. The native app will still expect signatures.
+</Callout>
+
+### Step-by-Step Guide
+
+**1. Update your config file:**
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  // ... other config
+  signing: {
+    enabled: false,
+  },
+});
+```
+
+**2. Remove public keys from native files:**
+
+```bash
+npx hot-updater keys remove
+```
+
+This command automatically detects and removes public keys from both platforms:
+- iOS: Removes `HOT_UPDATER_PUBLIC_KEY` from `Info.plist`
+- Android: Removes `hot_updater_public_key` from `strings.xml`
+
+**3. Rebuild and release your native app:**
+
+After removing the public keys, you must release a new version of your app to the App Store / Play Store. Users with the old app version (containing public keys) will reject unsigned bundles until they update.
+
+**4. Deploy unsigned bundles:**
+
+```bash
+npx hot-updater deploy -p ios
+```
+
+### `keys remove` Command Options
+
+| Option | Description |
+|--------|-------------|
+| `-y, --yes` | Skip confirmation prompt |
+
+## Quick Reference
+
+### Enable Signing Checklist
+
+1. ☐ Generate keys: `npx hot-updater keys generate`
+2. ☐ Update config: `signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }`
+3. ☐ Export public key: `npx hot-updater keys export-public`
+4. ☐ Add `keys/` to `.gitignore`
+5. ☐ Rebuild native app
+6. ☐ Release to App Store / Play Store
+7. ☐ Deploy signed bundles: `npx hot-updater deploy`
+
+### Disable Signing Checklist
+
+1. ☐ Update config: `signing: { enabled: false }`
+2. ☐ Remove public keys: `npx hot-updater keys remove`
+3. ☐ Rebuild native app
+4. ☐ Release to App Store / Play Store
+5. ☐ Deploy unsigned bundles: `npx hot-updater deploy`

@@ -9,8 +9,8 @@ import {
   saveKeyPair,
 } from "@/utils/signing";
 
-const ANDROID_KEY = "hot_updater_public_key";
-const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
+export const ANDROID_KEY = "hot_updater_public_key";
+export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
 
 export interface KeysGenerateOptions {
   output?: string;
@@ -295,5 +295,209 @@ export const keysExportPublic = async (
   } catch (error) {
     p.log.error(`Failed to export public key: ${(error as Error).message}`);
     process.exit(1);
+  }
+};
+
+export interface KeysRemoveOptions {
+  yes?: boolean;
+}
+
+interface RemoveResult {
+  platform: "android" | "ios";
+  paths: string[];
+  success: boolean;
+  found: boolean;
+  error?: string;
+}
+
+async function removePublicKeyFromAndroid(
+  customPaths: string[],
+): Promise<RemoveResult> {
+  try {
+    const androidParser = new AndroidConfigParser(customPaths);
+
+    if (!(await androidParser.exists())) {
+      return {
+        platform: "android",
+        paths: [],
+        success: true,
+        found: false,
+      };
+    }
+
+    // Check if key exists
+    const existing = await androidParser.get(ANDROID_KEY);
+    if (!existing.value) {
+      return {
+        platform: "android",
+        paths: existing.paths,
+        success: true,
+        found: false,
+      };
+    }
+
+    const result = await androidParser.remove(ANDROID_KEY);
+    return {
+      platform: "android",
+      paths: result.paths,
+      success: true,
+      found: true,
+    };
+  } catch (error) {
+    return {
+      platform: "android",
+      paths: [],
+      success: false,
+      found: true,
+      error: (error as Error).message,
+    };
+  }
+}
+
+async function removePublicKeyFromIos(
+  customPaths: string[],
+): Promise<RemoveResult> {
+  try {
+    const iosParser = new IosConfigParser(customPaths);
+
+    if (!(await iosParser.exists())) {
+      return {
+        platform: "ios",
+        paths: [],
+        success: true,
+        found: false,
+      };
+    }
+
+    // Check if key exists
+    const existing = await iosParser.get(IOS_KEY);
+    if (!existing.value) {
+      return {
+        platform: "ios",
+        paths: existing.paths,
+        success: true,
+        found: false,
+      };
+    }
+
+    const result = await iosParser.remove(IOS_KEY);
+    return {
+      platform: "ios",
+      paths: result.paths,
+      success: true,
+      found: true,
+    };
+  } catch (error) {
+    return {
+      platform: "ios",
+      paths: [],
+      success: false,
+      found: true,
+      error: (error as Error).message,
+    };
+  }
+}
+
+/**
+ * Remove public keys from native configuration files.
+ * Automatically detects and removes keys from both iOS and Android.
+ *
+ * Usage: npx hot-updater keys remove [--yes]
+ */
+export const keysRemove = async (options: KeysRemoveOptions = {}) => {
+  const config = await loadConfig(null);
+
+  const androidParser = new AndroidConfigParser(
+    config.platform.android.stringResourcePaths,
+  );
+  const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
+
+  // Check what exists
+  const [androidExists, iosExists] = await Promise.all([
+    androidParser.exists(),
+    iosParser.exists(),
+  ]);
+
+  if (!androidExists && !iosExists) {
+    p.log.info("No native configuration files found.");
+    return;
+  }
+
+  // Check for existing keys
+  const [androidKey, iosKey] = await Promise.all([
+    androidExists ? androidParser.get(ANDROID_KEY) : Promise.resolve({ value: null, paths: [] }),
+    iosExists ? iosParser.get(IOS_KEY) : Promise.resolve({ value: null, paths: [] }),
+  ]);
+
+  const foundKeys: string[] = [];
+  if (iosKey.value) {
+    foundKeys.push(`iOS: ${iosKey.paths.join(", ")}`);
+  }
+  if (androidKey.value) {
+    foundKeys.push(`Android: ${androidKey.paths.join(", ")}`);
+  }
+
+  if (foundKeys.length === 0) {
+    p.log.info("No public keys found in native files.");
+    return;
+  }
+
+  // Show what will be removed
+  console.log("");
+  p.log.step("Found public keys in:");
+  for (const key of foundKeys) {
+    p.log.info(`  • ${key}`);
+  }
+  console.log("");
+
+  // Confirmation prompt (unless --yes)
+  if (!options.yes) {
+    const shouldContinue = await p.confirm({
+      message: "Remove public keys from these files?",
+      initialValue: false,
+    });
+
+    if (p.isCancel(shouldContinue) || !shouldContinue) {
+      p.cancel("Operation cancelled");
+      return;
+    }
+  }
+
+  // Perform removal
+  const results: RemoveResult[] = [];
+
+  if (iosKey.value) {
+    results.push(
+      await removePublicKeyFromIos(config.platform.ios.infoPlistPaths),
+    );
+  }
+  if (androidKey.value) {
+    results.push(
+      await removePublicKeyFromAndroid(config.platform.android.stringResourcePaths),
+    );
+  }
+
+  // Report results
+  console.log("");
+  for (const result of results) {
+    if (result.success && result.found) {
+      p.log.success(
+        `Removed ${result.platform === "ios" ? IOS_KEY : ANDROID_KEY} from ${result.paths.join(", ")}`,
+      );
+    } else if (!result.success) {
+      p.log.error(`${result.platform}: ${result.error}`);
+    }
+  }
+
+  // Summary
+  const successCount = results.filter((r) => r.success && r.found).length;
+  console.log("");
+  if (successCount > 0) {
+    p.log.success("Public keys removed from native files!");
+    console.log("");
+    p.log.info("Next steps:");
+    p.log.info("  1. Rebuild your native apps");
+    p.log.info("  2. Release to app stores");
+    p.log.info("  3. Deploy unsigned bundles with `npx hot-updater deploy`");
   }
 };
