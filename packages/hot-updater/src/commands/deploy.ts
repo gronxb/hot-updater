@@ -291,6 +291,14 @@ export const deploy = async (options: DeployOptions) => {
 
           // Sign bundle if signing is enabled
           if (config.signing?.enabled) {
+            // Runtime validation: ensure privateKeyPath is provided when signing is enabled
+            if (!config.signing.privateKeyPath) {
+              throw new Error(
+                "privateKeyPath is required when signing is enabled. " +
+                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+              );
+            }
+
             const s = p.spinner();
             s.start("Signing bundle");
 
