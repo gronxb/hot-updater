@@ -151,16 +151,16 @@ export const deploy = async (options: DeployOptions) => {
       options.targetAppVersion ??
       (options.interactive
         ? await p.text({
-            message: "Target app version",
-            placeholder: defaultTargetAppVersion,
-            initialValue: defaultTargetAppVersion,
-            validate: (value) => {
-              if (!semverValid(value)) {
-                return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
-              }
-              return;
-            },
-          })
+          message: "Target app version",
+          placeholder: defaultTargetAppVersion,
+          initialValue: defaultTargetAppVersion,
+          validate: (value) => {
+            if (!semverValid(value)) {
+              return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
+            }
+            return;
+          },
+        })
         : null);
 
     if (p.isCancel(targetAppVersion)) {
@@ -295,7 +295,7 @@ export const deploy = async (options: DeployOptions) => {
             if (!config.signing.privateKeyPath) {
               throw new Error(
                 "privateKeyPath is required when signing is enabled. " +
-                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+                "Please provide a valid path to your RSA private key in hot-updater.config.ts",
               );
             }
 
@@ -309,9 +309,7 @@ export const deploy = async (options: DeployOptions) => {
               );
               // Embed signature into fileHash using combined format
               fileHash = createSignedFileHash(fileHash, signature);
-              s.stop(`Bundle signed (signature embedded in fileHash)`);
-              p.log.info("Signature algorithm: RSA-SHA256");
-              p.log.info(`Signed hash format: sig:<signature>;sha256:<hash>`);
+              s.stop(`Bundle signed successfully with algorithm ${config.signing.algorithm || 'RSA-SHA256'}`);
             } catch (error) {
               s.stop("Failed to sign bundle", 1);
               p.log.error(`Signing error: ${(error as Error).message}`);
@@ -385,8 +383,8 @@ export const deploy = async (options: DeployOptions) => {
               metadata: {
                 ...(appVersion
                   ? {
-                      app_version: appVersion,
-                    }
+                    app_version: appVersion,
+                  }
                   : {}),
               },
             });

@@ -25,9 +25,11 @@ npx hot-updater keys generate
 # 3. Export public key to native apps
 npx hot-updater keys export-public
 
-# 4. Rebuild native app and deploy
+# 4. Release new app version, then deploy signed bundles
 npx hot-updater deploy -p ios
 ```
+
+> **Important**: Step 3 embeds the public key in your native app binary. You must release a new version to the App Store / Play Store before deploying signed bundles. OTA updates will fail signature verification until users have the app version containing the public key.
 
 ## Step 1: Generate Key Pair
 
@@ -79,19 +81,24 @@ export default defineConfig({
 ### Configuration Options
 
 ```ts
-interface SigningConfig {
-  /** Enable bundle signing during deployment */
-  enabled: boolean;
-
-  /** Path to RSA private key file (PEM format, PKCS#8) */
-  privateKeyPath: string;
-}
+type SigningConfig =
+  | {
+      /** Signing disabled - privateKeyPath is optional */
+      enabled: false;
+      privateKeyPath?: string;
+    }
+  | {
+      /** Signing enabled - privateKeyPath is required */
+      enabled: true;
+      /** Path to RSA private key file (PEM format, PKCS#8) */
+      privateKeyPath: string;
+    };
 ```
 
 When `signing.enabled` is true, the deploy command will:
 1. Generate SHA-256 hash of the bundle
 2. Sign the hash with RSA-SHA256 using your private key
-3. Store the Base64-encoded signature in the database
+3. Embed the signature in the fileHash field
 
 ## Step 3: Export Public Key to Native Apps
 
@@ -156,49 +163,27 @@ Deployment Successful
 
 ### How Verification Works
 
-1. Client app downloads update metadata (includes `signature` field)
-2. Client app downloads bundle and computes SHA-256 hash
-3. Native code verifies: `RSA-SHA256(hash, publicKey) === signature`
-4. If verification fails, bundle is rejected
+1. Client app downloads update metadata (fileHash contains embedded signature)
+2. JavaScript layer parses fileHash to extract hash and signature
+3. Client app downloads bundle and computes SHA-256 hash
+4. Native code verifies: `RSA-SHA256(hash, publicKey) === signature`
+5. If verification fails, bundle is rejected
 
-## Plugin Migration Requirements
+### FileHash Format
 
-Existing projects may need database migrations and function redeployments. Run `npx hot-updater init` to apply updates for your plugin.
+Signed bundles use a combined format that embeds the signature in the fileHash field:
 
-| Plugin | Migration | Function Redeploy |
-|--------|-----------|-------------------|
-| **Supabase** | Yes | Yes |
-| **Cloudflare D1** | Yes | Yes |
-| **Firebase** | No | Yes |
-| **AWS S3 / Standalone** | No | No |
-
-### Supabase
-
-```bash
-npx hot-updater init
+```
+sig:<base64_signature>;sha256:<hex_hash>
 ```
 
-Applies database migration and redeploys the edge function.
+**Components**:
+- `sig:` - Prefix indicating signature follows
+- `<base64_signature>` - Base64-encoded RSA-SHA256 signature
+- `;sha256:` - Separator and hash type indicator
+- `<hex_hash>` - 64-character SHA256 hash
 
-### Cloudflare D1
-
-```bash
-npx hot-updater init
-```
-
-Applies database migration and redeploys the worker.
-
-### Firebase Firestore
-
-```bash
-npx hot-updater init
-```
-
-Redeploys Cloud Functions. No migration needed (Firestore is schema-less).
-
-### AWS S3 / Standalone
-
-No action required. The `signature` field is automatically supported.
+Unsigned bundles retain the plain SHA256 hash format for backward compatibility.
 
 ## Security Best Practices
 
