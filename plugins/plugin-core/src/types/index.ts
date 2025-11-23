@@ -209,6 +209,47 @@ export type ConfigInput = {
   };
   platform?: PlatformConfig;
   nativeBuild?: NativeBuildArgs;
+  /**
+   * Code signing configuration for bundle verification.
+   * Enables RSA-SHA256 cryptographic signatures for bundle integrity.
+   *
+   * @optional Feature is opt-in for backward compatibility
+   *
+   * @example
+   * ```ts
+   * signing: {
+   *   enabled: true,
+   *   privateKeyPath: './keys/private-key.pem'
+   * }
+   * ```
+   */
+  signing?: {
+    /**
+     * Enable bundle signing during deployment.
+     * When true, bundles will be signed with privateKeyPath.
+     * @default false
+     */
+    enabled: boolean;
+
+    /**
+     * Path to RSA private key file in PEM format (PKCS#8).
+     * Generate with: npx hot-updater keys:generate
+     *
+     * Security: Never commit this key to version control!
+     * Use secure storage (AWS Secrets Manager, etc.) for CI/CD.
+     *
+     * @example "./keys/private-key.pem"
+     * @example "/secure/path/to/private-key.pem"
+     */
+    privateKeyPath: string;
+
+    /**
+     * Signature algorithm.
+     * Currently only RSA-SHA256 is supported.
+     * @default "RSA-SHA256"
+     */
+    algorithm?: "RSA-SHA256";
+  };
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: () => Promise<StoragePlugin> | StoragePlugin;
   database: () => Promise<DatabasePlugin> | DatabasePlugin;

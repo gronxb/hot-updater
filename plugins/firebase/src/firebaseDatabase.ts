@@ -21,6 +21,7 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   storageUri: firestoreData.storage_uri,
   fingerprintHash: firestoreData.fingerprint_hash,
   metadata: firestoreData?.metadata ?? {},
+  signature: firestoreData.signature ?? null,
 });
 
 export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
@@ -157,6 +158,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                 storage_uri: data.storageUri,
                 fingerprint_hash: data.fingerprintHash,
                 metadata: data.metadata ?? {},
+                signature: data.signature ?? null,
               } as SnakeCaseBundle;
 
               // Add channel to channels collection
@@ -212,6 +214,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                   storage_uri: data.storageUri,
                   fingerprint_hash: data.fingerprintHash,
                   metadata: data.metadata ?? {},
+                  signature: data.signature ?? null,
                 } as SnakeCaseBundle,
                 { merge: true },
               );

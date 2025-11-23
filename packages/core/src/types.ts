@@ -65,6 +65,11 @@ export interface Bundle {
    * The metadata of the bundle.
    */
   metadata?: BundleMetadata;
+  /**
+   * RSA-SHA256 signature of the bundle fileHash.
+   * Base64-encoded. Used for cryptographic verification.
+   */
+  signature?: string | null;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -95,6 +100,7 @@ export interface UpdateInfo {
   status: UpdateStatus;
   storageUri: string | null;
   fileHash: string | null;
+  signature?: string | null;
 }
 
 /**
@@ -108,6 +114,11 @@ export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
    * If provided, the client will verify the downloaded file's hash before extraction.
    */
   fileHash: string | null;
+  /**
+   * RSA-SHA256 signature of the bundle fileHash.
+   * Base64-encoded. Used for cryptographic verification on native side.
+   */
+  signature?: string | null;
 }
 
 export type UpdateStrategy = "fingerprint" | "appVersion";

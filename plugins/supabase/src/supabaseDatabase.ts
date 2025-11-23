@@ -24,7 +24,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         const { data, error } = await supabase
           .from("bundles")
           .select(
-            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata",
+            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata, signature",
           )
           .eq("id", bundleId)
           .single();
@@ -45,6 +45,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           fingerprintHash: data.fingerprint_hash,
           storageUri: data.storage_uri,
           metadata: data.metadata ?? {},
+          signature: data.signature ?? null,
         } as Bundle;
       },
 
@@ -67,7 +68,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         let query = supabase
           .from("bundles")
           .select(
-            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata",
+            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, signature",
           )
           .order("id", { ascending: false });
 
@@ -103,6 +104,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
               fingerprintHash: bundle.fingerprint_hash,
               storageUri: bundle.storage_uri,
               metadata: bundle.metadata ?? {},
+              signature: bundle.signature ?? null,
             }))
           : [];
 
@@ -156,6 +158,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
                 fingerprint_hash: bundle.fingerprintHash,
                 storage_uri: bundle.storageUri,
                 metadata: bundle.metadata,
+                signature: bundle.signature ?? null,
               },
               { onConflict: "id" },
             );

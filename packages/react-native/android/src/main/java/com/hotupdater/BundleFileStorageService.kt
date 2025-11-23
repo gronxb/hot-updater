@@ -41,6 +41,7 @@ interface BundleStorageService {
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download (or null to reset)
      * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+     * @param signature RSA-SHA256 signature of fileHash (nullable)
      * @param progressCallback Callback for download progress updates
      * @return true if the update was successful
      */
@@ -48,6 +49,7 @@ interface BundleStorageService {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        signature: String?,
         progressCallback: (Double) -> Unit,
     ): Boolean
 }
@@ -56,6 +58,7 @@ interface BundleStorageService {
  * Implementation of BundleStorageService
  */
 class BundleFileStorageService(
+    private val context: android.content.Context,
     private val fileSystem: FileSystemService,
     private val downloadService: DownloadService,
     private val decompressService: DecompressService,
@@ -88,9 +91,10 @@ class BundleFileStorageService(
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        signature: String?,
         progressCallback: (Double) -> Unit,
     ): Boolean {
-        Log.d("BundleStorage", "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash")
+        Log.d("BundleStorage", "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash signature ${if (signature != null) "present" else "null"}")
 
         // If no URL is provided, reset to fallback
         if (fileUrl.isNullOrEmpty()) {
@@ -194,6 +198,24 @@ class BundleFileStorageService(
                             return@withContext false
                         }
                         Log.d("BundleStorage", "Hash verification passed")
+
+                        // 1.1) Verify signature if provided or required
+                        try {
+                            SignatureVerifier.verifySignature(
+                                context,
+                                fileHash,
+                                signature
+                            )
+                            Log.d("BundleStorage", "Signature verification completed successfully")
+                        } catch (e: SignatureVerificationException) {
+                            Log.e("BundleStorage", "Signature verification failed", e)
+                            tempDir.deleteRecursively()
+                            tempBundleFile.delete()
+                            return@withContext false
+                        }
+                    } else if (!signature.isNullOrEmpty()) {
+                        // Signature provided but no hash - log warning
+                        Log.w("BundleStorage", "Signature provided but no fileHash for verification")
                     }
 
                     // 2) Create a .tmp directory under bundle-store (to avoid colliding with an existing bundleId folder)

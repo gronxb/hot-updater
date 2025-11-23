@@ -9,6 +9,7 @@ public enum BundleStorageError: Error, CustomNSError {
     case invalidZipFile
     case insufficientDiskSpace
     case hashMismatch
+    case signatureVerificationFailed(SignatureVerificationError)
     case moveOperationFailed(Error)
     case copyOperationFailed(Error)
     case fileSystemError(Error)
@@ -29,9 +30,10 @@ public enum BundleStorageError: Error, CustomNSError {
         case .invalidZipFile: return 1006
         case .insufficientDiskSpace: return 1007
         case .hashMismatch: return 1008
-        case .moveOperationFailed: return 1009
-        case .copyOperationFailed: return 1010
-        case .fileSystemError: return 1011
+        case .signatureVerificationFailed: return 1009
+        case .moveOperationFailed: return 1010
+        case .copyOperationFailed: return 1011
+        case .fileSystemError: return 1012
         case .unknown: return 1099
         }
     }
@@ -74,6 +76,11 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSLocalizedDescriptionKey] = "Downloaded bundle hash does not match expected hash"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The file may have been corrupted or tampered with. Try downloading again"
 
+        case .signatureVerificationFailed(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Bundle signature verification failed"
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The bundle signature is invalid. Update rejected for security"
+
         case .moveOperationFailed(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "Failed to move bundle to final location"
             userInfo[NSUnderlyingErrorKey] = underlyingError
@@ -115,7 +122,7 @@ public protocol BundleStorageService {
     func getBundleURL() -> URL?
     
     // Bundle update
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, signature: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -366,7 +373,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, signature: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
         // Get the current bundle ID from the cached bundle URL (exclude fallback bundles)
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         
@@ -435,7 +442,7 @@ class BundleFileStorageService: BundleStorageService {
                         do {
                             try self.fileSystem.removeItem(atPath: finalBundleDir)
                             // Continue with download process on success
-                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, signature: signature, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
                         } catch let error {
                             NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
                             completion(.failure(BundleStorageError.fileSystemError(error)))
@@ -445,7 +452,7 @@ class BundleFileStorageService: BundleStorageService {
                     completion(.failure(error))
                 }
             } else {
-                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, signature: signature, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
             }
         }
     }
@@ -456,6 +463,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download
      * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+     * @param signature RSA-SHA256 signature of fileHash (nullable)
      * @param storeDir Path to the bundle-store directory
      * @param progressHandler Callback for download and extraction progress
      * @param completion Callback with result of the operation
@@ -464,6 +472,7 @@ class BundleFileStorageService: BundleStorageService {
         bundleId: String,
         fileUrl: URL,
         fileHash: String?,
+        signature: String?,
         storeDir: String,
         progressHandler: @escaping (Double) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
@@ -543,6 +552,7 @@ class BundleFileStorageService: BundleStorageService {
                     self.processDownloadedFileWithTmp(location: location,
                                                       tempBundleFile: tempBundleFile,
                                                       fileHash: fileHash,
+                                                      signature: signature,
                                                       storeDir: storeDir,
                                                       bundleId: bundleId,
                                                       tempDirectory: tempDirectory,
@@ -598,6 +608,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param location URL of the downloaded file
      * @param tempBundleFile Path to store the downloaded bundle file
      * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+     * @param signature RSA-SHA256 signature of fileHash (nullable)
      * @param storeDir Path to the bundle-store directory
      * @param bundleId ID of the bundle being processed
      * @param tempDirectory Temporary directory for processing
@@ -608,6 +619,7 @@ class BundleFileStorageService: BundleStorageService {
         location: URL,
         tempBundleFile: String,
         fileHash: String?,
+        signature: String?,
         storeDir: String,
         bundleId: String,
         tempDirectory: String,
@@ -657,6 +669,22 @@ class BundleFileStorageService: BundleStorageService {
                     return
                 }
                 NSLog("[BundleStorage] Hash verification passed")
+
+                // 5.1) Verify signature if provided or required
+                let verificationResult = SignatureVerifier.verifySignature(fileHash: expectedHash, signatureBase64: signature)
+                switch verificationResult {
+                case .success:
+                    NSLog("[BundleStorage] Signature verification completed successfully")
+                case .failure(let error):
+                    NSLog("[BundleStorage] Signature verification failed: \(error)")
+                    try? self.fileSystem.removeItem(atPath: tmpDir)
+                    self.cleanupTemporaryFiles([tempDirectory])
+                    completion(.failure(BundleStorageError.signatureVerificationFailed(error)))
+                    return
+                }
+            } else if signature != nil {
+                // Signature provided but no hash - verify signature anyway
+                NSLog("[BundleStorage] Warning: Signature provided but no fileHash for verification")
             }
 
             // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)

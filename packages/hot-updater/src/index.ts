@@ -20,6 +20,7 @@ import {
   handleFingerprint,
 } from "./commands/fingerprint";
 import { generate } from "./commands/generate";
+import { keysExportPublic, keysGenerate } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 
 const DEFAULT_CHANNEL = "production";
@@ -61,6 +62,43 @@ channelCommand
   .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+const keysCommand = program
+  .command("keys")
+  .description("Code signing key management");
+
+keysCommand
+  .command("generate")
+  .description("Generate RSA key pair for code signing")
+  .option("-o, --output <dir>", "output directory for keys", "./keys")
+  .option(
+    "-k, --key-size <size>",
+    "key size (2048 or 4096)",
+    (value) => {
+      const size = Number.parseInt(value, 10);
+      if (size !== 2048 && size !== 4096) {
+        p.log.error("Key size must be 2048 or 4096");
+        process.exit(1);
+      }
+      return size as 2048 | 4096;
+    },
+    4096,
+  )
+  .action(keysGenerate);
+
+keysCommand
+  .command("export-public")
+  .description("Export public key for native configuration")
+  .option(
+    "-i, --input <path>",
+    "path to private key file (default: from config signing.privateKeyPath in hot-updater.config.ts)",
+  )
+  .option(
+    "-p, --print-only",
+    "only print the public key without writing to native files",
+  )
+  .option("-y, --yes", "skip confirmation prompt when writing to native files")
+  .action(keysExportPublic);
 
 program
   .command("deploy")

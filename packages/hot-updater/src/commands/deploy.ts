@@ -29,6 +29,7 @@ import { getLatestGitCommit } from "@/utils/git";
 import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
+import { signBundle } from "@/utils/signing/bundleSigning";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { getConsolePort, openConsole } from "./console";
@@ -197,6 +198,7 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let fileHash: string;
+  let signature: string | null = null;
 
   const normalizeOutputPath = path.isAbsolute(outputPath)
     ? outputPath
@@ -287,6 +289,28 @@ export const deploy = async (options: DeployOptions) => {
           bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(bundlePath);
 
+          // Sign bundle if signing is enabled
+          if (config.signing?.enabled) {
+            const s = p.spinner();
+            s.start("Signing bundle");
+
+            try {
+              signature = await signBundle(
+                fileHash,
+                config.signing.privateKeyPath,
+              );
+              s.stop(`Bundle signed (${signature.substring(0, 16)}...)`);
+              p.log.info("Signature algorithm: RSA-SHA256");
+            } catch (error) {
+              s.stop("Failed to sign bundle", 1);
+              p.log.error(`Signing error: ${(error as Error).message}`);
+              p.log.error(
+                "Ensure private key path is correct and file has proper permissions",
+              );
+              throw error;
+            }
+          }
+
           p.log.success(
             `Bundle stored at ${colors.blueBright(path.relative(cwd, bundlePath))}`,
           );
@@ -339,6 +363,7 @@ export const deploy = async (options: DeployOptions) => {
               shouldForceUpdate: options.forceUpdate,
               platform,
               fileHash,
+              signature,
               gitCommitHash,
               message: options?.message ?? gitMessage,
               id: bundleId,

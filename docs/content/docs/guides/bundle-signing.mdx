@@ -1,0 +1,242 @@
+---
+title: "Bundle Signing"
+description: "Cryptographically sign OTA bundles to verify integrity and prevent tampering"
+icon: Shield
+---
+
+## Why Bundle Signing?
+
+Bundle signing adds cryptographic verification to OTA updates. The server signs each bundle with a private key. The native app verifies the signature using the embedded public key before applying updates.
+
+This prevents:
+- **Man-in-the-middle attacks**: Attackers cannot inject malicious code
+- **Bundle tampering**: Any modification invalidates the signature
+- **Unauthorized deployments**: Only bundles signed with your private key are accepted
+
+## Quick Start
+
+```bash
+# 1. Generate RSA key pair
+npx hot-updater keys generate
+
+# 2. Add signing config to hot-updater.config.ts
+# signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }
+
+# 3. Export public key to native apps
+npx hot-updater keys export-public
+
+# 4. Rebuild native app and deploy
+npx hot-updater deploy -p ios
+```
+
+## Step 1: Generate Key Pair
+
+Generate an RSA key pair using the `keys generate` command:
+
+```bash
+npx hot-updater keys generate
+```
+
+This creates two files in the `./keys` directory:
+- `private-key.pem`: Keep secure, use for signing bundles (server-side only)
+- `public-key.pem`: Embed in native apps for verification
+
+### Command Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-o, --output <dir>` | Output directory for keys | `./keys` |
+| `-k, --key-size <size>` | RSA key size (2048 or 4096) | `4096` |
+
+Example with custom options:
+
+```bash
+npx hot-updater keys generate --output ./secure-keys --key-size 4096
+```
+
+> Never commit private keys to version control. Add `keys/` to `.gitignore`. For CI/CD pipelines, use secure storage like AWS Secrets Manager, HashiCorp Vault, or GitHub Secrets.
+
+## Step 2: Configure Signing
+
+Enable signing in your `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: supabaseStorage({ /* ... */ }),
+  database: supabaseDatabase({ /* ... */ }),
+  signing: {
+    enabled: true,
+    privateKeyPath: "./keys/private-key.pem",
+  },
+});
+```
+
+### Configuration Options
+
+```ts
+interface SigningConfig {
+  /** Enable bundle signing during deployment */
+  enabled: boolean;
+
+  /** Path to RSA private key file (PEM format, PKCS#8) */
+  privateKeyPath: string;
+}
+```
+
+When `signing.enabled` is true, the deploy command will:
+1. Generate SHA-256 hash of the bundle
+2. Sign the hash with RSA-SHA256 using your private key
+3. Store the Base64-encoded signature in the database
+
+## Step 3: Export Public Key to Native Apps
+
+Export the public key and embed it in your native configuration files:
+
+```bash
+npx hot-updater keys export-public
+```
+
+This command reads the private key path from `signing.privateKeyPath` in your config and:
+1. Extracts the public key from the private key
+2. Writes it to iOS `Info.plist` (`HOT_UPDATER_PUBLIC_KEY`)
+3. Writes it to Android `strings.xml` (`hot_updater_public_key`)
+
+### Command Options
+
+| Option | Description |
+|--------|-------------|
+| `-i, --input <path>` | Override private key path |
+| `-p, --print-only` | Display key without modifying files |
+| `-y, --yes` | Skip confirmation prompts |
+
+### Manual Configuration
+
+For iOS (`Info.plist`):
+```xml
+<key>HOT_UPDATER_PUBLIC_KEY</key>
+<string>-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----</string>
+```
+
+For Android (`res/values/strings.xml`):
+```xml
+<string name="hot_updater_public_key">-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkq...your-key...
+-----END PUBLIC KEY-----</string>
+```
+
+> After embedding the public key, you must rebuild your native app. The native code reads this key at runtime to verify bundle signatures.
+
+## Step 4: Deploy Signed Bundles
+
+Deploy bundles as usual. When signing is enabled, the deploy command automatically signs each bundle:
+
+```bash
+npx hot-updater deploy -p ios
+```
+
+Console output when signing is enabled:
+
+```
+Building Bundle (bare)
+Signing bundle
+Bundle signed (dG9rZW5fc2lnbmF0...)
+Signature algorithm: RSA-SHA256
+Build Complete (bare)
+Uploading to Storage (supabaseStorage)
+Upload Complete (supabaseStorage)
+Updating Database (supabaseDatabase)
+Update Complete (supabaseDatabase)
+Deployment Successful
+```
+
+### How Verification Works
+
+1. Client app downloads update metadata (includes `signature` field)
+2. Client app downloads bundle and computes SHA-256 hash
+3. Native code verifies: `RSA-SHA256(hash, publicKey) === signature`
+4. If verification fails, bundle is rejected
+
+## Plugin Migration Requirements
+
+Existing projects may need database migrations and function redeployments. Run `npx hot-updater init` to apply updates for your plugin.
+
+| Plugin | Migration | Function Redeploy |
+|--------|-----------|-------------------|
+| **Supabase** | Yes | Yes |
+| **Cloudflare D1** | Yes | Yes |
+| **Firebase** | No | Yes |
+| **AWS S3 / Standalone** | No | No |
+
+### Supabase
+
+```bash
+npx hot-updater init
+```
+
+Applies database migration and redeploys the edge function.
+
+### Cloudflare D1
+
+```bash
+npx hot-updater init
+```
+
+Applies database migration and redeploys the worker.
+
+### Firebase Firestore
+
+```bash
+npx hot-updater init
+```
+
+Redeploys Cloud Functions. No migration needed (Firestore is schema-less).
+
+### AWS S3 / Standalone
+
+No action required. The `signature` field is automatically supported.
+
+## Security Best Practices
+
+### Key Storage
+
+- Never commit private keys to version control
+- Add `keys/` to `.gitignore`
+- Use file permissions: `chmod 600 private-key.pem`
+
+### CI/CD Integration
+
+Store private keys in secure secrets management:
+
+| Platform | Secret Storage |
+|----------|----------------|
+| GitHub Actions | Repository Secrets |
+| GitLab CI | CI/CD Variables (masked) |
+| AWS | Secrets Manager |
+| Azure | Key Vault |
+
+Example GitHub Actions workflow:
+
+```yaml
+- name: Setup signing key
+  run: |
+    mkdir -p keys
+    echo "${{ secrets.HOT_UPDATER_PRIVATE_KEY }}" > keys/private-key.pem
+    chmod 600 keys/private-key.pem
+
+- name: Deploy
+  run: npx hot-updater deploy -p ios
+```
+
+### Key Rotation
+
+When rotating keys:
+1. Generate new key pair
+2. Update config with new private key path
+3. Export new public key to native apps
+4. Release new native app version
+5. Maintain backward compatibility until users update

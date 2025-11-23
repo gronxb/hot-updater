@@ -18,6 +18,7 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   status: "ROLLBACK",
   storageUri: null,
   fileHash: null,
+  signature: null,
 };
 
 const convertToBundle = (data: any): Bundle => ({
@@ -32,6 +33,7 @@ const convertToBundle = (data: any): Bundle => ({
   gitCommitHash: data.git_commit_hash,
   fingerprintHash: data.fingerprint_hash,
   storageUri: data.storage_uri,
+  signature: data.signature ?? null,
 });
 
 const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
@@ -41,6 +43,7 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
   status,
   storageUri: bundle.storageUri,
   fileHash: bundle.fileHash,
+  signature: bundle.signature ?? null,
 });
 
 export const getUpdateInfo = async (

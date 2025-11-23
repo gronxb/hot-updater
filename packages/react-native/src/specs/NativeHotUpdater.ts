@@ -9,6 +9,12 @@ export interface UpdateBundleParams {
    * If provided, the native layer will verify the downloaded file's hash.
    */
   fileHash: string | null;
+  /**
+   * RSA-SHA256 signature of the bundle fileHash.
+   * Base64-encoded. Used for cryptographic verification on native side.
+   * @optional Backward compatible - null if signing not enabled
+   */
+  signature: string | null;
 }
 
 export interface Spec extends TurboModule {

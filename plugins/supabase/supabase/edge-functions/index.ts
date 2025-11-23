@@ -133,6 +133,7 @@ const handleUpdateRequest = async (
         message: data[0].message,
         status: data[0].status,
         fileHash: data[0].file_hash,
+        signature: data[0].signature ?? null,
       } as UpdateInfo)
     : null;
 

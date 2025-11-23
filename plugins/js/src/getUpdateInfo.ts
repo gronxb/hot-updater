@@ -16,6 +16,7 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   status: "ROLLBACK",
   storageUri: null,
   fileHash: null,
+  signature: null,
 };
 
 const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
@@ -25,6 +26,7 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
   status,
   storageUri: bundle.storageUri,
   fileHash: bundle.fileHash,
+  signature: bundle.signature ?? null,
 });
 
 export const getUpdateInfo = async (

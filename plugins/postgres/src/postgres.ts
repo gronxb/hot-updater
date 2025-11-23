@@ -43,6 +43,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
           channel: data.channel,
           storageUri: data.storage_uri,
           fingerprintHash: data.fingerprint_hash,
+          signature: data.signature ?? null,
         } as Bundle;
       },
 
@@ -97,6 +98,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
           channel: bundle.channel,
           storageUri: bundle.storage_uri,
           fingerprintHash: bundle.fingerprint_hash,
+          signature: bundle.signature ?? null,
         })) as Bundle[];
 
         const pagination = calculatePagination(total, { limit, offset });
@@ -152,6 +154,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
                   channel: bundle.channel,
                   storage_uri: bundle.storageUri,
                   fingerprint_hash: bundle.fingerprintHash,
+                  signature: bundle.signature ?? null,
                 })
                 .onConflict((oc) =>
                   oc.column("id").doUpdateSet({
@@ -165,6 +168,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
                     channel: bundle.channel,
                     storage_uri: bundle.storageUri,
                     fingerprint_hash: bundle.fingerprintHash,
+                    signature: bundle.signature ?? null,
                   }),
                 )
                 .execute();

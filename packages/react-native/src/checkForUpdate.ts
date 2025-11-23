@@ -82,6 +82,7 @@ export async function checkForUpdate(
           bundleId: updateInfo.id,
           fileUrl: updateInfo.fileUrl,
           fileHash: updateInfo?.fileHash ?? null,
+          signature: updateInfo?.signature ?? null,
           status: updateInfo.status,
         });
       },
