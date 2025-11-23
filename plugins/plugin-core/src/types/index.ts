@@ -145,6 +145,54 @@ export interface StoragePluginHooks {
   onStorageUploaded?: () => Promise<void>;
 }
 
+/**
+ * Signing configuration type with conditional required fields.
+ * When enabled is true, privateKeyPath is required.
+ * When enabled is false, privateKeyPath is optional.
+ */
+export type SigningConfig =
+  | {
+      /**
+       * Enable bundle signing during deployment.
+       * When false, signing is disabled and privateKeyPath is optional.
+       */
+      enabled: false;
+      /**
+       * Path to RSA private key file in PEM format (PKCS#8).
+       * Optional when signing is disabled.
+       */
+      privateKeyPath?: string;
+      /**
+       * Signature algorithm.
+       * @default "RSA-SHA256"
+       */
+      algorithm?: "RSA-SHA256";
+    }
+  | {
+      /**
+       * Enable bundle signing during deployment.
+       * When true, bundles will be signed with privateKeyPath.
+       */
+      enabled: true;
+      /**
+       * Path to RSA private key file in PEM format (PKCS#8).
+       * Generate with: npx hot-updater keys:generate
+       *
+       * Security: Never commit this key to version control!
+       * Use secure storage (AWS Secrets Manager, etc.) for CI/CD.
+       *
+       * @example "./keys/private-key.pem"
+       * @example "/secure/path/to/private-key.pem"
+       */
+      privateKeyPath: string;
+      /**
+       * Signature algorithm.
+       * Currently only RSA-SHA256 is supported.
+       * @default "RSA-SHA256"
+       */
+      algorithm?: "RSA-SHA256";
+    };
+
 export type ConfigInput = {
   /**
    * The channel used when building the native app.
@@ -217,39 +265,19 @@ export type ConfigInput = {
    *
    * @example
    * ```ts
+   * // Signing enabled - privateKeyPath is required
    * signing: {
    *   enabled: true,
    *   privateKeyPath: './keys/private-key.pem'
    * }
+   *
+   * // Signing disabled - privateKeyPath is optional
+   * signing: {
+   *   enabled: false
+   * }
    * ```
    */
-  signing?: {
-    /**
-     * Enable bundle signing during deployment.
-     * When true, bundles will be signed with privateKeyPath.
-     * @default false
-     */
-    enabled: boolean;
-
-    /**
-     * Path to RSA private key file in PEM format (PKCS#8).
-     * Generate with: npx hot-updater keys:generate
-     *
-     * Security: Never commit this key to version control!
-     * Use secure storage (AWS Secrets Manager, etc.) for CI/CD.
-     *
-     * @example "./keys/private-key.pem"
-     * @example "/secure/path/to/private-key.pem"
-     */
-    privateKeyPath: string;
-
-    /**
-     * Signature algorithm.
-     * Currently only RSA-SHA256 is supported.
-     * @default "RSA-SHA256"
-     */
-    algorithm?: "RSA-SHA256";
-  };
+  signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: () => Promise<StoragePlugin> | StoragePlugin;
   database: () => Promise<DatabasePlugin> | DatabasePlugin;

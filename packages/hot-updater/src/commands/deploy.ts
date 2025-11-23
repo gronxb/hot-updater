@@ -7,6 +7,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
+import { createSignedFileHash } from "@hot-updater/core";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
@@ -198,7 +199,6 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let fileHash: string;
-  let signature: string | null = null;
 
   const normalizeOutputPath = path.isAbsolute(outputPath)
     ? outputPath
@@ -295,12 +295,15 @@ export const deploy = async (options: DeployOptions) => {
             s.start("Signing bundle");
 
             try {
-              signature = await signBundle(
+              const signature = await signBundle(
                 fileHash,
                 config.signing.privateKeyPath,
               );
-              s.stop(`Bundle signed (${signature.substring(0, 16)}...)`);
+              // Embed signature into fileHash using combined format
+              fileHash = createSignedFileHash(fileHash, signature);
+              s.stop(`Bundle signed (signature embedded in fileHash)`);
               p.log.info("Signature algorithm: RSA-SHA256");
+              p.log.info(`Signed hash format: sig:<signature>;sha256:<hash>`);
             } catch (error) {
               s.stop("Failed to sign bundle", 1);
               p.log.error(`Signing error: ${(error as Error).message}`);
@@ -363,7 +366,6 @@ export const deploy = async (options: DeployOptions) => {
               shouldForceUpdate: options.forceUpdate,
               platform,
               fileHash,
-              signature,
               gitCommitHash,
               message: options?.message ?? gitMessage,
               id: bundleId,
