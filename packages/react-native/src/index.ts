@@ -15,6 +15,7 @@ import { wrap } from "./wrap";
 
 export type { HotUpdaterEvent } from "./native";
 export * from "./store";
+export type { SignatureVerificationFailure } from "./types";
 export type { HotUpdaterOptions } from "./wrap";
 
 addListener("onProgress", ({ progress }) => {

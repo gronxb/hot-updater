@@ -1,6 +1,11 @@
 import Foundation
 import Security
 
+/// Error types for signature verification failures.
+///
+/// **IMPORTANT**: The error messages in `errorUserInfo` are used by the JavaScript layer
+/// (`packages/react-native/src/types.ts`) to detect signature verification failures.
+/// If you change these messages, update `isSignatureVerificationError()` in types.ts accordingly.
 public enum SignatureVerificationError: Error, CustomNSError {
     case publicKeyNotConfigured
     case invalidPublicKeyFormat

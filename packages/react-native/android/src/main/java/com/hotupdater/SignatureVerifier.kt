@@ -10,6 +10,10 @@ import java.security.spec.X509EncodedKeySpec
 
 /**
  * Custom exceptions for signature verification errors.
+ *
+ * **IMPORTANT**: The error messages in these exceptions are used by the JavaScript layer
+ * (`packages/react-native/src/types.ts`) to detect signature verification failures.
+ * If you change these messages, update `isSignatureVerificationError()` in types.ts accordingly.
  */
 sealed class SignatureVerificationException(message: String) : Exception(message) {
     class PublicKeyNotConfigured : SignatureVerificationException(
