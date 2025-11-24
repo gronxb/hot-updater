@@ -101,7 +101,9 @@ export const deploy = async (options: DeployOptions) => {
 
   if (signingValidation.issues.length > 0) {
     const errors = signingValidation.issues.filter((i) => i.type === "error");
-    const warnings = signingValidation.issues.filter((i) => i.type === "warning");
+    const warnings = signingValidation.issues.filter(
+      (i) => i.type === "warning",
+    );
 
     if (errors.length > 0) {
       console.log("");
@@ -111,7 +113,9 @@ export const deploy = async (options: DeployOptions) => {
         p.log.info(`  Resolution: ${issue.resolution}`);
       }
       console.log("");
-      p.log.error("Deployment blocked. Fix the signing configuration and try again.");
+      p.log.error(
+        "Deployment blocked. Fix the signing configuration and try again.",
+      );
       process.exit(1);
     }
 
@@ -182,16 +186,16 @@ export const deploy = async (options: DeployOptions) => {
       options.targetAppVersion ??
       (options.interactive
         ? await p.text({
-          message: "Target app version",
-          placeholder: defaultTargetAppVersion,
-          initialValue: defaultTargetAppVersion,
-          validate: (value) => {
-            if (!semverValid(value)) {
-              return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
-            }
-            return;
-          },
-        })
+            message: "Target app version",
+            placeholder: defaultTargetAppVersion,
+            initialValue: defaultTargetAppVersion,
+            validate: (value) => {
+              if (!semverValid(value)) {
+                return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
+              }
+              return;
+            },
+          })
         : null);
 
     if (p.isCancel(targetAppVersion)) {
@@ -326,7 +330,7 @@ export const deploy = async (options: DeployOptions) => {
             if (!config.signing.privateKeyPath) {
               throw new Error(
                 "privateKeyPath is required when signing is enabled. " +
-                "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
               );
             }
 
@@ -341,7 +345,9 @@ export const deploy = async (options: DeployOptions) => {
               // Store signature in signed format (sig:<signature>)
               // The hash is verified implicitly during signature verification
               fileHash = createSignedFileHash(signature);
-              s.stop(`Bundle signed successfully with algorithm ${config.signing.algorithm || 'RSA-SHA256'}`);
+              s.stop(
+                `Bundle signed successfully with algorithm ${config.signing.algorithm || "RSA-SHA256"}`,
+              );
             } catch (error) {
               s.stop("Failed to sign bundle", 1);
               p.log.error(`Signing error: ${(error as Error).message}`);
@@ -415,8 +421,8 @@ export const deploy = async (options: DeployOptions) => {
               metadata: {
                 ...(appVersion
                   ? {
-                    app_version: appVersion,
-                  }
+                      app_version: appVersion,
+                    }
                   : {}),
               },
             });

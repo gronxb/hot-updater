@@ -425,8 +425,12 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
 
   // Check for existing keys
   const [androidKey, iosKey] = await Promise.all([
-    androidExists ? androidParser.get(ANDROID_KEY) : Promise.resolve({ value: null, paths: [] }),
-    iosExists ? iosParser.get(IOS_KEY) : Promise.resolve({ value: null, paths: [] }),
+    androidExists
+      ? androidParser.get(ANDROID_KEY)
+      : Promise.resolve({ value: null, paths: [] }),
+    iosExists
+      ? iosParser.get(IOS_KEY)
+      : Promise.resolve({ value: null, paths: [] }),
   ]);
 
   const foundKeys: string[] = [];
@@ -473,7 +477,9 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
   }
   if (androidKey.value) {
     results.push(
-      await removePublicKeyFromAndroid(config.platform.android.stringResourcePaths),
+      await removePublicKeyFromAndroid(
+        config.platform.android.stringResourcePaths,
+      ),
     );
   }
 

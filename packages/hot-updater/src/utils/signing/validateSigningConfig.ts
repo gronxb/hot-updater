@@ -8,10 +8,7 @@ const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
 export interface SigningConfigIssue {
   type: "error" | "warning";
   platform: "ios" | "android";
-  code:
-    | "MISSING_PUBLIC_KEY"
-    | "ORPHAN_PUBLIC_KEY"
-    | "NATIVE_FILES_NOT_FOUND";
+  code: "MISSING_PUBLIC_KEY" | "ORPHAN_PUBLIC_KEY" | "NATIVE_FILES_NOT_FOUND";
   message: string;
   resolution: string;
 }
@@ -65,7 +62,8 @@ export async function validateSigningConfig(
         code: "MISSING_PUBLIC_KEY",
         message:
           "Signing is enabled but HOT_UPDATER_PUBLIC_KEY is missing from Info.plist",
-        resolution: "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
+        resolution:
+          "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
       });
     }
     if (!androidResult.value && androidExists) {
@@ -75,7 +73,8 @@ export async function validateSigningConfig(
         code: "MISSING_PUBLIC_KEY",
         message:
           "Signing is enabled but hot_updater_public_key is missing from strings.xml",
-        resolution: "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
+        resolution:
+          "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
       });
     }
   } else {
@@ -87,7 +86,8 @@ export async function validateSigningConfig(
         code: "ORPHAN_PUBLIC_KEY",
         message:
           "Signing is disabled but HOT_UPDATER_PUBLIC_KEY exists in Info.plist. This will cause OTA updates to be rejected.",
-        resolution: "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
+        resolution:
+          "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
       });
     }
     if (androidResult.value) {
@@ -97,7 +97,8 @@ export async function validateSigningConfig(
         code: "ORPHAN_PUBLIC_KEY",
         message:
           "Signing is disabled but hot_updater_public_key exists in strings.xml. This will cause OTA updates to be rejected.",
-        resolution: "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
+        resolution:
+          "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
       });
     }
   }
