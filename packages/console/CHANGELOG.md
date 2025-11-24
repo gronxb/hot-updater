@@ -1,5 +1,14 @@
 # @hot-updater/console
 
+## 0.22.1
+
+### Patch Changes
+
+- 422bf89: feat: delete bundle softly(not storage only db)
+  - @hot-updater/cli-tools@0.22.1
+  - @hot-updater/core@0.22.1
+  - @hot-updater/plugin-core@0.22.1
+
 ## 0.22.0
 
 ### Patch Changes
