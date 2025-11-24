@@ -40,11 +40,16 @@ export async function validateSigningConfig(
     config.platform.android.stringResourcePaths,
   );
 
+  const [iosExists, androidExists] = await Promise.all([
+    iosParser.exists(),
+    androidParser.exists(),
+  ]);
+
   const [iosResult, androidResult] = await Promise.all([
-    iosParser.exists()
+    iosExists
       ? iosParser.get(IOS_KEY)
       : Promise.resolve({ value: null, paths: [] }),
-    androidParser.exists()
+    androidExists
       ? androidParser.get(ANDROID_KEY)
       : Promise.resolve({ value: null, paths: [] }),
   ]);
@@ -53,7 +58,7 @@ export async function validateSigningConfig(
 
   if (signingEnabled) {
     // Signing enabled - check for missing public keys
-    if (!iosResult.value && (await iosParser.exists())) {
+    if (!iosResult.value && iosExists) {
       issues.push({
         type: "error",
         platform: "ios",
@@ -63,7 +68,7 @@ export async function validateSigningConfig(
         resolution: "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
       });
     }
-    if (!androidResult.value && (await androidParser.exists())) {
+    if (!androidResult.value && androidExists) {
       issues.push({
         type: "error",
         platform: "android",
