@@ -5,11 +5,6 @@ import { useEventCallback } from "./hooks/useEventCallback";
 import { getBundleId, reload } from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
-import {
-  extractSignatureFailure,
-  isSignatureVerificationError,
-  type SignatureVerificationFailure,
-} from "./types";
 
 type UpdateStatus =
   | "CHECK_FOR_UPDATE"
@@ -58,21 +53,6 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
    * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#onupdateprocesscompleted}
    */
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
-  /**
-   * Callback fired when bundle signature verification fails.
-   * This is a security-critical event that indicates the bundle
-   * may have been tampered with or the public key is misconfigured.
-   *
-   * Use this to:
-   * - Show a security warning to users
-   * - Report to security/analytics services
-   * - Force users to update via app store
-   *
-   * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#onsignatureverificationfailure}
-   */
-  onSignatureVerificationFailure?: (
-    failure: SignatureVerificationFailure,
-  ) => void;
 }
 
 export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
@@ -89,7 +69,6 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
 
       const initHotUpdater = useEventCallback(async () => {
-        let currentBundleId: string | undefined;
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
 
@@ -100,7 +79,6 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           });
 
           setMessage(updateInfo?.message ?? null);
-          currentBundleId = updateInfo?.id;
 
           if (!updateInfo) {
             restOptions.onUpdateProcessCompleted?.({
@@ -115,11 +93,6 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
 
           if (updateInfo.shouldForceUpdate === false) {
             void updateInfo.updateBundle().catch((error) => {
-              if (isSignatureVerificationError(error)) {
-                restOptions.onSignatureVerificationFailure?.(
-                  extractSignatureFailure(error, updateInfo.id),
-                );
-              }
               restOptions.onError?.(error);
             });
 
@@ -155,11 +128,6 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
 
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         } catch (error) {
-          if (isSignatureVerificationError(error)) {
-            restOptions.onSignatureVerificationFailure?.(
-              extractSignatureFailure(error, currentBundleId ?? "unknown"),
-            );
-          }
           restOptions.onError?.(error);
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         }
