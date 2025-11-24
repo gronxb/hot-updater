@@ -105,7 +105,7 @@ export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
   fileUrl: string | null;
   /**
    * SHA256 hash of the bundle file, optionally with embedded signature.
-   * Format when signed: "sig:<base64_signature>;sha256:<hex_hash>"
+   * Format when signed: "sig:<base64_signature>"
    * Format when unsigned: "<hex_hash>" (64-character lowercase hex)
    * The client parses this to extract signature for native verification.
    */
