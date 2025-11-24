@@ -1,8 +1,8 @@
 ---
 title: "Cloudflare"
 description: Deploy Hot Updater server to Cloudflare Workers with D1 and R2.
-
 icon: cloudflare
+version: "v0.22.0"
 ---
 
 ## Prerequisites
@@ -101,7 +101,7 @@ import { Env, getDb } from "./drizzle";
 export const getHotUpdater = (env: Env) =>
   createHotUpdater({
     database: drizzleAdapter({ db: getDb(env), provider: "sqlite" }),
-    storagePlugins: [
+    storages: [
       s3Storage({
         region: "auto",
         endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,

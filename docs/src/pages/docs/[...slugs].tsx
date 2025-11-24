@@ -6,6 +6,7 @@ import {
   DocsTitle,
 } from "fumadocs-ui/page";
 import type { PageProps } from "waku/router";
+import { VersionTag } from "@/components/version-tag";
 import { source } from "@/lib/source";
 
 export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {
@@ -28,6 +29,7 @@ export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {
   return (
     <DocsPage toc={page.data.toc}>
       <DocsTitle>{page.data.title}</DocsTitle>
+      <VersionTag version={page.data?.version} />
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
         <MDX

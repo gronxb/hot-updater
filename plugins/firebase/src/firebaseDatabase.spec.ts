@@ -15,7 +15,7 @@ describe("firebaseDatabase plugin", () => {
     plugin = firebaseDatabase({
       projectId: PROJECT_ID,
       storageBucket: `${PROJECT_ID}.appspot.com`,
-    })({ cwd: "" });
+    })();
   });
 
   beforeEach(async () => {

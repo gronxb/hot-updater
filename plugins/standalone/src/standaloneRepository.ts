@@ -1,4 +1,4 @@
-import type { Bundle, DatabasePluginHooks } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -18,18 +18,18 @@ export interface Routes {
 
 const defaultRoutes: Routes = {
   upsert: () => ({
-    path: "/bundles",
+    path: "/api/bundles",
   }),
   list: () => ({
-    path: "/bundles",
+    path: "/api/bundles",
     headers: { "Cache-Control": "no-cache" },
   }),
   retrieve: (bundleId: string) => ({
-    path: `/bundles/${bundleId}`,
+    path: `/api/bundles/${bundleId}`,
     headers: { Accept: "application/json" },
   }),
   delete: (bundleId: string) => ({
-    path: `/bundles/${bundleId}`,
+    path: `/api/bundles/${bundleId}`,
   }),
 };
 
@@ -50,152 +50,146 @@ export interface StandaloneRepositoryConfig {
   routes?: Routes;
 }
 
-export const standaloneRepository = (
-  config: StandaloneRepositoryConfig,
-  hooks?: DatabasePluginHooks,
-) => {
-  const routes: Routes = {
-    upsert: () =>
-      createRoute(defaultRoutes.upsert(), config.routes?.upsert?.()),
-    list: () => createRoute(defaultRoutes.list(), config.routes?.list?.()),
-    retrieve: (bundleId) =>
-      createRoute(
-        defaultRoutes.retrieve(bundleId),
-        config.routes?.retrieve?.(bundleId),
-      ),
-    delete: (bundleId) =>
-      createRoute(
-        defaultRoutes.delete(bundleId),
-        config.routes?.delete?.(bundleId),
-      ),
-  };
+export const standaloneRepository =
+  createDatabasePlugin<StandaloneRepositoryConfig>({
+    name: "standalone-repository",
+    factory: (config) => {
+      const routes: Routes = {
+        upsert: () =>
+          createRoute(defaultRoutes.upsert(), config.routes?.upsert?.()),
+        list: () => createRoute(defaultRoutes.list(), config.routes?.list?.()),
+        retrieve: (bundleId) =>
+          createRoute(
+            defaultRoutes.retrieve(bundleId),
+            config.routes?.retrieve?.(bundleId),
+          ),
+        delete: (bundleId) =>
+          createRoute(
+            defaultRoutes.delete(bundleId),
+            config.routes?.delete?.(bundleId),
+          ),
+      };
 
-  const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+      const buildUrl = (path: string) => `${config.baseUrl}${path}`;
 
-  const getHeaders = (routeHeaders?: Record<string, string>) => ({
-    "Content-Type": "application/json",
-    ...config.commonHeaders,
-    ...routeHeaders,
-  });
+      const getHeaders = (routeHeaders?: Record<string, string>) => ({
+        "Content-Type": "application/json",
+        ...config.commonHeaders,
+        ...routeHeaders,
+      });
 
-  return createDatabasePlugin(
-    "standalone-repository",
-    {
-      async getBundleById(_, bundleId: string): Promise<Bundle | null> {
-        try {
-          const { path, headers: routeHeaders } = routes.retrieve(bundleId);
+      return {
+        async getBundleById(bundleId: string): Promise<Bundle | null> {
+          try {
+            const { path, headers: routeHeaders } = routes.retrieve(bundleId);
+            const response = await fetch(buildUrl(path), {
+              method: "GET",
+              headers: getHeaders(routeHeaders),
+            });
+
+            if (!response.ok) {
+              return null;
+            }
+
+            return (await response.json()) as Bundle;
+          } catch {
+            return null;
+          }
+        },
+        async getBundles(options) {
+          const { where, limit, offset = 0 } = options ?? {};
+          const { path, headers: routeHeaders } = routes.list();
           const response = await fetch(buildUrl(path), {
             method: "GET",
             headers: getHeaders(routeHeaders),
           });
-
           if (!response.ok) {
-            return null;
+            throw new Error(`API Error: ${response.statusText}`);
+          }
+          const bundles = (await response.json()) as Bundle[];
+
+          let filteredBundles = bundles;
+          if (where?.channel) {
+            filteredBundles = filteredBundles.filter(
+              (b) => b.channel === where.channel,
+            );
+          }
+          if (where?.platform) {
+            filteredBundles = filteredBundles.filter(
+              (b) => b.platform === where.platform,
+            );
           }
 
-          return (await response.json()) as Bundle;
-        } catch {
-          return null;
-        }
-      },
-      async getBundles(_, options) {
-        const { where, limit, offset = 0 } = options ?? {};
-        const { path, headers: routeHeaders } = routes.list();
-        const response = await fetch(buildUrl(path), {
-          method: "GET",
-          headers: getHeaders(routeHeaders),
-        });
-        if (!response.ok) {
-          throw new Error(`API Error: ${response.statusText}`);
-        }
-        const bundles = (await response.json()) as Bundle[];
+          const total = filteredBundles.length;
+          const data = limit
+            ? filteredBundles.slice(offset, offset + limit)
+            : filteredBundles;
 
-        let filteredBundles = bundles;
-        if (where?.channel) {
-          filteredBundles = filteredBundles.filter(
-            (b) => b.channel === where.channel,
-          );
-        }
-        if (where?.platform) {
-          filteredBundles = filteredBundles.filter(
-            (b) => b.platform === where.platform,
-          );
-        }
+          const pagination = calculatePagination(total, { limit, offset });
 
-        const total = filteredBundles.length;
-        const data = limit
-          ? filteredBundles.slice(offset, offset + limit)
-          : filteredBundles;
+          return {
+            data,
+            pagination,
+          };
+        },
+        async getChannels(): Promise<string[]> {
+          const result = await this.getBundles({ limit: 50, offset: 0 });
+          return [...new Set(result.data.map((b: Bundle) => b.channel))];
+        },
+        async commitBundle({ changedSets }) {
+          if (changedSets.length === 0) {
+            return;
+          }
 
-        const pagination = calculatePagination(total, { limit, offset });
+          // Process each operation sequentially
+          for (const op of changedSets) {
+            if (op.operation === "delete") {
+              // Handle delete operation
+              const { path, headers: routeHeaders } = routes.delete(op.data.id);
+              const response = await fetch(buildUrl(path), {
+                method: "DELETE",
+                headers: getHeaders(routeHeaders),
+              });
 
-        return {
-          data,
-          pagination,
-        };
-      },
-      async getChannels(_): Promise<string[]> {
-        const result = await this.getBundles(_, { limit: 50, offset: 0 });
-        return [...new Set(result.data.map((b) => b.channel))];
-      },
-      async commitBundle(_, { changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        // Process each operation sequentially
-        for (const op of changedSets) {
-          if (op.operation === "delete") {
-            // Handle delete operation
-            const { path, headers: routeHeaders } = routes.delete(op.data.id);
-            const response = await fetch(buildUrl(path), {
-              method: "DELETE",
-              headers: getHeaders(routeHeaders),
-            });
-
-            if (!response.ok) {
-              if (response.status === 404) {
-                throw new Error(`Bundle with id ${op.data.id} not found`);
+              if (!response.ok) {
+                if (response.status === 404) {
+                  throw new Error(`Bundle with id ${op.data.id} not found`);
+                }
+                throw new Error(
+                  `API Error: ${response.status} ${response.statusText}`,
+                );
               }
-              throw new Error(
-                `API Error: ${response.status} ${response.statusText}`,
-              );
-            }
 
-            const contentType = response.headers.get("content-type");
-            if (contentType?.includes("application/json")) {
-              try {
-                await response.json();
-              } catch (_jsonError) {
-                if (!response.ok) {
-                  throw new Error("Failed to parse response");
+              const contentType = response.headers.get("content-type");
+              if (contentType?.includes("application/json")) {
+                try {
+                  await response.json();
+                } catch (_jsonError) {
+                  if (!response.ok) {
+                    throw new Error("Failed to parse response");
+                  }
                 }
               }
-            }
-          } else if (op.operation === "insert" || op.operation === "update") {
-            // Handle insert and update operations
-            const { path, headers: routeHeaders } = routes.upsert();
-            const response = await fetch(buildUrl(path), {
-              method: "POST",
-              headers: getHeaders(routeHeaders),
-              body: JSON.stringify([op.data]),
-            });
+            } else if (op.operation === "insert" || op.operation === "update") {
+              // Handle insert and update operations
+              const { path, headers: routeHeaders } = routes.upsert();
+              const response = await fetch(buildUrl(path), {
+                method: "POST",
+                headers: getHeaders(routeHeaders),
+                body: JSON.stringify([op.data]),
+              });
 
-            if (!response.ok) {
-              throw new Error(`API Error: ${response.statusText}`);
-            }
+              if (!response.ok) {
+                throw new Error(`API Error: ${response.statusText}`);
+              }
 
-            const result = (await response.json()) as { success: boolean };
-            if (!result.success) {
-              throw new Error("Failed to commit bundle");
+              const result = (await response.json()) as { success: boolean };
+              if (!result.success) {
+                throw new Error("Failed to commit bundle");
+              }
             }
           }
-        }
-
-        // Call hook after all operations
-        hooks?.onDatabaseUpdated?.();
-      },
+        },
+      };
     },
-    hooks,
-  );
-};
+  });

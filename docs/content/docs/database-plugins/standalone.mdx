@@ -75,17 +75,17 @@ database: standaloneRepository({
   baseUrl: "https://api.example.com",
   routes: {
     upsert: () => ({
-      path: "/v1/hot-updater/bundles",
+      path: "/v1/hot-updater/api/bundles",
       headers: { "X-Custom-Header": "value" }
     }),
     list: () => ({
-      path: "/v1/hot-updater/bundles"
+      path: "/v1/hot-updater/api/bundles"
     }),
     retrieve: (bundleId) => ({
-      path: `/v1/hot-updater/bundles/${bundleId}`
+      path: `/v1/hot-updater/api/bundles/${bundleId}`
     }),
     delete: (bundleId) => ({
-      path: `/v1/hot-updater/bundles/${bundleId}`
+      path: `/v1/hot-updater/api/bundles/${bundleId}`
     })
   }
 })

@@ -1,3 +1,9 @@
+import type { Bundle } from "@hot-updater/core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import {
   cleanupServer,
   createGetUpdateInfo,
@@ -5,11 +11,10 @@ import {
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/test-utils/node";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import { afterAll, beforeAll, describe } from "vitest";
+import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
-import { execa } from "execa";
+import { afterAll, beforeAll, describe } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -20,6 +25,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbName: string;
+  let hotUpdater: HotUpdaterAPI;
   const port = 13585;
 
   beforeAll(async () => {
@@ -29,6 +35,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
     // Generate unique test database name
     testDbName = `hot_updater_test_${Date.now()}`;
     const testMongoUrl = `mongodb://hot_updater:hot_updater_dev@localhost:27018/${testDbName}?authSource=admin`;
+
+    process.env.TEST_MONGODB_URL = testMongoUrl;
 
     baseUrl = `http://localhost:${port}`;
 
@@ -47,10 +55,14 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
       "dist/index.js",
     );
 
-    await execa("node", [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"], {
-      cwd: projectRoot,
-      env: { TEST_MONGODB_URL: testMongoUrl },
-    });
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_MONGODB_URL: testMongoUrl },
+      },
+    );
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
@@ -61,6 +73,9 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
     });
 
     await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+
+    const db = await import("./db.js");
+    hotUpdater = db.hotUpdater;
   }, 120000);
 
   afterAll(async () => {
@@ -83,5 +98,16 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
 
   setupGetUpdateInfoTestSuite({
     getUpdateInfo,
+  });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id: string) => hotUpdater.getBundleById(id),
+    getChannels: () => hotUpdater.getChannels(),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    getBundles: (options) => hotUpdater.getBundles(options),
+    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
+      hotUpdater.updateBundleById(bundleId, newBundle),
+    deleteBundleById: (bundleId: string) =>
+      hotUpdater.deleteBundleById(bundleId),
   });
 });

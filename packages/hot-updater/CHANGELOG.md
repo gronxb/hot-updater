@@ -1,5 +1,116 @@
 # hot-updater
 
+## 0.22.1
+
+### Patch Changes
+
+- Updated dependencies [422bf89]
+  - @hot-updater/console@0.22.1
+  - @hot-updater/cli-tools@0.22.1
+  - @hot-updater/core@0.22.1
+  - @hot-updater/server@0.22.1
+  - @hot-updater/aws@0.22.1
+  - @hot-updater/cloudflare@0.22.1
+  - @hot-updater/firebase@0.22.1
+  - @hot-updater/plugin-core@0.22.1
+  - @hot-updater/supabase@0.22.1
+
+## 0.22.0
+
+### Patch Changes
+
+- Updated dependencies [32ad614]
+  - @hot-updater/server@0.22.0
+  - @hot-updater/cli-tools@0.22.0
+  - @hot-updater/console@0.22.0
+  - @hot-updater/core@0.22.0
+  - @hot-updater/aws@0.22.0
+  - @hot-updater/cloudflare@0.22.0
+  - @hot-updater/firebase@0.22.0
+  - @hot-updater/plugin-core@0.22.0
+  - @hot-updater/supabase@0.22.0
+
+## 0.21.15
+
+### Patch Changes
+
+- Updated dependencies [a169f06]
+  - @hot-updater/server@0.21.15
+  - @hot-updater/cli-tools@0.21.15
+  - @hot-updater/aws@0.21.15
+  - @hot-updater/cloudflare@0.21.15
+  - @hot-updater/firebase@0.21.15
+  - @hot-updater/plugin-core@0.21.15
+  - @hot-updater/console@0.21.15
+  - @hot-updater/core@0.21.15
+  - @hot-updater/supabase@0.21.15
+
+## 0.21.14
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.21.14
+- @hot-updater/console@0.21.14
+- @hot-updater/core@0.21.14
+- @hot-updater/server@0.21.14
+- @hot-updater/aws@0.21.14
+- @hot-updater/cloudflare@0.21.14
+- @hot-updater/firebase@0.21.14
+- @hot-updater/plugin-core@0.21.14
+- @hot-updater/supabase@0.21.14
+
+## 0.21.13
+
+### Patch Changes
+
+- 44f4e95: Fix processing of directory glob patterns on extraSources
+  - @hot-updater/cli-tools@0.21.13
+  - @hot-updater/console@0.21.13
+  - @hot-updater/core@0.21.13
+  - @hot-updater/server@0.21.13
+  - @hot-updater/aws@0.21.13
+  - @hot-updater/cloudflare@0.21.13
+  - @hot-updater/firebase@0.21.13
+  - @hot-updater/plugin-core@0.21.13
+  - @hot-updater/supabase@0.21.13
+
+## 0.21.12
+
+### Patch Changes
+
+- 56e849b: chore(server): storagePlugins to storages
+- Updated dependencies [56e849b]
+- Updated dependencies [5c4b98e]
+  - @hot-updater/server@0.21.12
+  - @hot-updater/plugin-core@0.21.12
+  - @hot-updater/cloudflare@0.21.12
+  - @hot-updater/firebase@0.21.12
+  - @hot-updater/supabase@0.21.12
+  - @hot-updater/aws@0.21.12
+  - @hot-updater/cli-tools@0.21.12
+  - @hot-updater/console@0.21.12
+  - @hot-updater/core@0.21.12
+
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+- 2905e47: feat(server): supports hot-updater database plugin style
+- Updated dependencies [d6c3a65]
+- Updated dependencies [7ee2830]
+- Updated dependencies [e2b67d7]
+- Updated dependencies [2905e47]
+  - @hot-updater/cli-tools@0.21.11
+  - @hot-updater/server@0.21.11
+  - @hot-updater/console@0.21.11
+  - @hot-updater/core@0.21.11
+  - @hot-updater/aws@0.21.11
+  - @hot-updater/cloudflare@0.21.11
+  - @hot-updater/firebase@0.21.11
+  - @hot-updater/plugin-core@0.21.11
+  - @hot-updater/supabase@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes
@@ -138,7 +249,7 @@
   - @hot-updater/supabase@0.21.1
   - @hot-updater/core@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -150,13 +261,13 @@
 - Updated dependencies [610b2dd]
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - @hot-updater/plugin-core@1.0.0
-  - @hot-updater/cloudflare@1.0.0
-  - @hot-updater/firebase@1.0.0
-  - @hot-updater/supabase@1.0.0
-  - @hot-updater/aws@1.0.0
-  - @hot-updater/console@1.0.0
-  - @hot-updater/core@1.0.0
+  - @hot-updater/plugin-core@0.22.0
+  - @hot-updater/cloudflare@0.22.0
+  - @hot-updater/firebase@0.22.0
+  - @hot-updater/supabase@0.22.0
+  - @hot-updater/aws@0.22.0
+  - @hot-updater/console@0.22.0
+  - @hot-updater/core@0.22.0
 
 ## 0.20.15
 

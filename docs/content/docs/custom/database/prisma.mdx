@@ -2,6 +2,7 @@
 title: "Prisma"
 description: Build a self-hosted Hot Updater server with Prisma ORM.
 icon: prisma
+version: "v0.22.0"
 ---
 
 ## Installation
@@ -41,7 +42,7 @@ import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
   database: prismaAdapter({ prisma, provider: "sqlite" }),
-  storagePlugins: [
+  storages: [
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,
@@ -135,22 +136,20 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storagePlugins` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
 The server automatically creates these endpoints:
 
-### App Update Endpoints
-- `GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` - Check for updates by fingerprint
-- `GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` - Check for updates by app version
-
-### Bundle Management
-- `POST /hot-updater/bundles` - Create or update bundles
-- `GET /hot-updater/bundles` - List bundles (supports query params: channel, platform, limit, offset)
-- `GET /hot-updater/bundles/:id` - Get bundle by ID
-- `DELETE /hot-updater/bundles/:id` - Delete bundle
-
-### Channels
-- `GET /hot-updater/channels` - List all available channels
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create or update bundles |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |

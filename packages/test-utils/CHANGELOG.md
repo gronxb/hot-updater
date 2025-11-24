@@ -1,5 +1,51 @@
 # @hot-updater/test-utils
 
+## 0.22.1
+
+### Patch Changes
+
+- @hot-updater/core@0.22.1
+
+## 0.22.0
+
+### Patch Changes
+
+- @hot-updater/core@0.22.0
+
+## 0.21.15
+
+### Patch Changes
+
+- a169f06: unique constraint violations
+  - @hot-updater/core@0.21.15
+
+## 0.21.14
+
+### Patch Changes
+
+- @hot-updater/core@0.21.14
+
+## 0.21.13
+
+### Patch Changes
+
+- @hot-updater/core@0.21.13
+
+## 0.21.12
+
+### Patch Changes
+
+- @hot-updater/core@0.21.12
+
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+- 2905e47: feat(server): supports hot-updater database plugin style
+- Updated dependencies [e2b67d7]
+  - @hot-updater/core@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes
@@ -62,7 +108,7 @@
 
 - @hot-updater/core@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -72,4 +118,4 @@
 
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - @hot-updater/core@1.0.0
+  - @hot-updater/core@0.22.0

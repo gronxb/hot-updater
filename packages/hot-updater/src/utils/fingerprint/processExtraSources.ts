@@ -3,6 +3,7 @@
 import type { HashSourceContents, HashSourceDir } from "@expo/fingerprint";
 import fg from "fast-glob";
 import fs from "fs";
+import path from "path";
 
 /**
  * Processes extra source files and directories for fingerprinting.
@@ -25,17 +26,20 @@ export function processExtraSources(extraSources: string[], cwd: string) {
       for (const absolutePath of matches) {
         if (fs.existsSync(absolutePath)) {
           const stats = fs.statSync(absolutePath);
+          // Convert absolute path to relative path from cwd
+          // @expo/fingerprint expects relative paths, not absolute paths
+          const relativePath = path.relative(cwd, absolutePath);
 
           if (stats.isDirectory()) {
             processedSources.push({
               type: "dir",
-              filePath: absolutePath,
+              filePath: relativePath,
               reasons: ["custom-user-config"],
             });
           } else {
             processedSources.push({
               type: "contents",
-              id: absolutePath,
+              id: relativePath,
               contents: fs.readFileSync(absolutePath, "utf-8"),
               reasons: ["custom-user-config"],
             });

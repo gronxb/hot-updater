@@ -10,7 +10,7 @@ export const hotUpdater = createHotUpdater({
     prisma,
     provider: "postgresql",
   }),
-  storagePlugins: [
+  storages: [
     mockStorage({}),
     s3Storage({
       region: "auto",

@@ -1,5 +1,5 @@
 {
-  "name": "rock-repack",
+  "name": "@examples/rock-repack",
   "version": "0.21.0",
   "private": true,
   "scripts": {

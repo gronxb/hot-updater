@@ -80,3 +80,28 @@ export default defineConfig({
 `s3://`
 
 This prefix is stored in the `storageUri` field in the database.
+
+## Custom Server Usage
+
+Use `s3Storage` with `createHotUpdater` for self-hosted servers:
+
+```typescript
+import { s3Storage } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+
+const hotUpdater = createHotUpdater({
+  storages: [
+    s3Storage({
+      region: process.env.AWS_REGION!,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
+    }),
+  ],
+  // ... other options
+});
+```
+
+For complete server setup guides, see [S3 Database Adapter](/docs/custom/database/s3).

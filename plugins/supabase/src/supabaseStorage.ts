@@ -1,10 +1,8 @@
 import {
-  type BasePluginArgs,
   createStorageKeyBuilder,
+  createStoragePlugin,
   getContentType,
   parseStorageUri,
-  type StoragePlugin,
-  type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
@@ -21,9 +19,10 @@ export interface SupabaseStorageConfig {
   basePath?: string;
 }
 
-export const supabaseStorage =
-  (config: SupabaseStorageConfig, hooks?: StoragePluginHooks) =>
-  (_: BasePluginArgs): StoragePlugin => {
+export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
+  name: "supabaseStorage",
+  supportedProtocol: "supabase-storage",
+  factory: (config) => {
     const supabase = createClient<Database>(
       config.supabaseUrl,
       config.supabaseAnonKey,
@@ -31,9 +30,8 @@ export const supabaseStorage =
 
     const bucket = supabase.storage.from(config.bucketName);
     const getStorageKey = createStorageKeyBuilder(config.basePath);
+
     return {
-      name: "supabaseStorage",
-      supportedProtocol: "supabase-storage",
       async delete(storageUri) {
         const { key, bucket: bucketName } = parseStorageUri(
           storageUri,
@@ -74,7 +72,6 @@ export const supabaseStorage =
 
         const fullPath = upload.data.fullPath;
 
-        hooks?.onStorageUploaded?.();
         return {
           storageUri: `supabase-storage://${fullPath}`,
         };
@@ -103,4 +100,5 @@ export const supabaseStorage =
         return { fileUrl: data.signedUrl };
       },
     };
-  };
+  },
+});
