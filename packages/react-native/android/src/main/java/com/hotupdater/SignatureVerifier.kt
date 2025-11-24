@@ -3,10 +3,16 @@ package com.hotupdater
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import java.io.File
 import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
+
+/**
+ * Prefix for signed file hash format.
+ */
+private const val SIGNED_HASH_PREFIX = "sig:"
 
 /**
  * Custom exceptions for signature verification errors.
@@ -39,6 +45,22 @@ sealed class SignatureVerificationException(
             "Bundle signature verification failed. The bundle may be corrupted or tampered with",
         )
 
+    class HashMismatch :
+        SignatureVerificationException(
+            "Bundle hash verification failed. The bundle file hash does not match. File may be corrupted",
+        )
+
+    class HashCalculationFailed :
+        SignatureVerificationException(
+            "Failed to calculate file hash. Could not read file for hash verification",
+        )
+
+    class UnsignedNotAllowed :
+        SignatureVerificationException(
+            "Unsigned bundle not allowed when signing is enabled. " +
+                "Public key is configured but bundle is not signed. Rejecting update",
+        )
+
     class SecurityFrameworkError(
         cause: Throwable,
     ) : SignatureVerificationException(
@@ -47,8 +69,19 @@ sealed class SignatureVerificationException(
 }
 
 /**
- * Service for verifying RSA-SHA256 signatures of bundle fileHash.
+ * Service for verifying bundle integrity through hash or RSA-SHA256 signature verification.
  * Uses Java Signature API for cryptographic operations.
+ *
+ * fileHash format:
+ * - Signed: `sig:<base64_signature>` - Verify signature (implicitly verifies hash)
+ * - Unsigned: `<hex_hash>` - Verify SHA256 hash only
+ *
+ * Security rules:
+ * - null/empty fileHash → REJECT
+ * - sig:... + public key configured → verify signature → Install/REJECT
+ * - sig:... + public key NOT configured → REJECT (can't verify)
+ * - <hash> + public key configured → REJECT (unsigned not allowed)
+ * - <hash> + public key NOT configured → verify hash → Install/REJECT
  */
 object SignatureVerifier {
     private const val TAG = "SignatureVerifier"
@@ -78,6 +111,172 @@ object SignatureVerifier {
         }
 
         return publicKeyPEM
+    }
+
+    /**
+     * Checks if signing is enabled (public key is configured).
+     * @param context Application context
+     * @return true if public key is configured
+     */
+    fun isSigningEnabled(context: Context): Boolean = getPublicKeyFromConfig(context) != null
+
+    /**
+     * Checks if fileHash is in signed format (starts with "sig:").
+     * @param fileHash The file hash string to check
+     * @return true if signed format
+     */
+    fun isSignedFormat(fileHash: String?): Boolean = fileHash?.startsWith(SIGNED_HASH_PREFIX) == true
+
+    /**
+     * Extracts signature from signed format fileHash.
+     * @param fileHash The signed file hash (sig:<signature>)
+     * @return Base64-encoded signature or null if not signed format
+     */
+    fun extractSignature(fileHash: String?): String? {
+        if (!isSignedFormat(fileHash)) return null
+        return fileHash?.removePrefix(SIGNED_HASH_PREFIX)
+    }
+
+    /**
+     * Verifies bundle integrity based on fileHash format.
+     * Determines verification mode by checking for "sig:" prefix.
+     *
+     * @param context Application context
+     * @param bundleFile The bundle file to verify
+     * @param fileHash Combined hash string (sig:<signature> or <hex_hash>)
+     * @throws SignatureVerificationException if verification fails
+     */
+    fun verifyBundle(
+        context: Context,
+        bundleFile: File,
+        fileHash: String?,
+    ) {
+        val signingEnabled = isSigningEnabled(context)
+
+        // Rule: null/empty fileHash → REJECT
+        if (fileHash.isNullOrEmpty()) {
+            Log.e(TAG, "fileHash is null or empty. Rejecting update.")
+            throw SignatureVerificationException.VerificationFailed()
+        }
+
+        if (isSignedFormat(fileHash)) {
+            // Signed format: sig:<signature>
+            val signature = extractSignature(fileHash)
+            if (signature.isNullOrEmpty()) {
+                Log.e(TAG, "Failed to extract signature from fileHash")
+                throw SignatureVerificationException.InvalidSignatureFormat()
+            }
+
+            // Rule: sig:... + public key NOT configured → REJECT
+            if (!signingEnabled) {
+                Log.e(TAG, "Signed bundle but public key not configured. Cannot verify.")
+                throw SignatureVerificationException.PublicKeyNotConfigured()
+            }
+
+            // Rule: sig:... + public key configured → verify signature
+            verifySignature(context, bundleFile, signature)
+        } else {
+            // Unsigned format: <hex_hash>
+
+            // Rule: <hash> + public key configured → REJECT
+            if (signingEnabled) {
+                Log.e(TAG, "Unsigned bundle not allowed when signing is enabled. Rejecting.")
+                throw SignatureVerificationException.UnsignedNotAllowed()
+            }
+
+            // Rule: <hash> + public key NOT configured → verify hash
+            verifyHash(bundleFile, fileHash)
+        }
+    }
+
+    /**
+     * Verifies SHA256 hash of a file.
+     * @param bundleFile The file to verify
+     * @param expectedHash Expected SHA256 hash (hex string)
+     * @throws SignatureVerificationException.HashMismatch if verification fails
+     */
+    fun verifyHash(
+        bundleFile: File,
+        expectedHash: String,
+    ) {
+        Log.d(TAG, "Verifying hash for file: ${bundleFile.name}")
+
+        if (!HashUtils.verifyHash(bundleFile, expectedHash)) {
+            Log.e(TAG, "Hash mismatch!")
+            throw SignatureVerificationException.HashMismatch()
+        }
+
+        Log.i(TAG, "✅ Hash verified successfully")
+    }
+
+    /**
+     * Verifies RSA-SHA256 signature of a file.
+     * Calculates the file hash internally and verifies the signature.
+     *
+     * @param context Application context
+     * @param bundleFile The file to verify
+     * @param signatureBase64 Base64-encoded RSA-SHA256 signature
+     * @throws SignatureVerificationException if verification fails
+     */
+    fun verifySignature(
+        context: Context,
+        bundleFile: File,
+        signatureBase64: String,
+    ) {
+        Log.d(TAG, "Verifying signature for file: ${bundleFile.name}")
+
+        // Get public key from config
+        val publicKeyPEM =
+            getPublicKeyFromConfig(context)
+                ?: run {
+                    Log.e(TAG, "Cannot verify signature: public key not configured in strings.xml")
+                    throw SignatureVerificationException.PublicKeyNotConfigured()
+                }
+
+        try {
+            // Convert PEM to PublicKey
+            val publicKey = createPublicKey(publicKeyPEM)
+
+            // Calculate file hash
+            val fileHashHex =
+                HashUtils.calculateSHA256(bundleFile)
+                    ?: run {
+                        Log.e(TAG, "Failed to calculate file hash")
+                        throw SignatureVerificationException.HashCalculationFailed()
+                    }
+
+            Log.d(TAG, "Calculated file hash: $fileHashHex")
+
+            // Decode signature from base64
+            val signatureBytes =
+                try {
+                    Base64.decode(signatureBase64, Base64.DEFAULT)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decode signature from base64", e)
+                    throw SignatureVerificationException.InvalidSignatureFormat()
+                }
+
+            // Convert hex fileHash to bytes
+            val fileHashBytes = hexToByteArray(fileHashHex)
+
+            // Verify signature using RSA-SHA256
+            val verifier = Signature.getInstance("SHA256withRSA")
+            verifier.initVerify(publicKey)
+            verifier.update(fileHashBytes)
+            val isValid = verifier.verify(signatureBytes)
+
+            if (isValid) {
+                Log.i(TAG, "✅ Signature verified successfully")
+            } else {
+                Log.e(TAG, "❌ Signature verification failed")
+                throw SignatureVerificationException.VerificationFailed()
+            }
+        } catch (e: SignatureVerificationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Signature verification error", e)
+            throw SignatureVerificationException.SecurityFrameworkError(e)
+        }
     }
 
     /**
@@ -142,74 +341,6 @@ object SignatureVerifier {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to convert hex to byte array", e)
             throw SignatureVerificationException.InvalidSignatureFormat()
-        }
-    }
-
-    /**
-     * Verifies RSA-SHA256 signature of fileHash.
-     * @param context Application context
-     * @param fileHash SHA256 hash of bundle file (hex string)
-     * @param signatureBase64 Base64-encoded RSA-SHA256 signature (nullable)
-     * @throws SignatureVerificationException if verification fails
-     */
-    fun verifySignature(
-        context: Context,
-        fileHash: String,
-        signatureBase64: String?,
-    ) {
-        // Get public key from config
-        val publicKeyPEM = getPublicKeyFromConfig(context)
-
-        // If no signature provided, check if verification is required
-        if (signatureBase64 == null) {
-            if (publicKeyPEM != null) {
-                Log.e(TAG, "Signature missing but verification is configured. Rejecting update.")
-                throw SignatureVerificationException.VerificationFailed()
-            }
-            // No signature and no public key = signing not enabled, allow update
-            Log.d(TAG, "Signature verification not configured. Skipping.")
-            return
-        }
-
-        // Signature provided - verify it
-        if (publicKeyPEM == null) {
-            Log.e(TAG, "Cannot verify signature: public key not configured in strings.xml")
-            throw SignatureVerificationException.PublicKeyNotConfigured()
-        }
-
-        try {
-            // Convert PEM to PublicKey
-            val publicKey = createPublicKey(publicKeyPEM)
-
-            // Decode signature from base64
-            val signatureBytes =
-                try {
-                    Base64.decode(signatureBase64, Base64.DEFAULT)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to decode signature from base64", e)
-                    throw SignatureVerificationException.InvalidSignatureFormat()
-                }
-
-            // Convert hex fileHash to bytes
-            val fileHashBytes = hexToByteArray(fileHash)
-
-            // Verify signature using RSA-SHA256
-            val verifier = Signature.getInstance("SHA256withRSA")
-            verifier.initVerify(publicKey)
-            verifier.update(fileHashBytes)
-            val isValid = verifier.verify(signatureBytes)
-
-            if (isValid) {
-                Log.i(TAG, "✅ Signature verified successfully")
-            } else {
-                Log.e(TAG, "❌ Signature verification failed")
-                throw SignatureVerificationException.VerificationFailed()
-            }
-        } catch (e: SignatureVerificationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Signature verification error", e)
-            throw SignatureVerificationException.SecurityFrameworkError(e)
         }
     }
 }

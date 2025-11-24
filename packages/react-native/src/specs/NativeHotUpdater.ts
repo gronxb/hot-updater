@@ -5,16 +5,15 @@ export interface UpdateBundleParams {
   bundleId: string;
   fileUrl: string | null;
   /**
-   * SHA256 hash of the bundle file for integrity verification.
-   * If provided, the native layer will verify the downloaded file's hash.
+   * File hash for integrity/signature verification.
+   *
+   * Format depends on signing configuration:
+   * - Signed: `sig:<base64_signature>` - Native will verify signature (and implicitly hash)
+   * - Unsigned: `<hex_hash>` - Native will verify SHA256 hash only
+   *
+   * Native determines verification mode by checking for "sig:" prefix.
    */
   fileHash: string | null;
-  /**
-   * RSA-SHA256 signature of the bundle fileHash.
-   * Base64-encoded. Used for cryptographic verification on native side.
-   * @optional Backward compatible - null if signing not enabled
-   */
-  signature: string | null;
 }
 
 export interface Spec extends TurboModule {

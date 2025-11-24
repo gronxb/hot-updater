@@ -1,5 +1,4 @@
 import type { AppUpdateInfo, UpdateBundleParams } from "@hot-updater/core";
-import { parseFileHashSafe } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import { fetchUpdateInfo, type UpdateSource } from "./fetchUpdateInfo";
@@ -76,19 +75,13 @@ export async function checkForUpdate(
       return null;
     }
 
-    // Parse the combined fileHash format to extract hash and signature
-    const parsed = updateInfo?.fileHash
-      ? parseFileHashSafe(updateInfo.fileHash)
-      : null;
-
     return {
       ...updateInfo,
       updateBundle: async () => {
         return updateBundle({
           bundleId: updateInfo.id,
           fileUrl: updateInfo.fileUrl,
-          fileHash: parsed?.hash ?? null,
-          signature: parsed?.signature ?? null,
+          fileHash: updateInfo.fileHash,
           status: updateInfo.status,
         });
       },

@@ -40,8 +40,7 @@ interface BundleStorageService {
      * Updates the bundle from the specified URL
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download (or null to reset)
-     * @param fileHash SHA256 hash of the bundle file for verification (nullable)
-     * @param signature RSA-SHA256 signature of fileHash (nullable)
+     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param progressCallback Callback for download progress updates
      * @return true if the update was successful
      */
@@ -49,7 +48,6 @@ interface BundleStorageService {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
-        signature: String?,
         progressCallback: (Double) -> Unit,
     ): Boolean
 }
@@ -91,12 +89,11 @@ class BundleFileStorageService(
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
-        signature: String?,
         progressCallback: (Double) -> Unit,
     ): Boolean {
         Log.d(
             "BundleStorage",
-            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash signature ${if (signature != null) "present" else "null"}",
+            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash",
         )
 
         // If no URL is provided, reset to fallback
@@ -192,34 +189,16 @@ class BundleFileStorageService(
 
                 is DownloadResult.Success -> {
                     Log.d("BundleStorage", "Download successful")
-                    // 1) Verify file hash if provided
-                    if (!fileHash.isNullOrEmpty()) {
-                        Log.d("BundleStorage", "Verifying file hash...")
-                        if (!HashUtils.verifyHash(tempBundleFile, fileHash)) {
-                            Log.d("BundleStorage", "Hash mismatch! Deleting and aborting.")
-                            tempDir.deleteRecursively()
-                            tempBundleFile.delete()
-                            return@withContext false
-                        }
-                        Log.d("BundleStorage", "Hash verification passed")
-
-                        // 1.1) Verify signature if provided or required
-                        try {
-                            SignatureVerifier.verifySignature(
-                                context,
-                                fileHash,
-                                signature,
-                            )
-                            Log.d("BundleStorage", "Signature verification completed successfully")
-                        } catch (e: SignatureVerificationException) {
-                            Log.e("BundleStorage", "Signature verification failed", e)
-                            tempDir.deleteRecursively()
-                            tempBundleFile.delete()
-                            return@withContext false
-                        }
-                    } else if (!signature.isNullOrEmpty()) {
-                        // Signature provided but no hash - log warning
-                        Log.w("BundleStorage", "Signature provided but no fileHash for verification")
+                    // 1) Verify bundle integrity (hash or signature based on fileHash format)
+                    Log.d("BundleStorage", "Verifying bundle integrity...")
+                    try {
+                        SignatureVerifier.verifyBundle(context, tempBundleFile, fileHash)
+                        Log.d("BundleStorage", "Bundle verification completed successfully")
+                    } catch (e: SignatureVerificationException) {
+                        Log.e("BundleStorage", "Bundle verification failed", e)
+                        tempDir.deleteRecursively()
+                        tempBundleFile.delete()
+                        return@withContext false
                     }
 
                     // 2) Create a .tmp directory under bundle-store (to avoid colliding with an existing bundleId folder)

@@ -122,7 +122,7 @@ public protocol BundleStorageService {
     func getBundleURL() -> URL?
     
     // Bundle update
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, signature: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -369,11 +369,11 @@ class BundleFileStorageService: BundleStorageService {
      * Updates the bundle from the specified URL. This operation is asynchronous.
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download (or nil to reset)
-     * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, signature: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
         // Get the current bundle ID from the cached bundle URL (exclude fallback bundles)
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         
@@ -442,7 +442,7 @@ class BundleFileStorageService: BundleStorageService {
                         do {
                             try self.fileSystem.removeItem(atPath: finalBundleDir)
                             // Continue with download process on success
-                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, signature: signature, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
                         } catch let error {
                             NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
                             completion(.failure(BundleStorageError.fileSystemError(error)))
@@ -452,7 +452,7 @@ class BundleFileStorageService: BundleStorageService {
                     completion(.failure(error))
                 }
             } else {
-                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, signature: signature, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
             }
         }
     }
@@ -462,8 +462,7 @@ class BundleFileStorageService: BundleStorageService {
      * This method is part of the asynchronous `updateBundle` flow.
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download
-     * @param fileHash SHA256 hash of the bundle file for verification (nullable)
-     * @param signature RSA-SHA256 signature of fileHash (nullable)
+     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param storeDir Path to the bundle-store directory
      * @param progressHandler Callback for download and extraction progress
      * @param completion Callback with result of the operation
@@ -472,7 +471,6 @@ class BundleFileStorageService: BundleStorageService {
         bundleId: String,
         fileUrl: URL,
         fileHash: String?,
-        signature: String?,
         storeDir: String,
         progressHandler: @escaping (Double) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
@@ -552,7 +550,6 @@ class BundleFileStorageService: BundleStorageService {
                     self.processDownloadedFileWithTmp(location: location,
                                                       tempBundleFile: tempBundleFile,
                                                       fileHash: fileHash,
-                                                      signature: signature,
                                                       storeDir: storeDir,
                                                       bundleId: bundleId,
                                                       tempDirectory: tempDirectory,
@@ -607,8 +604,7 @@ class BundleFileStorageService: BundleStorageService {
      * This method is part of the asynchronous `updateBundle` flow and is expected to run on a background thread.
      * @param location URL of the downloaded file
      * @param tempBundleFile Path to store the downloaded bundle file
-     * @param fileHash SHA256 hash of the bundle file for verification (nullable)
-     * @param signature RSA-SHA256 signature of fileHash (nullable)
+     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param storeDir Path to the bundle-store directory
      * @param bundleId ID of the bundle being processed
      * @param tempDirectory Temporary directory for processing
@@ -619,7 +615,6 @@ class BundleFileStorageService: BundleStorageService {
         location: URL,
         tempBundleFile: String,
         fileHash: String?,
-        signature: String?,
         storeDir: String,
         bundleId: String,
         tempDirectory: String,
@@ -657,34 +652,19 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Created tmpDir: \(tmpDir)")
             logFileSystemDiagnostics(path: tmpDir, context: "TmpDir Created")
 
-            // 5) Verify file hash if provided
-            if let expectedHash = fileHash {
-                NSLog("[BundleStorage] Verifying file hash...")
-                let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
-                guard HashUtils.verifyHash(fileURL: tempBundleURL, expectedHash: expectedHash) else {
-                    NSLog("[BundleStorage] Hash mismatch!")
-                    try? self.fileSystem.removeItem(atPath: tmpDir)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.hashMismatch))
-                    return
-                }
-                NSLog("[BundleStorage] Hash verification passed")
-
-                // 5.1) Verify signature if provided or required
-                let verificationResult = SignatureVerifier.verifySignature(fileHash: expectedHash, signatureBase64: signature)
-                switch verificationResult {
-                case .success:
-                    NSLog("[BundleStorage] Signature verification completed successfully")
-                case .failure(let error):
-                    NSLog("[BundleStorage] Signature verification failed: \(error)")
-                    try? self.fileSystem.removeItem(atPath: tmpDir)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.signatureVerificationFailed(error)))
-                    return
-                }
-            } else if signature != nil {
-                // Signature provided but no hash - verify signature anyway
-                NSLog("[BundleStorage] Warning: Signature provided but no fileHash for verification")
+            // 5) Verify bundle integrity (hash or signature based on fileHash format)
+            NSLog("[BundleStorage] Verifying bundle integrity...")
+            let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
+            let verificationResult = SignatureVerifier.verifyBundle(fileURL: tempBundleURL, fileHash: fileHash)
+            switch verificationResult {
+            case .success:
+                NSLog("[BundleStorage] Bundle verification completed successfully")
+            case .failure(let error):
+                NSLog("[BundleStorage] Bundle verification failed: \(error)")
+                try? self.fileSystem.removeItem(atPath: tmpDir)
+                self.cleanupTemporaryFiles([tempDirectory])
+                completion(.failure(BundleStorageError.signatureVerificationFailed(error)))
+                return
             }
 
             // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
