@@ -169,14 +169,13 @@ export const rpc = new Hono()
       try {
         const { bundleId } = c.req.valid("param");
 
-        const { databasePlugin, storagePlugin } = await prepareConfig();
+        const { databasePlugin } = await prepareConfig();
         const deleteBundle = await databasePlugin.getBundleById(bundleId);
         if (!deleteBundle) {
           return c.json({ error: "Bundle not found" }, 404);
         }
         await databasePlugin.deleteBundle(deleteBundle);
         await databasePlugin.commitBundle();
-        await storagePlugin.delete(deleteBundle.storageUri);
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle deletion:", error);
