@@ -345,9 +345,7 @@ export const deploy = async (options: DeployOptions) => {
               // Store signature in signed format (sig:<signature>)
               // The hash is verified implicitly during signature verification
               fileHash = createSignedFileHash(signature);
-              s.stop(
-                `Bundle signed successfully with algorithm ${config.signing.algorithm || "RSA-SHA256"}`,
-              );
+              s.stop("Bundle signed successfully");
             } catch (error) {
               s.stop("Failed to sign bundle", 1);
               p.log.error(`Signing error: ${(error as Error).message}`);

@@ -162,11 +162,6 @@ export type SigningConfig =
        * Optional when signing is disabled.
        */
       privateKeyPath?: string;
-      /**
-       * Signature algorithm.
-       * @default "RSA-SHA256"
-       */
-      algorithm?: "RSA-SHA256";
     }
   | {
       /**
@@ -185,12 +180,6 @@ export type SigningConfig =
        * @example "/secure/path/to/private-key.pem"
        */
       privateKeyPath: string;
-      /**
-       * Signature algorithm.
-       * Currently only RSA-SHA256 is supported.
-       * @default "RSA-SHA256"
-       */
-      algorithm?: "RSA-SHA256";
     };
 
 export type ConfigInput = {
