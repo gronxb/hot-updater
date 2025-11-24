@@ -1,8 +1,14 @@
+import { type } from "arktype";
 import { remarkNpm } from "fumadocs-core/mdx-plugins";
 import { defineConfig, defineDocs } from "fumadocs-mdx/config";
 
 export const docs = defineDocs({
   dir: "content/docs",
+  docs: {
+    schema: type({
+      "version?": "string",
+    }),
+  },
 });
 
 const convert = (cmd: string, pm: string): string => {

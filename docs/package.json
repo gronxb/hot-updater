@@ -14,7 +14,11 @@
   },
   "dependencies": {
     "@orama/orama": "^3.1.16",
+    "@radix-ui/react-slot": "^1.2.4",
     "@xterm/xterm": "^5.5.0",
+    "arktype": "^2.1.27",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "fumadocs-core": "16.0.15",
     "fumadocs-mdx": "13.0.5",
     "fumadocs-ui": "16.0.15",
@@ -24,6 +28,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-server-dom-webpack": "^19.2.0",
+    "tailwind-merge": "^2.5.4",
     "waku": "^0.27.0"
   },
   "devDependencies": {
