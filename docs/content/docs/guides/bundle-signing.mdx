@@ -98,7 +98,7 @@ type SigningConfig =
 When `signing.enabled` is true, the deploy command will:
 1. Generate SHA-256 hash of the bundle
 2. Sign the hash with RSA-SHA256 using your private key
-3. Embed the signature in the fileHash field
+3. Store the signature in the fileHash field (the hash is implicitly verified during signature verification)
 
 ## Step 3: Export Public Key to Native Apps
 
@@ -163,27 +163,30 @@ Deployment Successful
 
 ### How Verification Works
 
-1. Client app downloads update metadata (fileHash contains embedded signature)
-2. JavaScript layer parses fileHash to extract hash and signature
-3. Client app downloads bundle and computes SHA-256 hash
-4. Native code verifies: `RSA-SHA256(hash, publicKey) === signature`
-5. If verification fails, bundle is rejected
+1. Client app downloads update metadata (fileHash contains signature for signed bundles)
+2. Client app downloads bundle and computes SHA-256 hash
+3. Native code verifies signature against computed hash using public key
+4. If verification fails, bundle is rejected
 
 ### FileHash Format
 
-Signed bundles use a combined format that embeds the signature in the fileHash field:
+Signed bundles store only the signature in the fileHash field:
 
 ```
-sig:<base64_signature>;sha256:<hex_hash>
+sig:<base64_signature>
 ```
 
 **Components**:
-- `sig:` - Prefix indicating signature follows
+- `sig:` - Prefix indicating signed bundle
 - `<base64_signature>` - Base64-encoded RSA-SHA256 signature
-- `;sha256:` - Separator and hash type indicator
-- `<hex_hash>` - 64-character SHA256 hash
 
-Unsigned bundles retain the plain SHA256 hash format for backward compatibility.
+The hash is not stored because RSA-SHA256 signature verification implicitly validates the bundle hash. The native app computes the hash from the downloaded bundle and verifies it against the signature.
+
+Unsigned bundles use the plain SHA256 hash format:
+
+```
+<hex_hash>
+```
 
 ## Security Best Practices
 
