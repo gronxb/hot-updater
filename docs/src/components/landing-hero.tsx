@@ -1,6 +1,7 @@
 "use client";
 import { Github } from "lucide-react";
 import { Link } from "waku";
+import { Logo } from "./Logo";
 import { runDeployDemo } from "./terminal/deploy-demo";
 import { TerminalEmulator } from "./terminal/terminal-emulator";
 
@@ -15,14 +16,7 @@ export function LandingHero() {
             <div className="space-y-3 sm:space-y-4">
               <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight">
                 <div className="flex items-center gap-4">
-                  <img
-                    src="/logo.webp"
-                    alt="Hot Updater Logo"
-                    className="h-10 mt-3.5 sm:h-14 lg:h-16 xl:h-20 object-contain shrink-0"
-                    loading="eager"
-                    fetchPriority="high"
-                    decoding="sync"
-                  />
+                  <Logo className="h-6 sm:h-10 lg:h-12 xl:h-16 shrink-0" />
                   <span className="bg-linear-to-r from-orange-400 via-orange-400 to-orange-500 bg-clip-text text-transparent">
                     Hot Updater
                   </span>

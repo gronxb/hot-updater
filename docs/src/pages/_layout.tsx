@@ -29,9 +29,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         href="/apple-touch-icon.png"
       />
 
-      {/* Preload Logo */}
-      <link rel="preload" href="/logo.webp" as="image" type="image/webp" />
-
       {/* Primary Meta Tags */}
       <meta
         name="title"
