@@ -12,6 +12,7 @@ public enum BundleStorageError: Error, CustomNSError {
     case moveOperationFailed(Error)
     case copyOperationFailed(Error)
     case fileSystemError(Error)
+    case incompleteDownload(expected: Int64, actual: Int64)
     case unknown(Error?)
 
     // CustomNSError protocol implementation
@@ -32,6 +33,7 @@ public enum BundleStorageError: Error, CustomNSError {
         case .moveOperationFailed: return 1009
         case .copyOperationFailed: return 1010
         case .fileSystemError: return 1011
+        case .incompleteDownload: return 1012
         case .unknown: return 1099
         }
     }
@@ -88,6 +90,12 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSLocalizedDescriptionKey] = "File system operation failed"
             userInfo[NSUnderlyingErrorKey] = underlyingError
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check app permissions and disk space"
+
+        case .incompleteDownload(let expected, let actual):
+            userInfo[NSLocalizedDescriptionKey] = "Download incomplete: received \(actual) bytes but expected \(expected) bytes"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The download may have been interrupted by iOS due to low memory or battery. Please ensure the app stays in foreground during update and try again"
+            userInfo["expectedBytes"] = expected
+            userInfo["actualBytes"] = actual
 
         case .unknown(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "An unknown error occurred during bundle update"
@@ -551,6 +559,18 @@ class BundleFileStorageService: BundleStorageService {
                 case .failure(let error):
                     NSLog("[BundleStorage] Download failed: \(error.localizedDescription)")
                     self.cleanupTemporaryFiles([tempDirectory]) // Sync cleanup
+
+                    // Check for specific download errors
+                    if let downloadError = error as? DownloadError {
+                        switch downloadError {
+                        case .incompleteDownload(let expected, let actual):
+                            NSLog("[BundleStorage] Incomplete download detected: \(actual)/\(expected) bytes")
+                            completion(.failure(BundleStorageError.incompleteDownload(expected: expected, actual: actual)))
+                            return
+                        case .invalidContentLength:
+                            break  // Fall through to generic downloadFailed
+                        }
+                    }
                     completion(.failure(BundleStorageError.downloadFailed(error)))
                 }
             }
@@ -617,7 +637,7 @@ class BundleFileStorageService: BundleStorageService {
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
 
-        // 1) Ensure the bundle file exists
+        // 1) Ensure the bundle file exists and has content
         guard self.fileSystem.fileExists(atPath: location.path) else {
             logFileSystemDiagnostics(path: location.path, context: "Download Location Missing")
             self.cleanupTemporaryFiles([tempDirectory])
@@ -627,6 +647,22 @@ class BundleFileStorageService: BundleStorageService {
                 userInfo: [NSLocalizedDescriptionKey: "Source file does not exist atPath: \(location.path)"]
             ))))
             return
+        }
+
+        // 1.1) Verify file size is not zero (detect truncated downloads)
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
+            let fileSize = attributes[.size] as? Int64 ?? 0
+            NSLog("[BundleStorage] Downloaded file size: \(fileSize) bytes")
+
+            if fileSize == 0 {
+                NSLog("[BundleStorage] Downloaded file is empty")
+                self.cleanupTemporaryFiles([tempDirectory])
+                completion(.failure(BundleStorageError.incompleteDownload(expected: -1, actual: 0)))
+                return
+            }
+        } catch {
+            NSLog("[BundleStorage] Failed to get file attributes: \(error.localizedDescription)")
         }
 
         // 2) Define tmpDir and realDir

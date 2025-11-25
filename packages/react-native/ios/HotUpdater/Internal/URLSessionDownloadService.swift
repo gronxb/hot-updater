@@ -21,7 +21,7 @@ protocol DownloadService {
 
 
 enum DownloadError: Error {
-    case incompleteDownload
+    case incompleteDownload(expected: Int64, actual: Int64)
     case invalidContentLength
 }
 
@@ -94,22 +94,38 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             return
         }
 
-        // Verify file size
+        // Get HTTP response info for logging
+        let httpResponse = downloadTask.response as? HTTPURLResponse
+        let statusCode = httpResponse?.statusCode ?? -1
         let expectedSize = downloadTask.response?.expectedContentLength ?? -1
+
+        NSLog("[DownloadService] Download finished - Status: \(statusCode), Expected size: \(expectedSize)")
+
+        // Verify file size
         let actualSize: Int64?
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
             actualSize = attributes[.size] as? Int64
+            NSLog("[DownloadService] Downloaded file size: \(actualSize ?? 0) bytes")
         } catch {
             NSLog("[DownloadService] Failed to get file attributes: \(error.localizedDescription)")
             actualSize = nil
         }
 
+        // Check for incomplete download
         if expectedSize > 0, let actualSize = actualSize, actualSize != expectedSize {
-            NSLog("[DownloadService] Download incomplete: \(actualSize) / \(expectedSize) bytes")
+            NSLog("[DownloadService] Download incomplete: \(actualSize) / \(expectedSize) bytes (HTTP \(statusCode))")
             // Delete incomplete file
             try? FileManager.default.removeItem(at: location)
-            completion?(.failure(DownloadError.incompleteDownload))
+            completion?(.failure(DownloadError.incompleteDownload(expected: expectedSize, actual: actualSize)))
+            return
+        }
+
+        // Also check if file is suspiciously small (possible truncated download when Content-Length is unknown)
+        if let actualSize = actualSize, actualSize == 0 {
+            NSLog("[DownloadService] Downloaded file is empty (0 bytes)")
+            try? FileManager.default.removeItem(at: location)
+            completion?(.failure(DownloadError.incompleteDownload(expected: expectedSize, actual: 0)))
             return
         }
 
