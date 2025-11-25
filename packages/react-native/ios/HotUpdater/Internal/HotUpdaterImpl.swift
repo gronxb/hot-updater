@@ -145,16 +145,13 @@ import React
             // Extract fileHash if provided
             let fileHash = data["fileHash"] as? String
 
-            // Extract signature if provided
-            let signature = data["signature"] as? String
-
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
 
-            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil"), signature: \(signature != nil ? "present" : "nil")")
+            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, signature: signature, progressHandler: { progress in
+            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, progressHandler: { progress in
                 // Call JS progress callback if provided
                 if let callback = progressCallback {
                     DispatchQueue.main.async {
