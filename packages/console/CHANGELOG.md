@@ -1,5 +1,13 @@
 # @hot-updater/console
 
+## 0.22.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.22.2
+- @hot-updater/core@0.22.2
+- @hot-updater/plugin-core@0.22.2
+
 ## 0.22.1
 
 ### Patch Changes

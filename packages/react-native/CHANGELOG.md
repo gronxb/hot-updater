@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.22.2
+
+### Patch Changes
+
+- 82636ea: fix(expo): expo plugin transformer not found
+  - hot-updater@0.22.2
+  - @hot-updater/cli-tools@0.22.2
+  - @hot-updater/core@0.22.2
+  - @hot-updater/js@0.22.2
+  - @hot-updater/plugin-core@0.22.2
+
 ## 0.22.1
 
 ### Patch Changes
