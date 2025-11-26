@@ -27,7 +27,7 @@
     "ios",
     "cpp",
     "app.plugin.js",
-    "plugin/build/withHotUpdater.js",
+    "plugin/build",
     "*.podspec",
     "react-native.config.js",
     "!ios/build",
