@@ -112,7 +112,7 @@ Follow these steps when modifying the library's code.
    For development with automatic rebuilding on file changes, use:
 
    ```bash
-   pnpm build:dev
+   pnpm -w build:dev
    ```
 
    This will watch for changes in `docs/`, `packages/`, and `plugins/` directories and automatically trigger rebuilds.
