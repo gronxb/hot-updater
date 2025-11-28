@@ -223,11 +223,7 @@ export default HotUpdater.wrap({
 
 ## onError
 
-The `onError` callback handles all errors during the update process, including signature verification failures.
-
-### Handling Signature Verification Errors
-
-Use the `isSignatureVerificationError` utility to detect signature failures:
+The `onError` callback handles all errors during the update process
 
 ```tsx
 import {
@@ -243,37 +239,11 @@ export default HotUpdater.wrap({
     updateStrategy: "appVersion",
   }),
   onError: (error) => { // [!code hl:18]
-    // Check for signature verification failures
-    if (isSignatureVerificationError(error)) {
-      const { bundleId, message } = extractSignatureFailure(error, "unknown");
-
-      // Log to your analytics/security service
-      console.error(`Security alert: Bundle ${bundleId} failed verification`);
-      console.error(message);
-
-      // Show warning to user
-      Alert.alert(
-        "Security Warning",
-        "Update verification failed. Please update the app from the app store.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-
     // Handle other errors
     console.error("Update error:", error);
   },
 })(App);
 ```
-
-### Utility Functions
-
-| Function | Description |
-|----------|-------------|
-| `isSignatureVerificationError(error)` | Returns `true` if the error is a signature verification failure |
-| `extractSignatureFailure(error, bundleId)` | Extracts structured failure info (`bundleId`, `message`, `error`) |
-
-For more information about bundle signing, see the [Bundle Signing Guide](/docs/guides/bundle-signing).
 
 ## Update Strategy
 
