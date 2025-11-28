@@ -1,0 +1,176 @@
+---
+title: "Bundle Signing"
+description: "Sign OTA bundles to verify integrity and prevent tampering"
+icon: Shield
+version: 0.23.0
+---
+
+## Why Bundle Signing?
+
+Bundle signing prevents man-in-the-middle attacks, bundle tampering, and unauthorized deployments by using RSA-SHA256 signatures.
+
+## Setup
+
+```bash
+# 1. Generate keys
+npx hot-updater keys generate
+
+# 2. Add to hot-updater.config.ts
+# signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }
+
+# 3. Export public key to native apps
+npx hot-updater keys export-public
+
+# 4. Rebuild and release native app
+# 5. Deploy signed bundles
+npx hot-updater deploy -p ios
+```
+
+> **Important**: You must release a new app version with the public key before deploying signed bundles. Add `keys/` to `.gitignore`.
+
+## Configuration
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... other config
+  signing: {
+    enabled: true,
+    privateKeyPath: "./keys/private-key.pem",
+  },
+});
+```
+
+## Commands
+
+### Generate Keys
+
+```bash
+npx hot-updater keys generate [--output ./keys] [--key-size 4096]
+```
+
+Creates `private-key.pem` (keep secure) and `public-key.pem` in `./keys` directory.
+
+### Export Public Key
+
+```bash
+npx hot-updater keys export-public [--print-only] [--yes]
+```
+
+Writes public key to:
+- iOS: `Info.plist` → `HOT_UPDATER_PUBLIC_KEY`
+- Android: `strings.xml` → `hot_updater_public_key`
+
+The command auto-detects native files. For custom paths, configure `platform` in your config:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  platform: {
+    android: {
+      stringResourcePaths: [
+        "android/app/src/main/res/values/strings.xml",
+        "android/app/src/prod/res/values/strings.xml", // production flavor
+      ],
+    },
+    ios: {
+      infoPlistPaths: [
+        "ios/MyApp/Info.plist",
+        "ios/MyAppPro/Info.plist", // pro target
+      ],
+    },
+  },
+});
+```
+
+### Remove Public Keys
+
+```bash
+npx hot-updater keys remove [--yes]
+```
+
+## Manual Configuration
+
+**iOS** (`Info.plist`):
+```xml
+<key>HOT_UPDATER_PUBLIC_KEY</key>
+<string>-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----</string>
+```
+
+**Android** (`res/values/strings.xml`):
+```xml
+<string name="hot_updater_public_key">-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkq...your-key...
+-----END PUBLIC KEY-----</string>
+```
+
+## CI/CD Integration
+
+```yaml
+# GitHub Actions example
+- name: Setup signing key
+  run: |
+    mkdir -p keys
+    echo "${{ secrets.HOT_UPDATER_PRIVATE_KEY }}" > keys/private-key.pem
+    chmod 600 keys/private-key.pem
+
+- name: Deploy
+  run: npx hot-updater deploy -p ios
+```
+
+Store keys in:
+- GitHub Actions: Repository Secrets
+- GitLab CI: CI/CD Variables (masked)
+- AWS: Secrets Manager
+- Azure: Key Vault
+
+## Configuration States
+
+| Config `signing.enabled` | Native Public Key | Result |
+|--------------------------|-------------------|--------|
+| `false` | Not present | ✅ Normal updates |
+| `false` | Present | ❌ **Updates rejected** |
+| `true` | Present | ✅ Verified updates |
+| `true` | Not present | ❌ **Error: PublicKeyNotConfigured** |
+
+> **Warning**: Config and native files must match. Mismatches cause update failures.
+
+## Troubleshooting
+
+### Updates Rejected
+
+**Cause**: Public key in native files but `signing.enabled: false` in config.
+
+**Fix**:
+```bash
+# Enable signing OR remove keys
+npx hot-updater keys remove
+```
+
+### PublicKeyNotConfigured Error
+
+**Cause**: `signing.enabled: true` but no public key in native files.
+
+**Fix**:
+```bash
+npx hot-updater keys export-public
+# Rebuild and release app
+```
+
+### Signature Verification Failed
+
+**Causes**: Tampered bundle, wrong public key, or key mismatch.
+
+**Fix**:
+```bash
+# Verify key matches
+npx hot-updater keys export-public --print-only
+```
+
+## Key Rotation
+
+1. Generate new key pair
+2. Update `privateKeyPath` in config
+3. Export new public key
+4. Release new app version
+5. Maintain compatibility until users update

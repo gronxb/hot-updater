@@ -8,6 +8,7 @@
     "simulator-test",
     "channel-management",
     "update-strategies",
-    "compression"
+    "compression",
+    "bundle-signing"
   ]
 }

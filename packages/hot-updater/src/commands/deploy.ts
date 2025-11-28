@@ -7,6 +7,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
+import { createSignedFileHash } from "@hot-updater/core";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
@@ -29,6 +30,8 @@ import { getLatestGitCommit } from "@/utils/git";
 import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
 import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { printBanner } from "@/utils/printBanner";
+import { signBundle } from "@/utils/signing/bundleSigning";
+import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { getConsolePort, openConsole } from "./console";
@@ -91,6 +94,40 @@ export const deploy = async (options: DeployOptions) => {
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
+  }
+
+  // Validate signing configuration
+  const signingValidation = await validateSigningConfig(config);
+
+  if (signingValidation.issues.length > 0) {
+    const errors = signingValidation.issues.filter((i) => i.type === "error");
+    const warnings = signingValidation.issues.filter(
+      (i) => i.type === "warning",
+    );
+
+    if (errors.length > 0) {
+      console.log("");
+      p.log.error("Signing configuration error:");
+      for (const issue of errors) {
+        p.log.error(`  ${issue.message}`);
+        p.log.info(`  Resolution: ${issue.resolution}`);
+      }
+      console.log("");
+      p.log.error(
+        "Deployment blocked. Fix the signing configuration and try again.",
+      );
+      process.exit(1);
+    }
+
+    if (warnings.length > 0) {
+      console.log("");
+      p.log.warn("Signing configuration warning:");
+      for (const warning of warnings) {
+        p.log.warn(`  ${warning.message}`);
+        p.log.info(`  Resolution: ${warning.resolution}`);
+      }
+      console.log("");
+    }
   }
 
   const target: {
@@ -286,6 +323,38 @@ export const deploy = async (options: DeployOptions) => {
 
           bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(bundlePath);
+
+          // Sign bundle if signing is enabled
+          if (config.signing?.enabled) {
+            // Runtime validation: ensure privateKeyPath is provided when signing is enabled
+            if (!config.signing.privateKeyPath) {
+              throw new Error(
+                "privateKeyPath is required when signing is enabled. " +
+                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+              );
+            }
+
+            const s = p.spinner();
+            s.start("Signing bundle");
+
+            try {
+              const signature = await signBundle(
+                fileHash,
+                config.signing.privateKeyPath,
+              );
+              // Store signature in signed format (sig:<signature>)
+              // The hash is verified implicitly during signature verification
+              fileHash = createSignedFileHash(signature);
+              s.stop("Bundle signed successfully");
+            } catch (error) {
+              s.stop("Failed to sign bundle", 1);
+              p.log.error(`Signing error: ${(error as Error).message}`);
+              p.log.error(
+                "Ensure private key path is correct and file has proper permissions",
+              );
+              throw error;
+            }
+          }
 
           p.log.success(
             `Bundle stored at ${colors.blueBright(path.relative(cwd, bundlePath))}`,

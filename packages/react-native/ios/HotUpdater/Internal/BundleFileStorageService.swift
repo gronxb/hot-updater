@@ -9,6 +9,7 @@ public enum BundleStorageError: Error, CustomNSError {
     case invalidZipFile
     case insufficientDiskSpace
     case hashMismatch
+    case signatureVerificationFailed(SignatureVerificationError)
     case moveOperationFailed(Error)
     case copyOperationFailed(Error)
     case fileSystemError(Error)
@@ -29,9 +30,10 @@ public enum BundleStorageError: Error, CustomNSError {
         case .invalidZipFile: return 1006
         case .insufficientDiskSpace: return 1007
         case .hashMismatch: return 1008
-        case .moveOperationFailed: return 1009
-        case .copyOperationFailed: return 1010
-        case .fileSystemError: return 1011
+        case .signatureVerificationFailed: return 1009
+        case .moveOperationFailed: return 1010
+        case .copyOperationFailed: return 1011
+        case .fileSystemError: return 1012
         case .unknown: return 1099
         }
     }
@@ -73,6 +75,11 @@ public enum BundleStorageError: Error, CustomNSError {
         case .hashMismatch:
             userInfo[NSLocalizedDescriptionKey] = "Downloaded bundle hash does not match expected hash"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The file may have been corrupted or tampered with. Try downloading again"
+
+        case .signatureVerificationFailed(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Bundle signature verification failed"
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The bundle signature is invalid. Update rejected for security"
 
         case .moveOperationFailed(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "Failed to move bundle to final location"
@@ -362,7 +369,7 @@ class BundleFileStorageService: BundleStorageService {
      * Updates the bundle from the specified URL. This operation is asynchronous.
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download (or nil to reset)
-     * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
@@ -455,7 +462,7 @@ class BundleFileStorageService: BundleStorageService {
      * This method is part of the asynchronous `updateBundle` flow.
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download
-     * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param storeDir Path to the bundle-store directory
      * @param progressHandler Callback for download and extraction progress
      * @param completion Callback with result of the operation
@@ -597,7 +604,7 @@ class BundleFileStorageService: BundleStorageService {
      * This method is part of the asynchronous `updateBundle` flow and is expected to run on a background thread.
      * @param location URL of the downloaded file
      * @param tempBundleFile Path to store the downloaded bundle file
-     * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param storeDir Path to the bundle-store directory
      * @param bundleId ID of the bundle being processed
      * @param tempDirectory Temporary directory for processing
@@ -645,18 +652,19 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Created tmpDir: \(tmpDir)")
             logFileSystemDiagnostics(path: tmpDir, context: "TmpDir Created")
 
-            // 5) Verify file hash if provided
-            if let expectedHash = fileHash {
-                NSLog("[BundleStorage] Verifying file hash...")
-                let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
-                guard HashUtils.verifyHash(fileURL: tempBundleURL, expectedHash: expectedHash) else {
-                    NSLog("[BundleStorage] Hash mismatch!")
-                    try? self.fileSystem.removeItem(atPath: tmpDir)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.hashMismatch))
-                    return
-                }
-                NSLog("[BundleStorage] Hash verification passed")
+            // 5) Verify bundle integrity (hash or signature based on fileHash format)
+            NSLog("[BundleStorage] Verifying bundle integrity...")
+            let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
+            let verificationResult = SignatureVerifier.verifyBundle(fileURL: tempBundleURL, fileHash: fileHash)
+            switch verificationResult {
+            case .success:
+                NSLog("[BundleStorage] Bundle verification completed successfully")
+            case .failure(let error):
+                NSLog("[BundleStorage] Bundle verification failed: \(error)")
+                try? self.fileSystem.removeItem(atPath: tmpDir)
+                self.cleanupTemporaryFiles([tempDirectory])
+                completion(.failure(BundleStorageError.signatureVerificationFailed(error)))
+                return
             }
 
             // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)

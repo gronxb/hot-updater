@@ -221,6 +221,28 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
+## onError
+
+The `onError` callback handles all errors during the update process
+
+```tsx
+import {
+  HotUpdater,
+  getUpdateSource,
+} from "@hot-updater/react-native";
+import { Alert } from "react-native";
+
+export default HotUpdater.wrap({
+  source: getUpdateSource("<your-update-server-url>", {
+    updateStrategy: "appVersion",
+  }),
+  onError: (error) => { // [!code hl:18]
+    // Handle other errors
+    console.error("Update error:", error);
+  },
+})(App);
+```
+
 ## Update Strategy
 
 | Update Type   | When Applied                                              | How to Enable                              |

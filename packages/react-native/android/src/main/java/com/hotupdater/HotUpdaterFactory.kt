@@ -39,6 +39,7 @@ object HotUpdaterFactory {
         // Create bundle storage with dependencies
         val bundleStorage =
             BundleFileStorageService(
+                appContext,
                 fileSystem,
                 downloadService,
                 decompressService,

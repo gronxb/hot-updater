@@ -49,7 +49,7 @@ class HotUpdater {
          * @param context Application context
          * @param bundleId ID of the bundle to update
          * @param fileUrl URL of the bundle file to download (or null to reset)
-         * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+         * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
          * @param progressCallback Callback for download progress updates
          * @return true if the update was successful
          */

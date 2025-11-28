@@ -5,8 +5,13 @@ export interface UpdateBundleParams {
   bundleId: string;
   fileUrl: string | null;
   /**
-   * SHA256 hash of the bundle file for integrity verification.
-   * If provided, the native layer will verify the downloaded file's hash.
+   * File hash for integrity/signature verification.
+   *
+   * Format depends on signing configuration:
+   * - Signed: `sig:<base64_signature>` - Native will verify signature (and implicitly hash)
+   * - Unsigned: `<hex_hash>` - Native will verify SHA256 hash only
+   *
+   * Native determines verification mode by checking for "sig:" prefix.
    */
   fileHash: string | null;
 }
