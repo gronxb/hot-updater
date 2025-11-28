@@ -1,5 +1,12 @@
 # @hot-updater/aws
 
+## 1.0.0
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.0.0
+- @hot-updater/cli-tools@1.0.0
+
 ## 0.22.2
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @hot-updater/core
 
+## 1.0.0
+
+### Minor Changes
+
+- e41fb6b: feat: add bundle signing for cryptographic OTA verification
+
 ## 0.22.2
 
 ## 0.22.1

@@ -1,5 +1,12 @@
 # @hot-updater/js
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [e41fb6b]
+  - @hot-updater/core@1.0.0
+
 ## 0.22.2
 
 ### Patch Changes

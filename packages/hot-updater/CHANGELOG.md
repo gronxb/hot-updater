@@ -1,5 +1,20 @@
 # hot-updater
 
+## 1.0.0
+
+### Minor Changes
+
+- e41fb6b: feat: add bundle signing for cryptographic OTA verification
+
+### Patch Changes
+
+- Updated dependencies [e41fb6b]
+  - @hot-updater/core@1.0.0
+  - @hot-updater/console@1.0.0
+  - @hot-updater/server@1.0.0
+  - @hot-updater/plugin-core@1.0.0
+  - @hot-updater/cli-tools@1.0.0
+
 ## 0.22.2
 
 ### Patch Changes
