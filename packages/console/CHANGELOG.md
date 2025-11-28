@@ -5,9 +5,9 @@
 ### Patch Changes
 
 - Updated dependencies [e41fb6b]
-  - @hot-updater/core@1.0.0
-  - @hot-updater/plugin-core@1.0.0
-  - @hot-updater/cli-tools@1.0.0
+  - @hot-updater/core@0.23.0
+  - @hot-updater/plugin-core@0.23.0
+  - @hot-updater/cli-tools@0.23.0
 
 ## 0.22.2
 
