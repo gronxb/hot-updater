@@ -54,7 +54,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     p.log.info(
       '   signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
     );
-    p.log.info("2. Run: npx hot-updater keys:export-public");
+    p.log.info("2. Run: npx hot-updater keys export-public");
     p.log.info("3. Embed public key in iOS Info.plist and Android strings.xml");
     p.log.info("4. Rebuild native app");
   } catch (error) {
