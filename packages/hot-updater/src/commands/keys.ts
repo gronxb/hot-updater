@@ -54,7 +54,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     p.log.info(
       '   signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
     );
-    p.log.info("2. Run: npx hot-updater keys:export-public");
+    p.log.info("2. Run: npx hot-updater keys export-public");
     p.log.info("3. Embed public key in iOS Info.plist and Android strings.xml");
     p.log.info("4. Rebuild native app");
   } catch (error) {
@@ -230,10 +230,26 @@ export const keysExportPublic = async (
     console.log("");
     p.log.step("Files to be updated:");
     if (androidExists) {
-      p.log.info(`  Android: strings.xml (${ANDROID_KEY})`);
+      const androidPaths = config.platform.android.stringResourcePaths;
+      if (androidPaths.length === 1) {
+        p.log.info(`  Android: ${androidPaths[0]} (${ANDROID_KEY})`);
+      } else {
+        p.log.info(`  Android (${ANDROID_KEY}):`);
+        for (const androidPath of androidPaths) {
+          p.log.info(`    - ${androidPath}`);
+        }
+      }
     }
     if (iosExists) {
-      p.log.info(`  iOS: Info.plist (${IOS_KEY})`);
+      const iosPaths = config.platform.ios.infoPlistPaths;
+      if (iosPaths.length === 1) {
+        p.log.info(`  iOS: ${iosPaths[0]} (${IOS_KEY})`);
+      } else {
+        p.log.info(`  iOS (${IOS_KEY}):`);
+        for (const iosPath of iosPaths) {
+          p.log.info(`    - ${iosPath}`);
+        }
+      }
     }
     console.log("");
 
