@@ -1,6 +1,6 @@
 # @hot-updater/server
 
-## 1.0.0
+## 0.23.0
 
 ### Patch Changes
 
