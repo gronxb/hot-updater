@@ -7,7 +7,6 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import { createSignedFileHash } from "@hot-updater/core";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
@@ -34,6 +33,7 @@ import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+import { createSignedFileHash } from "../signedHashUtils";
 import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
