@@ -1,5 +1,12 @@
 # @hot-updater/repack
 
+## 0.23.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.23.1
+- @hot-updater/plugin-core@0.23.1
+
 ## 0.23.0
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # hot-updater
 
+## 0.23.1
+
+### Patch Changes
+
+- 7fa9a20: feat(expo): bundle-signing supports cng plugin
+  - @hot-updater/cli-tools@0.23.1
+  - @hot-updater/console@0.23.1
+  - @hot-updater/core@0.23.1
+  - @hot-updater/server@0.23.1
+  - @hot-updater/plugin-core@0.23.1
+
 ## 0.23.0
 
 ### Minor Changes
