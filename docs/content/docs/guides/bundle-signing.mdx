@@ -11,20 +11,46 @@ Bundle signing prevents man-in-the-middle attacks, bundle tampering, and unautho
 
 ## Setup
 
-```bash
-# 1. Generate keys
-npx hot-updater keys generate
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
-# 2. Add to hot-updater.config.ts
-# signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }
+<Tabs items={['React Native CLI', 'Expo']}>
+  <Tab value="React Native CLI">
+    ```bash
+    # 1. Generate keys
+    npx hot-updater keys generate
 
-# 3. Export public key to native apps
-npx hot-updater keys export-public
+    # 2. Add to hot-updater.config.ts
+    # signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }
 
-# 4. Rebuild and release native app
-# 5. Deploy signed bundles
-npx hot-updater deploy -p ios
-```
+    # 3. Export public key to native apps
+    npx hot-updater keys export-public
+
+    # 4. Rebuild and release native app
+    # 5. Deploy signed bundles
+    npx hot-updater deploy -p ios
+    ```
+
+    You need to manually export the public key to native configuration files.
+  </Tab>
+  <Tab value="Expo">
+    ```bash
+    # 1. Generate keys
+    npx hot-updater keys generate
+
+    # 2. Add to hot-updater.config.ts
+    # signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }
+
+    # 3. Run prebuild (public key automatically embedded)
+    expo prebuild
+
+    # 4. Rebuild and release native app
+    # 5. Deploy signed bundles
+    npx hot-updater deploy -p ios
+    ```
+
+    The Expo config plugin automatically extracts the public key from your private key during `expo prebuild`.
+  </Tab>
+</Tabs>
 
 > **Important**: You must release a new app version with the public key before deploying signed bundles. Add `keys/` to `.gitignore`.
 
@@ -104,10 +130,57 @@ MIIBIjANBgkq...your-key...
 -----END PUBLIC KEY-----</string>
 ```
 
+## Expo Integration
+
+Expo projects automatically embed the public key during `expo prebuild` when signing is enabled in `hot-updater.config.ts`.
+
+### How It Works
+
+The Expo config plugin (`@hot-updater/react-native`) reads your `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  signing: {
+    enabled: true,
+    privateKeyPath: "./keys/private-key.pem",
+  },
+  // ... other config
+});
+```
+
+When you run `expo prebuild`, the plugin:
+1. Reads the signing config
+2. Loads `./keys/public-key.pem` (derived from `privateKeyPath`)
+3. Embeds it in native files automatically
+
+**No need to run `npx hot-updater keys export-public` manually for Expo projects.**
+
+### EAS Build
+
+For EAS Build, store the private key as an environment variable:
+
+```json title="eas.json"
+{
+  "build": {
+    "production": {
+      "env": {
+        "HOT_UPDATER_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\n..."
+      }
+    }
+  }
+}
+```
+
+Or use EAS Secrets:
+```bash
+eas secret:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"
+```
+
 ## CI/CD Integration
 
+### GitHub Actions
+
 ```yaml
-# GitHub Actions example
 - name: Setup signing key
   run: |
     mkdir -p keys
@@ -117,6 +190,8 @@ MIIBIjANBgkq...your-key...
 - name: Deploy
   run: npx hot-updater deploy -p ios
 ```
+
+### Other Platforms
 
 Store keys in:
 - GitHub Actions: Repository Secrets
