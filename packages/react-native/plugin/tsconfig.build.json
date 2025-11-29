@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "lib": ["ESNext"],
+    "types": ["node"],
     "moduleResolution": "node",
     "skipLibCheck": true,
     "outDir": "build",

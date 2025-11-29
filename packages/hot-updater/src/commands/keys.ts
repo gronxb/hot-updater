@@ -2,6 +2,7 @@ import path from "node:path";
 import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import { AndroidConfigParser } from "@/utils/configParser/androidParser";
 import { IosConfigParser } from "@/utils/configParser/iosParser";
+import { appendToProjectRootGitignore } from "@/utils/git";
 import {
   generateKeyPair,
   getPublicKeyFromPrivate,
@@ -44,9 +45,20 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
     p.log.success(`Private key: ${path.join(outputDir, "private-key.pem")}`);
     p.log.success(`Public key: ${path.join(outputDir, "public-key.pem")}`);
+
+    // Add keys directory to .gitignore
+    const keysDir = path.basename(outputDir);
+    const gitignoreUpdated = appendToProjectRootGitignore({
+      cwd,
+      globLines: [`${keysDir}/`],
+    });
+
+    if (gitignoreUpdated) {
+      p.log.success(`Added ${keysDir}/ to .gitignore`);
+    }
+
     console.log("");
     p.log.warn("⚠️  Keep private key secure!");
-    p.log.warn("   - Add keys/ to .gitignore");
     p.log.warn("   - Use secure storage for CI/CD (AWS Secrets Manager, etc.)");
     console.log("");
     p.log.info("Next steps:");
