@@ -64,5 +64,10 @@
   },
   "peerDependencies": {
     "firebase-admin": "*"
+  },
+  "peerDependenciesMeta": {
+    "firebase-admin": {
+      "optional": false
+    }
   }
 }
