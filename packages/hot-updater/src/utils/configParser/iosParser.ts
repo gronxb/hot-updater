@@ -139,6 +139,10 @@ export class IosConfigParser implements ConfigParser {
 
         const plistObject = plist.parse(plistXml) as Record<string, any>;
 
+        if (plistObject[key] === value) {
+          continue;
+        }
+
         plistObject[key] = value;
 
         const newPlistXml = plist.build(plistObject, {
