@@ -122,22 +122,28 @@ import React
         do {
             // Validate parameters (this runs on calling thread - typically JS thread)
             guard let data = params else {
-                throw NSError(domain: "HotUpdaterError", code: 101, 
-                             userInfo: [NSLocalizedDescriptionKey: "Missing params dictionary"])
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Missing or invalid parameters for updateBundle"])
+                reject("UNKNOWN_ERROR", error.localizedDescription, error)
+                return
             }
-            
+
             guard let bundleId = data["bundleId"] as? String, !bundleId.isEmpty else {
-                throw NSError(domain: "HotUpdaterError", code: 102, 
-                             userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
+                reject("MISSING_BUNDLE_ID", error.localizedDescription, error)
+                return
             }
-            
+
             let fileUrlString = data["fileUrl"] as? String ?? ""
 
             var fileUrl: URL? = nil
             if !fileUrlString.isEmpty {
                 guard let url = URL(string: fileUrlString) else {
-                    throw NSError(domain: "HotUpdaterError", code: 103,
-                                 userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
+                    let error = NSError(domain: "HotUpdater", code: 0,
+                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
+                    reject("INVALID_FILE_URL", error.localizedDescription, error)
+                    return
                 }
                 fileUrl = url
             }
@@ -160,10 +166,10 @@ import React
                 }
             }) { [weak self] result in
                 guard self != nil else {
-                    let error = NSError(domain: "HotUpdaterError", code: 998, 
-                                       userInfo: [NSLocalizedDescriptionKey: "Self deallocated during update"])
+                    let error = NSError(domain: "HotUpdater", code: 0,
+                                       userInfo: [NSLocalizedDescriptionKey: "Internal error: self deallocated during update"])
                     DispatchQueue.main.async {
-                        reject("UPDATE_ERROR", error.localizedDescription, error)
+                        reject("SELF_DEALLOCATED", error.localizedDescription, error)
                     }
                     return
                 }
@@ -174,12 +180,11 @@ import React
                         NSLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
                         resolve(true)
                     case .failure(let error):
-                        let nsError = error as NSError
-                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId) - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId) - Error: \(error)")
 
-                        // Create a meaningful error code for React Native
-                        let errorCode = "BUNDLE_STORAGE_ERROR_\(nsError.code)"
-                        reject(errorCode, nsError.localizedDescription, nsError)
+                        let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
+                        let nsError = error as NSError
+                        reject(normalizedCode, nsError.localizedDescription, nsError)
                     }
                 }
             }
@@ -188,8 +193,46 @@ import React
             let nsError = error as NSError
             NSLog("[HotUpdaterImpl] Error in updateBundleFromJS - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
 
-            let errorCode = "UPDATE_ERROR_\(nsError.code)"
-            reject(errorCode, nsError.localizedDescription, nsError)
+            reject("UNKNOWN_ERROR", nsError.localizedDescription, nsError)
         }
     }
+
+    /**
+     * Normalizes native errors to a small, predictable set of JS-facing error codes.
+     * Rare or platform-specific codes are collapsed to UNKNOWN_ERROR to reduce surface area.
+     */
+    private static func normalizeErrorCode(from error: Error) -> String {
+        let baseCode: String
+
+        if let storageError = error as? BundleStorageError {
+            // Collapse signature sub-errors into a single public code
+            if case .signatureVerificationFailed = storageError {
+                baseCode = "SIGNATURE_VERIFICATION_FAILED"
+            } else {
+                baseCode = storageError.errorCodeString
+            }
+        } else if error is SignatureVerificationError {
+            baseCode = "SIGNATURE_VERIFICATION_FAILED"
+        } else {
+            baseCode = "UNKNOWN_ERROR"
+        }
+
+        return userFacingErrorCodes.contains(baseCode) ? baseCode : "UNKNOWN_ERROR"
+    }
+
+    // Error codes we intentionally expose to JS callers.
+    private static let userFacingErrorCodes: Set<String> = [
+        "MISSING_BUNDLE_ID",
+        "INVALID_FILE_URL",
+        "DIRECTORY_CREATION_FAILED",
+        "DOWNLOAD_FAILED",
+        "INCOMPLETE_DOWNLOAD",
+        "EXTRACTION_FORMAT_ERROR",
+        "INVALID_BUNDLE",
+        "INSUFFICIENT_DISK_SPACE",
+        "SIGNATURE_VERIFICATION_FAILED",
+        "MOVE_OPERATION_FAILED",
+        "SELF_DEALLOCATED",
+        "UNKNOWN_ERROR",
+    ]
 }

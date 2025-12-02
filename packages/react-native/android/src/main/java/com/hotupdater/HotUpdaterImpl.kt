@@ -187,14 +187,16 @@ class HotUpdaterImpl(
      * @param fileUrl URL of the bundle file to download (or null to reset)
      * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param progressCallback Callback for download progress updates
-     * @return true if the update was successful
+     * @throws HotUpdaterException if the update fails
      */
     suspend fun updateBundle(
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
         progressCallback: (Double) -> Unit,
-    ): Boolean = bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+    ) {
+        bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+    }
 
     /**
      * Reloads the React Native application

@@ -42,14 +42,14 @@ interface BundleStorageService {
      * @param fileUrl URL of the bundle file to download (or null to reset)
      * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
      * @param progressCallback Callback for download progress updates
-     * @return true if the update was successful
+     * @throws HotUpdaterException if the update fails
      */
     suspend fun updateBundle(
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
         progressCallback: (Double) -> Unit,
-    ): Boolean
+    )
 }
 
 /**
@@ -90,7 +90,7 @@ class BundleFileStorageService(
         fileUrl: String?,
         fileHash: String?,
         progressCallback: (Double) -> Unit,
-    ): Boolean {
+    ) {
         Log.d(
             "BundleStorage",
             "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash",
@@ -99,7 +99,7 @@ class BundleFileStorageService(
         // If no URL is provided, reset to fallback
         if (fileUrl.isNullOrEmpty()) {
             setBundleURL(null)
-            return true
+            return
         }
 
         val baseDir = fileSystem.getExternalFilesDir()
@@ -126,7 +126,7 @@ class BundleFileStorageService(
                 finalBundleDir.setLastModified(System.currentTimeMillis())
                 setBundleURL(existingIndexFile.absolutePath)
                 cleanupOldBundles(bundleStoreDir, currentBundleId, bundleId)
-                return true
+                return
             } else {
                 // If index.android.bundle is missing, delete and re-download
                 finalBundleDir.deleteRecursively()
@@ -139,7 +139,7 @@ class BundleFileStorageService(
         }
         tempDir.mkdirs()
 
-        return withContext(Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
             val downloadUrl = URL(fileUrl)
 
             // Determine bundle filename from URL
@@ -162,9 +162,8 @@ class BundleFileStorageService(
                 Log.d("BundleStorage", "File size: $fileSize bytes, Available: $availableBytes bytes, Required: $requiredSpace bytes")
 
                 if (availableBytes < requiredSpace) {
-                    val errorMsg = "Insufficient disk space: need $requiredSpace bytes, available $availableBytes bytes"
-                    Log.d("BundleStorage", errorMsg)
-                    return@withContext false
+                    Log.d("BundleStorage", "Insufficient disk space: need $requiredSpace bytes, available $availableBytes bytes")
+                    throw HotUpdaterException.insufficientDiskSpace(requiredSpace, availableBytes)
                 }
             } else {
                 Log.d("BundleStorage", "Unable to determine file size, proceeding with download")
@@ -184,7 +183,17 @@ class BundleFileStorageService(
                 is DownloadResult.Error -> {
                     Log.d("BundleStorage", "Download failed: ${downloadResult.exception.message}")
                     tempDir.deleteRecursively()
-                    return@withContext false
+
+                    // Check if this is an incomplete download error
+                    if (downloadResult.exception is IncompleteDownloadException) {
+                        val incompleteEx = downloadResult.exception as IncompleteDownloadException
+                        throw HotUpdaterException.incompleteDownload(
+                            incompleteEx.expectedSize,
+                            incompleteEx.actualSize,
+                        )
+                    } else {
+                        throw HotUpdaterException.downloadFailed(downloadResult.exception)
+                    }
                 }
 
                 is DownloadResult.Success -> {
@@ -198,7 +207,7 @@ class BundleFileStorageService(
                         Log.e("BundleStorage", "Bundle verification failed", e)
                         tempDir.deleteRecursively()
                         tempBundleFile.delete()
-                        return@withContext false
+                        throw HotUpdaterException.signatureVerificationFailed(e)
                     }
 
                     // 2) Create a .tmp directory under bundle-store (to avoid colliding with an existing bundleId folder)
@@ -221,7 +230,7 @@ class BundleFileStorageService(
                         Log.d("BundleStorage", "Failed to extract archive into tmpDir.")
                         tempDir.deleteRecursively()
                         tmpDir.deleteRecursively()
-                        return@withContext false
+                        throw HotUpdaterException.extractionFormatError()
                     }
 
                     // 4) Find index.android.bundle inside tmpDir
@@ -230,7 +239,7 @@ class BundleFileStorageService(
                         Log.d("BundleStorage", "index.android.bundle not found in tmpDir.")
                         tempDir.deleteRecursively()
                         tmpDir.deleteRecursively()
-                        return@withContext false
+                        throw HotUpdaterException.invalidBundle()
                     }
 
                     // 5) Log extracted bundle file size
@@ -245,9 +254,17 @@ class BundleFileStorageService(
                     // 7) Attempt to rename tmpDir → finalBundleDir (atomic within the same parent folder)
                     val renamed = tmpDir.renameTo(finalBundleDir)
                     if (!renamed) {
-                        // If rename fails, use moveItem or copyItem
+                        // If rename fails, use moveItem as fallback
                         if (!fileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
-                            fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)
+                            // If move also fails, try copy + delete as last resort
+                            if (!fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                                // All strategies failed
+                                Log.e("BundleStorage", "Failed to move bundle from tmpDir to finalBundleDir (rename, move, and copy all failed)")
+                                tempDir.deleteRecursively()
+                                tmpDir.deleteRecursively()
+                                throw HotUpdaterException.moveOperationFailed()
+                            }
+                            // Copy succeeded, clean up tmpDir
                             tmpDir.deleteRecursively()
                         }
                     }
@@ -258,7 +275,7 @@ class BundleFileStorageService(
                         Log.d("BundleStorage", "index.android.bundle not found in realDir.")
                         tempDir.deleteRecursively()
                         finalBundleDir.deleteRecursively()
-                        return@withContext false
+                        throw HotUpdaterException.invalidBundle()
                     }
 
                     // 9) Update finalBundleDir's last modified time
@@ -277,7 +294,6 @@ class BundleFileStorageService(
 
                     Log.d("BundleStorage", "Downloaded and activated bundle successfully.")
                     // Progress already at 1.0 from unzip completion
-                    return@withContext true
                 }
             }
         }

@@ -1,8 +1,14 @@
 import type { UpdateStatus } from "@hot-updater/core";
 import { NativeEventEmitter } from "react-native";
+import {
+  HotUpdaterErrorCode,
+  isHotUpdaterError,
+} from "./error";
 import HotUpdaterNative, {
   type UpdateBundleParams,
 } from "./specs/NativeHotUpdater";
+
+export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -43,7 +49,8 @@ let lastInstalledBundleId: string | null = null;
  * Downloads files and applies them to the app.
  *
  * @param {UpdateParams} params - Parameters object required for bundle update
- * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
+ * @returns {Promise<boolean>} Resolves with true if download was successful
+ * @throws {Error} Rejects with error.code from HotUpdaterErrorCode enum and error.message
  */
 export async function updateBundle(params: UpdateParams): Promise<boolean>;
 /**

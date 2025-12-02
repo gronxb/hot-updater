@@ -35,24 +35,29 @@ sealed class SignatureVerificationException(
             "Public key format is invalid. Ensure the public key is in PEM format (BEGIN PUBLIC KEY)",
         )
 
-    class InvalidSignatureFormat :
+    class MissingFileHash :
         SignatureVerificationException(
-            "Signature format is invalid. The signature must be base64-encoded",
+            "File hash is missing or empty. Ensure the bundle update includes a valid file hash",
         )
 
-    class VerificationFailed :
+    class InvalidSignatureFormat :
+        SignatureVerificationException(
+            "Signature format is invalid or corrupted. The signature data is malformed or cannot be decoded",
+        )
+
+    class SignatureVerificationFailed :
         SignatureVerificationException(
             "Bundle signature verification failed. The bundle may be corrupted or tampered with",
         )
 
-    class HashMismatch :
+    class FileHashMismatch :
         SignatureVerificationException(
-            "Bundle hash verification failed. The bundle file hash does not match. File may be corrupted",
+            "File hash verification failed. The bundle file hash does not match the expected value. File may be corrupted",
         )
 
-    class HashCalculationFailed :
+    class FileReadFailed :
         SignatureVerificationException(
-            "Failed to calculate file hash. Could not read file for hash verification",
+            "Failed to read file for verification. Could not read file for hash verification",
         )
 
     class UnsignedNotAllowed :
@@ -156,7 +161,7 @@ object SignatureVerifier {
         // Rule: null/empty fileHash → REJECT
         if (fileHash.isNullOrEmpty()) {
             Log.e(TAG, "fileHash is null or empty. Rejecting update.")
-            throw SignatureVerificationException.VerificationFailed()
+            throw SignatureVerificationException.MissingFileHash()
         }
 
         if (isSignedFormat(fileHash)) {
@@ -193,7 +198,7 @@ object SignatureVerifier {
      * Verifies SHA256 hash of a file.
      * @param bundleFile The file to verify
      * @param expectedHash Expected SHA256 hash (hex string)
-     * @throws SignatureVerificationException.HashMismatch if verification fails
+     * @throws SignatureVerificationException.FileHashMismatch if verification fails
      */
     fun verifyHash(
         bundleFile: File,
@@ -203,7 +208,7 @@ object SignatureVerifier {
 
         if (!HashUtils.verifyHash(bundleFile, expectedHash)) {
             Log.e(TAG, "Hash mismatch!")
-            throw SignatureVerificationException.HashMismatch()
+            throw SignatureVerificationException.FileHashMismatch()
         }
 
         Log.i(TAG, "✅ Hash verified successfully")
@@ -242,7 +247,7 @@ object SignatureVerifier {
                 HashUtils.calculateSHA256(bundleFile)
                     ?: run {
                         Log.e(TAG, "Failed to calculate file hash")
-                        throw SignatureVerificationException.HashCalculationFailed()
+                        throw SignatureVerificationException.FileReadFailed()
                     }
 
             Log.d(TAG, "Calculated file hash: $fileHashHex")
@@ -269,7 +274,7 @@ object SignatureVerifier {
                 Log.i(TAG, "✅ Signature verified successfully")
             } else {
                 Log.e(TAG, "❌ Signature verification failed")
-                throw SignatureVerificationException.VerificationFailed()
+                throw SignatureVerificationException.SignatureVerificationFailed()
             }
         } catch (e: SignatureVerificationException) {
             throw e
@@ -318,7 +323,7 @@ object SignatureVerifier {
      * Converts hex string to ByteArray.
      * @param hexString Hex-encoded string
      * @return ByteArray
-     * @throws SignatureVerificationException.InvalidSignatureFormat if conversion fails
+     * @throws SignatureVerificationException.SignatureVerificationFailed if conversion fails
      */
     private fun hexToByteArray(hexString: String): ByteArray {
         try {

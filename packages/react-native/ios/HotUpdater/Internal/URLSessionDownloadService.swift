@@ -21,7 +21,7 @@ protocol DownloadService {
 
 
 enum DownloadError: Error {
-    case incompleteDownload
+    case incompleteDownload(expected: Int64, actual: Int64)
     case invalidContentLength
 }
 
@@ -109,7 +109,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             NSLog("[DownloadService] Download incomplete: \(actualSize) / \(expectedSize) bytes")
             // Delete incomplete file
             try? FileManager.default.removeItem(at: location)
-            completion?(.failure(DownloadError.incompleteDownload))
+            completion?(.failure(DownloadError.incompleteDownload(expected: expectedSize, actual: actualSize)))
             return
         }
 

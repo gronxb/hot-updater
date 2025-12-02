@@ -1,40 +1,36 @@
 import Foundation
 
 public enum BundleStorageError: Error, CustomNSError {
-    case bundleNotFound
     case directoryCreationFailed
     case downloadFailed(Error)
-    case extractionFailed(Error)
+    case incompleteDownload(expected: Int64, actual: Int64)
+    case extractionFormatError(Error)
     case invalidBundle
-    case invalidZipFile
     case insufficientDiskSpace
-    case hashMismatch
     case signatureVerificationFailed(SignatureVerificationError)
     case moveOperationFailed(Error)
-    case copyOperationFailed(Error)
-    case fileSystemError(Error)
     case unknown(Error?)
 
     // CustomNSError protocol implementation
     public static var errorDomain: String {
-        return "com.hotupdater.BundleStorageError"
+        return "HotUpdater"
     }
 
     public var errorCode: Int {
+        return 0
+    }
+
+    public var errorCodeString: String {
         switch self {
-        case .bundleNotFound: return 1001
-        case .directoryCreationFailed: return 1002
-        case .downloadFailed: return 1003
-        case .extractionFailed: return 1004
-        case .invalidBundle: return 1005
-        case .invalidZipFile: return 1006
-        case .insufficientDiskSpace: return 1007
-        case .hashMismatch: return 1008
-        case .signatureVerificationFailed: return 1009
-        case .moveOperationFailed: return 1010
-        case .copyOperationFailed: return 1011
-        case .fileSystemError: return 1012
-        case .unknown: return 1099
+        case .directoryCreationFailed: return "DIRECTORY_CREATION_FAILED"
+        case .downloadFailed: return "DOWNLOAD_FAILED"
+        case .incompleteDownload: return "INCOMPLETE_DOWNLOAD"
+        case .extractionFormatError: return "EXTRACTION_FORMAT_ERROR"
+        case .invalidBundle: return "INVALID_BUNDLE"
+        case .insufficientDiskSpace: return "INSUFFICIENT_DISK_SPACE"
+        case .signatureVerificationFailed: return "SIGNATURE_VERIFICATION_FAILED"
+        case .moveOperationFailed: return "MOVE_OPERATION_FAILED"
+        case .unknown: return "UNKNOWN_ERROR"
         }
     }
 
@@ -42,10 +38,6 @@ public enum BundleStorageError: Error, CustomNSError {
         var userInfo: [String: Any] = [:]
 
         switch self {
-        case .bundleNotFound:
-            userInfo[NSLocalizedDescriptionKey] = "Bundle file not found in the downloaded archive"
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Ensure the bundle archive contains index.ios.bundle or main.jsbundle"
-
         case .directoryCreationFailed:
             userInfo[NSLocalizedDescriptionKey] = "Failed to create required directory for bundle storage"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check app permissions and available disk space"
@@ -55,26 +47,22 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSUnderlyingErrorKey] = underlyingError
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check network connection and try again"
 
-        case .extractionFailed(let underlyingError):
-            userInfo[NSLocalizedDescriptionKey] = "Failed to extract bundle archive"
+        case .incompleteDownload(let expected, let actual):
+            userInfo[NSLocalizedDescriptionKey] = "Download incomplete: received \(actual) bytes, expected \(expected) bytes"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The download was interrupted. Check network connection and try again"
+
+        case .extractionFormatError(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Invalid or corrupted bundle archive format"
             userInfo[NSUnderlyingErrorKey] = underlyingError
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The downloaded file may be corrupted. Try downloading again"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The bundle archive may be corrupted or in an unsupported format. Try downloading again"
 
         case .invalidBundle:
-            userInfo[NSLocalizedDescriptionKey] = "Downloaded archive does not contain a valid React Native bundle"
+            userInfo[NSLocalizedDescriptionKey] = "Bundle missing required platform files (index.ios.bundle or main.jsbundle)"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Verify the bundle was built correctly with metro bundler"
-
-        case .invalidZipFile:
-            userInfo[NSLocalizedDescriptionKey] = "Downloaded file is not a valid ZIP archive"
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The file may be corrupted during download"
 
         case .insufficientDiskSpace:
             userInfo[NSLocalizedDescriptionKey] = "Insufficient disk space to download and extract bundle"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Free up device storage and try again"
-
-        case .hashMismatch:
-            userInfo[NSLocalizedDescriptionKey] = "Downloaded bundle hash does not match expected hash"
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The file may have been corrupted or tampered with. Try downloading again"
 
         case .signatureVerificationFailed(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "Bundle signature verification failed"
@@ -85,16 +73,6 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSLocalizedDescriptionKey] = "Failed to move bundle to final location"
             userInfo[NSUnderlyingErrorKey] = underlyingError
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check file system permissions"
-
-        case .copyOperationFailed(let underlyingError):
-            userInfo[NSLocalizedDescriptionKey] = "Failed to copy bundle files"
-            userInfo[NSUnderlyingErrorKey] = underlyingError
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check available disk space and permissions"
-
-        case .fileSystemError(let underlyingError):
-            userInfo[NSLocalizedDescriptionKey] = "File system operation failed"
-            userInfo[NSUnderlyingErrorKey] = underlyingError
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check app permissions and disk space"
 
         case .unknown(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "An unknown error occurred during bundle update"
@@ -276,7 +254,7 @@ class BundleFileStorageService: BundleStorageService {
             contents = try self.fileSystem.contentsOfDirectory(atPath: storeDir)
         } catch let error {
             NSLog("[BundleStorage] Failed to list contents of bundle store directory: \(storeDir)")
-            return .failure(BundleStorageError.fileSystemError(error))
+            return .failure(BundleStorageError.unknown(error))
         }
         
         let bundles = contents.compactMap { item -> String? in
@@ -445,7 +423,7 @@ class BundleFileStorageService: BundleStorageService {
                             self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
                         } catch let error {
                             NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
-                            completion(.failure(BundleStorageError.fileSystemError(error)))
+                            completion(.failure(BundleStorageError.unknown(error)))
                         }
                     }
                 case .failure(let error):
@@ -558,7 +536,14 @@ class BundleFileStorageService: BundleStorageService {
                 case .failure(let error):
                     NSLog("[BundleStorage] Download failed: \(error.localizedDescription)")
                     self.cleanupTemporaryFiles([tempDirectory]) // Sync cleanup
-                    completion(.failure(BundleStorageError.downloadFailed(error)))
+
+                    // Map DownloadError.incompleteDownload to BundleStorageError.incompleteDownload
+                    if let downloadError = error as? DownloadError,
+                       case .incompleteDownload(let expected, let actual) = downloadError {
+                        completion(.failure(BundleStorageError.incompleteDownload(expected: expected, actual: actual)))
+                    } else {
+                        completion(.failure(BundleStorageError.downloadFailed(error)))
+                    }
                 }
             }
             self.fileOperationQueue.async(execute: workItem)
@@ -628,10 +613,10 @@ class BundleFileStorageService: BundleStorageService {
         guard self.fileSystem.fileExists(atPath: location.path) else {
             logFileSystemDiagnostics(path: location.path, context: "Download Location Missing")
             self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(BundleStorageError.fileSystemError(NSError(
+            completion(.failure(BundleStorageError.downloadFailed(NSError(
                 domain: "HotUpdaterError",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Source file does not exist atPath: \(location.path)"]
+                userInfo: [NSLocalizedDescriptionKey: "Downloaded file does not exist atPath: \(location.path)"]
             ))))
             return
         }
@@ -683,7 +668,7 @@ class BundleFileStorageService: BundleStorageService {
                 logFileSystemDiagnostics(path: tmpDir, context: "Extraction Failed")
                 try? self.fileSystem.removeItem(atPath: tmpDir)
                 self.cleanupTemporaryFiles([tempDirectory])
-                completion(.failure(BundleStorageError.extractionFailed(error)))
+                completion(.failure(BundleStorageError.extractionFormatError(error)))
                 return
             }
 
@@ -763,7 +748,13 @@ class BundleFileStorageService: BundleStorageService {
             logFileSystemDiagnostics(path: tmpDir, context: "Processing Error")
             try? self.fileSystem.removeItem(atPath: tmpDir)
             self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(BundleStorageError.fileSystemError(error)))
+
+            // Re-throw specific BundleStorageError if it is one, otherwise wrap as unknown
+            if let bundleError = error as? BundleStorageError {
+                completion(.failure(bundleError))
+            } else {
+                completion(.failure(BundleStorageError.unknown(error)))
+            }
         }
     }
 }

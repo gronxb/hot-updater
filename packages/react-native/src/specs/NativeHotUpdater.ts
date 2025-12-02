@@ -19,6 +19,36 @@ export interface UpdateBundleParams {
 export interface Spec extends TurboModule {
   // Methods
   reload(): Promise<void>;
+  /**
+   * Downloads and applies a bundle update.
+   *
+   * @param params - Update bundle parameters
+   * @returns Promise that resolves to true if successful
+   * @throws {HotUpdaterErrorCode} Rejects with one of the following error codes:
+   *
+   *   Parameter validation:
+   *   - MISSING_BUNDLE_ID: Missing or empty bundleId
+   *   - INVALID_FILE_URL: Invalid fileUrl provided
+   *
+   *   Bundle storage:
+   *   - DIRECTORY_CREATION_FAILED: Failed to create bundle directory
+   *   - DOWNLOAD_FAILED: Failed to download bundle
+   *   - INCOMPLETE_DOWNLOAD: Download incomplete (size mismatch)
+   *   - EXTRACTION_FORMAT_ERROR: Invalid or corrupted archive format
+   *   - INVALID_BUNDLE: Bundle missing required platform files
+   *   - INSUFFICIENT_DISK_SPACE: Insufficient disk space
+   *   - MOVE_OPERATION_FAILED: Failed to move bundle files
+   *
+   *   Signature:
+   *   - SIGNATURE_VERIFICATION_FAILED: Any signature/hash verification failure
+   *
+   *   Internal:
+   *   - SELF_DEALLOCATED: Native object was deallocated (iOS)
+   *   - UNKNOWN_ERROR: Fallback for rare or platform-specific errors
+   *
+   *   Note: iOS normalizes rare signature/storage errors to SIGNATURE_VERIFICATION_FAILED
+   *   or UNKNOWN_ERROR to keep the JS error surface small.
+   */
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
   // EventEmitter

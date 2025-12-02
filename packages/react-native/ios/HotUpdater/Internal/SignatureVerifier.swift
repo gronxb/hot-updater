@@ -5,35 +5,37 @@ import Security
 private let SIGNED_HASH_PREFIX = "sig:"
 
 /// Error types for signature verification failures.
-///
-/// **IMPORTANT**: The error messages in `errorUserInfo` are used by the JavaScript layer
-/// (`packages/react-native/src/types.ts`) to detect signature verification failures.
-/// If you change these messages, update `isSignatureVerificationError()` in types.ts accordingly.
 public enum SignatureVerificationError: Error, CustomNSError {
     case publicKeyNotConfigured
     case invalidPublicKeyFormat
+    case missingFileHash
     case invalidSignatureFormat
-    case verificationFailed
-    case hashMismatch
-    case hashCalculationFailed
+    case signatureVerificationFailed
+    case fileHashMismatch
+    case fileReadFailed
     case unsignedNotAllowed
     case securityFrameworkError(OSStatus)
 
     // CustomNSError protocol implementation
     public static var errorDomain: String {
-        return "com.hotupdater.SignatureVerificationError"
+        return "HotUpdater"
     }
 
     public var errorCode: Int {
+        return 0
+    }
+
+    public var errorCodeString: String {
         switch self {
-        case .publicKeyNotConfigured: return 2001
-        case .invalidPublicKeyFormat: return 2002
-        case .invalidSignatureFormat: return 2003
-        case .verificationFailed: return 2004
-        case .hashMismatch: return 2005
-        case .hashCalculationFailed: return 2006
-        case .unsignedNotAllowed: return 2007
-        case .securityFrameworkError: return 2099
+        case .publicKeyNotConfigured: return "PUBLIC_KEY_NOT_CONFIGURED"
+        case .invalidPublicKeyFormat: return "INVALID_PUBLIC_KEY_FORMAT"
+        case .missingFileHash: return "MISSING_FILE_HASH"
+        case .invalidSignatureFormat: return "INVALID_SIGNATURE_FORMAT"
+        case .signatureVerificationFailed: return "SIGNATURE_VERIFICATION_FAILED"
+        case .fileHashMismatch: return "FILE_HASH_MISMATCH"
+        case .fileReadFailed: return "FILE_READ_FAILED"
+        case .unsignedNotAllowed: return "UNSIGNED_NOT_ALLOWED"
+        case .securityFrameworkError: return "SECURITY_FRAMEWORK_ERROR"
         }
     }
 
@@ -49,20 +51,24 @@ public enum SignatureVerificationError: Error, CustomNSError {
             userInfo[NSLocalizedDescriptionKey] = "Public key format is invalid"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Ensure the public key is in PEM format (BEGIN PUBLIC KEY)"
 
-        case .invalidSignatureFormat:
-            userInfo[NSLocalizedDescriptionKey] = "Signature format is invalid"
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The signature must be base64-encoded"
+        case .missingFileHash:
+            userInfo[NSLocalizedDescriptionKey] = "File hash is missing or empty"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Ensure the bundle update includes a valid file hash"
 
-        case .verificationFailed:
+        case .invalidSignatureFormat:
+            userInfo[NSLocalizedDescriptionKey] = "Signature format is invalid or corrupted"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The signature data is malformed or cannot be decoded. Bundle may be corrupted"
+
+        case .signatureVerificationFailed:
             userInfo[NSLocalizedDescriptionKey] = "Bundle signature verification failed"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The bundle may be corrupted or tampered with. Rejecting update for security"
 
-        case .hashMismatch:
-            userInfo[NSLocalizedDescriptionKey] = "Bundle hash verification failed"
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The bundle file hash does not match. File may be corrupted"
+        case .fileHashMismatch:
+            userInfo[NSLocalizedDescriptionKey] = "File hash verification failed"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The bundle file hash does not match the expected value. File may be corrupted"
 
-        case .hashCalculationFailed:
-            userInfo[NSLocalizedDescriptionKey] = "Failed to calculate file hash"
+        case .fileReadFailed:
+            userInfo[NSLocalizedDescriptionKey] = "Failed to read file for verification"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Could not read file for hash verification"
 
         case .unsignedNotAllowed:
@@ -149,7 +155,7 @@ public class SignatureVerifier {
         // Rule: null/empty fileHash → REJECT
         guard let hash = fileHash, !hash.isEmpty else {
             NSLog("[SignatureVerifier] fileHash is null or empty. Rejecting update.")
-            return .failure(.verificationFailed)
+            return .failure(.missingFileHash)
         }
 
         if isSignedFormat(hash) {
@@ -192,7 +198,7 @@ public class SignatureVerifier {
 
         guard HashUtils.verifyHash(fileURL: fileURL, expectedHash: expectedHash) else {
             NSLog("[SignatureVerifier] Hash mismatch!")
-            return .failure(.hashMismatch)
+            return .failure(.fileHashMismatch)
         }
 
         NSLog("[SignatureVerifier] ✅ Hash verified successfully")
@@ -228,7 +234,7 @@ public class SignatureVerifier {
         // Calculate file hash
         guard let fileHashHex = HashUtils.calculateSHA256(fileURL: fileURL) else {
             NSLog("[SignatureVerifier] Failed to calculate file hash")
-            return .failure(.hashCalculationFailed)
+            return .failure(.fileReadFailed)
         }
 
         NSLog("[SignatureVerifier] Calculated file hash: \(fileHashHex)")
@@ -264,7 +270,7 @@ public class SignatureVerifier {
 
         if let err = error?.takeRetainedValue() {
             NSLog("[SignatureVerifier] Verification failed: \(err)")
-            return .failure(.verificationFailed)
+            return .failure(.signatureVerificationFailed)
         }
 
         if verified {
@@ -272,7 +278,7 @@ public class SignatureVerifier {
             return .success(())
         } else {
             NSLog("[SignatureVerifier] ❌ Signature verification failed")
-            return .failure(.verificationFailed)
+            return .failure(.signatureVerificationFailed)
         }
     }
 

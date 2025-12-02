@@ -32,34 +32,58 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun updateBundle(
-        params: ReadableMap,
+        params: ReadableMap?,
         promise: Promise,
     ) {
         (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
             try {
-                val bundleId = params.getString("bundleId")!!
-                val fileUrl = params.getString("fileUrl")
-                val fileHash = params.getString("fileHash")
-                val isSuccess =
-                    HotUpdater.updateBundle(
-                        mReactApplicationContext,
-                        bundleId,
-                        fileUrl,
-                        fileHash,
-                    ) { progress ->
-                        val progressParams =
-                            WritableNativeMap().apply {
-                                putDouble("progress", progress)
-                            }
+                // Parameter validation
+                if (params == null) {
+                    promise.reject("UNKNOWN_ERROR", "Missing or invalid parameters for updateBundle")
+                    return@launch
+                }
 
-                        this@HotUpdaterModule
-                            .mReactApplicationContext
-                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                            .emit("onProgress", progressParams)
+                val bundleId = params.getString("bundleId")
+                if (bundleId == null || bundleId.isEmpty()) {
+                    promise.reject("MISSING_BUNDLE_ID", "Missing or empty 'bundleId'")
+                    return@launch
+                }
+
+                val fileUrl = params.getString("fileUrl")
+
+                // Validate fileUrl format if provided
+                if (fileUrl != null && fileUrl.isNotEmpty()) {
+                    try {
+                        java.net.URL(fileUrl)
+                    } catch (e: java.net.MalformedURLException) {
+                        promise.reject("INVALID_FILE_URL", "Invalid 'fileUrl' provided: $fileUrl")
+                        return@launch
                     }
-                promise.resolve(isSuccess)
+                }
+
+                val fileHash = params.getString("fileHash")
+
+                HotUpdater.updateBundle(
+                    mReactApplicationContext,
+                    bundleId,
+                    fileUrl,
+                    fileHash,
+                ) { progress ->
+                    val progressParams =
+                        WritableNativeMap().apply {
+                            putDouble("progress", progress)
+                        }
+
+                    this@HotUpdaterModule
+                        .mReactApplicationContext
+                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                        .emit("onProgress", progressParams)
+                }
+                promise.resolve(true)
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
             } catch (e: Exception) {
-                promise.reject("updateBundle", e)
+                promise.reject("UNKNOWN_ERROR", e.message ?: "An unknown error occurred")
             }
         }
     }
