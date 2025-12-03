@@ -156,7 +156,7 @@ export const getMinBundleId = (): string => {
  * Fetches the current bundle version id.
  *
  * @async
- * @returns {Promise<string>} Resolves with the current version id or null if not available.
+ * @returns {string} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
   return HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID === NIL_UUID
@@ -182,4 +182,37 @@ export const getChannel = (): string => {
 export const getFingerprintHash = (): string | null => {
   const constants = HotUpdaterNative.getConstants();
   return constants.FINGERPRINT_HASH;
+};
+
+/**
+ * Notifies the native side that the app has successfully started with the current bundle.
+ * If the bundle matches the staging bundle, it promotes to stable.
+ *
+ * This function is called automatically when the module loads.
+ *
+ * @returns {boolean} true if promotion was successful or no action was needed
+ */
+export const notifyAppReady = (): boolean => {
+  const bundleId = getBundleId();
+  return HotUpdaterNative.notifyAppReady({ bundleId });
+};
+
+/**
+ * Gets the list of bundle IDs that have been marked as crashed.
+ * These bundles will be rejected if attempted to install again.
+ *
+ * @returns {string[]} Array of crashed bundle IDs
+ */
+export const getCrashHistory = (): string[] => {
+  return HotUpdaterNative.getCrashHistory();
+};
+
+/**
+ * Clears the crashed bundle history, allowing previously crashed bundles
+ * to be installed again.
+ *
+ * @returns {boolean} true if clearing was successful
+ */
+export const clearCrashHistory = (): boolean => {
+  return HotUpdaterNative.clearCrashHistory();
 };

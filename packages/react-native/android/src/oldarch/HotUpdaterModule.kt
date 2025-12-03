@@ -7,6 +7,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableNativeArray
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
@@ -149,6 +150,46 @@ class HotUpdaterModule internal constructor(
         constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
         constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)
         return constants
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun notifyAppReady(params: ReadableMap?): Boolean {
+        val bundleId = params?.getString("bundleId") ?: return false
+        val identifier = HotUpdaterRegistry.getDefaultIdentifier()
+        val impl =
+            if (identifier != null) {
+                HotUpdaterRegistry.get(identifier)
+            } else {
+                HotUpdater.getInstance(mReactApplicationContext)
+            }
+        return impl?.notifyAppReady(bundleId) ?: true
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getCrashHistory(): WritableNativeArray {
+        val identifier = HotUpdaterRegistry.getDefaultIdentifier()
+        val impl =
+            if (identifier != null) {
+                HotUpdaterRegistry.get(identifier)
+            } else {
+                HotUpdater.getInstance(mReactApplicationContext)
+            }
+        val crashHistory = impl?.getCrashHistory() ?: emptyList()
+        val result = WritableNativeArray()
+        crashHistory.forEach { result.pushString(it) }
+        return result
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun clearCrashHistory(): Boolean {
+        val identifier = HotUpdaterRegistry.getDefaultIdentifier()
+        val impl =
+            if (identifier != null) {
+                HotUpdaterRegistry.get(identifier)
+            } else {
+                HotUpdater.getInstance(mReactApplicationContext)
+            }
+        return impl?.clearCrashHistory() ?: true
     }
 
     companion object {

@@ -58,6 +58,7 @@ export interface Spec extends TurboModule {
    *   - INVALID_BUNDLE: Bundle missing required platform files
    *   - INSUFFICIENT_DISK_SPACE: Insufficient disk space
    *   - MOVE_OPERATION_FAILED: Failed to move bundle files
+   *   - BUNDLE_IN_CRASHED_HISTORY: Bundle was previously marked as crashed
    *
    *   Signature:
    *   - SIGNATURE_VERIFICATION_FAILED: Any signature/hash verification failure
@@ -70,6 +71,31 @@ export interface Spec extends TurboModule {
    *   or UNKNOWN_ERROR to keep the JS error surface small.
    */
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
+
+  /**
+   * Notifies the native side that the app has successfully started with the given bundle.
+   * If the bundle matches the staging bundle, it promotes to stable.
+   *
+   * @param params - Parameters containing the bundle ID
+   * @returns true if promotion was successful or no action was needed
+   */
+  notifyAppReady(params: { bundleId: string }): boolean;
+
+  /**
+   * Gets the list of bundle IDs that have been marked as crashed.
+   * These bundles will be rejected if attempted to install again.
+   *
+   * @returns Array of crashed bundle IDs
+   */
+  getCrashHistory(): string[];
+
+  /**
+   * Clears the crashed bundle history, allowing previously crashed bundles
+   * to be installed again.
+   *
+   * @returns true if clearing was successful
+   */
+  clearCrashHistory(): boolean;
 
   // EventEmitter
   addListener(eventName: string): void;

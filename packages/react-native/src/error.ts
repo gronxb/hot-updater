@@ -117,6 +117,14 @@ export enum HotUpdaterErrorCode {
    */
   MOVE_OPERATION_FAILED = "MOVE_OPERATION_FAILED",
 
+  /**
+   * Bundle is in crashed history and cannot be applied.
+   * Thrown when attempting to install a bundle that previously caused a crash.
+   * Use HotUpdater.clearCrashHistory() to allow retrying this bundle.
+   * @retryable false - Bundle was marked as crashed for safety
+   */
+  BUNDLE_IN_CRASHED_HISTORY = "BUNDLE_IN_CRASHED_HISTORY",
+
   // ==================== Signature Verification Errors ====================
   // (Collapsed into SIGNATURE_VERIFICATION_FAILED)
 

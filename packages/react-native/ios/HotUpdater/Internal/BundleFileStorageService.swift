@@ -9,6 +9,7 @@ public enum BundleStorageError: Error, CustomNSError {
     case insufficientDiskSpace
     case signatureVerificationFailed(SignatureVerificationError)
     case moveOperationFailed(Error)
+    case bundleInCrashedHistory(String)
     case unknown(Error?)
 
     // CustomNSError protocol implementation
@@ -30,6 +31,7 @@ public enum BundleStorageError: Error, CustomNSError {
         case .insufficientDiskSpace: return "INSUFFICIENT_DISK_SPACE"
         case .signatureVerificationFailed: return "SIGNATURE_VERIFICATION_FAILED"
         case .moveOperationFailed: return "MOVE_OPERATION_FAILED"
+        case .bundleInCrashedHistory: return "BUNDLE_IN_CRASHED_HISTORY"
         case .unknown: return "UNKNOWN_ERROR"
         }
     }
@@ -74,6 +76,10 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSUnderlyingErrorKey] = underlyingError
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Check file system permissions"
 
+        case .bundleInCrashedHistory(let bundleId):
+            userInfo[NSLocalizedDescriptionKey] = "Bundle '\(bundleId)' is in crashed history and cannot be applied"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "This bundle previously caused a crash and was blocked for safety"
+
         case .unknown(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "An unknown error occurred during bundle update"
             if let error = underlyingError {
@@ -92,15 +98,20 @@ public enum BundleStorageError: Error, CustomNSError {
  * Other operations are synchronous.
  */
 public protocol BundleStorageService {
-    
+
     // Bundle URL operations
     func setBundleURL(localPath: String?) -> Result<Void, Error>
     func getCachedBundleURL() -> URL?
     func getFallbackBundleURL() -> URL? // Synchronous as it's lightweight
     func getBundleURL() -> URL?
-    
+
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, identifier: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+
+    // Rollback support
+    func notifyAppReady(bundleId: String) -> Bool
+    func getCrashHistory() -> CrashedHistory
+    func clearCrashHistory() -> Bool
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -132,6 +143,152 @@ class BundleFileStorageService: BundleStorageService {
         self.fileOperationQueue = DispatchQueue(label: queueLabel,
                                                qos: .utility,
                                                attributes: .concurrent)
+    }
+
+    // MARK: - Metadata File Paths
+
+    private func metadataFileURL() -> URL? {
+        guard case .success(let storeDir) = bundleStoreDir(identifier: identifier) else {
+            return nil
+        }
+        return URL(fileURLWithPath: storeDir).appendingPathComponent(BundleMetadata.metadataFilename)
+    }
+
+    private func crashedHistoryFileURL() -> URL? {
+        guard case .success(let storeDir) = bundleStoreDir(identifier: identifier) else {
+            return nil
+        }
+        return URL(fileURLWithPath: storeDir).appendingPathComponent(CrashedHistory.crashedHistoryFilename)
+    }
+
+    // MARK: - Metadata Operations
+
+    private func loadMetadataOrNull() -> BundleMetadata? {
+        guard let file = metadataFileURL() else {
+            return nil
+        }
+        return BundleMetadata.load(from: file)
+    }
+
+    private func saveMetadata(_ metadata: BundleMetadata) -> Bool {
+        guard let file = metadataFileURL() else {
+            return false
+        }
+        return metadata.save(to: file)
+    }
+
+    // MARK: - Crashed History Operations
+
+    private func loadCrashedHistory() -> CrashedHistory {
+        guard let file = crashedHistoryFileURL() else {
+            return CrashedHistory()
+        }
+        return CrashedHistory.load(from: file)
+    }
+
+    private func saveCrashedHistory(_ history: CrashedHistory) -> Bool {
+        guard let file = crashedHistoryFileURL() else {
+            return false
+        }
+        return history.save(to: file)
+    }
+
+    // MARK: - State Machine Methods
+
+    private func isVerificationPending(_ metadata: BundleMetadata) -> Bool {
+        return metadata.verificationPending && metadata.stagingBundleId != nil
+    }
+
+    private func wasVerificationAttempted(_ metadata: BundleMetadata) -> Bool {
+        return metadata.verificationAttemptedAt != nil
+    }
+
+    private func markVerificationAttempted() {
+        guard var metadata = loadMetadataOrNull() else {
+            return
+        }
+        metadata.verificationAttemptedAt = Date().timeIntervalSince1970 * 1000
+        let _ = saveMetadata(metadata)
+        NSLog("[BundleStorage] Marked verification attempted for staging bundle: \(metadata.stagingBundleId ?? "nil")")
+    }
+
+    private func incrementStagingExecutionCount() {
+        guard var metadata = loadMetadataOrNull() else {
+            return
+        }
+        metadata.stagingExecutionCount = (metadata.stagingExecutionCount ?? 0) + 1
+        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        let _ = saveMetadata(metadata)
+        NSLog("[BundleStorage] Incremented staging execution count to: \(metadata.stagingExecutionCount ?? 0)")
+    }
+
+    private func promoteStagingToStable() {
+        guard var metadata = loadMetadataOrNull() else {
+            return
+        }
+        guard let stagingId = metadata.stagingBundleId else {
+            NSLog("[BundleStorage] No staging bundle to promote")
+            return
+        }
+
+        let oldStableId = metadata.stableBundleId
+        metadata.stableBundleId = stagingId
+        metadata.stagingBundleId = nil
+        metadata.verificationPending = false
+        metadata.verificationAttemptedAt = nil
+        metadata.stagingExecutionCount = nil
+        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+
+        if saveMetadata(metadata) {
+            NSLog("[BundleStorage] Promoted staging '\(stagingId)' to stable (old stable: \(oldStableId ?? "nil"))")
+
+            // Clean up old stable bundle
+            if let oldId = oldStableId, oldId != stagingId {
+                let _ = cleanupOldBundles(currentBundleId: stagingId, bundleId: nil, identifier: identifier)
+            }
+        }
+    }
+
+    private func rollbackToStable() {
+        guard var metadata = loadMetadataOrNull() else {
+            return
+        }
+        guard let stagingId = metadata.stagingBundleId else {
+            NSLog("[BundleStorage] No staging bundle to rollback from")
+            return
+        }
+
+        // Add crashed bundle to history
+        var crashedHistory = loadCrashedHistory()
+        crashedHistory.addEntry(stagingId)
+        let _ = saveCrashedHistory(crashedHistory)
+        NSLog("[BundleStorage] Added bundle '\(stagingId)' to crashed history")
+
+        // Clear staging
+        metadata.stagingBundleId = nil
+        metadata.verificationPending = false
+        metadata.verificationAttemptedAt = nil
+        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+
+        if saveMetadata(metadata) {
+            NSLog("[BundleStorage] Rolled back to stable bundle: \(metadata.stableBundleId ?? "fallback")")
+
+            // Update HotUpdaterBundleURL to point to stable bundle
+            if let stableId = metadata.stableBundleId {
+                if case .success(let storeDir) = bundleStoreDir(identifier: identifier) {
+                    let stableBundleDir = (storeDir as NSString).appendingPathComponent(stableId)
+                    if case .success(let bundlePath) = findBundleFile(in: stableBundleDir), let path = bundlePath {
+                        let _ = setBundleURL(localPath: path)
+                    }
+                }
+            } else {
+                // Reset to fallback
+                let _ = setBundleURL(localPath: nil)
+            }
+
+            // Clean up failed staging bundle
+            let _ = cleanupOldBundles(currentBundleId: metadata.stableBundleId, bundleId: nil, identifier: identifier)
+        }
     }
     
     // MARK: - Directory Management
@@ -270,6 +427,12 @@ class BundleFileStorageService: BundleStorageService {
         
         let bundles = contents.compactMap { item -> String? in
             let fullPath = (storeDir as NSString).appendingPathComponent(item)
+
+            // Skip metadata files - DO NOT delete
+            if item == "metadata.json" || item == "crashed-history.json" {
+                return nil
+            }
+
             return (!item.hasSuffix(".tmp") && self.fileSystem.fileExists(atPath: fullPath)) ? fullPath : nil
         }
         
@@ -349,7 +512,64 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     public func getBundleURL() -> URL? {
-        return getCachedBundleURL() ?? getFallbackBundleURL()
+        // Try to load metadata
+        let metadata = loadMetadataOrNull()
+
+        // If no metadata exists, use legacy behavior (backwards compatible)
+        guard let metadata = metadata else {
+            let cached = getCachedBundleURL()
+            return cached ?? getFallbackBundleURL()
+        }
+
+        // Check if we need to handle crash recovery
+        if isVerificationPending(metadata) {
+            let executionCount = metadata.stagingExecutionCount ?? 0
+
+            if executionCount == 0 {
+                // First execution - give staging bundle a chance
+                NSLog("[BundleStorage] First execution of staging bundle, incrementing counter")
+                incrementStagingExecutionCount()
+                // Don't mark verificationAttempted yet!
+            } else if wasVerificationAttempted(metadata) {
+                // Already executed once and verificationAttempted is set → crash!
+                NSLog("[BundleStorage] Crash detected: staging bundle executed but didn't call notifyAppReady")
+                rollbackToStable()
+            } else {
+                // Second execution - now mark verification attempted
+                NSLog("[BundleStorage] Second execution of staging bundle, marking verification attempted")
+                markVerificationAttempted()
+            }
+        }
+
+        // Reload metadata after potential rollback
+        guard let currentMetadata = loadMetadataOrNull() else {
+            return getCachedBundleURL() ?? getFallbackBundleURL()
+        }
+
+        // If verification is pending, return staging bundle URL
+        if isVerificationPending(currentMetadata), let stagingId = currentMetadata.stagingBundleId {
+            if case .success(let storeDir) = bundleStoreDir(identifier: identifier) {
+                let stagingBundleDir = (storeDir as NSString).appendingPathComponent(stagingId)
+                if case .success(let bundlePath) = findBundleFile(in: stagingBundleDir), let path = bundlePath {
+                    NSLog("[BundleStorage] Returning staging bundle URL: \(path)")
+                    return URL(fileURLWithPath: path)
+                }
+            }
+        }
+
+        // Return stable bundle URL
+        if let stableId = currentMetadata.stableBundleId {
+            if case .success(let storeDir) = bundleStoreDir(identifier: identifier) {
+                let stableBundleDir = (storeDir as NSString).appendingPathComponent(stableId)
+                if case .success(let bundlePath) = findBundleFile(in: stableBundleDir), let path = bundlePath {
+                    NSLog("[BundleStorage] Returning stable bundle URL: \(path)")
+                    return URL(fileURLWithPath: path)
+                }
+            }
+        }
+
+        // Fallback to app bundle
+        return getFallbackBundleURL()
     }
     
     // MARK: - Bundle Update
@@ -364,9 +584,17 @@ class BundleFileStorageService: BundleStorageService {
      * @param completion Callback with result of the operation
      */
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, identifier: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+        // Check if bundle is in crashed history
+        let crashedHistory = loadCrashedHistory()
+        if crashedHistory.contains(bundleId) {
+            NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
+            completion(.failure(BundleStorageError.bundleInCrashedHistory(bundleId)))
+            return
+        }
+
         // Get the current bundle ID from the cached bundle URL (exclude fallback bundles)
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
-        
+
         guard let validFileUrl = fileUrl else {
             NSLog("[BundleStorage] fileUrl is nil, resetting bundle URL.")
             // Dispatch the sequence to the file operation queue to ensure completion is called asynchronously
@@ -408,22 +636,28 @@ class BundleFileStorageService: BundleStorageService {
                 case .success(let existingBundlePath):
                     if let bundlePath = existingBundlePath {
                         NSLog("[BundleStorage] Using cached bundle at path: \(bundlePath)")
-                        do {
-                            let setResult = self.setBundleURL(localPath: bundlePath)
-                            switch setResult {
-                            case .success:
-                                let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId, identifier: identifier)
-                                switch cleanupResult {
-                                case .success:
-                                    completion(.success(true))
-                                case .failure(let error):
-                                    NSLog("[BundleStorage] Warning: Cleanup failed but bundle is set: \(error)")
-                                    completion(.failure(error))
-                                }
-                            case .failure(let error):
-                                completion(.failure(error))
+                        let setResult = self.setBundleURL(localPath: bundlePath)
+                        switch setResult {
+                        case .success:
+                            // Set staging metadata for rollback support
+                            var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
+                            metadata.stagingBundleId = bundleId
+                            metadata.verificationPending = true
+                            metadata.verificationAttemptedAt = nil
+                            metadata.stagingExecutionCount = 0
+                            metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+                            let _ = self.saveMetadata(metadata)
+                            NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
+
+                            // Clean up old bundles, preserving stable and new staging
+                            let stableId = metadata.stableBundleId
+                            let bundleIdsToKeep = [stableId, bundleId].compactMap { $0 }
+                            if bundleIdsToKeep.count > 0 {
+                                let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil, identifier: identifier)
                             }
-                        } catch let error {
+
+                            completion(.success(true))
+                        case .failure(let error):
                             completion(.failure(error))
                         }
                         return
@@ -719,18 +953,33 @@ class BundleFileStorageService: BundleStorageService {
                     // 11) Construct final bundlePath for preferences
                     let finalBundlePath = (realDir as NSString).appendingPathComponent((bundlePathInTmp as NSString).lastPathComponent)
 
-                    // 12) Set the bundle URL in preferences
+                    // 12) Set the bundle URL in preferences (for backwards compatibility)
                     let setResult = self.setBundleURL(localPath: finalBundlePath)
                     switch setResult {
                     case .success:
                         NSLog("[BundleStorage] Successfully set bundle URL: \(finalBundlePath)")
-                        // 13) Clean up the temporary directory
+
+                        // 13) Set staging metadata for rollback support
+                        var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
+                        metadata.stagingBundleId = bundleId
+                        metadata.verificationPending = true
+                        metadata.verificationAttemptedAt = nil
+                        metadata.stagingExecutionCount = 0
+                        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+                        let _ = self.saveMetadata(metadata)
+                        NSLog("[BundleStorage] Set staging bundle: \(bundleId), verificationPending: true")
+
+                        // 14) Clean up the temporary directory
                         self.cleanupTemporaryFiles([tempDirectory])
 
-                        // 14) Clean up old bundles, preserving current and latest
-                        let _ = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId, identifier: identifier)
+                        // 15) Clean up old bundles, preserving current, stable, and new staging
+                        let stableId = metadata.stableBundleId
+                        let bundleIdsToKeep = [stableId, bundleId].compactMap { $0 }
+                        if bundleIdsToKeep.count > 0 {
+                            let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil, identifier: identifier)
+                        }
 
-                        // 15) Complete with success
+                        // 16) Complete with success
                         completion(.success(true))
                     case .failure(let err):
                         let nsError = err as NSError
@@ -771,6 +1020,66 @@ class BundleFileStorageService: BundleStorageService {
                 completion(.failure(BundleStorageError.unknown(error)))
             }
         }
+    }
+
+    // MARK: - Rollback Support
+
+    /**
+     * Notifies the system that the app has successfully started with the given bundle.
+     * If the bundle matches the staging bundle, promotes it to stable.
+     * @param bundleId The ID of the currently running bundle
+     * @return true if promotion was successful or no action was needed
+     */
+    func notifyAppReady(bundleId: String) -> Bool {
+        guard var metadata = loadMetadataOrNull() else {
+            // No metadata exists - legacy mode, nothing to do
+            NSLog("[BundleStorage] notifyAppReady: No metadata exists (legacy mode)")
+            return true
+        }
+
+        // Check if the bundle matches the staging bundle
+        if let stagingId = metadata.stagingBundleId, stagingId == bundleId {
+            NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' matches staging, promoting to stable")
+            promoteStagingToStable()
+            return true
+        }
+
+        // Check if the bundle matches the stable bundle
+        if let stableId = metadata.stableBundleId, stableId == bundleId {
+            // Already stable, clear any pending verification state
+            if metadata.verificationPending {
+                metadata.verificationPending = false
+                metadata.verificationAttemptedAt = nil
+                metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+                let _ = saveMetadata(metadata)
+                NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' is stable, cleared pending verification")
+            } else {
+                NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' is already stable")
+            }
+            return true
+        }
+
+        // Bundle doesn't match staging or stable - might be fallback or unknown
+        NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' doesn't match staging or stable")
+        return true
+    }
+
+    /**
+     * Returns the crashed bundle history.
+     * @return The crashed history object
+     */
+    func getCrashHistory() -> CrashedHistory {
+        return loadCrashedHistory()
+    }
+
+    /**
+     * Clears the crashed bundle history.
+     * @return true if clearing was successful
+     */
+    func clearCrashHistory() -> Bool {
+        var history = loadCrashedHistory()
+        history.clear()
+        return saveCrashedHistory(history)
     }
 }
 

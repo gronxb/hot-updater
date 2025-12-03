@@ -307,4 +307,30 @@ class HotUpdaterImpl {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
         }
     }
+
+    /**
+     * Notifies the system that the app has successfully started with the given bundle.
+     * If the bundle matches the staging bundle, it promotes to stable.
+     * @param bundleId The ID of the currently running bundle
+     * @return true if promotion was successful or no action was needed
+     */
+    fun notifyAppReady(bundleId: String): Boolean {
+        return bundleStorage.notifyAppReady(bundleId)
+    }
+
+    /**
+     * Gets the crashed bundle history.
+     * @return List of crashed bundle IDs
+     */
+    fun getCrashHistory(): List<String> {
+        return bundleStorage.getCrashHistory().bundles.map { it.bundleId }
+    }
+
+    /**
+     * Clears the crashed bundle history.
+     * @return true if clearing was successful
+     */
+    fun clearCrashHistory(): Boolean {
+        return bundleStorage.clearCrashHistory()
+    }
 }

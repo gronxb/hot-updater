@@ -110,7 +110,7 @@ RCT_EXPORT_MODULE();
 }
 
 
-- (NSDictionary *)constantsToExport {
+- (NSDictionary *)_buildConstantsDictionary {
     // Use instance implementation
     return @{
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null], // Local
@@ -118,10 +118,6 @@ RCT_EXPORT_MODULE();
         @"CHANNEL": [_instanceImpl getChannel] ?: [NSNull null], // Swift
         @"FINGERPRINT_HASH": [_instanceImpl getFingerprintHash] ?: [NSNull null] // Swift
     };
-}
-
-- (NSDictionary *)getConstants {
- return [self constantsToExport];
 }
 
 
@@ -196,20 +192,20 @@ RCT_EXPORT_MODULE();
 }
 
 
-#pragma mark - React Native Exports (Slimmed Down)
+#pragma mark - React Native Exports
 
-// Keep reload logic here as it interacts with RN Bridge
-RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+#ifdef RCT_NEW_ARCH_ENABLED
+
+// New Architecture implementations
+
+- (void)reload:(RCTPromiseResolveBlock)resolve
+        reject:(RCTPromiseRejectBlock)reject {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            // Get bundleURL using instance implementation
             NSURL *bundleURL = [self->_instanceImpl bundleURL];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
-                // This method of setting bundleURL might be outdated depending on RN version.
-                // Consider alternatives if this doesn't work reliably.
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
             } else if (!super.bridge) {
                 RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
@@ -223,11 +219,9 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     });
 }
 
-#ifdef RCT_NEW_ARCH_ENABLED
-
-RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject {
     NSLog(@"[HotUpdater.mm] updateBundle called.");
     NSMutableDictionary *paramDict = [NSMutableDictionary dictionary];
     if (params.bundleId()) {
@@ -254,7 +248,75 @@ RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)param
 
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
+
+- (NSNumber *)notifyAppReady:(JS::NativeHotUpdater::SpecNotifyAppReadyParams &)params {
+    NSString *bundleId = nil;
+    if (params.bundleId()) {
+        bundleId = params.bundleId();
+    }
+    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+    BOOL result = [_instanceImpl notifyAppReadyWithBundleId:bundleId];
+    return @(result);
+}
+
+- (NSArray<NSString *> *)getCrashHistory {
+    NSLog(@"[HotUpdater.mm] getCrashHistory called");
+    NSArray<NSString *> *crashHistory = [_instanceImpl getCrashHistory];
+    return crashHistory ?: @[];
+}
+
+- (NSNumber *)clearCrashHistory {
+    NSLog(@"[HotUpdater.mm] clearCrashHistory called");
+    BOOL result = [_instanceImpl clearCrashHistory];
+    return @(result);
+}
+
+- (void)addListener:(NSString *)eventName {
+    // No-op for New Architecture - handled by event emitter
+}
+
+- (void)removeListeners:(double)count {
+    // No-op for New Architecture - handled by event emitter
+}
+
+- (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
+    return [self getConstants];
+}
+
+- (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)getConstants {
+    return facebook::react::typedConstants<JS::NativeHotUpdater::Constants::Builder>({
+        .MIN_BUNDLE_ID = [self getMinBundleId],
+        .APP_VERSION = [HotUpdaterImpl appVersion],
+        .CHANNEL = [_instanceImpl getChannel],
+        .FINGERPRINT_HASH = [_instanceImpl getFingerprintHash],
+    });
+}
+
 #else
+
+// Old Architecture implementations
+
+RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            NSURL *bundleURL = [self->_instanceImpl bundleURL];
+            RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+            if (bundleURL && super.bridge) {
+                [super.bridge setValue:bundleURL forKey:@"bundleURL"];
+            } else if (!super.bridge) {
+                RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
+            }
+            RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+            resolve(nil);
+        } @catch (NSError *error) {
+            RCTLogError(@"[HotUpdater.mm] Failed to reload: %@", error);
+            reject(@"RELOAD_ERROR", error.description, error);
+        }
+    });
+}
+
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
@@ -271,9 +333,35 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
 
     [impl updateBundle:params resolver:resolve rejecter:reject];
 }
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady:(NSDictionary *)params) {
+    NSString *bundleId = params[@"bundleId"];
+    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+    BOOL result = [_instanceImpl notifyAppReadyWithBundleId:bundleId];
+    return @(result);
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCrashHistory) {
+    NSLog(@"[HotUpdater.mm] getCrashHistory called");
+    NSArray<NSString *> *crashHistory = [_instanceImpl getCrashHistory];
+    return crashHistory ?: @[];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
+    NSLog(@"[HotUpdater.mm] clearCrashHistory called");
+    BOOL result = [_instanceImpl clearCrashHistory];
+    return @(result);
+}
+
+- (NSDictionary *)constantsToExport {
+    return [self _buildConstantsDictionary];
+}
+
+- (NSDictionary *)getConstants {
+    return [self constantsToExport];
+}
+
 #endif
-
-
 
 
 #pragma mark - Turbo Module Support (Keep as is)

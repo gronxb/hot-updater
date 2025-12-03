@@ -273,7 +273,36 @@ import React
         "INSUFFICIENT_DISK_SPACE",
         "SIGNATURE_VERIFICATION_FAILED",
         "MOVE_OPERATION_FAILED",
+        "BUNDLE_IN_CRASHED_HISTORY",
         "SELF_DEALLOCATED",
         "UNKNOWN_ERROR",
     ]
+
+    // MARK: - Rollback Support
+
+    /**
+     * Notifies the system that the app has successfully started with the given bundle.
+     * If the bundle matches the staging bundle, it promotes to stable.
+     * @param bundleId The ID of the currently running bundle
+     * @return true if promotion was successful or no action was needed
+     */
+    public func notifyAppReady(bundleId: String) -> Bool {
+        return bundleStorage.notifyAppReady(bundleId: bundleId)
+    }
+
+    /**
+     * Gets the crashed bundle history.
+     * @return Array of crashed bundle IDs
+     */
+    public func getCrashHistory() -> [String] {
+        return bundleStorage.getCrashHistory().bundles.map { $0.bundleId }
+    }
+
+    /**
+     * Clears the crashed bundle history.
+     * @return true if clearing was successful
+     */
+    public func clearCrashHistory() -> Bool {
+        return bundleStorage.clearCrashHistory()
+    }
 }

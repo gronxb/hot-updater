@@ -93,6 +93,12 @@ class HotUpdaterException(
                 "Failed to move bundle files",
             )
 
+        fun bundleInCrashedHistory(bundleId: String) =
+            HotUpdaterException(
+                "BUNDLE_IN_CRASHED_HISTORY",
+                "Bundle '$bundleId' is in crashed history and cannot be applied",
+            )
+
         // Signature verification errors
         fun publicKeyNotConfigured() =
             HotUpdaterException(

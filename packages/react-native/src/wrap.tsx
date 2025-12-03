@@ -2,7 +2,11 @@ import React, { useEffect, useLayoutEffect, useState } from "react";
 import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { getBundleId, reload } from "./native";
+import {
+  getBundleId,
+  notifyAppReady as nativeNotifyAppReady,
+  reload,
+} from "./native";
 import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
 
@@ -61,9 +65,43 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
   identifier?: string;
 }
 
+// Overload signatures
 export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
   options: HotUpdaterOptions,
-): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P> {
+): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P>;
+
+export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
+  component: React.ComponentType<P>,
+): React.ComponentType<P>;
+
+// Implementation
+export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
+  optionsOrComponent: HotUpdaterOptions | React.ComponentType<P>,
+):
+  | ((WrappedComponent: React.ComponentType<P>) => React.ComponentType<P>)
+  | React.ComponentType<P> {
+  // Case 1: Component is directly passed (no config)
+  if (typeof optionsOrComponent === "function") {
+    const Component = optionsOrComponent;
+
+    const NotifyOnlyHOC: React.FC<P> = (props: P) => {
+      // Notify app ready only
+      useLayoutEffect(() => {
+        try {
+          nativeNotifyAppReady();
+        } catch (e) {
+          console.warn("[HotUpdater] Failed to notify app ready:", e);
+        }
+      }, []);
+
+      return <Component {...props} />;
+    };
+
+    return NotifyOnlyHOC as React.ComponentType<P>;
+  }
+
+  // Case 2: Config is passed (existing behavior)
+  const options = optionsOrComponent;
   const { reloadOnForceUpdate = true, ...restOptions } = options;
 
   return (WrappedComponent: React.ComponentType<P>) => {
@@ -147,6 +185,16 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         restOptions.onProgress?.(progress);
       }, [progress]);
 
+      // Notify native side that app is ready (JS bundle fully loaded)
+      useLayoutEffect(() => {
+        try {
+          nativeNotifyAppReady();
+        } catch (e) {
+          console.warn("[HotUpdater] Failed to notify app ready:", e);
+        }
+      }, []);
+
+      // Start update check
       useLayoutEffect(() => {
         initHotUpdater();
       }, []);
