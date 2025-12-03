@@ -61,21 +61,28 @@ class BundleFileStorageService(
     private val downloadService: DownloadService,
     private val decompressService: DecompressService,
     private val preferences: PreferencesService,
+    private val identifier: String? = null,
 ) : BundleStorageService {
     override fun setBundleURL(localPath: String?): Boolean {
+        Log.d("BundleStorage", "setBundleURL: $localPath (identifier: $identifier)")
         preferences.setItem("HotUpdaterBundleURL", localPath)
         return true
     }
 
     override fun getCachedBundleURL(): String? {
         val urlString = preferences.getItem("HotUpdaterBundleURL")
+        Log.d("BundleStorage", "getCachedBundleURL: read from prefs = $urlString (identifier: $identifier)")
         if (urlString.isNullOrEmpty()) {
+            Log.d("BundleStorage", "getCachedBundleURL: urlString is null or empty")
             return null
         }
 
         val file = File(urlString)
-        if (!file.exists()) {
+        val exists = file.exists()
+        Log.d("BundleStorage", "getCachedBundleURL: file exists = $exists at path: $urlString")
+        if (!exists) {
             preferences.setItem("HotUpdaterBundleURL", null)
+            Log.d("BundleStorage", "getCachedBundleURL: file doesn't exist, cleared preference")
             return null
         }
         return urlString
@@ -83,7 +90,12 @@ class BundleFileStorageService(
 
     override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
 
-    override fun getBundleURL(): String = getCachedBundleURL() ?: getFallbackBundleURL()
+    override fun getBundleURL(): String {
+        val cached = getCachedBundleURL()
+        val result = cached ?: getFallbackBundleURL()
+        Log.d("BundleStorage", "getBundleURL: returning $result (cached=$cached, identifier: $identifier)")
+        return result
+    }
 
     override suspend fun updateBundle(
         bundleId: String,
@@ -103,7 +115,8 @@ class BundleFileStorageService(
         }
 
         val baseDir = fileSystem.getExternalFilesDir()
-        val bundleStoreDir = File(baseDir, "bundle-store")
+        val storeDirName = identifier?.let { "bundle-store-$it" } ?: "bundle-store"
+        val bundleStoreDir = File(baseDir, storeDirName)
         if (!bundleStoreDir.exists()) {
             bundleStoreDir.mkdirs()
         }
@@ -133,7 +146,8 @@ class BundleFileStorageService(
             }
         }
 
-        val tempDir = File(baseDir, "bundle-temp")
+        val tempDirName = identifier?.let { "bundle-temp-$it" } ?: "bundle-temp"
+        val tempDir = File(baseDir, tempDirName)
         if (tempDir.exists()) {
             tempDir.deleteRecursively()
         }
@@ -259,7 +273,10 @@ class BundleFileStorageService(
                             // If move also fails, try copy + delete as last resort
                             if (!fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
                                 // All strategies failed
-                                Log.e("BundleStorage", "Failed to move bundle from tmpDir to finalBundleDir (rename, move, and copy all failed)")
+                                Log.e(
+                                    "BundleStorage",
+                                    "Failed to move bundle from tmpDir to finalBundleDir (rename, move, and copy all failed)",
+                                )
                                 tempDir.deleteRecursively()
                                 tmpDir.deleteRecursively()
                                 throw HotUpdaterException.moveOperationFailed()

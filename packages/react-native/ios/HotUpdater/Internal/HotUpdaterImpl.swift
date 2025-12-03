@@ -4,15 +4,32 @@ import React
 @objcMembers public class HotUpdaterImpl: NSObject {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
+    private let identifier: String?
 
     private static let DEFAULT_CHANNEL = "production"
 
+    // MARK: - Public Accessors
+
+    /// Gets the identifier for this instance
+    public var getIdentifier: String? {
+        return identifier
+    }
+
     // MARK: - Initialization
-    
+
     /**
      * Convenience initializer that creates and configures all dependencies.
+     * Uses default identifier (nil) for backward compatibility.
      */
     public convenience override init() {
+        self.init(identifier: nil)
+    }
+
+    /**
+     * Convenience initializer with identifier that creates and configures all dependencies.
+     * @param identifier Custom identifier for storage isolation (nil for default)
+     */
+    public convenience init(identifier: String?) {
         let fileSystem = FileManagerService()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
@@ -25,22 +42,30 @@ import React
             preferences: preferences
         )
 
-        self.init(bundleStorage: bundleStorage, preferences: preferences)
+        self.init(bundleStorage: bundleStorage, preferences: preferences, identifier: identifier)
     }
-    
+
     /**
      * Primary initializer with dependency injection.
      * @param bundleStorage Service for bundle storage operations
      * @param preferences Service for preference storage
+     * @param identifier Custom identifier for storage isolation (nil for default)
      */
-    internal init(bundleStorage: BundleStorageService, preferences: PreferencesService) {
+    internal init(bundleStorage: BundleStorageService, preferences: PreferencesService, identifier: String?) {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
+        self.identifier = identifier
         super.init()
 
         // Configure preferences with isolation key
-        let isolationKey = HotUpdaterImpl.getIsolationKey()
+        let isolationKey = HotUpdaterImpl.getIsolationKey(identifier: identifier)
         (preferences as? VersionedPreferencesService)?.configure(isolationKey: isolationKey)
+
+        // Auto-register with registry if identifier is provided
+        if let id = identifier {
+            HotUpdaterRegistry.register(self, identifier: id)
+            NSLog("[HotUpdaterImpl] Auto-registered with identifier: \(id)")
+        }
     }
     
     // MARK: - Static Properties
@@ -61,21 +86,34 @@ import React
     
     /**
      * Gets the complete isolation key for preferences storage.
-     * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_
+     * @param identifier Custom identifier for storage isolation (nil for default)
+     * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_{identifier}_
      */
-    public static func getIsolationKey() -> String {
+    public static func getIsolationKey(identifier: String?) -> String {
         // Get fingerprint hash from Info.plist
         let fingerprintHash = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
-        
+
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
         let appChannel = self.appChannel
-        
+
         // Use fingerprint if available, otherwise use app version
         let baseKey = (fingerprintHash != nil && !fingerprintHash!.isEmpty) ? fingerprintHash! : appVersion
-        
-        // Build complete isolation key
-        return "hotupdater_\(baseKey)_\(appChannel)_"
+
+        // Build complete isolation key with optional identifier
+        if let customIdentifier = identifier, !customIdentifier.isEmpty {
+            return "hotupdater_\(baseKey)_\(appChannel)_\(customIdentifier)_"
+        } else {
+            return "hotupdater_\(baseKey)_\(appChannel)_"
+        }
+    }
+
+    /**
+     * Gets the complete isolation key for preferences storage (backward compatibility).
+     * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_
+     */
+    public static func getIsolationKey() -> String {
+        return getIsolationKey(identifier: nil)
     }
 
     // MARK: - Channel Management
@@ -151,13 +189,16 @@ import React
             // Extract fileHash if provided
             let fileHash = data["fileHash"] as? String
 
+            // Extract identifier if provided
+            let identifier = data["identifier"] as? String
+
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
 
-            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
+            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil"), identifier: \(identifier ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, progressHandler: { progress in
+            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, identifier: identifier, progressHandler: { progress in
                 // Call JS progress callback if provided
                 if let callback = progressCallback {
                     DispatchQueue.main.async {

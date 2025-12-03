@@ -53,6 +53,12 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
    * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#onupdateprocesscompleted}
    */
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
+  /**
+   * Optional identifier to target a specific HotUpdater instance.
+   * Use this in brownfield apps with multiple React Native views.
+   * The identifier must match an instance created with `HotUpdater(identifier: "...")` on the native side.
+   */
+  identifier?: string;
 }
 
 export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
@@ -92,9 +98,11 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
 
           if (updateInfo.shouldForceUpdate === false) {
-            void updateInfo.updateBundle().catch((error) => {
-              restOptions.onError?.(error);
-            });
+            void updateInfo
+              .updateBundle({ identifier: restOptions.identifier })
+              .catch((error) => {
+                restOptions.onError?.(error);
+              });
 
             restOptions.onUpdateProcessCompleted?.({
               id: updateInfo.id,
@@ -107,7 +115,9 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
           // Force Update Scenario
           setUpdateStatus("UPDATING");
-          const isSuccess = await updateInfo.updateBundle();
+          const isSuccess = await updateInfo.updateBundle({
+            identifier: restOptions.identifier,
+          });
 
           if (!isSuccess) {
             throw new Error(

@@ -9,11 +9,43 @@ import kotlinx.coroutines.withContext
 /**
  * Core implementation class for HotUpdater functionality
  */
-class HotUpdaterImpl(
-    private val context: Context,
-    private val bundleStorage: BundleStorageService,
-    private val preferences: PreferencesService,
-) {
+class HotUpdaterImpl {
+    private val context: Context
+    private val bundleStorage: BundleStorageService
+    private val preferences: PreferencesService
+    private val identifier: String?
+
+    /**
+     * Primary constructor with dependency injection (for testing)
+     */
+    constructor(
+        context: Context,
+        bundleStorage: BundleStorageService,
+        preferences: PreferencesService,
+        identifier: String? = null,
+    ) {
+        this.context = context.applicationContext
+        this.bundleStorage = bundleStorage
+        this.preferences = preferences
+        this.identifier = identifier
+
+        // Auto-register with registry if identifier is provided
+        identifier?.let {
+            HotUpdaterRegistry.register(this, it)
+            Log.d(TAG, "Auto-registered with identifier: $it")
+        }
+    }
+
+    /**
+     * Convenience constructor for simple usage
+     */
+    constructor(context: Context, identifier: String? = null) : this(
+        context = context,
+        bundleStorage = createBundleStorage(context, identifier),
+        preferences = createPreferences(context, identifier),
+        identifier = identifier,
+    )
+
     /**
      * Gets the app version
      * @param context Application context
@@ -38,7 +70,77 @@ class HotUpdaterImpl(
         }
 
     companion object {
+        private const val TAG = "HotUpdaterImpl"
         private const val DEFAULT_CHANNEL = "production"
+
+        /**
+         * Create BundleStorageService with all dependencies
+         */
+        private fun createBundleStorage(
+            context: Context,
+            identifier: String?,
+        ): BundleStorageService {
+            val appContext = context.applicationContext
+            val fileSystem = FileManagerService(appContext)
+            val preferences = createPreferences(appContext, identifier)
+            val downloadService = OkHttpDownloadService()
+            val decompressService = DecompressService()
+
+            return BundleFileStorageService(
+                appContext,
+                fileSystem,
+                downloadService,
+                decompressService,
+                preferences,
+                identifier,
+            )
+        }
+
+        /**
+         * Create PreferencesService with isolation key
+         */
+        private fun createPreferences(
+            context: Context,
+            identifier: String?,
+        ): PreferencesService {
+            val appContext = context.applicationContext
+            val isolationKey = getIsolationKey(appContext, identifier)
+            return VersionedPreferencesService(appContext, isolationKey)
+        }
+
+        /**
+         * Gets the complete isolation key for preferences storage with optional identifier
+         * @param context Application context
+         * @param identifier Custom identifier for storage isolation (null for default)
+         * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}_{identifier}
+         */
+        private fun getIsolationKey(
+            context: Context,
+            identifier: String?,
+        ): String {
+            // Get fingerprint hash directly from resources
+            val fingerprintId = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+            val fingerprintHash =
+                if (fingerprintId != 0) {
+                    context.getString(fingerprintId).takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+
+            // Get app version and channel
+            val appVersion = getAppVersion(context) ?: "unknown"
+            val appChannel = getChannel(context)
+
+            // Use fingerprint if available, otherwise use app version
+            val baseKey = if (!fingerprintHash.isNullOrEmpty()) fingerprintHash else appVersion
+
+            // Build complete isolation key with optional identifier
+            return if (identifier != null) {
+                "HotUpdaterPrefs_${baseKey}_${appChannel}_$identifier"
+            } else {
+                "HotUpdaterPrefs_${baseKey}_$appChannel"
+            }
+        }
 
         fun getAppVersion(context: Context): String? =
             try {
@@ -68,97 +170,79 @@ class HotUpdaterImpl(
         }
 
         /**
-         * Gets the complete isolation key for preferences storage
+         * Gets the complete isolation key for preferences storage (backward compatibility)
          * @param context Application context
          * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}
          */
-        fun getIsolationKey(context: Context): String {
-            // Get fingerprint hash directly from resources
-            val fingerprintId = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
-            val fingerprintHash =
-                if (fingerprintId != 0) {
-                    context.getString(fingerprintId).takeIf { it.isNotEmpty() }
-                } else {
-                    null
-                }
+        fun getIsolationKey(context: Context): String = getIsolationKey(context, null)
 
-            // Get app version and channel
-            val appVersion = getAppVersion(context) ?: "unknown"
-            val appChannel = getChannel(context)
+        /**
+         * Get minimum bundle ID string
+         * @return The minimum bundle ID string
+         */
+        fun getMinBundleId(): String = BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
 
-            // Use fingerprint if available, otherwise use app version
-            val baseKey = if (!fingerprintHash.isNullOrEmpty()) fingerprintHash else appVersion
+        /**
+         * Generates a bundle ID based on build timestamp
+         * @return The generated minimum bundle ID string
+         */
+        private fun generateMinBundleIdFromBuildTimestamp(): String =
+            try {
+                val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
+                val bytes =
+                    ByteArray(16).apply {
+                        this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
+                        this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
+                        this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
+                        this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
+                        this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
+                        this[5] = (buildTimestampMs and 0xFF).toByte()
+                        this[6] = 0x70.toByte()
+                        this[7] = 0x00.toByte()
+                        this[8] = 0x80.toByte()
+                        this[9] = 0x00.toByte()
+                        this[10] = 0x00.toByte()
+                        this[11] = 0x00.toByte()
+                        this[12] = 0x00.toByte()
+                        this[13] = 0x00.toByte()
+                        this[14] = 0x00.toByte()
+                        this[15] = 0x00.toByte()
+                    }
+                String.format(
+                    "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                    bytes[0].toInt() and 0xFF,
+                    bytes[1].toInt() and 0xFF,
+                    bytes[2].toInt() and 0xFF,
+                    bytes[3].toInt() and 0xFF,
+                    bytes[4].toInt() and 0xFF,
+                    bytes[5].toInt() and 0xFF,
+                    bytes[6].toInt() and 0xFF,
+                    bytes[7].toInt() and 0xFF,
+                    bytes[8].toInt() and 0xFF,
+                    bytes[9].toInt() and 0xFF,
+                    bytes[10].toInt() and 0xFF,
+                    bytes[11].toInt() and 0xFF,
+                    bytes[12].toInt() and 0xFF,
+                    bytes[13].toInt() and 0xFF,
+                    bytes[14].toInt() and 0xFF,
+                    bytes[15].toInt() and 0xFF,
+                )
+            } catch (e: Exception) {
+                "00000000-0000-0000-0000-000000000000"
+            }
 
-            // Build complete isolation key
-            return "HotUpdaterPrefs_${baseKey}_$appChannel"
-        }
-    }
-
-    /**
-     * Get minimum bundle ID string
-     * @return The minimum bundle ID string
-     */
-    fun getMinBundleId(): String = BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
-
-    /**
-     * Generates a bundle ID based on build timestamp
-     * @return The generated minimum bundle ID string
-     */
-    private fun generateMinBundleIdFromBuildTimestamp(): String =
-        try {
-            val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
-            val bytes =
-                ByteArray(16).apply {
-                    this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
-                    this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
-                    this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
-                    this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
-                    this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
-                    this[5] = (buildTimestampMs and 0xFF).toByte()
-                    this[6] = 0x70.toByte()
-                    this[7] = 0x00.toByte()
-                    this[8] = 0x80.toByte()
-                    this[9] = 0x00.toByte()
-                    this[10] = 0x00.toByte()
-                    this[11] = 0x00.toByte()
-                    this[12] = 0x00.toByte()
-                    this[13] = 0x00.toByte()
-                    this[14] = 0x00.toByte()
-                    this[15] = 0x00.toByte()
-                }
-            String.format(
-                "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                bytes[0].toInt() and 0xFF,
-                bytes[1].toInt() and 0xFF,
-                bytes[2].toInt() and 0xFF,
-                bytes[3].toInt() and 0xFF,
-                bytes[4].toInt() and 0xFF,
-                bytes[5].toInt() and 0xFF,
-                bytes[6].toInt() and 0xFF,
-                bytes[7].toInt() and 0xFF,
-                bytes[8].toInt() and 0xFF,
-                bytes[9].toInt() and 0xFF,
-                bytes[10].toInt() and 0xFF,
-                bytes[11].toInt() and 0xFF,
-                bytes[12].toInt() and 0xFF,
-                bytes[13].toInt() and 0xFF,
-                bytes[14].toInt() and 0xFF,
-                bytes[15].toInt() and 0xFF,
-            )
-        } catch (e: Exception) {
-            "00000000-0000-0000-0000-000000000000"
-        }
-
-    /**
-     * Gets the current fingerprint hash
-     * @return The fingerprint hash or null if not set
-     */
-    fun getFingerprintHash(): String? {
-        val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
-        return if (id != 0) {
-            context.getString(id).takeIf { it.isNotEmpty() }
-        } else {
-            null
+        /**
+         * Gets the current fingerprint hash
+         * @param context Application context
+         * @return The fingerprint hash or null if not set
+         */
+        fun getFingerprintHash(context: Context): String? {
+            val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+            return if (id != 0) {
+                context.getString(id).takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
         }
     }
 
@@ -179,7 +263,11 @@ class HotUpdaterImpl(
      * Gets the path to the bundle file
      * @return The path to the bundle file
      */
-    fun getJSBundleFile(): String = bundleStorage.getBundleURL()
+    fun getJSBundleFile(): String {
+        // Register the identifier being used by getJSBundleFile for validation
+        HotUpdaterRegistry.setDefaultIdentifier(identifier)
+        return bundleStorage.getBundleURL()
+    }
 
     /**
      * Updates the bundle from the specified URL

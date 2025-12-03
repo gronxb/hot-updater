@@ -14,13 +14,12 @@
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
 
-// Create static HotUpdaterImpl instance
-static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
-
 @implementation HotUpdater {
     bool hasListeners;
     // Keep track of tasks ONLY for removing observers when this ObjC instance is invalidated
     NSMutableSet<NSURLSessionTask *> *observedTasks; // Changed to NSURLSessionTask for broader compatibility if needed
+    // Instance-specific implementation (nil for default/static behavior)
+    HotUpdaterImpl *_instanceImpl;
 }
 
 + (BOOL)requiresMainQueueSetup {
@@ -28,9 +27,16 @@ static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
 }
 
 - (instancetype)init {
+    return [self initWithIdentifier:nil];
+}
+
+- (instancetype)initWithIdentifier:(NSString *)identifier {
     self = [super init];
     if (self) {
         observedTasks = [NSMutableSet set];
+
+        // Create HotUpdaterImpl with identifier (uses convenience initializer)
+        _instanceImpl = [[HotUpdaterImpl alloc] initWithIdentifier:identifier];
 
         // Start observing notifications needed for cleanup/events
         // Using self as observer
@@ -105,11 +111,12 @@ RCT_EXPORT_MODULE();
 
 
 - (NSDictionary *)constantsToExport {
+    // Use instance implementation
     return @{
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null], // Local
         @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null], // Swift
-        @"CHANNEL": [_hotUpdaterImpl getChannel] ?: [NSNull null], // Swift
-        @"FINGERPRINT_HASH": [_hotUpdaterImpl getFingerprintHash] ?: [NSNull null] // Swift
+        @"CHANNEL": [_instanceImpl getChannel] ?: [NSNull null], // Swift
+        @"FINGERPRINT_HASH": [_instanceImpl getFingerprintHash] ?: [NSNull null] // Swift
     };
 }
 
@@ -118,9 +125,21 @@ RCT_EXPORT_MODULE();
 }
 
 
-// Get bundleURL using static instance
+// Get bundleURL using lazy singleton (class method for backward compatibility)
 + (NSURL *)bundleURL {
-    return [_hotUpdaterImpl bundleURL];
+    static HotUpdater *_defaultInstance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _defaultInstance = [[HotUpdater alloc] initWithIdentifier:nil];
+    });
+    return [_defaultInstance bundleURL];
+}
+
+// Get bundleURL using instance implementation (instance method)
+- (NSURL *)bundleURL {
+    // Register the identifier being used by bundleURL for validation
+    [HotUpdaterRegistry setDefaultIdentifier:[_instanceImpl getIdentifier]];
+    return [_instanceImpl bundleURL];
 }
 
 
@@ -185,8 +204,8 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            // Get bundleURL using static instance
-            NSURL *bundleURL = [_hotUpdaterImpl bundleURL];
+            // Get bundleURL using instance implementation
+            NSURL *bundleURL = [self->_instanceImpl bundleURL];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
                 // This method of setting bundleURL might be outdated depending on RN version.
@@ -220,15 +239,37 @@ RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)param
     if (params.fileHash()) {
         paramDict[@"fileHash"] = params.fileHash();
     }
+    if (params.identifier()) {
+        paramDict[@"identifier"] = params.identifier();
+    }
 
-    [_hotUpdaterImpl updateBundle:paramDict resolver:resolve rejecter:reject];
+    NSString *identifier = paramDict[@"identifier"];
+    HotUpdaterImpl *impl = [HotUpdaterRegistry resolveInstanceWithIdentifier:identifier fallback:self->_instanceImpl];
+
+    if (!impl) {
+        NSString *errorMessage = [NSString stringWithFormat:@"HotUpdater instance with identifier '%@' not found. Make sure to create the instance with HotUpdater(identifier: \"%@\") first.", identifier, identifier];
+        reject(@"INSTANCE_NOT_FOUND", errorMessage, nil);
+        return;
+    }
+
+    [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
 #else
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
-    [_hotUpdaterImpl updateBundle:params resolver:resolve rejecter:reject];
+
+    NSString *identifier = params[@"identifier"];
+    HotUpdaterImpl *impl = [HotUpdaterRegistry resolveInstanceWithIdentifier:identifier fallback:self->_instanceImpl];
+
+    if (!impl) {
+        NSString *errorMessage = [NSString stringWithFormat:@"HotUpdater instance with identifier '%@' not found. Make sure to create the instance with HotUpdater(identifier: \"%@\") first.", identifier, identifier];
+        reject(@"INSTANCE_NOT_FOUND", errorMessage, nil);
+        return;
+    }
+
+    [impl updateBundle:params resolver:resolve rejecter:reject];
 }
 #endif
 

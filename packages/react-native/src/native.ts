@@ -1,9 +1,6 @@
 import type { UpdateStatus } from "@hot-updater/core";
 import { NativeEventEmitter } from "react-native";
-import {
-  HotUpdaterErrorCode,
-  isHotUpdaterError,
-} from "./error";
+import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
   type UpdateBundleParams,
 } from "./specs/NativeHotUpdater";
@@ -103,12 +100,18 @@ export async function updateBundle(
       ? undefined
       : paramsOrBundleId.fileHash;
 
+  const targetIdentifier =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.identifier;
+
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
+        identifier: targetIdentifier,
       });
       if (ok) {
         lastInstalledBundleId = updateBundleId;

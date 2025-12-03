@@ -26,8 +26,11 @@ export type CheckForUpdateResult = AppUpdateInfo & {
   /**
    * Updates the bundle.
    * This method is equivalent to `HotUpdater.updateBundle()` but with all required arguments pre-filled.
+   * @param options - Optional configuration
+   * @param options.identifier - Optional identifier to target a specific HotUpdater instance.
+   *                              Use this in brownfield apps with multiple React Native views.
    */
-  updateBundle: () => Promise<boolean>;
+  updateBundle: (options?: { identifier?: string }) => Promise<boolean>;
 };
 
 export async function checkForUpdate(
@@ -77,12 +80,13 @@ export async function checkForUpdate(
 
     return {
       ...updateInfo,
-      updateBundle: async () => {
+      updateBundle: async (options) => {
         return updateBundle({
           bundleId: updateInfo.id,
           fileUrl: updateInfo.fileUrl,
           fileHash: updateInfo.fileHash,
           status: updateInfo.status,
+          identifier: options?.identifier,
         });
       },
     };

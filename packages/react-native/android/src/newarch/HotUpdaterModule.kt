@@ -19,10 +19,45 @@ class HotUpdaterModule internal constructor(
 
     override fun getName(): String = NAME
 
+    /**
+     * Resolves HotUpdaterImpl instance based on identifier
+     * @param identifier Optional identifier to look up in registry (null = use singleton)
+     * @param promise Promise to reject if instance not found
+     * @return HotUpdaterImpl instance or null if not found (promise will be rejected)
+     */
+    private fun resolveHotUpdaterInstance(
+        identifier: String?,
+        promise: Promise,
+    ): HotUpdaterImpl? {
+        val impl =
+            if (identifier != null) {
+                HotUpdaterRegistry.get(identifier)
+            } else {
+                HotUpdater.getInstance(mReactApplicationContext)
+            }
+
+        if (impl == null) {
+            val message =
+                if (identifier != null) {
+                    "HotUpdater instance with identifier '$identifier' not found. Make sure to create the instance first."
+                } else {
+                    "HotUpdater instance not found. Make sure to call getJSBundleFile first."
+                }
+            promise.reject("INSTANCE_NOT_FOUND", message)
+        }
+
+        return impl
+    }
+
     override fun reload(promise: Promise) {
         CoroutineScope(Dispatchers.Main.immediate).launch {
             try {
-                HotUpdater.reload(mReactApplicationContext)
+                // Get the identifier used by getJSBundleFile
+                val identifier = HotUpdaterRegistry.getDefaultIdentifier()
+                val impl = resolveHotUpdaterInstance(identifier, promise) ?: return@launch
+
+                val currentActivity = mReactApplicationContext.currentActivity
+                impl.reload(currentActivity)
                 promise.resolve(null)
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to reload", e)
@@ -62,9 +97,11 @@ class HotUpdaterModule internal constructor(
                 }
 
                 val fileHash = params.getString("fileHash")
+                val identifier = params.getString("identifier")
 
-                HotUpdater.updateBundle(
-                    mReactApplicationContext,
+                val impl = resolveHotUpdaterInstance(identifier, promise) ?: return@launch
+
+                impl.updateBundle(
                     bundleId,
                     fileUrl,
                     fileHash,
@@ -90,7 +127,7 @@ class HotUpdaterModule internal constructor(
 
     override fun getTypedExportedConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId(mReactApplicationContext)
+        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
         constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
         constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)

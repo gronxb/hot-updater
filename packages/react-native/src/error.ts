@@ -33,6 +33,24 @@ export enum HotUpdaterErrorCode {
    */
   INVALID_FILE_URL = "INVALID_FILE_URL",
 
+  /**
+   * HotUpdater instance with specified identifier not found (iOS only).
+   * Thrown when identifier parameter is provided but no matching instance exists.
+   * Make sure to create the instance with HotUpdater(identifier: "...") before calling updateBundle.
+   * @platform iOS
+   * @retryable false
+   */
+  INSTANCE_NOT_FOUND = "INSTANCE_NOT_FOUND",
+
+  /**
+   * Identifier mismatch between bundleURL and updateBundle.
+   * Thrown when bundleURL uses one identifier but updateBundle is called with a different identifier.
+   * This prevents accidentally updating a bundle with incompatible storage.
+   * Make sure to use the same identifier for both bundleURL and updateBundle calls.
+   * @retryable false
+   */
+  IDENTIFIER_MISMATCH = "IDENTIFIER_MISMATCH",
+
   // ==================== Bundle Storage Errors ====================
 
   /**
