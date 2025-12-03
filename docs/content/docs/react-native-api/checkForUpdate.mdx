@@ -59,6 +59,44 @@ async function checkForAppUpdate() {
 
 ```
 
+## Important: HotUpdater.wrap Required
+
+When using `checkForUpdate`, you must wrap your root component with `HotUpdater.wrap()`. This is required for proper crash detection and rollback functionality.
+
+```tsx
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { useEffect } from "react";
+
+function App() {
+  useEffect(() => {
+    HotUpdater.checkForUpdate({
+      source: getUpdateSource("<your-update-server-url>", {
+        updateStrategy: "appVersion", // or "fingerprint"
+      }),
+      requestHeaders: {
+        Authorization: "Bearer <your-access-token>",
+      },
+    }).then(async (updateInfo) => {
+      if (updateInfo) {
+        updateInfo.updateBundle();
+        if (updateInfo.shouldForceUpdate) {
+          await HotUpdater.reload();
+        }
+      }
+    }).catch((error) => {
+      console.error("Failed to check for update:", error);
+    });
+  }, []);
+
+  return <YourApp />;
+}
+
+// Wrap your app (notifyAppReady will be called automatically)
+export default HotUpdater.wrap(App);
+```
+
+Without wrap, calling `checkForUpdate` will throw an error with instructions on how to fix it.
+
 ## Understanding `getUpdateSource`
 
 The `getUpdateSource` function is used to construct the final URL for checking for updates. It takes a `baseUrl` as its first argument and an options object as its second argument. The `updateStrategy` property within the options object determines the final structure of the request URL.

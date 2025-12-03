@@ -5,9 +5,15 @@ icon: Package
 ---
 
 ## Usage
-Use the `source` option in `HotUpdater.wrap` to specify the update server URL, then wrap the App entry point.
 
-Since it uses fetch, if you need to pass headers along with it, you can use the `requestHeaders` option to pass headers.
+> **Important:** `HotUpdater.wrap` is **required** for all apps. It ensures proper crash detection and rollback functionality. All HotUpdater methods will throw an error if wrap is not used.
+
+`HotUpdater.wrap` supports two usage patterns:
+
+### Option 1: With Automatic Updates (Recommended)
+
+Use this for apps that want automatic OTA updates. This is the standard approach with full update management.
+
 ```tsx
 import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
@@ -29,6 +35,61 @@ export default HotUpdater.wrap({ // [!code hl:10]
     "Authorization": "Bearer <your-access-token>",
   },
 })(App);
+```
+
+### Option 2: Manual Updates Only (Custom Flow)
+
+Use this for apps with custom update logic. This only calls `notifyAppReady()` automatically, giving you full control over when and how updates are applied.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+// Just wrap the component - notifyAppReady will be called automatically
+export default HotUpdater.wrap(App); // [!code hl]
+```
+
+Then use `checkForUpdate`, `runUpdateProcess`, or `updateBundle` manually when needed:
+
+```tsx
+import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { useEffect } from "react";
+
+function App() {
+  useEffect(() => {
+    const checkUpdate = async () => {
+      const updateInfo = await HotUpdater.checkForUpdate({
+        source: getUpdateSource("<your-update-server-url>", {
+          updateStrategy: "appVersion"
+        }),
+      });
+
+      if (!updateInfo) {
+        console.log("No update found");
+        return;
+      }
+
+      await updateInfo.updateBundle();
+      if (updateInfo.shouldForceUpdate) {
+        await HotUpdater.reload();
+      }
+    };
+
+    checkUpdate();
+  }, []);
+
+  // ... your app
+}
+
+export default HotUpdater.wrap(App);
 ```
 
 
