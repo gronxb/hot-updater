@@ -88,10 +88,10 @@ function createHotUpdaterClient() {
      * })(App);
      * ```
      */
-    wrap: (...args: Parameters<typeof wrap>) => {
+    wrap: ((optionsOrComponent: Parameters<typeof wrap>[0]) => {
       markWrapUsedInternal();
-      return wrap(...args);
-    },
+      return wrap(optionsOrComponent);
+    }) as typeof wrap,
 
     /**
      * Reloads the app.
