@@ -22,25 +22,26 @@ data class BundleMetadata(
         const val SCHEMA_VERSION = "metadata-v1"
         const val METADATA_FILENAME = "metadata.json"
 
-        fun fromJson(json: JSONObject): BundleMetadata {
-            return BundleMetadata(
+        fun fromJson(json: JSONObject): BundleMetadata =
+            BundleMetadata(
                 schema = json.optString("schema", SCHEMA_VERSION),
                 stableBundleId = json.optString("stableBundleId", null)?.takeIf { it.isNotEmpty() },
                 stagingBundleId = json.optString("stagingBundleId", null)?.takeIf { it.isNotEmpty() },
                 verificationPending = json.optBoolean("verificationPending", false),
-                verificationAttemptedAt = if (json.has("verificationAttemptedAt") && !json.isNull("verificationAttemptedAt")) {
-                    json.getLong("verificationAttemptedAt")
-                } else {
-                    null
-                },
-                stagingExecutionCount = if (json.has("stagingExecutionCount") && !json.isNull("stagingExecutionCount")) {
-                    json.getInt("stagingExecutionCount")
-                } else {
-                    null
-                },
+                verificationAttemptedAt =
+                    if (json.has("verificationAttemptedAt") && !json.isNull("verificationAttemptedAt")) {
+                        json.getLong("verificationAttemptedAt")
+                    } else {
+                        null
+                    },
+                stagingExecutionCount =
+                    if (json.has("stagingExecutionCount") && !json.isNull("stagingExecutionCount")) {
+                        json.getInt("stagingExecutionCount")
+                    } else {
+                        null
+                    },
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
             )
-        }
 
         fun loadFromFile(file: File): BundleMetadata? {
             return try {
@@ -58,8 +59,8 @@ data class BundleMetadata(
         }
     }
 
-    fun toJson(): JSONObject {
-        return JSONObject().apply {
+    fun toJson(): JSONObject =
+        JSONObject().apply {
             put("schema", schema)
             put("stableBundleId", stableBundleId ?: JSONObject.NULL)
             put("stagingBundleId", stagingBundleId ?: JSONObject.NULL)
@@ -68,10 +69,9 @@ data class BundleMetadata(
             put("stagingExecutionCount", stagingExecutionCount ?: JSONObject.NULL)
             put("updatedAt", updatedAt)
         }
-    }
 
-    fun saveToFile(file: File): Boolean {
-        return try {
+    fun saveToFile(file: File): Boolean =
+        try {
             file.parentFile?.mkdirs()
             file.writeText(toJson().toString(2))
             Log.d(TAG, "Saved metadata to file: ${file.absolutePath}")
@@ -80,7 +80,6 @@ data class BundleMetadata(
             Log.e(TAG, "Failed to save metadata to file", e)
             false
         }
-    }
 }
 
 /**
@@ -92,22 +91,20 @@ data class CrashedBundleEntry(
     val crashCount: Int = 1,
 ) {
     companion object {
-        fun fromJson(json: JSONObject): CrashedBundleEntry {
-            return CrashedBundleEntry(
+        fun fromJson(json: JSONObject): CrashedBundleEntry =
+            CrashedBundleEntry(
                 bundleId = json.getString("bundleId"),
                 crashedAt = json.getLong("crashedAt"),
                 crashCount = json.optInt("crashCount", 1),
             )
-        }
     }
 
-    fun toJson(): JSONObject {
-        return JSONObject().apply {
+    fun toJson(): JSONObject =
+        JSONObject().apply {
             put("bundleId", bundleId)
             put("crashedAt", crashedAt)
             put("crashCount", crashCount)
         }
-    }
 }
 
 /**
@@ -150,17 +147,16 @@ data class CrashedHistory(
         }
     }
 
-    fun toJson(): JSONObject {
-        return JSONObject().apply {
+    fun toJson(): JSONObject =
+        JSONObject().apply {
             val bundlesArray = JSONArray()
             bundles.forEach { bundlesArray.put(it.toJson()) }
             put("bundles", bundlesArray)
             put("maxHistorySize", maxHistorySize)
         }
-    }
 
-    fun saveToFile(file: File): Boolean {
-        return try {
+    fun saveToFile(file: File): Boolean =
+        try {
             file.parentFile?.mkdirs()
             file.writeText(toJson().toString(2))
             Log.d(TAG, "Saved crashed history to file: ${file.absolutePath}")
@@ -169,21 +165,19 @@ data class CrashedHistory(
             Log.e(TAG, "Failed to save crashed history to file", e)
             false
         }
-    }
 
-    fun contains(bundleId: String): Boolean {
-        return bundles.any { it.bundleId == bundleId }
-    }
+    fun contains(bundleId: String): Boolean = bundles.any { it.bundleId == bundleId }
 
     fun addEntry(bundleId: String) {
         val existingIndex = bundles.indexOfFirst { it.bundleId == bundleId }
         if (existingIndex >= 0) {
             // Update existing entry
             val existing = bundles[existingIndex]
-            bundles[existingIndex] = existing.copy(
-                crashedAt = System.currentTimeMillis(),
-                crashCount = existing.crashCount + 1,
-            )
+            bundles[existingIndex] =
+                existing.copy(
+                    crashedAt = System.currentTimeMillis(),
+                    crashCount = existing.crashCount + 1,
+                )
         } else {
             // Add new entry
             bundles.add(
