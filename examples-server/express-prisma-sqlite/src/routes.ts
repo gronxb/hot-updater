@@ -1,5 +1,5 @@
-import type { Router } from "express";
 import { toNodeHandler } from "@hot-updater/server/node";
+import type { Router } from "express";
 import { hotUpdater } from "./db";
 
 export function setupRoutes(router: Router) {

@@ -87,7 +87,7 @@ The environment variables in `.env` are used only during deployment, not in your
 Add the HotUpdater wrapper to your main application component:
 
 ```tsx title="App.tsx"
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
   return (
@@ -98,9 +98,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("https://your-update-server-url/api/check-update", { // [!code ++]
-    updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
-  }), // [!code ++]
+  baseURL: "https://your-update-server-url/api/check-update", // [!code ++]
+  updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
+  updateMode: "auto",
   requestHeaders: {
     // Optional: Add custom headers if needed
   },

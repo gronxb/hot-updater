@@ -110,7 +110,7 @@ npx hot-updater fingerprint create
 Configure your React Native app:
 
 ```tsx title="App.tsx"
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
 
 function App() {
@@ -122,9 +122,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("https://your-update-server.com/api/update-check", {
-    updateStrategy: "fingerprint", // [!code ++]
-  }),
+  baseURL: "https://your-update-server.com/api/update-check", // [!code ++]
+  updateStrategy: "fingerprint", // [!code ++]
+  updateMode: "auto",
 })(App);
 ```
 

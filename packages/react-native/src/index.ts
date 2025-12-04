@@ -1,4 +1,8 @@
-import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
+import {
+  type CheckForUpdateOptions,
+  checkForUpdate,
+  type InternalCheckForUpdateOptions,
+} from "./checkForUpdate";
 import {
   addListener,
   clearCrashHistory,
@@ -12,21 +16,17 @@ import {
   type UpdateParams,
   updateBundle,
 } from "./native";
-import {
-  type RunUpdateProcessOptions,
-  runUpdateProcess,
-} from "./runUpdateProcess";
 import { hotUpdaterStore } from "./store";
-import { wrap } from "./wrap";
+import { type HotUpdaterOptions, wrap } from "./wrap";
 
-export type { HotUpdaterEvent } from "./native";
+export type { HotUpdaterEvent, NotifyAppReadyResult } from "./native";
 export * from "./store";
 export {
   extractSignatureFailure,
   isSignatureVerificationError,
   type SignatureVerificationFailure,
 } from "./types";
-export type { HotUpdaterOptions } from "./wrap";
+export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
 
 addListener("onProgress", ({ progress }) => {
   hotUpdaterStore.setState({
@@ -39,29 +39,34 @@ addListener("onProgress", ({ progress }) => {
  * This function is called once on module initialization to create a singleton instance.
  */
 function createHotUpdaterClient() {
-  // wrap usage tracking
-  let isWrapUsed = false;
-
-  const markWrapUsedInternal = () => {
-    isWrapUsed = true;
+  // Global configuration stored from wrap
+  const globalConfig: {
+    baseURL: string | null;
+  } = {
+    baseURL: null,
   };
 
-  function assertWrapUsage(methodName: string) {
-    if (!isWrapUsed) {
+  function ensureGlobalBaseURL(methodName: string) {
+    if (globalConfig.baseURL === null) {
       throw new Error(
         `[HotUpdater] ${methodName} requires HotUpdater.wrap() to be used.\n\n` +
           `To fix this issue, wrap your root component with HotUpdater.wrap():\n\n` +
           `Option 1: With automatic updates\n` +
           `  export default HotUpdater.wrap({\n` +
-          `    source: getUpdateSource("<your-update-server-url>", {\n` +
-          `      updateStrategy: "appVersion"\n` +
-          `    })\n` +
+          `    baseURL: "<your-update-server-url>",\n` +
+          `    updateStrategy: "appVersion",\n` +
+          `    updateMode: "auto"\n` +
           `  })(App);\n\n` +
           `Option 2: Manual updates only (custom flow)\n` +
-          `  export default HotUpdater.wrap(App);\n\n` +
+          `  export default HotUpdater.wrap({\n` +
+          `    baseURL: "<your-update-server-url>",\n` +
+          `    updateMode: "manual"\n` +
+          `  })(App);\n\n` +
           `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap`,
       );
     }
+
+    return globalConfig.baseURL;
   }
 
   return {
@@ -80,16 +85,18 @@ function createHotUpdaterClient() {
      * @example
      * ```tsx
      * export default HotUpdater.wrap({
-     *   source: "<your-update-server-url>",
+     *   baseURL: "<your-update-server-url>",
+     *   updateStrategy: "appVersion",
+     *   updateMode: "auto",
      *   requestHeaders: {
      *     "Authorization": "Bearer <your-access-token>",
      *   },
      * })(App);
      * ```
      */
-    wrap: ((optionsOrComponent: Parameters<typeof wrap>[0]) => {
-      markWrapUsedInternal();
-      return wrap(optionsOrComponent);
+    wrap: ((options: HotUpdaterOptions) => {
+      globalConfig.baseURL = options.baseURL;
+      return wrap(options);
     }) as typeof wrap,
 
     /**
@@ -195,45 +202,16 @@ function createHotUpdaterClient() {
      * ```
      */
     checkForUpdate: (config: CheckForUpdateOptions) => {
-      assertWrapUsage("checkForUpdate");
-      return checkForUpdate(config);
-    },
+      const baseURL = ensureGlobalBaseURL("checkForUpdate");
 
-    /**
-     * Manually checks and applies updates for the application.
-     *
-     * @param {RunUpdateProcessConfig} config - Update process configuration
-     * @param {string} config.source - Update server URL
-     * @param {Record<string, string>} [config.requestHeaders] - Request headers
-     * @param {boolean} [config.reloadOnForceUpdate=false] - Whether to automatically reload on force update
-     *
-     * @example
-     * ```ts
-     * // Auto reload on force update
-     * const result = await HotUpdater.runUpdateProcess({
-     *   source: "<your-update-server-url>",
-     *   requestHeaders: {
-     *     // Add necessary headers
-     *   },
-     *   reloadOnForceUpdate: true
-     * });
-     *
-     * // Manually handle reload on force update
-     * const result = await HotUpdater.runUpdateProcess({
-     *   source: "<your-update-server-url>",
-     *   reloadOnForceUpdate: false
-     * });
-     *
-     * if(result.status !== "UP_TO_DATE" && result.shouldForceUpdate) {
-     *   await HotUpdater.reload();
-     * }
-     * ```
-     *
-     * @returns {Promise<RunUpdateProcessResponse>} The result of the update process
-     */
-    runUpdateProcess: (config: RunUpdateProcessOptions) => {
-      assertWrapUsage("runUpdateProcess");
-      return runUpdateProcess(config);
+      // Merge globalConfig with provided config
+      // baseURL is always from wrap (globalConfig), updateStrategy can be overridden
+      const mergedConfig: InternalCheckForUpdateOptions = {
+        ...config,
+        baseURL,
+      };
+
+      return checkForUpdate(mergedConfig);
     },
 
     /**
@@ -270,7 +248,8 @@ function createHotUpdaterClient() {
      * ```
      */
     updateBundle: (params: UpdateParams) => {
-      assertWrapUsage("updateBundle");
+      ensureGlobalBaseURL("updateBundle");
+
       return updateBundle(params);
     },
 
@@ -318,5 +297,3 @@ function createHotUpdaterClient() {
 }
 
 export const HotUpdater = createHotUpdaterClient();
-
-export { getUpdateSource } from "./checkForUpdate";

@@ -42,7 +42,9 @@ What is actually included in the app’s build is as follows:
 import { HotUpdater } from "hot-updater";
 
 export default HotUpdater.wrap({
-  source: "https://<your-update-server-url>",
+  baseURL: "https://<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint",
+  updateMode: "auto",
 });
 ```
 

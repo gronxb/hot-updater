@@ -5,12 +5,7 @@
  * @format
  */
 
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
-import {
-  getUpdateSource,
-  HotUpdater,
-  useHotUpdaterStore,
-} from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
@@ -107,21 +102,11 @@ function App(): React.JSX.Element {
           width: 100,
           height: 100,
         }}
-        source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
+        // source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
-      <Button
-        title="HotUpdater.runUpdateProcess()"
-        onPress={() =>
-          HotUpdater.runUpdateProcess({
-            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-          }).then((status) => {
-            console.log("Update process completed", JSON.stringify(status));
-          })
-        }
-      />
       <Button
         title="Clear Crash History"
         onPress={() => HotUpdater.clearCrashHistory()}
@@ -131,9 +116,9 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("http://localhost:3006/hot-updater", {
-    updateStrategy: "appVersion", // or "appVersion"
-  }),
+  baseURL: "http://localhost:3006/hot-updater",
+  updateStrategy: "appVersion",
+  updateMode: "auto",
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

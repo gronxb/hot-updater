@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
-import { type CheckForUpdateOptions, checkForUpdate } from "./checkForUpdate";
+import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
 import {
@@ -7,15 +7,60 @@ import {
   notifyAppReady as nativeNotifyAppReady,
   reload,
 } from "./native";
-import type { RunUpdateProcessResponse } from "./runUpdateProcess";
 import { useHotUpdaterStore } from "./store";
+
+export interface RunUpdateProcessResponse {
+  status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
+  shouldForceUpdate: boolean;
+  message: string | null;
+  id: string;
+}
 
 type UpdateStatus =
   | "CHECK_FOR_UPDATE"
   | "UPDATING"
   | "UPDATE_PROCESS_COMPLETED";
 
-export interface HotUpdaterOptions extends CheckForUpdateOptions {
+export interface AutoUpdateOptions {
+  /**
+   * Base URL for update server
+   * @example "https://update.example.com"
+   */
+  baseURL: string;
+
+  /**
+   * Update strategy
+   * - "fingerprint": Use fingerprint hash to check for updates
+   * - "appVersion": Use app version to check for updates
+   */
+  updateStrategy: "fingerprint" | "appVersion";
+
+  /**
+   * Update mode
+   * - "auto": Automatically check and download updates
+   */
+  updateMode: "auto";
+
+  /**
+   * Custom request headers for update checks
+   */
+  requestHeaders?: Record<string, string>;
+
+  /**
+   * Request timeout in milliseconds
+   * @default 5000
+   */
+  requestTimeout?: number;
+
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
+
+  /**
+   * Optional identifier to target a specific HotUpdater instance.
+   * Use this in brownfield apps with multiple React Native views.
+   * The identifier must match an instance created with `HotUpdater(identifier: "...")` on the native side.
+   */
+  identifier?: string;
+
   /**
    * Component to show while downloading a new bundle update.
    *
@@ -26,7 +71,8 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
    *
    * ```tsx
    * HotUpdater.wrap({
-   *   source: "<update-server-url>",
+   *   baseURL: "<update-server-url>",
+   *   updateStrategy: "appVersion",
    *   fallbackComponent: ({ progress = 0 }) => (
    *     <View style={styles.container}>
    *       <Text style={styles.text}>Updating... {progress}%</Text>
@@ -42,8 +88,9 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
     progress: number;
     message: string | null;
   }>;
-  onError?: (error: HotUpdaterError | Error | unknown) => void;
+
   onProgress?: (progress: number) => void;
+
   /**
    * When a force update exists, the app will automatically reload.
    * If `false`, When a force update exists, the app will not reload. `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
@@ -51,12 +98,28 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
    * @default true
    */
   reloadOnForceUpdate?: boolean;
+
   /**
    * Callback function that is called when the update process is completed.
    *
    * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#onupdateprocesscompleted}
    */
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
+}
+
+export interface ManualUpdateOptions {
+  /**
+   * Base URL for update server
+   * @example "https://update.example.com"
+   */
+  baseURL: string;
+
+  /**
+   * Update mode
+   * - "manual": Only notify app ready, user manually calls checkForUpdate()
+   */
+  updateMode: "manual";
+
   /**
    * Optional identifier to target a specific HotUpdater instance.
    * Use this in brownfield apps with multiple React Native views.
@@ -65,43 +128,30 @@ export interface HotUpdaterOptions extends CheckForUpdateOptions {
   identifier?: string;
 }
 
-// Overload signatures
+export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
+
 export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
   options: HotUpdaterOptions,
-): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P>;
+): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P> {
+  if (options.updateMode === "manual") {
+    return (WrappedComponent: React.ComponentType<P>) => {
+      const ManualHOC: React.FC<P> = (props: P) => {
+        useLayoutEffect(() => {
+          try {
+            nativeNotifyAppReady();
+          } catch (e) {
+            console.warn("[HotUpdater] Failed to notify app ready:", e);
+          }
+        }, []);
 
-export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
-  component: React.ComponentType<P>,
-): React.ComponentType<P>;
+        return <WrappedComponent {...props} />;
+      };
 
-// Implementation
-export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
-  optionsOrComponent: HotUpdaterOptions | React.ComponentType<P>,
-):
-  | ((WrappedComponent: React.ComponentType<P>) => React.ComponentType<P>)
-  | React.ComponentType<P> {
-  // Case 1: Component is directly passed (no config)
-  if (typeof optionsOrComponent === "function") {
-    const Component = optionsOrComponent;
-
-    const NotifyOnlyHOC: React.FC<P> = (props: P) => {
-      // Notify app ready only
-      useLayoutEffect(() => {
-        try {
-          nativeNotifyAppReady();
-        } catch (e) {
-          console.warn("[HotUpdater] Failed to notify app ready:", e);
-        }
-      }, []);
-
-      return <Component {...props} />;
+      return ManualHOC as React.ComponentType<P>;
     };
-
-    return NotifyOnlyHOC as React.ComponentType<P>;
   }
 
-  // Case 2: Config is passed (existing behavior)
-  const options = optionsOrComponent;
+  // updateMode: "auto"
   const { reloadOnForceUpdate = true, ...restOptions } = options;
 
   return (WrappedComponent: React.ComponentType<P>) => {
@@ -117,10 +167,12 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           setUpdateStatus("CHECK_FOR_UPDATE");
 
           const updateInfo = await checkForUpdate({
-            source: restOptions.source,
+            baseURL: restOptions.baseURL,
+            updateStrategy: restOptions.updateStrategy,
             requestHeaders: restOptions.requestHeaders,
+            requestTimeout: restOptions.requestTimeout,
             onError: restOptions.onError,
-          });
+          } as Parameters<typeof checkForUpdate>[0]);
 
           setMessage(updateInfo?.message ?? null);
 
@@ -138,7 +190,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           if (updateInfo.shouldForceUpdate === false) {
             void updateInfo
               .updateBundle({ identifier: restOptions.identifier })
-              .catch((error) => {
+              .catch((error: unknown) => {
                 restOptions.onError?.(error);
               });
 

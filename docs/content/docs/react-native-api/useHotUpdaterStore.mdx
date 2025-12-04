@@ -11,7 +11,7 @@ icon: Database
 When `isUpdateDownloaded` is `true`, it means the bundle download is complete and the update will be applied when `HotUpdater.reload()` is called. The `isUpdateDownloaded` becomes `true` when the `progress` value reaches 1.
 
 ```tsx
-import { HotUpdater, getUpdateSource, useHotUpdaterStore } from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import { Button, Text, View } from "react-native";
 
 function App() {
@@ -31,9 +31,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     Authorization: "Bearer <your-access-token>",

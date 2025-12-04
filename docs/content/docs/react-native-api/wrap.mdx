@@ -10,36 +10,9 @@ icon: Package
 
 `HotUpdater.wrap` supports two usage patterns:
 
-### Option 1: With Automatic Updates (Recommended)
+### Option 1: With Automatic Updates
 
 Use this for apps that want automatic OTA updates. This is the standard approach with full update management.
-
-```tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
-
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({ // [!code hl:10]
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
-  // If you need to send request headers, you can use the `requestHeaders` option.
-  requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
-  },
-})(App);
-```
-
-### Option 2: Manual Updates Only (Custom Flow)
-
-Use this for apps with custom update logic. This only calls `notifyAppReady()` automatically, giving you full control over when and how updates are applied.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -53,23 +26,53 @@ function App() {
   );
 }
 
-// Just wrap the component - notifyAppReady will be called automatically
-export default HotUpdater.wrap(App); // [!code hl]
+export default HotUpdater.wrap({ // [!code hl:9]
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
+  // If you need to send request headers, you can use the `requestHeaders` option.
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
+})(App);
 ```
 
-Then use `checkForUpdate`, `runUpdateProcess`, or `updateBundle` manually when needed:
+### Option 2: Manual Updates Only (Custom Flow)
+
+Use this for apps with custom update logic. 
 
 ```tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
+import { View, Text } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({ // [!code hl:3]
+  baseURL: "<your-update-server-url>",
+  updateMode: "manual",
+})(App);
+```
+
+Then use `checkForUpdate` or `updateBundle` manually when needed:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
 import { useEffect } from "react";
 
 function App() {
   useEffect(() => {
     const checkUpdate = async () => {
       const updateInfo = await HotUpdater.checkForUpdate({
-        source: getUpdateSource("<your-update-server-url>", {
-          updateStrategy: "appVersion"
-        }),
+        updateStrategy: "appVersion", // Required: specify update strategy
+        requestHeaders: {
+          Authorization: "Bearer <your-access-token>",
+        },
       });
 
       if (!updateInfo) {
@@ -89,22 +92,11 @@ function App() {
   // ... your app
 }
 
-export default HotUpdater.wrap(App);
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  updateMode: "manual",
+})(App);
 ```
-
-
-## Understanding `getUpdateSource`
-
-The `getUpdateSource` function is used to construct the final URL for checking for updates. It takes a `baseUrl` as its first argument and an options object as its second argument. The `updateStrategy` property within the options object determines the final structure of the request URL.
-
-**Example Final Endpoint Structures:**
-
-Depending on the `updateStrategy` value, `getUpdateSource` generates URLs like the following:
-
-*   For `updateStrategy: 'appVersion'`: `GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-*   For `updateStrategy: 'fingerprint'`: `GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
-
-For example, if you provide `https://your-update-server.com/api/update-check` as the `baseUrl`, `getUpdateSource` will append the correct path and parameters to the URL depending on whether `updateStrategy` is `'appVersion'` or `'fingerprint'`.
 
 
 ## Fallback Component
@@ -122,10 +114,10 @@ Without a `fallbackComponent`, the bundle downloads without blocking the screen.
   - `CHECK_FOR_UPDATE`: Checking for updates.  
   - `UPDATING`: Downloading the new bundle.  
 
-Using these props, you can ensure a smooth UI transition.  
+Using these props, you can ensure a smooth UI transition.
 It is also recommended to include a **splash image** for a better user experience.
 ```tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text, Modal } from "react-native";
 
 function App() {
@@ -136,10 +128,10 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:26]
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+export default HotUpdater.wrap({ // [!code hl:25]
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
   fallbackComponent: ({ progress, status, message }) => (
       <View
         style={{
@@ -180,7 +172,7 @@ When a force update bundle is downloaded, the app will automatically reload. If 
 When a force update exists, the app will automatically reload.
 
 ```tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
 
 function App() {
@@ -192,9 +184,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -209,7 +201,7 @@ export default HotUpdater.wrap({
 When a force update exists, the app will not reload. `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
 
 ```tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
 
 function App() {
@@ -221,9 +213,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -252,7 +244,7 @@ The `onUpdateProcessCompleted` option allows you to perform additional actions a
 | `message` | string | The message of the update process |
 
 ```tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
 
 function App() {
@@ -264,9 +256,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -276,7 +268,7 @@ export default HotUpdater.wrap({
   },
 
   // If you need to show the progress while downloading the new bundle, you can use the `onProgress` option.
-  onProgress: ({ progress }) => {
+  onProgress: (progress) => {
     console.log("Bundle downloading progress:", progress);
   },
 })(App);
@@ -287,16 +279,13 @@ export default HotUpdater.wrap({
 The `onError` callback handles all errors during the update process
 
 ```tsx
-import {
-  HotUpdater,
-  getUpdateSource,
-} from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import { Alert } from "react-native";
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion",
-  }),
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion",
+  updateMode: "auto",
   onError: (error) => { // [!code hl:18]
     // Handle other errors
     console.error("Update error:", error);
@@ -304,24 +293,18 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
+## How It Works
+
+When you use `HotUpdater.wrap` with automatic updates, it constructs the appropriate endpoint URL based on the `updateStrategy`:
+
+* For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+* For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+
+The function automatically appends the correct path and parameters to your `baseURL`.
+
 ## Update Strategy
 
 | Update Type   | When Applied                                              | How to Enable                              |
 |---------------|----------------------------------------------------------|-------------------------------------------|
 | Default       | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
 | Force Update  | Downloads the update bundle and applies it immediately.   | Use the `--force-update` flag or console. |
-
-
-## Custom source Function
-
-You can pass an async function to the source option for full control over how update info is fetched.
-
-```tsx
-export default HotUpdater.wrap({
-  source: async () => {
-    const res = await fetch("https://your.api/update-info");
-    return (await res.json()) as AppUpdateInfo | null;
-  },
-  // ... other options
-});
-```

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { closeDatabase } from "./db.js";
-import { ensureConnected, client } from "./mongodb.js";
+import { client, ensureConnected } from "./mongodb.js";
 import routes from "./routes.js";
 
 const app = new Hono();
@@ -89,4 +89,4 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-startServer();
+await startServer();
