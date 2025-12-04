@@ -4,6 +4,7 @@ import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
 import {
   getBundleId,
+  type NotifyAppReadyResult,
   notifyAppReady as nativeNotifyAppReady,
   reload,
 } from "./native";
@@ -21,13 +22,57 @@ type UpdateStatus =
   | "UPDATING"
   | "UPDATE_PROCESS_COMPLETED";
 
-export interface AutoUpdateOptions {
+/**
+ * Common options shared between auto and manual update modes
+ */
+interface CommonHotUpdaterOptions {
   /**
    * Base URL for update server
    * @example "https://update.example.com"
    */
   baseURL: string;
 
+  /**
+   * Custom request headers for update checks
+   */
+  requestHeaders?: Record<string, string>;
+
+  /**
+   * Request timeout in milliseconds
+   * @default 5000
+   */
+  requestTimeout?: number;
+
+  /**
+   * Callback invoked when the app is ready and bundle verification completes.
+   * Provides information about bundle promotion, recovery from crashes, or stable state.
+   *
+   * @param result - Bundle state information
+   * @param result.status - Current bundle state:
+   *   - "PROMOTED": Staging bundle was promoted to stable (new update applied)
+   *   - "RECOVERED": App recovered from a crash, rollback occurred
+   *   - "STABLE": No changes, bundle is stable
+   * @param result.crashedBundleId - Present only when status is "RECOVERED"
+   *
+   * @example
+   * ```tsx
+   * HotUpdater.wrap({
+   *   baseURL: "https://api.example.com",
+   *   updateMode: "manual",
+   *   onNotifyAppReady: ({ status, crashedBundleId }) => {
+   *     if (status === "RECOVERED") {
+   *       analytics.track('bundle_rollback', { crashedBundleId });
+   *     } else if (status === "PROMOTED") {
+   *       analytics.track('bundle_promoted');
+   *     }
+   *   }
+   * })(App);
+   * ```
+   */
+  onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+}
+
+export interface AutoUpdateOptions extends CommonHotUpdaterOptions {
   /**
    * Update strategy
    * - "fingerprint": Use fingerprint hash to check for updates
@@ -42,24 +87,13 @@ export interface AutoUpdateOptions {
   updateMode: "auto";
 
   /**
-   * Custom request headers for update checks
-   */
-  requestHeaders?: Record<string, string>;
-
-  /**
-   * Request timeout in milliseconds
-   * @default 5000
-   */
-  requestTimeout?: number;
-
-  onError?: (error: HotUpdaterError | Error | unknown) => void;
-
-  /**
    * Optional identifier to target a specific HotUpdater instance.
    * Use this in brownfield apps with multiple React Native views.
    * The identifier must match an instance created with `HotUpdater(identifier: "...")` on the native side.
    */
   identifier?: string;
+
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
 
   /**
    * Component to show while downloading a new bundle update.
@@ -107,36 +141,12 @@ export interface AutoUpdateOptions {
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 }
 
-export interface ManualUpdateOptions {
-  /**
-   * Base URL for update server
-   * @example "https://update.example.com"
-   */
-  baseURL: string;
-
+export interface ManualUpdateOptions extends CommonHotUpdaterOptions {
   /**
    * Update mode
    * - "manual": Only notify app ready, user manually calls checkForUpdate()
    */
   updateMode: "manual";
-
-  /**
-   * Custom request headers for update checks
-   */
-  requestHeaders?: Record<string, string>;
-
-  /**
-   * Request timeout in milliseconds
-   * @default 5000
-   */
-  requestTimeout?: number;
-
-  /**
-   * Optional identifier to target a specific HotUpdater instance.
-   * Use this in brownfield apps with multiple React Native views.
-   * The identifier must match an instance created with `HotUpdater(identifier: "...")` on the native side.
-   */
-  identifier?: string;
 }
 
 export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
@@ -149,7 +159,8 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
       const ManualHOC: React.FC<P> = (props: P) => {
         useLayoutEffect(() => {
           try {
-            nativeNotifyAppReady();
+            const result = nativeNotifyAppReady();
+            options.onNotifyAppReady?.(result);
           } catch (e) {
             console.warn("[HotUpdater] Failed to notify app ready:", e);
           }
@@ -251,7 +262,8 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
       // Notify native side that app is ready (JS bundle fully loaded)
       useLayoutEffect(() => {
         try {
-          nativeNotifyAppReady();
+          const result = nativeNotifyAppReady();
+          restOptions.onNotifyAppReady?.(result);
         } catch (e) {
           console.warn("[HotUpdater] Failed to notify app ready:", e);
         }
