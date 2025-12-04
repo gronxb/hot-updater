@@ -95,6 +95,9 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateMode: "manual",
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
 })(App);
 ```
 
@@ -126,10 +129,6 @@ The following options are **only available when `updateMode: "auto"` or omitted*
 | `reloadOnForceUpdate` | `boolean` | No | Auto-reload on force updates (default: true) |
 | `onUpdateProcessCompleted` | `(response) => void` | No | Callback when update process completes |
 | `onError` | `(error) => void` | No | Error handler for update failures |
-
-<Callout type="warning">
-**Manual Mode Restriction**: When `updateMode: "manual"` is set, none of the automatic mode options above are available. Only `baseURL` is supported.
-</Callout>
 
 #### `fallbackComponent`
 

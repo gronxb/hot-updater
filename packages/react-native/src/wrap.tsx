@@ -121,6 +121,17 @@ export interface ManualUpdateOptions {
   updateMode: "manual";
 
   /**
+   * Custom request headers for update checks
+   */
+  requestHeaders?: Record<string, string>;
+
+  /**
+   * Request timeout in milliseconds
+   * @default 5000
+   */
+  requestTimeout?: number;
+
+  /**
    * Optional identifier to target a specific HotUpdater instance.
    * Use this in brownfield apps with multiple React Native views.
    * The identifier must match an instance created with `HotUpdater(identifier: "...")` on the native side.
