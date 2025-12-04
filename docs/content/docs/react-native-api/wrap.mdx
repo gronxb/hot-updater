@@ -244,13 +244,13 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },
-  reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl]
-  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {  // [!code hl]
-    console.log("Bundle updated:", status, shouldForceUpdate, id, message);  // [!code hl]
-    if (shouldForceUpdate) { // [!code hl]
-      await HotUpdater.reload(); // [!code hl]
-    } // [!code hl]
-  },  // [!code hl]
+  reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl:7]
+  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
+    console.log("Bundle updated:", status, shouldForceUpdate, id, message);
+    if (shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+  },
 })(App);
 ```
 

@@ -1,5 +1,29 @@
 # @hot-updater/react-native
 
+## 0.23.1
+
+### Patch Changes
+
+- 7fa9a20: feat(expo): bundle-signing supports cng plugin
+  - @hot-updater/cli-tools@0.23.1
+  - @hot-updater/core@0.23.1
+  - @hot-updater/js@0.23.1
+  - @hot-updater/plugin-core@0.23.1
+
+## 0.23.0
+
+### Minor Changes
+
+- e41fb6b: feat: add bundle signing for cryptographic OTA verification
+
+### Patch Changes
+
+- Updated dependencies [e41fb6b]
+  - @hot-updater/core@0.23.0
+  - @hot-updater/js@0.23.0
+  - @hot-updater/plugin-core@0.23.0
+  - @hot-updater/cli-tools@0.23.0
+
 ## 0.22.2
 
 ### Patch Changes
