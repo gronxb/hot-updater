@@ -98,24 +98,54 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
+## Configuration Reference
 
-## Fallback Component
+`HotUpdater.wrap` accepts different options depending on the update mode.
+
+### Common Options
+
+Available in both automatic and manual modes:
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `baseURL` | `string` | Yes | Your update server URL |
+| `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
+| `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
+
+### Automatic Mode Options
+
+The following options are **only available when `updateMode: "auto"` or omitted** (automatic mode is the default):
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `updateStrategy` | `"appVersion" \| "fingerprint"` | Yes | Update detection strategy |
+| `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
+| `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
+| `fallbackComponent` | `React.FC<{status, progress, message}>` | No | UI component shown during updates |
+| `onProgress` | `(progress: number) => void` | No | Callback fired during bundle download (0-1) |
+| `reloadOnForceUpdate` | `boolean` | No | Auto-reload on force updates (default: true) |
+| `onUpdateProcessCompleted` | `(response) => void` | No | Callback when update process completes |
+| `onError` | `(error) => void` | No | Error handler for update failures |
+
+<Callout type="warning">
+**Manual Mode Restriction**: When `updateMode: "manual"` is set, none of the automatic mode options above are available. Only `baseURL` is supported.
+</Callout>
+
+#### `fallbackComponent`
 
 During an update check, access to the entry point is temporarily blocked while communicating with the server.
 
-- If the update is **force update**, the entry point remains blocked, and the progress updates as the bundle downloads.  
+- If the update is **force update**, the entry point remains blocked, and the progress updates as the bundle downloads.
 - If **not force update**, the entry point is only blocked during the update check.
 
 Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 
-### `fallbackComponent` Props:
-- **`progress`**: Download progress (e.g., for a progress bar).  
-- **`status`**: Update state:
-  - `CHECK_FOR_UPDATE`: Checking for updates.  
-  - `UPDATING`: Downloading the new bundle.  
+**Props:**
+- `progress`: Download progress (0-1, e.g., for a progress bar)
+- `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
+- `message`: Optional message from the server
 
-Using these props, you can ensure a smooth UI transition.
-It is also recommended to include a **splash image** for a better user experience.
+**Example:**
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text, Modal } from "react-native";
@@ -163,13 +193,11 @@ export default HotUpdater.wrap({ // [!code hl:25]
   })(App);
 ```
 
-## `reloadOnForceUpdate`
+#### `reloadOnForceUpdate`
 
-When a force update bundle is downloaded, the app will automatically reload. If `false`, `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted` but the app won't reload. default is `true`.
+When a force update bundle is downloaded, the app will automatically reload. If `false`, `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted` but the app won't reload. Default is `true`.
 
-### `reloadOnForceUpdate` is `true`
-
-When a force update exists, the app will automatically reload.
+**Example with auto-reload:**
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -195,10 +223,7 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-
-### `reloadOnForceUpdate` is `false`
-
-When a force update exists, the app will not reload. `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
+**Example without auto-reload:**
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -230,11 +255,11 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-## onUpdateProcessCompleted
+#### `onUpdateProcessCompleted`
 
-The `onUpdateProcessCompleted` option allows you to perform additional actions after the update process is completed.
+Allows you to perform additional actions after the update process is completed.
 
-### Callback Arguments
+**Callback Arguments:**
 
 | Property | Type | Description |
 |----------|-------------|-------------|
@@ -274,9 +299,11 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-## onError
+#### `onError`
 
-The `onError` callback handles all errors during the update process
+Handles all errors during the update process.
+
+**Example:**
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -302,7 +329,7 @@ When you use `HotUpdater.wrap` with automatic updates, it constructs the appropr
 
 The function automatically appends the correct path and parameters to your `baseURL`.
 
-## Update Strategy
+## Flag Behavior
 
 | Update Type   | When Applied                                              | How to Enable                              |
 |---------------|----------------------------------------------------------|-------------------------------------------|
