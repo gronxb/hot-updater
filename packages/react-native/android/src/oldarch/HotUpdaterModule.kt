@@ -7,12 +7,12 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.bridge.WritableNativeArray
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
@@ -71,7 +71,7 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun updateBundle(
-        params: ReadableMap?,
+        params: ReadableMap,
         promise: Promise,
     ) {
         (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
@@ -153,7 +153,7 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun notifyAppReady(params: ReadableMap?): Boolean {
+    override fun notifyAppReady(params: ReadableMap): Boolean {
         val bundleId = params?.getString("bundleId") ?: return false
         val identifier = HotUpdaterRegistry.getDefaultIdentifier()
         val impl =
@@ -166,7 +166,7 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getCrashHistory(): WritableNativeArray {
+    override fun getCrashHistory(): String {
         val identifier = HotUpdaterRegistry.getDefaultIdentifier()
         val impl =
             if (identifier != null) {
@@ -175,9 +175,7 @@ class HotUpdaterModule internal constructor(
                 HotUpdater.getInstance(mReactApplicationContext)
             }
         val crashHistory = impl?.getCrashHistory() ?: emptyList()
-        val result = WritableNativeArray()
-        crashHistory.forEach { result.pushString(it) }
-        return result
+        return JSONArray(crashHistory).toString()
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)

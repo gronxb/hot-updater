@@ -3,7 +3,6 @@ package com.hotupdater
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 
 abstract class HotUpdaterSpec internal constructor(
@@ -16,9 +15,9 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun reload(promise: Promise)
 
-    abstract fun notifyAppReady(bundleId: String): Boolean
+    abstract fun notifyAppReady(params: ReadableMap): Boolean
 
-    abstract fun getCrashHistory(): ReadableArray
+    abstract fun getCrashHistory(): String
 
     abstract fun clearCrashHistory(): Boolean
 }

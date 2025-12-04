@@ -204,7 +204,16 @@ export const notifyAppReady = (): boolean => {
  * @returns {string[]} Array of crashed bundle IDs
  */
 export const getCrashHistory = (): string[] => {
-  return HotUpdaterNative.getCrashHistory();
+  const result = HotUpdaterNative.getCrashHistory();
+  // Oldarch returns JSON string, newarch returns array
+  if (typeof result === "string") {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return [];
+    }
+  }
+  return result;
 };
 
 /**
