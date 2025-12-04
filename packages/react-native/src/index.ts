@@ -8,7 +8,6 @@ import {
   getCrashHistory,
   getFingerprintHash,
   getMinBundleId,
-  notifyAppReady as nativeNotifyAppReady,
   reload,
   type UpdateParams,
   updateBundle,
@@ -287,23 +286,6 @@ function createHotUpdaterClient() {
      * ```
      */
     getFingerprintHash,
-
-    /**
-     * Notifies the native side that the app has successfully started with the current bundle.
-     * If the bundle matches the staging bundle, it promotes to stable.
-     *
-     * This function is called automatically when the client initializes. You typically don't need
-     * to call this manually unless you have a custom update flow.
-     *
-     * @returns {boolean} true if promotion was successful or no action was needed
-     *
-     * @example
-     * ```ts
-     * // Usually not needed - called automatically on initialization
-     * HotUpdater.notifyAppReady();
-     * ```
-     */
-    notifyAppReady: nativeNotifyAppReady,
 
     /**
      * Gets the list of bundle IDs that have been marked as crashed.
