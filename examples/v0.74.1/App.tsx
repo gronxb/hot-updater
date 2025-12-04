@@ -5,17 +5,15 @@
  * @format
  */
 
+import { HOT_UPDATER_SUPABASE_URL } from "@env";
 import {
-  HotUpdater,
   getUpdateSource,
+  HotUpdater,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
-
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -80,6 +78,30 @@ function App(): React.JSX.Element {
         BundleId: {bundleId}
       </Text>
 
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Crash History:
+      </Text>
+      {HotUpdater.getCrashHistory().map((crash) => (
+        <Text
+          key={crash}
+          style={{
+            marginVertical: 20,
+            fontSize: 20,
+            fontWeight: "bold",
+            textAlign: "center",
+          }}
+        >
+          {crash}
+        </Text>
+      ))}
+
       <Image
         style={{
           width: 100,
@@ -100,17 +122,18 @@ function App(): React.JSX.Element {
           })
         }
       />
+      <Button
+        title="Clear Crash History"
+        onPress={() => HotUpdater.clearCrashHistory()}
+      />
     </SafeAreaView>
   );
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource(
-    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-    {
-      updateStrategy: "appVersion", // or "fingerprint"
-    },
-  ),
+  source: getUpdateSource("http://localhost:3006/hot-updater", {
+    updateStrategy: "appVersion", // or "appVersion"
+  }),
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

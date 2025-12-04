@@ -36,6 +36,7 @@
     "@rnx-kit/metro-config": "^2.0.1",
     "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
     "@types/react": "^18.2.6",
+    "@hot-updater/standalone": "workspace:*",
     "@types/react-test-renderer": "^18.0.0",
     "babel-jest": "^29.6.3",
     "babel-loader": "^9.1.3",
