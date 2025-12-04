@@ -109,7 +109,7 @@ public protocol BundleStorageService {
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, identifier: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Rollback support
-    func notifyAppReady(bundleId: String) -> Bool
+    func notifyAppReady(bundleId: String) -> [String: Any]
     func getCrashHistory() -> CrashedHistory
     func clearCrashHistory() -> Bool
 }
@@ -125,6 +125,9 @@ class BundleFileStorageService: BundleStorageService {
     private let fileOperationQueue: DispatchQueue
 
     private var activeTasks: [URLSessionTask] = []
+
+    // Session-only rollback tracking (in-memory)
+    private var sessionRollbackBundleId: String?
 
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
@@ -264,10 +267,14 @@ class BundleFileStorageService: BundleStorageService {
         let _ = saveCrashedHistory(crashedHistory)
         NSLog("[BundleStorage] Added bundle '\(stagingId)' to crashed history")
 
+        // Save rollback info to session variable (memory only)
+        sessionRollbackBundleId = stagingId
+
         // Clear staging
         metadata.stagingBundleId = nil
         metadata.verificationPending = false
         metadata.verificationAttemptedAt = nil
+        metadata.stagingExecutionCount = nil
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
 
         if saveMetadata(metadata) {
@@ -1030,18 +1037,31 @@ class BundleFileStorageService: BundleStorageService {
      * @param bundleId The ID of the currently running bundle
      * @return true if promotion was successful or no action was needed
      */
-    func notifyAppReady(bundleId: String) -> Bool {
+    func notifyAppReady(bundleId: String) -> [String: Any] {
         guard var metadata = loadMetadataOrNull() else {
             // No metadata exists - legacy mode, nothing to do
             NSLog("[BundleStorage] notifyAppReady: No metadata exists (legacy mode)")
-            return true
+            return ["status": "STABLE"]
         }
 
-        // Check if the bundle matches the staging bundle
-        if let stagingId = metadata.stagingBundleId, stagingId == bundleId {
+        // Check if there was a recent rollback (session variable)
+        if let crashedBundleId = sessionRollbackBundleId {
+            NSLog("[BundleStorage] notifyAppReady: Detected rollback recovery from '\(crashedBundleId)'")
+
+            // Clear rollback info (one-time read)
+            sessionRollbackBundleId = nil
+
+            return [
+                "status": "RECOVERED",
+                "crashedBundleId": crashedBundleId
+            ]
+        }
+
+        // Check if the bundle matches the staging bundle (promotion case)
+        if let stagingId = metadata.stagingBundleId, stagingId == bundleId, metadata.verificationPending {
             NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' matches staging, promoting to stable")
             promoteStagingToStable()
-            return true
+            return ["status": "PROMOTED"]
         }
 
         // Check if the bundle matches the stable bundle
@@ -1056,12 +1076,12 @@ class BundleFileStorageService: BundleStorageService {
             } else {
                 NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' is already stable")
             }
-            return true
+            return ["status": "STABLE"]
         }
 
         // Bundle doesn't match staging or stable - might be fallback or unknown
         NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' doesn't match staging or stable")
-        return true
+        return ["status": "STABLE"]
     }
 
     /**

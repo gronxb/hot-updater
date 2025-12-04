@@ -55,9 +55,9 @@ interface BundleStorageService {
     /**
      * Notifies that the app has started successfully with the current bundle
      * @param currentBundleId The bundle ID that JS reports as currently loaded
-     * @return true if promotion was successful or no action was needed
+     * @return Map containing status and optional crashedBundleId
      */
-    fun notifyAppReady(currentBundleId: String?): Boolean
+    fun notifyAppReady(currentBundleId: String?): Map<String, Any?>
 
     /**
      * Gets the crashed bundle history
@@ -86,6 +86,9 @@ class BundleFileStorageService(
     companion object {
         private const val TAG = "BundleStorage"
     }
+
+    // Session-only rollback tracking (in-memory)
+    private var sessionRollbackBundleId: String? = null
 
     // MARK: - Bundle Store Directory
 
@@ -179,12 +182,16 @@ class BundleFileStorageService(
         crashedHistory.addEntry(stagingBundleId)
         saveCrashedHistory(crashedHistory)
 
+        // Save rollback info to session variable (memory only)
+        sessionRollbackBundleId = stagingBundleId
+
         // Clear staging pointer
         val updatedMetadata =
             metadata.copy(
                 stagingBundleId = null,
                 verificationPending = false,
                 verificationAttemptedAt = null,
+                stagingExecutionCount = null,
                 updatedAt = System.currentTimeMillis(),
             )
         saveMetadata(updatedMetadata)
@@ -233,24 +240,38 @@ class BundleFileStorageService(
 
     // MARK: - notifyAppReady
 
-    override fun notifyAppReady(currentBundleId: String?): Boolean {
-        val metadata = loadMetadataOrNull() ?: return false
+    override fun notifyAppReady(currentBundleId: String?): Map<String, Any?> {
+        val metadata = loadMetadataOrNull()
+            ?: return mapOf("status" to "STABLE")
 
-        // Only promote if verification is pending and the reported bundleId matches staging
+        // Check if there was a recent rollback (session variable)
+        sessionRollbackBundleId?.let { crashedBundleId ->
+            // Clear rollback info (one-time read)
+            sessionRollbackBundleId = null
+
+            Log.d(TAG, "notifyAppReady: recovered from rollback (crashed bundle: $crashedBundleId)")
+            return mapOf(
+                "status" to "RECOVERED",
+                "crashedBundleId" to crashedBundleId
+            )
+        }
+
+        // Check for promotion
         if (isVerificationPending(metadata)) {
             val stagingBundleId = metadata.stagingBundleId
             if (stagingBundleId != null && stagingBundleId == currentBundleId) {
                 Log.d(TAG, "App started successfully with staging bundle $currentBundleId, promoting to stable")
                 promoteStagingToStable()
-                return true
+                return mapOf("status" to "PROMOTED")
             } else {
                 Log.d(TAG, "notifyAppReady: bundleId mismatch (staging=$stagingBundleId, current=$currentBundleId)")
-                return false
             }
         } else {
             Log.d(TAG, "notifyAppReady: no verification pending")
-            return true
         }
+
+        // No changes
+        return mapOf("status" to "STABLE")
     }
 
     // MARK: - Bundle URL Operations

@@ -185,14 +185,45 @@ export const getFingerprintHash = (): string | null => {
 };
 
 /**
+ * Result returned by notifyAppReady()
+ */
+export type NotifyAppReadyResult = {
+  status: "PROMOTED" | "RECOVERED" | "STABLE";
+  crashedBundleId?: string;
+};
+
+/**
  * Notifies the native side that the app has successfully started with the current bundle.
  * If the bundle matches the staging bundle, it promotes to stable.
  *
  * This function is called automatically when the module loads.
  *
- * @returns {boolean} true if promotion was successful or no action was needed
+ * @returns {NotifyAppReadyResult} Bundle state information
+ * - `status: "PROMOTED"` - Staging bundle was promoted to stable (ACTIVE event)
+ * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
+ * - `status: "STABLE"` - No changes, already stable
+ * - `crashedBundleId` - Present only when status is "RECOVERED"
+ *
+ * @example
+ * ```ts
+ * const result = HotUpdater.notifyAppReady();
+ *
+ * switch (result.status) {
+ *   case "PROMOTED":
+ *     // Send ACTIVE analytics event
+ *     analytics.track('bundle_active', { bundleId: HotUpdater.getBundleId() });
+ *     break;
+ *   case "RECOVERED":
+ *     // Send ROLLBACK analytics event
+ *     analytics.track('bundle_rollback', { crashedBundleId: result.crashedBundleId });
+ *     break;
+ *   case "STABLE":
+ *     // No special action needed
+ *     break;
+ * }
+ * ```
  */
-export const notifyAppReady = (): boolean => {
+export const notifyAppReady = (): NotifyAppReadyResult => {
   const bundleId = getBundleId();
   return HotUpdaterNative.notifyAppReady({ bundleId });
 };

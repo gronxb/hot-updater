@@ -77,9 +77,16 @@ export interface Spec extends TurboModule {
    * If the bundle matches the staging bundle, it promotes to stable.
    *
    * @param params - Parameters containing the bundle ID
-   * @returns true if promotion was successful or no action was needed
+   * @returns Object with status and optional crashedBundleId
+   * - `status: "PROMOTED"` - Staging bundle was promoted to stable (ACTIVE event)
+   * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
+   * - `status: "STABLE"` - No changes, already stable
+   * - `crashedBundleId` - Present only when status is "RECOVERED"
    */
-  notifyAppReady(params: { bundleId: string }): boolean;
+  notifyAppReady(params: { bundleId: string }): {
+    status: "PROMOTED" | "RECOVERED" | "STABLE";
+    crashedBundleId?: string;
+  };
 
   /**
    * Gets the list of bundle IDs that have been marked as crashed.

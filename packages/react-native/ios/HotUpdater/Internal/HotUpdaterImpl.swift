@@ -286,7 +286,7 @@ import React
      * @param bundleId The ID of the currently running bundle
      * @return true if promotion was successful or no action was needed
      */
-    public func notifyAppReady(bundleId: String) -> Bool {
+    public func notifyAppReady(bundleId: String) -> [String: Any] {
         return bundleStorage.notifyAppReady(bundleId: bundleId)
     }
 

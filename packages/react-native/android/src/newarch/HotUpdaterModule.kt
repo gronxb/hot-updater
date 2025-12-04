@@ -147,8 +147,14 @@ class HotUpdaterModule internal constructor(
         // No-op
     }
 
-    override fun notifyAppReady(params: ReadableMap?): Boolean {
-        val bundleId = params?.getString("bundleId") ?: return false
+    override fun notifyAppReady(params: ReadableMap?): WritableNativeMap {
+        val result = WritableNativeMap()
+        val bundleId = params?.getString("bundleId")
+        if (bundleId == null) {
+            result.putString("status", "STABLE")
+            return result
+        }
+
         val identifier = HotUpdaterRegistry.getDefaultIdentifier()
         val impl =
             if (identifier != null) {
@@ -156,7 +162,15 @@ class HotUpdaterModule internal constructor(
             } else {
                 HotUpdater.getInstance(mReactApplicationContext)
             }
-        return impl?.notifyAppReady(bundleId) ?: true
+
+        val statusMap = impl?.notifyAppReady(bundleId) ?: mapOf("status" to "STABLE")
+
+        result.putString("status", statusMap["status"] as? String ?: "STABLE")
+        statusMap["crashedBundleId"]?.let {
+            result.putString("crashedBundleId", it as String)
+        }
+
+        return result
     }
 
     override fun getCrashHistory(): WritableNativeArray {
