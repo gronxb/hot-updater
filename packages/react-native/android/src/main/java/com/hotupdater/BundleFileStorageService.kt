@@ -241,8 +241,9 @@ class BundleFileStorageService(
     // MARK: - notifyAppReady
 
     override fun notifyAppReady(currentBundleId: String?): Map<String, Any?> {
-        val metadata = loadMetadataOrNull()
-            ?: return mapOf("status" to "STABLE")
+        val metadata =
+            loadMetadataOrNull()
+                ?: return mapOf("status" to "STABLE")
 
         // Check if there was a recent rollback (session variable)
         sessionRollbackBundleId?.let { crashedBundleId ->
@@ -252,7 +253,7 @@ class BundleFileStorageService(
             Log.d(TAG, "notifyAppReady: recovered from rollback (crashed bundle: $crashedBundleId)")
             return mapOf(
                 "status" to "RECOVERED",
-                "crashedBundleId" to crashedBundleId
+                "crashedBundleId" to crashedBundleId,
             )
         }
 
