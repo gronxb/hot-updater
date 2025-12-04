@@ -42,6 +42,8 @@ function createHotUpdaterClient() {
   // Global configuration stored from wrap
   const globalConfig: {
     baseURL: string | null;
+    requestHeaders?: Record<string, string>;
+    requestTimeout?: number;
   } = {
     baseURL: null,
   };
@@ -96,6 +98,8 @@ function createHotUpdaterClient() {
      */
     wrap: ((options: HotUpdaterOptions) => {
       globalConfig.baseURL = options.baseURL;
+      globalConfig.requestHeaders = options.requestHeaders;
+      globalConfig.requestTimeout = options.requestTimeout;
       return wrap(options);
     }) as typeof wrap,
 
@@ -205,10 +209,16 @@ function createHotUpdaterClient() {
       const baseURL = ensureGlobalBaseURL("checkForUpdate");
 
       // Merge globalConfig with provided config
-      // baseURL is always from wrap (globalConfig), updateStrategy can be overridden
+      // baseURL is always from wrap (globalConfig)
+      // requestHeaders/requestTimeout from wrap are used as defaults, but can be overridden
       const mergedConfig: InternalCheckForUpdateOptions = {
         ...config,
         baseURL,
+        requestHeaders: {
+          ...globalConfig.requestHeaders,
+          ...config.requestHeaders,
+        },
+        requestTimeout: config.requestTimeout ?? globalConfig.requestTimeout,
       };
 
       return checkForUpdate(mergedConfig);
