@@ -82,6 +82,32 @@ RCT_EXPORT_MODULE();
      #if DEBUG
          uuid = @"00000000-0000-0000-0000-000000000000";
      #else
+         // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
+         NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+         NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
+
+         // Step 2: If custom value exists and is not empty
+         if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
+             // Check if it's a timestamp (pure digits) or UUID
+             NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
+             BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
+
+             if (isTimestamp) {
+                 // Convert timestamp (milliseconds) to UUID v7
+                 uint64_t timestampMs = [customValue longLongValue];
+                 uuid = [self generateUUIDv7FromTimestamp:timestampMs];
+                 RCTLogInfo(@"[HotUpdater.mm] Using timestamp %@ as MIN_BUNDLE_ID: %@", customValue, uuid);
+             } else {
+                 // Use as UUID directly
+                 uuid = customValue;
+                 RCTLogInfo(@"[HotUpdater.mm] Using custom MIN_BUNDLE_ID from Info.plist: %@", uuid);
+             }
+             return;
+         }
+
+         // Step 3: Fallback to default logic (26-hour subtraction)
+         RCTLogInfo(@"[HotUpdater.mm] No custom MIN_BUNDLE_ID found, using default calculation");
+
          NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
          NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
 
@@ -103,22 +129,42 @@ RCT_EXPORT_MODULE();
          // Example: Build at 15:00 in any timezone → parse as 15:00 UTC → subtract 26h → 13:00 UTC (previous day)
          NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
          uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
-         unsigned char bytes[16];
-         bytes[0] = (buildTimestampMs >> 40) & 0xFF; // ... rest of UUID logic ...
-         bytes[1] = (buildTimestampMs >> 32) & 0xFF;
-         bytes[2] = (buildTimestampMs >> 24) & 0xFF;
-         bytes[3] = (buildTimestampMs >> 16) & 0xFF;
-         bytes[4] = (buildTimestampMs >> 8) & 0xFF;
-         bytes[5] = buildTimestampMs & 0xFF;
-         bytes[6] = 0x70; bytes[7] = 0x00; bytes[8] = 0x80; bytes[9] = 0x00;
-         bytes[10] = 0x00; bytes[11] = 0x00; bytes[12] = 0x00; bytes[13] = 0x00; bytes[14] = 0x00; bytes[15] = 0x00;
-         uuid = [NSString stringWithFormat:
-                 @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                 bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-                 bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+
+         uuid = [self generateUUIDv7FromTimestamp:buildTimestampMs];
      #endif
      });
      return uuid;
+}
+
+// Helper method: Generate UUID v7 from timestamp (milliseconds)
+- (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs {
+    unsigned char bytes[16];
+
+    // UUID v7 format: timestamp_ms (48 bits) + ver (4 bits) + random (12 bits) + variant (2 bits) + random (62 bits)
+    bytes[0] = (timestampMs >> 40) & 0xFF;
+    bytes[1] = (timestampMs >> 32) & 0xFF;
+    bytes[2] = (timestampMs >> 24) & 0xFF;
+    bytes[3] = (timestampMs >> 16) & 0xFF;
+    bytes[4] = (timestampMs >> 8) & 0xFF;
+    bytes[5] = timestampMs & 0xFF;
+
+    // Version 7
+    bytes[6] = 0x70;
+    bytes[7] = 0x00;
+
+    // Variant bits (10xxxxxx)
+    bytes[8] = 0x80;
+    bytes[9] = 0x00;
+
+    // Remaining bytes (zeros for deterministic MIN_BUNDLE_ID)
+    for (int i = 10; i < 16; i++) {
+        bytes[i] = 0x00;
+    }
+
+    return [NSString stringWithFormat:
+            @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
 }
 
 
