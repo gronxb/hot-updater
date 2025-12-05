@@ -203,11 +203,9 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
 
           if (updateInfo.shouldForceUpdate === false) {
-            void updateInfo
-              .updateBundle()
-              .catch((error: unknown) => {
-                restOptions.onError?.(error);
-              });
+            void updateInfo.updateBundle().catch((error: unknown) => {
+              restOptions.onError?.(error);
+            });
 
             restOptions.onUpdateProcessCompleted?.({
               id: updateInfo.id,
