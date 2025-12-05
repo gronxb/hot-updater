@@ -1,5 +1,19 @@
 # @hot-updater/react-native
 
+## 1.0.0
+
+### Minor Changes
+
+- 753208b: feat(native): notifyAppReady for auto rollback (invalid bundle)
+- c51239c: fix(ios): getMinBundleId timezone issue
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0
+- @hot-updater/core@1.0.0
+- @hot-updater/js@1.0.0
+- @hot-updater/plugin-core@1.0.0
+
 ## 0.23.1
 
 ### Patch Changes
