@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@hot-updater/react-native": "workspace:*",
-    "react": "19.1.0",
+    "react": "19.1.2",
     "react-native": "0.80.1"
   },
   "dependenciesMeta": {
@@ -36,7 +36,7 @@
     "@rock-js/plugin-repack": "^0.9.0",
     "@rspack/core": "^1.2.8",
     "@swc/helpers": "^0.5.15",
-    "@types/react": "^19.1.0",
+    "@types/react": "^19.1.2",
     "@types/react-test-renderer": "^19.1.0",
     "babel-jest": "^29.6.3",
     "dotenv": "^16.4.5",
@@ -45,7 +45,7 @@
     "hot-updater": "workspace:*",
     "jest": "^29.6.3",
     "prettier": "2.8.8",
-    "react-test-renderer": "19.1.0",
+    "react-test-renderer": "19.1.2",
     "repack-plugin-sentry": "^0.1.4",
     "rock": "^0.8.13",
     "typescript": "5.0.4"
