@@ -12,6 +12,8 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
@@ -20,11 +22,18 @@ class HotUpdaterModule internal constructor(
 
     override fun getName(): String = NAME
 
+    /**
+     * Gets the singleton HotUpdaterImpl instance
+     */
+    private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
+
     @ReactMethod
     override fun reload(promise: Promise) {
         CoroutineScope(Dispatchers.Main.immediate).launch {
             try {
-                HotUpdater.reload(mReactApplicationContext)
+                val impl = getInstance()
+                val currentActivity = mReactApplicationContext.currentActivity
+                impl.reload(currentActivity)
                 promise.resolve(null)
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to reload", e)
@@ -40,30 +49,54 @@ class HotUpdaterModule internal constructor(
     ) {
         (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
             try {
-                val bundleId = params.getString("bundleId")!!
+                // Parameter validation
+                if (params == null) {
+                    promise.reject("UNKNOWN_ERROR", "Missing or invalid parameters for updateBundle")
+                    return@launch
+                }
+
+                val bundleId = params.getString("bundleId")
+                if (bundleId == null || bundleId.isEmpty()) {
+                    promise.reject("MISSING_BUNDLE_ID", "Missing or empty 'bundleId'")
+                    return@launch
+                }
+
                 val fileUrl = params.getString("fileUrl")
+
+                // Validate fileUrl format if provided
+                if (fileUrl != null && fileUrl.isNotEmpty()) {
+                    try {
+                        java.net.URL(fileUrl)
+                    } catch (e: java.net.MalformedURLException) {
+                        promise.reject("INVALID_FILE_URL", "Invalid 'fileUrl' provided: $fileUrl")
+                        return@launch
+                    }
+                }
+
                 val fileHash = params.getString("fileHash")
 
-                val isSuccess =
-                    HotUpdater.updateBundle(
-                        mReactApplicationContext,
-                        bundleId,
-                        fileUrl,
-                        fileHash,
-                    ) { progress ->
-                        val progressParams =
-                            WritableNativeMap().apply {
-                                putDouble("progress", progress)
-                            }
+                val impl = getInstance()
 
-                        this@HotUpdaterModule
-                            .mReactApplicationContext
-                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                            .emit("onProgress", progressParams)
-                    }
-                promise.resolve(isSuccess)
+                impl.updateBundle(
+                    bundleId,
+                    fileUrl,
+                    fileHash,
+                ) { progress ->
+                    val progressParams =
+                        WritableNativeMap().apply {
+                            putDouble("progress", progress)
+                        }
+
+                    this@HotUpdaterModule
+                        .mReactApplicationContext
+                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                        .emit("onProgress", progressParams)
+                }
+                promise.resolve(true)
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
             } catch (e: Exception) {
-                promise.reject("updateBundle", e)
+                promise.reject("UNKNOWN_ERROR", e.message ?: "An unknown error occurred")
             }
         }
     }
@@ -84,11 +117,45 @@ class HotUpdaterModule internal constructor(
 
     override fun getConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId(mReactApplicationContext)
+        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
         constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
         constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)
         return constants
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun notifyAppReady(params: ReadableMap): String {
+        val bundleId = params?.getString("bundleId")
+        val result = JSONObject()
+
+        if (bundleId == null) {
+            result.put("status", "STABLE")
+            return result.toString()
+        }
+
+        val impl = getInstance()
+        val statusMap = impl.notifyAppReady(bundleId)
+
+        result.put("status", statusMap["status"] as? String ?: "STABLE")
+        statusMap["crashedBundleId"]?.let {
+            result.put("crashedBundleId", it as String)
+        }
+
+        return result.toString()
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getCrashHistory(): String {
+        val impl = getInstance()
+        val crashHistory = impl.getCrashHistory()
+        return JSONArray(crashHistory).toString()
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun clearCrashHistory(): Boolean {
+        val impl = getInstance()
+        return impl.clearCrashHistory()
     }
 
     companion object {

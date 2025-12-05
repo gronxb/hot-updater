@@ -697,6 +697,9 @@ importers:
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../../plugins/bare
+      '@hot-updater/standalone':
+        specifier: workspace:*
+        version: link:../../plugins/standalone
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase

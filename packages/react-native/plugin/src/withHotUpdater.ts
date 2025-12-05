@@ -1,4 +1,3 @@
-import path from "node:path";
 import { loadConfig } from "@hot-updater/cli-tools";
 import type { ExpoConfig } from "expo/config";
 import {
@@ -15,6 +14,7 @@ import {
   getPublicKeyFromPrivate,
   loadPrivateKey,
 } from "hot-updater";
+import path from "path";
 import pkg from "../../package.json";
 import { transformAndroid, transformIOS } from "./transformers";
 

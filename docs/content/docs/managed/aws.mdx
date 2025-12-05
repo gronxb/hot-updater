@@ -144,7 +144,7 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
 
 ```tsx title="App.tsx"
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
   return (
@@ -155,9 +155,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("https://<your-cloudfront-distribution-url>/api/check-update", { // [!code ++]
-    updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
-  }), // [!code ++]
+  baseURL: "https://<your-cloudfront-distribution-url>/api/check-update", // [!code ++]
+  updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
+  updateMode: "auto",
   requestHeaders: {
     // if you want to use the request headers, you can add them here
   },

@@ -5,12 +5,7 @@
  * @format
  */
 
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
-import {
-  getUpdateSource,
-  HotUpdater,
-  useHotUpdaterStore,
-} from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -94,25 +89,46 @@ function App(): React.JSX.Element {
         source={require("./src/test/_image.png")}
       />
 
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Crash History:
+      </Text>
+      {HotUpdater.getCrashHistory().map((crash) => (
+        <Text
+          key={crash}
+          style={{
+            marginVertical: 20,
+            fontSize: 20,
+            fontWeight: "bold",
+            textAlign: "center",
+          }}
+        >
+          {crash}
+        </Text>
+      ))}
+
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
       <Button
-        title="HotUpdater.runUpdateProcess()"
-        onPress={() =>
-          HotUpdater.runUpdateProcess({
-            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-          }).then((status) => {
-            console.log("Update process completed", JSON.stringify(status));
-          })
-        }
+        title="Clear Crash History"
+        onPress={() => HotUpdater.clearCrashHistory()}
       />
     </SafeAreaView>
   );
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("http://localhost:3006/hot-updater", {
-    updateStrategy: "appVersion", // or "appVersion"
-  }),
+  baseURL: "http://localhost:3006/hot-updater",
+  updateStrategy: "appVersion",
+  updateMode: "auto",
+  onNotifyAppReady: (result) => {
+    Alert.alert("onNotifyAppReady", JSON.stringify(result));
+  },
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

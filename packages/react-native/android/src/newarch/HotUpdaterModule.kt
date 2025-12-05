@@ -6,6 +6,7 @@ import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableNativeArray
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
@@ -19,10 +20,17 @@ class HotUpdaterModule internal constructor(
 
     override fun getName(): String = NAME
 
+    /**
+     * Gets the singleton HotUpdaterImpl instance
+     */
+    private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
+
     override fun reload(promise: Promise) {
         CoroutineScope(Dispatchers.Main.immediate).launch {
             try {
-                HotUpdater.reload(mReactApplicationContext)
+                val impl = getInstance()
+                val currentActivity = mReactApplicationContext.currentActivity
+                impl.reload(currentActivity)
                 promise.resolve(null)
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to reload", e)
@@ -32,41 +40,66 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun updateBundle(
-        params: ReadableMap,
+        params: ReadableMap?,
         promise: Promise,
     ) {
         (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
             try {
-                val bundleId = params.getString("bundleId")!!
-                val fileUrl = params.getString("fileUrl")
-                val fileHash = params.getString("fileHash")
-                val isSuccess =
-                    HotUpdater.updateBundle(
-                        mReactApplicationContext,
-                        bundleId,
-                        fileUrl,
-                        fileHash,
-                    ) { progress ->
-                        val progressParams =
-                            WritableNativeMap().apply {
-                                putDouble("progress", progress)
-                            }
+                // Parameter validation
+                if (params == null) {
+                    promise.reject("UNKNOWN_ERROR", "Missing or invalid parameters for updateBundle")
+                    return@launch
+                }
 
-                        this@HotUpdaterModule
-                            .mReactApplicationContext
-                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                            .emit("onProgress", progressParams)
+                val bundleId = params.getString("bundleId")
+                if (bundleId == null || bundleId.isEmpty()) {
+                    promise.reject("MISSING_BUNDLE_ID", "Missing or empty 'bundleId'")
+                    return@launch
+                }
+
+                val fileUrl = params.getString("fileUrl")
+
+                // Validate fileUrl format if provided
+                if (fileUrl != null && fileUrl.isNotEmpty()) {
+                    try {
+                        java.net.URL(fileUrl)
+                    } catch (e: java.net.MalformedURLException) {
+                        promise.reject("INVALID_FILE_URL", "Invalid 'fileUrl' provided: $fileUrl")
+                        return@launch
                     }
-                promise.resolve(isSuccess)
+                }
+
+                val fileHash = params.getString("fileHash")
+
+                val impl = getInstance()
+
+                impl.updateBundle(
+                    bundleId,
+                    fileUrl,
+                    fileHash,
+                ) { progress ->
+                    val progressParams =
+                        WritableNativeMap().apply {
+                            putDouble("progress", progress)
+                        }
+
+                    this@HotUpdaterModule
+                        .mReactApplicationContext
+                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                        .emit("onProgress", progressParams)
+                }
+                promise.resolve(true)
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
             } catch (e: Exception) {
-                promise.reject("updateBundle", e)
+                promise.reject("UNKNOWN_ERROR", e.message ?: "An unknown error occurred")
             }
         }
     }
 
     override fun getTypedExportedConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
-        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId(mReactApplicationContext)
+        constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
         constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
         constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)
@@ -83,6 +116,38 @@ class HotUpdaterModule internal constructor(
         @Suppress("UNUSED_PARAMETER") count: Double,
     ) {
         // No-op
+    }
+
+    override fun notifyAppReady(params: ReadableMap?): WritableNativeMap {
+        val result = WritableNativeMap()
+        val bundleId = params?.getString("bundleId")
+        if (bundleId == null) {
+            result.putString("status", "STABLE")
+            return result
+        }
+
+        val impl = getInstance()
+        val statusMap = impl.notifyAppReady(bundleId)
+
+        result.putString("status", statusMap["status"] as? String ?: "STABLE")
+        statusMap["crashedBundleId"]?.let {
+            result.putString("crashedBundleId", it as String)
+        }
+
+        return result
+    }
+
+    override fun getCrashHistory(): WritableNativeArray {
+        val impl = getInstance()
+        val crashHistory = impl.getCrashHistory()
+        val result = WritableNativeArray()
+        crashHistory.forEach { result.pushString(it) }
+        return result
+    }
+
+    override fun clearCrashHistory(): Boolean {
+        val impl = getInstance()
+        return impl.clearCrashHistory()
     }
 
     companion object {

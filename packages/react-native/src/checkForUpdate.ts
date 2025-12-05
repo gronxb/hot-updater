@@ -1,7 +1,7 @@
 import type { AppUpdateInfo, UpdateBundleParams } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
-import { fetchUpdateInfo, type UpdateSource } from "./fetchUpdateInfo";
+import { fetchUpdateInfo } from "./fetchUpdateInfo";
 import {
   getAppVersion,
   getBundleId,
@@ -12,7 +12,14 @@ import {
 } from "./native";
 
 export interface CheckForUpdateOptions {
-  source: UpdateSource;
+  /**
+   * Update strategy
+   * - "fingerprint": Use fingerprint hash to check for updates
+   * - "appVersion": Use app version to check for updates
+   * - Can override the strategy set in HotUpdater.wrap()
+   */
+  updateStrategy: "appVersion" | "fingerprint";
+
   requestHeaders?: Record<string, string>;
   onError?: (error: Error) => void;
   /**
@@ -30,8 +37,32 @@ export type CheckForUpdateResult = AppUpdateInfo & {
   updateBundle: () => Promise<boolean>;
 };
 
+// Internal type that includes baseURL for use within index.ts
+export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
+  baseURL: string;
+}
+
+// Internal function to build update URL (not exported)
+function buildUpdateUrl(
+  baseURL: string,
+  updateStrategy: "appVersion" | "fingerprint",
+  params: UpdateBundleParams,
+): string {
+  switch (updateStrategy) {
+    case "fingerprint": {
+      if (!params.fingerprintHash) {
+        throw new HotUpdaterError("Fingerprint hash is required");
+      }
+      return `${baseURL}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
+    }
+    case "appVersion": {
+      return `${baseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
+    }
+  }
+}
+
 export async function checkForUpdate(
-  options: CheckForUpdateOptions,
+  options: InternalCheckForUpdateOptions,
 ): Promise<CheckForUpdateResult | null> {
   if (__DEV__) {
     return null;
@@ -40,6 +71,13 @@ export async function checkForUpdate(
   if (!["ios", "android"].includes(Platform.OS)) {
     options.onError?.(
       new HotUpdaterError("HotUpdater is only supported on iOS and Android"),
+    );
+    return null;
+  }
+
+  if (!options.baseURL || !options.updateStrategy) {
+    options.onError?.(
+      new HotUpdaterError("'baseURL' and 'updateStrategy' are required"),
     );
     return null;
   }
@@ -57,16 +95,17 @@ export async function checkForUpdate(
 
   const fingerprintHash = getFingerprintHash();
 
+  const url = buildUpdateUrl(options.baseURL, options.updateStrategy, {
+    platform,
+    appVersion: currentAppVersion,
+    fingerprintHash: fingerprintHash ?? null,
+    channel,
+    minBundleId,
+    bundleId: currentBundleId,
+  });
+
   return fetchUpdateInfo({
-    source: options.source,
-    params: {
-      bundleId: currentBundleId,
-      appVersion: currentAppVersion,
-      platform,
-      minBundleId,
-      channel,
-      fingerprintHash,
-    },
+    url,
     requestHeaders: options.requestHeaders,
     onError: options.onError,
     requestTimeout: options.requestTimeout,
@@ -88,31 +127,3 @@ export async function checkForUpdate(
     };
   });
 }
-
-export interface GetUpdateSourceOptions {
-  /**
-   * The update strategy to use.
-   * @description
-   * - "fingerprint": Use the fingerprint hash to check for updates.
-   * - "appVersion": Use the target app version to check for updates.
-   */
-  updateStrategy: "appVersion" | "fingerprint";
-}
-
-export const getUpdateSource =
-  (baseUrl: string, options: GetUpdateSourceOptions) =>
-  (params: UpdateBundleParams) => {
-    switch (options.updateStrategy) {
-      case "fingerprint": {
-        if (!params.fingerprintHash) {
-          throw new HotUpdaterError("Fingerprint hash is required");
-        }
-        return `${baseUrl}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
-      }
-      case "appVersion": {
-        return `${baseUrl}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
-      }
-      default:
-        return baseUrl;
-    }
-  };

@@ -21,6 +21,14 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 /**
+ * Exception for incomplete downloads with size information
+ */
+class IncompleteDownloadException(
+    val expectedSize: Long,
+    val actualSize: Long,
+) : IOException("Download incomplete: received $actualSize bytes, expected $expectedSize bytes")
+
+/**
  * Result wrapper for download operations
  */
 sealed class DownloadResult {
@@ -255,12 +263,16 @@ class OkHttpDownloadService : DownloadService {
                 // Verify file size
                 val finalSize = destination.length()
                 if (finalSize != totalSize) {
-                    val errorMsg = "Download incomplete: $finalSize / $totalSize bytes"
-                    Log.d(TAG, errorMsg)
+                    Log.d(TAG, "Download incomplete: $finalSize / $totalSize bytes")
 
                     // Delete incomplete file
                     destination.delete()
-                    return@withContext DownloadResult.Error(IOException(errorMsg))
+                    return@withContext DownloadResult.Error(
+                        IncompleteDownloadException(
+                            expectedSize = totalSize,
+                            actualSize = finalSize,
+                        ),
+                    )
                 }
 
                 Log.d(TAG, "Download completed successfully: $finalSize bytes")
