@@ -23,20 +23,6 @@ class HotUpdaterException(
                 "Invalid 'fileUrl' provided",
             )
 
-        fun instanceNotFound(identifier: String) =
-            HotUpdaterException(
-                "INSTANCE_NOT_FOUND",
-                "HotUpdater instance with identifier '$identifier' not found. Make sure to create the instance first.",
-            )
-
-        fun identifierMismatch(
-            bundleUrlId: String?,
-            updateBundleId: String?,
-        ) = HotUpdaterException(
-            "IDENTIFIER_MISMATCH",
-            "Identifier mismatch: bundleURL uses '$bundleUrlId' but updateBundle received '$updateBundleId'",
-        )
-
         // Bundle storage errors
         fun directoryCreationFailed() =
             HotUpdaterException(

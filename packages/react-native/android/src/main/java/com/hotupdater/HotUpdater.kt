@@ -6,7 +6,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 
 /**
  * Main React Native package for HotUpdater
- * Provides static utility methods and a default singleton instance (identifier = null)
+ * Provides static utility methods and a default singleton instance
  */
 class HotUpdater {
     companion object {
@@ -14,14 +14,14 @@ class HotUpdater {
         private var instance: HotUpdaterImpl? = null
 
         /**
-         * Gets or creates the singleton instance with identifier = null
+         * Gets or creates the singleton instance
          * Thread-safe double-checked locking
          * @param context Application context
          * @return The singleton HotUpdaterImpl instance
          */
         fun getInstance(context: Context): HotUpdaterImpl =
             instance ?: synchronized(this) {
-                instance ?: HotUpdaterImpl(context.applicationContext, identifier = null).also {
+                instance ?: HotUpdaterImpl(context.applicationContext).also {
                     instance = it
                 }
             }

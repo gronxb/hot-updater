@@ -31,6 +31,7 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
+throw new Error("test");
 
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
@@ -89,7 +90,35 @@ function App(): React.JSX.Element {
         source={require("./src/test/_image.png")}
       />
 
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Crash History:
+      </Text>
+      {HotUpdater.getCrashHistory().map((crash) => (
+        <Text
+          key={crash}
+          style={{
+            marginVertical: 20,
+            fontSize: 20,
+            fontWeight: "bold",
+            textAlign: "center",
+          }}
+        >
+          {crash}
+        </Text>
+      ))}
+
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button
+        title="Clear Crash History"
+        onPress={() => HotUpdater.clearCrashHistory()}
+      />
     </SafeAreaView>
   );
 }
@@ -98,6 +127,9 @@ export default HotUpdater.wrap({
   baseURL: "http://localhost:3006/hot-updater",
   updateStrategy: "appVersion",
   updateMode: "auto",
+  onNotifyAppReady: (result) => {
+    Alert.alert("onNotifyAppReady", JSON.stringify(result));
+  },
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

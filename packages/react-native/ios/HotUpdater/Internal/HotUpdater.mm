@@ -18,8 +18,6 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
     bool hasListeners;
     // Keep track of tasks ONLY for removing observers when this ObjC instance is invalidated
     NSMutableSet<NSURLSessionTask *> *observedTasks; // Changed to NSURLSessionTask for broader compatibility if needed
-    // Instance-specific implementation (nil for default/static behavior)
-    HotUpdaterImpl *_instanceImpl;
 }
 
 + (BOOL)requiresMainQueueSetup {
@@ -27,27 +25,19 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
 }
 
 - (instancetype)init {
-    return [self initWithIdentifier:nil];
-}
-
-- (instancetype)initWithIdentifier:(NSString *)identifier {
     self = [super init];
     if (self) {
         observedTasks = [NSMutableSet set];
 
-        // Create HotUpdaterImpl with identifier (uses convenience initializer)
-        _instanceImpl = [[HotUpdaterImpl alloc] initWithIdentifier:identifier];
-
         // Start observing notifications needed for cleanup/events
-        // Using self as observer
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadProgress:)
                                                      name:HotUpdaterDownloadProgressUpdateNotification
-                                                   object:nil]; // Observe all tasks from Impl
+                                                   object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadCompletion:)
                                                      name:HotUpdaterDownloadDidFinishNotification
-                                                   object:nil]; // Observe all tasks from Impl
+                                                   object:nil];
 
         _lastUpdateTime = 0;
     }
@@ -70,6 +60,18 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
 
 RCT_EXPORT_MODULE();
 
+#pragma mark - Singleton Instance
+
+// Static singleton HotUpdaterImpl getter
++ (HotUpdaterImpl *)sharedImpl {
+    static HotUpdaterImpl *_sharedImpl = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _sharedImpl = [[HotUpdaterImpl alloc] init];
+    });
+    return _sharedImpl;
+}
+
 #pragma mark - React Native Constants (Keep getMinBundleId, delegate others)
 
 // Keep local implementation if complex or uses macros
@@ -82,6 +84,8 @@ RCT_EXPORT_MODULE();
      #else
          NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
          NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    
+         [formatter setTimeZone:[NSTimeZone systemTimeZone]];
          [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
          [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
          NSDate *buildDate = [formatter dateFromString:compileDateStr];
@@ -111,31 +115,23 @@ RCT_EXPORT_MODULE();
 
 
 - (NSDictionary *)_buildConstantsDictionary {
-    // Use instance implementation
     return @{
-        @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null], // Local
-        @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null], // Swift
-        @"CHANNEL": [_instanceImpl getChannel] ?: [NSNull null], // Swift
-        @"FINGERPRINT_HASH": [_instanceImpl getFingerprintHash] ?: [NSNull null] // Swift
+        @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
+        @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null],
+        @"CHANNEL": [[HotUpdater sharedImpl] getChannel] ?: [NSNull null],
+        @"FINGERPRINT_HASH": [[HotUpdater sharedImpl] getFingerprintHash] ?: [NSNull null]
     };
 }
 
 
-// Get bundleURL using lazy singleton (class method for backward compatibility)
+// Get bundleURL using singleton
 + (NSURL *)bundleURL {
-    static HotUpdater *_defaultInstance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        _defaultInstance = [[HotUpdater alloc] initWithIdentifier:nil];
-    });
-    return [_defaultInstance bundleURL];
+    return [[HotUpdater sharedImpl] bundleURL];
 }
 
-// Get bundleURL using instance implementation (instance method)
+// Get bundleURL using instance impl
 - (NSURL *)bundleURL {
-    // Register the identifier being used by bundleURL for validation
-    [HotUpdaterRegistry setDefaultIdentifier:[_instanceImpl getIdentifier]];
-    return [_instanceImpl bundleURL];
+    return [[HotUpdater sharedImpl] bundleURL];
 }
 
 
@@ -203,7 +199,8 @@ RCT_EXPORT_MODULE();
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            NSURL *bundleURL = [self->_instanceImpl bundleURL];
+            HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+            NSURL *bundleURL = [impl bundleURL];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
@@ -233,41 +230,32 @@ RCT_EXPORT_MODULE();
     if (params.fileHash()) {
         paramDict[@"fileHash"] = params.fileHash();
     }
-    if (params.identifier()) {
-        paramDict[@"identifier"] = params.identifier();
-    }
 
-    NSString *identifier = paramDict[@"identifier"];
-    HotUpdaterImpl *impl = [HotUpdaterRegistry resolveInstanceWithIdentifier:identifier fallback:self->_instanceImpl];
-
-    if (!impl) {
-        NSString *errorMessage = [NSString stringWithFormat:@"HotUpdater instance with identifier '%@' not found. Make sure to create the instance with HotUpdater(identifier: \"%@\") first.", identifier, identifier];
-        reject(@"INSTANCE_NOT_FOUND", errorMessage, nil);
-        return;
-    }
-
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
 
-- (NSNumber *)notifyAppReady:(JS::NativeHotUpdater::SpecNotifyAppReadyParams &)params {
+- (NSDictionary *)notifyAppReady:(JS::NativeHotUpdater::SpecNotifyAppReadyParams &)params {
     NSString *bundleId = nil;
     if (params.bundleId()) {
         bundleId = params.bundleId();
     }
     NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
-    BOOL result = [_instanceImpl notifyAppReadyWithBundleId:bundleId];
-    return @(result);
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl notifyAppReadyWithBundleId:bundleId];
 }
 
 - (NSArray<NSString *> *)getCrashHistory {
     NSLog(@"[HotUpdater.mm] getCrashHistory called");
-    NSArray<NSString *> *crashHistory = [_instanceImpl getCrashHistory];
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSArray<NSString *> *crashHistory = [impl getCrashHistory];
     return crashHistory ?: @[];
 }
 
 - (NSNumber *)clearCrashHistory {
     NSLog(@"[HotUpdater.mm] clearCrashHistory called");
-    BOOL result = [_instanceImpl clearCrashHistory];
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    BOOL result = [impl clearCrashHistory];
     return @(result);
 }
 
@@ -284,11 +272,12 @@ RCT_EXPORT_MODULE();
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)getConstants {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return facebook::react::typedConstants<JS::NativeHotUpdater::Constants::Builder>({
         .MIN_BUNDLE_ID = [self getMinBundleId],
         .APP_VERSION = [HotUpdaterImpl appVersion],
-        .CHANNEL = [_instanceImpl getChannel],
-        .FINGERPRINT_HASH = [_instanceImpl getFingerprintHash],
+        .CHANNEL = [impl getChannel],
+        .FINGERPRINT_HASH = [impl getFingerprintHash],
     });
 }
 
@@ -301,7 +290,8 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            NSURL *bundleURL = [self->_instanceImpl bundleURL];
+            HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+            NSURL *bundleURL = [impl bundleURL];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
@@ -321,35 +311,28 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
-
-    NSString *identifier = params[@"identifier"];
-    HotUpdaterImpl *impl = [HotUpdaterRegistry resolveInstanceWithIdentifier:identifier fallback:self->_instanceImpl];
-
-    if (!impl) {
-        NSString *errorMessage = [NSString stringWithFormat:@"HotUpdater instance with identifier '%@' not found. Make sure to create the instance with HotUpdater(identifier: \"%@\") first.", identifier, identifier];
-        reject(@"INSTANCE_NOT_FOUND", errorMessage, nil);
-        return;
-    }
-
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:params resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady:(NSDictionary *)params) {
     NSString *bundleId = params[@"bundleId"];
     NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
-    BOOL result = [_instanceImpl notifyAppReadyWithBundleId:bundleId];
-    return @(result);
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl notifyAppReadyWithBundleId:bundleId];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCrashHistory) {
     NSLog(@"[HotUpdater.mm] getCrashHistory called");
-    NSArray<NSString *> *crashHistory = [_instanceImpl getCrashHistory];
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSArray<NSString *> *crashHistory = [impl getCrashHistory];
     return crashHistory ?: @[];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
     NSLog(@"[HotUpdater.mm] clearCrashHistory called");
-    BOOL result = [_instanceImpl clearCrashHistory];
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    BOOL result = [impl clearCrashHistory];
     return @(result);
 }
 

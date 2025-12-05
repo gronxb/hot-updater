@@ -14,25 +14,6 @@ export interface UpdateBundleParams {
    * Native determines verification mode by checking for "sig:" prefix.
    */
   fileHash: string | null;
-  /**
-   * Optional identifier to target a specific HotUpdater instance.
-   *
-   * Use this in brownfield apps with multiple React Native views.
-   * The identifier must match an instance created with `HotUpdater(identifier: "...")` on the native side.
-   *
-   * If not provided, uses the current module instance (backward compatibility).
-   *
-   * @example
-   * ```typescript
-   * // Target specific instance
-   * await HotUpdater.updateBundle({
-   *   bundleId: "123",
-   *   fileUrl: "https://...",
-   *   identifier: "main-view"
-   * });
-   * ```
-   */
-  identifier?: string;
 }
 
 export interface Spec extends TurboModule {
@@ -48,7 +29,6 @@ export interface Spec extends TurboModule {
    *   Parameter validation:
    *   - MISSING_BUNDLE_ID: Missing or empty bundleId
    *   - INVALID_FILE_URL: Invalid fileUrl provided
-   *   - INSTANCE_NOT_FOUND: Identifier provided but no matching instance found (iOS)
    *
    *   Bundle storage:
    *   - DIRECTORY_CREATION_FAILED: Failed to create bundle directory

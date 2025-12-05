@@ -86,13 +86,6 @@ export interface AutoUpdateOptions extends CommonHotUpdaterOptions {
    */
   updateMode: "auto";
 
-  /**
-   * Optional identifier to target a specific HotUpdater instance.
-   * Use this in brownfield apps with multiple React Native views.
-   * The identifier must match an instance created with `HotUpdater(identifier: "...")` on the native side.
-   */
-  identifier?: string;
-
   onError?: (error: HotUpdaterError | Error | unknown) => void;
 
   /**
@@ -211,7 +204,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
 
           if (updateInfo.shouldForceUpdate === false) {
             void updateInfo
-              .updateBundle({ identifier: restOptions.identifier })
+              .updateBundle()
               .catch((error: unknown) => {
                 restOptions.onError?.(error);
               });
@@ -227,9 +220,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           }
           // Force Update Scenario
           setUpdateStatus("UPDATING");
-          const isSuccess = await updateInfo.updateBundle({
-            identifier: restOptions.identifier,
-          });
+          const isSuccess = await updateInfo.updateBundle();
 
           if (!isSuccess) {
             throw new Error(

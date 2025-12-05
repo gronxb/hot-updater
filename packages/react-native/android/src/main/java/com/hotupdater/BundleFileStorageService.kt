@@ -81,7 +81,6 @@ class BundleFileStorageService(
     private val downloadService: DownloadService,
     private val decompressService: DecompressService,
     private val preferences: PreferencesService,
-    private val identifier: String? = null,
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
@@ -94,8 +93,7 @@ class BundleFileStorageService(
 
     private fun getBundleStoreDir(): File {
         val baseDir = fileSystem.getExternalFilesDir()
-        val storeDirName = identifier?.let { "bundle-store-$it" } ?: "bundle-store"
-        return File(baseDir, storeDirName)
+        return File(baseDir, "bundle-store")
     }
 
     private fun getMetadataFile(): File = File(getBundleStoreDir(), BundleMetadata.METADATA_FILENAME)
@@ -122,7 +120,7 @@ class BundleFileStorageService(
     private fun extractBundleIdFromCurrentURL(): String? {
         val currentUrl = preferences.getItem("HotUpdaterBundleURL") ?: return null
         // "bundle-store/abc123/index.android.bundle" -> "abc123"
-        val regex = Regex("bundle-store(?:-[^/]+)?/([^/]+)/")
+        val regex = Regex("bundle-store/([^/]+)/")
         return regex.find(currentUrl)?.groupValues?.get(1)
     }
 
@@ -278,14 +276,14 @@ class BundleFileStorageService(
     // MARK: - Bundle URL Operations
 
     override fun setBundleURL(localPath: String?): Boolean {
-        Log.d(TAG, "setBundleURL: $localPath (identifier: $identifier)")
+        Log.d(TAG, "setBundleURL: $localPath")
         preferences.setItem("HotUpdaterBundleURL", localPath)
         return true
     }
 
     override fun getCachedBundleURL(): String? {
         val urlString = preferences.getItem("HotUpdaterBundleURL")
-        Log.d(TAG, "getCachedBundleURL: read from prefs = $urlString (identifier: $identifier)")
+        Log.d(TAG, "getCachedBundleURL: read from prefs = $urlString")
         if (urlString.isNullOrEmpty()) {
             Log.d(TAG, "getCachedBundleURL: urlString is null or empty")
             return null
@@ -314,7 +312,7 @@ class BundleFileStorageService(
             // Legacy mode: no metadata.json exists, use existing behavior
             val cached = getCachedBundleURL()
             val result = cached ?: getFallbackBundleURL()
-            Log.d(TAG, "getBundleURL (legacy): returning $result (identifier: $identifier)")
+            Log.d(TAG, "getBundleURL (legacy): returning $result")
             return result
         }
 
@@ -369,7 +367,7 @@ class BundleFileStorageService(
         // Fallback
         val cached = getCachedBundleURL()
         val result = cached ?: getFallbackBundleURL()
-        Log.d(TAG, "getBundleURL: returning $result (cached=$cached, identifier: $identifier)")
+        Log.d(TAG, "getBundleURL: returning $result (cached=$cached)")
         return result
     }
 
@@ -444,7 +442,7 @@ class BundleFileStorageService(
             }
         }
 
-        val tempDirName = identifier?.let { "bundle-temp-$it" } ?: "bundle-temp"
+        val tempDirName = "bundle-temp"
         val tempDir = File(baseDir, tempDirName)
         if (tempDir.exists()) {
             tempDir.deleteRecursively()

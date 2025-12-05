@@ -17,14 +17,6 @@
 + (NSURL *)bundleURL;
 
 /**
- * Initializes a HotUpdater instance with a custom identifier for isolated storage.
- * Use this for brownfield apps that need multiple React Native instances.
- * @param identifier Custom identifier for storage isolation (nil for default behavior)
- * @return Initialized HotUpdater instance
- */
-- (instancetype)initWithIdentifier:(NSString *)identifier NS_DESIGNATED_INITIALIZER;
-
-/**
  * Returns the bundle URL for this specific instance.
  * @return The bundle URL for this instance
  */

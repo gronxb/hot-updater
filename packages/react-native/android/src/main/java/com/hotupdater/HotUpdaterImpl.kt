@@ -13,7 +13,6 @@ class HotUpdaterImpl {
     private val context: Context
     private val bundleStorage: BundleStorageService
     private val preferences: PreferencesService
-    private val identifier: String?
 
     /**
      * Primary constructor with dependency injection (for testing)
@@ -22,28 +21,19 @@ class HotUpdaterImpl {
         context: Context,
         bundleStorage: BundleStorageService,
         preferences: PreferencesService,
-        identifier: String? = null,
     ) {
         this.context = context.applicationContext
         this.bundleStorage = bundleStorage
         this.preferences = preferences
-        this.identifier = identifier
-
-        // Auto-register with registry if identifier is provided
-        identifier?.let {
-            HotUpdaterRegistry.register(this, it)
-            Log.d(TAG, "Auto-registered with identifier: $it")
-        }
     }
 
     /**
      * Convenience constructor for simple usage
      */
-    constructor(context: Context, identifier: String? = null) : this(
+    constructor(context: Context) : this(
         context = context,
-        bundleStorage = createBundleStorage(context, identifier),
-        preferences = createPreferences(context, identifier),
-        identifier = identifier,
+        bundleStorage = createBundleStorage(context),
+        preferences = createPreferences(context),
     )
 
     /**
@@ -76,13 +66,10 @@ class HotUpdaterImpl {
         /**
          * Create BundleStorageService with all dependencies
          */
-        private fun createBundleStorage(
-            context: Context,
-            identifier: String?,
-        ): BundleStorageService {
+        private fun createBundleStorage(context: Context): BundleStorageService {
             val appContext = context.applicationContext
             val fileSystem = FileManagerService(appContext)
-            val preferences = createPreferences(appContext, identifier)
+            val preferences = createPreferences(appContext)
             val downloadService = OkHttpDownloadService()
             val decompressService = DecompressService()
 
@@ -92,32 +79,24 @@ class HotUpdaterImpl {
                 downloadService,
                 decompressService,
                 preferences,
-                identifier,
             )
         }
 
         /**
          * Create PreferencesService with isolation key
          */
-        private fun createPreferences(
-            context: Context,
-            identifier: String?,
-        ): PreferencesService {
+        private fun createPreferences(context: Context): PreferencesService {
             val appContext = context.applicationContext
-            val isolationKey = getIsolationKey(appContext, identifier)
+            val isolationKey = getIsolationKey(appContext)
             return VersionedPreferencesService(appContext, isolationKey)
         }
 
         /**
-         * Gets the complete isolation key for preferences storage with optional identifier
+         * Gets the complete isolation key for preferences storage
          * @param context Application context
-         * @param identifier Custom identifier for storage isolation (null for default)
-         * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}_{identifier}
+         * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}
          */
-        private fun getIsolationKey(
-            context: Context,
-            identifier: String?,
-        ): String {
+        private fun getIsolationKey(context: Context): String {
             // Get fingerprint hash directly from resources
             val fingerprintId = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
             val fingerprintHash =
@@ -134,12 +113,7 @@ class HotUpdaterImpl {
             // Use fingerprint if available, otherwise use app version
             val baseKey = if (!fingerprintHash.isNullOrEmpty()) fingerprintHash else appVersion
 
-            // Build complete isolation key with optional identifier
-            return if (identifier != null) {
-                "HotUpdaterPrefs_${baseKey}_${appChannel}_$identifier"
-            } else {
-                "HotUpdaterPrefs_${baseKey}_$appChannel"
-            }
+            return "HotUpdaterPrefs_${baseKey}_$appChannel"
         }
 
         fun getAppVersion(context: Context): String? =
@@ -168,13 +142,6 @@ class HotUpdaterImpl {
                 DEFAULT_CHANNEL
             }
         }
-
-        /**
-         * Gets the complete isolation key for preferences storage (backward compatibility)
-         * @param context Application context
-         * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}
-         */
-        fun getIsolationKey(context: Context): String = getIsolationKey(context, null)
 
         /**
          * Get minimum bundle ID string
@@ -263,11 +230,7 @@ class HotUpdaterImpl {
      * Gets the path to the bundle file
      * @return The path to the bundle file
      */
-    fun getJSBundleFile(): String {
-        // Register the identifier being used by getJSBundleFile for validation
-        HotUpdaterRegistry.setDefaultIdentifier(identifier)
-        return bundleStorage.getBundleURL()
-    }
+    fun getJSBundleFile(): String = bundleStorage.getBundleURL()
 
     /**
      * Updates the bundle from the specified URL

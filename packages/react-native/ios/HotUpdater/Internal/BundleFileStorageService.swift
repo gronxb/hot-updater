@@ -106,7 +106,7 @@ public protocol BundleStorageService {
     func getBundleURL() -> URL?
 
     // Bundle update
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, identifier: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Rollback support
     func notifyAppReady(bundleId: String) -> [String: Any]
@@ -119,8 +119,9 @@ class BundleFileStorageService: BundleStorageService {
     private let downloadService: DownloadService
     private let decompressService: DecompressService
     private let preferences: PreferencesService
-    private let identifier: String?
 
+    private let id = Int.random(in: 1..<100)
+    
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
 
@@ -132,18 +133,15 @@ class BundleFileStorageService: BundleStorageService {
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
                 decompressService: DecompressService,
-                preferences: PreferencesService,
-                identifier: String? = nil) {
+                preferences: PreferencesService) {
 
         self.fileSystem = fileSystem
         self.downloadService = downloadService
         self.decompressService = decompressService
         self.preferences = preferences
-        self.identifier = identifier
 
-        // Create unique queue label for each instance
-        let queueLabel = identifier != nil ? "com.hotupdater.fileoperations.\(identifier!)" : "com.hotupdater.fileoperations"
-        self.fileOperationQueue = DispatchQueue(label: queueLabel,
+        // Create queue for file operations
+        self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
                                                qos: .utility,
                                                attributes: .concurrent)
     }
@@ -151,14 +149,14 @@ class BundleFileStorageService: BundleStorageService {
     // MARK: - Metadata File Paths
 
     private func metadataFileURL() -> URL? {
-        guard case .success(let storeDir) = bundleStoreDir(identifier: identifier) else {
+        guard case .success(let storeDir) = bundleStoreDir() else {
             return nil
         }
         return URL(fileURLWithPath: storeDir).appendingPathComponent(BundleMetadata.metadataFilename)
     }
 
     private func crashedHistoryFileURL() -> URL? {
-        guard case .success(let storeDir) = bundleStoreDir(identifier: identifier) else {
+        guard case .success(let storeDir) = bundleStoreDir() else {
             return nil
         }
         return URL(fileURLWithPath: storeDir).appendingPathComponent(CrashedHistory.crashedHistoryFilename)
@@ -247,7 +245,7 @@ class BundleFileStorageService: BundleStorageService {
 
             // Clean up old stable bundle
             if let oldId = oldStableId, oldId != stagingId {
-                let _ = cleanupOldBundles(currentBundleId: stagingId, bundleId: nil, identifier: identifier)
+                let _ = cleanupOldBundles(currentBundleId: stagingId, bundleId: nil)
             }
         }
     }
@@ -265,10 +263,10 @@ class BundleFileStorageService: BundleStorageService {
         var crashedHistory = loadCrashedHistory()
         crashedHistory.addEntry(stagingId)
         let _ = saveCrashedHistory(crashedHistory)
-        NSLog("[BundleStorage] Added bundle '\(stagingId)' to crashed history")
+        NSLog("[BundleStorage('\(id)')] Added bundle '\(stagingId)' to crashed history")
 
         // Save rollback info to session variable (memory only)
-        sessionRollbackBundleId = stagingId
+        self.sessionRollbackBundleId = stagingId
 
         // Clear staging
         metadata.stagingBundleId = nil
@@ -282,7 +280,7 @@ class BundleFileStorageService: BundleStorageService {
 
             // Update HotUpdaterBundleURL to point to stable bundle
             if let stableId = metadata.stableBundleId {
-                if case .success(let storeDir) = bundleStoreDir(identifier: identifier) {
+                if case .success(let storeDir) = bundleStoreDir() {
                     let stableBundleDir = (storeDir as NSString).appendingPathComponent(stableId)
                     if case .success(let bundlePath) = findBundleFile(in: stableBundleDir), let path = bundlePath {
                         let _ = setBundleURL(localPath: path)
@@ -294,7 +292,7 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             // Clean up failed staging bundle
-            let _ = cleanupOldBundles(currentBundleId: metadata.stableBundleId, bundleId: nil, identifier: identifier)
+            let _ = cleanupOldBundles(currentBundleId: metadata.stableBundleId, bundleId: nil)
         }
     }
     
@@ -317,26 +315,21 @@ class BundleFileStorageService: BundleStorageService {
     
     /**
      * Gets the path to the bundle store directory.
-     * Uses identifier for namespace isolation if provided.
      * Executes synchronously on the calling thread.
-     * @param identifier Custom identifier for storage isolation (nil for default)
      * @return Result with the directory path or error
      */
-    func bundleStoreDir(identifier: String?) -> Result<String, Error> {
-        let basePath = identifier != nil ? "bundle-store-\(identifier!)" : "bundle-store"
-        let path = (fileSystem.documentsPath() as NSString).appendingPathComponent(basePath)
+    func bundleStoreDir() -> Result<String, Error> {
+        let path = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-store")
         return ensureDirectoryExists(path: path)
     }
     
     /**
      * Gets the path to the temporary directory.
-     * Uses identifier for namespace isolation if provided.
      * Executes synchronously on the calling thread.
      * @return Result with the directory path or error
      */
     func tempDir() -> Result<String, Error> {
-        let basePath = identifier != nil ? "bundle-temp-\(String(describing: identifier))" : "bundle-temp"
-        let path = (fileSystem.documentsPath() as NSString).appendingPathComponent(basePath)
+        let path = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-temp")
         return ensureDirectoryExists(path: path)
     }
     
@@ -413,11 +406,10 @@ class BundleFileStorageService: BundleStorageService {
     * Executes synchronously on the calling thread.
     * @param currentBundleId ID of the current active bundle (optional)
     * @param bundleId ID of the new bundle to keep (optional)
-    * @param identifier Custom identifier for storage isolation (nil for default)
     * @return Result of operation
     */
-    func cleanupOldBundles(currentBundleId: String?, bundleId: String?, identifier: String?) -> Result<Void, Error> {
-        let storeDirResult = bundleStoreDir(identifier: identifier)
+    func cleanupOldBundles(currentBundleId: String?, bundleId: String?) -> Result<Void, Error> {
+        let storeDirResult = bundleStoreDir()
         
         guard case .success(let storeDir) = storeDirResult else {
             return .failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil))
@@ -555,7 +547,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // If verification is pending, return staging bundle URL
         if isVerificationPending(currentMetadata), let stagingId = currentMetadata.stagingBundleId {
-            if case .success(let storeDir) = bundleStoreDir(identifier: identifier) {
+            if case .success(let storeDir) = bundleStoreDir() {
                 let stagingBundleDir = (storeDir as NSString).appendingPathComponent(stagingId)
                 if case .success(let bundlePath) = findBundleFile(in: stagingBundleDir), let path = bundlePath {
                     NSLog("[BundleStorage] Returning staging bundle URL: \(path)")
@@ -566,7 +558,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Return stable bundle URL
         if let stableId = currentMetadata.stableBundleId {
-            if case .success(let storeDir) = bundleStoreDir(identifier: identifier) {
+            if case .success(let storeDir) = bundleStoreDir() {
                 let stableBundleDir = (storeDir as NSString).appendingPathComponent(stableId)
                 if case .success(let bundlePath) = findBundleFile(in: stableBundleDir), let path = bundlePath {
                     NSLog("[BundleStorage] Returning stable bundle URL: \(path)")
@@ -586,11 +578,10 @@ class BundleFileStorageService: BundleStorageService {
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download (or nil to reset)
      * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
-     * @param identifier Custom identifier for storage isolation (nil for default)
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, identifier: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
         // Check if bundle is in crashed history
         let crashedHistory = loadCrashedHistory()
         if crashedHistory.contains(bundleId) {
@@ -610,7 +601,7 @@ class BundleFileStorageService: BundleStorageService {
                 let setResult = self.setBundleURL(localPath: nil)
                 switch setResult {
                 case .success:
-                    let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId, identifier: identifier)
+                    let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
                     switch cleanupResult {
                     case .success:
                         completion(.success(true))
@@ -629,7 +620,7 @@ class BundleFileStorageService: BundleStorageService {
         // Start the bundle update process on a background queue
         fileOperationQueue.async {
 
-            let storeDirResult = self.bundleStoreDir(identifier: identifier)
+            let storeDirResult = self.bundleStoreDir()
             guard case .success(let storeDir) = storeDirResult else {
                 completion(.failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil)))
                 return
@@ -660,7 +651,7 @@ class BundleFileStorageService: BundleStorageService {
                             let stableId = metadata.stableBundleId
                             let bundleIdsToKeep = [stableId, bundleId].compactMap { $0 }
                             if bundleIdsToKeep.count > 0 {
-                                let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil, identifier: identifier)
+                                let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil)
                             }
 
                             completion(.success(true))
@@ -673,7 +664,7 @@ class BundleFileStorageService: BundleStorageService {
                         do {
                             try self.fileSystem.removeItem(atPath: finalBundleDir)
                             // Continue with download process on success
-                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, identifier: identifier, progressHandler: progressHandler, completion: completion)
+                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
                         } catch let error {
                             NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
                             completion(.failure(BundleStorageError.unknown(error)))
@@ -683,7 +674,7 @@ class BundleFileStorageService: BundleStorageService {
                     completion(.failure(error))
                 }
             } else {
-                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, identifier: identifier, progressHandler: progressHandler, completion: completion)
+                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
             }
         }
     }
@@ -703,7 +694,6 @@ class BundleFileStorageService: BundleStorageService {
         fileUrl: URL,
         fileHash: String?,
         storeDir: String,
-        identifier: String?,
         progressHandler: @escaping (Double) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
@@ -785,7 +775,6 @@ class BundleFileStorageService: BundleStorageService {
                                                       storeDir: storeDir,
                                                       bundleId: bundleId,
                                                       tempDirectory: tempDirectory,
-                                                      identifier: identifier,
                                                       progressHandler: progressHandler,
                                                       completion: completion)
                 case .failure(let error):
@@ -858,7 +847,6 @@ class BundleFileStorageService: BundleStorageService {
         storeDir: String,
         bundleId: String,
         tempDirectory: String,
-        identifier: String?,
         progressHandler: @escaping (Double) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
@@ -983,7 +971,7 @@ class BundleFileStorageService: BundleStorageService {
                         let stableId = metadata.stableBundleId
                         let bundleIdsToKeep = [stableId, bundleId].compactMap { $0 }
                         if bundleIdsToKeep.count > 0 {
-                            let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil, identifier: identifier)
+                            let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil)
                         }
 
                         // 16) Complete with success
@@ -1038,6 +1026,7 @@ class BundleFileStorageService: BundleStorageService {
      * @return true if promotion was successful or no action was needed
      */
     func notifyAppReady(bundleId: String) -> [String: Any] {
+        NSLog("[BundleStorage('\(id)'] notifyAppReady: Called with bundleId '\(bundleId)'")
         guard var metadata = loadMetadataOrNull() else {
             // No metadata exists - legacy mode, nothing to do
             NSLog("[BundleStorage] notifyAppReady: No metadata exists (legacy mode)")
@@ -1045,11 +1034,11 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         // Check if there was a recent rollback (session variable)
-        if let crashedBundleId = sessionRollbackBundleId {
+        if let crashedBundleId = self.sessionRollbackBundleId {
             NSLog("[BundleStorage] notifyAppReady: Detected rollback recovery from '\(crashedBundleId)'")
 
             // Clear rollback info (one-time read)
-            sessionRollbackBundleId = nil
+            self.sessionRollbackBundleId = nil
 
             return [
                 "status": "RECOVERED",

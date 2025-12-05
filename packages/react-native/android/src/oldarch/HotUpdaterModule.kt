@@ -22,43 +22,15 @@ class HotUpdaterModule internal constructor(
     override fun getName(): String = NAME
 
     /**
-     * Resolves HotUpdaterImpl instance based on identifier
-     * @param identifier Optional identifier to look up in registry (null = use singleton)
-     * @param promise Promise to reject if instance not found
-     * @return HotUpdaterImpl instance or null if not found (promise will be rejected)
+     * Gets the singleton HotUpdaterImpl instance
      */
-    private fun resolveHotUpdaterInstance(
-        identifier: String?,
-        promise: Promise,
-    ): HotUpdaterImpl? {
-        val impl =
-            if (identifier != null) {
-                HotUpdaterRegistry.get(identifier)
-            } else {
-                HotUpdater.getInstance(mReactApplicationContext)
-            }
-
-        if (impl == null) {
-            val message =
-                if (identifier != null) {
-                    "HotUpdater instance with identifier '$identifier' not found. Make sure to create the instance first."
-                } else {
-                    "HotUpdater instance not found. Make sure to call getJSBundleFile first."
-                }
-            promise.reject("INSTANCE_NOT_FOUND", message)
-        }
-
-        return impl
-    }
+    private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
     @ReactMethod
     override fun reload(promise: Promise) {
         CoroutineScope(Dispatchers.Main.immediate).launch {
             try {
-                // Get the identifier used by getJSBundleFile
-                val identifier = HotUpdaterRegistry.getDefaultIdentifier()
-                val impl = resolveHotUpdaterInstance(identifier, promise) ?: return@launch
-
+                val impl = getInstance()
                 val currentActivity = mReactApplicationContext.currentActivity
                 impl.reload(currentActivity)
                 promise.resolve(null)
@@ -101,9 +73,8 @@ class HotUpdaterModule internal constructor(
                 }
 
                 val fileHash = params.getString("fileHash")
-                val identifier = params.getString("identifier")
 
-                val impl = resolveHotUpdaterInstance(identifier, promise) ?: return@launch
+                val impl = getInstance()
 
                 impl.updateBundle(
                     bundleId,
@@ -161,15 +132,8 @@ class HotUpdaterModule internal constructor(
             return result
         }
 
-        val identifier = HotUpdaterRegistry.getDefaultIdentifier()
-        val impl =
-            if (identifier != null) {
-                HotUpdaterRegistry.get(identifier)
-            } else {
-                HotUpdater.getInstance(mReactApplicationContext)
-            }
-
-        val statusMap = impl?.notifyAppReady(bundleId) ?: mapOf("status" to "STABLE")
+        val impl = getInstance()
+        val statusMap = impl.notifyAppReady(bundleId)
 
         result.putString("status", statusMap["status"] as? String ?: "STABLE")
         statusMap["crashedBundleId"]?.let {
@@ -181,27 +145,15 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getCrashHistory(): String {
-        val identifier = HotUpdaterRegistry.getDefaultIdentifier()
-        val impl =
-            if (identifier != null) {
-                HotUpdaterRegistry.get(identifier)
-            } else {
-                HotUpdater.getInstance(mReactApplicationContext)
-            }
-        val crashHistory = impl?.getCrashHistory() ?: emptyList()
+        val impl = getInstance()
+        val crashHistory = impl.getCrashHistory()
         return JSONArray(crashHistory).toString()
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun clearCrashHistory(): Boolean {
-        val identifier = HotUpdaterRegistry.getDefaultIdentifier()
-        val impl =
-            if (identifier != null) {
-                HotUpdaterRegistry.get(identifier)
-            } else {
-                HotUpdater.getInstance(mReactApplicationContext)
-            }
-        return impl?.clearCrashHistory() ?: true
+        val impl = getInstance()
+        return impl.clearCrashHistory()
     }
 
     companion object {

@@ -100,18 +100,12 @@ export async function updateBundle(
       ? undefined
       : paramsOrBundleId.fileHash;
 
-  const targetIdentifier =
-    typeof paramsOrBundleId === "string"
-      ? undefined
-      : paramsOrBundleId.identifier;
-
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
-        identifier: targetIdentifier,
       });
       if (ok) {
         lastInstalledBundleId = updateBundleId;
