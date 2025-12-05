@@ -6,6 +6,7 @@
  */
 
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+// biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -16,6 +17,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { proxy, useSnapshot } from "valtio";
+
+const notify = proxy<{
+  status?: string;
+  crashedBundleId?: string;
+}>({});
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -33,6 +40,7 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 };
 
 function App(): React.JSX.Element {
+  const state = useSnapshot(notify);
   const [bundleId, setBundleId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,7 +64,7 @@ function App(): React.JSX.Element {
           textAlign: "center",
         }}
       >
-        Hot Updater 2 Zip
+        Hot Updater 0
       </Text>
 
       <Text
@@ -79,15 +87,6 @@ function App(): React.JSX.Element {
       >
         BundleId: {bundleId}
       </Text>
-
-      <Image
-        style={{
-          width: 100,
-          height: 100,
-        }}
-        // source={require("./src/logo.png")}
-        source={require("./src/test/_image.png")}
-      />
 
       <Text
         style={{
@@ -113,6 +112,17 @@ function App(): React.JSX.Element {
         </Text>
       ))}
 
+      <Image
+        style={{
+          width: 100,
+          height: 100,
+        }}
+        // source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
+      />
+
+      <Text>{JSON.stringify(state, null, 2)}</Text>
+
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
       <Button
         title="Clear Crash History"
@@ -127,7 +137,8 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion",
   updateMode: "auto",
   onNotifyAppReady: (result) => {
-    Alert.alert("onNotifyAppReady", JSON.stringify(result));
+    notify.status = result.status;
+    notify.crashedBundleId = result.crashedBundleId;
   },
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>

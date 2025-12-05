@@ -18,7 +18,8 @@
   "dependencies": {
     "@hot-updater/react-native": "workspace:*",
     "react": "18.2.0",
-    "react-native": "0.74.1"
+    "react-native": "0.74.1",
+    "valtio": "^2.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -26,6 +27,7 @@
     "@babel/runtime": "^7.24.5",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@react-native-community/cli-platform-android": "13.6.6",
     "@react-native/babel-preset": "0.74.83",
@@ -36,7 +38,6 @@
     "@rnx-kit/metro-config": "^2.0.1",
     "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
     "@types/react": "^18.2.6",
-    "@hot-updater/standalone": "workspace:*",
     "@types/react-test-renderer": "^18.0.0",
     "babel-jest": "^29.6.3",
     "babel-loader": "^9.1.3",
