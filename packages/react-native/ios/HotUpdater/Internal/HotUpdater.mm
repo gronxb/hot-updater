@@ -84,7 +84,9 @@ RCT_EXPORT_MODULE();
      #else
          NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
          NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    
+
+         // Parse __DATE__ __TIME__ as UTC to ensure consistent timezone handling across all build environments
+         [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
          [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
          [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
          NSDate *buildDate = [formatter dateFromString:compileDateStr];
@@ -93,7 +95,14 @@ RCT_EXPORT_MODULE();
              uuid = @"00000000-0000-0000-0000-000000000000";
              return;
          }
-         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
+
+         // Subtract 26 hours (93600 seconds) to ensure MIN_BUNDLE_ID is always in the past
+         // This guarantees that uuidv7-based bundleIds (generated at runtime) will always be newer than MIN_BUNDLE_ID
+         // Why 26 hours? Global timezone range spans from UTC-12 to UTC+14 (total 26 hours)
+         // By subtracting 26 hours, MIN_BUNDLE_ID becomes a safe "past timestamp" regardless of build timezone
+         // Example: Build at 15:00 in any timezone → parse as 15:00 UTC → subtract 26h → 13:00 UTC (previous day)
+         NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
+         uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
          unsigned char bytes[16];
          bytes[0] = (buildTimestampMs >> 40) & 0xFF; // ... rest of UUID logic ...
          bytes[1] = (buildTimestampMs >> 32) & 0xFF;
