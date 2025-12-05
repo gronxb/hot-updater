@@ -14,7 +14,6 @@ import { HotUpdater } from "@hot-updater/react-native";
 // First, configure baseURL and updateStrategy in wrap
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
   updateMode: "manual"
 })(App);
 
@@ -97,7 +96,6 @@ function App() {
 // Configure baseURL and updateStrategy in wrap
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
   updateMode: "manual"
 })(App);
 ```
