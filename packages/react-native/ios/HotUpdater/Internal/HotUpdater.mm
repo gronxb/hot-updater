@@ -85,7 +85,6 @@ RCT_EXPORT_MODULE();
          NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
          NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     
-         [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
          [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
          [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
          NSDate *buildDate = [formatter dateFromString:compileDateStr];
