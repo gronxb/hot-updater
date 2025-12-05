@@ -31,7 +31,6 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
-throw new Error("test");
 
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
