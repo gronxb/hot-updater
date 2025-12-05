@@ -7,12 +7,12 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import org.json.JSONObject
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
@@ -124,23 +124,24 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun notifyAppReady(params: ReadableMap): ReadableMap {
-        val result = WritableNativeMap()
+    override fun notifyAppReady(params: ReadableMap): String {
         val bundleId = params?.getString("bundleId")
+        val result = JSONObject()
+
         if (bundleId == null) {
-            result.putString("status", "STABLE")
-            return result
+            result.put("status", "STABLE")
+            return result.toString()
         }
 
         val impl = getInstance()
         val statusMap = impl.notifyAppReady(bundleId)
 
-        result.putString("status", statusMap["status"] as? String ?: "STABLE")
+        result.put("status", statusMap["status"] as? String ?: "STABLE")
         statusMap["crashedBundleId"]?.let {
-            result.putString("crashedBundleId", it as String)
+            result.put("crashedBundleId", it as String)
         }
 
-        return result
+        return result.toString()
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)

@@ -219,7 +219,16 @@ export type NotifyAppReadyResult = {
  */
 export const notifyAppReady = (): NotifyAppReadyResult => {
   const bundleId = getBundleId();
-  return HotUpdaterNative.notifyAppReady({ bundleId });
+  const result = HotUpdaterNative.notifyAppReady({ bundleId });
+  // Oldarch returns JSON string, newarch returns array
+  if (typeof result === "string") {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return { status: "STABLE" };
+    }
+  }
+  return result;
 };
 
 /**
