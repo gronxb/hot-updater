@@ -100,6 +100,8 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
 const withHotUpdaterConfigAsync =
   (props: HotUpdaterConfig) => (config: ExpoConfig) => {
     const channel = props.channel || "production";
+    // Generate UTC timestamp at config time (prebuild time)
+    const buildTimestamp = Date.now();
 
     let modifiedConfig = config;
 
@@ -116,6 +118,8 @@ const withHotUpdaterConfigAsync =
       const publicKey = await getPublicKeyFromConfig(config.signing);
 
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
+      // Add UTC build timestamp for timezone-safe minBundleId generation
+      cfg.modResults.HOT_UPDATER_BUILD_TIMESTAMP = buildTimestamp;
       if (fingerprintHash) {
         cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = fingerprintHash;
       }
@@ -160,6 +164,23 @@ const withHotUpdaterConfigAsync =
           moduleConfig: string;
         },
         _: channel,
+      });
+
+      // Remove existing hot_updater_build_timestamp entry if it exists
+      cfg.modResults.resources.string = cfg.modResults.resources.string.filter(
+        (item) => !(item.$ && item.$.name === "hot_updater_build_timestamp"),
+      );
+
+      // Add UTC build timestamp for timezone-safe minBundleId generation
+      cfg.modResults.resources.string.push({
+        $: {
+          name: "hot_updater_build_timestamp",
+          moduleConfig: "true",
+        } as {
+          name: string;
+          moduleConfig: string;
+        },
+        _: String(buildTimestamp),
       });
 
       if (fingerprintHash) {

@@ -101,12 +101,29 @@ class HotUpdaterImpl(
     fun getMinBundleId(): String = BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
 
     /**
+     * Gets the build timestamp, preferring strings.xml (Expo config plugin) over BuildConfig
+     * @return UTC timestamp in milliseconds
+     */
+    private fun getBuildTimestamp(): Long {
+        // First, try to get UTC timestamp from strings.xml (set by Expo config plugin)
+        val id = context.resources.getIdentifier("hot_updater_build_timestamp", "string", context.packageName)
+        if (id != 0) {
+            val timestampStr = context.getString(id)
+            if (timestampStr.isNotEmpty()) {
+                timestampStr.toLongOrNull()?.let { return it }
+            }
+        }
+        // Fallback to BuildConfig.BUILD_TIMESTAMP (System.currentTimeMillis() - already UTC)
+        return BuildConfig.BUILD_TIMESTAMP
+    }
+
+    /**
      * Generates a bundle ID based on build timestamp
      * @return The generated minimum bundle ID string
      */
     private fun generateMinBundleIdFromBuildTimestamp(): String =
         try {
-            val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
+            val buildTimestampMs = getBuildTimestamp()
             val bytes =
                 ByteArray(16).apply {
                     this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()

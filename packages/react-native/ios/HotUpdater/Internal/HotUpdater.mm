@@ -74,19 +74,37 @@ RCT_EXPORT_MODULE();
      #if DEBUG
          uuid = @"00000000-0000-0000-0000-000000000000";
      #else
-         NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
-         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-         [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
-         [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
-         NSDate *buildDate = [formatter dateFromString:compileDateStr];
-         if (!buildDate) {
-             RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
-             uuid = @"00000000-0000-0000-0000-000000000000";
-             return;
+         uint64_t buildTimestampMs = 0;
+
+         // First, try to get UTC timestamp from Info.plist (set by Expo config plugin)
+         // This is timezone-safe as it's generated at prebuild time in UTC
+         NSNumber *plistTimestamp = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"HOT_UPDATER_BUILD_TIMESTAMP"];
+         if (plistTimestamp != nil) {
+             buildTimestampMs = [plistTimestamp unsignedLongLongValue];
+         } else {
+             // Fallback: Parse __DATE__ and __TIME__
+             // Since __DATE__ and __TIME__ are local time strings without timezone info,
+             // we interpret them as UTC and subtract 14 hours to ensure minBundleId
+             // is always <= actual build time regardless of build machine timezone.
+             // (Max timezone offset is UTC+14, so subtracting 14h covers all cases)
+             NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+             NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+             [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
+             [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"];
+             [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
+             NSDate *buildDate = [formatter dateFromString:compileDateStr];
+             if (!buildDate) {
+                 RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
+                 uuid = @"00000000-0000-0000-0000-000000000000";
+                 return;
+             }
+             // Subtract 14 hours (in milliseconds) to account for maximum timezone offset
+             uint64_t fourteenHoursMs = 14ULL * 60 * 60 * 1000;
+             buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0) - fourteenHoursMs;
          }
-         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
+
          unsigned char bytes[16];
-         bytes[0] = (buildTimestampMs >> 40) & 0xFF; // ... rest of UUID logic ...
+         bytes[0] = (buildTimestampMs >> 40) & 0xFF;
          bytes[1] = (buildTimestampMs >> 32) & 0xFF;
          bytes[2] = (buildTimestampMs >> 24) & 0xFF;
          bytes[3] = (buildTimestampMs >> 16) & 0xFF;
