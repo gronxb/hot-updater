@@ -358,33 +358,29 @@ function App() {
 
     checkUpdate();
   }, []);
-
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
+ 
+  return ...
 }
 
 export default HotUpdater.wrap({
-  resolver: {
-    // Override the default update check logic
-    checkUpdate: async (params) => {
-      // Custom network logic - GraphQL, custom API, etc.
-      const response = await fetch(`https://custom-api.com/check`, {
-        method: 'POST',
-        body: JSON.stringify({
-          platform: params.platform,
-          appVersion: params.appVersion,
-          bundleId: params.bundleId,
-        }),
-        headers: params.requestHeaders,
-      });
-
-      if (!response.ok) return null;
-      return response.json();
-    },
-  },
+  resolver: { // [!code ++] 
+    // Override the default update check logic // [!code ++]
+    checkUpdate: async (params) => { // [!code ++]
+      // Custom network logic - GraphQL, custom API, etc. // [!code ++]
+      const response = await fetch(`https://custom-api.com/check`, { // [!code ++]
+        method: 'POST', // [!code ++]
+        body: JSON.stringify({ // [!code ++]
+          platform: params.platform, // [!code ++]
+          appVersion: params.appVersion, // [!code ++]
+          bundleId: params.bundleId, // [!code ++]
+        }), // [!code ++]
+        headers: params.requestHeaders, // [!code ++]
+      }); // [!code ++]
+// [!code ++]
+      if (!response.ok) return null; // [!code ++]
+      return response.json(); // [!code ++]
+    }, // [!code ++]
+  }, // [!code ++]
   updateMode: "manual", // or "auto"
 })(App);
 ```
