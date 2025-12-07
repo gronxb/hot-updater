@@ -111,9 +111,12 @@ Available in both automatic and manual modes:
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `baseURL` | `string` | Yes | Your update server URL |
+| `baseURL` | `string` | Yes* | Your update server URL (standard approach) |
+| `resolver` | `HotUpdaterResolver` | Yes* | Custom network operations (advanced) |
 | `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
 | `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
+
+\*Either `baseURL` or `resolver` must be provided (mutually exclusive)
 
 ### Automatic Mode Options
 
@@ -327,6 +330,62 @@ When you use `HotUpdater.wrap` with automatic updates, it constructs the appropr
 * For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
 
 The function automatically appends the correct path and parameters to your `baseURL`.
+
+## Advanced: Custom Resolver
+
+For advanced use cases where you need full control over network operations - such as implementing a custom server, using GraphQL, or complex authentication flows - you can use a custom `resolver` instead of `baseURL`.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+
+function App() {
+  useEffect(() => {
+    const checkUpdate = async () => {
+      // When you call HotUpdater.checkForUpdate(),
+      // it will use the resolver.checkUpdate() defined below
+      const updateInfo = await HotUpdater.checkForUpdate({
+        updateStrategy: "appVersion",
+      });
+
+      if (updateInfo) {
+        await updateInfo.updateBundle();
+        if (updateInfo.shouldForceUpdate) {
+          await HotUpdater.reload();
+        }
+      }
+    };
+
+    checkUpdate();
+  }, []);
+ 
+  return ...
+}
+
+export default HotUpdater.wrap({
+  resolver: { // [!code ++] 
+    // Override the default update check logic // [!code ++]
+    checkUpdate: async (params) => { // [!code ++]
+      // Custom network logic - GraphQL, custom API, etc. // [!code ++]
+      const response = await fetch(`https://custom-api.com/check`, { // [!code ++]
+        method: 'POST', // [!code ++]
+        body: JSON.stringify({ // [!code ++]
+          platform: params.platform, // [!code ++]
+          appVersion: params.appVersion, // [!code ++]
+          bundleId: params.bundleId, // [!code ++]
+        }), // [!code ++]
+        headers: params.requestHeaders, // [!code ++]
+      }); // [!code ++]
+// [!code ++]
+      if (!response.ok) return null; // [!code ++]
+      return response.json(); // [!code ++]
+    }, // [!code ++]
+  }, // [!code ++]
+  updateMode: "manual", // or "auto"
+})(App);
+```
+
+> **Note**: The `resolver` option is mutually exclusive with `baseURL`. Using `resolver.checkUpdate()` overrides the default update check implementation.
 
 ## Flag Behavior
 

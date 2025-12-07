@@ -3,6 +3,7 @@ import {
   checkForUpdate,
   type InternalCheckForUpdateOptions,
 } from "./checkForUpdate";
+import { createDefaultResolver } from "./DefaultResolver";
 import {
   addListener,
   clearCrashHistory,
@@ -17,13 +18,17 @@ import {
   updateBundle,
 } from "./native";
 import { hotUpdaterStore } from "./store";
-import { type HotUpdaterOptions, wrap } from "./wrap";
+import type { HotUpdaterResolver } from "./types";
+import { type HotUpdaterOptions, type InternalWrapOptions, wrap } from "./wrap";
 
 export type { HotUpdaterEvent, NotifyAppReadyResult } from "./native";
 export * from "./store";
 export {
   extractSignatureFailure,
+  type HotUpdaterResolver,
   isSignatureVerificationError,
+  type ResolverCheckUpdateParams,
+  type ResolverNotifyAppReadyParams,
   type SignatureVerificationFailure,
 } from "./types";
 export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
@@ -41,15 +46,15 @@ addListener("onProgress", ({ progress }) => {
 function createHotUpdaterClient() {
   // Global configuration stored from wrap
   const globalConfig: {
-    baseURL: string | null;
+    resolver: HotUpdaterResolver | null;
     requestHeaders?: Record<string, string>;
     requestTimeout?: number;
   } = {
-    baseURL: null,
+    resolver: null,
   };
 
-  function ensureGlobalBaseURL(methodName: string) {
-    if (globalConfig.baseURL === null) {
+  const ensureGlobalResolver = (methodName: string) => {
+    if (!globalConfig.resolver) {
       throw new Error(
         `[HotUpdater] ${methodName} requires HotUpdater.wrap() to be used.\n\n` +
           `To fix this issue, wrap your root component with HotUpdater.wrap():\n\n` +
@@ -67,9 +72,8 @@ function createHotUpdaterClient() {
           `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap`,
       );
     }
-
-    return globalConfig.baseURL;
-  }
+    return globalConfig.resolver;
+  };
 
   return {
     /**
@@ -96,12 +100,44 @@ function createHotUpdaterClient() {
      * })(App);
      * ```
      */
-    wrap: ((options: HotUpdaterOptions) => {
-      globalConfig.baseURL = options.baseURL;
+    wrap: (options: HotUpdaterOptions) => {
+      let normalizedOptions: InternalWrapOptions;
+
+      if ("baseURL" in options && options.baseURL) {
+        const { baseURL, ...rest } = options;
+        normalizedOptions = {
+          ...rest,
+          resolver: createDefaultResolver(baseURL),
+        };
+      } else if ("resolver" in options && options.resolver) {
+        normalizedOptions = options;
+      } else {
+        throw new Error(
+          `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
+            `Option 1: Using baseURL (recommended for most cases)\n` +
+            `  export default HotUpdater.wrap({\n` +
+            `    baseURL: "<your-update-server-url>",\n` +
+            `    updateStrategy: "appVersion",\n` +
+            `    updateMode: "auto"\n` +
+            `  })(App);\n\n` +
+            `Option 2: Using custom resolver (advanced)\n` +
+            `  export default HotUpdater.wrap({\n` +
+            `    resolver: {\n` +
+            `      checkUpdate: async (params) => { /* custom logic */ },\n` +
+            `      notifyAppReady: async (params) => { /* custom logic */ }\n` +
+            `    },\n` +
+            `    updateMode: "manual"\n` +
+            `  })(App);\n\n` +
+            `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap`,
+        );
+      }
+
+      globalConfig.resolver = normalizedOptions.resolver;
       globalConfig.requestHeaders = options.requestHeaders;
       globalConfig.requestTimeout = options.requestTimeout;
-      return wrap(options);
-    }) as typeof wrap,
+
+      return wrap(normalizedOptions);
+    },
 
     /**
      * Reloads the app.
@@ -206,14 +242,11 @@ function createHotUpdaterClient() {
      * ```
      */
     checkForUpdate: (config: CheckForUpdateOptions) => {
-      const baseURL = ensureGlobalBaseURL("checkForUpdate");
+      const resolver = ensureGlobalResolver("checkForUpdate");
 
-      // Merge globalConfig with provided config
-      // baseURL is always from wrap (globalConfig)
-      // requestHeaders/requestTimeout from wrap are used as defaults, but can be overridden
       const mergedConfig: InternalCheckForUpdateOptions = {
         ...config,
-        baseURL,
+        resolver,
         requestHeaders: {
           ...globalConfig.requestHeaders,
           ...config.requestHeaders,
@@ -258,8 +291,7 @@ function createHotUpdaterClient() {
      * ```
      */
     updateBundle: (params: UpdateParams) => {
-      ensureGlobalBaseURL("updateBundle");
-
+      ensureGlobalResolver("updateBundle");
       return updateBundle(params);
     },
 
