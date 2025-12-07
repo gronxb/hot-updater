@@ -1,7 +1,6 @@
-import type { AppUpdateInfo, UpdateBundleParams } from "@hot-updater/core";
+import type { AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
-import { fetchUpdateInfo } from "./fetchUpdateInfo";
 import {
   getAppVersion,
   getBundleId,
@@ -10,6 +9,7 @@ import {
   getMinBundleId,
   updateBundle,
 } from "./native";
+import type { HotUpdaterResolver } from "./types";
 
 export interface CheckForUpdateOptions {
   /**
@@ -37,28 +37,9 @@ export type CheckForUpdateResult = AppUpdateInfo & {
   updateBundle: () => Promise<boolean>;
 };
 
-// Internal type that includes baseURL for use within index.ts
+// Internal type that includes resolver for use within index.ts
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
-  baseURL: string;
-}
-
-// Internal function to build update URL (not exported)
-function buildUpdateUrl(
-  baseURL: string,
-  updateStrategy: "appVersion" | "fingerprint",
-  params: UpdateBundleParams,
-): string {
-  switch (updateStrategy) {
-    case "fingerprint": {
-      if (!params.fingerprintHash) {
-        throw new HotUpdaterError("Fingerprint hash is required");
-      }
-      return `${baseURL}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
-    }
-    case "appVersion": {
-      return `${baseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
-    }
-  }
+  resolver: HotUpdaterResolver;
 }
 
 export async function checkForUpdate(
@@ -71,13 +52,6 @@ export async function checkForUpdate(
   if (!["ios", "android"].includes(Platform.OS)) {
     options.onError?.(
       new HotUpdaterError("HotUpdater is only supported on iOS and Android"),
-    );
-    return null;
-  }
-
-  if (!options.baseURL || !options.updateStrategy) {
-    options.onError?.(
-      new HotUpdaterError("'baseURL' and 'updateStrategy' are required"),
     );
     return null;
   }
@@ -95,35 +69,45 @@ export async function checkForUpdate(
 
   const fingerprintHash = getFingerprintHash();
 
-  const url = buildUpdateUrl(options.baseURL, options.updateStrategy, {
-    platform,
-    appVersion: currentAppVersion,
-    fingerprintHash: fingerprintHash ?? null,
-    channel,
-    minBundleId,
-    bundleId: currentBundleId,
-  });
+  if (!options.resolver?.checkUpdate) {
+    options.onError?.(
+      new HotUpdaterError("Resolver is required but not configured"),
+    );
+    return null;
+  }
 
-  return fetchUpdateInfo({
-    url,
-    requestHeaders: options.requestHeaders,
-    onError: options.onError,
-    requestTimeout: options.requestTimeout,
-  }).then((updateInfo) => {
-    if (!updateInfo) {
-      return null;
-    }
+  let updateInfo: AppUpdateInfo | null = null;
 
-    return {
-      ...updateInfo,
-      updateBundle: async () => {
-        return updateBundle({
-          bundleId: updateInfo.id,
-          fileUrl: updateInfo.fileUrl,
-          fileHash: updateInfo.fileHash,
-          status: updateInfo.status,
-        });
-      },
-    };
-  });
+  try {
+    updateInfo = await options.resolver.checkUpdate({
+      platform,
+      appVersion: currentAppVersion,
+      bundleId: currentBundleId,
+      minBundleId,
+      channel,
+      updateStrategy: options.updateStrategy,
+      fingerprintHash,
+      requestHeaders: options.requestHeaders,
+      requestTimeout: options.requestTimeout,
+    });
+  } catch (error) {
+    options.onError?.(error as Error);
+    return null;
+  }
+
+  if (!updateInfo) {
+    return null;
+  }
+
+  return {
+    ...updateInfo,
+    updateBundle: async () => {
+      return updateBundle({
+        bundleId: updateInfo.id,
+        fileUrl: updateInfo.fileUrl,
+        fileHash: updateInfo.fileHash,
+        status: updateInfo.status,
+      });
+    },
+  };
 }

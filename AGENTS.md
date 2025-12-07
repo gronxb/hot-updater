@@ -12,7 +12,7 @@
 - Build all: `pnpm -w build` (Nx runs package and plugin builds; output in `dist/`).
 - Dev watch: `pnpm build:dev` (watches `packages/`, `plugins/`, `docs/`).
 - Test all: `pnpm -w test` (Vitest workspace over `packages/*`, `plugins/*`).
-- Format/Lint: `pnpm -w biome` (write) • `pnpm biome:check` (read-only).
+- Format/Lint: `pnpm -w lint:fix` (write) • `pnpm lint` (read-only).
 - Clean: `pnpm clear` (removes `**/dist` and `.nx`).
 
 ## Coding Style & Naming
