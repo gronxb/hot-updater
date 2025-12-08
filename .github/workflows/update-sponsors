@@ -1,0 +1,59 @@
+name: Update Sponsors
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-sponsors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch sponsors
+        uses: actions/github-script@v7
+        env:
+          GH_TOKEN: ${{ secrets.SPONSORS_TOKEN }}
+        with:
+          script: |
+            const fs = require('fs');
+            const query = `
+              query($cursor: String) {
+                user(login: "gronxb") {
+                  sponsorshipsAsMaintainer(first: 100, after: $cursor, includePrivate: false) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes {
+                      sponsorEntity {
+                        ... on User { login avatarUrl name url }
+                        ... on Organization { login avatarUrl name url }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            const allSponsors = [];
+            let hasNextPage = true, cursor = null;
+            while (hasNextPage) {
+              const result = await github.graphql(query, { cursor, headers: { authorization: `token ${process.env.GH_TOKEN}` } });
+              const sponsorships = result.user.sponsorshipsAsMaintainer;
+              for (const node of sponsorships.nodes) {
+                if (node.sponsorEntity?.login) {
+                  allSponsors.push({ login: node.sponsorEntity.login, avatarUrl: node.sponsorEntity.avatarUrl, name: node.sponsorEntity.name || null, url: node.sponsorEntity.url });
+                }
+              }
+              hasNextPage = sponsorships.pageInfo.hasNextPage;
+              cursor = sponsorships.pageInfo.endCursor;
+            }
+            const uniqueSponsors = [...new Map(allSponsors.map(s => [s.login, s])).values()];
+            fs.writeFileSync('docs/public/sponsors.json', JSON.stringify({ sponsors: uniqueSponsors, updatedAt: new Date().toISOString() }, null, 2) + '\n');
+            console.log(`Found ${uniqueSponsors.length} sponsors (all time)`);
+
+      - name: Commit and push
+        run: |
+          git diff --quiet docs/public/sponsors.json || (git config user.email "github-actions[bot]@users.noreply.github.com" && git config user.name "github-actions[bot]" && git add docs/public/sponsors.json && git commit -m "chore: update sponsors list" && git push)
