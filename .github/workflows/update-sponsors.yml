@@ -1,0 +1,63 @@
+name: Update Sponsors
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-sponsors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch sponsors
+        env:
+          GH_TOKEN: ${{ secrets.SPONSORS_TOKEN }}
+        run: |
+          gh api graphql -f query='
+            query {
+              user(login: "gronxb") {
+                sponsorshipsAsMaintainer(first: 100, includePrivate: false) {
+                  nodes {
+                    sponsorEntity {
+                      ... on User {
+                        login
+                        avatarUrl
+                        name
+                        url
+                      }
+                      ... on Organization {
+                        login
+                        avatarUrl
+                        name
+                        url
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ' | jq '{
+            sponsors: [.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity | select(. != null) | {
+              login,
+              avatarUrl,
+              name,
+              url
+            }],
+            updatedAt: now | todate
+          }' > docs/public/sponsors.json
+
+      - name: Commit and push
+        run: |
+          git diff --quiet docs/public/sponsors.json || (
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            git add docs/public/sponsors.json
+            git commit -m "chore: update sponsors list"
+            git push
+          )
