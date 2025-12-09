@@ -58,12 +58,6 @@ class HotUpdaterModule internal constructor(
     ) {
         moduleScope.launch {
             try {
-                // Parameter validation
-                if (params == null) {
-                    promise.reject("UNKNOWN_ERROR", "Missing or invalid parameters for updateBundle")
-                    return@launch
-                }
-
                 val bundleId = params.getString("bundleId")
                 if (bundleId == null || bundleId.isEmpty()) {
                     promise.reject("MISSING_BUNDLE_ID", "Missing or empty 'bundleId'")
@@ -142,7 +136,7 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun notifyAppReady(params: ReadableMap): String {
-        val bundleId = params?.getString("bundleId")
+        val bundleId = params.getString("bundleId")
         val result = JSONObject()
 
         if (bundleId == null) {
