@@ -89,7 +89,9 @@ class ZipDecompressionStrategy : DecompressionStrategy {
             val totalBytes =
                 try {
                     ZipFile(File(filePath)).use { zipFile ->
-                        zipFile.entries().asSequence()
+                        zipFile
+                            .entries()
+                            .asSequence()
                             .filter { !it.isDirectory }
                             .sumOf { it.size }
                     }
