@@ -37,7 +37,7 @@ class HotUpdaterModule internal constructor(
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
     override fun reload(promise: Promise) {
-        CoroutineScope(Dispatchers.Main.immediate).launch {
+        moduleScope.launch {
             try {
                 val impl = getInstance()
                 val currentActivity = mReactApplicationContext.currentActivity
