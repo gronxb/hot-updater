@@ -11,6 +11,7 @@ import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
 class HotUpdaterModule internal constructor(
@@ -43,7 +44,7 @@ class HotUpdaterModule internal constructor(
         params: ReadableMap?,
         promise: Promise,
     ) {
-        (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
+        GlobalScope.launch(Dispatchers.Main) {
             try {
                 // Parameter validation
                 if (params == null) {
@@ -78,15 +79,22 @@ class HotUpdaterModule internal constructor(
                     fileUrl,
                     fileHash,
                 ) { progress ->
-                    val progressParams =
-                        WritableNativeMap().apply {
-                            putDouble("progress", progress)
-                        }
+                    // Dispatch progress callback to Main thread for React Native event emission
+                    CoroutineScope(Dispatchers.Main).launch {
+                        try {
+                            val progressParams =
+                                WritableNativeMap().apply {
+                                    putDouble("progress", progress)
+                                }
 
-                    this@HotUpdaterModule
-                        .mReactApplicationContext
-                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                        .emit("onProgress", progressParams)
+                            this@HotUpdaterModule
+                                .mReactApplicationContext
+                                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                ?.emit("onProgress", progressParams)
+                        } catch (e: Exception) {
+                            Log.w("HotUpdater", "Failed to emit progress (bridge may be unavailable): ${e.message}")
+                        }
+                    }
                 }
                 promise.resolve(true)
             } catch (e: HotUpdaterException) {

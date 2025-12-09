@@ -85,25 +85,29 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                 destinationDir.mkdirs()
             }
 
-            val totalEntries =
+            // Calculate total bytes to extract for accurate progress reporting
+            val totalBytes =
                 try {
                     ZipFile(File(filePath)).use { zipFile ->
-                        zipFile.entries().asSequence().count()
+                        zipFile.entries().asSequence()
+                            .filter { !it.isDirectory }
+                            .sumOf { it.size }
                     }
                 } catch (e: Exception) {
-                    Log.d(TAG, "Failed to count entries: ${e.message}")
-                    0
+                    Log.d(TAG, "Failed to calculate total bytes: ${e.message}")
+                    0L
                 }
 
-            if (totalEntries == 0) {
-                Log.d(TAG, "No entries found in ZIP")
+            if (totalBytes == 0L) {
+                Log.d(TAG, "No content found in ZIP")
                 return false
             }
 
-            Log.d(TAG, "Extracting $totalEntries entries from ZIP")
+            Log.d(TAG, "Extracting $totalBytes bytes from ZIP")
 
             var extractedFileCount = 0
-            var processedEntries = 0
+            var extractedBytes = 0L
+            var lastReportedProgress = 0.0
 
             FileInputStream(filePath).use { fileInputStream ->
                 BufferedInputStream(fileInputStream).use { bufferedInputStream ->
@@ -115,7 +119,6 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                             if (!file.canonicalPath.startsWith(destinationDir.canonicalPath)) {
                                 Log.w(TAG, "Skipping potentially malicious zip entry: ${entry.name}")
                                 entry = zipInputStream.nextEntry
-                                processedEntries++
                                 continue
                             }
 
@@ -132,6 +135,16 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                                     while (zipInputStream.read(buffer).also { bytesRead = it } != -1) {
                                         output.write(buffer, 0, bytesRead)
                                         crc.update(buffer, 0, bytesRead)
+
+                                        // Track bytes written for byte-based progress
+                                        extractedBytes += bytesRead
+
+                                        // Report progress more frequently (every 1%)
+                                        val currentProgress = extractedBytes.toDouble() / totalBytes
+                                        if (currentProgress - lastReportedProgress >= 0.01) {
+                                            progressCallback.invoke(currentProgress)
+                                            lastReportedProgress = currentProgress
+                                        }
                                     }
                                 }
 
@@ -145,11 +158,6 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                             }
 
                             zipInputStream.closeEntry()
-                            processedEntries++
-
-                            val progress = processedEntries.toDouble() / totalEntries
-                            progressCallback.invoke(progress)
-
                             entry = zipInputStream.nextEntry
                         }
                     }
@@ -161,7 +169,7 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                 return false
             }
 
-            Log.d(TAG, "Successfully extracted $extractedFileCount files")
+            Log.d(TAG, "Successfully extracted $extractedFileCount files ($extractedBytes bytes)")
             progressCallback.invoke(1.0)
             true
         } catch (e: ZipException) {
