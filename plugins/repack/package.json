@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/repack",
   "type": "module",
-  "version": "0.24.1",
+  "version": "0.24.2",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
