@@ -382,9 +382,31 @@ class BundleFileStorageService(
             "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash",
         )
 
-        // If no URL is provided, reset to fallback
+        // If no URL is provided, reset to fallback and clean up all bundles
         if (fileUrl.isNullOrEmpty()) {
-            setBundleURL(null)
+            Log.d(TAG, "fileUrl is null or empty, resetting to fallback bundle")
+
+            withContext(Dispatchers.IO) {
+                // 1. Set bundle URL to null (reset preference)
+                val setResult = setBundleURL(null)
+                if (!setResult) {
+                    Log.w(TAG, "Failed to reset bundle URL")
+                }
+
+                // 2. Reset metadata to initial state (clear all bundle references)
+                val metadata = createInitialMetadata()
+                val saveResult = saveMetadata(metadata)
+                if (!saveResult) {
+                    Log.w(TAG, "Failed to reset metadata")
+                }
+
+                // 3. Clean up all downloaded bundles
+                // Pass null for currentBundleId to remove all bundles except the new bundleId
+                val bundleStoreDir = getBundleStoreDir()
+                cleanupOldBundles(bundleStoreDir, null, bundleId)
+
+                Log.d(TAG, "Successfully reset to fallback bundle and cleaned up downloads")
+            }
             return
         }
 
