@@ -1,8 +1,8 @@
 package com.hotupdater
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.lifecycleScope
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
@@ -11,6 +11,8 @@ import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,7 +22,16 @@ class HotUpdaterModule internal constructor(
 ) : HotUpdaterSpec(context) {
     private val mReactApplicationContext: ReactApplicationContext = context
 
+    // Managed coroutine scope for the module lifecycle
+    private val moduleScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     override fun getName(): String = NAME
+
+    override fun onCatalystInstanceDestroy() {
+        super.onCatalystInstanceDestroy()
+        // Cancel all ongoing coroutines when module is destroyed
+        moduleScope.cancel()
+    }
 
     /**
      * Gets the singleton HotUpdaterImpl instance
@@ -29,7 +40,7 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod
     override fun reload(promise: Promise) {
-        CoroutineScope(Dispatchers.Main.immediate).launch {
+        moduleScope.launch {
             try {
                 val impl = getInstance()
                 val currentActivity = mReactApplicationContext.currentActivity
@@ -47,14 +58,8 @@ class HotUpdaterModule internal constructor(
         params: ReadableMap,
         promise: Promise,
     ) {
-        (mReactApplicationContext.currentActivity as FragmentActivity?)?.lifecycleScope?.launch {
+        moduleScope.launch {
             try {
-                // Parameter validation
-                if (params == null) {
-                    promise.reject("UNKNOWN_ERROR", "Missing or invalid parameters for updateBundle")
-                    return@launch
-                }
-
                 val bundleId = params.getString("bundleId")
                 if (bundleId == null || bundleId.isEmpty()) {
                     promise.reject("MISSING_BUNDLE_ID", "Missing or empty 'bundleId'")
@@ -82,15 +87,22 @@ class HotUpdaterModule internal constructor(
                     fileUrl,
                     fileHash,
                 ) { progress ->
-                    val progressParams =
-                        WritableNativeMap().apply {
-                            putDouble("progress", progress)
-                        }
+                    // Post to Main thread for React Native event emission
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            val progressParams =
+                                WritableNativeMap().apply {
+                                    putDouble("progress", progress)
+                                }
 
-                    this@HotUpdaterModule
-                        .mReactApplicationContext
-                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                        .emit("onProgress", progressParams)
+                            this@HotUpdaterModule
+                                .mReactApplicationContext
+                                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                ?.emit("onProgress", progressParams)
+                        } catch (e: Exception) {
+                            Log.w("HotUpdater", "Failed to emit progress (bridge may be unavailable): ${e.message}")
+                        }
+                    }
                 }
                 promise.resolve(true)
             } catch (e: HotUpdaterException) {
@@ -126,7 +138,7 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun notifyAppReady(params: ReadableMap): String {
-        val bundleId = params?.getString("bundleId")
+        val bundleId = params.getString("bundleId")
         val result = JSONObject()
 
         if (bundleId == null) {

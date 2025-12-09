@@ -25,8 +25,18 @@ data class BundleMetadata(
         fun fromJson(json: JSONObject): BundleMetadata =
             BundleMetadata(
                 schema = json.optString("schema", SCHEMA_VERSION),
-                stableBundleId = json.optString("stableBundleId", null)?.takeIf { it.isNotEmpty() },
-                stagingBundleId = json.optString("stagingBundleId", null)?.takeIf { it.isNotEmpty() },
+                stableBundleId =
+                    if (json.has("stableBundleId") && !json.isNull("stableBundleId")) {
+                        json.getString("stableBundleId").takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    },
+                stagingBundleId =
+                    if (json.has("stagingBundleId") && !json.isNull("stagingBundleId")) {
+                        json.getString("stagingBundleId").takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    },
                 verificationPending = json.optBoolean("verificationPending", false),
                 verificationAttemptedAt =
                     if (json.has("verificationAttemptedAt") && !json.isNull("verificationAttemptedAt")) {
