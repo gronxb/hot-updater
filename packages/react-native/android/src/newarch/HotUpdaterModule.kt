@@ -49,7 +49,7 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun updateBundle(
-        params: ReadableMap?,
+        params: ReadableMap,
         promise: Promise,
     ) {
         moduleScope.launch {
@@ -134,7 +134,7 @@ class HotUpdaterModule internal constructor(
         // No-op
     }
 
-    override fun notifyAppReady(params: ReadableMap?): WritableNativeMap {
+    override fun notifyAppReady(params: ReadableMap): WritableNativeMap {
         val result = WritableNativeMap()
         val bundleId = params?.getString("bundleId")
         if (bundleId == null) {
