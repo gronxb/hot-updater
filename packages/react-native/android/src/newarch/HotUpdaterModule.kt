@@ -1,5 +1,7 @@
 package com.hotupdater
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -12,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class HotUpdaterModule internal constructor(
     reactContext: ReactApplicationContext,
@@ -82,8 +83,8 @@ class HotUpdaterModule internal constructor(
                     fileUrl,
                     fileHash,
                 ) { progress ->
-                    // Switch to Main thread for React Native event emission
-                    withContext(Dispatchers.Main) {
+                    // Post to Main thread for React Native event emission
+                    Handler(Looper.getMainLooper()).post {
                         try {
                             val progressParams =
                                 WritableNativeMap().apply {
