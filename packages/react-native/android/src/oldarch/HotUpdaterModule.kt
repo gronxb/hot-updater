@@ -9,7 +9,8 @@ import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,7 +20,16 @@ class HotUpdaterModule internal constructor(
 ) : HotUpdaterSpec(context) {
     private val mReactApplicationContext: ReactApplicationContext = context
 
+    // Managed coroutine scope for the module lifecycle
+    private val moduleScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     override fun getName(): String = NAME
+
+    override fun onCatalystInstanceDestroy() {
+        super.onCatalystInstanceDestroy()
+        // Cancel all ongoing coroutines when module is destroyed
+        moduleScope.cancel()
+    }
 
     /**
      * Gets the singleton HotUpdaterImpl instance
@@ -46,7 +56,7 @@ class HotUpdaterModule internal constructor(
         params: ReadableMap,
         promise: Promise,
     ) {
-        GlobalScope.launch(Dispatchers.Main) {
+        moduleScope.launch {
             try {
                 // Parameter validation
                 if (params == null) {
@@ -82,7 +92,7 @@ class HotUpdaterModule internal constructor(
                     fileHash,
                 ) { progress ->
                     // Dispatch progress callback to Main thread for React Native event emission
-                    CoroutineScope(Dispatchers.Main).launch {
+                    moduleScope.launch {
                         try {
                             val progressParams =
                                 WritableNativeMap().apply {
