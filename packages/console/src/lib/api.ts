@@ -39,13 +39,6 @@ interface BundlesQuery {
   offset?: string;
 }
 
-interface ConfigResponse {
-  console: {
-    port: number;
-    gitUrl?: string;
-  };
-}
-
 interface PaginationInfo {
   total: number;
   totalPages: number;

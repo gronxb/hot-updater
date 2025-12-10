@@ -40,16 +40,23 @@ interface HotUpdaterOptions {
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
-  basePath?: string;
   /**
-   * Base path for console routes (e.g., "/console")
+   * Base path for all routes
+   * @example "/", "/hot-updater"
    */
-  consolePath?: string;
+  basePath: string;
   /**
-   * Console configuration (port, gitUrl, etc.)
+   * Path to console assets directory
+   * If not provided, automatically resolves from @hot-updater/console package
    */
-  consoleConfig?: {
-    port?: number;
+  consoleAssetsDir?: string;
+  /**
+   * Console configuration
+   */
+  console?: {
+    /**
+     * Git repository URL for commit history links
+     */
     gitUrl?: string;
   };
   cwd?: string;
@@ -113,23 +120,29 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     }
   };
 
-  // Create console handler (for static files only)
+  // Create API handler
+  const handler = createHandler(
+    {
+      ...core.api,
+      deleteStorageFile,
+    },
+    {
+      basePath: options?.basePath,
+      console: options?.console,
+    },
+  );
+
+  // Create console handler with all required options
   const consoleHandler = createConsoleHandler({
-    basePath: options?.consolePath,
+    basePath: options?.basePath,
+    consoleAssetsDir: options?.consoleAssetsDir,
+    config: options?.console,
+    apiHandler: handler,
   });
 
   return {
     ...core.api,
-    handler: createHandler(
-      {
-        ...core.api,
-        deleteStorageFile,
-      },
-      {
-        basePath: options?.basePath,
-        consoleConfig: options?.consoleConfig,
-      },
-    ),
+    handler,
     console: consoleHandler,
     adapterName: core.adapterName,
     createMigrator: core.createMigrator,

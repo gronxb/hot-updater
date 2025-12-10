@@ -34,11 +34,13 @@ export interface HandlerOptions {
    */
   basePath?: string;
   /**
-   * Console configuration (port, gitUrl, etc.)
+   * Console configuration
    * If provided, enables /config endpoint
    */
-  consoleConfig?: {
-    port?: number;
+  console?: {
+    /**
+     * Git repository URL for commit history links
+     */
     gitUrl?: string;
   };
 }
@@ -257,7 +259,9 @@ export function createHandler(
   options: HandlerOptions = {},
 ): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
-  const consoleConfig = options.consoleConfig;
+  // Normalize basePath: "/" is treated as "" (no prefix to strip)
+  const normalizedBasePath = basePath === "/" ? "" : basePath;
+  const consoleOpts = options.console;
 
   // Create and configure router
   const router = createRouter();
@@ -284,7 +288,7 @@ export function createHandler(
   addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
 
   // Console-specific routes
-  if (consoleConfig) {
+  if (consoleOpts) {
     addRoute(router, "GET", "/config", "config");
   }
 
@@ -295,13 +299,13 @@ export function createHandler(
       const method = request.method;
 
       // Remove base path from pathname
-      const routePath = path.startsWith(basePath)
-        ? path.slice(basePath.length)
+      const routePath = path.startsWith(normalizedBasePath)
+        ? path.slice(normalizedBasePath.length)
         : path;
 
       // Handle /config route separately (needs options, not api)
-      if (routePath === "/config" && method === "GET" && consoleConfig) {
-        return new Response(JSON.stringify({ console: consoleConfig }), {
+      if (routePath === "/config" && method === "GET" && consoleOpts) {
+        return new Response(JSON.stringify({ console: consoleOpts }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
