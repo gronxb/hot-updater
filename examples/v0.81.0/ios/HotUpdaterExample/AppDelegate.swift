@@ -36,6 +36,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
+//  var hotUpdater = HotUpdaterImpl(identifier: "main")
+  
   override func sourceURL(for bridge: RCTBridge) -> URL? {
     self.bundleURL()
   }

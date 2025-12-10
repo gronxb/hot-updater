@@ -10,6 +10,8 @@
     "getChannel",
     "useHotUpdaterStore",
     "addListener",
-    "isUpdateDownloaded"
+    "isUpdateDownloaded",
+    "getCrashHistory",
+    "clearCrashHistory"
   ]
 }

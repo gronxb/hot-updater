@@ -6,52 +6,41 @@ import com.facebook.react.bridge.ReactApplicationContext
 
 /**
  * Main React Native package for HotUpdater
+ * Provides static utility methods and a default singleton instance
  */
 class HotUpdater {
     companion object {
-        /**
-         * Gets the app version
-         * @param context Application context
-         * @return App version name or null if not available
-         */
-        fun getAppVersion(context: Context): String? = HotUpdaterFactory.getInstance(context).getAppVersion()
+        @Volatile
+        private var instance: HotUpdaterImpl? = null
 
         /**
-         * Generates a bundle ID based on build timestamp
+         * Gets or creates the singleton instance
+         * Thread-safe double-checked locking
          * @param context Application context
-         * @return The minimum bundle ID string
+         * @return The singleton HotUpdaterImpl instance
          */
-        fun getMinBundleId(context: Context): String = HotUpdaterFactory.getInstance(context).getMinBundleId()
+        fun getInstance(context: Context): HotUpdaterImpl =
+            instance ?: synchronized(this) {
+                instance ?: HotUpdaterImpl(context.applicationContext).also {
+                    instance = it
+                }
+            }
 
         /**
-         * Gets the current fingerprint hash
-         * @param context Application context
-         * @return The fingerprint hash or null if not set
-         */
-        fun getFingerprintHash(context: Context): String? = HotUpdaterFactory.getInstance(context).getFingerprintHash()
-
-        /**
-         * Gets the current update channel
-         * @param context Application context
-         * @return The channel name or null if not set
-         */
-        fun getChannel(context: Context): String? = HotUpdaterFactory.getInstance(context).getChannel()
-
-        /**
-         * Gets the path to the bundle file
+         * Gets the JS bundle file path using the default singleton instance
          * @param context Application context
          * @return The path to the bundle file
          */
-        fun getJSBundleFile(context: Context): String = HotUpdaterFactory.getInstance(context).getJSBundleFile()
+        fun getJSBundleFile(context: Context): String = getInstance(context).getJSBundleFile()
 
         /**
-         * Updates the bundle from the specified URL
+         * Updates the bundle using the default singleton instance
          * @param context Application context
          * @param bundleId ID of the bundle to update
          * @param fileUrl URL of the bundle file to download (or null to reset)
-         * @param fileHash SHA256 hash of the bundle file for verification (nullable)
+         * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
          * @param progressCallback Callback for download progress updates
-         * @return true if the update was successful
+         * @throws HotUpdaterException if the update fails
          */
         suspend fun updateBundle(
             context: Context,
@@ -59,22 +48,45 @@ class HotUpdater {
             fileUrl: String?,
             fileHash: String?,
             progressCallback: (Double) -> Unit,
-        ): Boolean =
-            HotUpdaterFactory.getInstance(context).updateBundle(
-                bundleId,
-                fileUrl,
-                fileHash,
-                progressCallback,
-            )
+        ) {
+            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+        }
 
         /**
-         * Reloads the React Native application
+         * Reloads the React Native application using the default singleton instance
          * @param context Application context
          */
         suspend fun reload(context: Context) {
             val currentActivity = getCurrentActivity(context)
-            HotUpdaterFactory.getInstance(context).reload(currentActivity)
+            getInstance(context).reload(currentActivity)
         }
+
+        /**
+         * Gets the app version - delegates to HotUpdaterImpl static method
+         * @param context Application context
+         * @return App version name or null if not available
+         */
+        fun getAppVersion(context: Context): String? = HotUpdaterImpl.getAppVersion(context)
+
+        /**
+         * Gets the minimum bundle ID - delegates to HotUpdaterImpl static method
+         * @return The minimum bundle ID string
+         */
+        fun getMinBundleId(): String = HotUpdaterImpl.getMinBundleId()
+
+        /**
+         * Gets the current fingerprint hash - delegates to HotUpdaterImpl static method
+         * @param context Application context
+         * @return The fingerprint hash or null if not set
+         */
+        fun getFingerprintHash(context: Context): String? = HotUpdaterImpl.getFingerprintHash(context)
+
+        /**
+         * Gets the current update channel - delegates to HotUpdaterImpl static method
+         * @param context Application context
+         * @return The channel name or null if not set
+         */
+        fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
 
         /**
          * Gets the current activity from ReactApplicationContext

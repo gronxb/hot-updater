@@ -14,9 +14,6 @@
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
 
-// Create static HotUpdaterImpl instance
-static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
-
 @implementation HotUpdater {
     bool hasListeners;
     // Keep track of tasks ONLY for removing observers when this ObjC instance is invalidated
@@ -33,15 +30,14 @@ static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
         observedTasks = [NSMutableSet set];
 
         // Start observing notifications needed for cleanup/events
-        // Using self as observer
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadProgress:)
                                                      name:HotUpdaterDownloadProgressUpdateNotification
-                                                   object:nil]; // Observe all tasks from Impl
+                                                   object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadCompletion:)
                                                      name:HotUpdaterDownloadDidFinishNotification
-                                                   object:nil]; // Observe all tasks from Impl
+                                                   object:nil];
 
         _lastUpdateTime = 0;
     }
@@ -64,6 +60,18 @@ static HotUpdaterImpl *_hotUpdaterImpl = [HotUpdaterFactory.shared create];
 
 RCT_EXPORT_MODULE();
 
+#pragma mark - Singleton Instance
+
+// Static singleton HotUpdaterImpl getter
++ (HotUpdaterImpl *)sharedImpl {
+    static HotUpdaterImpl *_sharedImpl = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _sharedImpl = [[HotUpdaterImpl alloc] init];
+    });
+    return _sharedImpl;
+}
+
 #pragma mark - React Native Constants (Keep getMinBundleId, delegate others)
 
 // Keep local implementation if complex or uses macros
@@ -74,8 +82,37 @@ RCT_EXPORT_MODULE();
      #if DEBUG
          uuid = @"00000000-0000-0000-0000-000000000000";
      #else
+         // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
+         NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+         NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
+
+         // Step 2: If custom value exists and is not empty
+         if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
+             // Check if it's a timestamp (pure digits) or UUID
+             NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
+             BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
+
+             if (isTimestamp) {
+                 // Convert timestamp (milliseconds) to UUID v7
+                 uint64_t timestampMs = [customValue longLongValue];
+                 uuid = [self generateUUIDv7FromTimestamp:timestampMs];
+                 RCTLogInfo(@"[HotUpdater.mm] Using timestamp %@ as MIN_BUNDLE_ID: %@", customValue, uuid);
+             } else {
+                 // Use as UUID directly
+                 uuid = customValue;
+                 RCTLogInfo(@"[HotUpdater.mm] Using custom MIN_BUNDLE_ID from Info.plist: %@", uuid);
+             }
+             return;
+         }
+
+         // Step 3: Fallback to default logic (26-hour subtraction)
+         RCTLogInfo(@"[HotUpdater.mm] No custom MIN_BUNDLE_ID found, using default calculation");
+
          NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
          NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+
+         // Parse __DATE__ __TIME__ as UTC to ensure consistent timezone handling across all build environments
+         [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
          [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
          [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
          NSDate *buildDate = [formatter dateFromString:compileDateStr];
@@ -84,43 +121,71 @@ RCT_EXPORT_MODULE();
              uuid = @"00000000-0000-0000-0000-000000000000";
              return;
          }
-         uint64_t buildTimestampMs = (uint64_t)([buildDate timeIntervalSince1970] * 1000.0);
-         unsigned char bytes[16];
-         bytes[0] = (buildTimestampMs >> 40) & 0xFF; // ... rest of UUID logic ...
-         bytes[1] = (buildTimestampMs >> 32) & 0xFF;
-         bytes[2] = (buildTimestampMs >> 24) & 0xFF;
-         bytes[3] = (buildTimestampMs >> 16) & 0xFF;
-         bytes[4] = (buildTimestampMs >> 8) & 0xFF;
-         bytes[5] = buildTimestampMs & 0xFF;
-         bytes[6] = 0x70; bytes[7] = 0x00; bytes[8] = 0x80; bytes[9] = 0x00;
-         bytes[10] = 0x00; bytes[11] = 0x00; bytes[12] = 0x00; bytes[13] = 0x00; bytes[14] = 0x00; bytes[15] = 0x00;
-         uuid = [NSString stringWithFormat:
-                 @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                 bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-                 bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+
+         // Subtract 26 hours (93600 seconds) to ensure MIN_BUNDLE_ID is always in the past
+         // This guarantees that uuidv7-based bundleIds (generated at runtime) will always be newer than MIN_BUNDLE_ID
+         // Why 26 hours? Global timezone range spans from UTC-12 to UTC+14 (total 26 hours)
+         // By subtracting 26 hours, MIN_BUNDLE_ID becomes a safe "past timestamp" regardless of build timezone
+         // Example: Build at 15:00 in any timezone → parse as 15:00 UTC → subtract 26h → 13:00 UTC (previous day)
+         NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
+         uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
+
+         uuid = [self generateUUIDv7FromTimestamp:buildTimestampMs];
      #endif
      });
      return uuid;
 }
 
+// Helper method: Generate UUID v7 from timestamp (milliseconds)
+- (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs {
+    unsigned char bytes[16];
 
-- (NSDictionary *)constantsToExport {
+    // UUID v7 format: timestamp_ms (48 bits) + ver (4 bits) + random (12 bits) + variant (2 bits) + random (62 bits)
+    bytes[0] = (timestampMs >> 40) & 0xFF;
+    bytes[1] = (timestampMs >> 32) & 0xFF;
+    bytes[2] = (timestampMs >> 24) & 0xFF;
+    bytes[3] = (timestampMs >> 16) & 0xFF;
+    bytes[4] = (timestampMs >> 8) & 0xFF;
+    bytes[5] = timestampMs & 0xFF;
+
+    // Version 7
+    bytes[6] = 0x70;
+    bytes[7] = 0x00;
+
+    // Variant bits (10xxxxxx)
+    bytes[8] = 0x80;
+    bytes[9] = 0x00;
+
+    // Remaining bytes (zeros for deterministic MIN_BUNDLE_ID)
+    for (int i = 10; i < 16; i++) {
+        bytes[i] = 0x00;
+    }
+
+    return [NSString stringWithFormat:
+            @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
+}
+
+
+- (NSDictionary *)_buildConstantsDictionary {
     return @{
-        @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null], // Local
-        @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null], // Swift
-        @"CHANNEL": [_hotUpdaterImpl getChannel] ?: [NSNull null], // Swift
-        @"FINGERPRINT_HASH": [_hotUpdaterImpl getFingerprintHash] ?: [NSNull null] // Swift
+        @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
+        @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null],
+        @"CHANNEL": [[HotUpdater sharedImpl] getChannel] ?: [NSNull null],
+        @"FINGERPRINT_HASH": [[HotUpdater sharedImpl] getFingerprintHash] ?: [NSNull null]
     };
 }
 
-- (NSDictionary *)getConstants {
- return [self constantsToExport];
+
+// Get bundleURL using singleton
++ (NSURL *)bundleURL {
+    return [[HotUpdater sharedImpl] bundleURL];
 }
 
-
-// Get bundleURL using static instance
-+ (NSURL *)bundleURL {
-    return [_hotUpdaterImpl bundleURL];
+// Get bundleURL using instance impl
+- (NSURL *)bundleURL {
+    return [[HotUpdater sharedImpl] bundleURL];
 }
 
 
@@ -177,20 +242,21 @@ RCT_EXPORT_MODULE();
 }
 
 
-#pragma mark - React Native Exports (Slimmed Down)
+#pragma mark - React Native Exports
 
-// Keep reload logic here as it interacts with RN Bridge
-RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+#ifdef RCT_NEW_ARCH_ENABLED
+
+// New Architecture implementations
+
+- (void)reload:(RCTPromiseResolveBlock)resolve
+        reject:(RCTPromiseRejectBlock)reject {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            // Get bundleURL using static instance
-            NSURL *bundleURL = [_hotUpdaterImpl bundleURL];
+            HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+            NSURL *bundleURL = [impl bundleURL];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
-                // This method of setting bundleURL might be outdated depending on RN version.
-                // Consider alternatives if this doesn't work reliably.
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
             } else if (!super.bridge) {
                 RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
@@ -204,11 +270,9 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     });
 }
 
-#ifdef RCT_NEW_ARCH_ENABLED
-
-RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject {
     NSLog(@"[HotUpdater.mm] updateBundle called.");
     NSMutableDictionary *paramDict = [NSMutableDictionary dictionary];
     if (params.bundleId()) {
@@ -221,18 +285,120 @@ RCT_EXPORT_METHOD(updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)param
         paramDict[@"fileHash"] = params.fileHash();
     }
 
-    [_hotUpdaterImpl updateBundle:paramDict resolver:resolve rejecter:reject];
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
+
+- (NSDictionary *)notifyAppReady:(JS::NativeHotUpdater::SpecNotifyAppReadyParams &)params {
+    NSString *bundleId = nil;
+    if (params.bundleId()) {
+        bundleId = params.bundleId();
+    }
+    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl notifyAppReadyWithBundleId:bundleId];
+}
+
+- (NSArray<NSString *> *)getCrashHistory {
+    NSLog(@"[HotUpdater.mm] getCrashHistory called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSArray<NSString *> *crashHistory = [impl getCrashHistory];
+    return crashHistory ?: @[];
+}
+
+- (NSNumber *)clearCrashHistory {
+    NSLog(@"[HotUpdater.mm] clearCrashHistory called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    BOOL result = [impl clearCrashHistory];
+    return @(result);
+}
+
+- (void)addListener:(NSString *)eventName {
+    // No-op for New Architecture - handled by event emitter
+}
+
+- (void)removeListeners:(double)count {
+    // No-op for New Architecture - handled by event emitter
+}
+
+- (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
+    return [self getConstants];
+}
+
+- (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)getConstants {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return facebook::react::typedConstants<JS::NativeHotUpdater::Constants::Builder>({
+        .MIN_BUNDLE_ID = [self getMinBundleId],
+        .APP_VERSION = [HotUpdaterImpl appVersion],
+        .CHANNEL = [impl getChannel],
+        .FINGERPRINT_HASH = [impl getFingerprintHash],
+    });
+}
+
 #else
+
+// Old Architecture implementations
+
+RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+            NSURL *bundleURL = [impl bundleURL];
+            RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+            if (bundleURL && super.bridge) {
+                [super.bridge setValue:bundleURL forKey:@"bundleURL"];
+            } else if (!super.bridge) {
+                RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
+            }
+            RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+            resolve(nil);
+        } @catch (NSError *error) {
+            RCTLogError(@"[HotUpdater.mm] Failed to reload: %@", error);
+            reject(@"RELOAD_ERROR", error.description, error);
+        }
+    });
+}
+
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
-    [_hotUpdaterImpl updateBundle:params resolver:resolve rejecter:reject];
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl updateBundle:params resolver:resolve rejecter:reject];
 }
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady:(NSDictionary *)params) {
+    NSString *bundleId = params[@"bundleId"];
+    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl notifyAppReadyWithBundleId:bundleId];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCrashHistory) {
+    NSLog(@"[HotUpdater.mm] getCrashHistory called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSArray<NSString *> *crashHistory = [impl getCrashHistory];
+    return crashHistory ?: @[];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
+    NSLog(@"[HotUpdater.mm] clearCrashHistory called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    BOOL result = [impl clearCrashHistory];
+    return @(result);
+}
+
+- (NSDictionary *)constantsToExport {
+    return [self _buildConstantsDictionary];
+}
+
+- (NSDictionary *)getConstants {
+    return [self constantsToExport];
+}
+
 #endif
-
-
 
 
 #pragma mark - Turbo Module Support (Keep as is)

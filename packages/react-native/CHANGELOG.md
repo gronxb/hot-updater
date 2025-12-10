@@ -1,5 +1,94 @@
 # @hot-updater/react-native
 
+## 0.24.3
+
+### Patch Changes
+
+- bbe71f7: Add tvOS support to HotUpdater
+  - @hot-updater/cli-tools@0.24.3
+  - @hot-updater/core@0.24.3
+  - @hot-updater/js@0.24.3
+  - @hot-updater/plugin-core@0.24.3
+
+## 0.24.2
+
+### Patch Changes
+
+- 5a46549: fix(native): background update
+  - @hot-updater/cli-tools@0.24.2
+  - @hot-updater/core@0.24.2
+  - @hot-updater/js@0.24.2
+  - @hot-updater/plugin-core@0.24.2
+
+## 0.24.1
+
+### Patch Changes
+
+- fe78d4f: feat(react-native): wrap with resolver
+  - @hot-updater/cli-tools@0.24.1
+  - @hot-updater/core@0.24.1
+  - @hot-updater/js@0.24.1
+  - @hot-updater/plugin-core@0.24.1
+
+## 0.24.0
+
+### Minor Changes
+
+- 753208b: feat(native): notifyAppReady for auto rollback (invalid bundle)
+- c51239c: fix(ios): getMinBundleId timezone issue
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.24.0
+- @hot-updater/core@0.24.0
+- @hot-updater/js@0.24.0
+- @hot-updater/plugin-core@0.24.0
+
+## 0.23.1
+
+### Patch Changes
+
+- 7fa9a20: feat(expo): bundle-signing supports cng plugin
+  - @hot-updater/cli-tools@0.23.1
+  - @hot-updater/core@0.23.1
+  - @hot-updater/js@0.23.1
+  - @hot-updater/plugin-core@0.23.1
+
+## 0.23.0
+
+### Minor Changes
+
+- e41fb6b: feat: add bundle signing for cryptographic OTA verification
+
+### Patch Changes
+
+- Updated dependencies [e41fb6b]
+  - @hot-updater/core@0.23.0
+  - @hot-updater/js@0.23.0
+  - @hot-updater/plugin-core@0.23.0
+  - @hot-updater/cli-tools@0.23.0
+
+## 0.22.2
+
+### Patch Changes
+
+- 82636ea: fix(expo): expo plugin transformer not found
+  - hot-updater@0.22.2
+  - @hot-updater/cli-tools@0.22.2
+  - @hot-updater/core@0.22.2
+  - @hot-updater/js@0.22.2
+  - @hot-updater/plugin-core@0.22.2
+
+## 0.22.1
+
+### Patch Changes
+
+- hot-updater@0.22.1
+- @hot-updater/cli-tools@0.22.1
+- @hot-updater/core@0.22.1
+- @hot-updater/js@0.22.1
+- @hot-updater/plugin-core@0.22.1
+
 ## 0.22.0
 
 ### Patch Changes

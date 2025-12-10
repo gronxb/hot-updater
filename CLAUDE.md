@@ -43,10 +43,10 @@ pnpm test
 pnpm test:type
 
 # Format code with Biome
-pnpm biome
+pnpm lint:fix
 
 # Check code with Biome
-pnpm biome:check
+pnpm lint
 ```
 
 ### Release Management
@@ -92,12 +92,12 @@ npx hot-updater channel
 
 1. `pnpm build` - All packages and plugins must build successfully
 2. `pnpm test:type` - TypeScript type checking must pass with no errors
-3. `pnpm biome:check` - Code must pass Biome linting and formatting checks
+3. `pnpm lint` - Code must pass Biome linting and formatting checks
 4. `pnpm test` - All unit tests must pass
 
 Before committing changes, always run these commands locally to ensure CI will pass:
 ```bash
-pnpm build && pnpm test:type && pnpm biome:check && pnpm test
+pnpm build && pnpm test:type && pnpm lint && pnpm test
 ```
 
 ### Code Style

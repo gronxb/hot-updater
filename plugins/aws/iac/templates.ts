@@ -59,14 +59,14 @@ const commonOptions = {
 };
 
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
   return ...;
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("%%source%%", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  baseURL: "%%source%%",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
 })(App);`;

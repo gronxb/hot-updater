@@ -37,7 +37,7 @@ class MainApplication : Application(), ReactApplication {
           override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
 
           override fun getJSBundleFile(): String? {
-              return HotUpdater.getJSBundleFile(applicationContext)
+            return HotUpdater.getJSBundleFile(applicationContext)
           }
       }
   )

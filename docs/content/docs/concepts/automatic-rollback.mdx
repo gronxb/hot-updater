@@ -1,0 +1,107 @@
+---
+title: "Automatic Rollback"
+description: Hot Updater automatically detects crashed bundles and rolls back to stable versions.
+icon: ShieldCheck
+version: "0.24.0"
+---
+
+## What is Automatic Rollback?
+
+Automatic rollback protects your app from getting stuck on crashing bundles. When a new update causes your app to crash, Hot Updater automatically detects the problem and rolls back to the last stable version.
+
+This happens automatically when you use `HotUpdater.wrap()`. No manual intervention needed.
+
+## How It Works
+
+When you deploy a new bundle, Hot Updater follows this process:
+
+1. **Download**: The new bundle downloads and is marked as "staging"
+2. **First Launch**: App restarts and loads the new bundle
+3. **Verification**:
+   - If the bundle loads successfully, `HotUpdater.wrap()` automatically verifies it
+   - The bundle is promoted to "stable" status
+4. **Rollback**: If the app crashes before verification, the next launch detects the crash and rolls back to the last stable bundle
+
+`HotUpdater.wrap()` handles verification automatically by calling `notifyAppReady()` when your app initializes. You don't need to call this function manually.
+
+## Crash Detection
+
+Hot Updater uses a two-launch detection strategy to identify crashed bundles:
+
+**First Launch with New Bundle:**
+- App attempts to load the new staging bundle
+- If everything works, the bundle is verified and promoted
+- If a crash occurs, the app exits before verification
+
+**Second Launch after Crash:**
+- Hot Updater detects that the previous launch didn't complete verification
+- The staging bundle is marked as crashed and added to crash history
+- App automatically rolls back to the last stable bundle
+- Your app starts safely with the working version
+
+This two-launch approach prevents false positives from normal startup delays or initialization code.
+
+## Managing Crashed Bundles
+
+Hot Updater tracks bundles that have crashed using a crash history system.
+
+### getCrashHistory()
+
+Returns an array of bundle IDs that previously caused crashes. Use this to monitor which bundles are failing.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function checkCrashedBundles() {
+  const crashedBundles = HotUpdater.getCrashHistory();
+
+  if (crashedBundles.length > 0) {
+    console.log("Crashed bundles:", crashedBundles);
+    // Send to your monitoring service
+  }
+}
+```
+
+**Use cases:**
+- Monitor deployment health
+- Track which bundles are causing issues
+- Debug production problems
+
+### clearCrashHistory()
+
+Clears the crash history to allow retrying a previously failed bundle. Use this after fixing a crashing bundle.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function retryFailedBundle() {
+  // Clear the crash history
+  HotUpdater.clearCrashHistory();
+
+  // Now you can try deploying the fixed bundle again
+  console.log("Crash history cleared - bundle can be retried");
+}
+```
+
+<Callout type="warn">
+Only clear crash history after verifying the bundle is fixed. Clearing it allows the same bundle to be deployed again.
+</Callout>
+
+**Use cases:**
+- After fixing a bug in a crashed bundle
+- Allowing redeployment of a corrected version
+- Resetting crash state for testing
+
+### Crash History Blocking
+
+When a bundle crashes, Hot Updater adds it to the crash history and blocks future deployments of that exact bundle ID. This prevents infinite crash loops.
+
+To deploy a fixed version:
+1. Fix the bug in your code
+2. Deploy with a new bundle ID (happens automatically with `hot-updater deploy`)
+3. The new bundle ID bypasses the crash history
+
+If you need to retry the same bundle ID:
+1. Verify the bundle is fixed
+2. Call `clearCrashHistory()` to reset the blocked list
+3. Redeploy the bundle

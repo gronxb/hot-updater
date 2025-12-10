@@ -1,19 +1,13 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import { Github } from "lucide-react";
+import { Logo } from "../components/Logo";
 
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: (
         <div className="flex items-center gap-1">
-          <img
-            src="/logo.webp"
-            alt="Hot Updater"
-            className="w-6 h-6 object-contain shrink-0 mt-1.25"
-            loading="eager"
-            fetchPriority="high"
-            decoding="sync"
-          />
+          <Logo className="w-5 h-5 shrink-0" />
           <span>Hot Updater</span>
         </div>
       ),

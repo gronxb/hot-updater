@@ -8,7 +8,13 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import { createFingerprintJSON, generateFingerprints } from "hot-updater";
+import {
+  createFingerprintJSON,
+  generateFingerprints,
+  getPublicKeyFromPrivate,
+  loadPrivateKey,
+} from "hot-updater";
+import path from "path";
 import pkg from "../../package.json";
 import { transformAndroid, transformIOS } from "./transformers";
 
@@ -23,6 +29,35 @@ const getFingerprint = async () => {
   fingerprintCache = await generateFingerprints();
   await createFingerprintJSON(fingerprintCache);
   return fingerprintCache;
+};
+
+/**
+ * Extract public key from private key in signing config
+ */
+const getPublicKeyFromConfig = async (
+  signingConfig: { enabled?: boolean; privateKeyPath?: string } | undefined,
+): Promise<string | null> => {
+  if (!signingConfig?.enabled || !signingConfig?.privateKeyPath) {
+    return null;
+  }
+
+  try {
+    // Resolve private key path relative to project root
+    const privateKeyPath = path.isAbsolute(signingConfig.privateKeyPath)
+      ? signingConfig.privateKeyPath
+      : path.resolve(process.cwd(), signingConfig.privateKeyPath);
+
+    // Load private key and extract public key
+    const privateKeyPEM = await loadPrivateKey(privateKeyPath);
+    const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
+
+    return publicKeyPEM.trim();
+  } catch (error) {
+    throw new Error(
+      `[hot-updater] Failed to extract public key: ${error instanceof Error ? error.message : String(error)}\n` +
+        "Run 'npx hot-updater keys generate' to create signing keys",
+    );
+  }
 };
 
 // Type definitions
@@ -77,9 +112,15 @@ const withHotUpdaterConfigAsync =
         fingerprintHash = fingerprint.ios.hash;
       }
 
+      // Load public key if signing is enabled
+      const publicKey = await getPublicKeyFromConfig(config.signing);
+
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
       if (fingerprintHash) {
         cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = fingerprintHash;
+      }
+      if (publicKey) {
+        cfg.modResults.HOT_UPDATER_PUBLIC_KEY = publicKey;
       }
       return cfg;
     });
@@ -92,6 +133,9 @@ const withHotUpdaterConfigAsync =
         const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.android.hash;
       }
+
+      // Load public key if signing is enabled
+      const publicKey = await getPublicKeyFromConfig(config.signing);
 
       // Ensure resources object exists
       if (!cfg.modResults.resources) {
@@ -136,6 +180,26 @@ const withHotUpdaterConfigAsync =
             moduleConfig: string;
           },
           _: fingerprintHash,
+        });
+      }
+
+      if (publicKey) {
+        // Remove existing hot_updater_public_key entry if it exists
+        cfg.modResults.resources.string =
+          cfg.modResults.resources.string.filter(
+            (item) => !(item.$ && item.$.name === "hot_updater_public_key"),
+          );
+
+        // Add the new hot_updater_public_key entry
+        cfg.modResults.resources.string.push({
+          $: {
+            name: "hot_updater_public_key",
+            moduleConfig: "true",
+          } as {
+            name: string;
+            moduleConfig: string;
+          },
+          _: publicKey,
         });
       }
 

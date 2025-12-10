@@ -25,11 +25,11 @@
     "geist": "^1.5.1",
     "lucide-react": "^0.552.0",
     "lucide-static": "^0.548.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-server-dom-webpack": "^19.2.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-server-dom-webpack": "^19.2.1",
     "tailwind-merge": "^2.5.4",
-    "waku": "^0.27.0"
+    "waku": "0.27.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.16",

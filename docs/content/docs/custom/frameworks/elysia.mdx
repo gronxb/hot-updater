@@ -103,16 +103,15 @@ export default defineConfig({
 
 ## React Native Setup
 
-Configure your React Native app to connect to this server. Use `getUpdateSource` with your server URL.
+Configure your React Native app to connect to this server.
 
 ```typescript title="App.tsx"
 import { HotUpdater } from '@hot-updater/react-native';
-import { getUpdateSource } from '@hot-updater/react-native';
 
 export default HotUpdater.wrap({
-  source: getUpdateSource('http://localhost:3000/hot-updater', { // [!code ++]
-    updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
-  }), // [!code ++]
+  baseURL: 'http://localhost:3000/hot-updater', // [!code ++]
+  updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
+  updateMode: "auto",
   fallbackComponent: ({ progress, status }) => (
     // ... Custom loading UI
   ),

@@ -44,16 +44,16 @@ const getConfigTemplate = (build: BuildType) => {
 };
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
   return ...
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("%%source%%", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  baseURL: "%%source%%",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
 })(App);`;
 
 const deployWorker = async (

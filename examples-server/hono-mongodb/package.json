@@ -21,7 +21,7 @@
     "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "dotenv": "^16.6.1",
-    "firebase-admin": "^13.5.0",
+    "firebase-admin": "13.6.0",
     "hono": "^4.9.12",
     "mongodb": "^6.12.0"
   },
