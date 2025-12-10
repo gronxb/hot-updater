@@ -12,6 +12,9 @@ const DEFAULT_CHANNEL = "production";
 declare global {
   interface Window {
     __HOT_UPDATER_BASE_PATH__?: string;
+    __HOT_UPDATER_CONFIG__?: {
+      gitUrl?: string;
+    };
   }
 }
 
@@ -20,6 +23,13 @@ const getBasePath = (): string => {
     return window.__HOT_UPDATER_BASE_PATH__;
   }
   return "";
+};
+
+const getConfig = () => {
+  if (typeof window !== "undefined" && window.__HOT_UPDATER_CONFIG__) {
+    return window.__HOT_UPDATER_CONFIG__;
+  }
+  return { gitUrl: undefined };
 };
 
 interface BundlesQuery {
@@ -105,17 +115,10 @@ const api = {
       return { ok: res.ok, json: () => res.json(), status: res.status };
     },
   },
-  config: {
-    $get: async () => {
-      const basePath = getBasePath();
-      const res = await fetch(`${basePath}/config`);
-      return { json: () => res.json() as Promise<ConfigResponse> };
-    },
-  },
   channels: {
     $get: async () => {
       const basePath = getBasePath();
-      const res = await fetch(`${basePath}/channels`);
+      const res = await fetch(`${basePath}/bundles/channels`);
       return { json: () => res.json() as Promise<string[]> };
     },
   },
@@ -147,7 +150,7 @@ export const useBundleQuery = (bundleId: string) =>
 export const useConfigQuery = () =>
   useQuery(() => ({
     queryKey: ["config"],
-    queryFn: () => api.config.$get().then((res) => res.json()),
+    queryFn: () => Promise.resolve({ console: getConfig() }),
     staleTime: Number.POSITIVE_INFINITY,
     retryOnMount: false,
   }));

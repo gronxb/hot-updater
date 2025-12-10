@@ -280,6 +280,7 @@ export function createHandler(
   addRoute(router, "GET", "/api/bundles/:id", "getBundle");
   addRoute(router, "GET", "/api/bundles", "getBundles");
   addRoute(router, "POST", "/api/bundles", "createBundles");
+  addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
   addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
 
   // Console-specific routes

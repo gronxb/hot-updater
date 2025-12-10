@@ -68,7 +68,7 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
+app.on(["POST", "GET", "PATCH", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
   return hotUpdater.handler(c.req.raw); // [!code ++]
 }); // [!code ++]
 
