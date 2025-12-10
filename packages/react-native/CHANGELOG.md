@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.24.3
+
+### Patch Changes
+
+- bbe71f7: Add tvOS support to HotUpdater
+  - @hot-updater/cli-tools@0.24.3
+  - @hot-updater/core@0.24.3
+  - @hot-updater/js@0.24.3
+  - @hot-updater/plugin-core@0.24.3
+
 ## 0.24.2
 
 ### Patch Changes
