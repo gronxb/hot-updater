@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.24.4
+
+### Patch Changes
+
+- 7ed539f: fix(s3): s3Database not function error
+  - @hot-updater/core@0.24.4
+
 ## 0.24.3
 
 ### Patch Changes
