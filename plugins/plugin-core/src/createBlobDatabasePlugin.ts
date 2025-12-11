@@ -677,6 +677,6 @@ export const createBlobDatabasePlugin = <TConfig>({
           pendingBundlesMap.clear();
         },
       }),
-    })({}, hooks)();
+    })({}, hooks);
   };
 };
