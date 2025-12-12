@@ -10,7 +10,7 @@ export const ensureFingerprintConfig = async () => {
   const config = await loadConfig(null);
   if (config.updateStrategy === "appVersion") {
     p.log.error(
-      "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
+      "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy."
     );
     process.exit(1);
   }
@@ -31,13 +31,13 @@ function allowExtensions(extensions: string[]): string[] {
  * @returns Array of default ignore paths
  */
 function getDefaultIgnorePaths(): string[] {
-  return ["**/*", "**/.build/**/*", "**/build/"];
+  return ["**/*", "**/.build/**/*", "**/build/", "**/build*/**/*"];
 }
 
 export function getOtaFingerprintOptions(
   platform: "ios" | "android",
   path: string,
-  options: FingerprintOptions,
+  options: FingerprintOptions
 ): Options {
   return {
     useRNCoreAutolinkingFromExpo: false,
@@ -123,7 +123,7 @@ export type FingerprintResult = {
 
 export function isFingerprintEquals(
   lhs?: FingerprintResult | null,
-  rhs?: FingerprintResult | null,
+  rhs?: FingerprintResult | null
 ): boolean;
 export function isFingerprintEquals(
   lhs?: {
@@ -133,11 +133,11 @@ export function isFingerprintEquals(
   rhs?: {
     android: FingerprintResult | null;
     ios: FingerprintResult | null;
-  } | null,
+  } | null
 ): boolean;
 export function isFingerprintEquals(
   lhs?: Record<string, any> | null,
-  rhs?: Record<string, any> | null,
+  rhs?: Record<string, any> | null
 ): boolean {
   if (!lhs || !rhs) return false;
   if (isFingerprintResultsObject(lhs) && isFingerprintResultsObject(rhs)) {
@@ -152,7 +152,7 @@ export function isFingerprintEquals(
   return false;
 
   function isFingerprintResultsObject(
-    result: Record<string, any>,
+    result: Record<string, any>
   ): result is { android: FingerprintResult; ios: FingerprintResult } {
     return (
       typeof result["android"] === "object" &&
