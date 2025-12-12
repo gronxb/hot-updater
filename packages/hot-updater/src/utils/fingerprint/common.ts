@@ -31,7 +31,7 @@ function allowExtensions(extensions: string[]): string[] {
  * @returns Array of default ignore paths
  */
 function getDefaultIgnorePaths(): string[] {
-  return ["**/*", "**/.build/**/*", "**/build/"];
+  return ["**/*", "**/.build/**/*", "**/build/", "**/build*/**/*"];
 }
 
 export function getOtaFingerprintOptions(
