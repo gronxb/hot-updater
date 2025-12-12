@@ -13,6 +13,7 @@ export function createPluginDatabaseCore(
   resolveFileUrl: (storageUri: string | null) => Promise<string | null>,
 ): {
   api: DatabaseAPI;
+  plugin: DatabasePlugin;
   adapterName: string;
   createMigrator: () => never;
   generateSchema: () => never;
@@ -104,6 +105,7 @@ export function createPluginDatabaseCore(
 
   return {
     api,
+    plugin,
     adapterName: plugin.name,
     createMigrator: () => {
       throw new Error(

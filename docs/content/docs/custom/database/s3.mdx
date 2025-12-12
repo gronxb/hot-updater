@@ -77,7 +77,7 @@ app.get("/", (c) => {
   return c.json({ status: "ok" });
 });
 
-app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => {
+app.on(["POST", "GET", "PATCH", "DELETE"], "/hot-updater/*", async (c) => {
   return hotUpdater.handler(c.req.raw);
 });
 
