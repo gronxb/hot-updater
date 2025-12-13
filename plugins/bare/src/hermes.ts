@@ -72,6 +72,7 @@ export async function getHermesCommand(cwd: string): Promise<string> {
   };
 
   // Since react-native 0.69, Hermes is bundled with it.
+  // Note: This path was removed in react-native 0.82+
   const bundledHermesEngine = path.join(
     getReactNativePackagePath(cwd),
     "sdks",
@@ -81,6 +82,23 @@ export async function getHermesCommand(cwd: string): Promise<string> {
   );
   if (fileExists(bundledHermesEngine)) {
     return bundledHermesEngine;
+  }
+
+  // React Native 0.82+: hermesc is distributed via CocoaPods on macOS/iOS
+  // Reference: https://github.com/facebook/react-native/commit/2e0bd13a25
+  if (process.platform === "darwin") {
+    const podsHermesEngine = path.join(
+      cwd,
+      "ios",
+      "Pods",
+      "hermes-engine",
+      "destroot",
+      "bin",
+      "hermesc",
+    );
+    if (fileExists(podsHermesEngine)) {
+      return podsHermesEngine;
+    }
   }
 
   // Prefer hermes-engine if it exists.
