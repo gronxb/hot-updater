@@ -82,6 +82,11 @@ class FileManagerService: FileSystemService {
     }
     
     func documentsPath() -> String {
+        #if os(tvOS)
+        // tvOS doesn't have persistent Documents directory, use Caches instead
+        return NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true)[0]
+        #else
         return NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
+        #endif
     }
 }
