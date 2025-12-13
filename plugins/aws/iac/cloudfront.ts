@@ -273,7 +273,10 @@ export class CloudFrontManager {
             DefaultTTL: 31536000,
             MaxTTL: 31536000,
             SmoothStreaming: false,
-            Compress: true,
+            // Disable compression to ensure consistent cache invalidation.
+            // When Compress is true, CloudFront caches multiple encoding variants
+            // (gzip, brotli, uncompressed) which may not all be properly invalidated.
+            Compress: false,
             FieldLevelEncryptionId: "",
             AllowedMethods: {
               Quantity: 2,
@@ -456,7 +459,10 @@ export class CloudFrontManager {
             DefaultTTL: 31536000,
             MaxTTL: 31536000,
             SmoothStreaming: false,
-            Compress: true,
+            // Disable compression to ensure consistent cache invalidation.
+            // When Compress is true, CloudFront caches multiple encoding variants
+            // (gzip, brotli, uncompressed) which may not all be properly invalidated.
+            Compress: false,
             FieldLevelEncryptionId: "",
             AllowedMethods: {
               Quantity: 2,
