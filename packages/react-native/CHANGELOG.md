@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.24.5
+
+### Patch Changes
+
+- 93d3372: Use cachesDirectory on tvOS
+  - @hot-updater/cli-tools@0.24.5
+  - @hot-updater/core@0.24.5
+  - @hot-updater/js@0.24.5
+  - @hot-updater/plugin-core@0.24.5
+
 ## 0.24.4
 
 ### Patch Changes
