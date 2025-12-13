@@ -347,7 +347,10 @@ export const createBlobDatabasePlugin = <TConfig>({
                 pathsToInvalidate.add(
                   `${apiBasePath}/fingerprint/${data.platform}/${data.fingerprintHash}/${data.channel}/*`,
                 );
-              } else if (data.targetAppVersion) {
+              }
+              // Use separate if (not else if) to invalidate both fingerprint and app-version paths
+              // when bundle has both fingerprintHash and targetAppVersion
+              if (data.targetAppVersion) {
                 if (!isExactVersion(data.targetAppVersion)) {
                   pathsToInvalidate.add(
                     `${apiBasePath}/app-version/${data.platform}/*`,
@@ -392,7 +395,9 @@ export const createBlobDatabasePlugin = <TConfig>({
                 pathsToInvalidate.add(
                   `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
                 );
-              } else if (bundle.targetAppVersion) {
+              }
+              // Use separate if (not else if) to invalidate both fingerprint and app-version paths
+              if (bundle.targetAppVersion) {
                 if (!isExactVersion(bundle.targetAppVersion)) {
                   pathsToInvalidate.add(
                     `${apiBasePath}/app-version/${bundle.platform}/*`,
@@ -509,7 +514,9 @@ export const createBlobDatabasePlugin = <TConfig>({
                   pathsToInvalidate.add(
                     `${apiBasePath}/fingerprint/${bundle.platform}/${updatedBundle.fingerprintHash}/${updatedBundle.channel}/*`,
                   );
-                } else if (updatedBundle.targetAppVersion) {
+                }
+                // Use separate if (not else if) to invalidate both fingerprint and app-version paths
+                if (updatedBundle.targetAppVersion) {
                   // Invalidate based on new targetAppVersion
                   if (!isExactVersion(updatedBundle.targetAppVersion)) {
                     pathsToInvalidate.add(
@@ -568,7 +575,9 @@ export const createBlobDatabasePlugin = <TConfig>({
                 pathsToInvalidate.add(
                   `${apiBasePath}/fingerprint/${updatedBundle.platform}/${updatedBundle.fingerprintHash}/${updatedBundle.channel}/*`,
                 );
-              } else if (updatedBundle.targetAppVersion) {
+              }
+              // Use separate if (not else if) to invalidate both fingerprint and app-version paths
+              if (updatedBundle.targetAppVersion) {
                 // Invalidate based on new targetAppVersion
                 if (!isExactVersion(updatedBundle.targetAppVersion)) {
                   pathsToInvalidate.add(
