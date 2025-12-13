@@ -1,5 +1,16 @@
 # hot-updater
 
+## 0.24.5
+
+### Patch Changes
+
+- f755c3c: Add build\* to default fingerprint ignore paths
+  - @hot-updater/cli-tools@0.24.5
+  - @hot-updater/console@0.24.5
+  - @hot-updater/core@0.24.5
+  - @hot-updater/server@0.24.5
+  - @hot-updater/plugin-core@0.24.5
+
 ## 0.24.4
 
 ### Patch Changes
