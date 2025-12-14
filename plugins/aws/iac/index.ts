@@ -2,6 +2,7 @@ import { fromSSO } from "@aws-sdk/credential-providers";
 import {
   type BuildType,
   colors,
+  ensureInstallPackages,
   link,
   makeEnv,
   p,
@@ -45,11 +46,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const mode = await p.select({
     message: "Select the mode to login to AWS",
     options: [
+      { label: "AWS SSO Login", value: "sso" },
       {
-        label: "AWS Access Key ID & Secret Access Key (Recommend)",
+        label: "AWS Access Key ID & Secret Access Key",
         value: "account",
       },
-      { label: "AWS SSO Login", value: "sso" },
     ],
   });
   if (p.isCancel(mode)) process.exit(1);
@@ -71,6 +72,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
 
+  let ssoProfile: string | undefined;
+
   if (mode === "sso") {
     try {
       const profile = await p.text({
@@ -79,6 +82,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
         placeholder: "default",
       });
       if (p.isCancel(profile)) process.exit(1);
+      ssoProfile = profile;
       await execa("aws", ["sso", "login", "--profile", profile], {
         stdio: "inherit",
         shell: true,
@@ -231,35 +235,38 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   });
 
   // Create configuration file
-  if (mode === "sso") {
-    await fs.promises.writeFile(
-      "hot-updater.config.ts",
-      getConfigTemplate(build, { sessionToken: true }),
-    );
-  } else {
-    await fs.promises.writeFile(
-      "hot-updater.config.ts",
-      getConfigTemplate(build, { sessionToken: false }),
-    );
-  }
-  const comment =
-    mode === "account"
-      ? "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key."
-      : "This key was generated via SSO login and may expire. Update it with an S3FullAccess and CloudFrontFullAccess key.";
+  await fs.promises.writeFile(
+    "hot-updater.config.ts",
+    getConfigTemplate(build, { profile: ssoProfile }),
+  );
 
   await makeEnv({
     HOT_UPDATER_S3_BUCKET_NAME: bucketName,
     HOT_UPDATER_S3_REGION: bucketRegion,
-    HOT_UPDATER_S3_ACCESS_KEY_ID: { comment, value: credentials.accessKeyId },
-    HOT_UPDATER_S3_SECRET_ACCESS_KEY: {
-      comment,
-      value: credentials.secretAccessKey,
-    },
-    ...(mode === "sso" && {
-      HOT_UPDATER_S3_SESSION_TOKEN: credentials.sessionToken,
-    }),
+    ...(mode === "account"
+      ? {
+          HOT_UPDATER_S3_ACCESS_KEY_ID: {
+            comment:
+              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+            value: credentials.accessKeyId,
+          },
+          HOT_UPDATER_S3_SECRET_ACCESS_KEY: {
+            comment:
+              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+            value: credentials.secretAccessKey,
+          },
+        }
+      : {}),
     HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
   });
+
+  // Install @aws-sdk/credential-provider-sso if SSO mode is selected
+  if (mode === "sso") {
+    await ensureInstallPackages({
+      devDependencies: ["@aws-sdk/credential-provider-sso"],
+    });
+  }
+
   p.log.success("Generated '.env.hotupdater' file with AWS settings.");
   p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
 

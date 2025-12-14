@@ -7,9 +7,9 @@ import {
 export const getConfigTemplate = (
   build: BuildType,
   {
-    sessionToken,
+    profile,
   }: {
-    sessionToken?: boolean;
+    profile?: string;
   },
 ) => {
   const storageConfig: ProviderConfig = {
@@ -26,19 +26,16 @@ export const getConfigTemplate = (
 
   let intermediate = "";
 
-  if (sessionToken) {
+  if (profile) {
+    // SSO mode: use fromSSO with profile
     intermediate = `
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-    // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
-    sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
-  },
+  credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
 };`.trim();
   } else {
+    // Account mode: use access key credentials
     intermediate = `
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -50,12 +47,19 @@ const commonOptions = {
 };`.trim();
   }
 
-  return new ConfigBuilder()
+  const builder = new ConfigBuilder()
     .setBuildType(build)
     .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .setIntermediateCode(intermediate)
-    .getResult();
+    .setDatabase(databaseConfig);
+
+  if (profile) {
+    builder.addImport({
+      pkg: "@aws-sdk/credential-provider-sso",
+      named: ["fromSSO"],
+    });
+  }
+
+  return builder.setIntermediateCode(intermediate).getResult();
 };
 
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
