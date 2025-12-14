@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">HotUpdaterExample</string>
-    <string name="hot_updater_fingerprint_hash" moduleConfig="true">9ff5ab8a91f639dc00e123f4b518a474517e1da7</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">64edb00dbbb1d97b7289937d39f5dd6d9ea5cacb</string>
     <string name="hot_updater_channel" moduleConfig="true">production</string>
     <string name="hot_updater_public_key" moduleConfig="true">-----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAtX2E2bQJnYw7FP5sS48s
