@@ -25,7 +25,7 @@ export default defineConfig({
   fingerprint: {
     debug: true,
   },
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion",
   compressStrategy: "tar.br",
   signing: {
     enabled: true,
