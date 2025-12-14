@@ -4,6 +4,7 @@ import {
   SourceSkips,
 } from "@expo/fingerprint";
 import { loadConfig, p } from "@hot-updater/cli-tools";
+import { isExpo } from "../expoDetection";
 import { processExtraSources } from "./processExtraSources";
 
 export const ensureFingerprintConfig = async () => {
@@ -40,7 +41,7 @@ export function getOtaFingerprintOptions(
   options: FingerprintOptions,
 ): Options {
   return {
-    useRNCoreAutolinkingFromExpo: false,
+    useRNCoreAutolinkingFromExpo: isExpo(),
     platforms: [platform],
     ignorePaths: [
       ...getDefaultIgnorePaths(),

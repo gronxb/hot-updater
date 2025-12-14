@@ -1,6 +1,7 @@
 import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
+import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,
   type FingerprintResult,
@@ -77,6 +78,7 @@ export const handleFingerprint = async () => {
 };
 
 export const handleCreateFingerprint = async () => {
+  warnIfExpoCNG();
   let diffChanged = false;
   let localFingerprint: {
     ios: FingerprintResult | null;
