@@ -72,7 +72,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
 
-  let ssoProfile: string | undefined;
+  let ssoProfile: string | null = null;
 
   if (mode === "sso") {
     try {
@@ -255,6 +255,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
               "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
             value: credentials.secretAccessKey,
           },
+        }
+      : {}),
+    ...(ssoProfile !== null
+      ? {
+          HOT_UPDATER_AWS_PROFILE: ssoProfile!,
         }
       : {}),
     HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
