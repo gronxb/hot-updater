@@ -86,7 +86,7 @@ export async function getHermesCommand(cwd: string): Promise<string> {
   const reactNativePath = getReactNativePackagePath(cwd);
   const hermesCompilerPath = getHermesCompilerPackagePath(reactNativePath);
 
-  // Sine react-native 0.83+, Hermes compiler in 'hermes-compiler' package
+  // Since react-native 0.83+, Hermes compiler in 'hermes-compiler' package
   if (hermesCompilerPath) {
     const engine = path.join(
       hermesCompilerPath,
