@@ -1,8 +1,8 @@
 <resources>
-  <string name="app_name">expo-52</string>
-  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
-  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
-  <string name="hot_updater_channel" moduleConfig="true">production</string>
-  <string name="hot_updater_fingerprint_hash" moduleConfig="true">aa58e23851d552f49687856d15bda6ad8d170b42</string>
-  <string name="hot_updater_public_key" moduleConfig="true">-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAo3D5wVYe+8kvDuwYdTDf\nKeLk5UDntWyojSK39tFDGX2Fqj2Pv16o5UdsU2AfxJyAwxM7Y0ZYK3H/TULsuNQ2\nhGonOUdwOsTL9BbyhTQdAsXaHcemYFz88VcD8aHuqjDeiD6WymrqzVfKuiIWsQHr\n3uiSKKOvCi8Ww7n1u5KCo6jQyDp/t1pvJ457SeYGtYHXv8ZAUlfWddTlvOuj1ij2\neGzntcKvMgAb3nvSZtNEPkZrL/k1s73D0yL8H+GMAZNiqiPJNfwGCZ6vKyERhl6j\nbaL+0YIN0hEqn+PZpSNS4cVMt8wxWuyali5LKgfNfnlBkZifbckobtO/SPKTxuMQ\nBFDGB7+W6QoAe1vBnk3RpuEZlh8JEQSIrR5dFuPSIRIOxVdfIIcXTzZY1U+OBKtj\nipNsCdq4X2Z1QqqrV7R6OqL6VOW9PF0wFB28AHFR8nkdNkfHmJMRV3Icdb1PysXz\nnFPYLnpmTQUZsaLpStOlj7Clh8fPpR85bNuOoiAX2yc+LvwayhiUeLkQ4XnBZkxz\n2t+bmbRMlJtOH4g0p27JF+XfH+LzHKT7yF38Is1c52IrKU+NQ8/8fjwgYcvcHzLh\n20DJIux/Hwm0cKo8yOztlOwk20LxsfIfRPsJURcsrsyyrn0GhiVyHp9vThglnH9y\nDYmCC/ciE5c5rhWZg+HKmBMCAwEAAQ==\n-----END PUBLIC KEY-----</string>
+    <string name="app_name">expo-52</string>
+    <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+    <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+    <string name="hot_updater_channel" moduleConfig="true">production</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">c0f50d038dce61ef6b3fd54ae319d51d9880e4e7</string>
+    <string name="hot_updater_public_key" moduleConfig="true">-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAo3D5wVYe+8kvDuwYdTDf\nKeLk5UDntWyojSK39tFDGX2Fqj2Pv16o5UdsU2AfxJyAwxM7Y0ZYK3H/TULsuNQ2\nhGonOUdwOsTL9BbyhTQdAsXaHcemYFz88VcD8aHuqjDeiD6WymrqzVfKuiIWsQHr\n3uiSKKOvCi8Ww7n1u5KCo6jQyDp/t1pvJ457SeYGtYHXv8ZAUlfWddTlvOuj1ij2\neGzntcKvMgAb3nvSZtNEPkZrL/k1s73D0yL8H+GMAZNiqiPJNfwGCZ6vKyERhl6j\nbaL+0YIN0hEqn+PZpSNS4cVMt8wxWuyali5LKgfNfnlBkZifbckobtO/SPKTxuMQ\nBFDGB7+W6QoAe1vBnk3RpuEZlh8JEQSIrR5dFuPSIRIOxVdfIIcXTzZY1U+OBKtj\nipNsCdq4X2Z1QqqrV7R6OqL6VOW9PF0wFB28AHFR8nkdNkfHmJMRV3Icdb1PysXz\nnFPYLnpmTQUZsaLpStOlj7Clh8fPpR85bNuOoiAX2yc+LvwayhiUeLkQ4XnBZkxz\n2t+bmbRMlJtOH4g0p27JF+XfH+LzHKT7yF38Is1c52IrKU+NQ8/8fjwgYcvcHzLh\n20DJIux/Hwm0cKo8yOztlOwk20LxsfIfRPsJURcsrsyyrn0GhiVyHp9vThglnH9y\nDYmCC/ciE5c5rhWZg+HKmBMCAwEAAQ==\n-----END PUBLIC KEY-----</string>
 </resources>
