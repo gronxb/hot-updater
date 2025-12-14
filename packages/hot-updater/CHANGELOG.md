@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.24.6
+
+### Patch Changes
+
+- 9d7b6af: feat(aws): sso template with fromSSO
+- 962ecdd: fix(expo): fingerprint autolinking for expo
+- Updated dependencies [9d7b6af]
+  - @hot-updater/cli-tools@0.24.6
+  - @hot-updater/console@0.24.6
+  - @hot-updater/server@0.24.6
+  - @hot-updater/core@0.24.6
+  - @hot-updater/plugin-core@0.24.6
+
 ## 0.24.5
 
 ### Patch Changes

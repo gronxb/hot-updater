@@ -1,5 +1,14 @@
 # @hot-updater/aws
 
+## 0.24.6
+
+### Patch Changes
+
+- 9d7b6af: feat(aws): sso template with fromSSO
+- Updated dependencies [9d7b6af]
+  - @hot-updater/cli-tools@0.24.6
+  - @hot-updater/plugin-core@0.24.6
+
 ## 0.24.5
 
 ### Patch Changes
