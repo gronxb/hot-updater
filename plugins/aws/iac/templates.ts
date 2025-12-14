@@ -32,7 +32,7 @@ export const getConfigTemplate = (
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
+  credentials: fromSSO({ profile: ${JSON.stringify(profile)} }),
 };`.trim();
   } else {
     // Account mode: use access key credentials
