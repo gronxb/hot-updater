@@ -1,5 +1,14 @@
 # @hot-updater/bare
 
+## 0.24.6
+
+### Patch Changes
+
+- a8a27e2: fix(bare): lookup hermesc path for React Native 0.82+
+- Updated dependencies [9d7b6af]
+  - @hot-updater/cli-tools@0.24.6
+  - @hot-updater/plugin-core@0.24.6
+
 ## 0.24.5
 
 ### Patch Changes

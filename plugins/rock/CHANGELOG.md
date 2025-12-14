@@ -1,5 +1,13 @@
 # @hot-updater/rnef
 
+## 0.24.6
+
+### Patch Changes
+
+- Updated dependencies [9d7b6af]
+  - @hot-updater/cli-tools@0.24.6
+  - @hot-updater/plugin-core@0.24.6
+
 ## 0.24.5
 
 ### Patch Changes
