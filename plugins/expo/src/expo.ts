@@ -93,7 +93,7 @@ const runBundle = async ({
 Example:
 module.exports = {
   plugins: [
-    ["@hot-updater/babel-plugin"]
+    ["hot-updater/babel-plugin"]
   ]
 }
 `);
