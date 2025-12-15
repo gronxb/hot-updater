@@ -56,8 +56,8 @@ const registerGlobalGetBaseURL = () => {
 
   // Register to global (React Native, Node.js)
   if (typeof global !== "undefined") {
-    if (!(global as any).HotUpdaterGetBaseURL) {
-      (global as any).HotUpdaterGetBaseURL = fn;
+    if (!global.HotUpdaterGetBaseURL) {
+      global.HotUpdaterGetBaseURL = fn;
     }
   }
 };
@@ -361,7 +361,6 @@ function createHotUpdaterClient() {
      * ```
      */
     clearCrashHistory,
-
   };
 }
 
