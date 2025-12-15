@@ -181,7 +181,7 @@ export async function transformBundle(
     // Create plugin instance with count tracking
     const { plugin, getCount } = createMetroBundleTransformPlugin();
 
-    let result;
+    let result: ReturnType<typeof transform> | null = null;
     try {
       // Transform using Babel
       result = transform(content, {

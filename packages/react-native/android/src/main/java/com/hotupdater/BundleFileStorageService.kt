@@ -70,6 +70,12 @@ interface BundleStorageService {
      * @return true if clearing was successful
      */
     fun clearCrashHistory(): Boolean
+
+    /**
+     * Gets the base URL for the current active bundle directory
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
+     */
+    fun getBaseURL(): String
 }
 
 /**

@@ -112,6 +112,12 @@ public protocol BundleStorageService {
     func notifyAppReady(bundleId: String) -> [String: Any]
     func getCrashHistory() -> CrashedHistory
     func clearCrashHistory() -> Bool
+    
+    /**
+     * Gets the base URL for the current active bundle directory
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
+     */
+    func getBaseURL() -> String
 }
 
 class BundleFileStorageService: BundleStorageService {
