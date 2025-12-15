@@ -170,6 +170,12 @@ class HotUpdaterModule internal constructor(
         return impl.clearCrashHistory()
     }
 
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getBaseURL(): String {
+        val impl = getInstance()
+        return impl.getBaseURL()
+    }
+
     companion object {
         const val NAME = "HotUpdater"
     }

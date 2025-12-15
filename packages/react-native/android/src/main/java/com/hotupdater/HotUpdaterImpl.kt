@@ -290,4 +290,12 @@ class HotUpdaterImpl {
      * @return true if clearing was successful
      */
     fun clearCrashHistory(): Boolean = bundleStorage.clearCrashHistory()
+
+    /**
+     * Gets the base URL for the current active bundle directory.
+     * Returns the file:// URL to the bundle directory with trailing slash.
+     * This is used for Expo DOM components to construct full asset paths.
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
+     */
+    fun getBaseURL(): String = bundleStorage.getBaseURL()
 }

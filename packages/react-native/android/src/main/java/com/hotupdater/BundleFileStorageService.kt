@@ -705,4 +705,35 @@ class BundleFileStorageService(
             Log.e(TAG, "Error during cleanup: ${e.message}")
         }
     }
+
+    /**
+     * Gets the base URL for the current active bundle directory.
+     * Returns the file:// URL to the bundle directory without trailing slash.
+     * This is used for Expo DOM components to construct full asset paths.
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
+     */
+    fun getBaseURL(): String {
+        return try {
+            val metadata = loadMetadataOrNull()
+            val activeBundleId =
+                when {
+                    metadata?.verificationPending == true && metadata.stagingBundleId != null ->
+                        metadata.stagingBundleId
+                    metadata?.stableBundleId != null -> metadata.stableBundleId
+                    else -> extractBundleIdFromCurrentURL()
+                }
+
+            if (activeBundleId != null) {
+                val bundleDir = File(getBundleStoreDir(), activeBundleId)
+                if (bundleDir.exists()) {
+                    return "file://${bundleDir.absolutePath}"
+                }
+            }
+
+            ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting base URL: ${e.message}")
+            ""
+        }
+    }
 }

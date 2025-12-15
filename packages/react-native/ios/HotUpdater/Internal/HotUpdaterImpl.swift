@@ -263,4 +263,14 @@ import React
     public func clearCrashHistory() -> Bool {
         return bundleStorage.clearCrashHistory()
     }
+
+    /**
+     * Gets the base URL for the current active bundle directory.
+     * Returns the file:// URL to the bundle directory with trailing slash.
+     * This is used for Expo DOM components to construct full asset paths.
+     * @return Base URL string (e.g., "file:///var/.../bundle-store/abc123/") or empty string
+     */
+    public func getBaseURL() -> String {
+        return bundleStorage.getBaseURL()
+    }
 }

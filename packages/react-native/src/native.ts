@@ -259,3 +259,18 @@ export const getCrashHistory = (): string[] => {
 export const clearCrashHistory = (): boolean => {
   return HotUpdaterNative.clearCrashHistory();
 };
+
+/**
+ * Gets the base URL for the current active bundle directory.
+ * Returns the file:// URL to the bundle directory with trailing slash.
+ * This is used for Expo DOM components to construct full asset paths.
+ *
+ * @returns {string} Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
+ */
+export const getBaseURL = (): string => {
+  const result = HotUpdaterNative.getBaseURL();
+  if (typeof result === "string") {
+    return result;
+  }
+  return "";
+};

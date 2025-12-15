@@ -1090,6 +1090,56 @@ class BundleFileStorageService: BundleStorageService {
         history.clear()
         return saveCrashedHistory(history)
     }
+
+    /**
+     * Gets the base URL for the current active bundle directory
+     * Returns the file:// URL to the bundle directory without trailing slash
+     */
+    func getBaseURL() -> String {
+        do {
+            let metadata = loadMetadataOrNull()
+            let activeBundleId: String?
+
+            // Prefer staging bundle if verification is pending
+            if let meta = metadata, meta.verificationPending, let staging = meta.stagingBundleId {
+                activeBundleId = staging
+            } else if let stable = metadata?.stableBundleId {
+                activeBundleId = stable
+            } else {
+                // Fall back to current bundle ID from preferences
+                if let savedURL = try preferences.getItem(forKey: "HotUpdaterBundleURL") {
+                    // Extract bundle ID from path like "bundle-store/abc123/index.ios.bundle"
+                    if let range = savedURL.range(of: "bundle-store/([^/]+)/", options: .regularExpression) {
+                        let match = savedURL[range]
+                        let components = match.split(separator: "/")
+                        if components.count >= 2 {
+                            activeBundleId = String(components[1])
+                        } else {
+                            activeBundleId = nil
+                        }
+                    } else {
+                        activeBundleId = nil
+                    }
+                } else {
+                    activeBundleId = nil
+                }
+            }
+
+            if let bundleId = activeBundleId {
+                if case .success(let storeDir) = bundleStoreDir() {
+                    let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+                    if fileSystem.fileExists(atPath: bundleDir) {
+                        return "file://\(bundleDir)"
+                    }
+                }
+            }
+
+            return ""
+        } catch {
+            NSLog("[BundleStorage] Error getting base URL: \(error)")
+            return ""
+        }
+    }
 }
 
 // Helper to get the associated error from a Result, if it's a failure

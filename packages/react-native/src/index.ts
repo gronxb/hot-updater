@@ -8,6 +8,7 @@ import {
   addListener,
   clearCrashHistory,
   getAppVersion,
+  getBaseURL,
   getBundleId,
   getChannel,
   getCrashHistory,
@@ -335,6 +336,23 @@ function createHotUpdaterClient() {
      * ```
      */
     clearCrashHistory,
+
+    /**
+     * Gets the base URL for the current active bundle directory.
+     * Returns the file:// URL to the bundle directory with trailing slash.
+     * This is used for Expo DOM components to construct full asset paths.
+     *
+     * @returns {string} Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
+     *
+     * @example
+     * ```ts
+     * const baseURL = HotUpdater.getBaseURL();
+     * console.log(baseURL);
+     * // Example output: "file:///data/user/0/com.app/files/bundle-store/abc123/"
+     * const htmlPath = baseURL + "www.bundle/index.html";
+     * ```
+     */
+    getBaseURL,
   };
 }
 

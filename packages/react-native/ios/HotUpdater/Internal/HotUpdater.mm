@@ -313,6 +313,13 @@ RCT_EXPORT_MODULE();
     return @(result);
 }
 
+- (NSString *)getBaseURL {
+    NSLog(@"[HotUpdater.mm] getBaseURL called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *baseURL = [impl getBaseURL];
+    return baseURL ?: @"";
+}
+
 - (void)addListener:(NSString *)eventName {
     // No-op for New Architecture - handled by event emitter
 }
@@ -388,6 +395,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     BOOL result = [impl clearCrashHistory];
     return @(result);
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
+    NSLog(@"[HotUpdater.mm] getBaseURL called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *baseURL = [impl getBaseURL];
+    return baseURL ?: @"";
 }
 
 - (NSDictionary *)constantsToExport {
