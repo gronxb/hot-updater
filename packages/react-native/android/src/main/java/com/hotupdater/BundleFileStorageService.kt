@@ -718,7 +718,7 @@ class BundleFileStorageService(
      * This is used for Expo DOM components to construct full asset paths.
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
-    fun getBaseURL(): String {
+    override fun getBaseURL(): String {
         return try {
             val metadata = loadMetadataOrNull()
             val activeBundleId =
