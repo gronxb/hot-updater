@@ -8,7 +8,7 @@ import type {
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
-import { transformBuildDirectory } from "./jsx-dom-transformer";
+import { shouldTransformFile, transformBundle } from "./bundle-transformer";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -99,6 +99,13 @@ module.exports = {
 }
 `);
   }
+
+  // Transform bundle for Expo DOM components (use-dom directive)
+  // This must happen BEFORE Hermes compilation
+  if (shouldTransformFile(bundleOutput)) {
+    await transformBundle(bundleOutput);
+  }
+
   const enableHermes = isHermesEnabled(cwd, platform);
   if (enableHermes) {
     const { hermesVersion } = await compileHermes({
@@ -149,20 +156,6 @@ export const expo =
           buildPath,
           sourcemap,
         });
-
-        // Post-build AST transformation for Expo DOM components
-        try {
-          const transformedCount = await transformBuildDirectory(buildPath);
-          if (transformedCount > 0) {
-            log.normal(
-              `[hot-updater] Transformed ${transformedCount} file(s) for Expo DOM components\n`,
-            );
-          }
-        } catch (error) {
-          log.warn(
-            `[hot-updater] Warning: DOM component transformation failed: ${error}\n`,
-          );
-        }
 
         return {
           buildPath,

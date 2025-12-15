@@ -41,6 +41,31 @@ addListener("onProgress", ({ progress }) => {
 });
 
 /**
+ * Register getBaseURL to global objects for use without imports.
+ * This is needed for Expo DOM components and Babel plugin generated code.
+ */
+const registerGlobalGetBaseURL = () => {
+  const fn = getBaseURL;
+
+  // Register to globalThis (modern, cross-platform)
+  if (typeof globalThis !== "undefined") {
+    if (!globalThis.HotUpdaterGetBaseURL) {
+      globalThis.HotUpdaterGetBaseURL = fn;
+    }
+  }
+
+  // Register to global (React Native, Node.js)
+  if (typeof global !== "undefined") {
+    if (!(global as any).HotUpdaterGetBaseURL) {
+      (global as any).HotUpdaterGetBaseURL = fn;
+    }
+  }
+};
+
+// Call registration immediately on module load
+registerGlobalGetBaseURL();
+
+/**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
  */
@@ -337,22 +362,6 @@ function createHotUpdaterClient() {
      */
     clearCrashHistory,
 
-    /**
-     * Gets the base URL for the current active bundle directory.
-     * Returns the file:// URL to the bundle directory with trailing slash.
-     * This is used for Expo DOM components to construct full asset paths.
-     *
-     * @returns {string} Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
-     *
-     * @example
-     * ```ts
-     * const baseURL = HotUpdater.getBaseURL();
-     * console.log(baseURL);
-     * // Example output: "file:///data/user/0/com.app/files/bundle-store/abc123/"
-     * const htmlPath = baseURL + "www.bundle/index.html";
-     * ```
-     */
-    getBaseURL,
   };
 }
 

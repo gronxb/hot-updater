@@ -26,12 +26,12 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/core": "7.26.0",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
-    "@babel/core": "7.26.0",
     "@babel/generator": "7.26.9",
     "@babel/parser": "7.26.9",
     "@babel/traverse": "7.25.9",

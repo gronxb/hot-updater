@@ -146,7 +146,7 @@ program
     ),
   )
   .action(async (options: DeployOptions) => {
-    deploy(options);
+    await deploy(options);
   });
 
 program
@@ -246,7 +246,7 @@ if (process.env["NODE_ENV"] === "development") {
       ),
     )
     .action(async (options: NativeBuildOptions) => {
-      nativeBuild(options);
+      await nativeBuild(options);
     });
 }
 
