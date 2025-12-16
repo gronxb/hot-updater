@@ -108,6 +108,27 @@ export interface DOMProps extends Omit<RNWebViewProps, 'source'> {
  }
 ```
 
+Modify `node_modules/expo/build/dom/dom.types.d.ts`:
+
+```diff
+export interface DOMProps extends Omit<RNWebViewProps, 'source'> {
+     /**
+      * @default false
+      */
+     matchContents?: boolean;
+     /**
+      * Whether to use the `@expo/dom-webview` as the underlying WebView implementation.
+      * @default false
+      */
+     useExpoDOMWebView?: boolean;
++    /**
++     * Allows dynamically redirecting a component to a different source, for example a prebuilt version.
++     * @internal
++     */
++    overrideUri?: string;
+ }
+```
+
 Modify `node_modules/expo/src/dom/webview-wrapper.tsx`:
 
 ```diff
