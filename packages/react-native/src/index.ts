@@ -41,6 +41,31 @@ addListener("onProgress", ({ progress }) => {
 });
 
 /**
+ * Register getBaseURL to global objects for use without imports.
+ * This is needed for Expo DOM components and Babel plugin generated code.
+ */
+const registerGlobalGetBaseURL = () => {
+  const fn = getBaseURL;
+
+  // Register to globalThis (modern, cross-platform)
+  if (typeof globalThis !== "undefined") {
+    if (!globalThis.HotUpdaterGetBaseURL) {
+      globalThis.HotUpdaterGetBaseURL = fn;
+    }
+  }
+
+  // Register to global (React Native, Node.js)
+  if (typeof global !== "undefined") {
+    if (!global.HotUpdaterGetBaseURL) {
+      global.HotUpdaterGetBaseURL = fn;
+    }
+  }
+};
+
+// Call registration immediately on module load
+registerGlobalGetBaseURL();
+
+/**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
  */
@@ -336,8 +361,6 @@ function createHotUpdaterClient() {
      * ```
      */
     clearCrashHistory,
-
-    getBaseURL,
   };
 }
 

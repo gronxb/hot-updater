@@ -17,7 +17,7 @@ declare global {
    * const htmlPath = baseURL + "www.bundle/index.html";
    * ```
    */
-  var HotUpdaterGetBaseURL: () => string;
+  var HotUpdaterGetBaseURL: () => string | null;
 }
 
 export {};
