@@ -66,6 +66,37 @@ const registerGlobalGetBaseURL = () => {
 registerGlobalGetBaseURL();
 
 /**
+ * Monkey patch Expo's getUpdatesBaseURL for DOM components integration.
+ * This allows Hot Updater to work seamlessly with Expo DOM components.
+ * Patches getUpdatesBaseURL instead of getBaseURL to work with Expo's caching.
+ * Only applies if expo/dom/base is available (Expo projects).
+ */
+const patchExpoGetUpdatesBaseURL = () => {
+  try {
+    // Try to require expo/dom/base (only available in Expo projects)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const expoDomBase = require("expo/dom/base");
+
+    if (expoDomBase && typeof expoDomBase.getUpdatesBaseURL === "function") {
+      expoDomBase.getUpdatesBaseURL = () => {
+        // Use Hot Updater's baseURL if available
+        const hotUpdaterURL = globalThis.HotUpdaterGetBaseURL?.();
+        if (hotUpdaterURL) {
+          return [hotUpdaterURL, "www.bundle"].join("/");
+        }
+        // Otherwise use Expo's original getUpdatesBaseURL
+        return null;
+      };
+    }
+  } catch {
+    // expo/dom/base not found - not an Expo project, ignore
+  }
+};
+
+// Apply Expo monkey patch if available
+patchExpoGetUpdatesBaseURL();
+
+/**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
  */
