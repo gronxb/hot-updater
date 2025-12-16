@@ -76,6 +76,46 @@ module.exports = {
 };
 ```
 
+## Expo DOM Components (`use dom`)
+
+> **Note**: This setup is only required for Expo SDK < 55. Expo SDK 55+ includes native `overrideUri` support ([PR #40397](https://github.com/expo/expo/pull/40397)).
+
+Expo DOM components are designed for EAS Update. Hot Updater uses `overrideUri` internally (via Babel plugin) to redirect DOM components to the correct bundle path.
+
+### Install patch-package
+
+```package-install
+npm install patch-package --save-dev
+```
+
+### Download and apply patch
+
+Download the patch file from Hot Updater documentation:
+
+```bash
+curl -o patches/expo+<version>.patch https://hot-updater.dev/patches/expo@expo-dom-overrideUri.patch
+```
+
+Apply the patch:
+
+```bash
+npx patch-package expo
+```
+
+### Configure package.json
+
+Add postinstall script to apply patches automatically:
+
+```json title="package.json"
+{
+  "scripts": {
+    "postinstall": "patch-package" // [!code ++]
+  }
+}
+```
+
+Once configured, the Babel plugin automatically handles `overrideUri` for all DOM components. No additional code changes required.
+
 ## Key Features
 
 - Uses Expo's `expo export:embed` command
