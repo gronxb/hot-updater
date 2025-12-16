@@ -194,6 +194,7 @@ export async function transformBundle(
         comments: false, // Remove comments
         retainLines: true, // Preserve original line structure
         sourceMaps: false,
+        filename: bundlePath,
       });
     } catch (transformError) {
       console.warn(
