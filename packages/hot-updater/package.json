@@ -53,7 +53,8 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@expo/fingerprint": "0.15.4",
+    "@expo/fingerprint": "0.13.4",
+    "@hono/node-server": "1.13.4",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
