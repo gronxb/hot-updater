@@ -267,10 +267,10 @@ export const clearCrashHistory = (): boolean => {
  *
  * @returns {string} Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
  */
-export const getBaseURL = (): string => {
+export const getBaseURL = (): string | null => {
   const result = HotUpdaterNative.getBaseURL();
-  if (typeof result === "string") {
+  if (typeof result === "string" && result !== "") {
     return result;
   }
-  return "";
+  return null;
 };
