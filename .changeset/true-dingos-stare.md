@@ -1,7 +1,7 @@
 ---
-"@hot-updater/react-native": patch
-"hot-updater": patch
-"@hot-updater/expo": patch
+"@hot-updater/react-native": minor
+"hot-updater": minor
+"@hot-updater/expo": minor
 ---
 
-fix(expo): expo 'use dom' correct ota update
+feat(expo): expo 'use dom' correct ota update
