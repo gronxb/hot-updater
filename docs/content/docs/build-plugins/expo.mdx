@@ -82,39 +82,90 @@ module.exports = {
 
 Expo DOM components are designed for EAS Update. Hot Updater uses `overrideUri` internally (via Babel plugin) to redirect DOM components to the correct bundle path.
 
-### Install patch-package
+### Apply patch
 
-> **Note**: You can also use `yarn patch` or `pnpm patch` instead of patch-package.
+Modify `node_modules/expo/src/dom/dom.types.ts`:
+
+```diff
+export interface DOMProps extends Omit<RNWebViewProps, 'source'> {
+   /**
+    * Whether to resize the native WebView size based on the DOM content size.
+    * @default false
+    */
+   matchContents?: boolean;
+
+   /**
+    * Whether to use the `@expo/dom-webview` as the underlying WebView implementation.
+    * @default false
+    */
+   useExpoDOMWebView?: boolean;
++
++  /**
++   * Allows dynamically redirecting a component to a different source, for example a prebuilt version.
++   * @internal
++   */
++  overrideUri?: string;
+ }
+```
+
+Modify `node_modules/expo/src/dom/webview-wrapper.tsx`:
+
+```diff
+ const RawWebView = React.forwardRef<object, Props>((props, ref) => {
+-  const { children, dom, filePath, ref: _ref, ...marshalProps } = props as Props;
++  const { children, dom: domProps, filePath, ref: _ref, ...marshalProps } = props as Props;
++  const { overrideUri, ...dom } = domProps || {};
+   if (__DEV__) {
+     if (children !== undefined) {
+       throw new Error(
+```
+
+```diff
+   const webView = resolveWebView(dom?.useExpoDOMWebView ?? false);
+   const webviewRef = React.useRef<WebViewRef>(null);
+   const domImperativeHandlePropsRef = React.useRef<string[]>([]);
+-  const source = { uri: `${getBaseURL()}/${filePath}` };
++  const source = { uri: overrideUri ?? `${getBaseURL()}/${filePath}` };
+   const [containerStyle, setContainerStyle] = React.useState<WebViewProps['containerStyle']>(null);
+```
+
+### Persist changes
+
+Use patch-package, yarn patch, or pnpm patch to persist these changes across installs.
+
+**Using patch-package:**
 
 ```package-install
 npm install patch-package --save-dev
 ```
 
-### Download and apply patch
-
-Download the patch file from Hot Updater documentation:
-
-```bash
-mkdir patches
-curl -o patches/expo+<version>.patch https://hot-updater.dev/patches/expo@expo-dom-overrideUri.patch
-```
-
-Apply the patch:
-
 ```bash
 npx patch-package expo
 ```
 
-### Configure package.json
-
-Add postinstall script to apply patches automatically:
+Add postinstall script:
 
 ```json title="package.json"
 {
   "scripts": {
-    "postinstall": "patch-package" // [!code ++]
+    "postinstall": "patch-package"
   }
 }
+```
+
+**Using pnpm patch:**
+
+```bash
+pnpm patch expo
+# Make the changes above, then:
+pnpm patch-commit <path-shown-in-output>
+```
+
+**Using yarn patch:**
+
+```bash
+yarn patch expo
+# Make the changes above, then follow yarn's instructions
 ```
 
 Once configured, the Babel plugin automatically handles `overrideUri` for all DOM components. No additional code changes required.
