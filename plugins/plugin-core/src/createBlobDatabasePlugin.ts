@@ -314,10 +314,14 @@ export const createBlobDatabasePlugin = <TConfig>({
           const pathsToInvalidate: Set<string> = new Set();
 
           let isTargetAppVersionChanged = false;
+          let isChannelChanged = false;
 
           for (const { operation, data } of changedSets) {
             if (data.targetAppVersion !== undefined) {
               isTargetAppVersionChanged = true;
+            }
+            if (data.channel !== undefined) {
+              isChannelChanged = true;
             }
 
             // Insert operation.
@@ -650,8 +654,10 @@ export const createBlobDatabasePlugin = <TConfig>({
           }
 
           // Update target-app-versions.json for each platform and collect paths that were actually updated
+          // This must happen when targetAppVersion changes OR when channel changes (e.g., promote/move)
+          // because moving a bundle to a new channel requires updating target-app-versions.json in both channels
           const updatedTargetFilePaths = new Set<string>();
-          if (isTargetAppVersionChanged) {
+          if (isTargetAppVersionChanged || isChannelChanged) {
             for (const platform of PLATFORMS) {
               const updatedPaths =
                 await updateTargetVersionsForPlatform(platform);
