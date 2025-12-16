@@ -189,6 +189,7 @@ export async function transformBundle(
         plugins: [plugin],
         parserOpts: {
           sourceType: "script", // Metro bundles are scripts, not modules
+          plugins: ["jsx"], // Enable JSX and modern syntax parsing
         },
         compact: true, // Keep output compact
         comments: false, // Remove comments
