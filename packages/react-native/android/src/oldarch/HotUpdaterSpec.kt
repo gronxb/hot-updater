@@ -20,4 +20,6 @@ abstract class HotUpdaterSpec internal constructor(
     abstract fun getCrashHistory(): String
 
     abstract fun clearCrashHistory(): Boolean
+
+    abstract fun getBaseURL(): String
 }

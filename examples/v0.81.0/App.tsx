@@ -54,6 +54,7 @@ function App(): React.JSX.Element {
       <Text>Babel {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>BASE: {(globalThis as any)?.HotUpdaterGetBaseURL()}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text
@@ -133,7 +134,7 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "http://localhost:3006/hot-updater",
+  baseURL: "http://localhost:3007/hot-updater",
   updateStrategy: "appVersion",
   updateMode: "auto",
   onNotifyAppReady: (result) => {

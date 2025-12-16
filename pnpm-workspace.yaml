@@ -18,3 +18,6 @@ onlyBuiltDependencies:
   - sharp
   - typia
   - workerd
+
+patchedDependencies:
+  expo: patches/expo.patch

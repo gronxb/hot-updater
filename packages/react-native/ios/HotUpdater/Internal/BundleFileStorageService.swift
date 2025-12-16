@@ -112,6 +112,12 @@ public protocol BundleStorageService {
     func notifyAppReady(bundleId: String) -> [String: Any]
     func getCrashHistory() -> CrashedHistory
     func clearCrashHistory() -> Bool
+    
+    /**
+     * Gets the base URL for the current active bundle directory
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
+     */
+    func getBaseURL() -> String
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -119,6 +125,7 @@ class BundleFileStorageService: BundleStorageService {
     private let downloadService: DownloadService
     private let decompressService: DecompressService
     private let preferences: PreferencesService
+    private let isolationKey: String
 
     private let id = Int.random(in: 1..<100)
     
@@ -133,12 +140,14 @@ class BundleFileStorageService: BundleStorageService {
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
                 decompressService: DecompressService,
-                preferences: PreferencesService) {
+                preferences: PreferencesService,
+                isolationKey: String) {
 
         self.fileSystem = fileSystem
         self.downloadService = downloadService
         self.decompressService = decompressService
         self.preferences = preferences
+        self.isolationKey = isolationKey
 
         // Create queue for file operations
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
@@ -168,14 +177,16 @@ class BundleFileStorageService: BundleStorageService {
         guard let file = metadataFileURL() else {
             return nil
         }
-        return BundleMetadata.load(from: file)
+        return BundleMetadata.load(from: file, expectedIsolationKey: isolationKey)
     }
 
     private func saveMetadata(_ metadata: BundleMetadata) -> Bool {
         guard let file = metadataFileURL() else {
             return false
         }
-        return metadata.save(to: file)
+        var updatedMetadata = metadata
+        updatedMetadata.isolationKey = isolationKey
+        return updatedMetadata.save(to: file)
     }
 
     // MARK: - Crashed History Operations
@@ -1089,6 +1100,56 @@ class BundleFileStorageService: BundleStorageService {
         var history = loadCrashedHistory()
         history.clear()
         return saveCrashedHistory(history)
+    }
+
+    /**
+     * Gets the base URL for the current active bundle directory
+     * Returns the file:// URL to the bundle directory without trailing slash
+     */
+    func getBaseURL() -> String {
+        do {
+            let metadata = loadMetadataOrNull()
+            let activeBundleId: String?
+
+            // Prefer staging bundle if verification is pending
+            if let meta = metadata, meta.verificationPending, let staging = meta.stagingBundleId {
+                activeBundleId = staging
+            } else if let stable = metadata?.stableBundleId {
+                activeBundleId = stable
+            } else {
+                // Fall back to current bundle ID from preferences
+                if let savedURL = try preferences.getItem(forKey: "HotUpdaterBundleURL") {
+                    // Extract bundle ID from path like "bundle-store/abc123/index.ios.bundle"
+                    if let range = savedURL.range(of: "bundle-store/([^/]+)/", options: .regularExpression) {
+                        let match = savedURL[range]
+                        let components = match.split(separator: "/")
+                        if components.count >= 2 {
+                            activeBundleId = String(components[1])
+                        } else {
+                            activeBundleId = nil
+                        }
+                    } else {
+                        activeBundleId = nil
+                    }
+                } else {
+                    activeBundleId = nil
+                }
+            }
+
+            if let bundleId = activeBundleId {
+                if case .success(let storeDir) = bundleStoreDir() {
+                    let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+                    if fileSystem.fileExists(atPath: bundleDir) {
+                        return "file://\(bundleDir)"
+                    }
+                }
+            }
+
+            return ""
+        } catch {
+            NSLog("[BundleStorage] Error getting base URL: \(error)")
+            return ""
+        }
     }
 }
 

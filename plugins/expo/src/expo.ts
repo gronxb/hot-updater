@@ -98,6 +98,7 @@ module.exports = {
 }
 `);
   }
+
   const enableHermes = isHermesEnabled(cwd, platform);
   if (enableHermes) {
     const { hermesVersion } = await compileHermes({

@@ -70,6 +70,12 @@ interface BundleStorageService {
      * @return true if clearing was successful
      */
     fun clearCrashHistory(): Boolean
+
+    /**
+     * Gets the base URL for the current active bundle directory
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
+     */
+    fun getBaseURL(): String
 }
 
 /**
@@ -81,6 +87,7 @@ class BundleFileStorageService(
     private val downloadService: DownloadService,
     private val decompressService: DecompressService,
     private val preferences: PreferencesService,
+    private val isolationKey: String,
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
@@ -102,9 +109,12 @@ class BundleFileStorageService(
 
     // MARK: - Metadata Operations
 
-    private fun loadMetadataOrNull(): BundleMetadata? = BundleMetadata.loadFromFile(getMetadataFile())
+    private fun loadMetadataOrNull(): BundleMetadata? = BundleMetadata.loadFromFile(getMetadataFile(), isolationKey)
 
-    private fun saveMetadata(metadata: BundleMetadata): Boolean = metadata.saveToFile(getMetadataFile())
+    private fun saveMetadata(metadata: BundleMetadata): Boolean {
+        val updatedMetadata = metadata.copy(isolationKey = isolationKey)
+        return updatedMetadata.saveToFile(getMetadataFile())
+    }
 
     private fun createInitialMetadata(): BundleMetadata {
         val currentBundleId = extractBundleIdFromCurrentURL()
@@ -703,6 +713,37 @@ class BundleFileStorageService(
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup: ${e.message}")
+        }
+    }
+
+    /**
+     * Gets the base URL for the current active bundle directory.
+     * Returns the file:// URL to the bundle directory without trailing slash.
+     * This is used for Expo DOM components to construct full asset paths.
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
+     */
+    override fun getBaseURL(): String {
+        return try {
+            val metadata = loadMetadataOrNull()
+            val activeBundleId =
+                when {
+                    metadata?.verificationPending == true && metadata.stagingBundleId != null ->
+                        metadata.stagingBundleId
+                    metadata?.stableBundleId != null -> metadata.stableBundleId
+                    else -> extractBundleIdFromCurrentURL()
+                }
+
+            if (activeBundleId != null) {
+                val bundleDir = File(getBundleStoreDir(), activeBundleId)
+                if (bundleDir.exists()) {
+                    return "file://${bundleDir.absolutePath}"
+                }
+            }
+
+            ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting base URL: ${e.message}")
+            ""
         }
     }
 }

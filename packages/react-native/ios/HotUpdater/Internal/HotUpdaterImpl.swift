@@ -14,6 +14,7 @@ import React
      */
     public convenience override init() {
         let fileSystem = FileManagerService()
+        let isolationKey = HotUpdaterImpl.getIsolationKey()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
         let decompressService = DecompressService()
@@ -22,7 +23,8 @@ import React
             fileSystem: fileSystem,
             downloadService: downloadService,
             decompressService: decompressService,
-            preferences: preferences
+            preferences: preferences,
+            isolationKey: isolationKey
         )
 
         self.init(bundleStorage: bundleStorage, preferences: preferences)
@@ -262,5 +264,15 @@ import React
      */
     public func clearCrashHistory() -> Bool {
         return bundleStorage.clearCrashHistory()
+    }
+
+    /**
+     * Gets the base URL for the current active bundle directory.
+     * Returns the file:// URL to the bundle directory with trailing slash.
+     * This is used for Expo DOM components to construct full asset paths.
+     * @return Base URL string (e.g., "file:///var/.../bundle-store/abc123/") or empty string
+     */
+    public func getBaseURL() -> String {
+        return bundleStorage.getBaseURL()
     }
 }

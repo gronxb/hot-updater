@@ -162,6 +162,11 @@ class HotUpdaterModule internal constructor(
         return impl.clearCrashHistory()
     }
 
+    override fun getBaseURL(): String {
+        val impl = getInstance()
+        return impl.getBaseURL()
+    }
+
     companion object {
         const val NAME = "HotUpdater"
     }

@@ -8,6 +8,7 @@
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
+import DOMComponent from "./src/web";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -81,6 +82,8 @@ function App(): React.JSX.Element {
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
+
+      <DOMComponent name="Hi" />
     </SafeAreaView>
   );
 }
