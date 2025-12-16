@@ -1104,7 +1104,7 @@ class BundleFileStorageService: BundleStorageService {
 
     /**
      * Gets the base URL for the current active bundle directory
-     * Returns the absolute path to the bundle directory without trailing slash or file:// protocol
+     * Returns the file:// URL to the bundle directory without trailing slash
      */
     func getBaseURL() -> String {
         do {
@@ -1140,7 +1140,7 @@ class BundleFileStorageService: BundleStorageService {
                 if case .success(let storeDir) = bundleStoreDir() {
                     let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
                     if fileSystem.fileExists(atPath: bundleDir) {
-                        return bundleDir
+                        return "file://\(bundleDir)"
                     }
                 }
             }
