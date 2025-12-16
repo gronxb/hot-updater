@@ -132,10 +132,10 @@ export default function ({
                 t.isSpreadElement(prop),
               ) as babelTypes.SpreadElement | undefined;
 
-              // Create IIFE: ((baseURL) => baseURL ? { dom: {...} } : { filePath: "..." })(HotUpdaterGetBaseURL())
+              // Create IIFE: ((baseURL) => baseURL ? { dom: {...}, filePath: "..." } : { filePath: "..." })(HotUpdaterGetBaseURL())
               const conditionalObject = t.conditionalExpression(
                 t.identifier("baseURL"),
-                // If baseURL exists: { dom: { overrideUri: [...].join("/") } }
+                // If baseURL exists: { dom: { overrideUri: [...].join("/") }, filePath: "hash.html" }
                 t.objectExpression([
                   t.objectProperty(
                     t.identifier("dom"),
@@ -180,6 +180,10 @@ export default function ({
                             ),
                           ],
                     ),
+                  ),
+                  t.objectProperty(
+                    t.identifier("filePath"),
+                    t.stringLiteral(fileName),
                   ),
                 ]),
                 // Else: { filePath: "hash.html" }
