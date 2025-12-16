@@ -1,5 +1,31 @@
 # @hot-updater/test-utils
 
+## 0.24.7
+
+### Patch Changes
+
+- 294e324: fix: update babel plugin path in documentation and plugin files
+- Updated dependencies [294e324]
+  - @hot-updater/core@0.24.7
+
+## 0.24.6
+
+### Patch Changes
+
+- @hot-updater/core@0.24.6
+
+## 0.24.5
+
+### Patch Changes
+
+- @hot-updater/core@0.24.5
+
+## 0.24.4
+
+### Patch Changes
+
+- @hot-updater/core@0.24.4
+
 ## 0.24.3
 
 ### Patch Changes

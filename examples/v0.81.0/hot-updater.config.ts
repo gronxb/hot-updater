@@ -20,7 +20,7 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3006/hot-updater",
+    baseUrl: "http://localhost:3007/hot-updater",
   }),
   fingerprint: {
     debug: true,

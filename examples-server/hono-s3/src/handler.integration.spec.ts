@@ -31,7 +31,6 @@ const REGION = "us-east-1";
 const ACCESS_KEY_ID = "test";
 const SECRET_ACCESS_KEY = "test";
 const METADATA_BUCKET = "hot-updater-metadata";
-const BUNDLES_BUCKET = "hot-updater-bundles";
 
 async function ensureBucketExists(bucketName: string) {
   const client = new S3Client({
@@ -73,14 +72,13 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
 
     // Ensure required buckets exist
     await ensureBucketExists(METADATA_BUCKET);
-    await ensureBucketExists(BUNDLES_BUCKET);
 
+    process.env.NODE_ENV = "test";
     process.env.AWS_REGION = REGION;
     process.env.AWS_ACCESS_KEY_ID = ACCESS_KEY_ID;
     process.env.AWS_SECRET_ACCESS_KEY = SECRET_ACCESS_KEY;
     process.env.AWS_S3_ENDPOINT = LOCALSTACK_ENDPOINT;
     process.env.AWS_S3_METADATA_BUCKET = METADATA_BUCKET;
-    process.env.AWS_S3_BUNDLES_BUCKET = BUNDLES_BUCKET;
 
     // Start server
     serverProcess = spawnServerProcess({
@@ -89,12 +87,12 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       testDbPath: "",
       projectRoot,
       env: {
+        NODE_ENV: "test",
         AWS_REGION: REGION,
         AWS_ACCESS_KEY_ID: ACCESS_KEY_ID,
         AWS_SECRET_ACCESS_KEY: SECRET_ACCESS_KEY,
         AWS_S3_ENDPOINT: LOCALSTACK_ENDPOINT,
         AWS_S3_METADATA_BUCKET: METADATA_BUCKET,
-        AWS_S3_BUNDLES_BUCKET: BUNDLES_BUCKET,
       },
     });
 

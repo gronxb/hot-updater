@@ -2,6 +2,7 @@ import path from "node:path";
 import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import { AndroidConfigParser } from "@/utils/configParser/androidParser";
 import { IosConfigParser } from "@/utils/configParser/iosParser";
+import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { appendToProjectRootGitignore } from "@/utils/git";
 import {
   generateKeyPair,
@@ -186,6 +187,7 @@ function printPublicKeyInstructions(publicKeyPEM: string): void {
 export const keysExportPublic = async (
   options: KeysExportPublicOptions = {},
 ) => {
+  warnIfExpoCNG();
   const cwd = getCwd();
 
   // Load config to get the private key path from signing.privateKeyPath

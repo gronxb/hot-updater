@@ -121,7 +121,7 @@ describe("blobDatabase plugin", () => {
       deleteObject,
       invalidatePaths,
     }),
-  })({});
+  })({})();
 
   beforeEach(async () => {
     plugin = createBlobDatabasePlugin({
@@ -134,7 +134,7 @@ describe("blobDatabase plugin", () => {
         deleteObject,
         invalidatePaths,
       }),
-    })({});
+    })({})();
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -649,7 +649,7 @@ describe("blobDatabase plugin", () => {
         deleteObject,
         invalidatePaths,
       }),
-    })({}, { onDatabaseUpdated });
+    })({}, { onDatabaseUpdated })();
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
     await pluginWithHook.commitBundle();

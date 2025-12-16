@@ -4,6 +4,7 @@ import {
   SourceSkips,
 } from "@expo/fingerprint";
 import { loadConfig, p } from "@hot-updater/cli-tools";
+import { isExpo } from "../expoDetection";
 import { processExtraSources } from "./processExtraSources";
 
 export const ensureFingerprintConfig = async () => {
@@ -31,7 +32,7 @@ function allowExtensions(extensions: string[]): string[] {
  * @returns Array of default ignore paths
  */
 function getDefaultIgnorePaths(): string[] {
-  return ["**/*", "**/.build/**/*", "**/build/"];
+  return ["**/*", "**/.build/**/*", "**/build/", "**/build*/**/*"];
 }
 
 export function getOtaFingerprintOptions(
@@ -40,7 +41,7 @@ export function getOtaFingerprintOptions(
   options: FingerprintOptions,
 ): Options {
   return {
-    useRNCoreAutolinkingFromExpo: false,
+    useRNCoreAutolinkingFromExpo: isExpo(),
     platforms: [platform],
     ignorePaths: [
       ...getDefaultIgnorePaths(),

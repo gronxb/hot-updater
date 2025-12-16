@@ -1,5 +1,17 @@
 # @hot-updater/core
 
+## 0.24.7
+
+### Patch Changes
+
+- 294e324: fix: update babel plugin path in documentation and plugin files
+
+## 0.24.6
+
+## 0.24.5
+
+## 0.24.4
+
 ## 0.24.3
 
 ## 0.24.2
