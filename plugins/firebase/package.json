@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/firebase",
   "type": "module",
-  "version": "1.0.0",
+  "version": "0.25.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "types": "dist/index.d.ts",

@@ -1,6 +1,6 @@
 # @hot-updater/sentry-plugin
 
-## 1.0.0
+## 0.25.0
 
 ### Patch Changes
 

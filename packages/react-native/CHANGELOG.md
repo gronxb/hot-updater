@@ -1,6 +1,6 @@
 # @hot-updater/react-native
 
-## 1.0.0
+## 0.25.0
 
 ### Minor Changes
 

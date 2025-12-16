@@ -1,6 +1,6 @@
 # @hot-updater/console
 
-## 1.0.0
+## 0.25.0
 
 ### Patch Changes
 
