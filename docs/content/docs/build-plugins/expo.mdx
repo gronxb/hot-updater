@@ -84,6 +84,8 @@ Expo DOM components are designed for EAS Update. Hot Updater uses `overrideUri` 
 
 ### Install patch-package
 
+> **Note**: You can also use `yarn patch` or `pnpm patch` instead of patch-package.
+
 ```package-install
 npm install patch-package --save-dev
 ```
@@ -93,6 +95,7 @@ npm install patch-package --save-dev
 Download the patch file from Hot Updater documentation:
 
 ```bash
+mkdir patches
 curl -o patches/expo+<version>.patch https://hot-updater.dev/patches/expo@expo-dom-overrideUri.patch
 ```
 
