@@ -4,9 +4,9 @@
 
 ### Patch Changes
 
-- @hot-updater/core@1.0.0
-- @hot-updater/js@1.0.0
-- @hot-updater/plugin-core@1.0.0
+- @hot-updater/core@0.25.0
+- @hot-updater/js@0.25.0
+- @hot-updater/plugin-core@0.25.0
 
 ## 0.24.7
 
