@@ -177,6 +177,7 @@ export async function transformBundle(
 
     // Read bundle content
     const content = await fs.readFile(bundlePath, "utf-8");
+    const linesBefore = content.split("\n").length;
 
     // Create plugin instance with count tracking
     const { plugin, getCount } = createMetroBundleTransformPlugin();
@@ -189,9 +190,9 @@ export async function transformBundle(
         parserOpts: {
           sourceType: "script", // Metro bundles are scripts, not modules
         },
-        compact: true, // Keep bundle minified
+        compact: true, // Keep output compact
         comments: false, // Remove comments
-        retainLines: false, // Don't preserve line numbers
+        retainLines: true, // Preserve original line structure
         sourceMaps: false,
       });
     } catch (transformError) {
@@ -213,9 +214,13 @@ export async function transformBundle(
 
     // Only write if changes were made
     if (occurrences > 0) {
+      const linesAfter = result.code.split("\n").length;
+      const lineDiff = linesAfter - linesBefore;
+      const diffStr = lineDiff >= 0 ? `+${lineDiff}` : `${lineDiff}`;
+
       await fs.writeFile(bundlePath, result.code, "utf-8");
       console.log(
-        `${colors.green("[HotUpdater]")} Transformed ${occurrences} DOM component(s) in ${path.basename(bundlePath)}`,
+        `${colors.green("[HotUpdater]")} Transformed ${occurrences} DOM component(s) in ${path.basename(bundlePath)} (lines: ${linesBefore} → ${linesAfter}, ${diffStr})`,
       );
       return { transformed: true, occurrences };
     }
