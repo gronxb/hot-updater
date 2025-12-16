@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.25.0
+
+### Minor Changes
+
+- d22b48a: feat(expo): expo 'use dom' correct ota update
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.0
+- @hot-updater/console@0.25.0
+- @hot-updater/core@0.25.0
+- @hot-updater/server@0.25.0
+- @hot-updater/plugin-core@0.25.0
+
 ## 0.24.7
 
 ### Patch Changes

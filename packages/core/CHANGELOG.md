@@ -1,5 +1,7 @@
 # @hot-updater/core
 
+## 0.25.0
+
 ## 0.24.7
 
 ### Patch Changes
