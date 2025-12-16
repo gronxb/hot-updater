@@ -130,7 +130,75 @@ export default function ({
                 return;
               }
 
-              // Create safeGetBaseURL expression
+              // Find spread element
+              const spreadElement = objPath.node.properties.find((prop) =>
+                t.isSpreadElement(prop),
+              ) as babelTypes.SpreadElement | undefined;
+
+              // Create IIFE: ((baseURL) => baseURL ? { dom: {...} } : { filePath: "..." })(HotUpdaterGetBaseURL())
+              const conditionalObject = t.conditionalExpression(
+                t.identifier("baseURL"),
+                // If baseURL exists: { dom: { overrideUri: [...].join("/") } }
+                t.objectExpression([
+                  t.objectProperty(
+                    t.identifier("dom"),
+                    t.objectExpression(
+                      spreadElement && t.isIdentifier(spreadElement.argument)
+                        ? [
+                            t.spreadElement(
+                              t.memberExpression(
+                                spreadElement.argument,
+                                t.identifier("dom"),
+                              ),
+                            ),
+                            t.objectProperty(
+                              t.identifier("overrideUri"),
+                              t.callExpression(
+                                t.memberExpression(
+                                  t.arrayExpression([
+                                    t.identifier("baseURL"),
+                                    t.stringLiteral("www.bundle"),
+                                    t.stringLiteral(fileName),
+                                  ]),
+                                  t.identifier("join"),
+                                ),
+                                [t.stringLiteral("/")],
+                              ),
+                            ),
+                          ]
+                        : [
+                            t.objectProperty(
+                              t.identifier("overrideUri"),
+                              t.callExpression(
+                                t.memberExpression(
+                                  t.arrayExpression([
+                                    t.identifier("baseURL"),
+                                    t.stringLiteral("www.bundle"),
+                                    t.stringLiteral(fileName),
+                                  ]),
+                                  t.identifier("join"),
+                                ),
+                                [t.stringLiteral("/")],
+                              ),
+                            ),
+                          ],
+                    ),
+                  ),
+                ]),
+                // Else: { filePath: "hash.html" }
+                t.objectExpression([
+                  t.objectProperty(
+                    t.identifier("filePath"),
+                    t.stringLiteral(fileName),
+                  ),
+                ]),
+              );
+
+              const arrowFunction = t.arrowFunctionExpression(
+                [t.identifier("baseURL")],
+                conditionalObject,
+              );
+
               const safeGetBaseURL = t.conditionalExpression(
                 t.logicalExpression(
                   "&&",
@@ -154,49 +222,12 @@ export default function ({
                 t.unaryExpression("void", t.numericLiteral(0), true),
               );
 
-              // Create overrideUri property
-              const overrideUriProp = t.objectProperty(
-                t.identifier("overrideUri"),
-                t.callExpression(
-                  t.memberExpression(
-                    t.arrayExpression([
-                      safeGetBaseURL,
-                      t.stringLiteral("www.bundle"),
-                      t.stringLiteral(fileName),
-                    ]),
-                    t.identifier("join"),
-                  ),
-                  [t.stringLiteral("/")],
-                ),
-              );
+              const iife = t.callExpression(arrowFunction, [safeGetBaseURL]);
 
-              // Find spread element
-              const spreadElement = objPath.node.properties.find((prop) =>
-                t.isSpreadElement(prop),
-              ) as babelTypes.SpreadElement | undefined;
-
-              // Create dom property
-              const domProps =
-                spreadElement && t.isIdentifier(spreadElement.argument)
-                  ? [
-                      t.spreadElement(
-                        t.memberExpression(
-                          spreadElement.argument,
-                          t.identifier("dom"),
-                        ),
-                      ),
-                      overrideUriProp,
-                    ]
-                  : [overrideUriProp];
-
-              const domProperty = t.objectProperty(
-                t.identifier("dom"),
-                t.objectExpression(domProps),
-              );
-
-              // Replace filePath with dom
+              // Replace filePath with spread of IIFE
+              const spreadProperty = t.spreadElement(iife);
               const propIndex = objPath.node.properties.indexOf(filePathProp);
-              objPath.node.properties.splice(propIndex, 1, domProperty);
+              objPath.node.properties.splice(propIndex, 1, spreadProperty);
             },
           });
         },
