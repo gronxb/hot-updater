@@ -8,7 +8,6 @@ import type {
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
-import { shouldTransformFile, transformBundle } from "./bundle-transformer";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -98,12 +97,6 @@ module.exports = {
   ]
 }
 `);
-  }
-
-  // Transform bundle for Expo DOM components (use-dom directive)
-  // This must happen BEFORE Hermes compilation
-  if (shouldTransformFile(bundleOutput)) {
-    await transformBundle(bundleOutput);
   }
 
   const enableHermes = isHermesEnabled(cwd, platform);
