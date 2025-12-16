@@ -8,6 +8,7 @@ public struct BundleMetadata: Codable {
     static let metadataFilename = "metadata.json"
 
     let schema: String
+    var isolationKey: String?
     var stableBundleId: String?
     var stagingBundleId: String?
     var verificationPending: Bool
@@ -17,6 +18,7 @@ public struct BundleMetadata: Codable {
 
     enum CodingKeys: String, CodingKey {
         case schema
+        case isolationKey = "isolation_key"
         case stableBundleId = "stable_bundle_id"
         case stagingBundleId = "staging_bundle_id"
         case verificationPending = "verification_pending"
@@ -27,6 +29,7 @@ public struct BundleMetadata: Codable {
 
     init(
         schema: String = BundleMetadata.schemaVersion,
+        isolationKey: String? = nil,
         stableBundleId: String? = nil,
         stagingBundleId: String? = nil,
         verificationPending: Bool = false,
@@ -35,6 +38,7 @@ public struct BundleMetadata: Codable {
         updatedAt: Double = Date().timeIntervalSince1970 * 1000
     ) {
         self.schema = schema
+        self.isolationKey = isolationKey
         self.stableBundleId = stableBundleId
         self.stagingBundleId = stagingBundleId
         self.verificationPending = verificationPending
@@ -43,7 +47,7 @@ public struct BundleMetadata: Codable {
         self.updatedAt = updatedAt
     }
 
-    static func load(from file: URL) -> BundleMetadata? {
+    static func load(from file: URL, expectedIsolationKey: String) -> BundleMetadata? {
         guard FileManager.default.fileExists(atPath: file.path) else {
             print("[BundleMetadata] Metadata file does not exist: \(file.path)")
             return nil
@@ -53,6 +57,18 @@ public struct BundleMetadata: Codable {
             let data = try Data(contentsOf: file)
             let decoder = JSONDecoder()
             let metadata = try decoder.decode(BundleMetadata.self, from: data)
+
+            // Validate isolation key
+            if let metadataKey = metadata.isolationKey {
+                if metadataKey != expectedIsolationKey {
+                    print("[BundleMetadata] Isolation key mismatch: expected=\(expectedIsolationKey), got=\(metadataKey)")
+                    return nil
+                }
+            } else {
+                print("[BundleMetadata] Missing isolation key in metadata, treating as invalid")
+                return nil
+            }
+
             return metadata
         } catch {
             print("[BundleMetadata] Failed to load metadata from file: \(error)")

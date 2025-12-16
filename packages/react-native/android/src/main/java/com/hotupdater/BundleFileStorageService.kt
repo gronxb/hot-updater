@@ -87,6 +87,7 @@ class BundleFileStorageService(
     private val downloadService: DownloadService,
     private val decompressService: DecompressService,
     private val preferences: PreferencesService,
+    private val isolationKey: String,
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
@@ -108,9 +109,12 @@ class BundleFileStorageService(
 
     // MARK: - Metadata Operations
 
-    private fun loadMetadataOrNull(): BundleMetadata? = BundleMetadata.loadFromFile(getMetadataFile())
+    private fun loadMetadataOrNull(): BundleMetadata? = BundleMetadata.loadFromFile(getMetadataFile(), isolationKey)
 
-    private fun saveMetadata(metadata: BundleMetadata): Boolean = metadata.saveToFile(getMetadataFile())
+    private fun saveMetadata(metadata: BundleMetadata): Boolean {
+        val updatedMetadata = metadata.copy(isolationKey = isolationKey)
+        return updatedMetadata.saveToFile(getMetadataFile())
+    }
 
     private fun createInitialMetadata(): BundleMetadata {
         val currentBundleId = extractBundleIdFromCurrentURL()

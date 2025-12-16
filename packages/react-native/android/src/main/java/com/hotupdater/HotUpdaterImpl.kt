@@ -72,6 +72,7 @@ class HotUpdaterImpl {
             val preferences = createPreferences(appContext)
             val downloadService = OkHttpDownloadService()
             val decompressService = DecompressService()
+            val isolationKey = getIsolationKey(appContext)
 
             return BundleFileStorageService(
                 appContext,
@@ -79,6 +80,7 @@ class HotUpdaterImpl {
                 downloadService,
                 decompressService,
                 preferences,
+                isolationKey,
             )
         }
 

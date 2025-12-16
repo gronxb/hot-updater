@@ -14,6 +14,7 @@ import React
      */
     public convenience override init() {
         let fileSystem = FileManagerService()
+        let isolationKey = HotUpdaterImpl.getIsolationKey()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
         let decompressService = DecompressService()
@@ -22,7 +23,8 @@ import React
             fileSystem: fileSystem,
             downloadService: downloadService,
             decompressService: decompressService,
-            preferences: preferences
+            preferences: preferences,
+            isolationKey: isolationKey
         )
 
         self.init(bundleStorage: bundleStorage, preferences: preferences)

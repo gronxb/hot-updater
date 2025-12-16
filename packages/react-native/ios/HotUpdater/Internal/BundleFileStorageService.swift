@@ -125,6 +125,7 @@ class BundleFileStorageService: BundleStorageService {
     private let downloadService: DownloadService
     private let decompressService: DecompressService
     private let preferences: PreferencesService
+    private let isolationKey: String
 
     private let id = Int.random(in: 1..<100)
     
@@ -139,12 +140,14 @@ class BundleFileStorageService: BundleStorageService {
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
                 decompressService: DecompressService,
-                preferences: PreferencesService) {
+                preferences: PreferencesService,
+                isolationKey: String) {
 
         self.fileSystem = fileSystem
         self.downloadService = downloadService
         self.decompressService = decompressService
         self.preferences = preferences
+        self.isolationKey = isolationKey
 
         // Create queue for file operations
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
@@ -174,14 +177,16 @@ class BundleFileStorageService: BundleStorageService {
         guard let file = metadataFileURL() else {
             return nil
         }
-        return BundleMetadata.load(from: file)
+        return BundleMetadata.load(from: file, expectedIsolationKey: isolationKey)
     }
 
     private func saveMetadata(_ metadata: BundleMetadata) -> Bool {
         guard let file = metadataFileURL() else {
             return false
         }
-        return metadata.save(to: file)
+        var updatedMetadata = metadata
+        updatedMetadata.isolationKey = isolationKey
+        return updatedMetadata.save(to: file)
     }
 
     // MARK: - Crashed History Operations

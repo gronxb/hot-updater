@@ -10,6 +10,7 @@ import java.io.File
  */
 data class BundleMetadata(
     val schema: String = SCHEMA_VERSION,
+    val isolationKey: String? = null,
     val stableBundleId: String? = null,
     val stagingBundleId: String? = null,
     val verificationPending: Boolean = false,
@@ -25,6 +26,12 @@ data class BundleMetadata(
         fun fromJson(json: JSONObject): BundleMetadata =
             BundleMetadata(
                 schema = json.optString("schema", SCHEMA_VERSION),
+                isolationKey =
+                    if (json.has("isolationKey") && !json.isNull("isolationKey")) {
+                        json.getString("isolationKey").takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    },
                 stableBundleId =
                     if (json.has("stableBundleId") && !json.isNull("stableBundleId")) {
                         json.getString("stableBundleId").takeIf { it.isNotEmpty() }
@@ -53,7 +60,10 @@ data class BundleMetadata(
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
             )
 
-        fun loadFromFile(file: File): BundleMetadata? {
+        fun loadFromFile(
+            file: File,
+            expectedIsolationKey: String,
+        ): BundleMetadata? {
             return try {
                 if (!file.exists()) {
                     Log.d(TAG, "Metadata file does not exist: ${file.absolutePath}")
@@ -61,7 +71,21 @@ data class BundleMetadata(
                 }
                 val jsonString = file.readText()
                 val json = JSONObject(jsonString)
-                fromJson(json)
+                val metadata = fromJson(json)
+
+                // Validate isolation key
+                val metadataKey = metadata.isolationKey
+                if (metadataKey != null) {
+                    if (metadataKey != expectedIsolationKey) {
+                        Log.d(TAG, "Isolation key mismatch: expected=$expectedIsolationKey, got=$metadataKey")
+                        return null
+                    }
+                } else {
+                    Log.d(TAG, "Missing isolation key in metadata, treating as invalid")
+                    return null
+                }
+
+                metadata
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load metadata from file", e)
                 null
@@ -72,6 +96,7 @@ data class BundleMetadata(
     fun toJson(): JSONObject =
         JSONObject().apply {
             put("schema", schema)
+            put("isolationKey", isolationKey ?: JSONObject.NULL)
             put("stableBundleId", stableBundleId ?: JSONObject.NULL)
             put("stagingBundleId", stagingBundleId ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
