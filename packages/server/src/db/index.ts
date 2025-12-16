@@ -1,4 +1,5 @@
 import type { StoragePlugin } from "@hot-updater/plugin-core";
+import { type ConsoleHandler, createConsoleHandler } from "../console";
 import { createHandler } from "../handler";
 import {
   createOrmDatabaseCore,
@@ -23,6 +24,7 @@ type HotUpdaterCoreInternal = OrmCore | PluginCore;
 
 export type HotUpdaterAPI = DatabaseAPI & {
   handler: (request: Request) => Promise<Response>;
+  console: ConsoleHandler;
   adapterName: string;
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
@@ -38,7 +40,25 @@ interface HotUpdaterOptions {
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
-  basePath?: string;
+  /**
+   * Base path for all routes
+   * @example "/", "/hot-updater"
+   */
+  basePath: string;
+  /**
+   * Path to console assets directory
+   * If not provided, automatically resolves from @hot-updater/console package
+   */
+  consoleAssetsDir?: string;
+  /**
+   * Console configuration
+   */
+  console?: {
+    /**
+     * Git repository URL for commit history links
+     */
+    gitUrl?: string;
+  };
   cwd?: string;
 }
 
@@ -87,12 +107,43 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     });
   }
 
+  // Create a deleteStorageFile function
+  const deleteStorageFile = async (storageUri: string) => {
+    const url = new URL(storageUri);
+    const protocol = url.protocol.replace(":", "");
+    if (protocol === "http" || protocol === "https") {
+      return; // Can't delete http/https URLs
+    }
+    const plugin = storagePlugins.find((p) => p.supportedProtocol === protocol);
+    if (plugin) {
+      await plugin.delete(storageUri);
+    }
+  };
+
+  // Create API handler
+  const handler = createHandler(
+    {
+      ...core.api,
+      deleteStorageFile,
+    },
+    {
+      basePath: options?.basePath,
+      console: options?.console,
+    },
+  );
+
+  // Create console handler with all required options
+  const consoleHandler = createConsoleHandler({
+    basePath: options?.basePath,
+    consoleAssetsDir: options?.consoleAssetsDir,
+    config: options?.console,
+    apiHandler: handler,
+  });
+
   return {
     ...core.api,
-    handler: createHandler(
-      core.api,
-      options?.basePath ? { basePath: options.basePath } : {},
-    ),
+    handler,
+    console: consoleHandler,
     adapterName: core.adapterName,
     createMigrator: core.createMigrator,
     generateSchema: core.generateSchema,

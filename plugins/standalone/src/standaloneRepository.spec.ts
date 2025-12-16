@@ -144,16 +144,39 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     await repo.appendBundle(TEST_BUNDLE_3);
     await repo.commitBundle();
 
-    // Mock filtered bundles response
-    const productionBundles = [TEST_BUNDLE_2, TEST_BUNDLE_1];
+    // Mock filtered bundles response with new format
+    const productionBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2];
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
         const channel = url.searchParams.get("channel");
         if (channel === "production") {
-          return HttpResponse.json(productionBundles);
+          return HttpResponse.json({
+            data: productionBundles,
+            pagination: {
+              total: productionBundles.length,
+              totalPages: 1,
+              currentPage: 1,
+              limit: 20,
+              offset: 0,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            },
+          });
         }
-        return HttpResponse.json([TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3]);
+        const allBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3];
+        return HttpResponse.json({
+          data: allBundles,
+          pagination: {
+            total: allBundles.length,
+            totalPages: 1,
+            currentPage: 1,
+            limit: 20,
+            offset: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        });
       }),
     );
 
@@ -169,15 +192,17 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     expect(result.pagination).toEqual({
       total: 2,
+      totalPages: 1,
+      currentPage: 1,
+      limit: 20,
+      offset: 0,
       hasNextPage: false,
       hasPreviousPage: false,
-      currentPage: 1,
-      totalPages: 1,
     });
   });
 
   it("should return correct pagination info for multiple pages", async () => {
-    // Mock paginated responses
+    // Mock paginated responses with new format
     const allBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3];
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
@@ -192,9 +217,20 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         );
 
         const paginatedData = allBundles.slice(offset, offset + limit);
-        return HttpResponse.json(paginatedData, {
-          headers: {
-            "X-Total-Count": allBundles.length.toString(),
+        const total = allBundles.length;
+        const totalPages = Math.ceil(total / limit);
+        const currentPage = Math.floor(offset / limit) + 1;
+
+        return HttpResponse.json({
+          data: paginatedData,
+          pagination: {
+            total,
+            totalPages,
+            currentPage,
+            limit,
+            offset,
+            hasNextPage: currentPage < totalPages,
+            hasPreviousPage: currentPage > 1,
           },
         });
       }),
@@ -216,10 +252,12 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(firstPage.data).toHaveLength(2);
     expect(firstPage.pagination).toEqual({
       total: 3,
+      totalPages: 2,
+      currentPage: 1,
+      limit: 2,
+      offset: 0,
       hasNextPage: true,
       hasPreviousPage: false,
-      currentPage: 1,
-      totalPages: 2,
     });
 
     const secondPage = await repo.getBundles({
@@ -230,10 +268,12 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(secondPage.data).toHaveLength(1);
     expect(secondPage.pagination).toEqual({
       total: 3,
+      totalPages: 2,
+      currentPage: 2,
+      limit: 2,
+      offset: 2,
       hasNextPage: false,
       hasPreviousPage: true,
-      currentPage: 2,
-      totalPages: 2,
     });
   });
 

@@ -25,7 +25,7 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
+app.on(["POST", "GET", "PATCH", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
   return hotUpdater.handler(c.req.raw); // [!code ++]
 }); // [!code ++]
 
@@ -65,7 +65,7 @@ const app = new Hono();
 // Protect /api/* endpoints // [!code ++]
 app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
 
-app.on(["GET", "POST", "DELETE"], "/hot-updater/*", (c) => {
+app.on(["GET", "POST", "PATCH", "DELETE"], "/hot-updater/*", (c) => {
   return hotUpdater.handler(c.req.raw);
 });
 

@@ -127,7 +127,7 @@ import { getHotUpdater } from "./hotUpdater";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => {
+app.on(["POST", "GET", "PATCH", "DELETE"], "/hot-updater/*", async (c) => {
   const hotUpdater = getHotUpdater(c.env);
   return hotUpdater.handler(c.req.raw);
 });
