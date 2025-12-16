@@ -57,10 +57,7 @@ export default function ({
           const filePathDeclarations = new Map<string, string>();
 
           programPath.node.body.forEach((node) => {
-            if (
-              t.isVariableDeclaration(node) &&
-              node.declarations.length > 0
-            ) {
+            if (t.isVariableDeclaration(node) && node.declarations.length > 0) {
               node.declarations.forEach((declarator) => {
                 if (
                   t.isVariableDeclarator(declarator) &&
@@ -204,7 +201,11 @@ export default function ({
                   "&&",
                   t.binaryExpression(
                     "!==",
-                    t.unaryExpression("typeof", t.identifier("globalThis"), true),
+                    t.unaryExpression(
+                      "typeof",
+                      t.identifier("globalThis"),
+                      true,
+                    ),
                     t.stringLiteral("undefined"),
                   ),
                   t.memberExpression(
