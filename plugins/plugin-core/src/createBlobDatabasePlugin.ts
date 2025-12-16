@@ -170,12 +170,23 @@ export const createBlobDatabasePlugin = <TConfig>({
       platform: string,
     ): Promise<Set<string>> {
       // Retrieve all update.json files for the platform across channels.
-      const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
+      const updateJsonPattern = new RegExp(
+        `^[^/]+/${platform}/[^/]+/update\\.json$`,
+      );
+      const targetVersionsPattern = new RegExp(
+        `^[^/]+/${platform}/target-app-versions\\.json$`,
+      );
 
-      const keys = (await listObjects("")).filter((key) => pattern.test(key));
+      const allKeys = await listObjects("");
+      const updateJsonKeys = allKeys.filter((key) =>
+        updateJsonPattern.test(key),
+      );
+      const targetVersionsKeys = allKeys.filter((key) =>
+        targetVersionsPattern.test(key),
+      );
 
-      // Group keys by channel (channel is the first part of the key)
-      const keysByChannel = keys.reduce(
+      // Group update.json keys by channel (channel is the first part of the key)
+      const keysByChannel = updateJsonKeys.reduce(
         (acc, key) => {
           const parts = key.split("/");
           const channel = parts[0];
@@ -185,6 +196,15 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
         {} as Record<string, string[]>,
       );
+
+      // Also include channels that have target-app-versions.json but no update.json files
+      // This handles the case when all bundles are moved out of a channel
+      for (const key of targetVersionsKeys) {
+        const channel = key.split("/")[0];
+        if (!keysByChannel[channel]) {
+          keysByChannel[channel] = [];
+        }
+      }
 
       const updatedTargetFiles = new Set<string>();
 

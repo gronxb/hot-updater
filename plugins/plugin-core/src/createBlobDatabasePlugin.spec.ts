@@ -2043,4 +2043,124 @@ describe("blobDatabase plugin", () => {
       expect(encodedUpdateJsonPath).toContain("%3C");
     });
   });
+
+  describe("channel promotion (issue #745)", () => {
+    it("should update target-app-versions.json in both channels when promoting bundle", async () => {
+      // Regression test for https://github.com/gronxb/hot-updater/issues/745
+      // When promoting a bundle (changing only channel), target-app-versions.json
+      // must be UPDATED in both the old and new channels, not just invalidated.
+
+      const bundle = createBundleJson(
+        "test",
+        "android",
+        "8.1.3",
+        "promote-test-bundle",
+      );
+
+      // Add bundle to test channel
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      // Verify test channel has the target version
+      const testTargetVersionsKey = "test/android/target-app-versions.json";
+      const prodTargetVersionsKey =
+        "production/android/target-app-versions.json";
+
+      expect(fakeStore[testTargetVersionsKey]).toBeDefined();
+      let testVersions = JSON.parse(fakeStore[testTargetVersionsKey]);
+      expect(testVersions).toContain("8.1.3");
+
+      // Promote bundle from test to production (change only channel)
+      await plugin.updateBundle("promote-test-bundle", {
+        channel: "production",
+      });
+      await plugin.commitBundle();
+
+      // Verify production channel now has the target version
+      expect(fakeStore[prodTargetVersionsKey]).toBeDefined();
+      const prodVersions = JSON.parse(fakeStore[prodTargetVersionsKey]);
+      expect(prodVersions).toContain("8.1.3");
+
+      // Verify test channel no longer has the target version (bundle was moved)
+      testVersions = JSON.parse(fakeStore[testTargetVersionsKey] || "[]");
+      expect(testVersions).not.toContain("8.1.3");
+    });
+
+    it("should update target-app-versions.json when promoting bundle with semver range", async () => {
+      // Test with semver range like >=8.1.1 <=8.1.3 (common in gradual rollouts)
+      const bundle = createBundleJson(
+        "test",
+        "android",
+        ">=8.1.1 <=8.1.3",
+        "promote-semver-range-bundle",
+      );
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      const testTargetVersionsKey = "test/android/target-app-versions.json";
+      const prodTargetVersionsKey =
+        "production/android/target-app-versions.json";
+
+      // Verify initial state
+      let testVersions = JSON.parse(fakeStore[testTargetVersionsKey]);
+      expect(testVersions).toContain(">=8.1.1 <=8.1.3");
+
+      // Promote to production
+      await plugin.updateBundle("promote-semver-range-bundle", {
+        channel: "production",
+      });
+      await plugin.commitBundle();
+
+      // Production should have the target version
+      const prodVersions = JSON.parse(fakeStore[prodTargetVersionsKey]);
+      expect(prodVersions).toContain(">=8.1.1 <=8.1.3");
+
+      // Test channel should no longer have it
+      testVersions = JSON.parse(fakeStore[testTargetVersionsKey] || "[]");
+      expect(testVersions).not.toContain(">=8.1.1 <=8.1.3");
+    });
+
+    it("should preserve other bundles target versions when promoting one bundle", async () => {
+      // Add multiple bundles with different target versions to test channel
+      const bundle1 = createBundleJson(
+        "test",
+        "android",
+        "8.1.0",
+        "bundle-8.1.0",
+      );
+      const bundle2 = createBundleJson(
+        "test",
+        "android",
+        "8.1.3",
+        "bundle-8.1.3",
+      );
+
+      await plugin.appendBundle(bundle1);
+      await plugin.appendBundle(bundle2);
+      await plugin.commitBundle();
+
+      const testTargetVersionsKey = "test/android/target-app-versions.json";
+      let testVersions = JSON.parse(fakeStore[testTargetVersionsKey]);
+      expect(testVersions).toContain("8.1.0");
+      expect(testVersions).toContain("8.1.3");
+
+      // Promote only bundle-8.1.3
+      await plugin.updateBundle("bundle-8.1.3", {
+        channel: "production",
+      });
+      await plugin.commitBundle();
+
+      // Test channel should still have 8.1.0 (from bundle1)
+      testVersions = JSON.parse(fakeStore[testTargetVersionsKey]);
+      expect(testVersions).toContain("8.1.0");
+      expect(testVersions).not.toContain("8.1.3");
+
+      // Production should have 8.1.3
+      const prodTargetVersionsKey =
+        "production/android/target-app-versions.json";
+      const prodVersions = JSON.parse(fakeStore[prodTargetVersionsKey]);
+      expect(prodVersions).toContain("8.1.3");
+    });
+  });
 });
