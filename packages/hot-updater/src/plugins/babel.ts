@@ -183,17 +183,7 @@ export default function ({
                   ),
                   t.objectProperty(
                     t.identifier("filePath"),
-                    t.callExpression(
-                      t.memberExpression(
-                        t.arrayExpression([
-                          t.identifier("baseURL"),
-                          t.stringLiteral("www.bundle"),
-                          t.stringLiteral(fileName),
-                        ]),
-                        t.identifier("join"),
-                      ),
-                      [t.stringLiteral("/")],
-                    ),
+                    t.stringLiteral(fileName),
                   ),
                 ]),
                 // Else: { filePath: "hash.html" }
