@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.25.1
+
+### Patch Changes
+
+- 820c276: fix(native): without request HEAD
+  - @hot-updater/cli-tools@0.25.1
+  - @hot-updater/core@0.25.1
+  - @hot-updater/js@0.25.1
+  - @hot-updater/plugin-core@0.25.1
+
 ## 0.25.0
 
 ### Minor Changes
