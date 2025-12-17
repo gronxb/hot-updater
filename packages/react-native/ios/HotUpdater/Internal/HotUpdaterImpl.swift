@@ -73,8 +73,13 @@ import React
         let appVersion = self.appVersion ?? "unknown"
         let appChannel = self.appChannel
 
-        // Use fingerprint if available, otherwise use app version
-        let baseKey = (fingerprintHash != nil && !fingerprintHash!.isEmpty) ? fingerprintHash! : appVersion
+        // Include both fingerprint hash and app version for complete isolation
+        let baseKey: String
+        if let hash = fingerprintHash, !hash.isEmpty {
+            baseKey = "\(hash)_\(appVersion)"
+        } else {
+            baseKey = appVersion
+        }
 
         return "hotupdater_\(baseKey)_\(appChannel)_"
     }

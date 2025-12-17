@@ -153,6 +153,12 @@ class BundleFileStorageService: BundleStorageService {
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
                                                qos: .utility,
                                                attributes: .concurrent)
+
+        // Ensure bundle store directory exists
+        _ = bundleStoreDir()
+
+        // Clean up old bundles if isolationKey format changed
+        checkAndCleanupIfIsolationKeyChanged()
     }
 
     // MARK: - Metadata File Paths
@@ -187,6 +193,73 @@ class BundleFileStorageService: BundleStorageService {
         var updatedMetadata = metadata
         updatedMetadata.isolationKey = isolationKey
         return updatedMetadata.save(to: file)
+    }
+
+    /**
+     * Checks if isolationKey has changed and cleans up old bundles if needed.
+     * This handles migration when isolationKey format changes.
+     */
+    private func checkAndCleanupIfIsolationKeyChanged() {
+        guard let metadataURL = metadataFileURL() else {
+            return
+        }
+
+        let metadataPath = metadataURL.path
+
+        guard fileSystem.fileExists(atPath: metadataPath) else {
+            // First launch - no cleanup needed
+            return
+        }
+
+        do {
+            let jsonString = try String(contentsOf: metadataURL, encoding: .utf8)
+            if let jsonData = jsonString.data(using: .utf8),
+               let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+               let storedKey = json["isolationKey"] as? String {
+
+                if storedKey != isolationKey {
+                    NSLog("[BundleStorage] isolationKey changed: \(storedKey) -> \(isolationKey)")
+                    NSLog("[BundleStorage] Cleaning up old bundles for migration")
+                    cleanupAllBundlesForMigration()
+                }
+            }
+        } catch {
+            NSLog("[BundleStorage] Error checking isolationKey: \(error.localizedDescription)")
+        }
+    }
+
+    /**
+     * Removes all bundle directories during migration.
+     * Called when isolationKey format changes.
+     */
+    private func cleanupAllBundlesForMigration() {
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            return
+        }
+
+        do {
+            let contents = try fileSystem.contentsOfDirectory(atPath: storeDir)
+            var cleanedCount = 0
+
+            for item in contents {
+                let fullPath = (storeDir as NSString).appendingPathComponent(item)
+
+                // Skip metadata files
+                if item == "metadata.json" || item == "crashed-history.json" {
+                    continue
+                }
+
+                if fileSystem.fileExists(atPath: fullPath) {
+                    try fileSystem.removeItem(atPath: fullPath)
+                    cleanedCount += 1
+                    NSLog("[BundleStorage] Migration: removed old bundle \(item)")
+                }
+            }
+
+            NSLog("[BundleStorage] Migration cleanup complete: removed \(cleanedCount) bundles")
+        } catch {
+            NSLog("[BundleStorage] Error during migration cleanup: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Crashed History Operations
@@ -728,51 +801,55 @@ class BundleFileStorageService: BundleStorageService {
         let bundleFileName = fileUrl.lastPathComponent.isEmpty ? "bundle.zip" : fileUrl.lastPathComponent
         let tempBundleFile = (tempDirectory as NSString).appendingPathComponent(bundleFileName)
 
-        NSLog("[BundleStorage] Checking file size and disk space...")
+        NSLog("[BundleStorage] Starting download from \(fileUrl)")
 
-        // 5) Check file size and disk space before download
-        self.downloadService.getFileSize(from: fileUrl) { [weak self] sizeResult in
-            guard let self = self else { return }
+        // Download with integrated disk space check
+        var diskSpaceError: BundleStorageError? = nil
 
-            if case .success(let fileSize) = sizeResult {
+        _ = self.downloadService.downloadFile(
+            from: fileUrl,
+            to: tempBundleFile,
+            fileSizeHandler: { [weak self] fileSize in
+                // This will be called when Content-Length is received
+                guard let self = self else { return }
+
+                NSLog("[BundleStorage] File size received: \(fileSize) bytes")
+
                 // Check available disk space
                 do {
                     let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
                     if let freeSize = attributes[.systemFreeSize] as? Int64 {
                         let requiredSpace = fileSize * 2  // ZIP + extracted files
 
-                        NSLog("[BundleStorage] File size: \(fileSize) bytes, Available: \(freeSize) bytes, Required: \(requiredSpace) bytes")
+                        NSLog("[BundleStorage] Available: \(freeSize) bytes, Required: \(requiredSpace) bytes")
 
                         if freeSize < requiredSpace {
-                            NSLog("[BundleStorage] Insufficient disk space")
-                            self.cleanupTemporaryFiles([tempDirectory])
-                            completion(.failure(BundleStorageError.insufficientDiskSpace))
-                            return
+                            NSLog("[BundleStorage] Insufficient disk space detected: need \(requiredSpace) bytes, available \(freeSize) bytes")
+                            // Store error to be returned in completion handler
+                            diskSpaceError = .insufficientDiskSpace
                         }
                     }
                 } catch {
                     NSLog("[BundleStorage] Failed to check disk space: \(error.localizedDescription)")
-                    // Continue with download despite disk check failure
                 }
-            } else {
-                NSLog("[BundleStorage] Unable to determine file size, proceeding with download")
-            }
-
-            NSLog("[BundleStorage] Starting download from \(fileUrl)")
-
-            // 6) DownloadService handles its own threading for the download task.
-            // The completion handler for downloadService.downloadFile is then dispatched to fileOperationQueue.
-            let task = self.downloadService.downloadFile(from: fileUrl,
-                                                         to: tempBundleFile,
-                                                         progressHandler: { downloadProgress in
-                                                             // Map download progress to 0.0 - 0.8
-                                                             progressHandler(downloadProgress * 0.8)
-                                                         },
-                                                         completion: { [weak self] result in
+            },
+            progressHandler: { downloadProgress in
+                // Map download progress to 0.0 - 0.8
+                progressHandler(downloadProgress * 0.8)
+            },
+            completion: { [weak self] result in
             guard let self = self else {
                 let error = NSError(domain: "HotUpdaterError", code: 998,
                                     userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"])
                 completion(.failure(error))
+                return
+            }
+
+            // Check for disk space error first before processing download result
+            if let diskError = diskSpaceError {
+                NSLog("[BundleStorage] Throwing disk space error")
+                self.cleanupTemporaryFiles([tempDirectory])
+                completion(.failure(diskError))
                 return
             }
 
@@ -802,12 +879,8 @@ class BundleFileStorageService: BundleStorageService {
                 }
             }
             self.fileOperationQueue.async(execute: workItem)
-        })
-
-            if let task = task {
-                self.activeTasks.append(task) // Manage active tasks
-            }
         }
+        )
     }
     
     /**

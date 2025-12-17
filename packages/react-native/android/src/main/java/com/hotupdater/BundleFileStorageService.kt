@@ -93,6 +93,14 @@ class BundleFileStorageService(
         private const val TAG = "BundleStorage"
     }
 
+    init {
+        // Ensure bundle store directory exists
+        getBundleStoreDir().mkdirs()
+
+        // Clean up old bundles if isolationKey format changed
+        checkAndCleanupIfIsolationKeyChanged()
+    }
+
     // Session-only rollback tracking (in-memory)
     private var sessionRollbackBundleId: String? = null
 
@@ -132,6 +140,67 @@ class BundleFileStorageService(
         // "bundle-store/abc123/index.android.bundle" -> "abc123"
         val regex = Regex("bundle-store/([^/]+)/")
         return regex.find(currentUrl)?.groupValues?.get(1)
+    }
+
+    /**
+     * Checks if isolationKey has changed and cleans up old bundles if needed.
+     * This handles migration when isolationKey format changes.
+     */
+    private fun checkAndCleanupIfIsolationKeyChanged() {
+        val metadataFile = getMetadataFile()
+
+        if (!metadataFile.exists()) {
+            // First launch - no cleanup needed
+            return
+        }
+
+        try {
+            // Read metadata without validation to get stored isolationKey
+            val jsonString = metadataFile.readText()
+            val json = org.json.JSONObject(jsonString)
+            val storedIsolationKey = json.optString("isolationKey", null)
+
+            if (storedIsolationKey != null && storedIsolationKey != isolationKey) {
+                // isolationKey changed - migration needed
+                Log.d(TAG, "isolationKey changed: $storedIsolationKey -> $isolationKey")
+                Log.d(TAG, "Cleaning up old bundles for migration")
+                cleanupAllBundlesForMigration()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking isolationKey: ${e.message}")
+        }
+    }
+
+    /**
+     * Removes all bundle directories during migration.
+     * Called when isolationKey format changes.
+     */
+    private fun cleanupAllBundlesForMigration() {
+        val bundleStoreDir = getBundleStoreDir()
+
+        if (!bundleStoreDir.exists()) {
+            return
+        }
+
+        try {
+            var cleanedCount = 0
+            bundleStoreDir.listFiles()?.forEach { file ->
+                if (file.isDirectory) {
+                    try {
+                        if (file.deleteRecursively()) {
+                            cleanedCount++
+                            Log.d(TAG, "Migration: removed old bundle ${file.name}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error removing bundle ${file.name}: ${e.message}")
+                    }
+                }
+            }
+
+            Log.d(TAG, "Migration cleanup complete: removed $cleanedCount bundles")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during migration cleanup: ${e.message}")
+        }
     }
 
     // MARK: - State Machine
@@ -493,33 +562,47 @@ class BundleFileStorageService(
                 }
             val tempBundleFile = File(tempDir, bundleFileName)
 
-            // Check file size before downloading
-            val fileSize = downloadService.getFileSize(downloadUrl)
-            if (fileSize > 0 && baseDir != null) {
-                // Check available disk space
-                val stat = StatFs(baseDir.absolutePath)
-                val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
-                val requiredSpace = fileSize * 2 // ZIP + extracted files
-
-                Log.d("BundleStorage", "File size: $fileSize bytes, Available: $availableBytes bytes, Required: $requiredSpace bytes")
-
-                if (availableBytes < requiredSpace) {
-                    Log.d("BundleStorage", "Insufficient disk space: need $requiredSpace bytes, available $availableBytes bytes")
-                    throw HotUpdaterException.insufficientDiskSpace(requiredSpace, availableBytes)
-                }
-            } else {
-                Log.d("BundleStorage", "Unable to determine file size, proceeding with download")
-            }
-
             // Download the file (0% - 80%)
+            // Disk space check will be performed in fileSizeCallback
+            var diskSpaceError: HotUpdaterException? = null
+
             val downloadResult =
                 downloadService.downloadFile(
                     downloadUrl,
                     tempBundleFile,
+                    fileSizeCallback = { fileSize ->
+                        // Perform disk space check when file size is known
+                        if (baseDir != null) {
+                            val stat = StatFs(baseDir.absolutePath)
+                            val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
+                            val requiredSpace = fileSize * 2 // ZIP + extracted files
+
+                            Log.d(
+                                "BundleStorage",
+                                "File size: $fileSize bytes, Available: $availableBytes bytes, Required: $requiredSpace bytes",
+                            )
+
+                            if (availableBytes < requiredSpace) {
+                                Log.d(
+                                    TAG,
+                                    "Insufficient disk space detected: need $requiredSpace bytes, available $availableBytes bytes",
+                                )
+                                // Store error to be thrown after download completes/cancels
+                                diskSpaceError = HotUpdaterException.insufficientDiskSpace(requiredSpace, availableBytes)
+                            }
+                        }
+                    },
                 ) { downloadProgress ->
                     // Map download progress to 0.0 - 0.8
                     progressCallback(downloadProgress * 0.8)
                 }
+
+            // Check for disk space error first before processing download result
+            diskSpaceError?.let {
+                Log.d(TAG, "Throwing disk space error")
+                tempDir.deleteRecursively()
+                throw it
+            }
 
             when (downloadResult) {
                 is DownloadResult.Error -> {

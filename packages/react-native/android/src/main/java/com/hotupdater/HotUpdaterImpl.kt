@@ -112,8 +112,13 @@ class HotUpdaterImpl {
             val appVersion = getAppVersion(context) ?: "unknown"
             val appChannel = getChannel(context)
 
-            // Use fingerprint if available, otherwise use app version
-            val baseKey = if (!fingerprintHash.isNullOrEmpty()) fingerprintHash else appVersion
+            // Include both fingerprint hash and app version for complete isolation
+            val baseKey =
+                if (!fingerprintHash.isNullOrEmpty()) {
+                    "${fingerprintHash}_$appVersion"
+                } else {
+                    appVersion
+                }
 
             return "HotUpdaterPrefs_${baseKey}_$appChannel"
         }
