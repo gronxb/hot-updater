@@ -25,14 +25,20 @@ export const withSignedUrl = async <
   keyPairId: string;
   privateKey: string;
   expiresSeconds?: number;
-}): Promise<(Omit<T, "storageUri"> & { fileUrl: string | null }) | null> => {
+}): Promise<
+  | (Omit<T, "storageUri"> & {
+      fileUrl: string | null;
+      headFileUrl: string | null;
+    })
+  | null
+> => {
   if (!data) {
     return null;
   }
 
   const { storageUri: _, ...rest } = data;
   if (data.id === NIL_UUID || !data.storageUri) {
-    return { ...rest, fileUrl: null };
+    return { ...rest, fileUrl: null, headFileUrl: null };
   }
 
   const storageUrl = new URL(data.storageUri);
@@ -42,6 +48,7 @@ export const withSignedUrl = async <
   url.pathname = key;
 
   // Create CloudFront signed URL
+  // CloudFront signed URLs are method-agnostic, so the same URL works for both GET and HEAD
   const signedUrl = getSignedUrl({
     url: url.toString(),
     keyPairId: keyPairId,
@@ -49,5 +56,5 @@ export const withSignedUrl = async <
     dateLessThan: new Date(Date.now() + expiresSeconds * 1000).toISOString(), // Valid for expiresSeconds seconds
   });
 
-  return { ...rest, fileUrl: signedUrl };
+  return { ...rest, fileUrl: signedUrl, headFileUrl: signedUrl };
 };

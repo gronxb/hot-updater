@@ -10,7 +10,10 @@ import type { DatabaseAPI } from "./types";
 
 export function createPluginDatabaseCore(
   plugin: DatabasePlugin,
-  resolveFileUrl: (storageUri: string | null) => Promise<string | null>,
+  resolveFileUrl: (storageUri: string | null) => Promise<{
+    fileUrl: string | null;
+    headFileUrl: string | null;
+  }>,
 ): {
   api: DatabaseAPI;
   adapterName: string;
@@ -63,8 +66,8 @@ export function createPluginDatabaseCore(
       const { storageUri, ...rest } = info as UpdateInfo & {
         storageUri: string | null;
       };
-      const fileUrl = await resolveFileUrl(storageUri ?? null);
-      return { ...rest, fileUrl };
+      const { fileUrl, headFileUrl } = await resolveFileUrl(storageUri ?? null);
+      return { ...rest, fileUrl, headFileUrl };
     },
 
     async getChannels(): Promise<string[]> {

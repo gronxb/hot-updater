@@ -20,14 +20,20 @@ export const withJwtSignedUrl = async <
   data: T | null;
   reqUrl: string;
   jwtSecret: string;
-}): Promise<(Omit<T, "storageUri"> & { fileUrl: string | null }) | null> => {
+}): Promise<
+  | (Omit<T, "storageUri"> & {
+      fileUrl: string | null;
+      headFileUrl: string | null;
+    })
+  | null
+> => {
   if (!data) {
     return null;
   }
 
   const { storageUri, ...rest } = data;
   if (data.id === NIL_UUID || !storageUri) {
-    return { ...rest, fileUrl: null };
+    return { ...rest, fileUrl: null, headFileUrl: null };
   }
   const storageUrl = new URL(storageUri);
   const key = `${storageUrl.host}${storageUrl.pathname}`;
@@ -37,7 +43,9 @@ export const withJwtSignedUrl = async <
   url.pathname = key;
   url.searchParams.set("token", token);
 
-  return { ...rest, fileUrl: url.toString() };
+  // JWT-signed URLs are method-agnostic, so the same URL works for both GET and HEAD
+  const signedUrl = url.toString();
+  return { ...rest, fileUrl: signedUrl, headFileUrl: signedUrl };
 };
 
 export const signToken = async (key: string, jwtSecret: string) => {

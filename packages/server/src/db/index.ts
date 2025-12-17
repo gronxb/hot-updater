@@ -52,25 +52,26 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
 
   const resolveFileUrl = async (
     storageUri: string | null,
-  ): Promise<string | null> => {
+  ): Promise<{ fileUrl: string | null; headFileUrl: string | null }> => {
     if (!storageUri) {
-      return null;
+      return { fileUrl: null, headFileUrl: null };
     }
     const url = new URL(storageUri);
     const protocol = url.protocol.replace(":", "");
     if (protocol === "http" || protocol === "https") {
-      return storageUri;
+      return { fileUrl: storageUri, headFileUrl: storageUri };
     }
     const plugin = storagePlugins.find((p) => p.supportedProtocol === protocol);
 
     if (!plugin) {
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
-    const { fileUrl } = await plugin.getDownloadUrl(storageUri);
+    const { fileUrl, headFileUrl } = await plugin.getDownloadUrl(storageUri);
     if (!fileUrl) {
       throw new Error("Storage plugin returned empty fileUrl");
     }
-    return fileUrl;
+    // If headFileUrl is not provided, fall back to fileUrl (for method-agnostic signed URLs)
+    return { fileUrl, headFileUrl: headFileUrl ?? fileUrl };
   };
 
   let core: HotUpdaterCoreInternal;

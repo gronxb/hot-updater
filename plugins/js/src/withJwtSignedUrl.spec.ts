@@ -30,6 +30,7 @@ describe("withJwtSignedUrl", () => {
 
     expect(result).not.toBeNull();
     expect(result?.fileUrl).toBeNull();
+    expect(result?.headFileUrl).toBeNull();
     expect(result?.id).toBe(NIL_UUID);
     expect(result?.someProperty).toBe("value");
 
@@ -47,6 +48,7 @@ describe("withJwtSignedUrl", () => {
 
     expect(resultWithNullStorageUri).not.toBeNull();
     expect(resultWithNullStorageUri?.fileUrl).toBeNull();
+    expect(resultWithNullStorageUri?.headFileUrl).toBeNull();
   });
 
   it("should generate a JWT signed URL when data is valid", async () => {
@@ -66,6 +68,8 @@ describe("withJwtSignedUrl", () => {
     expect(result?.fileUrl).toBeTypeOf("string");
     expect(result?.fileUrl).toContain("my-app/bundle.zip");
     expect(result?.fileUrl).toContain("token=");
+    // JWT-signed URLs are method-agnostic, so headFileUrl should equal fileUrl
+    expect(result?.headFileUrl).toBe(result?.fileUrl);
 
     const url = new URL(result?.fileUrl as string);
     expect(url.origin).toBe("https://example.com");

@@ -137,6 +137,12 @@ export interface StoragePlugin {
 
   getDownloadUrl: (storageUri: string) => Promise<{
     fileUrl: string;
+    /**
+     * Presigned URL for HEAD requests.
+     * Required for S3 presigned URLs which are method-specific.
+     * If not provided, fileUrl will be used for HEAD requests.
+     */
+    headFileUrl?: string;
   }>;
   name: string;
 }

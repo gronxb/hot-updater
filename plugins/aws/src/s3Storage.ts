@@ -1,6 +1,7 @@
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   S3Client,
   type S3ClientConfig,
@@ -105,12 +106,24 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
           throw new Error("Invalid S3 storage URI: missing bucket or key");
         }
         try {
-          const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-          const signedUrl = await getSignedUrl(client as any, command as any, {
-            expiresIn: 3600,
+          const getCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
+          const headCommand = new HeadObjectCommand({
+            Bucket: bucket,
+            Key: key,
           });
-          if (!signedUrl) throw new Error("Failed to presign S3 URL");
-          return { fileUrl: signedUrl };
+
+          const [fileUrl, headFileUrl] = await Promise.all([
+            getSignedUrl(client as any, getCommand as any, {
+              expiresIn: 3600,
+            }),
+            getSignedUrl(client as any, headCommand as any, {
+              expiresIn: 3600,
+            }),
+          ]);
+
+          if (!fileUrl) throw new Error("Failed to presign S3 URL");
+          if (!headFileUrl) throw new Error("Failed to presign S3 HEAD URL");
+          return { fileUrl, headFileUrl };
         } catch (e) {
           throw new Error(
             e instanceof Error

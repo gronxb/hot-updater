@@ -104,6 +104,12 @@ export interface UpdateInfo {
 export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
   fileUrl: string | null;
   /**
+   * Presigned URL for HEAD requests to retrieve file metadata (e.g., Content-Length).
+   * Required for S3 presigned URLs which are method-specific.
+   * For CloudFront signed URLs, this may be the same as fileUrl since they are method-agnostic.
+   */
+  headFileUrl: string | null;
+  /**
    * SHA256 hash of the bundle file, optionally with embedded signature.
    * Format when signed: "sig:<base64_signature>"
    * Format when unsigned: "<hex_hash>" (64-character lowercase hex)
