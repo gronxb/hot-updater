@@ -200,7 +200,11 @@ class BundleFileStorageService: BundleStorageService {
      * This handles migration when isolationKey format changes.
      */
     private func checkAndCleanupIfIsolationKeyChanged() {
-        let metadataPath = metadataFilePath()
+        guard let metadataURL = metadataFileURL() else {
+            return
+        }
+
+        let metadataPath = metadataURL.path
 
         guard fileSystem.fileExists(atPath: metadataPath) else {
             // First launch - no cleanup needed
@@ -208,7 +212,7 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         do {
-            let jsonString = try String(contentsOfFile: metadataPath, encoding: .utf8)
+            let jsonString = try String(contentsOf: metadataURL, encoding: .utf8)
             if let jsonData = jsonString.data(using: .utf8),
                let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                let storedKey = json["isolationKey"] as? String {
@@ -801,9 +805,8 @@ class BundleFileStorageService: BundleStorageService {
 
         // Download with integrated disk space check
         var diskSpaceError: BundleStorageError? = nil
-        var downloadTask: URLSessionDownloadTask?
 
-        downloadTask = self.downloadService.downloadFile(
+        _ = self.downloadService.downloadFile(
             from: fileUrl,
             to: tempBundleFile,
             fileSizeHandler: { [weak self] fileSize in
@@ -824,9 +827,6 @@ class BundleFileStorageService: BundleStorageService {
                             NSLog("[BundleStorage] Insufficient disk space detected: need \(requiredSpace) bytes, available \(freeSize) bytes")
                             // Store error to be returned in completion handler
                             diskSpaceError = .insufficientDiskSpace
-
-                            // Cancel download immediately
-                            downloadTask?.cancel()
                         }
                     }
                 } catch {
@@ -847,7 +847,7 @@ class BundleFileStorageService: BundleStorageService {
 
             // Check for disk space error first before processing download result
             if let diskError = diskSpaceError {
-                NSLog("[BundleStorage] Download cancelled due to insufficient disk space")
+                NSLog("[BundleStorage] Throwing disk space error")
                 self.cleanupTemporaryFiles([tempDirectory])
                 completion(.failure(diskError))
                 return
