@@ -93,6 +93,14 @@ class BundleFileStorageService(
         private const val TAG = "BundleStorage"
     }
 
+    init {
+        // Ensure bundle store directory exists
+        getBundleStoreDir().mkdirs()
+
+        // Clean up old bundles if isolationKey format changed
+        checkAndCleanupIfIsolationKeyChanged()
+    }
+
     // Session-only rollback tracking (in-memory)
     private var sessionRollbackBundleId: String? = null
 
@@ -132,6 +140,67 @@ class BundleFileStorageService(
         // "bundle-store/abc123/index.android.bundle" -> "abc123"
         val regex = Regex("bundle-store/([^/]+)/")
         return regex.find(currentUrl)?.groupValues?.get(1)
+    }
+
+    /**
+     * Checks if isolationKey has changed and cleans up old bundles if needed.
+     * This handles migration when isolationKey format changes.
+     */
+    private fun checkAndCleanupIfIsolationKeyChanged() {
+        val metadataFile = getMetadataFile()
+
+        if (!metadataFile.exists()) {
+            // First launch - no cleanup needed
+            return
+        }
+
+        try {
+            // Read metadata without validation to get stored isolationKey
+            val jsonString = metadataFile.readText()
+            val json = org.json.JSONObject(jsonString)
+            val storedIsolationKey = json.optString("isolationKey", null)
+
+            if (storedIsolationKey != null && storedIsolationKey != isolationKey) {
+                // isolationKey changed - migration needed
+                Log.d(TAG, "isolationKey changed: $storedIsolationKey -> $isolationKey")
+                Log.d(TAG, "Cleaning up old bundles for migration")
+                cleanupAllBundlesForMigration()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking isolationKey: ${e.message}")
+        }
+    }
+
+    /**
+     * Removes all bundle directories during migration.
+     * Called when isolationKey format changes.
+     */
+    private fun cleanupAllBundlesForMigration() {
+        val bundleStoreDir = getBundleStoreDir()
+
+        if (!bundleStoreDir.exists()) {
+            return
+        }
+
+        try {
+            var cleanedCount = 0
+            bundleStoreDir.listFiles()?.forEach { file ->
+                if (file.isDirectory) {
+                    try {
+                        if (file.deleteRecursively()) {
+                            cleanedCount++
+                            Log.d(TAG, "Migration: removed old bundle ${file.name}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error removing bundle ${file.name}: ${e.message}")
+                    }
+                }
+            }
+
+            Log.d(TAG, "Migration cleanup complete: removed $cleanedCount bundles")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during migration cleanup: ${e.message}")
+        }
     }
 
     // MARK: - State Machine

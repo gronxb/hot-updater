@@ -153,6 +153,12 @@ class BundleFileStorageService: BundleStorageService {
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
                                                qos: .utility,
                                                attributes: .concurrent)
+
+        // Ensure bundle store directory exists
+        _ = bundleStoreDir()
+
+        // Clean up old bundles if isolationKey format changed
+        checkAndCleanupIfIsolationKeyChanged()
     }
 
     // MARK: - Metadata File Paths
@@ -187,6 +193,69 @@ class BundleFileStorageService: BundleStorageService {
         var updatedMetadata = metadata
         updatedMetadata.isolationKey = isolationKey
         return updatedMetadata.save(to: file)
+    }
+
+    /**
+     * Checks if isolationKey has changed and cleans up old bundles if needed.
+     * This handles migration when isolationKey format changes.
+     */
+    private func checkAndCleanupIfIsolationKeyChanged() {
+        let metadataPath = metadataFilePath()
+
+        guard fileSystem.fileExists(atPath: metadataPath) else {
+            // First launch - no cleanup needed
+            return
+        }
+
+        do {
+            let jsonString = try String(contentsOfFile: metadataPath, encoding: .utf8)
+            if let jsonData = jsonString.data(using: .utf8),
+               let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+               let storedKey = json["isolationKey"] as? String {
+
+                if storedKey != isolationKey {
+                    NSLog("[BundleStorage] isolationKey changed: \(storedKey) -> \(isolationKey)")
+                    NSLog("[BundleStorage] Cleaning up old bundles for migration")
+                    cleanupAllBundlesForMigration()
+                }
+            }
+        } catch {
+            NSLog("[BundleStorage] Error checking isolationKey: \(error.localizedDescription)")
+        }
+    }
+
+    /**
+     * Removes all bundle directories during migration.
+     * Called when isolationKey format changes.
+     */
+    private func cleanupAllBundlesForMigration() {
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            return
+        }
+
+        do {
+            let contents = try fileSystem.contentsOfDirectory(atPath: storeDir)
+            var cleanedCount = 0
+
+            for item in contents {
+                let fullPath = (storeDir as NSString).appendingPathComponent(item)
+
+                // Skip metadata files
+                if item == "metadata.json" || item == "crashed-history.json" {
+                    continue
+                }
+
+                if fileSystem.fileExists(atPath: fullPath) {
+                    try fileSystem.removeItem(atPath: fullPath)
+                    cleanedCount += 1
+                    NSLog("[BundleStorage] Migration: removed old bundle \(item)")
+                }
+            }
+
+            NSLog("[BundleStorage] Migration cleanup complete: removed \(cleanedCount) bundles")
+        } catch {
+            NSLog("[BundleStorage] Error during migration cleanup: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Crashed History Operations

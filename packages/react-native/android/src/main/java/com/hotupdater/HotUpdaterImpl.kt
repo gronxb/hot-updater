@@ -113,11 +113,12 @@ class HotUpdaterImpl {
             val appChannel = getChannel(context)
 
             // Include both fingerprint hash and app version for complete isolation
-            val baseKey = if (!fingerprintHash.isNullOrEmpty()) {
-                "${fingerprintHash}_${appVersion}"
-            } else {
-                appVersion
-            }
+            val baseKey =
+                if (!fingerprintHash.isNullOrEmpty()) {
+                    "${fingerprintHash}_$appVersion"
+                } else {
+                    appVersion
+                }
 
             return "HotUpdaterPrefs_${baseKey}_$appChannel"
         }
