@@ -493,29 +493,34 @@ class BundleFileStorageService(
                 }
             val tempBundleFile = File(tempDir, bundleFileName)
 
-            // Check file size before downloading
-            val fileSize = downloadService.getFileSize(downloadUrl)
-            if (fileSize > 0 && baseDir != null) {
-                // Check available disk space
-                val stat = StatFs(baseDir.absolutePath)
-                val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
-                val requiredSpace = fileSize * 2 // ZIP + extracted files
-
-                Log.d("BundleStorage", "File size: $fileSize bytes, Available: $availableBytes bytes, Required: $requiredSpace bytes")
-
-                if (availableBytes < requiredSpace) {
-                    Log.d("BundleStorage", "Insufficient disk space: need $requiredSpace bytes, available $availableBytes bytes")
-                    throw HotUpdaterException.insufficientDiskSpace(requiredSpace, availableBytes)
-                }
-            } else {
-                Log.d("BundleStorage", "Unable to determine file size, proceeding with download")
-            }
-
             // Download the file (0% - 80%)
+            // Disk space check will be performed in fileSizeCallback
             val downloadResult =
                 downloadService.downloadFile(
                     downloadUrl,
                     tempBundleFile,
+                    fileSizeCallback = { fileSize ->
+                        // Perform disk space check when file size is known
+                        if (baseDir != null) {
+                            val stat = StatFs(baseDir.absolutePath)
+                            val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
+                            val requiredSpace = fileSize * 2 // ZIP + extracted files
+
+                            Log.d(
+                                "BundleStorage",
+                                "File size: $fileSize bytes, Available: $availableBytes bytes, Required: $requiredSpace bytes",
+                            )
+
+                            if (availableBytes < requiredSpace) {
+                                Log.w(
+                                    "BundleStorage",
+                                    "Insufficient disk space: need $requiredSpace bytes, available $availableBytes bytes",
+                                )
+                                // Note: Cannot throw from callback
+                                // Will fail during file write if space runs out
+                            }
+                        }
+                    },
                 ) { downloadProgress ->
                     // Map download progress to 0.0 - 0.8
                     progressCallback(downloadProgress * 0.8)

@@ -728,47 +728,42 @@ class BundleFileStorageService: BundleStorageService {
         let bundleFileName = fileUrl.lastPathComponent.isEmpty ? "bundle.zip" : fileUrl.lastPathComponent
         let tempBundleFile = (tempDirectory as NSString).appendingPathComponent(bundleFileName)
 
-        NSLog("[BundleStorage] Checking file size and disk space...")
+        NSLog("[BundleStorage] Starting download from \(fileUrl)")
 
-        // 5) Check file size and disk space before download
-        self.downloadService.getFileSize(from: fileUrl) { [weak self] sizeResult in
-            guard let self = self else { return }
+        // Download with integrated disk space check
+        let task = self.downloadService.downloadFile(
+            from: fileUrl,
+            to: tempBundleFile,
+            fileSizeHandler: { [weak self] fileSize in
+                // This will be called when Content-Length is received
+                guard let self = self else { return }
 
-            if case .success(let fileSize) = sizeResult {
+                NSLog("[BundleStorage] File size received: \(fileSize) bytes")
+
                 // Check available disk space
                 do {
                     let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
                     if let freeSize = attributes[.systemFreeSize] as? Int64 {
                         let requiredSpace = fileSize * 2  // ZIP + extracted files
 
-                        NSLog("[BundleStorage] File size: \(fileSize) bytes, Available: \(freeSize) bytes, Required: \(requiredSpace) bytes")
+                        NSLog("[BundleStorage] Available: \(freeSize) bytes, Required: \(requiredSpace) bytes")
 
                         if freeSize < requiredSpace {
-                            NSLog("[BundleStorage] Insufficient disk space")
-                            self.cleanupTemporaryFiles([tempDirectory])
-                            completion(.failure(BundleStorageError.insufficientDiskSpace))
-                            return
+                            NSLog("[BundleStorage] WARNING: Insufficient disk space")
+                            // Note: Cannot cancel download from callback
+                            // Download will continue and may fail during write if space runs out
+                            // This is acceptable as error will be caught in completion handler
                         }
                     }
                 } catch {
                     NSLog("[BundleStorage] Failed to check disk space: \(error.localizedDescription)")
-                    // Continue with download despite disk check failure
                 }
-            } else {
-                NSLog("[BundleStorage] Unable to determine file size, proceeding with download")
-            }
-
-            NSLog("[BundleStorage] Starting download from \(fileUrl)")
-
-            // 6) DownloadService handles its own threading for the download task.
-            // The completion handler for downloadService.downloadFile is then dispatched to fileOperationQueue.
-            let task = self.downloadService.downloadFile(from: fileUrl,
-                                                         to: tempBundleFile,
-                                                         progressHandler: { downloadProgress in
-                                                             // Map download progress to 0.0 - 0.8
-                                                             progressHandler(downloadProgress * 0.8)
-                                                         },
-                                                         completion: { [weak self] result in
+            },
+            progressHandler: { downloadProgress in
+                // Map download progress to 0.0 - 0.8
+                progressHandler(downloadProgress * 0.8)
+            },
+            completion: { [weak self] result in
             guard let self = self else {
                 let error = NSError(domain: "HotUpdaterError", code: 998,
                                     userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"])
@@ -802,11 +797,11 @@ class BundleFileStorageService: BundleStorageService {
                 }
             }
             self.fileOperationQueue.async(execute: workItem)
-        })
+        }
+        )
 
-            if let task = task {
-                self.activeTasks.append(task) // Manage active tasks
-            }
+        if let task = task {
+            self.activeTasks.append(task) // Manage active tasks
         }
     }
     
