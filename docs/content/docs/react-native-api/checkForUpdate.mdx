@@ -80,7 +80,7 @@ function App() {
       },
     }).then(async (updateInfo) => {
       if (updateInfo) {
-        updateInfo.updateBundle();
+        await updateInfo.updateBundle();
         if (updateInfo.shouldForceUpdate) {
           await HotUpdater.reload();
         }
