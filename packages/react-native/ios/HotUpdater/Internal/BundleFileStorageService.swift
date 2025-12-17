@@ -881,10 +881,6 @@ class BundleFileStorageService: BundleStorageService {
             self.fileOperationQueue.async(execute: workItem)
         }
         )
-
-        if let task = task {
-            self.activeTasks.append(task) // Manage active tasks
-        }
     }
     
     /**
