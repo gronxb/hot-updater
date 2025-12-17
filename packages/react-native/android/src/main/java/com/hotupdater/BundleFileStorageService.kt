@@ -564,6 +564,8 @@ class BundleFileStorageService(
 
             // Download the file (0% - 80%)
             // Disk space check will be performed in fileSizeCallback
+            var diskSpaceError: HotUpdaterException? = null
+
             val downloadResult =
                 downloadService.downloadFile(
                     downloadUrl,
@@ -581,12 +583,12 @@ class BundleFileStorageService(
                             )
 
                             if (availableBytes < requiredSpace) {
-                                Log.w(
-                                    "BundleStorage",
-                                    "Insufficient disk space: need $requiredSpace bytes, available $availableBytes bytes",
+                                Log.d(
+                                    TAG,
+                                    "Insufficient disk space detected: need $requiredSpace bytes, available $availableBytes bytes",
                                 )
-                                // Note: Cannot throw from callback
-                                // Will fail during file write if space runs out
+                                // Store error to be thrown after download completes/cancels
+                                diskSpaceError = HotUpdaterException.insufficientDiskSpace(requiredSpace, availableBytes)
                             }
                         }
                     },
@@ -594,6 +596,13 @@ class BundleFileStorageService(
                     // Map download progress to 0.0 - 0.8
                     progressCallback(downloadProgress * 0.8)
                 }
+
+            // Check for disk space error first before processing download result
+            diskSpaceError?.let {
+                Log.d(TAG, "Throwing disk space error")
+                tempDir.deleteRecursively()
+                throw it
+            }
 
             when (downloadResult) {
                 is DownloadResult.Error -> {

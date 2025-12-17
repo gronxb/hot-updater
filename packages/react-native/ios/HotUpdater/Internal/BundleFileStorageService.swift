@@ -800,7 +800,10 @@ class BundleFileStorageService: BundleStorageService {
         NSLog("[BundleStorage] Starting download from \(fileUrl)")
 
         // Download with integrated disk space check
-        let task = self.downloadService.downloadFile(
+        var diskSpaceError: BundleStorageError? = nil
+        var downloadTask: URLSessionDownloadTask?
+
+        downloadTask = self.downloadService.downloadFile(
             from: fileUrl,
             to: tempBundleFile,
             fileSizeHandler: { [weak self] fileSize in
@@ -818,10 +821,12 @@ class BundleFileStorageService: BundleStorageService {
                         NSLog("[BundleStorage] Available: \(freeSize) bytes, Required: \(requiredSpace) bytes")
 
                         if freeSize < requiredSpace {
-                            NSLog("[BundleStorage] WARNING: Insufficient disk space")
-                            // Note: Cannot cancel download from callback
-                            // Download will continue and may fail during write if space runs out
-                            // This is acceptable as error will be caught in completion handler
+                            NSLog("[BundleStorage] Insufficient disk space detected: need \(requiredSpace) bytes, available \(freeSize) bytes")
+                            // Store error to be returned in completion handler
+                            diskSpaceError = .insufficientDiskSpace
+
+                            // Cancel download immediately
+                            downloadTask?.cancel()
                         }
                     }
                 } catch {
@@ -837,6 +842,14 @@ class BundleFileStorageService: BundleStorageService {
                 let error = NSError(domain: "HotUpdaterError", code: 998,
                                     userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"])
                 completion(.failure(error))
+                return
+            }
+
+            // Check for disk space error first before processing download result
+            if let diskError = diskSpaceError {
+                NSLog("[BundleStorage] Download cancelled due to insufficient disk space")
+                self.cleanupTemporaryFiles([tempDirectory])
+                completion(.failure(diskError))
                 return
             }
 
