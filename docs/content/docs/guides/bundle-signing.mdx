@@ -190,7 +190,7 @@ During EAS build, the plugin checks for the public key in this order:
 1. `HOT_UPDATER_PRIVATE_KEY` environment variable → Extract public key
 2. Private key file at `privateKeyPath` → Extract public key
 3. Public key file (derived from `privateKeyPath`) → Use directly
-4. Skip with warning → Manual configuration needed
+4. All sources failed → Build fails with error
 
 ## CI/CD Integration
 
