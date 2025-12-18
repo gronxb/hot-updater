@@ -98,19 +98,21 @@ const getPublicKeyFromConfig = async (
       console.log(`[hot-updater] Using public key from ${publicKeyPath}`);
       return publicKeyPEM.trim();
     } catch (_publicKeyError) {
-      // Priority 4: Graceful fallback with helpful warning
-      console.warn(
-        "[hot-updater] WARNING: Bundle signing enabled but no public key sources found.\n" +
-          "Public key will not be embedded in native files.\n\n" +
+      // Priority 4: All sources failed - throw error
+      throw new Error(
+        "[hot-updater] Failed to load public key for bundle signing.\n\n" +
+          "Signing is enabled (signing.enabled: true) but no public key sources found.\n\n" +
           "For EAS builds, use EAS Secrets:\n" +
           '  eas env:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"\n\n' +
           "Or add to eas.json:\n" +
           '  "env": { "HOT_UPDATER_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\n..." }\n\n' +
           "For local development:\n" +
-          "  Generate keys with: npx hot-updater keys generate\n\n" +
-          `Searched: HOT_UPDATER_PRIVATE_KEY env var, ${privateKeyPath}, ${publicKeyPath}\n`,
+          "  npx hot-updater keys generate\n\n" +
+          `Searched locations:\n` +
+          `  - HOT_UPDATER_PRIVATE_KEY environment variable\n` +
+          `  - Private key file: ${privateKeyPath}\n` +
+          `  - Public key file: ${publicKeyPath}\n`,
       );
-      return null;
     }
   }
 };
