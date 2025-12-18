@@ -155,6 +155,54 @@ When you run `expo prebuild`, the plugin:
 
 **No need to run `npx hot-updater keys export-public` manually for Expo projects.**
 
+### EAS Build
+
+For EAS builds, the Expo plugin needs access to the private key to extract and embed the public key during prebuild. Store the private key as an environment variable:
+
+#### Using EAS Secrets
+
+```bash
+# Store private key in EAS Secrets
+eas env:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"
+```
+
+The plugin automatically extracts the public key from `HOT_UPDATER_PRIVATE_KEY` during prebuild.
+
+#### Using .easignore (Alternative)
+
+For simpler setup, include the keys directory in EAS builds:
+
+```txt title=".easignore"
+!keys/
+```
+
+This tells EAS to include the `keys/` directory even though it's in `.gitignore`. The plugin will use the private key file directly during prebuild.
+
+> **Note**: This approach is especially useful for local EAS builds (`eas build --local`) where you don't need to configure environment variables.
+
+#### How It Works
+
+During EAS build, the plugin checks for the public key in this order:
+1. `HOT_UPDATER_PRIVATE_KEY` environment variable → Extract public key
+2. Private key file at `privateKeyPath` → Extract public key
+3. Public key file (derived from `privateKeyPath`) → Use directly
+4. All sources failed → Build fails with error
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+- name: Setup signing key
+  run: |
+    mkdir -p keys
+    echo "${{ secrets.HOT_UPDATER_PRIVATE_KEY }}" > keys/private-key.pem
+    chmod 600 keys/private-key.pem
+
+- name: Deploy
+  run: npx hot-updater deploy -p ios
+```
+
 ### Other Platforms
 
 Store keys in:

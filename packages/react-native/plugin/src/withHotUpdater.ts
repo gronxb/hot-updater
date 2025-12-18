@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { loadConfig } from "@hot-updater/cli-tools";
 import type { ExpoConfig } from "expo/config";
 import {
@@ -32,31 +33,87 @@ const getFingerprint = async () => {
 };
 
 /**
- * Extract public key from private key in signing config
+ * Extract public key for embedding in native configs.
+ * Supports multiple sources with priority order:
+ * 1. HOT_UPDATER_PRIVATE_KEY environment variable
+ * 2. Private key file (extract public key)
+ * 3. Public key file (derived from privateKeyPath)
+ * 4. Skip with warning (graceful fallback)
  */
 const getPublicKeyFromConfig = async (
   signingConfig: { enabled?: boolean; privateKeyPath?: string } | undefined,
 ): Promise<string | null> => {
-  if (!signingConfig?.enabled || !signingConfig?.privateKeyPath) {
+  // If signing not enabled, no public key needed
+  if (!signingConfig?.enabled) {
     return null;
   }
 
-  try {
-    // Resolve private key path relative to project root
-    const privateKeyPath = path.isAbsolute(signingConfig.privateKeyPath)
-      ? signingConfig.privateKeyPath
-      : path.resolve(process.cwd(), signingConfig.privateKeyPath);
+  // Priority 1: Environment variable with private key PEM (EAS builds)
+  const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
+  if (envPrivateKey) {
+    try {
+      const publicKeyPEM = getPublicKeyFromPrivate(envPrivateKey);
+      console.log(
+        "[hot-updater] Using public key extracted from HOT_UPDATER_PRIVATE_KEY environment variable",
+      );
+      return publicKeyPEM.trim();
+    } catch (error) {
+      console.warn(
+        "[hot-updater] WARNING: Failed to extract public key from HOT_UPDATER_PRIVATE_KEY:\n" +
+          `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      // Continue to try other methods
+    }
+  }
 
-    // Load private key and extract public key
+  // If no privateKeyPath configured, can't proceed with file-based methods
+  if (!signingConfig.privateKeyPath) {
+    console.warn(
+      "[hot-updater] WARNING: signing.enabled is true but no privateKeyPath configured.\n" +
+        "Public key will not be embedded. Set HOT_UPDATER_PRIVATE_KEY environment variable or configure privateKeyPath.",
+    );
+    return null;
+  }
+
+  // Resolve paths
+  const privateKeyPath = path.isAbsolute(signingConfig.privateKeyPath)
+    ? signingConfig.privateKeyPath
+    : path.resolve(process.cwd(), signingConfig.privateKeyPath);
+
+  const publicKeyPath = privateKeyPath.replace(
+    /private-key\.pem$/,
+    "public-key.pem",
+  );
+
+  try {
+    // Priority 2: Private key file (existing method)
     const privateKeyPEM = await loadPrivateKey(privateKeyPath);
     const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
-
+    console.log(`[hot-updater] Extracted public key from ${privateKeyPath}`);
     return publicKeyPEM.trim();
-  } catch (error) {
-    throw new Error(
-      `[hot-updater] Failed to extract public key: ${error instanceof Error ? error.message : String(error)}\n` +
-        "Run 'npx hot-updater keys generate' to create signing keys",
-    );
+  } catch (_privateKeyError) {
+    try {
+      // Priority 3: Public key file (fallback)
+      const publicKeyPEM = await readFile(publicKeyPath, "utf-8");
+      console.log(`[hot-updater] Using public key from ${publicKeyPath}`);
+      return publicKeyPEM.trim();
+    } catch (_publicKeyError) {
+      // Priority 4: All sources failed - throw error
+      throw new Error(
+        "[hot-updater] Failed to load public key for bundle signing.\n\n" +
+          "Signing is enabled (signing.enabled: true) but no public key sources found.\n\n" +
+          "For EAS builds, use EAS Secrets:\n" +
+          '  eas env:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"\n\n' +
+          "Or add to eas.json:\n" +
+          '  "env": { "HOT_UPDATER_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\n..." }\n\n' +
+          "For local development:\n" +
+          "  npx hot-updater keys generate\n\n" +
+          `Searched locations:\n` +
+          `  - HOT_UPDATER_PRIVATE_KEY environment variable\n` +
+          `  - Private key file: ${privateKeyPath}\n` +
+          `  - Public key file: ${publicKeyPath}\n`,
+      );
+    }
   }
 };
 
