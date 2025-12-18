@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/server",
-  "version": "0.25.1",
+  "version": "0.25.2",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,

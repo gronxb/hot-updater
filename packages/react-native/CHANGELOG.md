@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.25.2
+
+### Patch Changes
+
+- 2c22c41: feat(expo): support bundle signing for eas build
+  - @hot-updater/cli-tools@0.25.2
+  - @hot-updater/core@0.25.2
+  - @hot-updater/js@0.25.2
+  - @hot-updater/plugin-core@0.25.2
+
 ## 0.25.1
 
 ### Patch Changes
