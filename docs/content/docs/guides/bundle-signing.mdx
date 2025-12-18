@@ -155,42 +155,6 @@ When you run `expo prebuild`, the plugin:
 
 **No need to run `npx hot-updater keys export-public` manually for Expo projects.**
 
-### EAS Build
-
-For EAS Build, store the private key as an environment variable:
-
-```json title="eas.json"
-{
-  "build": {
-    "production": {
-      "env": {
-        "HOT_UPDATER_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\n..."
-      }
-    }
-  }
-}
-```
-
-Or use EAS Secrets:
-```bash
-eas secret:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"
-```
-
-## CI/CD Integration
-
-### GitHub Actions
-
-```yaml
-- name: Setup signing key
-  run: |
-    mkdir -p keys
-    echo "${{ secrets.HOT_UPDATER_PRIVATE_KEY }}" > keys/private-key.pem
-    chmod 600 keys/private-key.pem
-
-- name: Deploy
-  run: npx hot-updater deploy -p ios
-```
-
 ### Other Platforms
 
 Store keys in:
