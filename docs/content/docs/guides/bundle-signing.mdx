@@ -168,21 +168,17 @@ eas env:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pe
 
 The plugin automatically extracts the public key from `HOT_UPDATER_PRIVATE_KEY` during prebuild.
 
-#### Using eas.json
+#### Using .easignore (Alternative)
 
-```json title="eas.json"
-{
-  "build": {
-    "production": {
-      "env": {
-        "HOT_UPDATER_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\n..."
-      }
-    }
-  }
-}
+For simpler setup, include the keys directory in EAS builds:
+
+```txt title=".easignore"
+!keys/
 ```
 
-> **Note**: Use EAS Secrets instead of `eas.json` for better security. The private key in `eas.json` may be visible in version control.
+This tells EAS to include the `keys/` directory even though it's in `.gitignore`. The plugin will use the private key file directly during prebuild.
+
+> **Note**: This approach is especially useful for local EAS builds (`eas build --local`) where you don't need to configure environment variables.
 
 #### How It Works
 
