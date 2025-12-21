@@ -109,7 +109,8 @@ model private_hot_updater_settings {
       // User model should still be preserved
       expect(result.content).toContain("model User");
       // Updated models should be present
-      expect(result.content).toContain("new_field");
+      expect(result.content).toContain("rollout_percentage");
+      expect(result.content).toContain("model device_events");
       expect(result.content).toContain('"0.26.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
