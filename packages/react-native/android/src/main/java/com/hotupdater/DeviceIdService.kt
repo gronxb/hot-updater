@@ -5,7 +5,9 @@ import android.content.SharedPreferences
 import android.provider.Settings
 import java.util.UUID
 
-class DeviceIdService(private val context: Context) {
+class DeviceIdService(
+    private val context: Context,
+) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("HotUpdaterDeviceId", Context.MODE_PRIVATE)
 
@@ -47,4 +49,3 @@ class DeviceIdService(private val context: Context) {
         return generated
     }
 }
-

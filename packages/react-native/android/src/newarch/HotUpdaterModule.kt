@@ -172,9 +172,7 @@ class HotUpdaterModule internal constructor(
         deviceIdService.setUserId(customId)
     }
 
-    override fun getUserId(): String {
-        return deviceIdService.getUserId()
-    }
+    override fun getUserId(): String = deviceIdService.getUserId()
 
     companion object {
         const val NAME = "HotUpdater"

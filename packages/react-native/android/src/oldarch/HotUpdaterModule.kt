@@ -183,9 +183,7 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getUserId(): String {
-        return deviceIdService.getUserId()
-    }
+    override fun getUserId(): String = deviceIdService.getUserId()
 
     companion object {
         const val NAME = "HotUpdater"
