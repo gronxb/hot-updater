@@ -33,9 +33,21 @@ model bundles {
   target_app_version String?
   fingerprint_hash String?
   metadata Json
+  rollout_percentage Int @default(100)
+  target_device_ids Json?
+}
+model device_events {
+  id String @id
+  device_id String
+  bundle_id String
+  event_type String
+  platform String
+  app_version String?
+  channel String
+  metadata Json
 }
 model private_hot_updater_settings {
   key String @id
-  value String @default("0.21.0")
+  value String @default("0.22.0")
 }
 // --- END HOT-UPDATER MODELS ---
