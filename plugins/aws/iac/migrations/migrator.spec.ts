@@ -90,7 +90,8 @@ describe("S3Migration", () => {
   });
 
   it("should backup a file before updating", async () => {
-    const doUpdateSpy = vi.spyOn(testMigration as any, "doUpdateFile");
+    // @ts-expect-error ignore protected method
+    const doUpdateSpy = vi.spyOn(testMigration, "doUpdateFile");
     // @ts-expect-error ignore protected method
     await testMigration.backupFile("file.txt");
     const expectedBackupKey = `backup/${testMigration.name}/file.txt`;
@@ -104,7 +105,8 @@ describe("S3Migration", () => {
   it("should update a file and backup the original if it exists", async () => {
     // @ts-expect-error ignore protected method
     const backupSpy = vi.spyOn(testMigration, "backupFile");
-    const doUpdateSpy = vi.spyOn(testMigration as any, "doUpdateFile");
+    // @ts-expect-error ignore protected method
+    const doUpdateSpy = vi.spyOn(testMigration, "doUpdateFile");
     // @ts-expect-error ignore protected method
     await testMigration.updateFile("file.txt", "updated content");
     // Expect backup to have been performed.
@@ -143,7 +145,8 @@ describe("S3Migration", () => {
         return null;
       },
     );
-    const doUpdateSpy = vi.spyOn(testMigration as any, "doUpdateFile");
+    // @ts-expect-error ignore protected method
+    const doUpdateSpy = vi.spyOn(testMigration, "doUpdateFile");
     await testMigration.rollback();
     // Expect doUpdateFile to be called to restore the original file.
     expect(doUpdateSpy).toHaveBeenCalledWith("file1.txt", "original content");
@@ -225,10 +228,11 @@ describe("S3Migrator", () => {
     mockS3.send.mockImplementation(async (command: any) => {
       if (command.constructor.name === "GetObjectCommand") {
         // Simulate a NoSuchKey error.
-        const error = new Error("NoSuchKey");
-        (error as any).Code = "NoSuchKey";
-        (error as any).name = "NoSuchKey";
-        (error as any).$metadata = { httpStatusCode: 404 };
+        const error = Object.assign(new Error("NoSuchKey"), {
+          Code: "NoSuchKey",
+          name: "NoSuchKey",
+          $metadata: { httpStatusCode: 404 },
+        });
         throw error;
       }
       return {};
@@ -271,10 +275,11 @@ describe("S3Migrator", () => {
     // Simulate no migration records exist.
     mockS3.send.mockImplementation(async (command: any) => {
       if (command.constructor.name === "GetObjectCommand") {
-        const error = new Error("NoSuchKey");
-        (error as any).Code = "NoSuchKey";
-        (error as any).name = "NoSuchKey";
-        (error as any).$metadata = { httpStatusCode: 404 };
+        const error = Object.assign(new Error("NoSuchKey"), {
+          Code: "NoSuchKey",
+          name: "NoSuchKey",
+          $metadata: { httpStatusCode: 404 },
+        });
         throw error;
       }
       return {};

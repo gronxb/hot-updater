@@ -46,7 +46,7 @@ export const DeleteBundleDialog = ({
         as={Button}
         variant="destructive"
         size="sm"
-        class="gap-2 flex-1"
+        class="gap-2 w-full"
       >
         <Trash2 class="h-4 w-4" />
         Delete Bundle

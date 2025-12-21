@@ -4,6 +4,7 @@ import React
 @objcMembers public class HotUpdaterImpl: NSObject {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
+    private let deviceIdService: DeviceIdService
 
     private static let DEFAULT_CHANNEL = "production"
 
@@ -38,6 +39,7 @@ import React
     internal init(bundleStorage: BundleStorageService, preferences: PreferencesService) {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
+        self.deviceIdService = DeviceIdService()
         super.init()
 
         // Configure preferences with isolation key
@@ -95,6 +97,16 @@ import React
      */
     public func getFingerprintHash() -> String? {
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+    }
+
+    // MARK: - User ID Management
+
+    public func setUserId(_ customId: String) {
+        deviceIdService.setUserId(customId)
+    }
+
+    public func getUserId() -> String {
+        return deviceIdService.getUserId()
     }
 
     // MARK: - Bundle URL Management

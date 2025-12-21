@@ -65,20 +65,47 @@ export interface Bundle {
    * The metadata of the bundle.
    */
   metadata?: BundleMetadata;
+
+  /**
+   * Rollout percentage (0-100). Controls gradual rollout to devices.
+   * - 0: No devices receive this update
+   * - 50: ~50% of devices eligible based on device ID hash
+   * - 100 or null: All devices receive this update (full rollout)
+   *
+   * @default 100
+   */
+  rolloutPercentage?: number | null;
+
+  /**
+   * Target specific device IDs for this update.
+   * If provided, only these devices will receive the update.
+   * If empty/null, rolloutPercentage-based rollout is used.
+   *
+   * NOTE: This field is stored in database but should NOT be returned to
+   * update-check clients for security reasons. Server uses it for rollout
+   * decisions only.
+   */
+  targetDeviceIds?: string[] | null;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
-  ? `${T extends Capitalize<T> ? "_" : ""}${Lowercase<T>}${SnakeCase<U>}`
+  ? T extends "_"
+    ? `_${SnakeCase<U>}`
+    : T extends "-"
+      ? `-${SnakeCase<U>}`
+      : T extends Lowercase<T>
+        ? `${T}${SnakeCase<U>}`
+        : `_${Lowercase<T>}${SnakeCase<U>}`
   : S;
 
 // Utility type to recursively map object keys to snake_case
-type SnakeKeyObject<T> = T extends Record<string, any>
-  ? {
-      [K in keyof T as SnakeCase<Extract<K, string>>]: T[K] extends object
-        ? SnakeKeyObject<T[K]>
-        : T[K];
-    }
-  : T;
+type SnakeKeyObject<T> = T extends readonly (infer U)[]
+  ? SnakeKeyObject<U>[]
+  : T extends Record<string, any>
+    ? {
+        [K in keyof T as SnakeCase<Extract<K, string>>]: SnakeKeyObject<T[K]>;
+      }
+    : T;
 
 export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
 
@@ -141,6 +168,11 @@ export type FingerprintGetBundlesArgs = {
    */
   channel?: string;
   /**
+   * Device/user identifier used for server-side rollout decisions.
+   * If omitted, rollout is treated as 100% for backward compatibility.
+   */
+  deviceId?: string;
+  /**
    * The fingerprint hash of the bundle.
    */
   fingerprintHash: string;
@@ -172,6 +204,11 @@ export type AppVersionGetBundlesArgs = {
    * - app-name: Channel for specific app instances (e.g., my-app, app-test)
    */
   channel?: string;
+  /**
+   * Device/user identifier used for server-side rollout decisions.
+   * If omitted, rollout is treated as 100% for backward compatibility.
+   */
+  deviceId?: string;
   /**
    * The current app version.
    */

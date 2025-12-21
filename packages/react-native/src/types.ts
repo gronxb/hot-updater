@@ -31,6 +31,12 @@ export interface ResolverCheckUpdateParams {
   channel: string;
 
   /**
+   * Device/user identifier used for server-side rollout decisions.
+   * If omitted, server treats rollout as 100% for backward compatibility.
+   */
+  deviceId?: string;
+
+  /**
    * Update strategy being used
    */
   updateStrategy: "fingerprint" | "appVersion";
@@ -76,6 +82,21 @@ export interface ResolverNotifyAppReadyParams {
   /**
    * Request timeout from global config (for optional use)
    */
+  requestTimeout?: number;
+}
+
+/**
+ * Parameters passed to resolver.trackDeviceEvent method
+ */
+export interface ResolverTrackDeviceEventParams {
+  deviceId: string;
+  bundleId: string;
+  eventType: "PROMOTED" | "RECOVERED";
+  platform: "ios" | "android";
+  appVersion?: string;
+  channel: string;
+  metadata?: Record<string, unknown>;
+  requestHeaders?: Record<string, string>;
   requestTimeout?: number;
 }
 
@@ -131,6 +152,11 @@ export interface HotUpdaterResolver {
   notifyAppReady?: (
     params: ResolverNotifyAppReadyParams,
   ) => Promise<NotifyAppReadyResult | undefined>;
+
+  /**
+   * Track device-level events (PROMOTED/RECOVERED) for rollout analytics.
+   */
+  trackDeviceEvent?: (params: ResolverTrackDeviceEventParams) => Promise<void>;
 }
 
 /**

@@ -7,6 +7,12 @@ vi.mock("jose", () => ({
 }));
 
 describe("verifyJwtSignedUrl", () => {
+  const mockedJwtVerify = vi.mocked(jwtVerify);
+  const createJwtVerifyResult = (key: string) => ({
+    payload: { key },
+    protectedHeader: { alg: "HS256" },
+    key: new Uint8Array(),
+  });
   const mockJwtSecret = "test-secret";
   const mockPath = "/test-file.zip";
   const mockToken = "mock-token";
@@ -31,7 +37,7 @@ describe("verifyJwtSignedUrl", () => {
   });
 
   it("should return 403 if token verification fails", async () => {
-    (jwtVerify as any).mockRejectedValue(new Error("Invalid token"));
+    mockedJwtVerify.mockRejectedValue(new Error("Invalid token"));
 
     const result = await verifyJwtSignedUrl({
       path: mockPath,
@@ -47,9 +53,9 @@ describe("verifyJwtSignedUrl", () => {
   });
 
   it("should return 403 if payload key doesn't match requested file", async () => {
-    (jwtVerify as any).mockResolvedValue({
-      payload: { key: "different-file.zip" },
-    });
+    mockedJwtVerify.mockResolvedValue(
+      createJwtVerifyResult("different-file.zip"),
+    );
 
     const result = await verifyJwtSignedUrl({
       path: mockPath,
@@ -65,9 +71,7 @@ describe("verifyJwtSignedUrl", () => {
   });
 
   it("should return 404 if file is not found", async () => {
-    (jwtVerify as any).mockResolvedValue({
-      payload: { key: mockKey },
-    });
+    mockedJwtVerify.mockResolvedValue(createJwtVerifyResult(mockKey));
     const mockHandler = vi.fn().mockResolvedValue(null);
 
     const result = await verifyJwtSignedUrl({
@@ -85,9 +89,7 @@ describe("verifyJwtSignedUrl", () => {
   });
 
   it("should return 200 with file data if verification succeeds", async () => {
-    (jwtVerify as any).mockResolvedValue({
-      payload: { key: mockKey },
-    });
+    mockedJwtVerify.mockResolvedValue(createJwtVerifyResult(mockKey));
 
     const mockObject = {
       contentType: "application/zip",
@@ -115,9 +117,7 @@ describe("verifyJwtSignedUrl", () => {
   });
 
   it("should use default content type if not provided", async () => {
-    (jwtVerify as any).mockResolvedValue({
-      payload: { key: mockKey },
-    });
+    mockedJwtVerify.mockResolvedValue(createJwtVerifyResult(mockKey));
 
     const mockObject = {
       body: "file-content",

@@ -2,11 +2,25 @@ import {
   type AppVersionGetBundlesArgs,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
+  isDeviceEligibleForUpdate,
   NIL_UUID,
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
+
+const parseTargetDeviceIds = (value: string | null): string[] | null => {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((v): v is string => typeof v === "string");
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
 
 const appVersionStrategy = async (
   DB: D1Database,
@@ -16,6 +30,7 @@ const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    deviceId,
   }: AppVersionGetBundlesArgs,
 ) => {
   const appVersionList = await DB.prepare(
@@ -52,6 +67,8 @@ const appVersionStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
+      b.rollout_percentage,
+      b.target_device_ids,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -72,6 +89,8 @@ const appVersionStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
+      b.rollout_percentage,
+      b.target_device_ids,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -87,7 +106,7 @@ const appVersionStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash
+  SELECT id, should_force_update, message, status, storage_uri, file_hash, rollout_percentage, target_device_ids
   FROM final_result, input
   WHERE id <> bundle_id
 
@@ -99,7 +118,9 @@ const appVersionStrategy = async (
     NULL AS message,
     'ROLLBACK' AS status,
     NULL AS storage_uri,
-    NULL AS file_hash
+    NULL AS file_hash,
+    NULL AS rollout_percentage,
+    NULL AS target_device_ids
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;
@@ -114,10 +135,24 @@ const appVersionStrategy = async (
       message: string | null;
       storage_uri: string | null;
       file_hash: string | null;
+      rollout_percentage: number | null;
+      target_device_ids: string | null;
     }>();
 
   if (!result) {
     return null;
+  }
+
+  if (deviceId && result.status === "UPDATE") {
+    const eligible = isDeviceEligibleForUpdate(
+      deviceId,
+      result.rollout_percentage,
+      parseTargetDeviceIds(result.target_device_ids),
+    );
+
+    if (!eligible) {
+      return null;
+    }
   }
 
   return {
@@ -138,6 +173,7 @@ export const fingerprintStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    deviceId,
   }: FingerprintGetBundlesArgs,
 ) => {
   const sql = /* sql */ `
@@ -157,6 +193,8 @@ export const fingerprintStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
+      b.rollout_percentage,
+      b.target_device_ids,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -175,6 +213,8 @@ export const fingerprintStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
+      b.rollout_percentage,
+      b.target_device_ids,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -192,7 +232,7 @@ export const fingerprintStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash
+  SELECT id, should_force_update, message, status, storage_uri, file_hash, rollout_percentage, target_device_ids
   FROM final_result, input
   WHERE id <> bundle_id
 
@@ -204,7 +244,9 @@ export const fingerprintStrategy = async (
     NULL AS message,
     'ROLLBACK' AS status,
     NULL AS storage_uri,
-    NULL AS file_hash
+    NULL AS file_hash,
+    NULL AS rollout_percentage,
+    NULL AS target_device_ids
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;
@@ -219,10 +261,24 @@ export const fingerprintStrategy = async (
       message: string | null;
       storage_uri: string | null;
       file_hash: string | null;
+      rollout_percentage: number | null;
+      target_device_ids: string | null;
     }>();
 
   if (!result) {
     return null;
+  }
+
+  if (deviceId && result.status === "UPDATE") {
+    const eligible = isDeviceEligibleForUpdate(
+      deviceId,
+      result.rollout_percentage,
+      parseTargetDeviceIds(result.target_device_ids),
+    );
+
+    if (!eligible) {
+      return null;
+    }
   }
 
   return {

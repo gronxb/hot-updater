@@ -1,9 +1,15 @@
-import type { Bundle, Platform } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DeviceEvent,
+  Platform,
+  RolloutStats,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
+import { uuidv7 } from "uuidv7";
 import type { Database } from "./types";
 
 export interface SupabaseDatabaseConfig {
@@ -24,7 +30,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         const { data, error } = await supabase
           .from("bundles")
           .select(
-            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata",
+            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata, rollout_percentage, target_device_ids",
           )
           .eq("id", bundleId)
           .single();
@@ -45,6 +51,8 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           fingerprintHash: data.fingerprint_hash,
           storageUri: data.storage_uri,
           metadata: data.metadata ?? {},
+          rolloutPercentage: data.rollout_percentage ?? 100,
+          targetDeviceIds: data.target_device_ids ?? null,
         } as Bundle;
       },
 
@@ -67,7 +75,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         let query = supabase
           .from("bundles")
           .select(
-            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata",
+            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, rollout_percentage, target_device_ids",
           )
           .order("id", { ascending: false });
 
@@ -103,6 +111,8 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
               fingerprintHash: bundle.fingerprint_hash,
               storageUri: bundle.storage_uri,
               metadata: bundle.metadata ?? {},
+              rolloutPercentage: bundle.rollout_percentage ?? 100,
+              targetDeviceIds: bundle.target_device_ids ?? null,
             }))
           : [];
 
@@ -156,6 +166,8 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
                 fingerprint_hash: bundle.fingerprintHash,
                 storage_uri: bundle.storageUri,
                 metadata: bundle.metadata,
+                rollout_percentage: bundle.rolloutPercentage ?? 100,
+                target_device_ids: bundle.targetDeviceIds ?? null,
               },
               { onConflict: "id" },
             );
@@ -165,6 +177,49 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
             }
           }
         }
+      },
+
+      async trackDeviceEvent(event: DeviceEvent): Promise<void> {
+        const { error } = await supabase.from("device_events").insert({
+          id: uuidv7(),
+          device_id: event.deviceId,
+          bundle_id: event.bundleId,
+          event_type: event.eventType,
+          platform: event.platform,
+          app_version: event.appVersion ?? null,
+          channel: event.channel,
+          metadata: event.metadata ?? {},
+        });
+
+        if (error) {
+          throw new Error(`Failed to track event: ${error.message}`);
+        }
+      },
+
+      async getRolloutStats(bundleId: string): Promise<RolloutStats> {
+        const { data, error } = await supabase
+          .rpc("get_rollout_stats", { target_bundle_id: bundleId })
+          .single();
+
+        if (error) {
+          throw new Error(`Failed to get rollout stats: ${error.message}`);
+        }
+
+        type RolloutStatsRow = {
+          total_devices: number | null;
+          promoted_count: number | null;
+          recovered_count: number | null;
+          success_rate: number | null;
+        };
+
+        const row = data as RolloutStatsRow | null;
+
+        return {
+          totalDevices: Number(row?.total_devices ?? 0),
+          promotedCount: Number(row?.promoted_count ?? 0),
+          recoveredCount: Number(row?.recovered_count ?? 0),
+          successRate: Number(row?.success_rate ?? 0),
+        };
       },
     };
   },

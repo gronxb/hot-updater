@@ -24,6 +24,15 @@ const notify = proxy<{
   crashedBundleId?: string;
 }>({});
 
+const getGlobalBaseUrl = (): string | null => {
+  const maybeFn = Reflect.get(globalThis, "HotUpdaterGetBaseURL");
+  if (typeof maybeFn !== "function") {
+    return null;
+  }
+  const value = maybeFn();
+  return typeof value === "string" ? value : null;
+};
+
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
   const timestamp = Number.parseInt(timestampHex, 16);
@@ -54,7 +63,7 @@ function App(): React.JSX.Element {
       <Text>Babel {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
-      <Text>BASE: {(globalThis as any)?.HotUpdaterGetBaseURL()}</Text>
+      <Text>BASE: {getGlobalBaseUrl()}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
       <Text

@@ -4,7 +4,12 @@ import type {
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
-import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabasePlugin,
+  DeviceEvent,
+  RolloutStats,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
 import type { FumaDBAdapter } from "fumadb/adapters";
 import type { PaginationInfo } from "../types";
 
@@ -52,6 +57,9 @@ export interface DatabaseAPI {
   insertBundle(bundle: Bundle): Promise<void>;
   updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
   deleteBundleById(bundleId: string): Promise<void>;
+
+  trackDeviceEvent?: (event: DeviceEvent) => Promise<void>;
+  getRolloutStats?: (bundleId: string) => Promise<RolloutStats>;
 }
 
 export type StoragePluginFactory = () => StoragePlugin;

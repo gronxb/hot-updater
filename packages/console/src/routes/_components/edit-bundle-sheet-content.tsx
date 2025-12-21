@@ -9,7 +9,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useBundleQuery } from "@/lib/api";
 import { DeleteBundleDialog } from "./delete-bundle-dialog";
 import { EditBundleSheetForm } from "./edit-bundle-sheet-form";
+import { EmergencyRollbackButton } from "./emergency-rollback-button";
 import { PromoteChannelDialog } from "./promote-channel-dialog";
+import { RolloutStatsDialog } from "./rollout-stats-dialog";
 
 export interface EditBundleSheetContentProps {
   bundleId: string;
@@ -45,11 +47,13 @@ export const EditBundleSheetContent = ({
         )}
       </Show>
 
-      <div class="mt-auto gap-3 pt-4 flex justify-between">
+      <div class="mt-auto gap-3 pt-4 grid grid-cols-1 sm:grid-cols-2">
+        <RolloutStatsDialog bundleId={bundleId} />
         <Show when={data.data}>
           {(bundle) => <PromoteChannelDialog bundle={bundle()} />}
         </Show>
 
+        <EmergencyRollbackButton bundleId={bundleId} />
         <DeleteBundleDialog bundleId={bundleId} onDeleteSuccess={onClose} />
       </div>
     </SheetContent>
