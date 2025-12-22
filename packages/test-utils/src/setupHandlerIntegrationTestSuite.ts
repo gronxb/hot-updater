@@ -50,16 +50,26 @@ export function createGetUpdateInfo(
       // Step 3: Construct GET URL based on updateStrategy
       const channel = options.channel || "production";
       const minBundleId = options.minBundleId || NIL_UUID;
+      const deviceId = options.deviceId; // Get deviceId from options
 
       let url: string;
       if (options._updateStrategy === "appVersion") {
-        url = buildUrl(
-          `/app-version/${options.platform}/${options.appVersion}/${channel}/${minBundleId}/${options.bundleId}`,
-        );
+        // Use new endpoint with deviceId if provided, old endpoint otherwise
+        url = deviceId
+          ? buildUrl(
+              `/app-version/${options.platform}/${options.appVersion}/${channel}/${minBundleId}/${options.bundleId}/${deviceId}`,
+            )
+          : buildUrl(
+              `/app-version/${options.platform}/${options.appVersion}/${channel}/${minBundleId}/${options.bundleId}`,
+            );
       } else {
-        url = buildUrl(
-          `/fingerprint/${options.platform}/${options.fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}`,
-        );
+        url = deviceId
+          ? buildUrl(
+              `/fingerprint/${options.platform}/${options.fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}/${deviceId}`,
+            )
+          : buildUrl(
+              `/fingerprint/${options.platform}/${options.fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}`,
+            );
       }
 
       // Step 4: Check for updates via GET
