@@ -11,6 +11,7 @@ import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
 import { version } from "@/packageJson";
+import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { handleChannel, handleSetChannel } from "./commands/channel";
@@ -249,5 +250,9 @@ if (process.env["NODE_ENV"] === "development") {
       await nativeBuild(options);
     });
 }
+
+program.hook("preAction", () => {
+  ensureNoConflicts();
+});
 
 program.parse(process.argv);
