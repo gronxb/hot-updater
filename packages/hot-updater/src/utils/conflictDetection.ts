@@ -3,10 +3,34 @@ import fs from "fs";
 import path from "path";
 
 /**
+ * Checks if a package can be resolved using require.resolve.
+ * Exported for testing purposes.
+ * @param packagePath - The package path to resolve
+ * @returns true if the package can be resolved
+ */
+function hasPackage(packagePath: string): boolean {
+  try {
+    require.resolve(`${packagePath}/package.json`, {
+      paths: [getCwd()],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Checks if expo-updates is installed in the project.
+ * Uses require.resolve() as the primary check with file reading as fallback.
  * @returns true if expo-updates is found in dependencies or devDependencies
  */
 export function hasExpoUpdates(): boolean {
+  // Primary check: Use require.resolve to check if package is installed
+  if (hasPackage("expo-updates")) {
+    return true; // Package is installed and resolvable
+  }
+
+  // Fallback check: Read package.json from file system
   const cwd = getCwd();
   const packageJsonPath = path.join(cwd, "package.json");
 
