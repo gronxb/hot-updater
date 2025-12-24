@@ -1,5 +1,16 @@
 # hot-updater
 
+## 0.25.3
+
+### Patch Changes
+
+- cddc20f: feat: add critical conflict check for expo-updates
+  - @hot-updater/cli-tools@0.25.3
+  - @hot-updater/console@0.25.3
+  - @hot-updater/core@0.25.3
+  - @hot-updater/server@0.25.3
+  - @hot-updater/plugin-core@0.25.3
+
 ## 0.25.2
 
 ### Patch Changes
