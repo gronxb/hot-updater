@@ -33,8 +33,25 @@ Used for `hot-updater init`:
 
 Used for `hot-updater deploy` and `hot-updater console`:
 * `AmazonS3FullAccess`: Manage bundles and metadata in the S3 bucket.
+* `cloudfront:CreateInvalidation`: Invalidate CloudFront cache after deployments.
 
-For ongoing usage, create a separate access token with limited permissions.
+For ongoing usage, create a separate access token with limited permissions. Here's a minimal policy example for CloudFront invalidation:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "cloudfront:CreateInvalidation"
+  ],
+  "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+}
+```
+
+If this permission is missing, you may encounter the following error:
+
+```
+AccessDenied: User: arn:aws:sts::***:assumed-role/***/*** is not authorized to perform: cloudfront:CreateInvalidation on resource: arn:aws:cloudfront::***:distribution/*** because no identity-based policy allows the cloudfront:CreateInvalidation action
+```
 
 ## Step 1: Install Required Packages
 
