@@ -14,7 +14,9 @@ import {
   getCrashHistory,
   getFingerprintHash,
   getMinBundleId,
+  getUserId,
   reload,
+  setUserId,
   type UpdateParams,
   updateBundle,
 } from "./native";
@@ -30,6 +32,7 @@ export {
   isSignatureVerificationError,
   type ResolverCheckUpdateParams,
   type ResolverNotifyAppReadyParams,
+  type ResolverTrackDeviceEventParams,
   type SignatureVerificationFailure,
 } from "./types";
 export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
@@ -218,6 +221,17 @@ function createHotUpdaterClient() {
      * ```
      */
     getChannel,
+
+    /**
+     * Sets a custom user ID for rollout calculations.
+     * If unset/empty, native device ID will be used.
+     */
+    setUserId,
+
+    /**
+     * Gets the user ID used for rollout calculations.
+     */
+    getUserId,
 
     /**
      * Adds a listener to HotUpdater events.

@@ -16,6 +16,7 @@ import {
   TextField,
   TextFieldInput,
   TextFieldLabel,
+  TextFieldTextArea,
 } from "@/components/ui/text-field";
 import { showToast } from "@/components/ui/toast";
 import { api, useConfigQuery } from "@/lib/api";
@@ -25,6 +26,10 @@ export interface EditBundleSheetFormProps {
   bundle: Bundle;
   onEditSuccess: () => void;
 }
+
+type EditBundleFormValues = Omit<Partial<Bundle>, "targetDeviceIds"> & {
+  targetDeviceIds?: string;
+};
 
 export const EditBundleSheetForm = ({
   bundle,
@@ -43,13 +48,27 @@ export const EditBundleSheetForm = ({
       targetAppVersion: bundle.targetAppVersion,
       enabled: bundle.enabled,
       shouldForceUpdate: bundle.shouldForceUpdate,
-    } as Partial<Bundle>,
+      rolloutPercentage: bundle.rolloutPercentage ?? 100,
+      targetDeviceIds: bundle.targetDeviceIds?.join("\n") ?? "",
+    } as EditBundleFormValues,
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
       try {
+        const { targetDeviceIds, ...rest } = value;
+        const targetDeviceIdsArray =
+          targetDeviceIds
+            ?.split("\n")
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0) ?? [];
+
         const res = await api.bundles[":bundleId"].$patch({
           param: { bundleId: bundle.id },
-          json: value,
+          json: {
+            ...rest,
+            rolloutPercentage: rest.rolloutPercentage ?? 100,
+            targetDeviceIds:
+              targetDeviceIdsArray.length > 0 ? targetDeviceIdsArray : null,
+          } satisfies Partial<Bundle>,
         });
         if (res.status !== 200) {
           const json = (await res.json()) as { error: string };
@@ -78,6 +97,9 @@ export const EditBundleSheetForm = ({
   }));
 
   const isValid = form.useStore((state) => state.isValid);
+  const rolloutPercentage = form.useStore(
+    (state) => state.values.rolloutPercentage ?? 100,
+  );
 
   return (
     <form
@@ -216,6 +238,66 @@ export const EditBundleSheetForm = ({
         <p class="text-xs text-muted-foreground mt-[2px]">
           When enabled, this update will require users to update before
           continuing to use the application.
+        </p>
+      </div>
+
+      <div>
+        <TextField class="grid w-full max-w-sm items-center gap-1.5">
+          <TextFieldLabel for="rolloutPercentage">
+            Rollout Percentage: {rolloutPercentage()}%
+          </TextFieldLabel>
+          <form.Field name="rolloutPercentage">
+            {(field) => (
+              <>
+                <input
+                  type="range"
+                  id="rolloutPercentage"
+                  min="0"
+                  max="100"
+                  step="5"
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  value={field().state.value ?? 100}
+                  onInput={(e) =>
+                    field().handleChange(Number(e.currentTarget.value))
+                  }
+                />
+                <div class="flex justify-between text-xs text-muted-foreground">
+                  <span>0%</span>
+                  <span>25%</span>
+                  <span>50%</span>
+                  <span>75%</span>
+                  <span>100%</span>
+                </div>
+              </>
+            )}
+          </form.Field>
+        </TextField>
+        <p class="text-xs text-muted-foreground mt-2">
+          Control what percentage of devices receive this update. Set to 100%
+          for full rollout, or lower for gradual deployment.
+        </p>
+      </div>
+
+      <div>
+        <TextField class="grid w-full max-w-sm items-center gap-1.5">
+          <TextFieldLabel for="targetDeviceIds">
+            Target Device IDs (Optional)
+          </TextFieldLabel>
+          <form.Field name="targetDeviceIds">
+            {(field) => (
+              <TextFieldTextArea
+                id="targetDeviceIds"
+                placeholder="Enter device IDs, one per line..."
+                class="min-h-[100px]"
+                value={field().state.value ?? ""}
+                onInput={(e) => field().handleChange(e.currentTarget.value)}
+              />
+            )}
+          </form.Field>
+        </TextField>
+        <p class="text-xs text-muted-foreground mt-2">
+          If specified, only these devices will receive the update. Leave empty
+          to use percentage-based rollout instead.
         </p>
       </div>
 
