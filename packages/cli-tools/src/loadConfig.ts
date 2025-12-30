@@ -113,7 +113,7 @@ const configOptions = {
     "hot-updater.config.cjs",
     "hot-updater.config.ts",
     "hot-updater.config.cts",
-    "hot-updater.config.cjs",
+    "hot-updater.config.mjs",
     "hot-updater.config.mts",
   ],
   ignoreEmptySearchPlaces: false,
