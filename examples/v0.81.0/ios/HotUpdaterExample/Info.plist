@@ -23,7 +23,7 @@
 		<key>CFBundleVersion</key>
 		<string>$(CURRENT_PROJECT_VERSION)</string>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>d08ce02ff0286116d945a7b77222e9a353731731</string>
+		<string>375ccd5f2d85d8cb55d7ccf3991032cca7e3c51d</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>NSAppTransportSecurity</key>
@@ -53,5 +53,20 @@
 		<false/>
 		<key>HOT_UPDATER_CHANNEL</key>
 		<string>production</string>
+		<key>HOT_UPDATER_PUBLIC_KEY</key>
+		<string>-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAtX2E2bQJnYw7FP5sS48s
+i2I00Z4xVGBcVh6zKwlOfUB6A9ZgfKfavnxm/i2q84nYd3lv+fam0QzU6hHiKb2K
+r5LN/+H7QNErkKN/uEqgOgz5bD0aGGm75Ppp8OSq4Uw4TElAxas+3KXOxgeZhlFa
+ZGRlbFsiOVxw8sLaeyrONWyNUAUONrlnAFgpJk/7+UzEvlEHi/wr38QoKkbORjAw
+tgA3q3vjidhy0M0nXNqKr9vYIfNTskptqR69PJZaXA/rSL8Trjnz/NdDzWE4Dd6g
+oReJ0qn3rxKfSOxPxBuYveOl54vHKw3wvb1J48aGZd2CjBOQEjWzCuIgyL/Poge8
+Ui9GbBEX3+3aAVt8KUoCne+fWGDMKTi660UoM21xLdY1ZFmZqK/7u5feLHKRsbD6
+phL4sRzcTjmsyhXcy0qiPO/kuyzhGEXOJWum90ehaDGp6i1AR+nPSjbCGvtibChd
+036mAsLOiTWsaBiBqJD8vSv+EqpCjGgo9YjSSZD0DfdXcaWu3R33omywb7ZcXrTV
+dWEyuD7khcbLi92nsgYBbe/338uUtuQNTgb0FaMJvuoR3j41pmn2pwTgRYtTCTQn
+XUEukyuAGDU3HGRiGYHEhsEILoUzZpXy2Zs/eQRtZE0o644tb1Cn4D+/a7Pv6Yso
+zxKCEs5mNh/ligdmTntzMecCAwEAAQ==
+-----END PUBLIC KEY-----</string>
 	</dict>
 </plist>

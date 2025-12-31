@@ -5,15 +5,14 @@
   "keywords": [],
   "license": "MIT",
   "scripts": {
-    "biome": "biome lint packages/** plugins/** docs --write --unsafe",
-    "biome:format": "biome format packages/** plugins/** docs --write",
-    "biome:check": "biome check packages/** plugins/** docs",
+    "lint:fix": "biome lint packages/** plugins/** docs --write --unsafe",
+    "lint": "biome check packages/** plugins/** docs",
     "clear": "rimraf --glob **/dist .nx",
     "test": "vitest",
     "build": "nx run-many --target=build --projects=packages/*,plugins/*,docs",
     "build:dev": "node scripts/build-dev.mjs",
     "fingerprint:create": "nx run-many --target='fingerprint:create' --projects=examples/*",
-    "test:type": "nx run-many --target=test:type --projects=packages/*,plugins/*,docs",
+    "test:type": "nx run-many --target=test:type --projects=packages/*,plugins/*,docs,examples-server/*",
     "release:test": "nx release --dry-run",
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
     "publish:all": "nx release publish",
@@ -22,7 +21,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.2",
-    "@changesets/cli": "^2.29.3",
+    "@changesets/cli": "^2.29.8",
     "@cloudflare/vitest-pool-workers": "^0.8.70",
     "@nx/js": "^21.0.1",
     "@swc/helpers": "^0.5.17",
@@ -34,5 +33,5 @@
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
-  "packageManager": "pnpm@10.18.1"
+  "packageManager": "pnpm@10.24.0"
 }

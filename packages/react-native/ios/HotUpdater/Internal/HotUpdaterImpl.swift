@@ -8,12 +8,13 @@ import React
     private static let DEFAULT_CHANNEL = "production"
 
     // MARK: - Initialization
-    
+
     /**
      * Convenience initializer that creates and configures all dependencies.
      */
     public convenience override init() {
         let fileSystem = FileManagerService()
+        let isolationKey = HotUpdaterImpl.getIsolationKey()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
         let decompressService = DecompressService()
@@ -22,12 +23,13 @@ import React
             fileSystem: fileSystem,
             downloadService: downloadService,
             decompressService: decompressService,
-            preferences: preferences
+            preferences: preferences,
+            isolationKey: isolationKey
         )
 
         self.init(bundleStorage: bundleStorage, preferences: preferences)
     }
-    
+
     /**
      * Primary initializer with dependency injection.
      * @param bundleStorage Service for bundle storage operations
@@ -66,15 +68,19 @@ import React
     public static func getIsolationKey() -> String {
         // Get fingerprint hash from Info.plist
         let fingerprintHash = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
-        
+
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
         let appChannel = self.appChannel
-        
-        // Use fingerprint if available, otherwise use app version
-        let baseKey = (fingerprintHash != nil && !fingerprintHash!.isEmpty) ? fingerprintHash! : appVersion
-        
-        // Build complete isolation key
+
+        // Include both fingerprint hash and app version for complete isolation
+        let baseKey: String
+        if let hash = fingerprintHash, !hash.isEmpty {
+            baseKey = "\(hash)_\(appVersion)"
+        } else {
+            baseKey = appVersion
+        }
+
         return "hotupdater_\(baseKey)_\(appChannel)_"
     }
 
@@ -122,22 +128,28 @@ import React
         do {
             // Validate parameters (this runs on calling thread - typically JS thread)
             guard let data = params else {
-                throw NSError(domain: "HotUpdaterError", code: 101, 
-                             userInfo: [NSLocalizedDescriptionKey: "Missing params dictionary"])
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Missing or invalid parameters for updateBundle"])
+                reject("UNKNOWN_ERROR", error.localizedDescription, error)
+                return
             }
-            
+
             guard let bundleId = data["bundleId"] as? String, !bundleId.isEmpty else {
-                throw NSError(domain: "HotUpdaterError", code: 102, 
-                             userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Missing or empty 'bundleId'"])
+                reject("MISSING_BUNDLE_ID", error.localizedDescription, error)
+                return
             }
-            
+
             let fileUrlString = data["fileUrl"] as? String ?? ""
 
             var fileUrl: URL? = nil
             if !fileUrlString.isEmpty {
                 guard let url = URL(string: fileUrlString) else {
-                    throw NSError(domain: "HotUpdaterError", code: 103,
-                                 userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
+                    let error = NSError(domain: "HotUpdater", code: 0,
+                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
+                    reject("INVALID_FILE_URL", error.localizedDescription, error)
+                    return
                 }
                 fileUrl = url
             }
@@ -160,10 +172,10 @@ import React
                 }
             }) { [weak self] result in
                 guard self != nil else {
-                    let error = NSError(domain: "HotUpdaterError", code: 998, 
-                                       userInfo: [NSLocalizedDescriptionKey: "Self deallocated during update"])
+                    let error = NSError(domain: "HotUpdater", code: 0,
+                                       userInfo: [NSLocalizedDescriptionKey: "Internal error: self deallocated during update"])
                     DispatchQueue.main.async {
-                        reject("UPDATE_ERROR", error.localizedDescription, error)
+                        reject("SELF_DEALLOCATED", error.localizedDescription, error)
                     }
                     return
                 }
@@ -174,15 +186,98 @@ import React
                         NSLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
                         resolve(true)
                     case .failure(let error):
-                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId): \(error.localizedDescription). Rejecting promise.")
-                        reject("UPDATE_ERROR", error.localizedDescription, error)
+                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId) - Error: \(error)")
+
+                        let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
+                        let nsError = error as NSError
+                        reject(normalizedCode, nsError.localizedDescription, nsError)
                     }
                 }
             }
         } catch let error {
             // Main error boundary - catch and convert all errors to JS rejection
-            NSLog("[HotUpdaterImpl] Error in updateBundleFromJS: \(error.localizedDescription)")
-            reject("UPDATE_ERROR", error.localizedDescription, error)
+            let nsError = error as NSError
+            NSLog("[HotUpdaterImpl] Error in updateBundleFromJS - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+
+            reject("UNKNOWN_ERROR", nsError.localizedDescription, nsError)
         }
+    }
+
+    /**
+     * Normalizes native errors to a small, predictable set of JS-facing error codes.
+     * Rare or platform-specific codes are collapsed to UNKNOWN_ERROR to reduce surface area.
+     */
+    private static func normalizeErrorCode(from error: Error) -> String {
+        let baseCode: String
+
+        if let storageError = error as? BundleStorageError {
+            // Collapse signature sub-errors into a single public code
+            if case .signatureVerificationFailed = storageError {
+                baseCode = "SIGNATURE_VERIFICATION_FAILED"
+            } else {
+                baseCode = storageError.errorCodeString
+            }
+        } else if error is SignatureVerificationError {
+            baseCode = "SIGNATURE_VERIFICATION_FAILED"
+        } else {
+            baseCode = "UNKNOWN_ERROR"
+        }
+
+        return userFacingErrorCodes.contains(baseCode) ? baseCode : "UNKNOWN_ERROR"
+    }
+
+    // Error codes we intentionally expose to JS callers.
+    private static let userFacingErrorCodes: Set<String> = [
+        "MISSING_BUNDLE_ID",
+        "INVALID_FILE_URL",
+        "DIRECTORY_CREATION_FAILED",
+        "DOWNLOAD_FAILED",
+        "INCOMPLETE_DOWNLOAD",
+        "EXTRACTION_FORMAT_ERROR",
+        "INVALID_BUNDLE",
+        "INSUFFICIENT_DISK_SPACE",
+        "SIGNATURE_VERIFICATION_FAILED",
+        "MOVE_OPERATION_FAILED",
+        "BUNDLE_IN_CRASHED_HISTORY",
+        "SELF_DEALLOCATED",
+        "UNKNOWN_ERROR",
+    ]
+
+    // MARK: - Rollback Support
+
+    /**
+     * Notifies the system that the app has successfully started with the given bundle.
+     * If the bundle matches the staging bundle, it promotes to stable.
+     * @param bundleId The ID of the currently running bundle
+     * @return true if promotion was successful or no action was needed
+     */
+    public func notifyAppReady(bundleId: String) -> [String: Any] {
+        return bundleStorage.notifyAppReady(bundleId: bundleId)
+    }
+
+    /**
+     * Gets the crashed bundle history.
+     * @return Array of crashed bundle IDs
+     */
+    public func getCrashHistory() -> [String] {
+        return bundleStorage.getCrashHistory().bundles.map { $0.bundleId }
+    }
+
+    /**
+     * Clears the crashed bundle history.
+     * @return true if clearing was successful
+     */
+    public func clearCrashHistory() -> Bool {
+        return bundleStorage.clearCrashHistory()
+    }
+
+    /**
+     * Gets the base URL for the current active bundle directory.
+     * Returns the file:// URL to the bundle directory with trailing slash.
+     * This is used for Expo DOM components to construct full asset paths.
+     * @return Base URL string (e.g., "file:///var/.../bundle-store/abc123/") or empty string
+     */
+    public func getBaseURL() -> String {
+        return bundleStorage.getBaseURL()
     }
 }

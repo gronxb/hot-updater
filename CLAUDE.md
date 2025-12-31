@@ -10,7 +10,7 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 
 ### Plugin System
 The system is built around three plugin types:
-- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rnef/`
+- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rock/`
 - **Storage Plugins**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
 - **Database Plugins**: Handle metadata storage (PostgreSQL, Cloudflare D1, Supabase Database) - uses same plugin directories as storage
 
@@ -30,6 +30,68 @@ When working on helper packages, reference these external projects:
 ### Configuration
 Projects use `hot-updater.config.ts` files that define build, storage, and database plugins using the `defineConfig()` function.
 
+## Common Commands
+
+### Development
+```bash
+# Install dependencies
+pnpm install
+
+# Build all packages and plugins
+pnpm build
+
+# Build in watch mode for development
+pnpm build:dev
+
+# Run tests
+pnpm test
+
+# Type checking
+pnpm test:type
+
+# Format code with Biome
+pnpm lint:fix
+
+# Check code with Biome
+pnpm lint
+```
+
+### Release Management
+```bash
+# Test release (dry run)
+pnpm release:test
+
+# Create release (without publishing)
+pnpm release
+
+# Publish all packages
+pnpm publish:all
+
+# Publish release candidate
+pnpm publish:rc
+```
+
+### Hot Updater CLI
+```bash
+# Initialize hot updater in a project
+npx hot-updater init
+
+# Deploy bundle
+npx hot-updater deploy
+
+# Open web console
+npx hot-updater console
+
+# Check project health
+npx hot-updater doctor
+
+# Generate fingerprint
+npx hot-updater fingerprint
+
+# Manage channels
+npx hot-updater channel
+```
+
 ## Development Notes
 
 ### CI/CD Requirements
@@ -37,23 +99,18 @@ Projects use `hot-updater.config.ts` files that define build, storage, and datab
 
 1. `pnpm build` - All packages and plugins must build successfully
 2. `pnpm test:type` - TypeScript type checking must pass with no errors
-3. `pnpm biome:check` - Code must pass Biome linting and formatting checks
+3. `pnpm lint` - Code must pass Biome linting and formatting checks
 4. `pnpm test` - All unit tests must pass
 
 Before committing changes, always run these commands locally to ensure CI will pass:
 ```bash
-pnpm build && pnpm test:type && pnpm biome:check && pnpm test
+pnpm build && pnpm test:type && pnpm lint && pnpm test
 ```
 
 ### Code Style
 - Uses Biome for formatting and linting (see `biome.json`)
 - 2-space indentation, 80 character line width
 - Semicolons required, arrow parentheses always
-- **Functions**: Prefer arrow functions over traditional function declarations (`const fn = () => {}` vs `function fn()`)
-- **Types**: Avoid explicit return type annotations unless necessary for clarity
-- **Comments**: Keep comments concise and use only when essential for understanding
-- **Classes**: Avoid classes when possible, prefer functional approach with exports
-- **Exports**: Use named exports over default exports (`export const fn = ...` vs `export default fn`)
 
 ### Testing
 - Uses Vitest with workspace configuration

@@ -1,5 +1,5 @@
 {
-  "name": "hono-prisma-postgres",
+  "name": "@examples-server/hono-prisma-postgres",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,6 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.ts",
     "test": "vitest run",
+    "test:type": "tsc --noEmit",
+    "postinstall": "prisma generate",
     "db:generate": "npx hot-updater db generate src/db.ts --yes",
     "db:push": "npx prisma db push",
     "docker:up": "docker-compose up -d",

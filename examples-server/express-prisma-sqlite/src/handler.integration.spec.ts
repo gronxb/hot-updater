@@ -1,3 +1,9 @@
+import type { Bundle } from "@hot-updater/core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import {
   cleanupServer,
   createGetUpdateInfo,
@@ -6,12 +12,11 @@ import {
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/test-utils/node";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { execa } from "execa";
+import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import fs from "fs/promises";
-import { execa } from "execa";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +27,7 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbPath: string;
+  let hotUpdater: HotUpdaterAPI;
   const port = 13581;
 
   beforeAll(async () => {
@@ -30,6 +36,8 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
 
     testDbPath = createTestDbPath(projectRoot);
     await fs.mkdir(path.join(projectRoot, "data"), { recursive: true });
+
+    process.env.TEST_DB_PATH = testDbPath;
 
     baseUrl = `http://localhost:${port}`;
 
@@ -70,9 +78,7 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       throw new Error("bundles model not found in schema after generate");
     }
 
-    if (
-      !schemaContent.includes("model private_hot_updater_settings")
-    ) {
+    if (!schemaContent.includes("model private_hot_updater_settings")) {
       throw new Error(
         "private_hot_updater_settings model not found in schema after generate",
       );
@@ -97,6 +103,9 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     });
 
     await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+
+    const db = await import("./db.js");
+    hotUpdater = db.hotUpdater;
   }, 60000);
 
   afterAll(async () => {
@@ -113,6 +122,17 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id: string) => hotUpdater.getBundleById(id),
+    getChannels: () => hotUpdater.getChannels(),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    getBundles: (options) => hotUpdater.getBundles(options),
+    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
+      hotUpdater.updateBundleById(bundleId, newBundle),
+    deleteBundleById: (bundleId: string) =>
+      hotUpdater.deleteBundleById(bundleId),
+  });
 
   it("should preserve User model and add hot-updater models in schema.prisma", async () => {
     const schemaPath = path.join(projectRoot, "prisma", "schema.prisma");

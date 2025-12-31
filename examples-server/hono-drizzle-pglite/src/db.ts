@@ -10,7 +10,7 @@ export const hotUpdater = createHotUpdater({
     db,
     provider: "postgresql",
   }),
-  storagePlugins: [
+  storages: [
     mockStorage({}),
     s3Storage({
       region: "auto",

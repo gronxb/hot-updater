@@ -5,17 +5,24 @@
  * @format
  */
 
-import {
-  HotUpdater,
-  getUpdateSource,
-  useHotUpdaterStore,
-} from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
-import React from "react";
-import { useEffect, useState } from "react";
-import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  Alert,
+  Button,
+  Image,
+  Modal,
+  SafeAreaView,
+  Text,
+  View,
+} from "react-native";
+import { proxy, useSnapshot } from "valtio";
 
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
+const notify = proxy<{
+  status?: string;
+  crashedBundleId?: string;
+}>({});
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -33,6 +40,7 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 };
 
 function App(): React.JSX.Element {
+  const state = useSnapshot(notify);
   const [bundleId, setBundleId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,37 +88,58 @@ function App(): React.JSX.Element {
         BundleId: {bundleId}
       </Text>
 
+      <Text
+        style={{
+          marginVertical: 20,
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        Crash History:
+      </Text>
+      {HotUpdater.getCrashHistory().map((crash) => (
+        <Text
+          key={crash}
+          style={{
+            marginVertical: 20,
+            fontSize: 20,
+            fontWeight: "bold",
+            textAlign: "center",
+          }}
+        >
+          {crash}
+        </Text>
+      ))}
+
       <Image
         style={{
           width: 100,
           height: 100,
         }}
-        source={require("./src/logo.png")}
-        // source={require("./src/test/_image.png")}
+        // source={require("./src/logo.png")}
+        source={require("./src/test/_image.png")}
       />
+
+      <Text>{JSON.stringify(state, null, 2)}</Text>
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
       <Button
-        title="HotUpdater.runUpdateProcess()"
-        onPress={() =>
-          HotUpdater.runUpdateProcess({
-            source: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-          }).then((status) => {
-            console.log("Update process completed", JSON.stringify(status));
-          })
-        }
+        title="Clear Crash History"
+        onPress={() => HotUpdater.clearCrashHistory()}
       />
     </SafeAreaView>
   );
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource(
-    `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-    {
-      updateStrategy: "appVersion", // or "fingerprint"
-    },
-  ),
+  baseURL: "http://localhost:3006/hot-updater",
+  updateStrategy: "appVersion",
+  updateMode: "auto",
+  onNotifyAppReady: (result) => {
+    notify.status = result.status;
+    notify.crashedBundleId = result.crashedBundleId;
+  },
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View
@@ -136,4 +165,11 @@ export default HotUpdater.wrap({
       </View>
     </Modal>
   ),
+  onError: (error) => {
+    if (error instanceof Error) {
+      Alert.alert("Error", error.message);
+    } else {
+      Alert.alert("Error", "An unknown error occurred");
+    }
+  },
 })(App);

@@ -7,5 +7,4 @@ package-lock.json
 node_modules/
 dist/
 data/
-hot-updater-schema.ts
 drizzle/

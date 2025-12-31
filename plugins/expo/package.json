@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/expo",
   "type": "module",
-  "version": "0.21.10",
+  "version": "0.25.4",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,9 +22,11 @@
   ],
   "scripts": {
     "build": "tsdown",
+    "test": "vitest run",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/core": "7.26.0",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
@@ -32,7 +34,8 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "execa": "catalog:",
-    "uuidv7": "^1.0.2"
+    "uuidv7": "^1.0.2",
+    "vitest": "^3.2.4"
   },
   "exports": {
     ".": {

@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/cli-tools",
-  "version": "0.21.10",
+  "version": "0.25.4",
   "type": "module",
   "description": "CLI utilities for Hot Updater",
   "sideEffects": false,
@@ -43,24 +43,34 @@
     "access": "public"
   },
   "dependencies": {
-    "@clack/prompts": "0.11.0",
     "@hot-updater/plugin-core": "workspace:*",
+    "oxc-transform": "0.82.1"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@clack/prompts": "0.11.0",
     "boxen": "^8.0.1",
     "cosmiconfig": "9.0.0",
     "cosmiconfig-typescript-loader": "5.0.0",
     "es-toolkit": "^1.32.0",
+    "execa": "catalog:",
     "fast-glob": "3.3.3",
     "jszip": "^3.10.1",
-    "oxc-transform": "0.82.1",
     "picocolors": "1.1.1",
+    "read-package-up": "^11.0.0",
     "tar": "^7.5.1",
     "workspace-tools": "^0.36.4",
-    "semver": "^7.6.3"
-  },
-  "devDependencies": {
-    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "5.8.2",
+    "semver": "^7.6.3"
+  },
+  "peerDependencies": {
+    "typescript": "*",
     "@types/semver": "^7.7.1"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   }
 }

@@ -15,7 +15,7 @@ You can use `HotUpdater.getChannel()` to dynamically check the release channel i
 ### Example
 
 ```tsx
-import { HotUpdater, getUpdateSource } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native";
 import { Text, View } from "react-native";
 
 function App() {
@@ -29,9 +29,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource("<your-update-server-url>", {
-    updateStrategy: "appVersion", // or "fingerprint"
-  }),
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  updateMode: "auto",
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },

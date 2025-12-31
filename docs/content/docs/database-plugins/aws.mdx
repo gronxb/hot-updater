@@ -27,10 +27,10 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface S3DatabaseConfig {
-  region: string;                    // AWS region
-  bucketName: string;                // S3 bucket for metadata
-  cloudfrontDistributionId: string;  // CloudFront distribution ID
-  apiBasePath?: string;              // API path (default: "/api/check-update")
+  region: string;                     // AWS region
+  bucketName: string;                 // S3 bucket for metadata
+  cloudfrontDistributionId?: string;  // CloudFront distribution ID for cache invalidation
+  apiBasePath?: string;               // API path (default: "/api/check-update")
   credentials?: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -87,3 +87,32 @@ export default defineConfig({
   // ... other config
 });
 ```
+
+## Custom Server Usage
+
+Use `s3Database` with `createHotUpdater` for self-hosted servers:
+
+```typescript
+import { s3Database } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+
+const hotUpdater = createHotUpdater({
+  database: s3Database({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.AWS_S3_METADATA_BUCKET!,
+  }),
+  // ... other options
+});
+```
+
+For complete server setup guides, see [S3 Database Adapter](/docs/custom/database/s3).
+
+## CloudFront Cache Invalidation
+
+The `cloudfrontDistributionId` option enables automatic CloudFront cache invalidation when bundles are updated. This is particularly useful when using Lambda@Edge for request handling.
+
+If omitted, cache invalidation is skipped

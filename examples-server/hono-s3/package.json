@@ -1,0 +1,33 @@
+{
+  "name": "@examples-server/hono-s3",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:type": "tsc --noEmit",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down -v"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.5",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "dotenv": "^16.6.1",
+    "hono": "^4.9.12"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.771.0",
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "^20.11.17",
+    "execa": "^9.5.2",
+    "hot-updater": "workspace:*",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

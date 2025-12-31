@@ -1,7 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -9,6 +8,7 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { kyselyAdapter } from "./adapters/kysely";
 import { createHotUpdater } from "./db";
 
 /**
@@ -62,16 +62,16 @@ beforeAll(async () => {
 
   server.use(
     // Specific routes
-    http.get(`${baseUrl}/hot-updater/bundles`, ({ request }) =>
+    http.get(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
       handleRequest(request),
     ),
-    http.get(`${baseUrl}/hot-updater/bundles/:id`, ({ request }) =>
+    http.get(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
       handleRequest(request),
     ),
-    http.post(`${baseUrl}/hot-updater/bundles`, ({ request }) =>
+    http.post(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
       handleRequest(request),
     ),
-    http.delete(`${baseUrl}/hot-updater/bundles/:id`, ({ request }) =>
+    http.delete(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
       handleRequest(request),
     ),
   );
@@ -108,7 +108,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository pointing to our test server
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })({ cwd: process.cwd() });
+    })();
 
     const bundleId = uuidv7();
     const bundle = createTestBundle({
@@ -121,9 +121,12 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await repo.commitBundle(); // Triggers actual commit
 
     // Verify via handler that bundle was created
-    const request = new Request(`${baseUrl}/hot-updater/bundles/${bundleId}`, {
-      method: "GET",
-    });
+    const request = new Request(
+      `${baseUrl}/hot-updater/api/bundles/${bundleId}`,
+      {
+        method: "GET",
+      },
+    );
 
     const response = await api.handler(request);
     expect(response.status).toBe(200);
@@ -146,7 +149,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })({ cwd: process.cwd() });
+    })();
 
     // Use standalone repository to retrieve
     const retrieved = await repo.getBundleById(bundleId);
@@ -173,7 +176,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })({ cwd: process.cwd() });
+    })();
 
     // Delete via standalone repository
     await repo.deleteBundle(bundle);
@@ -199,7 +202,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })({ cwd: process.cwd() });
+    })();
 
     // Get all bundles
     const result = await repo.getBundles({ limit: 50, offset: 0 });
@@ -220,7 +223,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Full E2E: create → retrieve → update → delete via standalone", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })({ cwd: process.cwd() });
+    })();
 
     // Step 1: Create bundle via standalone
     const bundleId = uuidv7();
@@ -258,7 +261,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Multiple bundles in single commit (standalone sends array)", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })({ cwd: process.cwd() });
+    })();
 
     // Append multiple bundles
     const bundleId1 = uuidv7();
@@ -316,7 +319,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository with matching basePath
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/api/v2`,
-    })({ cwd: process.cwd() });
+    })();
 
     // Test create and retrieve
     const bundleId = uuidv7();
@@ -336,7 +339,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Handler returns 404 when bundle not found (standalone handles gracefully)", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })({ cwd: process.cwd() });
+    })();
 
     // Try to get non-existent bundle
     const result = await repo.getBundleById("non-existent-bundle");

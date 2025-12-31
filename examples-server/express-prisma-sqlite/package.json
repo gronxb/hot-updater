@@ -1,5 +1,5 @@
 {
-  "name": "express-prisma-sqlite",
+  "name": "@examples-server/express-prisma-sqlite",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,6 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "test:type": "tsc --noEmit",
+    "postinstall": "prisma generate",
     "db:generate": "npx hot-updater db generate src/db.ts --yes",
     "db:push": "npx prisma db push"
   },

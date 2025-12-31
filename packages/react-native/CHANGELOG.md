@@ -1,5 +1,256 @@
 # @hot-updater/react-native
 
+## 0.25.4
+
+### Patch Changes
+
+- Updated dependencies [8c83ff2]
+  - @hot-updater/cli-tools@0.25.4
+  - @hot-updater/core@0.25.4
+  - @hot-updater/js@0.25.4
+  - @hot-updater/plugin-core@0.25.4
+
+## 0.25.3
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.3
+- @hot-updater/core@0.25.3
+- @hot-updater/js@0.25.3
+- @hot-updater/plugin-core@0.25.3
+
+## 0.25.2
+
+### Patch Changes
+
+- 2c22c41: feat(expo): support bundle signing for eas build
+  - @hot-updater/cli-tools@0.25.2
+  - @hot-updater/core@0.25.2
+  - @hot-updater/js@0.25.2
+  - @hot-updater/plugin-core@0.25.2
+
+## 0.25.1
+
+### Patch Changes
+
+- 820c276: fix(native): without request HEAD
+  - @hot-updater/cli-tools@0.25.1
+  - @hot-updater/core@0.25.1
+  - @hot-updater/js@0.25.1
+  - @hot-updater/plugin-core@0.25.1
+
+## 0.25.0
+
+### Minor Changes
+
+- d22b48a: feat(expo): expo 'use dom' correct ota update
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.0
+- @hot-updater/core@0.25.0
+- @hot-updater/js@0.25.0
+- @hot-updater/plugin-core@0.25.0
+
+## 0.24.7
+
+### Patch Changes
+
+- 294e324: fix: update babel plugin path in documentation and plugin files
+- Updated dependencies [294e324]
+  - @hot-updater/cli-tools@0.24.7
+  - @hot-updater/core@0.24.7
+  - @hot-updater/js@0.24.7
+  - @hot-updater/plugin-core@0.24.7
+
+## 0.24.6
+
+### Patch Changes
+
+- Updated dependencies [9d7b6af]
+  - @hot-updater/cli-tools@0.24.6
+  - @hot-updater/core@0.24.6
+  - @hot-updater/js@0.24.6
+  - @hot-updater/plugin-core@0.24.6
+
+## 0.24.5
+
+### Patch Changes
+
+- 93d3372: Use cachesDirectory on tvOS
+  - @hot-updater/cli-tools@0.24.5
+  - @hot-updater/core@0.24.5
+  - @hot-updater/js@0.24.5
+  - @hot-updater/plugin-core@0.24.5
+
+## 0.24.4
+
+### Patch Changes
+
+- Updated dependencies [7ed539f]
+  - @hot-updater/plugin-core@0.24.4
+  - @hot-updater/cli-tools@0.24.4
+  - @hot-updater/core@0.24.4
+  - @hot-updater/js@0.24.4
+
+## 0.24.3
+
+### Patch Changes
+
+- bbe71f7: Add tvOS support to HotUpdater
+  - @hot-updater/cli-tools@0.24.3
+  - @hot-updater/core@0.24.3
+  - @hot-updater/js@0.24.3
+  - @hot-updater/plugin-core@0.24.3
+
+## 0.24.2
+
+### Patch Changes
+
+- 5a46549: fix(native): background update
+  - @hot-updater/cli-tools@0.24.2
+  - @hot-updater/core@0.24.2
+  - @hot-updater/js@0.24.2
+  - @hot-updater/plugin-core@0.24.2
+
+## 0.24.1
+
+### Patch Changes
+
+- fe78d4f: feat(react-native): wrap with resolver
+  - @hot-updater/cli-tools@0.24.1
+  - @hot-updater/core@0.24.1
+  - @hot-updater/js@0.24.1
+  - @hot-updater/plugin-core@0.24.1
+
+## 0.24.0
+
+### Minor Changes
+
+- 753208b: feat(native): notifyAppReady for auto rollback (invalid bundle)
+- c51239c: fix(ios): getMinBundleId timezone issue
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.24.0
+- @hot-updater/core@0.24.0
+- @hot-updater/js@0.24.0
+- @hot-updater/plugin-core@0.24.0
+
+## 0.23.1
+
+### Patch Changes
+
+- 7fa9a20: feat(expo): bundle-signing supports cng plugin
+  - @hot-updater/cli-tools@0.23.1
+  - @hot-updater/core@0.23.1
+  - @hot-updater/js@0.23.1
+  - @hot-updater/plugin-core@0.23.1
+
+## 0.23.0
+
+### Minor Changes
+
+- e41fb6b: feat: add bundle signing for cryptographic OTA verification
+
+### Patch Changes
+
+- Updated dependencies [e41fb6b]
+  - @hot-updater/core@0.23.0
+  - @hot-updater/js@0.23.0
+  - @hot-updater/plugin-core@0.23.0
+  - @hot-updater/cli-tools@0.23.0
+
+## 0.22.2
+
+### Patch Changes
+
+- 82636ea: fix(expo): expo plugin transformer not found
+  - hot-updater@0.22.2
+  - @hot-updater/cli-tools@0.22.2
+  - @hot-updater/core@0.22.2
+  - @hot-updater/js@0.22.2
+  - @hot-updater/plugin-core@0.22.2
+
+## 0.22.1
+
+### Patch Changes
+
+- hot-updater@0.22.1
+- @hot-updater/cli-tools@0.22.1
+- @hot-updater/core@0.22.1
+- @hot-updater/js@0.22.1
+- @hot-updater/plugin-core@0.22.1
+
+## 0.22.0
+
+### Patch Changes
+
+- hot-updater@0.22.0
+- @hot-updater/cli-tools@0.22.0
+- @hot-updater/core@0.22.0
+- @hot-updater/js@0.22.0
+- @hot-updater/plugin-core@0.22.0
+
+## 0.21.15
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.21.15
+- hot-updater@0.21.15
+- @hot-updater/js@0.21.15
+- @hot-updater/plugin-core@0.21.15
+- @hot-updater/core@0.21.15
+
+## 0.21.14
+
+### Patch Changes
+
+- 0b0152a: fix(ios): implement CustomNSError protocol for better error reporting…
+  - hot-updater@0.21.14
+  - @hot-updater/cli-tools@0.21.14
+  - @hot-updater/core@0.21.14
+  - @hot-updater/js@0.21.14
+  - @hot-updater/plugin-core@0.21.14
+
+## 0.21.13
+
+### Patch Changes
+
+- a6bda2b: refactor(expo): supports testcase RN82
+- Updated dependencies [44f4e95]
+  - hot-updater@0.21.13
+  - @hot-updater/cli-tools@0.21.13
+  - @hot-updater/core@0.21.13
+  - @hot-updater/js@0.21.13
+  - @hot-updater/plugin-core@0.21.13
+
+## 0.21.12
+
+### Patch Changes
+
+- Updated dependencies [56e849b]
+- Updated dependencies [5c4b98e]
+  - hot-updater@0.21.12
+  - @hot-updater/plugin-core@0.21.12
+  - @hot-updater/cli-tools@0.21.12
+  - @hot-updater/core@0.21.12
+  - @hot-updater/js@0.21.12
+
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+- Updated dependencies [d6c3a65]
+- Updated dependencies [e2b67d7]
+- Updated dependencies [2905e47]
+  - @hot-updater/cli-tools@0.21.11
+  - @hot-updater/core@0.21.11
+  - hot-updater@0.21.11
+  - @hot-updater/js@0.21.11
+  - @hot-updater/plugin-core@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes
@@ -105,7 +356,7 @@
   - @hot-updater/core@0.21.1
   - @hot-updater/js@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -117,10 +368,10 @@
 - Updated dependencies [610b2dd]
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - hot-updater@1.0.0
-  - @hot-updater/plugin-core@1.0.0
-  - @hot-updater/core@1.0.0
-  - @hot-updater/js@1.0.0
+  - hot-updater@0.22.0
+  - @hot-updater/plugin-core@0.22.0
+  - @hot-updater/core@0.22.0
+  - @hot-updater/js@0.22.0
 
 ## 0.20.15
 

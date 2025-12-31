@@ -93,11 +93,12 @@ const runBundle = async ({
 Example:
 module.exports = {
   plugins: [
-    ["@hot-updater/babel-plugin"]
+    ["hot-updater/babel-plugin"]
   ]
 }
 `);
   }
+
   const enableHermes = isHermesEnabled(cwd, platform);
   if (enableHermes) {
     const { hermesVersion } = await compileHermes({

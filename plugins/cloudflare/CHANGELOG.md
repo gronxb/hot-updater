@@ -1,5 +1,224 @@
 # @hot-updater/cloudflare
 
+## 0.25.4
+
+### Patch Changes
+
+- Updated dependencies [8c83ff2]
+  - @hot-updater/cli-tools@0.25.4
+  - @hot-updater/core@0.25.4
+  - @hot-updater/js@0.25.4
+  - @hot-updater/plugin-core@0.25.4
+
+## 0.25.3
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.3
+- @hot-updater/core@0.25.3
+- @hot-updater/js@0.25.3
+- @hot-updater/plugin-core@0.25.3
+
+## 0.25.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.2
+- @hot-updater/core@0.25.2
+- @hot-updater/js@0.25.2
+- @hot-updater/plugin-core@0.25.2
+
+## 0.25.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.1
+- @hot-updater/core@0.25.1
+- @hot-updater/js@0.25.1
+- @hot-updater/plugin-core@0.25.1
+
+## 0.25.0
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.0
+- @hot-updater/core@0.25.0
+- @hot-updater/js@0.25.0
+- @hot-updater/plugin-core@0.25.0
+
+## 0.24.7
+
+### Patch Changes
+
+- 294e324: fix: update babel plugin path in documentation and plugin files
+- Updated dependencies [294e324]
+  - @hot-updater/cli-tools@0.24.7
+  - @hot-updater/core@0.24.7
+  - @hot-updater/js@0.24.7
+  - @hot-updater/plugin-core@0.24.7
+
+## 0.24.6
+
+### Patch Changes
+
+- Updated dependencies [9d7b6af]
+  - @hot-updater/cli-tools@0.24.6
+  - @hot-updater/core@0.24.6
+  - @hot-updater/js@0.24.6
+  - @hot-updater/plugin-core@0.24.6
+
+## 0.24.5
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.24.5
+- @hot-updater/core@0.24.5
+- @hot-updater/js@0.24.5
+- @hot-updater/plugin-core@0.24.5
+
+## 0.24.4
+
+### Patch Changes
+
+- Updated dependencies [7ed539f]
+  - @hot-updater/plugin-core@0.24.4
+  - @hot-updater/cli-tools@0.24.4
+  - @hot-updater/core@0.24.4
+  - @hot-updater/js@0.24.4
+
+## 0.24.3
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.24.3
+- @hot-updater/core@0.24.3
+- @hot-updater/js@0.24.3
+- @hot-updater/plugin-core@0.24.3
+
+## 0.24.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.24.2
+- @hot-updater/core@0.24.2
+- @hot-updater/js@0.24.2
+- @hot-updater/plugin-core@0.24.2
+
+## 0.24.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.24.1
+- @hot-updater/core@0.24.1
+- @hot-updater/js@0.24.1
+- @hot-updater/plugin-core@0.24.1
+
+## 0.24.0
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.24.0
+- @hot-updater/core@0.24.0
+- @hot-updater/js@0.24.0
+- @hot-updater/plugin-core@0.24.0
+
+## 0.23.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.23.1
+- @hot-updater/core@0.23.1
+- @hot-updater/js@0.23.1
+- @hot-updater/plugin-core@0.23.1
+
+## 0.23.0
+
+### Patch Changes
+
+- Updated dependencies [e41fb6b]
+  - @hot-updater/core@0.23.0
+  - @hot-updater/js@0.23.0
+  - @hot-updater/plugin-core@0.23.0
+  - @hot-updater/cli-tools@0.23.0
+
+## 0.22.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.22.2
+- @hot-updater/core@0.22.2
+- @hot-updater/js@0.22.2
+- @hot-updater/plugin-core@0.22.2
+
+## 0.22.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.22.1
+- @hot-updater/core@0.22.1
+- @hot-updater/js@0.22.1
+- @hot-updater/plugin-core@0.22.1
+
+## 0.22.0
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.22.0
+- @hot-updater/core@0.22.0
+- @hot-updater/js@0.22.0
+- @hot-updater/plugin-core@0.22.0
+
+## 0.21.15
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.21.15
+- @hot-updater/js@0.21.15
+- @hot-updater/plugin-core@0.21.15
+- @hot-updater/core@0.21.15
+
+## 0.21.14
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.21.14
+- @hot-updater/core@0.21.14
+- @hot-updater/js@0.21.14
+- @hot-updater/plugin-core@0.21.14
+
+## 0.21.13
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.21.13
+- @hot-updater/core@0.21.13
+- @hot-updater/js@0.21.13
+- @hot-updater/plugin-core@0.21.13
+
+## 0.21.12
+
+### Patch Changes
+
+- 5c4b98e: feat(storage): createStoragePlugin
+- Updated dependencies [5c4b98e]
+  - @hot-updater/plugin-core@0.21.12
+  - @hot-updater/cli-tools@0.21.12
+  - @hot-updater/core@0.21.12
+  - @hot-updater/js@0.21.12
+
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+- 2905e47: feat(server): supports hot-updater database plugin style
+- Updated dependencies [d6c3a65]
+- Updated dependencies [e2b67d7]
+  - @hot-updater/cli-tools@0.21.11
+  - @hot-updater/core@0.21.11
+  - @hot-updater/js@0.21.11
+  - @hot-updater/plugin-core@0.21.11
+
 ## 0.21.10
 
 ### Patch Changes
@@ -90,7 +309,7 @@
   - @hot-updater/core@0.21.1
   - @hot-updater/js@0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 
@@ -103,9 +322,9 @@
 - Updated dependencies [610b2dd]
 - Updated dependencies [afb084b]
 - Updated dependencies [036f8f0]
-  - @hot-updater/plugin-core@1.0.0
-  - @hot-updater/core@1.0.0
-  - @hot-updater/js@1.0.0
+  - @hot-updater/plugin-core@0.22.0
+  - @hot-updater/core@0.22.0
+  - @hot-updater/js@0.22.0
 
 ## 0.20.15
 

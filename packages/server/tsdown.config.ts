@@ -1,4 +1,5 @@
 import { defineConfig } from "tsdown";
+import pkg from "./package.json" with { type: "json" };
 
 export default defineConfig([
   {
@@ -17,5 +18,8 @@ export default defineConfig([
     unbundle: true,
     exports: true,
     failOnWarn: true,
+    define: {
+      __VERSION__: JSON.stringify(pkg.version),
+    },
   },
 ]);

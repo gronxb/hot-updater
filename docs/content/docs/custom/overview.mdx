@@ -2,6 +2,7 @@
 title: "Overview"
 description: Build a custom backend server for Hot Updater database with any framework and ORM.
 icon: Server
+version: "v0.22.0"
 ---
 
 ## Installation
@@ -52,7 +53,7 @@ export default defineConfig({
 
 ## Storage Plugins
 
-The `storagePlugins` field in your server configuration acts as a decoder/interpreter for storage URIs. Here's how it works:
+The `storages` field in your server configuration acts as a decoder/interpreter for storage URIs. Here's how it works:
 
 1. When you run `npx hot-updater deploy` from your `hot-updater.config.ts`, the bundle is uploaded and a `storageUri` is saved to the database
 2. When the API returns bundle information, the server decodes the `storageUri` using the storage plugin to generate a download URL
@@ -60,7 +61,7 @@ The `storagePlugins` field in your server configuration acts as a decoder/interp
 
 ### Multiple Storage Plugins
 
-`storagePlugins` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin acts as a decoder for its specific storage URI format.
+`storages` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin acts as a decoder for its specific storage URI format.
 
 **Use cases:**
 - Bundles stored across different storage providers
@@ -71,7 +72,7 @@ The `storagePlugins` field in your server configuration acts as a decoder/interp
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  storagePlugins: [
+  storages: [
     s3Storage({ /* AWS S3 config */ }),
     supabaseStorage({ /* Supabase config */ }),
     myCustomStorage({ /* My Custom Storage */})
@@ -94,7 +95,7 @@ storage: s3Storage({ ... })
 
 **Server (src/hotUpdater.ts):**
 ```typescript
-storagePlugins: [s3Storage({ ... })]
+storages: [s3Storage({ ... })]
 ```
 
 This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.

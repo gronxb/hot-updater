@@ -8,6 +8,5 @@ export default defineConfig([
     dts: true,
     exports: true,
     failOnWarn: true,
-    unbundle: true,
   },
 ]);

@@ -26,6 +26,6 @@ jobs:
         run: pnpm test:type
 
       - name: Biome check
-        run: pnpm biome:check
+        run: pnpm lint
       - name: Unit test
         run: pnpm test

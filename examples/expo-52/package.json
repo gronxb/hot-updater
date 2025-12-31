@@ -1,5 +1,5 @@
 {
-  "name": "expo-52",
+  "name": "@examples/expo-52",
   "version": "1.1.0",
   "main": "index.ts",
   "scripts": {
@@ -10,12 +10,16 @@
     "fingerprint:create": "hot-updater fingerprint create"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~4.0.1",
     "@hot-updater/react-native": "workspace:*",
     "expo": "~52.0.46",
     "expo-dev-client": "~5.0.20",
     "expo-status-bar": "~2.0.1",
     "react": "18.3.1",
-    "react-native": "0.76.9"
+    "react-dom": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-web": "~0.19.13",
+    "react-native-webview": "13.12.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -23,12 +27,12 @@
     "@hot-updater/expo": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@types/react": "~18.3.12",
+    "dotenv": "^16.4.5",
     "expo-font": "^13.0.4",
     "hot-updater": "workspace:*",
     "metro": "0.81.4",
     "metro-resolver": "0.81.4",
-    "typescript": "^5.3.3",
-    "dotenv": "^16.4.5"
+    "typescript": "^5.3.3"
   },
   "private": true
 }

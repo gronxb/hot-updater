@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { loadConfig } from "@hot-updater/cli-tools";
 import type { ExpoConfig } from "expo/config";
 import {
@@ -8,8 +9,15 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import { createFingerprintJSON, generateFingerprints } from "hot-updater";
+import {
+  createFingerprintJSON,
+  generateFingerprints,
+  getPublicKeyFromPrivate,
+  loadPrivateKey,
+} from "hot-updater";
+import path from "path";
 import pkg from "../../package.json";
+import { transformAndroid, transformIOS } from "./transformers";
 
 let fingerprintCache: Awaited<ReturnType<typeof generateFingerprints>> | null =
   null;
@@ -24,52 +32,95 @@ const getFingerprint = async () => {
   return fingerprintCache;
 };
 
+/**
+ * Extract public key for embedding in native configs.
+ * Supports multiple sources with priority order:
+ * 1. HOT_UPDATER_PRIVATE_KEY environment variable
+ * 2. Private key file (extract public key)
+ * 3. Public key file (derived from privateKeyPath)
+ * 4. Skip with warning (graceful fallback)
+ */
+const getPublicKeyFromConfig = async (
+  signingConfig: { enabled?: boolean; privateKeyPath?: string } | undefined,
+): Promise<string | null> => {
+  // If signing not enabled, no public key needed
+  if (!signingConfig?.enabled) {
+    return null;
+  }
+
+  // Priority 1: Environment variable with private key PEM (EAS builds)
+  const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
+  if (envPrivateKey) {
+    try {
+      const publicKeyPEM = getPublicKeyFromPrivate(envPrivateKey);
+      console.log(
+        "[hot-updater] Using public key extracted from HOT_UPDATER_PRIVATE_KEY environment variable",
+      );
+      return publicKeyPEM.trim();
+    } catch (error) {
+      console.warn(
+        "[hot-updater] WARNING: Failed to extract public key from HOT_UPDATER_PRIVATE_KEY:\n" +
+          `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      // Continue to try other methods
+    }
+  }
+
+  // If no privateKeyPath configured, can't proceed with file-based methods
+  if (!signingConfig.privateKeyPath) {
+    console.warn(
+      "[hot-updater] WARNING: signing.enabled is true but no privateKeyPath configured.\n" +
+        "Public key will not be embedded. Set HOT_UPDATER_PRIVATE_KEY environment variable or configure privateKeyPath.",
+    );
+    return null;
+  }
+
+  // Resolve paths
+  const privateKeyPath = path.isAbsolute(signingConfig.privateKeyPath)
+    ? signingConfig.privateKeyPath
+    : path.resolve(process.cwd(), signingConfig.privateKeyPath);
+
+  const publicKeyPath = privateKeyPath.replace(
+    /private-key\.pem$/,
+    "public-key.pem",
+  );
+
+  try {
+    // Priority 2: Private key file (existing method)
+    const privateKeyPEM = await loadPrivateKey(privateKeyPath);
+    const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
+    console.log(`[hot-updater] Extracted public key from ${privateKeyPath}`);
+    return publicKeyPEM.trim();
+  } catch (_privateKeyError) {
+    try {
+      // Priority 3: Public key file (fallback)
+      const publicKeyPEM = await readFile(publicKeyPath, "utf-8");
+      console.log(`[hot-updater] Using public key from ${publicKeyPath}`);
+      return publicKeyPEM.trim();
+    } catch (_publicKeyError) {
+      // Priority 4: All sources failed - throw error
+      throw new Error(
+        "[hot-updater] Failed to load public key for bundle signing.\n\n" +
+          "Signing is enabled (signing.enabled: true) but no public key sources found.\n\n" +
+          "For EAS builds, use EAS Secrets:\n" +
+          '  eas env:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"\n\n' +
+          "Or add to eas.json:\n" +
+          '  "env": { "HOT_UPDATER_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\n..." }\n\n' +
+          "For local development:\n" +
+          "  npx hot-updater keys generate\n\n" +
+          `Searched locations:\n` +
+          `  - HOT_UPDATER_PRIVATE_KEY environment variable\n` +
+          `  - Private key file: ${privateKeyPath}\n` +
+          `  - Public key file: ${publicKeyPath}\n`,
+      );
+    }
+  }
+};
+
 // Type definitions
 type HotUpdaterConfig = {
   channel?: string;
 };
-
-/**
- * Helper to add lines if they don't exist, anchored by a specific string.
- */
-function addLinesOnce(
-  contents: string,
-  anchor: string,
-  linesToAdd: string[],
-): string {
-  if (linesToAdd.every((line) => contents.includes(line))) {
-    // All lines already exist, do nothing
-    return contents;
-  }
-
-  // Check if the anchor exists
-  if (!contents.includes(anchor)) {
-    // Anchor not found, cannot add lines reliably.
-    // Consider logging a warning or throwing an error here if necessary.
-    return contents;
-  }
-
-  // Add lines after the anchor
-  // Ensure newline separation
-  return contents.replace(anchor, `${anchor}\n${linesToAdd.join("\n")}`);
-}
-
-/**
- * Helper to replace content only if the target content exists and hasn't been replaced yet.
- */
-function replaceContentOnce(
-  contents: string,
-  searchRegex: RegExp,
-  replacement: string,
-  checkIfAlreadyReplaced: string, // A string unique to the replacement
-): string {
-  // If the replacement content is already present, assume it's done.
-  if (contents.includes(checkIfAlreadyReplaced)) {
-    return contents;
-  }
-  // Otherwise, perform the replacement if the search target exists.
-  return contents.replace(searchRegex, replacement);
-}
 
 /**
  * Native code modifications - should only run once
@@ -80,167 +131,18 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
   // === iOS: Objective-C & Swift in AppDelegate ===
   modifiedConfig = withAppDelegate(modifiedConfig, (cfg) => {
     let contents = cfg.modResults.contents;
-    const iosImport = "#import <HotUpdater/HotUpdater.h>";
-    const iosBundleUrl = "[HotUpdater bundleURL]";
-    const iosOriginalBundleUrlRegex =
-      /\[\[NSBundle mainBundle\] URLForResource:@"main" withExtension:@"jsbundle"\]/g;
-    const iosAppDelegateHeader = '#import "AppDelegate.h"'; // Anchor for import
 
-    const swiftImport = "import HotUpdater";
-    const swiftBundleUrl = "HotUpdater.bundleURL()";
-    const swiftOriginalBundleUrlRegex =
-      /Bundle\.main\.url\(forResource: "?main"?, withExtension: "jsbundle"\)/g;
-    const swiftReactImport = "import React"; // Anchor for import
-
-    // --- Objective-C ---
-    if (contents.includes(iosAppDelegateHeader)) {
-      // Check if it's likely Obj-C
-      // 1. Add import if missing
-      contents = addLinesOnce(contents, iosAppDelegateHeader, [iosImport]);
-
-      // 2. Replace bundleURL provider if the original exists and hasn't been replaced
-      contents = replaceContentOnce(
-        contents,
-        iosOriginalBundleUrlRegex,
-        iosBundleUrl,
-        iosBundleUrl, // Check using the replacement itself
-      );
-    }
-
-    // --- Swift ---
-    if (contents.includes(swiftReactImport)) {
-      // Check if it's likely Swift
-      // 1. Add import if missing
-      contents = addLinesOnce(contents, swiftReactImport, [swiftImport]);
-
-      // 2. Replace bundleURL provider if the original exists and hasn't been replaced
-      contents = replaceContentOnce(
-        contents,
-        swiftOriginalBundleUrlRegex,
-        swiftBundleUrl,
-        swiftBundleUrl, // Check using the replacement itself
-      );
-    }
+    contents = transformIOS(contents);
 
     cfg.modResults.contents = contents;
     return cfg;
   });
 
-  // === Android: Kotlin & Java in MainApplication ===
+  // === Android: Kotlin in MainApplication ===
   modifiedConfig = withMainApplication(modifiedConfig, (cfg) => {
     let contents = cfg.modResults.contents;
 
-    const kotlinImport = "import com.hotupdater.HotUpdater";
-    const kotlinImportAnchor = "import com.facebook.react.ReactApplication";
-    const kotlinReactNativeHostAnchor =
-      "object : DefaultReactNativeHost(this) {"; // Start of block
-    const kotlinMethodCheck = "HotUpdater.getJSBundleFile(applicationContext)"; // Unique part of the method body
-    // Regex to find an existing getJSBundleFile override (non-greedy)
-    const kotlinExistingMethodRegex =
-      /^\s*override fun getJSBundleFile\(\): String\?\s*\{[\s\S]*?^\s*\}/gm;
-    const kotlinHermesAnchor =
-      "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED";
-    const kotlinNewArchAnchor =
-      "override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED";
-    const kotlinNewMethod = `
-          override fun getJSBundleFile(): String? {
-              return HotUpdater.getJSBundleFile(applicationContext)
-          }`;
-
-    const javaImport = "import com.hotupdater.HotUpdater;";
-    const javaImportAnchor = "import com.facebook.react.ReactApplication;";
-    const javaReactNativeHostAnchor = "new DefaultReactNativeHost"; // Part of the instantiation
-    const javaMethodCheck = "HotUpdater.Companion.getJSBundleFile"; // Unique part of the method body
-    // Regex to find an existing getJSBundleFile override (non-greedy)
-    const javaExistingMethodRegex =
-      /^\s*@Override\s+protected String getJSBundleFile\(\)\s*\{[\s\S]*?^\s*\}/gm;
-    const javaHermesBlockEndAnchor = `return BuildConfig.IS_HERMES_ENABLED;
-        }`; // End of the isHermesEnabled method block
-    const javaNewMethod = `
-        @Override
-        protected String getJSBundleFile() {
-            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());
-        }`;
-
-    // --- Kotlin ---
-    if (contents.includes(kotlinReactNativeHostAnchor)) {
-      // Check if likely Kotlin
-      // 1. Add import if missing
-      contents = addLinesOnce(contents, kotlinImportAnchor, [kotlinImport]);
-
-      // 2. Add/Replace getJSBundleFile method if needed
-      if (!contents.includes(kotlinMethodCheck)) {
-        // Desired method content not found
-        // Remove potentially existing (different) override first
-        contents = contents.replace(kotlinExistingMethodRegex, "");
-
-        // Add the new method after the isHermesEnabled property
-        if (contents.includes(kotlinHermesAnchor)) {
-          contents = contents.replace(
-            kotlinHermesAnchor,
-            `${kotlinHermesAnchor}\n${kotlinNewMethod}`,
-          );
-        } else if (contents.includes(kotlinNewArchAnchor)) {
-          contents = contents.replace(
-            kotlinNewArchAnchor,
-            `${kotlinNewArchAnchor}\n${kotlinNewMethod}`,
-          );
-        } else {
-          // Fallback: Add before the closing brace of the object if anchor not found
-          const rnHostEndRegex =
-            /(\s*object\s*:\s*DefaultReactNativeHost\s*\([\s\S]*?\n)(\s*\})\s*$/m;
-          if (rnHostEndRegex.test(contents)) {
-            contents = contents.replace(
-              rnHostEndRegex,
-              `$1${kotlinNewMethod}\n$2`,
-            );
-          } else {
-            throw new Error(
-              "[withHotUpdater] Kotlin: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
-            );
-          }
-        }
-      }
-    }
-
-    // --- Java ---
-    if (
-      contents.includes(javaReactNativeHostAnchor) &&
-      contents.includes("@Override")
-    ) {
-      // Check if likely Java
-      // 1. Add import if missing
-      contents = addLinesOnce(contents, javaImportAnchor, [javaImport]);
-
-      // 2. Add/Replace getJSBundleFile method if needed
-      if (!contents.includes(javaMethodCheck)) {
-        // Desired method content not found
-        // Remove potentially existing (different) override first
-        contents = contents.replace(javaExistingMethodRegex, "");
-
-        // Add the new method after the isHermesEnabled method block
-        if (contents.includes(javaHermesBlockEndAnchor)) {
-          contents = contents.replace(
-            javaHermesBlockEndAnchor,
-            `${javaHermesBlockEndAnchor}\n${javaNewMethod}`,
-          );
-        } else {
-          // Fallback: Add before the closing brace of the anonymous class
-          const rnHostEndRegex =
-            /(\s*new\s*DefaultReactNativeHost\s*\([\s\S]*?\n)(\s*\});\s*$/m;
-          if (rnHostEndRegex.test(contents)) {
-            contents = contents.replace(
-              rnHostEndRegex,
-              `$1${javaNewMethod}\n$2`,
-            );
-          } else {
-            throw new Error(
-              "[withHotUpdater] Java: Could not find Hermes anchor or closing brace to insert getJSBundleFile.",
-            );
-          }
-        }
-      }
-    }
+    contents = transformAndroid(contents);
 
     cfg.modResults.contents = contents;
     return cfg;
@@ -267,9 +169,15 @@ const withHotUpdaterConfigAsync =
         fingerprintHash = fingerprint.ios.hash;
       }
 
+      // Load public key if signing is enabled
+      const publicKey = await getPublicKeyFromConfig(config.signing);
+
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
       if (fingerprintHash) {
         cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = fingerprintHash;
+      }
+      if (publicKey) {
+        cfg.modResults.HOT_UPDATER_PUBLIC_KEY = publicKey;
       }
       return cfg;
     });
@@ -282,6 +190,9 @@ const withHotUpdaterConfigAsync =
         const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.android.hash;
       }
+
+      // Load public key if signing is enabled
+      const publicKey = await getPublicKeyFromConfig(config.signing);
 
       // Ensure resources object exists
       if (!cfg.modResults.resources) {
@@ -326,6 +237,26 @@ const withHotUpdaterConfigAsync =
             moduleConfig: string;
           },
           _: fingerprintHash,
+        });
+      }
+
+      if (publicKey) {
+        // Remove existing hot_updater_public_key entry if it exists
+        cfg.modResults.resources.string =
+          cfg.modResults.resources.string.filter(
+            (item) => !(item.$ && item.$.name === "hot_updater_public_key"),
+          );
+
+        // Add the new hot_updater_public_key entry
+        cfg.modResults.resources.string.push({
+          $: {
+            name: "hot_updater_public_key",
+            moduleConfig: "true",
+          } as {
+            name: string;
+            moduleConfig: string;
+          },
+          _: publicKey,
         });
       }
 

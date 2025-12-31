@@ -3,7 +3,7 @@ import { Command, Option } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, colors, log, p } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions } from "@hot-updater/plugin-core";
+import { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 import {
   appIdSuffixCommandOption,
@@ -14,13 +14,15 @@ import {
   platformCommandOption,
   portCommandOption,
 } from "@/commandOptions";
+import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
+import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
+import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { buildAndroidNative, buildIosNative } from "./commands/buildNative";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -29,7 +31,6 @@ import {
 } from "./commands/fingerprint";
 import { generate } from "./commands/generate";
 import { migrate } from "./commands/migrate";
-import { runAndroidNative, runIosNative } from "./commands/runNative";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -253,5 +254,9 @@ program
   .action(async (options: IosNativeRunOptions) => {
     await runIosNative(options);
   });
+
+program.hook("preAction", () => {
+  ensureNoConflicts();
+});
 
 program.parse(process.argv);

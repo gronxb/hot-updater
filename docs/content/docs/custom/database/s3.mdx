@@ -1,0 +1,126 @@
+---
+title: "S3"
+description: Use AWS S3 as both database and storage backend without a traditional database.
+icon: aws
+version: "v0.22.0"
+---
+
+## Overview
+
+This guide shows how to use S3 for both metadata storage (database) and bundle storage. This approach eliminates the need for a traditional SQL database by storing metadata as JSON files in S3.
+
+This method also works with S3-compatible services like Cloudflare R2, MinIO, and DigitalOcean Spaces.
+
+## Prerequisites
+
+- AWS account with S3 access
+- S3 bucket for metadata and bundles
+- (Optional) CloudFront distribution for CDN
+
+## Installation
+
+Install required dependencies.
+
+```package-install
+npm install @hot-updater/server @hot-updater/aws hono
+```
+
+```package-install
+npm install -D tsx typescript @types/node
+```
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance with S3 database and storage.
+
+```typescript title="src/hotUpdater.ts"
+import { s3Database, s3Storage } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+
+export const hotUpdater = createHotUpdater({
+  database: s3Database({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.AWS_S3_BUCKET_NAME!,
+  }),
+  storages: [
+    s3Storage({
+      region: process.env.AWS_REGION!,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.AWS_S3_BUCKET_NAME!,
+    }),
+  ],
+  basePath: "/hot-updater",
+});
+```
+
+## Server Setup
+
+Create the server entry point.
+
+```typescript title="src/index.ts"
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { hotUpdater } from "./hotUpdater";
+
+const app = new Hono();
+
+app.use("*", cors());
+
+app.get("/", (c) => {
+  return c.json({ status: "ok" });
+});
+
+app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => {
+  return hotUpdater.handler(c.req.raw);
+});
+
+export default app;
+```
+
+## Environment Variables
+
+Create `.env` file with your AWS credentials.
+
+```bash
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_S3_BUCKET_NAME=hot-updater-metadata
+```
+
+## CLI Configuration
+
+Configure your CLI to use this server.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: bare(),
+  storage: s3Storage({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.AWS_S3_BUCKET_NAME!,
+  }),
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+  }),
+});
+```
+
+<Callout type="warn">
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`.
+</Callout>

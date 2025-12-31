@@ -1,4 +1,5 @@
 import { colors, p } from "@hot-updater/cli-tools";
+import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { getChannel, setChannel } from "@/utils/setChannel";
 
 export const handleChannel = async () => {
@@ -12,6 +13,7 @@ export const handleChannel = async () => {
 };
 
 export const handleSetChannel = async (channel: string) => {
+  warnIfExpoCNG();
   const { paths: androidPaths } = await setChannel("android", channel);
   p.log.success(`Set Android channel to: ${colors.green(channel)}`);
   if (androidPaths.length > 0) {

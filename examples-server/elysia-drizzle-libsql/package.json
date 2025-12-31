@@ -1,5 +1,5 @@
 {
-  "name": "elysia-drizzle-libsql",
+  "name": "@examples-server/elysia-drizzle-libsql",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "test:type": "tsc --noEmit",
     "db:generate": "npx hot-updater db generate src/db.ts --yes",
     "db:push": "npx drizzle-kit push"
   },

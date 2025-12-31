@@ -16,9 +16,16 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
   }),
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion",
   compressStrategy: "zip", // or "tar.br" for better compression
   fingerprint: {
     debug: true,
+  },
+  // Bundle signing (optional)
+  // Uncomment to enable signed bundles for security
+  // Run: npx hot-updater keys generate
+  signing: {
+    enabled: true,
+    privateKeyPath: "./keys/private-key.pem",
   },
 });

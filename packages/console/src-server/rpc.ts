@@ -1,9 +1,5 @@
 import { typiaValidator } from "@hono/typia-validator";
-import {
-  type ConfigResponse,
-  getCwd,
-  loadConfig,
-} from "@hot-updater/cli-tools";
+import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabasePlugin,
@@ -40,10 +36,8 @@ const prepareConfig = async () => {
     configPromise = (async () => {
       try {
         const config = await loadConfig(null);
-        const databasePlugin =
-          (await config?.database({ cwd: getCwd() })) ?? null;
-        const storagePlugin =
-          (await config?.storage({ cwd: getCwd() })) ?? null;
+        const databasePlugin = (await config?.database()) ?? null;
+        const storagePlugin = (await config?.storage()) ?? null;
         if (!databasePlugin) {
           throw new Error("Database plugin initialization failed");
         }
@@ -175,14 +169,13 @@ export const rpc = new Hono()
       try {
         const { bundleId } = c.req.valid("param");
 
-        const { databasePlugin, storagePlugin } = await prepareConfig();
+        const { databasePlugin } = await prepareConfig();
         const deleteBundle = await databasePlugin.getBundleById(bundleId);
         if (!deleteBundle) {
           return c.json({ error: "Bundle not found" }, 404);
         }
         await databasePlugin.deleteBundle(deleteBundle);
         await databasePlugin.commitBundle();
-        await storagePlugin.delete(deleteBundle.storageUri);
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle deletion:", error);

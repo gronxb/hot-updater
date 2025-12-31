@@ -5,14 +5,10 @@
  * @format
  */
 
-import {
-  HotUpdater,
-  getUpdateSource,
-  useHotUpdaterStore,
-} from "@hot-updater/react-native";
-import React from "react";
-import { useEffect, useState } from "react";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
+import DOMComponent from "./src/web";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -86,17 +82,16 @@ function App(): React.JSX.Element {
       />
 
       <Button title="Reload" onPress={() => HotUpdater.reload()} />
+
+      <DOMComponent name="Hi" />
     </SafeAreaView>
   );
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource(
-    `${process.env.EXPO_PUBLIC_HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-    {
-      updateStrategy: "appVersion", // or "fingerprint"
-    },
-  ),
+  baseURL: "http://localhost:3006/hot-updater",
+  updateStrategy: "appVersion",
+  updateMode: "auto",
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

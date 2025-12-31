@@ -9,5 +9,6 @@
     "types": ["node"],
     "outDir": "./dist"
   },
+  "include": ["src/**/*", "hot-updater-schema.ts"],
   "exclude": ["node_modules"]
 }

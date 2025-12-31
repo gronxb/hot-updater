@@ -27,6 +27,18 @@ function getHermesOSExe(): string {
     : hermesExecutableName;
 }
 
+function getHermesCompilerPackagePath(reactNativePath: string): string | null {
+  try {
+    return path.dirname(
+      require.resolve("hermes-compiler/package.json", {
+        paths: [reactNativePath],
+      }),
+    );
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Returns the path to the react-native compose-source-maps.js script.
  */
@@ -56,9 +68,25 @@ export async function getHermesCommand(cwd: string): Promise<string> {
     }
   };
 
+  const reactNativePath = getReactNativeMetadatas(cwd).packagePath;
+  const hermesCompilerPath = getHermesCompilerPackagePath(reactNativePath);
+
+  // Since react-native 0.83+, Hermes compiler in 'hermes-compiler' package
+  if (hermesCompilerPath) {
+    const engine = path.join(
+      hermesCompilerPath,
+      "hermesc",
+      getHermesOSBin(),
+      getHermesOSExe(),
+    );
+    if (fileExists(engine)) {
+      return engine;
+    }
+  }
+
   // Since react-native 0.69, Hermes is bundled with it.
   const bundledHermesEngine = path.join(
-    getReactNativeMetadatas(cwd).packagePath,
+    reactNativePath,
     "sdks",
     "hermesc",
     getHermesOSBin(),

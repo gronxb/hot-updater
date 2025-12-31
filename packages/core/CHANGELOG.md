@@ -1,5 +1,63 @@
 # @hot-updater/core
 
+## 0.25.4
+
+## 0.25.3
+
+## 0.25.2
+
+## 0.25.1
+
+## 0.25.0
+
+## 0.24.7
+
+### Patch Changes
+
+- 294e324: fix: update babel plugin path in documentation and plugin files
+
+## 0.24.6
+
+## 0.24.5
+
+## 0.24.4
+
+## 0.24.3
+
+## 0.24.2
+
+## 0.24.1
+
+## 0.24.0
+
+## 0.23.1
+
+## 0.23.0
+
+### Minor Changes
+
+- e41fb6b: feat: add bundle signing for cryptographic OTA verification
+
+## 0.22.2
+
+## 0.22.1
+
+## 0.22.0
+
+## 0.21.15
+
+## 0.21.14
+
+## 0.21.13
+
+## 0.21.12
+
+## 0.21.11
+
+### Patch Changes
+
+- e2b67d7: fix(cli-tools): esm only package bundle
+
 ## 0.21.10
 
 ## 0.21.9
@@ -20,7 +78,7 @@
 
 ## 0.21.1
 
-## 1.0.0
+## 0.22.0
 
 ### Minor Changes
 

@@ -5,13 +5,10 @@
  * @format
  */
 
-import {
-  HotUpdater,
-  getUpdateSource,
-  useHotUpdaterStore,
+import { 
+  useHotUpda rStore,
 } from "@hot-updater/react-native";
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
@@ -93,12 +90,9 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  source: getUpdateSource(
-    `${process.env.HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
-    {
-      updateStrategy: "appVersion", // or "appVersion"
-    },
-  ),
+  baseURL: "http://localhost:3006/hot-updater",
+  updateStrategy: "appVersion",
+  updateMode: "auto",
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

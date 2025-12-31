@@ -1,12 +1,13 @@
 {
-  "name": "hono-kysely-pglite",
+  "name": "@examples-server/hono-kysely-pglite",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:type": "tsc --noEmit"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",

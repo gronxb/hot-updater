@@ -1,5 +1,5 @@
 {
-  "name": "@hot-updater/example-react-native-v81",
+  "name": "@examples/react-native-v81",
   "version": "0.21.10",
   "private": true,
   "scripts": {
@@ -16,7 +16,8 @@
     "@react-native/new-app-screen": "0.81.0",
     "react": "19.1.0",
     "react-native": "0.81.0",
-    "react-native-safe-area-context": "^5.5.2"
+    "react-native-safe-area-context": "^5.5.2",
+    "valtio": "^2.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -25,10 +26,9 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
+    "@hot-updater/firebase": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
-    "@hot-updater/firebase": "workspace:*",
-    "firebase-admin": "^13.5.0",
     "@react-native-community/cli": "20.0.0",
     "@react-native-community/cli-platform-android": "20.0.0",
     "@react-native-community/cli-platform-ios": "20.0.0",
@@ -41,10 +41,12 @@
     "@rnx-kit/metro-config": "^2.0.1",
     "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
     "@types/jest": "^29.5.13",
-    "@types/react": "^19.1.0",
+    "@types/react": "^19.1.2",
     "@types/react-test-renderer": "^19.1.0",
     "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
+    "firebase-admin": "13.6.0",
+    "firebase-tools": "^13.35.1",
     "hot-updater": "workspace:*",
     "jest": "^29.6.3",
     "metro": "0.83.1",

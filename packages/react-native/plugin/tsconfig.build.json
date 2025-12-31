@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["node"],
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "outDir": "build",
+    "rootDir": "src",
+    "resolveJsonModule": true,
+    "esModuleInterop": true
+  },
+  "include": ["./src/"],
+  "exclude": ["./src/*.spec.ts"]
+}

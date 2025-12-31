@@ -1,5 +1,19 @@
 <resources>
     <string name="app_name">HotUpdaterExample</string>
-    <string name="hot_updater_fingerprint_hash" moduleConfig="true">4f13db8e1c029338c5081d05898b0314176c0563</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">64edb00dbbb1d97b7289937d39f5dd6d9ea5cacb</string>
     <string name="hot_updater_channel" moduleConfig="true">production</string>
+    <string name="hot_updater_public_key" moduleConfig="true">-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAtX2E2bQJnYw7FP5sS48s
+i2I00Z4xVGBcVh6zKwlOfUB6A9ZgfKfavnxm/i2q84nYd3lv+fam0QzU6hHiKb2K
+r5LN/+H7QNErkKN/uEqgOgz5bD0aGGm75Ppp8OSq4Uw4TElAxas+3KXOxgeZhlFa
+ZGRlbFsiOVxw8sLaeyrONWyNUAUONrlnAFgpJk/7+UzEvlEHi/wr38QoKkbORjAw
+tgA3q3vjidhy0M0nXNqKr9vYIfNTskptqR69PJZaXA/rSL8Trjnz/NdDzWE4Dd6g
+oReJ0qn3rxKfSOxPxBuYveOl54vHKw3wvb1J48aGZd2CjBOQEjWzCuIgyL/Poge8
+Ui9GbBEX3+3aAVt8KUoCne+fWGDMKTi660UoM21xLdY1ZFmZqK/7u5feLHKRsbD6
+phL4sRzcTjmsyhXcy0qiPO/kuyzhGEXOJWum90ehaDGp6i1AR+nPSjbCGvtibChd
+036mAsLOiTWsaBiBqJD8vSv+EqpCjGgo9YjSSZD0DfdXcaWu3R33omywb7ZcXrTV
+dWEyuD7khcbLi92nsgYBbe/338uUtuQNTgb0FaMJvuoR3j41pmn2pwTgRYtTCTQn
+XUEukyuAGDU3HGRiGYHEhsEILoUzZpXy2Zs/eQRtZE0o644tb1Cn4D+/a7Pv6Yso
+zxKCEs5mNh/ligdmTntzMecCAwEAAQ==
+-----END PUBLIC KEY-----</string>
 </resources>

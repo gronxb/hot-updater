@@ -1,8 +1,11 @@
 import type { UpdateStatus } from "@hot-updater/core";
 import { NativeEventEmitter } from "react-native";
+import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
   type UpdateBundleParams,
 } from "./specs/NativeHotUpdater";
+
+export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -43,7 +46,8 @@ let lastInstalledBundleId: string | null = null;
  * Downloads files and applies them to the app.
  *
  * @param {UpdateParams} params - Parameters object required for bundle update
- * @returns {Promise<boolean>} Resolves with true if download was successful, otherwise rejects with an error.
+ * @returns {Promise<boolean>} Resolves with true if download was successful
+ * @throws {Error} Rejects with error.code from HotUpdaterErrorCode enum and error.message
  */
 export async function updateBundle(params: UpdateParams): Promise<boolean>;
 /**
@@ -146,7 +150,7 @@ export const getMinBundleId = (): string => {
  * Fetches the current bundle version id.
  *
  * @async
- * @returns {Promise<string>} Resolves with the current version id or null if not available.
+ * @returns {string} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
   return HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID === NIL_UUID
@@ -172,4 +176,101 @@ export const getChannel = (): string => {
 export const getFingerprintHash = (): string | null => {
   const constants = HotUpdaterNative.getConstants();
   return constants.FINGERPRINT_HASH;
+};
+
+/**
+ * Result returned by notifyAppReady()
+ */
+export type NotifyAppReadyResult = {
+  status: "PROMOTED" | "RECOVERED" | "STABLE";
+  crashedBundleId?: string;
+};
+
+/**
+ * Notifies the native side that the app has successfully started with the current bundle.
+ * If the bundle matches the staging bundle, it promotes to stable.
+ *
+ * This function is called automatically when the module loads.
+ *
+ * @returns {NotifyAppReadyResult} Bundle state information
+ * - `status: "PROMOTED"` - Staging bundle was promoted to stable (ACTIVE event)
+ * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
+ * - `status: "STABLE"` - No changes, already stable
+ * - `crashedBundleId` - Present only when status is "RECOVERED"
+ *
+ * @example
+ * ```ts
+ * const result = HotUpdater.notifyAppReady();
+ *
+ * switch (result.status) {
+ *   case "PROMOTED":
+ *     // Send ACTIVE analytics event
+ *     analytics.track('bundle_active', { bundleId: HotUpdater.getBundleId() });
+ *     break;
+ *   case "RECOVERED":
+ *     // Send ROLLBACK analytics event
+ *     analytics.track('bundle_rollback', { crashedBundleId: result.crashedBundleId });
+ *     break;
+ *   case "STABLE":
+ *     // No special action needed
+ *     break;
+ * }
+ * ```
+ */
+export const notifyAppReady = (): NotifyAppReadyResult => {
+  const bundleId = getBundleId();
+  const result = HotUpdaterNative.notifyAppReady({ bundleId });
+  // Oldarch returns JSON string, newarch returns array
+  if (typeof result === "string") {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return { status: "STABLE" };
+    }
+  }
+  return result;
+};
+
+/**
+ * Gets the list of bundle IDs that have been marked as crashed.
+ * These bundles will be rejected if attempted to install again.
+ *
+ * @returns {string[]} Array of crashed bundle IDs
+ */
+export const getCrashHistory = (): string[] => {
+  const result = HotUpdaterNative.getCrashHistory();
+  // Oldarch returns JSON string, newarch returns array
+  if (typeof result === "string") {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return [];
+    }
+  }
+  return result;
+};
+
+/**
+ * Clears the crashed bundle history, allowing previously crashed bundles
+ * to be installed again.
+ *
+ * @returns {boolean} true if clearing was successful
+ */
+export const clearCrashHistory = (): boolean => {
+  return HotUpdaterNative.clearCrashHistory();
+};
+
+/**
+ * Gets the base URL for the current active bundle directory.
+ * Returns the file:// URL to the bundle directory without trailing slash.
+ * This is used for Expo DOM components to construct full asset paths.
+ *
+ * @returns {string | null} Base URL string (e.g., "file:///data/.../bundle-store/abc123") or null if not available
+ */
+export const getBaseURL = (): string | null => {
+  const result = HotUpdaterNative.getBaseURL();
+  if (typeof result === "string" && result !== "") {
+    return result;
+  }
+  return null;
 };

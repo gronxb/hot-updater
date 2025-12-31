@@ -1,3 +1,9 @@
+import type { Bundle } from "@hot-updater/core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import {
   cleanupServer,
   createGetUpdateInfo,
@@ -6,12 +12,11 @@ import {
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/test-utils/node";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
-import { afterAll, beforeAll, describe } from "vitest";
+import { execa } from "execa";
+import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import fs from "fs/promises";
-import { execa } from "execa";
+import { afterAll, beforeAll, describe } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +27,7 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbPath: string;
+  let hotUpdater: HotUpdaterAPI;
   const port = 13580;
 
   beforeAll(async () => {
@@ -30,6 +36,8 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
 
     testDbPath = createTestDbPath(projectRoot);
     await fs.mkdir(path.join(projectRoot, "data"), { recursive: true });
+
+    process.env.TEST_DB_PATH = testDbPath;
 
     baseUrl = `http://localhost:${port}`;
 
@@ -64,6 +72,9 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
     });
 
     await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+
+    const db = await import("./db.js");
+    hotUpdater = db.hotUpdater;
   }, 60000);
 
   afterAll(async () => {
@@ -80,4 +91,15 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id: string) => hotUpdater.getBundleById(id),
+    getChannels: () => hotUpdater.getChannels(),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    getBundles: (options) => hotUpdater.getBundles(options),
+    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
+      hotUpdater.updateBundleById(bundleId, newBundle),
+    deleteBundleById: (bundleId: string) =>
+      hotUpdater.deleteBundleById(bundleId),
+  });
 });

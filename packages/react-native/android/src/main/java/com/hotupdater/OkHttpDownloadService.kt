@@ -21,6 +21,14 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 /**
+ * Exception for incomplete downloads with size information
+ */
+class IncompleteDownloadException(
+    val expectedSize: Long,
+    val actualSize: Long,
+) : IOException("Download incomplete: received $actualSize bytes, expected $expectedSize bytes")
+
+/**
  * Result wrapper for download operations
  */
 sealed class DownloadResult {
@@ -38,22 +46,17 @@ sealed class DownloadResult {
  */
 interface DownloadService {
     /**
-     * Gets the file size from the URL without downloading
-     * @param fileUrl The URL to check
-     * @return File size in bytes, or -1 if unavailable
-     */
-    suspend fun getFileSize(fileUrl: URL): Long
-
-    /**
      * Downloads a file from a URL
      * @param fileUrl The URL to download from
      * @param destination The local file to save to
+     * @param fileSizeCallback Optional callback called when file size is known
      * @param progressCallback Callback for download progress updates
      * @return Result indicating success or failure
      */
     suspend fun downloadFile(
         fileUrl: URL,
         destination: File,
+        fileSizeCallback: ((Long) -> Unit)? = null,
         progressCallback: (Double) -> Unit,
     ): DownloadResult
 }
@@ -120,34 +123,10 @@ class OkHttpDownloadService : DownloadService {
             .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
 
-    override suspend fun getFileSize(fileUrl: URL): Long =
-        withContext(Dispatchers.IO) {
-            try {
-                val request =
-                    Request
-                        .Builder()
-                        .url(fileUrl)
-                        .head()
-                        .build()
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val contentLength = response.header("Content-Length")?.toLongOrNull() ?: -1L
-                        Log.d(TAG, "File size from HEAD request: $contentLength bytes")
-                        contentLength
-                    } else {
-                        Log.d(TAG, "HEAD request failed: ${response.code}")
-                        -1L
-                    }
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "Failed to get file size: ${e.message}")
-                -1L
-            }
-        }
-
     override suspend fun downloadFile(
         fileUrl: URL,
         destination: File,
+        fileSizeCallback: ((Long) -> Unit)?,
         progressCallback: (Double) -> Unit,
     ): DownloadResult =
         withContext(Dispatchers.IO) {
@@ -159,6 +138,7 @@ class OkHttpDownloadService : DownloadService {
                     return@withContext attemptDownload(
                         fileUrl,
                         destination,
+                        fileSizeCallback,
                         progressCallback,
                     )
                 } catch (e: Exception) {
@@ -185,6 +165,7 @@ class OkHttpDownloadService : DownloadService {
     private suspend fun attemptDownload(
         fileUrl: URL,
         destination: File,
+        fileSizeCallback: ((Long) -> Unit)?,
         progressCallback: (Double) -> Unit,
     ): DownloadResult =
         withContext(Dispatchers.IO) {
@@ -223,13 +204,13 @@ class OkHttpDownloadService : DownloadService {
             // Get total file size
             val totalSize = body.contentLength()
 
-            if (totalSize <= 0) {
-                Log.d(TAG, "Invalid content length: $totalSize")
-                response.close()
-                return@withContext DownloadResult.Error(Exception("Invalid content length: $totalSize"))
+            if (totalSize > 0) {
+                // Notify file size to caller for disk space check
+                fileSizeCallback?.invoke(totalSize)
+                Log.d(TAG, "Starting download: $totalSize bytes")
+            } else {
+                Log.d(TAG, "Content-Length not available ($totalSize), proceeding without disk space check")
             }
-
-            Log.d(TAG, "Starting download: $totalSize bytes")
 
             try {
                 // Wrap response body with progress tracking
@@ -255,12 +236,16 @@ class OkHttpDownloadService : DownloadService {
                 // Verify file size
                 val finalSize = destination.length()
                 if (finalSize != totalSize) {
-                    val errorMsg = "Download incomplete: $finalSize / $totalSize bytes"
-                    Log.d(TAG, errorMsg)
+                    Log.d(TAG, "Download incomplete: $finalSize / $totalSize bytes")
 
                     // Delete incomplete file
                     destination.delete()
-                    return@withContext DownloadResult.Error(IOException(errorMsg))
+                    return@withContext DownloadResult.Error(
+                        IncompleteDownloadException(
+                            expectedSize = totalSize,
+                            actualSize = finalSize,
+                        ),
+                    )
                 }
 
                 Log.d(TAG, "Download completed successfully: $finalSize bytes")

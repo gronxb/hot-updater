@@ -1,5 +1,5 @@
 {
-  "name": "hono-mongodb",
+  "name": "@examples-server/hono-mongodb",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.ts",
     "test": "vitest run",
+    "test:type": "tsc --noEmit",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down"
   },
@@ -20,7 +21,7 @@
     "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "dotenv": "^16.6.1",
-    "firebase-admin": "^13.5.0",
+    "firebase-admin": "13.6.0",
     "hono": "^4.9.12",
     "mongodb": "^6.12.0"
   },

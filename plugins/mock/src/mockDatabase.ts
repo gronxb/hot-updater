@@ -2,7 +2,6 @@ import {
   type Bundle,
   calculatePagination,
   createDatabasePlugin,
-  type DatabasePluginHooks,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
 
@@ -11,28 +10,22 @@ export interface MockDatabaseConfig {
   initialBundles?: Bundle[];
 }
 
-export const mockDatabase = (
-  config: MockDatabaseConfig,
-  hooks?: DatabasePluginHooks,
-) =>
-  createDatabasePlugin(
-    "mockDatabase",
-    {
-      getContext: () => {
-        const bundles: Bundle[] = config.initialBundles ?? [];
-        return { bundles };
-      },
+export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
+  name: "mockDatabase",
+  factory: (config) => {
+    const bundles: Bundle[] = config.initialBundles ?? [];
 
-      async getBundleById(context, bundleId) {
+    return {
+      async getBundleById(bundleId: string) {
         await sleep(minMax(config.latency.min, config.latency.max));
-        return context.bundles.find((b) => b.id === bundleId) ?? null;
+        return bundles.find((b) => b.id === bundleId) ?? null;
       },
 
-      async getBundles(context, options) {
+      async getBundles(options) {
         const { where, limit, offset } = options ?? {};
         await sleep(minMax(config.latency.min, config.latency.max));
 
-        const filteredBundles = context.bundles.filter((b) => {
+        const filteredBundles = bundles.filter((b) => {
           if (where?.channel && b.channel !== where.channel) {
             return false;
           }
@@ -54,14 +47,14 @@ export const mockDatabase = (
         };
       },
 
-      async getChannels(context) {
+      async getChannels() {
         await sleep(minMax(config.latency.min, config.latency.max));
-        return context.bundles
+        return bundles
           .map((b) => b.channel)
           .filter((c, i, self) => self.indexOf(c) === i);
       },
 
-      async commitBundle(context, { changedSets }) {
+      async commitBundle({ changedSets }) {
         if (changedSets.length === 0) {
           return;
         }
@@ -71,29 +64,22 @@ export const mockDatabase = (
         // Process each operation sequentially
         for (const op of changedSets) {
           if (op.operation === "delete") {
-            const targetIndex = context.bundles.findIndex(
-              (b) => b.id === op.data.id,
-            );
+            const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
             if (targetIndex === -1) {
               throw new Error(`Bundle with id ${op.data.id} not found`);
             }
-            context.bundles.splice(targetIndex, 1);
+            bundles.splice(targetIndex, 1);
           } else if (op.operation === "insert") {
-            context.bundles.unshift(op.data);
+            bundles.unshift(op.data);
           } else if (op.operation === "update") {
-            const targetIndex = context.bundles.findIndex(
-              (b) => b.id === op.data.id,
-            );
+            const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
             if (targetIndex === -1) {
               throw new Error(`Bundle with id ${op.data.id} not found`);
             }
-            Object.assign(context.bundles[targetIndex], op.data);
+            Object.assign(bundles[targetIndex], op.data);
           }
         }
-
-        // Trigger hooks after all operations
-        hooks?.onDatabaseUpdated?.();
       },
-    },
-    hooks,
-  );
+    };
+  },
+});

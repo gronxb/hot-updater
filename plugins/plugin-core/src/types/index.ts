@@ -270,6 +270,43 @@ export interface StoragePluginHooks {
   onStorageUploaded?: () => Promise<void>;
 }
 
+/**
+ * Signing configuration type with conditional required fields.
+ * When enabled is true, privateKeyPath is required.
+ * When enabled is false, privateKeyPath is optional.
+ */
+export type SigningConfig =
+  | {
+      /**
+       * Enable bundle signing during deployment.
+       * When false, signing is disabled and privateKeyPath is optional.
+       */
+      enabled: false;
+      /**
+       * Path to RSA private key file in PEM format (PKCS#8).
+       * Optional when signing is disabled.
+       */
+      privateKeyPath?: string;
+    }
+  | {
+      /**
+       * Enable bundle signing during deployment.
+       * When true, bundles will be signed with privateKeyPath.
+       */
+      enabled: true;
+      /**
+       * Path to RSA private key file in PEM format (PKCS#8).
+       * Generate with: npx hot-updater keys:generate
+       *
+       * Security: Never commit this key to version control!
+       * Use secure storage (AWS Secrets Manager, etc.) for CI/CD.
+       *
+       * @example "./keys/private-key.pem"
+       * @example "/secure/path/to/private-key.pem"
+       */
+      privateKeyPath: string;
+    };
+
 export type ConfigInput = {
   /**
    * The channel used when building the native app.
@@ -334,9 +371,30 @@ export type ConfigInput = {
   };
   platform?: PlatformConfig;
   nativeBuild?: NativeBuildArgs;
+  /**
+   * Code signing configuration for bundle verification.
+   * Enables RSA-SHA256 cryptographic signatures for bundle integrity.
+   *
+   * @optional Feature is opt-in for backward compatibility
+   *
+   * @example
+   * ```ts
+   * // Signing enabled - privateKeyPath is required
+   * signing: {
+   *   enabled: true,
+   *   privateKeyPath: './keys/private-key.pem'
+   * }
+   *
+   * // Signing disabled - privateKeyPath is optional
+   * signing: {
+   *   enabled: false
+   * }
+   * ```
+   */
+  signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: (args: BasePluginArgs) => Promise<StoragePlugin> | StoragePlugin;
-  database: (args: BasePluginArgs) => Promise<DatabasePlugin> | DatabasePlugin;
+  storage: () => Promise<StoragePlugin> | StoragePlugin;
+  database: () => Promise<DatabasePlugin> | DatabasePlugin;
 };
 
 export interface NativeBuildOptions {

@@ -11,14 +11,20 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import type { DatabasePluginHooks } from "@hot-updater/plugin-core";
 import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 import mime from "mime";
 import { streamToString } from "./utils/streamToString";
 
 export interface S3DatabaseConfig extends S3ClientConfig {
   bucketName: string;
-  cloudfrontDistributionId: string;
+  /**
+   * CloudFront distribution ID used for cache invalidation.
+   *
+   * If omitted or an empty string, CloudFront invalidation is skipped.
+   * This is useful for local development environments (e.g. Localstack)
+   * where CloudFront is not available.
+   */
+  cloudfrontDistributionId?: string;
   apiBasePath?: string;
 }
 
@@ -133,52 +139,46 @@ async function invalidateCloudFront(
   );
 }
 
-export const s3Database = (
-  config: S3DatabaseConfig,
-  hooks?: DatabasePluginHooks,
-) => {
-  const {
-    bucketName,
-    cloudfrontDistributionId,
-    apiBasePath = "/api/check-update",
-    ...s3Config
-  } = config;
-  if (!cloudfrontDistributionId) {
-    throw new Error("cloudfrontDistributionId is missing in s3Database");
-  }
+export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
+  name: "s3Database",
+  factory: (config) => {
+    const {
+      bucketName,
+      cloudfrontDistributionId,
+      apiBasePath = "/api/check-update",
+      ...s3Config
+    } = config;
 
-  return createBlobDatabasePlugin({
-    name: "s3Database",
-    apiBasePath,
-    getContext: () => ({
-      client: new S3Client(s3Config),
-      cloudfrontClient: new CloudFrontClient({
-        credentials: s3Config.credentials,
-        region: s3Config.region,
-      }),
-    }),
-    listObjects: (context, prefix: string) =>
-      listObjectsInS3(context.client, bucketName, prefix),
-    loadObject: (context, key: string) =>
-      loadJsonFromS3(context.client, bucketName, key),
-    uploadObject: (context, key: string, data) =>
-      uploadJsonToS3(context.client, bucketName, key, data),
-    deleteObject: (context, key: string) =>
-      deleteObjectInS3(context.client, bucketName, key),
-    invalidatePaths: (context, pathsToInvalidate: string[]) => {
-      if (
-        context.cloudfrontClient &&
-        cloudfrontDistributionId &&
-        pathsToInvalidate.length > 0
-      ) {
-        return invalidateCloudFront(
-          context.cloudfrontClient,
-          cloudfrontDistributionId,
-          pathsToInvalidate,
-        );
-      }
-      return Promise.resolve();
-    },
-    hooks,
-  });
-};
+    const client = new S3Client(s3Config);
+    const cloudfrontClient = cloudfrontDistributionId
+      ? new CloudFrontClient({
+          credentials: s3Config.credentials,
+          region: s3Config.region,
+        })
+      : undefined;
+
+    return {
+      apiBasePath,
+      listObjects: (prefix: string) =>
+        listObjectsInS3(client, bucketName, prefix),
+      loadObject: (key: string) => loadJsonFromS3(client, bucketName, key),
+      uploadObject: (key: string, data) =>
+        uploadJsonToS3(client, bucketName, key, data),
+      deleteObject: (key: string) => deleteObjectInS3(client, bucketName, key),
+      invalidatePaths: (pathsToInvalidate: string[]) => {
+        if (
+          cloudfrontClient &&
+          cloudfrontDistributionId &&
+          pathsToInvalidate.length > 0
+        ) {
+          return invalidateCloudFront(
+            cloudfrontClient,
+            cloudfrontDistributionId,
+            pathsToInvalidate,
+          );
+        }
+        return Promise.resolve();
+      },
+    };
+  },
+});

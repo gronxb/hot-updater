@@ -107,6 +107,57 @@ export class AndroidConfigParser implements ConfigParser {
     };
   }
 
+  async remove(key: string): Promise<{ paths: string[] }> {
+    const existingPaths = this.getExistingPaths();
+
+    if (existingPaths.length === 0) {
+      return { paths: [] };
+    }
+
+    const updatedPaths: string[] = [];
+
+    for (const stringsXmlPath of existingPaths) {
+      try {
+        const content = await fs.promises.readFile(stringsXmlPath, "utf-8");
+        const result = this.parser.parse(content) as ResourcesXml;
+
+        if (!result.resources.string) {
+          continue;
+        }
+
+        const strings = Array.isArray(result.resources.string)
+          ? result.resources.string
+          : [result.resources.string];
+
+        const existingIndex = strings.findIndex(
+          (str) => str["@_name"] === key && str["@_moduleConfig"] === "true",
+        );
+
+        if (existingIndex === -1) {
+          continue;
+        }
+
+        // Remove the element
+        strings.splice(existingIndex, 1);
+
+        // Update the result
+        if (strings.length === 0) {
+          result.resources.string = undefined;
+        } else {
+          result.resources.string = strings.length === 1 ? strings[0] : strings;
+        }
+
+        const newContent = this.builder.build(result);
+        await fs.promises.writeFile(stringsXmlPath, newContent, "utf-8");
+        updatedPaths.push(path.relative(getCwd(), stringsXmlPath));
+      } catch (error) {
+        throw new Error(`Failed to remove key from strings.xml: ${error}`);
+      }
+    }
+
+    return { paths: updatedPaths };
+  }
+
   async set(key: string, value: string): Promise<{ paths: string[] }> {
     const existingPaths = this.getExistingPaths();
 
