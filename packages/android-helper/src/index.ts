@@ -1,3 +1,3 @@
-export * from "./buildAndroid";
-export * from "./runAndroid";
+export { buildAndroid } from "./buildAndroid";
+export { runAndroid } from "./runAndroid";
 export type { AndroidNativeRunOptions } from "./types";

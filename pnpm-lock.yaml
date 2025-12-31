@@ -1185,6 +1185,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.11
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
       boxen:
         specifier: ^8.0.1
         version: 8.0.1

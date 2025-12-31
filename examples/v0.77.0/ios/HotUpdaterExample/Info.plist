@@ -48,7 +48,7 @@
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>3f80f8c70d8bd25d649b2e47f08320a8c36e25ec</string>
+		<string>eb7add1c8e99f8f53fa8920ff987d5cc8908beb1</string>
 		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
 		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
 	</dict>

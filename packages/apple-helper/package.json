@@ -7,11 +7,10 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "node": "./dist/index.cjs",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
-    }
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
