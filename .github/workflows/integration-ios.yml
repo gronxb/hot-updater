@@ -90,6 +90,6 @@ jobs:
       - name: Build iOS via CLI
         run: |
           rm -rf ~/Library/Developer/Xcode/DerivedData
-          cd examples/${{ matrix.example }} && pnpm hot-updater build:ios --scheme debug
+          cd examples/${{ matrix.example }} && pnpm exec hot-updater build:ios --scheme debug
         env:
           HOT_UPDATER_CHANNEL: dev

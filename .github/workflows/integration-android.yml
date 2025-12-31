@@ -88,6 +88,6 @@ jobs:
         run: pnpm build
 
       - name: Build Android via CLI
-        run: cd examples/${{ matrix.example }} && pnpm hot-updater build:android --scheme debugApk
+        run: cd examples/${{ matrix.example }} && pnpm exec hot-updater build:android --scheme debugApk
         env:
           HOT_UPDATER_CHANNEL: dev
