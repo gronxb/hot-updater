@@ -4,9 +4,11 @@ on:
       - main
     paths:
       - "packages/react-native/ios/**"
+      - "packages/apple-helper/**"
   pull_request:
     paths:
       - "packages/react-native/ios/**"
+      - "packages/apple-helper/**"
 
 name: iOS Integration
 
@@ -62,5 +64,32 @@ jobs:
           pnpx pod-install
           xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev
+
+  build-ios-helper:
+    runs-on: macos-14
+    name: Build iOS via CLI (${{ matrix.example }})
+    strategy:
+      matrix:
+        example: [v0.77.0, v0.81.0]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install
+
+      - name: Library Build
+        run: pnpm build
+
+      - name: Build iOS via CLI
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          cd examples/${{ matrix.example }} && pnpm hot-updater build:ios --scheme debug
         env:
           HOT_UPDATER_CHANNEL: dev
