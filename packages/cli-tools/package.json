@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/cli-tools",
-  "version": "0.22.1",
+  "version": "0.25.4",
   "type": "module",
   "description": "CLI utilities for Hot Updater",
   "sideEffects": false,
@@ -62,7 +62,8 @@
     "semver": "^7.6.3",
     "@types/node": "catalog:",
     "typescript": "5.8.2",
-    "@types/semver": "^7.7.1"
+    "@types/semver": "^7.7.1",
+    "execa": "catalog:"
   },
   "peerDependencies": {
     "typescript": "*"

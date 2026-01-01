@@ -1192,6 +1192,9 @@ importers:
       es-toolkit:
         specifier: ^1.32.0
         version: 1.32.0
+      execa:
+        specifier: 'catalog:'
+        version: 9.5.2
       fast-glob:
         specifier: 3.3.3
         version: 3.3.3
