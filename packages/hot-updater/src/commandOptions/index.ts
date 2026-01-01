@@ -9,3 +9,28 @@ export const interactiveCommandOption = new Option(
   "-i, --interactive",
   "interactive mode",
 ).default(false);
+
+export const nativeBuildSchemeCommandOption = new Option(
+  "-s, --scheme <scheme>",
+  "predefined scheme for the native build configuration",
+);
+
+export const nativeBuildOutputCommandOption = new Option(
+  "-o, --output-path <outputPath>",
+  "the path where the artifacts will be generated",
+);
+
+export const deviceCommandOption = new Option(
+  "-d, --device [deviceName | deviceId]",
+  "specify the ADB device name or use default",
+);
+
+export const portCommandOption = new Option(
+  "--port <port>",
+  "specify the port number",
+);
+
+export const appIdSuffixCommandOption = new Option(
+  "--app-id-suffix <appIdSuffix>",
+  "specify the app ID suffix",
+);

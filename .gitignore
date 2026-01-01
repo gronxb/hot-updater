@@ -95,5 +95,6 @@ generated/
 
 .hot-updater/
 
+# Claude Code settings
 .claude
 

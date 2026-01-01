@@ -1,0 +1,39 @@
+{
+  "name": "@hot-updater/apple-helper",
+  "version": "0.19.9",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "description": "Apple development helper utilities for hot-updater",
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "execa": "catalog:",
+    "fast-xml-parser": "5.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

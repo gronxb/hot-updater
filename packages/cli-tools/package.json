@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/cli-tools",
-  "version": "0.25.4",
+  "version": "0.22.1",
   "type": "module",
   "description": "CLI utilities for Hot Updater",
   "sideEffects": false,
@@ -53,15 +53,16 @@
     "cosmiconfig": "9.0.0",
     "cosmiconfig-typescript-loader": "5.0.0",
     "es-toolkit": "^1.32.0",
-    "execa": "catalog:",
     "fast-glob": "3.3.3",
     "jszip": "^3.10.1",
     "picocolors": "1.1.1",
     "read-package-up": "^11.0.0",
     "tar": "^7.5.1",
     "workspace-tools": "^0.36.4",
+    "semver": "^7.6.3",
     "@types/node": "catalog:",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "@types/semver": "^7.7.1"
   },
   "peerDependencies": {
     "typescript": "*"
