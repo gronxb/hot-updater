@@ -8,9 +8,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 ## Build Plugin
 
-Build plugins handle the bundling/native building process when you run the `hot-updater deploy` or `hot-updater build:(android|ios)` commands. They generate the JavaScript bundles for your updates or native build artifacts for your app.
-
-The basis of native build processes are shared between all plugins. They are not much than a wrapper of Gradle and xcodebuild cli but include some extra logic to handle the native build process for each platform.
+Build plugins handle the bundling process when you run the `hot-updater deploy` command. They generate the JavaScript bundles for your updates.
 
 ### Supported Plugins
 
