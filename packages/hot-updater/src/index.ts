@@ -1,16 +1,26 @@
 #!/usr/bin/env node
 import { Command, Option } from "@commander-js/extra-typings";
+import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
+import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, colors, log, p } from "@hot-updater/cli-tools";
+import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 import {
+  appIdSuffixCommandOption,
+  deviceCommandOption,
   interactiveCommandOption,
+  nativeBuildOutputCommandOption,
+  nativeBuildSchemeCommandOption,
   platformCommandOption,
+  portCommandOption,
 } from "@/commandOptions";
-import { type NativeBuildOptions, nativeBuild } from "@/commands/buildNative";
+import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import { type DeployOptions, deploy } from "@/commands/deploy";
 import { init } from "@/commands/init";
+import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
+import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { handleChannel, handleSetChannel } from "./commands/channel";
@@ -146,7 +156,7 @@ program
     ),
   )
   .action(async (options: DeployOptions) => {
-    await deploy(options);
+    deploy(options);
   });
 
 program
@@ -221,33 +231,78 @@ dbCommand
     },
   );
 
-// developing command groups
-if (process.env["NODE_ENV"] === "development") {
+program
+  .command("build:android")
+  .description("build a new Android native artifact")
+  .addOption(nativeBuildOutputCommandOption)
+  .addOption(interactiveCommandOption)
+  .addOption(nativeBuildSchemeCommandOption)
+  .addOption(
+    new Option(
+      "-m, --message <message>",
+      "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+    ),
+  )
+  .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+    await buildAndroidNative(options);
+  });
+
+if (process.env["EXPERIMENTAL"]) {
   program
-    .command("build:native")
-    .description("build a new native artifact and deploy")
-    .addOption(
-      new Option("-p, --platform <platform>", "specify the platform").choices([
-        "ios",
-        "android",
-      ]),
-    )
-    .addOption(
-      new Option(
-        "-o, --output-path <outputPath>",
-        "the path where the artifacts will be generated",
-      ),
-    )
+    .command("build:ios")
+    .description("build a new iOS native artifact")
+    .addOption(nativeBuildOutputCommandOption)
     .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
     .addOption(
       new Option(
         "-m, --message <message>",
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: NativeBuildOptions) => {
-      await nativeBuild(options);
+    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+      await buildIosNative(options);
+    });
+
+  program
+    .command("run:android")
+    .description("build and run Android app to device or emulator")
+    .addOption(nativeBuildOutputCommandOption)
+    .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
+    .addOption(deviceCommandOption)
+    .addOption(portCommandOption)
+    .addOption(appIdSuffixCommandOption)
+    .addOption(
+      new Option(
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+      ),
+    )
+    .action(async (options: AndroidNativeRunOptions) => {
+      await runAndroidNative(options);
+    });
+
+  program
+    .command("run:ios")
+    .description("build and run iOS app to device or simulator")
+    .addOption(nativeBuildOutputCommandOption)
+    .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
+    .addOption(deviceCommandOption)
+    .addOption(
+      new Option(
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+      ),
+    )
+    .action(async (options: IosNativeRunOptions) => {
+      await runIosNative(options);
     });
 }
+
+program.hook("preAction", () => {
+  ensureNoConflicts();
+});
 
 program.parse(process.argv);

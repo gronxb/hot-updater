@@ -1,5 +1,37 @@
 # @hot-updater/server
 
+## 0.25.4
+
+### Patch Changes
+
+- @hot-updater/core@0.25.4
+- @hot-updater/js@0.25.4
+- @hot-updater/plugin-core@0.25.4
+
+## 0.25.3
+
+### Patch Changes
+
+- @hot-updater/core@0.25.3
+- @hot-updater/js@0.25.3
+- @hot-updater/plugin-core@0.25.3
+
+## 0.25.2
+
+### Patch Changes
+
+- @hot-updater/core@0.25.2
+- @hot-updater/js@0.25.2
+- @hot-updater/plugin-core@0.25.2
+
+## 0.25.1
+
+### Patch Changes
+
+- @hot-updater/core@0.25.1
+- @hot-updater/js@0.25.1
+- @hot-updater/plugin-core@0.25.1
+
 ## 0.25.0
 
 ### Patch Changes

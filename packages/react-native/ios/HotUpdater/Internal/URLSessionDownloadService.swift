@@ -5,21 +5,15 @@ import UIKit
 
 protocol DownloadService {
     /**
-     * Gets the file size from the URL without downloading.
-     * @param url The URL to check
-     * @param completion Callback with file size or error
-     */
-    func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void)
-
-    /**
      * Downloads a file from a URL.
      * @param url The URL to download from
      * @param destination The local path to save to
+     * @param fileSizeHandler Optional callback called when file size is known
      * @param progressHandler Callback for download progress updates
      * @param completion Callback with downloaded file URL or error
      * @return The download task (optional)
      */
-    func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?
+    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?
 }
 
 
@@ -42,6 +36,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
     private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
+    private var fileSizeHandlers: [URLSessionTask: (Int64) -> Void] = [:]
     private var taskStates: [Int: TaskState] = [:]
 
     override init() {
@@ -94,35 +89,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
         }
     }
 
-    func getFileSize(from url: URL, completion: @escaping (Result<Int64, Error>) -> Void) {
-        var request = URLRequest(url: url)
-        request.httpMethod = "HEAD"
-
-        let task = session.dataTask(with: request) { _, response, error in
-            if let error = error {
-                NSLog("[DownloadService] HEAD request failed: \(error.localizedDescription)")
-                completion(.failure(error))
-                return
-            }
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                completion(.failure(DownloadError.invalidContentLength))
-                return
-            }
-
-            let contentLength = httpResponse.expectedContentLength
-            if contentLength > 0 {
-                NSLog("[DownloadService] File size from HEAD request: \(contentLength) bytes")
-                completion(.success(contentLength))
-            } else {
-                NSLog("[DownloadService] Invalid content length: \(contentLength)")
-                completion(.failure(DownloadError.invalidContentLength))
-            }
-        }
-        task.resume()
-    }
-
-    func downloadFile(from url: URL, to destination: String, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
         // Determine if we should use background session
         #if !os(macOS)
         let appState = UIApplication.shared.applicationState
@@ -141,6 +108,9 @@ class URLSessionDownloadService: NSObject, DownloadService {
         progressHandlers[task] = progressHandler
         completionHandlers[task] = completion
         destinations[task] = destination
+        if let handler = fileSizeHandler {
+            fileSizeHandlers[task] = handler
+        }
 
         // Extract bundleId from destination path (e.g., "bundle-store/{bundleId}/bundle.zip")
         let bundleId = (destination as NSString).pathComponents
@@ -170,6 +140,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             progressHandlers.removeValue(forKey: downloadTask)
             completionHandlers.removeValue(forKey: downloadTask)
             destinations.removeValue(forKey: downloadTask)
+            fileSizeHandlers.removeValue(forKey: downloadTask)
             removeTaskState(downloadTask.taskIdentifier)
 
             // 다운로드 완료 알림
@@ -223,6 +194,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             progressHandlers.removeValue(forKey: task)
             completionHandlers.removeValue(forKey: task)
             destinations.removeValue(forKey: task)
+            fileSizeHandlers.removeValue(forKey: task)
             removeTaskState(task.taskIdentifier)
 
             NotificationCenter.default.post(name: .downloadDidFinish, object: task)
@@ -235,11 +207,23 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         let progressHandler = progressHandlers[downloadTask]
-        
+
+        // Call file size handler on first callback when size is known
+        if totalBytesWritten == bytesWritten && bytesWritten > 0 {
+            if let fileSizeHandler = fileSizeHandlers[downloadTask] {
+                if totalBytesExpectedToWrite > 0 {
+                    fileSizeHandler(totalBytesExpectedToWrite)
+                } else {
+                    NSLog("[DownloadService] Content-Length not available, proceeding without disk space check")
+                }
+                fileSizeHandlers.removeValue(forKey: downloadTask)
+            }
+        }
+
         if totalBytesExpectedToWrite > 0 {
             let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
             progressHandler?(progress)
-            
+
             let progressInfo: [String: Any] = [
                 "progress": progress,
                 "totalBytesReceived": totalBytesWritten,
@@ -248,7 +232,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: progressInfo)
         } else {
             progressHandler?(0)
-            
+
             NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
         }
     }

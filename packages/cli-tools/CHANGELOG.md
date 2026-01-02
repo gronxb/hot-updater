@@ -1,5 +1,30 @@
 # @hot-updater/cli-tools
 
+## 0.25.4
+
+### Patch Changes
+
+- 8c83ff2: Add support for hot-updater.config.mjs
+  - @hot-updater/plugin-core@0.25.4
+
+## 0.25.3
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.25.3
+
+## 0.25.2
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.25.2
+
+## 0.25.1
+
+### Patch Changes
+
+- @hot-updater/plugin-core@0.25.1
+
 ## 0.25.0
 
 ### Patch Changes

@@ -112,8 +112,13 @@ class HotUpdaterImpl {
             val appVersion = getAppVersion(context) ?: "unknown"
             val appChannel = getChannel(context)
 
-            // Use fingerprint if available, otherwise use app version
-            val baseKey = if (!fingerprintHash.isNullOrEmpty()) fingerprintHash else appVersion
+            // Include both fingerprint hash and app version for complete isolation
+            val baseKey =
+                if (!fingerprintHash.isNullOrEmpty()) {
+                    "${fingerprintHash}_$appVersion"
+                } else {
+                    appVersion
+                }
 
             return "HotUpdaterPrefs_${baseKey}_$appChannel"
         }
@@ -149,7 +154,12 @@ class HotUpdaterImpl {
          * Get minimum bundle ID string
          * @return The minimum bundle ID string
          */
-        fun getMinBundleId(): String = BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
+        fun getMinBundleId(): String {
+            if (BuildConfig.DEBUG) {
+                return "00000000-0000-0000-0000-000000000000"
+            }
+            return BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
+        }
 
         /**
          * Generates a bundle ID based on build timestamp
@@ -212,6 +222,19 @@ class HotUpdaterImpl {
             } else {
                 null
             }
+        }
+    }
+
+    /**
+     * Gets the current fingerprint hash
+     * @return The fingerprint hash or null if not set
+     */
+    fun getFingerprintHash(): String? {
+        val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+        return if (id != 0) {
+            context.getString(id).takeIf { it.isNotEmpty() }
+        } else {
+            null
         }
     }
 

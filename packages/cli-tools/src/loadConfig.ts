@@ -85,13 +85,7 @@ const getDefaultConfig = (): ConfigInput => {
       port: 1422,
     },
     platform: getDefaultPlatformConfig(),
-    nativeBuild: {
-      android: {
-        aab: true,
-        variant: "Release",
-        appModuleName: "app",
-      },
-    },
+    nativeBuild: { android: {}, ios: {} },
     build: () => {
       throw new Error("build plugin is required");
     },
@@ -113,7 +107,7 @@ const configOptions = {
     "hot-updater.config.cjs",
     "hot-updater.config.ts",
     "hot-updater.config.cts",
-    "hot-updater.config.cjs",
+    "hot-updater.config.mjs",
     "hot-updater.config.mts",
   ],
   ignoreEmptySearchPlaces: false,

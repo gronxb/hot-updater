@@ -7,7 +7,33 @@ import { defineConfig } from "hot-updater";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
-  nativeBuild: { android: { aab: false } },
+  nativeBuild: {
+    android: {
+      debugApk: {
+        packageName: "com.hotupdaterexample",
+        aab: false,
+        variant: "Debug",
+      },
+      releaseApk: {
+        packageName: "com.hotupdaterexample",
+        aab: false,
+      },
+    },
+    ios: {
+      debug: {
+        bundleIdentifier: "com.hotupdaterexample",
+        scheme: "HotUpdaterExample",
+        configuration: "Debug",
+        installPods: true,
+      },
+      release: {
+        bundleIdentifier: "com.hotupdaterexample",
+        scheme: "HotUpdaterExample",
+        configuration: "Release",
+        installPods: true,
+      },
+    },
+  },
 
   build: bare({ enableHermes: true }),
   storage: s3Storage({

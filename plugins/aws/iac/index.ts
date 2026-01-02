@@ -81,7 +81,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
         defaultValue: "default",
         placeholder: "default",
       });
-      if (p.isCancel(profile)) process.exit(1);
+      if (p.isCancel(profile)) {
+        process.exit(1);
+      }
       ssoProfile = profile;
       await execa("aws", ["sso", "login", "--profile", profile], {
         stdio: "inherit",
@@ -109,11 +111,18 @@ export const runInit = async ({ build }: { build: BuildType }) => {
             value ? undefined : "Secret Access Key is required",
         }),
     });
-    if (p.isCancel(creds)) process.exit(1);
+    if (p.isCancel(creds)) {
+      process.exit(1);
+    }
     credentials = {
       accessKeyId: creds.accessKeyId,
       secretAccessKey: creds.secretAccessKey,
     };
+  }
+
+  if (!credentials) {
+    p.log.error("Couldn't fetch the credentials.");
+    process.exit(1);
   }
 
   // S3 related tasks: Create S3Manager instance

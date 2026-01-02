@@ -74,7 +74,7 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - React Native Constants (Keep getMinBundleId, delegate others)
 
-// Keep local implementation if complex or uses macros
+// Returns the minimum bundle ID string, either from Info.plist or generated from build timestamp
 - (NSString *)getMinBundleId {
      static NSString *uuid = nil;
      static dispatch_once_t onceToken;

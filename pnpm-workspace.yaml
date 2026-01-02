@@ -10,14 +10,20 @@ catalog:
   execa: 9.5.2
 
 onlyBuiltDependencies:
+  - '@biomejs/biome'
+  - '@firebase/util'
   - '@sentry/cli'
   - '@swc/core'
+  - aws-sdk
+  - core-js
   - core-js-pure
+  - cpu-features
   - esbuild
+  - msw
   - nx
+  - protobufjs
+  - re2
   - sharp
+  - ssh2
   - typia
   - workerd
-
-patchedDependencies:
-  expo: patches/expo.patch

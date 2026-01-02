@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.25.0",
+  "version": "0.25.4",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -54,6 +54,8 @@
   },
   "dependencies": {
     "@expo/fingerprint": "0.15.4",
+    "@hot-updater/android-helper": "workspace:*",
+    "@hot-updater/apple-helper": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/console": "workspace:*",
     "@hot-updater/core": "workspace:*",
