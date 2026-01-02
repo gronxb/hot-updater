@@ -67,7 +67,10 @@ const createGetUpdateInfo =
     if (bundles.length > 0) {
       await db.prepare(createInsertBundleQuerys(bundles)).run();
     }
-    const result = (await getUpdateInfoFromWorker(db, args)) as UpdateInfo | null;
+    const result = (await getUpdateInfoFromWorker(
+      db,
+      args,
+    )) as UpdateInfo | null;
 
     if (result && args.deviceId && result.status === "UPDATE") {
       const eligible = isDeviceEligibleForUpdate(
