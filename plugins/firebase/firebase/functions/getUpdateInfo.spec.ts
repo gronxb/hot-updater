@@ -1,4 +1,5 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import { isDeviceEligibleForUpdate } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import type { Firestore } from "firebase-admin/firestore";
 import { beforeEach, describe } from "vitest";
@@ -47,6 +48,8 @@ const createGetUpdateInfo =
           channel: bundle.channel || "production",
           storage_uri: bundle.storageUri || null,
           fingerprint_hash: bundle.fingerprintHash || null,
+          rollout_percentage: bundle.rolloutPercentage ?? 100,
+          target_device_ids: bundle.targetDeviceIds || null,
         });
 
         if (bundle.targetAppVersion) {
@@ -66,7 +69,21 @@ const createGetUpdateInfo =
       await writeBatch.commit();
     }
 
-    return await getUpdateInfoFromIndex(db, args);
+    const result = await getUpdateInfoFromIndex(db, args);
+
+    if (result && args.deviceId && result.status === "UPDATE") {
+      const eligible = isDeviceEligibleForUpdate(
+        args.deviceId,
+        result.rolloutPercentage,
+        result.targetDeviceIds,
+      );
+
+      if (!eligible) {
+        return null;
+      }
+    }
+
+    return result;
   };
 
 describe("getUpdateInfo", () => {

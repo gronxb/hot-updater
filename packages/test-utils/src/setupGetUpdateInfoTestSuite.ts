@@ -1990,13 +1990,13 @@ export const setupGetUpdateInfoTestSuite = ({
         ];
 
         // Find a deviceId that hashes to < 50
-        // Using "device-0" which hashes to 22
+        // Using "device-43" which hashes to 22
         const update = await getUpdateInfo(bundles, {
           appVersion: "1.0",
           bundleId: NIL_UUID,
           platform: "ios",
           _updateStrategy: "appVersion",
-          deviceId: "device-0", // Hash: 22 < 50
+          deviceId: "device-43", // Hash: 22 < 50
         });
 
         expect(update).toMatchObject({

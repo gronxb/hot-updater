@@ -122,6 +122,18 @@ export interface UpdateInfo {
   status: UpdateStatus;
   storageUri: string | null;
   fileHash: string | null;
+  /**
+   * Rollout percentage (0-100). Controls gradual rollout to devices.
+   * - 0: No devices receive this update
+   * - 50: ~50% of devices eligible based on device ID hash
+   * - 100 or null: All devices receive this update (full rollout)
+   */
+  rolloutPercentage?: number | null;
+  /**
+   * Target specific device IDs for this update.
+   * Used internally for rollout decisions.
+   */
+  targetDeviceIds?: string[] | null;
 }
 
 /**

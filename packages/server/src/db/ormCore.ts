@@ -61,24 +61,35 @@ export function createOrmDatabaseCore({
   const client = HotUpdaterDB.client(database);
 
   const ensureORM = async () => {
-    const migrator = client.createMigrator();
-    const currentVersion = await migrator.getVersion();
     const lastSchemaVersion = schemas.at(-1)!.version as "0.26.0";
 
-    if (currentVersion === undefined) {
-      throw new Error(
-        "Database is not initialized. Please run 'npx hot-updater migrate' to set up the database schema.",
-      );
-    }
+    try {
+      const migrator = client.createMigrator();
+      const currentVersion = await migrator.getVersion();
 
-    if (currentVersion !== lastSchemaVersion) {
-      throw new Error(
-        `Database schema version mismatch. Expected version ${lastSchemaVersion}, but database is on version ${currentVersion}. ` +
-          "Please run 'npx hot-updater migrate' to update your database schema.",
-      );
-    }
+      if (currentVersion === undefined) {
+        throw new Error(
+          "Database is not initialized. Please run 'npx hot-updater migrate' to set up the database schema.",
+        );
+      }
 
-    return client.orm(lastSchemaVersion);
+      if (currentVersion !== lastSchemaVersion) {
+        throw new Error(
+          `Database schema version mismatch. Expected version ${lastSchemaVersion}, but database is on version ${currentVersion}. ` +
+            "Please run 'npx hot-updater migrate' to update your database schema.",
+        );
+      }
+
+      return client.orm(lastSchemaVersion);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("doesn't support migration")
+      ) {
+        return client.orm(lastSchemaVersion);
+      }
+      throw error;
+    }
   };
 
   const api: DatabaseAPI = {

@@ -13,7 +13,9 @@ RETURNS TABLE (
     message       text,
     status        text,
     storage_uri   text,
-    file_hash     text
+    file_hash     text,
+    rollout_percentage INTEGER,
+    target_device_ids TEXT[]
 )
 LANGUAGE plpgsql
 AS
@@ -29,7 +31,9 @@ BEGIN
             b.message,
             'UPDATE' AS status,
             b.storage_uri,
-            b.file_hash
+            b.file_hash,
+            b.rollout_percentage,
+            b.target_device_ids
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -47,7 +51,9 @@ BEGIN
             b.message,
             'ROLLBACK' AS status,
             b.storage_uri,
-            b.file_hash
+            b.file_hash,
+            b.rollout_percentage,
+            b.target_device_ids
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -76,7 +82,9 @@ BEGIN
         NULL          AS message,
         'ROLLBACK'    AS status,
         NULL          AS storage_uri,
-        NULL          AS file_hash
+        NULL          AS file_hash,
+        NULL          AS rollout_percentage,
+        NULL          AS target_device_ids
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
