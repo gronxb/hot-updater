@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.25.6
+
+### Patch Changes
+
+- c7a0cc5: fix(cli): even though "provider: 'mysql'" is configured, the error still shows the dialect as postgresql
+  - @hot-updater/android-helper@0.25.6
+  - @hot-updater/apple-helper@0.25.6
+  - @hot-updater/cli-tools@0.25.6
+  - @hot-updater/console@0.25.6
+  - @hot-updater/core@0.25.6
+  - @hot-updater/server@0.25.6
+  - @hot-updater/plugin-core@0.25.6
+
 ## 0.25.5
 
 ### Patch Changes
