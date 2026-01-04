@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 0.25.5
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.5
+- @hot-updater/core@0.25.5
+- @hot-updater/js@0.25.5
+- @hot-updater/plugin-core@0.25.5
+
 ## 0.25.4
 
 ### Patch Changes

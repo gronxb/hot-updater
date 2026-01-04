@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.25.5
+
+### Patch Changes
+
+- 8041bab: fix(cli): function parse$4 expects an xml, but some inputs come as binary as well
+  - @hot-updater/android-helper@0.25.5
+  - @hot-updater/apple-helper@0.25.5
+  - @hot-updater/cli-tools@0.25.5
+  - @hot-updater/console@0.25.5
+  - @hot-updater/core@0.25.5
+  - @hot-updater/server@0.25.5
+  - @hot-updater/plugin-core@0.25.5
+
 ## 0.25.4
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/plugin-core",
-  "version": "0.25.4",
+  "version": "0.25.5",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
