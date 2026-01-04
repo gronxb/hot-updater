@@ -5,7 +5,6 @@
   "pages": [
     "wrap",
     "checkForUpdate",
-    "updateBundle",
     "reload",
     "getChannel",
     "useHotUpdaterStore",
