@@ -1423,8 +1423,8 @@ importers:
         specifier: 2.6.1
         version: 2.6.1
       kysely:
-        specifier: 0.28.8
-        version: 0.28.8
+        specifier: 0.28.9
+        version: 0.28.9
       sql-formatter:
         specifier: 15.6.10
         version: 15.6.10
