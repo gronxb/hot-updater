@@ -35,9 +35,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
     // Ensure Docker MySQL is running
     console.log("Starting MySQL Docker container...");
-    await execa("docker-compose", ["up", "-d"], {
+    await execa("docker", ["compose", "up", "-d"], {
       cwd: projectRoot,
-      stdio: "inherit",
     });
 
     // Wait for MySQL to be healthy
@@ -131,7 +130,7 @@ async function waitForMySQLReady(
         console.log("MySQL is ready!");
         return;
       }
-    } catch (error) {
+    } catch (_error) {
       // Container not ready yet
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
