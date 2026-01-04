@@ -43,6 +43,10 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     console.log("Waiting for MySQL to be ready...");
     await waitForMySQLReady(projectRoot, 30);
 
+    // Additional delay to ensure MySQL is fully stabilized
+    console.log("Waiting for MySQL to stabilize...");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
     // Run database migrations before starting server
     const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
     const hotUpdaterCli = path.join(
@@ -121,7 +125,7 @@ async function waitForMySQLReady(
         console.log("MySQL is ready!");
         return;
       }
-    } catch (_error) {
+    } catch {
       // Container not ready yet
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
