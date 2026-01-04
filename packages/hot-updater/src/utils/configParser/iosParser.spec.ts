@@ -4,6 +4,7 @@ import path from "path";
 import plist from "plist";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IosConfigParser } from "./iosParser";
+import { parsePlist } from "./plistUtils";
 
 // Mock modules
 vi.mock("fs", () => ({
@@ -29,6 +30,10 @@ vi.mock("plist", () => ({
     parse: vi.fn(),
     build: vi.fn(),
   },
+}));
+
+vi.mock("./plistUtils", () => ({
+  parsePlist: vi.fn(),
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
@@ -120,8 +125,10 @@ describe("IosConfigParser", () => {
       const mockPlistObject = { TEST_KEY: "test_value" };
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from("plist content"),
+      );
+      vi.mocked(parsePlist).mockReturnValue(mockPlistObject);
 
       const result = await parser.get("TEST_KEY");
 
@@ -129,8 +136,8 @@ describe("IosConfigParser", () => {
         value: "test_value",
         paths: ["ios/TestApp/Info.plist"],
       });
-      expect(fs.promises.readFile).toHaveBeenCalledWith(mockPlistPath, "utf-8");
-      expect(plist.parse).toHaveBeenCalledWith("plist content");
+      expect(fs.promises.readFile).toHaveBeenCalledWith(mockPlistPath);
+      expect(parsePlist).toHaveBeenCalledWith(Buffer.from("plist content"));
     });
 
     it("should return null when key does not exist", async () => {
@@ -138,8 +145,10 @@ describe("IosConfigParser", () => {
       const mockPlistObject = {};
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from("plist content"),
+      );
+      vi.mocked(parsePlist).mockReturnValue(mockPlistObject);
 
       const result = await parser.get("NONEXISTENT_KEY");
 
@@ -162,8 +171,10 @@ describe("IosConfigParser", () => {
     it("should handle plist parse errors", async () => {
       const parser = new IosConfigParser([mockPlistPath]);
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("invalid plist");
-      vi.mocked(plist.parse).mockImplementation(() => {
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from("invalid plist"),
+      );
+      vi.mocked(parsePlist).mockImplementation(() => {
         throw new Error("Parse error");
       });
 
@@ -193,15 +204,15 @@ describe("IosConfigParser", () => {
       const mockPlistObject = { EXISTING_KEY: "existing_value" };
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(
-        fs.promises.readFile,
-      ).mockResolvedValue(`<?xml version="1.0" encoding="UTF-8"?>
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 </dict>
-</plist>`);
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
+</plist>`),
+      );
+      vi.mocked(parsePlist).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("new plist content");
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
@@ -229,15 +240,15 @@ describe("IosConfigParser", () => {
       const mockPlistObject = { TEST_KEY: "test_value" };
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(
-        fs.promises.readFile,
-      ).mockResolvedValue(`<?xml version="1.0" encoding="UTF-8"?>
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 </dict>
-</plist>`);
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
+</plist>`),
+      );
+      vi.mocked(parsePlist).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("new plist content");
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
@@ -267,13 +278,84 @@ describe("IosConfigParser", () => {
       const mockPlistObject = {};
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("plist content");
-      vi.mocked(plist.parse).mockReturnValue(mockPlistObject);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from("plist content"),
+      );
+      vi.mocked(parsePlist).mockReturnValue(mockPlistObject);
       vi.mocked(plist.build).mockReturnValue("new plist content");
+      vi.mocked(fs.promises.writeFile).mockRejectedValue(
+        new Error("Write error"),
+      );
 
       await expect(parser.set("TEST_KEY", "test_value")).rejects.toThrow(
-        "Failed to parse or update Info.plist at 'ios/TestApp/Info.plist': File does not appear to be valid XML: missing XML declaration",
+        "Write error",
       );
+    });
+  });
+
+  describe("Binary Plist Support", () => {
+    it("should read binary plist files", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
+      const mockPlistObject = { TEST_KEY: "test_value" };
+      const binaryBuffer = Buffer.from("bplist00...");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(binaryBuffer);
+      vi.mocked(parsePlist).mockReturnValue(mockPlistObject);
+
+      const result = await parser.get("TEST_KEY");
+
+      expect(result.value).toBe("test_value");
+      expect(parsePlist).toHaveBeenCalledWith(binaryBuffer);
+    });
+
+    it("should write binary plists back as XML", async () => {
+      const parser = new IosConfigParser([mockPlistPath]);
+      const mockPlistObject = { EXISTING_KEY: "value" };
+      const binaryBuffer = Buffer.from("bplist00...");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(binaryBuffer);
+      vi.mocked(parsePlist).mockReturnValue(mockPlistObject);
+      vi.mocked(plist.build).mockReturnValue(
+        '<?xml version="1.0" encoding="UTF-8"?>...',
+      );
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      const result = await parser.set("NEW_KEY", "new_value");
+
+      expect(parsePlist).toHaveBeenCalledWith(binaryBuffer);
+      expect(plist.build).toHaveBeenCalled();
+      expect(result.paths).toEqual(["ios/TestApp/Info.plist"]);
+    });
+
+    it("should handle mixed XML and binary plists across multiple files", async () => {
+      const xmlPath = "/mock/project/ios/TestApp/Info.plist";
+      const binaryPath = "/mock/project/ios/TestAppTests/Info.plist";
+      const parser = new IosConfigParser([xmlPath, binaryPath]);
+
+      const xmlBuffer = Buffer.from(
+        '<?xml version="1.0"?><plist><dict><key>TEST_KEY</key><string>xml_value</string></dict></plist>',
+      );
+      const binaryBuffer = Buffer.from("bplist00...");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockImplementation(async (path) => {
+        if (path === xmlPath) return xmlBuffer;
+        if (path === binaryPath) return binaryBuffer;
+        throw new Error("Unexpected path");
+      });
+
+      vi.mocked(parsePlist).mockImplementation((buffer) => {
+        if (buffer === xmlBuffer) return { TEST_KEY: "xml_value" };
+        if (buffer === binaryBuffer) return { OTHER_KEY: "binary_value" };
+        throw new Error("Unexpected buffer");
+      });
+
+      const result = await parser.get("TEST_KEY");
+
+      expect(result.value).toBe("xml_value");
+      expect(parsePlist).toHaveBeenCalledWith(xmlBuffer);
     });
   });
 });
