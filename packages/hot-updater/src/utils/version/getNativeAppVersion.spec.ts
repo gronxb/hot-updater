@@ -127,7 +127,7 @@ describe("getNativeAppVersion", () => {
 </dict>
 </plist>`;
 
-      mockFsReadFile.mockResolvedValue(mockPlistContent);
+      mockFsReadFile.mockResolvedValue(Buffer.from(mockPlistContent));
       mockPlistParse.mockReturnValue({
         CFBundleShortVersionString: "2.0",
       });
@@ -137,7 +137,7 @@ describe("getNativeAppVersion", () => {
 
       // Assert
       expect(result).toBe("2.0");
-      expect(mockFsReadFile).toHaveBeenCalledWith(mockPlistPath, "utf8");
+      expect(mockFsReadFile).toHaveBeenCalledWith(mockPlistPath);
       expect(mockPlistParse).toHaveBeenCalledWith(mockPlistContent);
     });
 
