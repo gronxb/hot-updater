@@ -53,7 +53,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
-    "fumadb": "0.2.1",
+    "fumadb": "0.2.2",
     "rou3": "0.7.9",
     "semver": "^7.7.2"
   },
