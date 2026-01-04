@@ -1591,7 +1591,7 @@ importers:
         version: link:../../plugins/plugin-core
       fumadb:
         specifier: 0.2.2
-        version: 0.2.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3)))(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(prisma@6.18.0(typescript@5.9.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(mysql2@3.16.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3)))
+        version: 0.2.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.9)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3)))(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(prisma@6.18.0(typescript@5.9.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(mysql2@3.16.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3)))
       rou3:
         specifier: 0.7.9
         version: 0.7.9
@@ -1630,11 +1630,11 @@ importers:
         specifier: ^9.5.2
         version: 9.5.2
       kysely:
-        specifier: ^0.28.5
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       kysely-pglite-dialect:
         specifier: ^1.2.0
-        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.8)
+        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9)
       msw:
         specifier: ^2.7.0
         version: 2.7.0(@types/node@20.19.11)(typescript@5.9.3)
@@ -33165,7 +33165,7 @@ snapshots:
       pg: 8.13.1
       prisma: 6.18.0(typescript@5.8.3)
 
-  drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3)):
+  drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.9)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3)):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20250828.1
       '@electric-sql/pglite': 0.2.17
@@ -33175,7 +33175,7 @@ snapshots:
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.11.10
       better-sqlite3: 11.10.0
-      kysely: 0.28.8
+      kysely: 0.28.9
       mysql2: 3.16.0
       pg: 8.13.1
       prisma: 6.18.0(typescript@5.9.3)
@@ -34874,7 +34874,7 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
-  fumadb@0.2.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3)))(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(prisma@6.18.0(typescript@5.9.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(mysql2@3.16.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3))):
+  fumadb@0.2.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.9)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3)))(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(prisma@6.18.0(typescript@5.9.3))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(mysql2@3.16.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3))):
     dependencies:
       '@clack/prompts': 0.11.0
       '@paralleldrive/cuid2': 2.3.1
@@ -34884,7 +34884,7 @@ snapshots:
       semver: 7.7.3
       zod: 4.3.5
     optionalDependencies:
-      drizzle-orm: 0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.8)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3))
+      drizzle-orm: 0.44.7(@cloudflare/workers-types@4.20250828.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.9)(mysql2@3.16.0)(pg@8.13.1)(prisma@6.18.0(typescript@5.9.3))
       mongodb: 6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4)
       prisma: 6.18.0(typescript@5.9.3)
       typeorm: 0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(mysql2@3.16.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3))
@@ -37017,6 +37017,11 @@ snapshots:
     dependencies:
       '@electric-sql/pglite': 0.2.17
       kysely: 0.28.8
+
+  kysely-pglite-dialect@1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9):
+    dependencies:
+      '@electric-sql/pglite': 0.2.17
+      kysely: 0.28.9
 
   kysely-typeorm@0.3.0(kysely@0.28.9)(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.958.0)(socks@2.8.4))(mysql2@3.16.0)(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@5.9.3))):
     dependencies:
