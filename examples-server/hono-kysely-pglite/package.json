@@ -18,7 +18,7 @@
     "@hot-updater/server": "workspace:*",
     "dotenv": "^16.4.7",
     "hono": "^4.9.12",
-    "kysely": "^0.28.5",
+    "kysely": "0.28.9",
     "kysely-pglite-dialect": "^1.2.0"
   },
   "devDependencies": {
