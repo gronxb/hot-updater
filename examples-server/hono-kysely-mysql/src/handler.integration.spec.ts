@@ -35,7 +35,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
     // Ensure Docker MySQL is running
     console.log("Starting MySQL Docker container...");
-    await execa("docker", ["compose", "up", "-d"], {
+    await execa("docker", ["compose", "up", "-d", "--wait"], {
       cwd: projectRoot,
     });
 
@@ -111,22 +111,13 @@ async function waitForMySQLReady(
 ): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const result = await execa(
-        "docker-compose",
-        [
-          "exec",
-          "-T",
-          "mysql",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-uhot_updater",
-          "-phot_updater_dev",
-        ],
+      // Check Docker container health status
+      const healthResult = await execa(
+        "docker",
+        ["inspect", "--format={{.State.Health.Status}}", "hono-kysely-mysql"],
         { cwd: projectRoot },
       );
-      if (result.stdout.includes("mysqld is alive")) {
+      if (healthResult.stdout.trim() === "healthy") {
         console.log("MySQL is ready!");
         return;
       }
@@ -143,8 +134,9 @@ async function cleanupMySQLDatabase(projectRoot: string): Promise<void> {
   try {
     // Drop and recreate database for clean state
     await execa(
-      "docker-compose",
+      "docker",
       [
+        "compose",
         "exec",
         "-T",
         "mysql",
