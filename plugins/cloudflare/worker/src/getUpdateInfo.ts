@@ -18,15 +18,10 @@ function hashUserId(userId: string): number {
   return Math.abs(hash % 100);
 }
 
-function isDeviceEligibleForUpdate(
+function isDeviceEligibleForPercentage(
   userId: string,
   rolloutPercentage: number | null | undefined,
-  targetDeviceIds: string[] | null | undefined,
 ): boolean {
-  if (targetDeviceIds && targetDeviceIds.length > 0) {
-    return targetDeviceIds.includes(userId);
-  }
-
   if (
     rolloutPercentage === null ||
     rolloutPercentage === undefined ||
@@ -92,6 +87,7 @@ const appVersionStrategy = async (
       ? AS bundle_id,
       ? AS min_bundle_id,
       ? AS channel,
+      ? AS device_id,
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
@@ -113,6 +109,15 @@ const appVersionStrategy = async (
       AND b.target_app_version IN (${targetAppVersionList
         .map((version) => `'${version}'`)
         .join(",")})
+      AND (
+        b.target_device_ids IS NULL
+        OR b.target_device_ids = 'null'
+        OR json_array_length(b.target_device_ids) = 0
+        OR EXISTS (
+          SELECT 1 FROM json_each(b.target_device_ids)
+          WHERE json_each.value = input.device_id
+        )
+      )
     ORDER BY b.id DESC
     LIMIT 1
   ),
@@ -161,7 +166,7 @@ const appVersionStrategy = async (
 `;
 
   const result = await DB.prepare(sql)
-    .bind(platform, appVersion, bundleId, minBundleId, channel)
+    .bind(platform, appVersion, bundleId, minBundleId, channel, deviceId ?? "")
     .first<{
       id: string;
       should_force_update: number;
@@ -178,10 +183,24 @@ const appVersionStrategy = async (
   }
 
   if (deviceId && result.status === "UPDATE") {
-    const eligible = isDeviceEligibleForUpdate(
+    // If device is in targetDeviceIds, skip percentage check (priority 1)
+    const targetDeviceIds = parseTargetDeviceIds(result.target_device_ids);
+    if (targetDeviceIds && targetDeviceIds.length > 0 && targetDeviceIds.includes(deviceId)) {
+      // Device is explicitly targeted - skip percentage check
+      return {
+        id: result.id,
+        shouldForceUpdate: Boolean(result.should_force_update),
+        status: result.status,
+        message: result.message,
+        storageUri: result.storage_uri,
+        fileHash: result.file_hash,
+      } as UpdateInfo;
+    }
+
+    // Check percentage-based rollout (priority 2)
+    const eligible = isDeviceEligibleForPercentage(
       deviceId,
       result.rollout_percentage,
-      parseTargetDeviceIds(result.target_device_ids),
     );
 
     if (!eligible) {
@@ -218,6 +237,7 @@ export const fingerprintStrategy = async (
       ? AS min_bundle_id,
       ? AS channel,
       ? AS fingerprint_hash,
+      ? AS device_id,
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
@@ -237,6 +257,15 @@ export const fingerprintStrategy = async (
       AND b.id >= input.min_bundle_id
       AND b.channel = input.channel
       AND b.fingerprint_hash = input.fingerprint_hash
+      AND (
+        b.target_device_ids IS NULL
+        OR b.target_device_ids = 'null'
+        OR json_array_length(b.target_device_ids) = 0
+        OR EXISTS (
+          SELECT 1 FROM json_each(b.target_device_ids)
+          WHERE json_each.value = input.device_id
+        )
+      )
     ORDER BY b.id DESC
     LIMIT 1
   ),
@@ -287,7 +316,7 @@ export const fingerprintStrategy = async (
 `;
 
   const result = await DB.prepare(sql)
-    .bind(platform, bundleId, minBundleId, channel, fingerprintHash)
+    .bind(platform, bundleId, minBundleId, channel, fingerprintHash, deviceId ?? "")
     .first<{
       id: string;
       should_force_update: number;
@@ -304,10 +333,24 @@ export const fingerprintStrategy = async (
   }
 
   if (deviceId && result.status === "UPDATE") {
-    const eligible = isDeviceEligibleForUpdate(
+    // If device is in targetDeviceIds, skip percentage check (priority 1)
+    const targetDeviceIds = parseTargetDeviceIds(result.target_device_ids);
+    if (targetDeviceIds && targetDeviceIds.length > 0 && targetDeviceIds.includes(deviceId)) {
+      // Device is explicitly targeted - skip percentage check
+      return {
+        id: result.id,
+        shouldForceUpdate: Boolean(result.should_force_update),
+        status: result.status,
+        message: result.message,
+        storageUri: result.storage_uri,
+        fileHash: result.file_hash,
+      } as UpdateInfo;
+    }
+
+    // Check percentage-based rollout (priority 2)
+    const eligible = isDeviceEligibleForPercentage(
       deviceId,
       result.rollout_percentage,
-      parseTargetDeviceIds(result.target_device_ids),
     );
 
     if (!eligible) {

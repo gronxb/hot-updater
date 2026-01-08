@@ -21,15 +21,10 @@ function hashUserId(userId: string): number {
   return Math.abs(hash % 100);
 }
 
-function isDeviceEligibleForUpdate(
+function isDeviceEligibleForPercentage(
   userId: string,
   rolloutPercentage: number | null | undefined,
-  targetDeviceIds: string[] | null | undefined,
 ): boolean {
-  if (targetDeviceIds && targetDeviceIds.length > 0) {
-    return targetDeviceIds.includes(userId);
-  }
-
   if (
     rolloutPercentage === null ||
     rolloutPercentage === undefined ||
@@ -80,20 +75,53 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
   fileHash: bundle.fileHash,
 });
 
+const checkTargetDeviceIdsEligibility = (
+  bundle: Bundle,
+  deviceId: string | undefined,
+): boolean => {
+  // If bundle has targetDeviceIds, device must be in the list
+  if (bundle.targetDeviceIds && bundle.targetDeviceIds.length > 0) {
+    if (!deviceId) {
+      return false;
+    }
+    return bundle.targetDeviceIds.includes(deviceId);
+  }
+  // No targetDeviceIds restriction - check percentage
+  return true;
+};
+
 const makeResponseWithRollout = (
   bundle: Bundle,
   status: UpdateStatus,
   deviceId: string | undefined,
 ): UpdateInfo | null => {
-  if (status === "UPDATE" && deviceId) {
-    const isEligible = isDeviceEligibleForUpdate(
-      deviceId,
-      bundle.rolloutPercentage,
-      bundle.targetDeviceIds,
-    );
-
-    if (!isEligible) {
+  if (status === "UPDATE") {
+    // Check targetDeviceIds eligibility
+    if (!checkTargetDeviceIdsEligibility(bundle, deviceId)) {
       return null;
+    }
+
+    // If device matched via targetDeviceIds, skip percentage check (priority 1)
+    if (
+      bundle.targetDeviceIds &&
+      bundle.targetDeviceIds.length > 0 &&
+      deviceId &&
+      bundle.targetDeviceIds.includes(deviceId)
+    ) {
+      // Device is explicitly targeted - skip percentage check
+      return makeResponse(bundle, status);
+    }
+
+    // Check percentage-based rollout (priority 2)
+    if (deviceId) {
+      const isEligible = isDeviceEligibleForPercentage(
+        deviceId,
+        bundle.rolloutPercentage,
+      );
+
+      if (!isEligible) {
+        return null;
+      }
     }
   }
 
@@ -154,30 +182,63 @@ const fingerprintStrategy = async (
     let rollbackCandidate: Bundle | null = null;
 
     if (bundleId === NIL_UUID) {
-      const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
-      if (!snap.empty) {
-        const data = snap.docs[0].data();
-        updateCandidate = convertToBundle(data);
-      }
-    } else {
-      const updateSnap = await baseQuery
-        .where("id", ">=", bundleId)
-        .orderBy("id", "desc")
-        .limit(1)
-        .get();
-      if (!updateSnap.empty) {
-        const data = updateSnap.docs[0].data();
-        updateCandidate = convertToBundle(data);
+      // Two-stage query for UPDATE candidates when deviceId is provided
+      if (deviceId) {
+        // Stage 1: Try to find bundle with explicit targetDeviceIds match
+        const targetedSnap = await baseQuery
+          .where("target_device_ids", "array-contains", deviceId)
+          .orderBy("id", "desc")
+          .limit(1)
+          .get();
+
+        if (!targetedSnap.empty) {
+          updateCandidate = convertToBundle(targetedSnap.docs[0].data());
+        }
       }
 
+      // Stage 2: If no targeted match, query without array-contains filter
+      if (!updateCandidate) {
+        const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
+        if (!snap.empty) {
+          updateCandidate = convertToBundle(snap.docs[0].data());
+        }
+      }
+    } else {
+      // UPDATE candidate query
+      if (deviceId) {
+        // Stage 1: Try with array-contains filter
+        const targetedUpdateSnap = await baseQuery
+          .where("id", ">=", bundleId)
+          .where("target_device_ids", "array-contains", deviceId)
+          .orderBy("id", "desc")
+          .limit(1)
+          .get();
+
+        if (!targetedUpdateSnap.empty) {
+          updateCandidate = convertToBundle(targetedUpdateSnap.docs[0].data());
+        }
+      }
+
+      // Stage 2: If no targeted match, query without array-contains
+      if (!updateCandidate) {
+        const updateSnap = await baseQuery
+          .where("id", ">=", bundleId)
+          .orderBy("id", "desc")
+          .limit(1)
+          .get();
+        if (!updateSnap.empty) {
+          updateCandidate = convertToBundle(updateSnap.docs[0].data());
+        }
+      }
+
+      // ROLLBACK candidate query (no array-contains filter for rollbacks)
       const rollbackSnap = await baseQuery
         .where("id", "<", bundleId)
         .orderBy("id", "desc")
         .limit(1)
         .get();
       if (!rollbackSnap.empty) {
-        const data = rollbackSnap.docs[0].data();
-        rollbackCandidate = convertToBundle(data);
+        rollbackCandidate = convertToBundle(rollbackSnap.docs[0].data());
       }
     }
 
@@ -276,30 +337,63 @@ const appVersionStrategy = async (
     let rollbackCandidate: Bundle | null = null;
 
     if (bundleId === NIL_UUID) {
-      const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
-      if (!snap.empty) {
-        const data = snap.docs[0].data();
-        updateCandidate = convertToBundle(data);
-      }
-    } else {
-      const updateSnap = await baseQuery
-        .where("id", ">=", bundleId)
-        .orderBy("id", "desc")
-        .limit(1)
-        .get();
-      if (!updateSnap.empty) {
-        const data = updateSnap.docs[0].data();
-        updateCandidate = convertToBundle(data);
+      // Two-stage query for UPDATE candidates when deviceId is provided
+      if (deviceId) {
+        // Stage 1: Try to find bundle with explicit targetDeviceIds match
+        const targetedSnap = await baseQuery
+          .where("target_device_ids", "array-contains", deviceId)
+          .orderBy("id", "desc")
+          .limit(1)
+          .get();
+
+        if (!targetedSnap.empty) {
+          updateCandidate = convertToBundle(targetedSnap.docs[0].data());
+        }
       }
 
+      // Stage 2: If no targeted match, query without array-contains filter
+      if (!updateCandidate) {
+        const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
+        if (!snap.empty) {
+          updateCandidate = convertToBundle(snap.docs[0].data());
+        }
+      }
+    } else {
+      // UPDATE candidate query
+      if (deviceId) {
+        // Stage 1: Try with array-contains filter
+        const targetedUpdateSnap = await baseQuery
+          .where("id", ">=", bundleId)
+          .where("target_device_ids", "array-contains", deviceId)
+          .orderBy("id", "desc")
+          .limit(1)
+          .get();
+
+        if (!targetedUpdateSnap.empty) {
+          updateCandidate = convertToBundle(targetedUpdateSnap.docs[0].data());
+        }
+      }
+
+      // Stage 2: If no targeted match, query without array-contains
+      if (!updateCandidate) {
+        const updateSnap = await baseQuery
+          .where("id", ">=", bundleId)
+          .orderBy("id", "desc")
+          .limit(1)
+          .get();
+        if (!updateSnap.empty) {
+          updateCandidate = convertToBundle(updateSnap.docs[0].data());
+        }
+      }
+
+      // ROLLBACK candidate query (no array-contains filter for rollbacks)
       const rollbackSnap = await baseQuery
         .where("id", "<", bundleId)
         .orderBy("id", "desc")
         .limit(1)
         .get();
       if (!rollbackSnap.empty) {
-        const data = rollbackSnap.docs[0].data();
-        rollbackCandidate = convertToBundle(data);
+        rollbackCandidate = convertToBundle(rollbackSnap.docs[0].data());
       }
     }
 
