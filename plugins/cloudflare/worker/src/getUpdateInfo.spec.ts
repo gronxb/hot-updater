@@ -1,6 +1,5 @@
 import { env } from "cloudflare:test";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-import { isDeviceEligibleForUpdate } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { beforeAll, beforeEach, describe, inject } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromWorker } from "./getUpdateInfo";
@@ -67,24 +66,7 @@ const createGetUpdateInfo =
     if (bundles.length > 0) {
       await db.prepare(createInsertBundleQuerys(bundles)).run();
     }
-    const result = (await getUpdateInfoFromWorker(
-      db,
-      args,
-    )) as UpdateInfo | null;
-
-    if (result && args.deviceId && result.status === "UPDATE") {
-      const eligible = isDeviceEligibleForUpdate(
-        args.deviceId,
-        result.rolloutPercentage,
-        result.targetDeviceIds,
-      );
-
-      if (!eligible) {
-        return null;
-      }
-    }
-
-    return result;
+    return (await getUpdateInfoFromWorker(db, args)) as UpdateInfo | null;
   };
 
 const createInsertBundleQuerys = (bundles: Bundle[]) => {

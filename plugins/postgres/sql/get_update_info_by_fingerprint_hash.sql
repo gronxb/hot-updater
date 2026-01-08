@@ -5,7 +5,8 @@ CREATE OR REPLACE FUNCTION get_update_info_by_fingerprint_hash (
     bundle_id  uuid,
     min_bundle_id uuid,
     target_channel text,
-    target_fingerprint_hash text
+    target_fingerprint_hash text,
+    device_id TEXT DEFAULT NULL
 )
 RETURNS TABLE (
     id            uuid,
@@ -13,9 +14,7 @@ RETURNS TABLE (
     message       text,
     status        text,
     storage_uri   text,
-    file_hash     text,
-    rollout_percentage INTEGER,
-    target_device_ids TEXT[]
+    file_hash     text
 )
 LANGUAGE plpgsql
 AS
@@ -31,9 +30,7 @@ BEGIN
             b.message,
             'UPDATE' AS status,
             b.storage_uri,
-            b.file_hash,
-            b.rollout_percentage,
-            b.target_device_ids
+            b.file_hash
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -41,6 +38,10 @@ BEGIN
           AND b.id > min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
+          AND (
+            device_id IS NULL
+            OR is_device_eligible(device_id, b.rollout_percentage, b.target_device_ids)
+          )
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -51,9 +52,7 @@ BEGIN
             b.message,
             'ROLLBACK' AS status,
             b.storage_uri,
-            b.file_hash,
-            b.rollout_percentage,
-            b.target_device_ids
+            b.file_hash
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -82,9 +81,7 @@ BEGIN
         NULL          AS message,
         'ROLLBACK'    AS status,
         NULL          AS storage_uri,
-        NULL          AS file_hash,
-        NULL          AS rollout_percentage,
-        NULL          AS target_device_ids
+        NULL          AS file_hash
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id

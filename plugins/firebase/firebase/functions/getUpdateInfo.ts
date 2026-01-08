@@ -11,6 +11,41 @@ import type { Firestore } from "firebase-admin/firestore";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
+function hashUserId(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return Math.abs(hash % 100);
+}
+
+function isDeviceEligibleForUpdate(
+  userId: string,
+  rolloutPercentage: number | null | undefined,
+  targetDeviceIds: string[] | null | undefined,
+): boolean {
+  if (targetDeviceIds && targetDeviceIds.length > 0) {
+    return targetDeviceIds.includes(userId);
+  }
+
+  if (
+    rolloutPercentage === null ||
+    rolloutPercentage === undefined ||
+    rolloutPercentage >= 100
+  ) {
+    return true;
+  }
+
+  if (rolloutPercentage <= 0) {
+    return false;
+  }
+
+  const userHash = hashUserId(userId);
+  return userHash < rolloutPercentage;
+}
+
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   id: NIL_UUID,
   shouldForceUpdate: true,
@@ -18,8 +53,6 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   status: "ROLLBACK",
   storageUri: null,
   fileHash: null,
-  rolloutPercentage: null,
-  targetDeviceIds: null,
 };
 
 const convertToBundle = (data: any): Bundle => ({
@@ -45,9 +78,27 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
   status,
   storageUri: bundle.storageUri,
   fileHash: bundle.fileHash,
-  rolloutPercentage: bundle.rolloutPercentage ?? null,
-  targetDeviceIds: bundle.targetDeviceIds || null,
 });
+
+const makeResponseWithRollout = (
+  bundle: Bundle,
+  status: UpdateStatus,
+  deviceId: string | undefined,
+): UpdateInfo | null => {
+  if (status === "UPDATE" && deviceId) {
+    const isEligible = isDeviceEligibleForUpdate(
+      deviceId,
+      bundle.rolloutPercentage,
+      bundle.targetDeviceIds,
+    );
+
+    if (!isEligible) {
+      return null;
+    }
+  }
+
+  return makeResponse(bundle, status);
+};
 
 export const getUpdateInfo = async (
   db: Firestore,
@@ -71,6 +122,7 @@ const fingerprintStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    deviceId,
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
@@ -130,10 +182,12 @@ const fingerprintStrategy = async (
     }
 
     if (bundleId === NIL_UUID) {
-      return updateCandidate ? makeResponse(updateCandidate, "UPDATE") : null;
+      return updateCandidate
+        ? makeResponseWithRollout(updateCandidate, "UPDATE", deviceId)
+        : null;
     }
     if (updateCandidate && updateCandidate.id !== bundleId) {
-      return makeResponse(updateCandidate, "UPDATE");
+      return makeResponseWithRollout(updateCandidate, "UPDATE", deviceId);
     }
 
     if (updateCandidate && updateCandidate.id === bundleId) {
@@ -166,6 +220,7 @@ const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    deviceId,
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
@@ -249,10 +304,12 @@ const appVersionStrategy = async (
     }
 
     if (bundleId === NIL_UUID) {
-      return updateCandidate ? makeResponse(updateCandidate, "UPDATE") : null;
+      return updateCandidate
+        ? makeResponseWithRollout(updateCandidate, "UPDATE", deviceId)
+        : null;
     }
     if (updateCandidate && updateCandidate.id !== bundleId) {
-      return makeResponse(updateCandidate, "UPDATE");
+      return makeResponseWithRollout(updateCandidate, "UPDATE", deviceId);
     }
 
     if (updateCandidate && updateCandidate.id === bundleId) {
