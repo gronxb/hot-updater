@@ -2,6 +2,8 @@ import type { SnakeCaseBundle } from "@hot-updater/core";
 import type {
   Bundle,
   DeviceEvent,
+  DeviceEventFilter,
+  DeviceEventListResult,
   PaginationOptions,
   RolloutStats,
 } from "@hot-updater/plugin-core";
@@ -366,6 +368,101 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
           promotedCount: row.promoted_count,
           recoveredCount: row.recovered_count,
           successRate: Number(successRate.toFixed(2)),
+        };
+      },
+
+      async getDeviceEvents(
+        filter?: DeviceEventFilter,
+      ): Promise<DeviceEventListResult> {
+        const limit = filter?.limit ?? 50;
+        const offset = filter?.offset ?? 0;
+
+        const clauses: string[] = [];
+        const params: string[] = [];
+
+        if (filter?.bundleId) {
+          clauses.push("bundle_id = ?");
+          params.push(filter.bundleId);
+        }
+        if (filter?.platform) {
+          clauses.push("platform = ?");
+          params.push(filter.platform);
+        }
+        if (filter?.channel) {
+          clauses.push("channel = ?");
+          params.push(filter.channel);
+        }
+        if (filter?.eventType) {
+          clauses.push("event_type = ?");
+          params.push(filter.eventType);
+        }
+
+        const whereClause =
+          clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+        const countSql = minify(
+          `SELECT COUNT(*) as total FROM device_events ${whereClause}`,
+        );
+        const countResult = await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql: countSql,
+          params,
+        });
+        const countRows = await resolvePage<{ total: number }>(countResult);
+        const total = countRows[0]?.total ?? 0;
+
+        const sql = minify(/* sql */ `
+          SELECT
+            id,
+            device_id,
+            bundle_id,
+            event_type,
+            platform,
+            app_version,
+            channel,
+            metadata
+          FROM device_events
+          ${whereClause}
+          ORDER BY id DESC
+          LIMIT ?
+          OFFSET ?
+        `);
+
+        const result = await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+          params: [...params, String(limit), String(offset)],
+        });
+
+        interface DeviceEventRow {
+          id: string;
+          device_id: string;
+          bundle_id: string;
+          event_type: "PROMOTED" | "RECOVERED";
+          platform: "ios" | "android";
+          app_version: string | null;
+          channel: string;
+          metadata: string | null;
+        }
+
+        const rows = await resolvePage<DeviceEventRow>(result);
+
+        const events: DeviceEvent[] = rows.map((row) => ({
+          id: row.id,
+          deviceId: row.device_id,
+          bundleId: row.bundle_id,
+          eventType: row.event_type,
+          platform: row.platform,
+          appVersion: row.app_version ?? undefined,
+          channel: row.channel,
+          metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        }));
+
+        const pagination = calculatePagination(total, { limit, offset });
+
+        return {
+          data: events,
+          pagination,
         };
       },
     };

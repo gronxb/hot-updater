@@ -1,42 +1,66 @@
-import { createMemo, Show, Suspense } from "solid-js";
-import { Sheet } from "@/components/ui/sheet";
-import { useFilter } from "@/hooks/useFilter";
-import { columns } from "./_components/columns";
-import { DataTable } from "./_components/data-table";
-import { EditBundleSheetContent } from "./_components/edit-bundle-sheet-content";
+import { createFileRoute } from "@tanstack/react-router";
+import { useBundlesQuery } from "@/lib/api";
+import { FilterToolbar } from "@/components/features/bundles/FilterToolbar";
+import { BundlesTable } from "@/components/features/bundles/BundlesTable";
+import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
+import { useFilterParams } from "@/hooks/useFilterParams";
+import { useState } from "react";
+import type { Bundle } from "@hot-updater/plugin-core";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export default function Home() {
-  const { bundleIdFilter, setBundleIdFilter } = useFilter();
+export const Route = createFileRoute("/")({
+  component: BundlesPage,
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      channel: search.channel as string | undefined,
+      platform: search.platform as "ios" | "android" | undefined,
+      offset: search.offset as string | undefined,
+    };
+  },
+});
 
-  const isOpen = createMemo(() => bundleIdFilter() !== null);
+function BundlesPage() {
+  const { filters } = useFilterParams();
+  const [selectedBundle, setSelectedBundle] = useState<Bundle | null>(null);
 
-  const handleClose = () => {
-    setBundleIdFilter(null);
-  };
+  const { data: bundlesData, isLoading } = useBundlesQuery({
+    channel: filters.channel,
+    platform: filters.platform,
+    offset: filters.offset,
+    limit: "20",
+  });
+
+  const bundles = bundlesData?.data ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full">
+        <FilterToolbar />
+        <div className="flex-1 p-6 space-y-4 bg-muted/5">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <Sheet
-      open={isOpen()}
-      onOpenChange={(open) => {
-        if (!open) {
-          setBundleIdFilter(null);
-        }
-      }}
-    >
-      <DataTable
-        columns={columns}
-        onRowClick={(row) => {
-          setBundleIdFilter(row.id);
-        }}
+    <div className="flex flex-col h-full">
+      <FilterToolbar />
+      <div className="flex-1 p-6 space-y-6 bg-muted/5">
+        <BundlesTable
+          bundles={bundles}
+          onRowClick={(bundle) => setSelectedBundle(bundle)}
+        />
+      </div>
+
+      <BundleEditorSheet
+        bundle={selectedBundle}
+        open={!!selectedBundle}
+        onOpenChange={(open) => !open && setSelectedBundle(null)}
       />
-      <Show when={bundleIdFilter()}>
-        <Suspense>
-          <EditBundleSheetContent
-            bundleId={bundleIdFilter()!}
-            onClose={handleClose}
-          />
-        </Suspense>
-      </Show>
-    </Sheet>
+    </div>
   );
 }
