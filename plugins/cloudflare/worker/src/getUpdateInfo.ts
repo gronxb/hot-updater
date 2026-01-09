@@ -185,7 +185,11 @@ const appVersionStrategy = async (
   if (deviceId && result.status === "UPDATE") {
     // If device is in targetDeviceIds, skip percentage check (priority 1)
     const targetDeviceIds = parseTargetDeviceIds(result.target_device_ids);
-    if (targetDeviceIds && targetDeviceIds.length > 0 && targetDeviceIds.includes(deviceId)) {
+    if (
+      targetDeviceIds &&
+      targetDeviceIds.length > 0 &&
+      targetDeviceIds.includes(deviceId)
+    ) {
       // Device is explicitly targeted - skip percentage check
       return {
         id: result.id,
@@ -316,7 +320,14 @@ export const fingerprintStrategy = async (
 `;
 
   const result = await DB.prepare(sql)
-    .bind(platform, bundleId, minBundleId, channel, fingerprintHash, deviceId ?? "")
+    .bind(
+      platform,
+      bundleId,
+      minBundleId,
+      channel,
+      fingerprintHash,
+      deviceId ?? "",
+    )
     .first<{
       id: string;
       should_force_update: number;
@@ -335,7 +346,11 @@ export const fingerprintStrategy = async (
   if (deviceId && result.status === "UPDATE") {
     // If device is in targetDeviceIds, skip percentage check (priority 1)
     const targetDeviceIds = parseTargetDeviceIds(result.target_device_ids);
-    if (targetDeviceIds && targetDeviceIds.length > 0 && targetDeviceIds.includes(deviceId)) {
+    if (
+      targetDeviceIds &&
+      targetDeviceIds.length > 0 &&
+      targetDeviceIds.includes(deviceId)
+    ) {
       // Device is explicitly targeted - skip percentage check
       return {
         id: result.id,
