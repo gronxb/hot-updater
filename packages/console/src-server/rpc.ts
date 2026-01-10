@@ -122,6 +122,31 @@ export const rpc = new Hono()
       }
     },
   )
+  .get(
+    "/bundles/:bundleId/rollout-stats",
+    typiaValidator("param", paramBundleIdSchema),
+    async (c) => {
+      try {
+        const { bundleId } = c.req.valid("param");
+        const { databasePlugin } = await prepareConfig();
+
+        if (!databasePlugin.getRolloutStats) {
+          return c.json({
+            totalDevices: 0,
+            promotedCount: 0,
+            recoveredCount: 0,
+            successRate: 0,
+          });
+        }
+
+        const stats = await databasePlugin.getRolloutStats(bundleId);
+        return c.json(stats);
+      } catch (error) {
+        console.error("Error during rollout stats retrieval:", error);
+        throw error;
+      }
+    },
+  )
   .patch(
     "/bundles/:bundleId",
     typiaValidator("json", updateBundleSchema),
