@@ -15,10 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch sponsors
+      - name: Fetch sponsors and update only if changed
         env:
           GH_TOKEN: ${{ secrets.SPONSORS_TOKEN }}
         run: |
+          set -euo pipefail
+          mkdir -p docs/public tmp
+
+          # Fetch raw GraphQL response
           gh api graphql -f query='
             query {
               user(login: "gronxb") {
@@ -42,22 +46,45 @@ jobs:
                 }
               }
             }
-          ' | jq '{
-            sponsors: [.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity | select(. != null) | {
-              login,
-              avatarUrl,
-              name,
-              url
-            }],
-            updatedAt: now | todate
-          }' > docs/public/sponsors.json
+          ' > tmp/raw.json
+
+          # Extract normalized sponsors array (no updatedAt)
+          jq '[.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
+                | select(. != null)
+                | { login, avatarUrl, name, url }]'
+            tmp/raw.json > tmp/new-sponsors.json
+
+          # Prepare sorted representations for comparison (sort by login to ignore ordering)
+          jq 'sort_by(.login // "")' tmp/new-sponsors.json > tmp/new-sorted.json
+
+          if [ -f docs/public/sponsors.json ]; then
+            jq '(.sponsors // []) | sort_by(.login // "")' docs/public/sponsors.json > tmp/old-sorted.json || echo '[]' > tmp/old-sorted.json
+          else
+            echo '[]' > tmp/old-sorted.json
+          fi
+
+          # If sponsor arrays are identical, do nothing (no updatedAt bump)
+          if cmp -s tmp/old-sorted.json tmp/new-sorted.json; then
+            echo "No sponsor changes detected — not updating docs/public/sponsors.json"
+          else
+            # Create the full file with updatedAt because sponsors changed
+            jq -n --argjson sponsors "$(cat tmp/new-sponsors.json)" '{sponsors:$sponsors, updatedAt: now | todate}' > docs/public/sponsors.json
+            echo "Sponsors changed — docs/public/sponsors.json updated"
+          fi
 
       - name: Commit and push
         run: |
-          git diff --quiet docs/public/sponsors.json || (
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          # only add if file exists (it may not have been written)
+          if [ -f docs/public/sponsors.json ]; then
             git add docs/public/sponsors.json
+          fi
+
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit"
+          else
             git commit -m "chore: update sponsors list"
             git push
-          )
+          fi
