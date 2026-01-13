@@ -1,10 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useBundlesQuery } from "@/lib/api";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useBundleQuery, useBundlesQuery } from "@/lib/api";
 import { FilterToolbar } from "@/components/features/bundles/FilterToolbar";
 import { BundlesTable } from "@/components/features/bundles/BundlesTable";
 import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
 import { useFilterParams } from "@/hooks/useFilterParams";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -15,13 +15,39 @@ export const Route = createFileRoute("/")({
       channel: search.channel as string | undefined,
       platform: search.platform as "ios" | "android" | undefined,
       offset: search.offset as string | undefined,
+      bundleId: search.bundleId as string | undefined,
     };
   },
 });
 
 function BundlesPage() {
   const { filters } = useFilterParams();
+  const { bundleId } = Route.useSearch();
+  const navigate = useNavigate();
   const [selectedBundle, setSelectedBundle] = useState<Bundle | null>(null);
+
+  const { data: bundleFromUrl } = useBundleQuery(bundleId ?? "");
+
+  useEffect(() => {
+    if (bundleFromUrl && bundleId) {
+      setSelectedBundle(bundleFromUrl);
+    }
+  }, [bundleFromUrl, bundleId]);
+
+  const handleSheetClose = () => {
+    setSelectedBundle(null);
+    if (bundleId) {
+      void navigate({
+        to: "/",
+        search: {
+          channel: filters.channel,
+          platform: filters.platform,
+          offset: filters.offset,
+          bundleId: undefined,
+        },
+      });
+    }
+  };
 
   const { data: bundlesData, isLoading } = useBundlesQuery({
     channel: filters.channel,
@@ -59,7 +85,7 @@ function BundlesPage() {
       <BundleEditorSheet
         bundle={selectedBundle}
         open={!!selectedBundle}
-        onOpenChange={(open) => !open && setSelectedBundle(null)}
+        onOpenChange={(open) => !open && handleSheetClose()}
       />
     </div>
   );

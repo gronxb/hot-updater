@@ -17,27 +17,37 @@ export function useFilterParams() {
   };
 
   const setFilters = (newFilters: Partial<BundleFilters>) => {
-    navigate({
+    void navigate({
       to: "/",
       search: {
-        channel: newFilters.channel !== undefined ? newFilters.channel : filters.channel,
-        platform: newFilters.platform !== undefined ? newFilters.platform : filters.platform,
+        channel:
+          newFilters.channel !== undefined
+            ? newFilters.channel
+            : filters.channel,
+        platform:
+          newFilters.platform !== undefined
+            ? newFilters.platform
+            : filters.platform,
         // Reset offset when changing filters
         offset:
           newFilters.channel !== undefined || newFilters.platform !== undefined
             ? "0"
-            : (newFilters.offset !== undefined ? newFilters.offset : filters.offset),
+            : newFilters.offset !== undefined
+              ? newFilters.offset
+              : filters.offset,
+        bundleId: undefined,
       },
     });
   };
 
   const resetFilters = () => {
-    navigate({
+    void navigate({
       to: "/",
       search: {
         channel: undefined,
         platform: undefined,
         offset: undefined,
+        bundleId: undefined,
       },
     });
   };

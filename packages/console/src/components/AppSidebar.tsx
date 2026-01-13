@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Package, BarChart3, Moon, Sun } from "lucide-react";
+import { BarChart3, Moon, Package, Sun } from "lucide-react";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -26,22 +26,23 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4">
+      <SidebarHeader>
         <Link
           to="/"
           search={{
             channel: undefined,
             platform: undefined,
             offset: undefined,
+            bundleId: undefined,
           }}
-          className="flex items-center gap-3"
+          className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
         >
-          <HotUpdaterLogo className="h-8 w-8 shrink-0" />
-          <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+          <HotUpdaterLogo className="h-7 w-7 shrink-0" />
+          <div className="flex flex-col gap-0 group-data-[collapsible=icon]:hidden">
+            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground leading-tight">
               Hot Updater
             </span>
-            <span className="text-[10px] text-sidebar-foreground/60">
+            <span className="text-[10px] text-sidebar-foreground/60 leading-tight">
               Console
             </span>
           </div>
@@ -67,6 +68,7 @@ export function AppSidebar() {
                       channel: undefined,
                       platform: undefined,
                       offset: undefined,
+                      bundleId: undefined,
                     }}
                   >
                     <Package />
@@ -86,6 +88,7 @@ export function AppSidebar() {
                       bundleId: undefined,
                       platform: undefined,
                       channel: undefined,
+                      offset: undefined,
                     }}
                   >
                     <BarChart3 />

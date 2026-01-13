@@ -11,6 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnalyticsBundlesRouteImport } from './routes/analytics_.bundles'
+import { Route as AnalyticsAppVersionsRouteImport } from './routes/analytics_.app-versions'
+import { Route as AnalyticsActivityRouteImport } from './routes/analytics_.activity'
 
 const AnalyticsRoute = AnalyticsRouteImport.update({
   id: '/analytics',
@@ -22,31 +25,74 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AnalyticsBundlesRoute = AnalyticsBundlesRouteImport.update({
+  id: '/analytics_/bundles',
+  path: '/analytics/bundles',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsAppVersionsRoute = AnalyticsAppVersionsRouteImport.update({
+  id: '/analytics_/app-versions',
+  path: '/analytics/app-versions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsActivityRoute = AnalyticsActivityRouteImport.update({
+  id: '/analytics_/activity',
+  path: '/analytics/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/analytics/activity': typeof AnalyticsActivityRoute
+  '/analytics/app-versions': typeof AnalyticsAppVersionsRoute
+  '/analytics/bundles': typeof AnalyticsBundlesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/analytics/activity': typeof AnalyticsActivityRoute
+  '/analytics/app-versions': typeof AnalyticsAppVersionsRoute
+  '/analytics/bundles': typeof AnalyticsBundlesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/analytics_/activity': typeof AnalyticsActivityRoute
+  '/analytics_/app-versions': typeof AnalyticsAppVersionsRoute
+  '/analytics_/bundles': typeof AnalyticsBundlesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/analytics'
+  fullPaths:
+    | '/'
+    | '/analytics'
+    | '/analytics/activity'
+    | '/analytics/app-versions'
+    | '/analytics/bundles'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/analytics'
-  id: '__root__' | '/' | '/analytics'
+  to:
+    | '/'
+    | '/analytics'
+    | '/analytics/activity'
+    | '/analytics/app-versions'
+    | '/analytics/bundles'
+  id:
+    | '__root__'
+    | '/'
+    | '/analytics'
+    | '/analytics_/activity'
+    | '/analytics_/app-versions'
+    | '/analytics_/bundles'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  AnalyticsActivityRoute: typeof AnalyticsActivityRoute
+  AnalyticsAppVersionsRoute: typeof AnalyticsAppVersionsRoute
+  AnalyticsBundlesRoute: typeof AnalyticsBundlesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +111,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/analytics_/bundles': {
+      id: '/analytics_/bundles'
+      path: '/analytics/bundles'
+      fullPath: '/analytics/bundles'
+      preLoaderRoute: typeof AnalyticsBundlesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics_/app-versions': {
+      id: '/analytics_/app-versions'
+      path: '/analytics/app-versions'
+      fullPath: '/analytics/app-versions'
+      preLoaderRoute: typeof AnalyticsAppVersionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics_/activity': {
+      id: '/analytics_/activity'
+      path: '/analytics/activity'
+      fullPath: '/analytics/activity'
+      preLoaderRoute: typeof AnalyticsActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
+  AnalyticsActivityRoute: AnalyticsActivityRoute,
+  AnalyticsAppVersionsRoute: AnalyticsAppVersionsRoute,
+  AnalyticsBundlesRoute: AnalyticsBundlesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
