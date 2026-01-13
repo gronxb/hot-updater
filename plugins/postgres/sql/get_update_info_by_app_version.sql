@@ -6,7 +6,8 @@ CREATE OR REPLACE FUNCTION get_update_info_by_app_version (
     bundle_id  uuid,
     min_bundle_id uuid,
     target_channel text,
-    target_app_version_list text[]
+    target_app_version_list text[],
+    device_id TEXT DEFAULT NULL
 )
 RETURNS TABLE (
     id            uuid,
@@ -38,6 +39,10 @@ BEGIN
           AND b.id > min_bundle_id
           AND b.target_app_version IN (SELECT unnest(target_app_version_list))
           AND b.channel = target_channel
+          AND (
+            device_id IS NULL
+            OR is_device_eligible(device_id, b.rollout_percentage, b.target_device_ids)
+          )
         ORDER BY b.id DESC
         LIMIT 1
     ),

@@ -76,21 +76,26 @@ const createGetUpdateInfo =
       responses["*"] = null;
     }
 
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
       if (url in responses) {
-        return {
-          ok: true,
-          json: async () => responses[url],
-        };
+        return new Response(JSON.stringify(responses[url]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
-      return {
-        ok: false,
-        statusText: "Not Found",
-      };
+
+      return new Response(null, { status: 404, statusText: "Not Found" });
     });
 
     const originalFetch = global.fetch;
-    global.fetch = fetchMock as any;
+    global.fetch = fetchMock;
 
     try {
       return await getUpdateInfoFromCdn(
