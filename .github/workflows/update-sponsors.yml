@@ -52,7 +52,7 @@ jobs:
           GRAPHQL
 
           # Fetch raw GraphQL response using gh and redirect output to file
-          gh api graphql -f query=@tmp/query.graphql --silent > tmp/raw.json
+          gh api graphql -F query=@tmp/query.graphql --silent > tmp/raw.json
 
           # Extract normalized sponsors array (no updatedAt)
           jq '[.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
