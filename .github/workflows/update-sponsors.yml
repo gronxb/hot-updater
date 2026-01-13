@@ -51,8 +51,8 @@ jobs:
           }
           GRAPHQL
 
-          # Fetch raw GraphQL response using gh's output flag (avoid shell redirection permission issues)
-          gh api graphql -f query=@tmp/query.graphql -o tmp/raw.json
+          # Fetch raw GraphQL response using gh and redirect output to file
+          gh api graphql -f query=@tmp/query.graphql --silent > tmp/raw.json
 
           # Extract normalized sponsors array (no updatedAt)
           jq '[.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
