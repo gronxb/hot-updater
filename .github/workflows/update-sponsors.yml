@@ -20,33 +20,39 @@ jobs:
           GH_TOKEN: ${{ secrets.SPONSORS_TOKEN }}
         run: |
           set -euo pipefail
-          mkdir -p docs/public tmp
 
-          # Fetch raw GraphQL response
-          gh api graphql -f query='
-            query {
-              user(login: "gronxb") {
-                sponsorshipsAsMaintainer(first: 100, includePrivate: false) {
-                  nodes {
-                    sponsorEntity {
-                      ... on User {
-                        login
-                        avatarUrl
-                        name
-                        url
-                      }
-                      ... on Organization {
-                        login
-                        avatarUrl
-                        name
-                        url
-                      }
+          # Use a workspace-local temp dir (guaranteed writable) and ensure permissions
+          mkdir -p docs/public tmp
+          chmod 0777 tmp
+
+          # Write query to a file to avoid quoting issues
+          cat > tmp/query.graphql <<'GRAPHQL'
+          query {
+            user(login: "gronxb") {
+              sponsorshipsAsMaintainer(first: 100, includePrivate: false) {
+                nodes {
+                  sponsorEntity {
+                    ... on User {
+                      login
+                      avatarUrl
+                      name
+                      url
+                    }
+                    ... on Organization {
+                      login
+                      avatarUrl
+                      name
+                      url
                     }
                   }
                 }
               }
             }
-          ' > tmp/raw.json
+          }
+          GRAPHQL
+
+          # Fetch raw GraphQL response using gh's output flag (avoid shell redirection permission issues)
+          gh api graphql -f query=@tmp/query.graphql -o tmp/raw.json
 
           # Extract normalized sponsors array (no updatedAt)
           jq '[.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
