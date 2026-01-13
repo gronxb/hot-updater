@@ -17,6 +17,7 @@ export interface PaginationInfo {
 }
 
 export interface DeviceEvent {
+  id?: string;
   deviceId: string;
   bundleId: string;
   eventType: "PROMOTED" | "RECOVERED";
@@ -24,6 +25,21 @@ export interface DeviceEvent {
   appVersion?: string;
   channel: string;
   metadata?: Record<string, unknown>;
+  createdAt?: string;
+}
+
+export interface DeviceEventFilter {
+  bundleId?: string;
+  platform?: Platform;
+  channel?: string;
+  eventType?: "PROMOTED" | "RECOVERED";
+  limit?: number;
+  offset?: number;
+}
+
+export interface DeviceEventListResult {
+  data: DeviceEvent[];
+  pagination: PaginationInfo;
 }
 
 export interface RolloutStats {
@@ -60,6 +76,9 @@ export interface DatabasePlugin {
 
   trackDeviceEvent?: (event: DeviceEvent) => Promise<void>;
   getRolloutStats?: (bundleId: string) => Promise<RolloutStats>;
+  getDeviceEvents?: (
+    filter?: DeviceEventFilter,
+  ) => Promise<DeviceEventListResult>;
 }
 
 export interface DatabasePluginHooks {
