@@ -15,82 +15,69 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch sponsors and update only if changed
+      - name: Fetch sponsors (update updatedAt only when sponsors changed)
         env:
           GH_TOKEN: ${{ secrets.SPONSORS_TOKEN }}
         run: |
           set -euo pipefail
+          mkdir -p docs/public
 
-          # Use a workspace-local temp dir (guaranteed writable) and ensure permissions
-          mkdir -p docs/public tmp
-          chmod 0777 tmp
-
-          # Write query to a file to avoid quoting issues
-          cat > tmp/query.graphql <<'GRAPHQL'
-          query {
-            user(login: "gronxb") {
-              sponsorshipsAsMaintainer(first: 100, includePrivate: false) {
-                nodes {
-                  sponsorEntity {
-                    ... on User {
-                      login
-                      avatarUrl
-                      name
-                      url
-                    }
-                    ... on Organization {
-                      login
-                      avatarUrl
-                      name
-                      url
+          # 1) 새 sponsors 목록만 생성 (updatedAt 제외)
+          gh api graphql -f query='
+            query {
+              user(login: "gronxb") {
+                sponsorshipsAsMaintainer(first: 100, includePrivate: false) {
+                  nodes {
+                    sponsorEntity {
+                      ... on User {
+                        login
+                        avatarUrl
+                        name
+                        url
+                      }
+                      ... on Organization {
+                        login
+                        avatarUrl
+                        name
+                        url
+                      }
                     }
                   }
                 }
               }
             }
-          }
-          GRAPHQL
+          ' | jq '[
+            .data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
+            | select(. != null)
+            | { login, avatarUrl, name, url }
+          ]
+          | sort_by(.login)' > /tmp/sponsors.new.json
 
-          # Fetch raw GraphQL response using gh and redirect output to file
-          gh api graphql -F query=@tmp/query.graphql --silent > tmp/raw.json
-
-          # Extract normalized sponsors array (no updatedAt)
-          jq '[.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
-                | select(. != null)
-                | { login, avatarUrl, name, url }]'
-            tmp/raw.json > tmp/new-sponsors.json
-
-          # Prepare sorted representations for comparison (sort by login to ignore ordering)
-          jq 'sort_by(.login // "")' tmp/new-sponsors.json > tmp/new-sorted.json
-
+          # 2) 기존 sponsors 추출 (없으면 빈 배열), 기존 updatedAt도 읽어둠
           if [ -f docs/public/sponsors.json ]; then
-            jq '(.sponsors // []) | sort_by(.login // "")' docs/public/sponsors.json > tmp/old-sorted.json || echo '[]' > tmp/old-sorted.json
+            jq '.sponsors // [] | sort_by(.login)' docs/public/sponsors.json > /tmp/sponsors.old.json
+            oldUpdatedAt=$(jq -r '.updatedAt // empty' docs/public/sponsors.json)
           else
-            echo '[]' > tmp/old-sorted.json
+            echo '[]' > /tmp/sponsors.old.json
+            oldUpdatedAt=""
           fi
 
-          # If sponsor arrays are identical, do nothing (no updatedAt bump)
-          if cmp -s tmp/old-sorted.json tmp/new-sorted.json; then
-            echo "No sponsor changes detected — not updating docs/public/sponsors.json"
+          # 3) sponsors가 동일하면 updatedAt 유지, 다르면 now로 갱신
+          if diff -q /tmp/sponsors.old.json /tmp/sponsors.new.json >/dev/null; then
+            jq --arg updatedAt "$oldUpdatedAt" \
+              '{ sponsors: (input), updatedAt: $updatedAt }' \
+              /tmp/sponsors.new.json > docs/public/sponsors.json
           else
-            # Create the full file with updatedAt because sponsors changed
-            jq -n --argjson sponsors "$(cat tmp/new-sponsors.json)" '{sponsors:$sponsors, updatedAt: now | todate}' > docs/public/sponsors.json
-            echo "Sponsors changed — docs/public/sponsors.json updated"
+            jq '{ sponsors: (input), updatedAt: (now | todate) }' \
+              /tmp/sponsors.new.json > docs/public/sponsors.json
           fi
 
       - name: Commit and push
         run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-
-          # only add if file exists (it may not have been written)
-          if [ -f docs/public/sponsors.json ]; then
+          git diff --quiet docs/public/sponsors.json || (
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
             git add docs/public/sponsors.json
-          fi
-
-          if git diff --cached --quiet; then
-            echo "No staged changes to commit"
-          else
             git commit -m "chore: update sponsors list"
             git push
-          fi
+          )
