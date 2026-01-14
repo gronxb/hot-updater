@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.content.Context
+import com.facebook.react.ReactHost
 
 /**
  * Main React Native package for HotUpdater
@@ -84,5 +85,22 @@ class HotUpdater {
          * @return The channel name or null if not set
          */
         fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
+
+        /**
+         * Sets the ReactHost for brownfield apps (New Architecture).
+         * Sets the ReactHost for brownfield apps that don't have ReactApplication.
+         * When set, reload() will use this ReactHost instead of accessing Application.
+         * @param reactHost The ReactHost instance
+         */
+        fun setReactHost(reactHost: ReactHost) {
+            ReactHostHolder.setReactHost(reactHost)
+        }
+
+        /**
+         * Clears the ReactHost instance (New Architecture).
+         */
+        fun clearReactHost() {
+            ReactHostHolder.clear()
+        }
     }
 }

@@ -158,7 +158,7 @@ class BundleFileStorageService(
             // Read metadata without validation to get stored isolationKey
             val jsonString = metadataFile.readText()
             val json = org.json.JSONObject(jsonString)
-            val storedIsolationKey = json.optString("isolationKey", null)
+            val storedIsolationKey = if (json.has("isolationKey")) json.getString("isolationKey") else null
 
             if (storedIsolationKey != null && storedIsolationKey != isolationKey) {
                 // isolationKey changed - migration needed
