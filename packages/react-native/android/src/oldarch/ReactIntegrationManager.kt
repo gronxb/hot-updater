@@ -1,6 +1,5 @@
 package com.hotupdater
 
-import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
