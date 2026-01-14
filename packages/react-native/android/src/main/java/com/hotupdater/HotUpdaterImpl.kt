@@ -1,6 +1,5 @@
 package com.hotupdater
 
-import android.app.Activity
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -276,44 +275,15 @@ class HotUpdaterImpl {
 
     /**
      * Reloads the React Native application
-     * @param activity Current activity (optional, not needed if ReactHost was set via ReactHostHolder/ReactNativeHostHolder)
      */
-    suspend fun reload(activity: Activity? = null) {
+    suspend fun reload() {
         val reactIntegrationManager = ReactIntegrationManager(context)
         val bundleURL = getJSBundleFile()
 
-        // First, try to use the ReactHost set via HotUpdater.setReactHost() (for brownfield apps)
         try {
-            val hostSuccess =
-                withContext(Dispatchers.Main) {
-                    val setBundleSuccess = reactIntegrationManager.setJSBundle(bundleURL)
-                    if (setBundleSuccess) {
-                        reactIntegrationManager.reload()
-                    } else {
-                        false
-                    }
-                }
-            if (hostSuccess) {
-                return
-            }
-        } catch (e: Exception) {
-            Log.e("HotUpdaterImpl", "Failed to reload with configured host", e)
-        }
-
-        // Fallback to activity-based approach for standard React Native apps
-        val application = activity?.application
-        if (application == null) {
-            Log.e("HotUpdaterImpl", "No ReactHost set and no activity available for reload")
-            return
-        }
-
-        try {
-            val reactApplication = reactIntegrationManager.getReactApplication(application)
-
-            // Perform reload (suspends until safe to reload on new arch)
             withContext(Dispatchers.Main) {
-                reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
-                reactIntegrationManager.reload(reactApplication)
+                reactIntegrationManager.setJSBundle(bundleURL)
+                reactIntegrationManager.reload()
             }
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)

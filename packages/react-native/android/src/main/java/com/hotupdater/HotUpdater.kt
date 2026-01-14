@@ -1,8 +1,6 @@
 package com.hotupdater
 
-import android.app.Activity
 import android.content.Context
-import com.facebook.react.bridge.ReactApplicationContext
 
 /**
  * Main React Native package for HotUpdater
@@ -57,8 +55,7 @@ class HotUpdater {
          * @param context Application context
          */
         suspend fun reload(context: Context) {
-            val currentActivity = getCurrentActivity(context)
-            getInstance(context).reload(currentActivity)
+            getInstance(context).reload()
         }
 
         /**
@@ -87,17 +84,5 @@ class HotUpdater {
          * @return The channel name or null if not set
          */
         fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
-
-        /**
-         * Gets the current activity from ReactApplicationContext
-         * @param context Context that might be a ReactApplicationContext
-         * @return The current activity or null
-         */
-        private fun getCurrentActivity(context: Context): Activity? =
-            if (context is ReactApplicationContext) {
-                context.currentActivity
-            } else {
-                null
-            }
     }
 }

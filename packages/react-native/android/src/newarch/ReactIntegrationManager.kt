@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
@@ -13,41 +14,14 @@ import java.lang.reflect.Field
 import kotlin.coroutines.resume
 
 class ReactIntegrationManager(
-    context: Context,
+    private val context: Context,
 ) : ReactIntegrationManagerBase(context) {
     /**
-     * Sets the JS bundle using the ReactHost set via HotUpdater.setReactHost() (for brownfield apps)
-     * @param bundleURL The bundle URL to set
-     * @return true if successful, false if no ReactHost is set
-     */
-    public fun setJSBundle(bundleURL: String): Boolean {
-        val reactHost = ReactHostHolder.getReactHost()
-        if (reactHost != null) {
-            setJSBundle(reactHost, bundleURL)
-            return true
-        }
-        return false
-    }
-
-    /**
-     * Reloads the React Native application using the ReactHost set via HotUpdater.setReactHost() (for brownfield apps)
-     * @return true if successful, false if no ReactHost is set
-     */
-    public suspend fun reload(): Boolean {
-        val reactHost = ReactHostHolder.getReactHost()
-        if (reactHost != null) {
-            reload(reactHost)
-            return true
-        }
-        return false
-    }
-
-    /**
-     * Sets the JS bundle using ReactHost directly (for brownfield apps)
+     * Sets the JS bundle using ReactHost directly
      * @param reactHost The ReactHost instance
      * @param bundleURL The bundle URL to set
      */
-    public fun setJSBundle(
+    private fun setJSBundleInternal(
         reactHost: ReactHost,
         bundleURL: String,
     ) {
@@ -74,40 +48,11 @@ class ReactIntegrationManager(
         }
     }
 
-    public fun setJSBundle(
-        application: ReactApplication,
-        bundleURL: String,
-    ) {
-        try {
-            val reactHost = application.reactHost
-            if (reactHost != null) {
-                setJSBundle(reactHost, bundleURL)
-            } else {
-                // Fallback to old architecture if ReactHost is not available
-                @Suppress("DEPRECATION")
-                val instanceManager = application.reactNativeHost.reactInstanceManager
-                val bundleLoader: JSBundleLoader? = this.getJSBundlerLoader(bundleURL)
-                val bundleLoaderField: Field =
-                    instanceManager::class.java.getDeclaredField("mBundleLoader")
-                bundleLoaderField.isAccessible = true
-
-                if (bundleLoader != null) {
-                    bundleLoaderField.set(instanceManager, bundleLoader)
-                } else {
-                    bundleLoaderField.set(instanceManager, null)
-                }
-            }
-        } catch (e: Exception) {
-            Log.d("HotUpdater", "Failed to setJSBundle: ${e.message}")
-        }
-    }
-
     /**
-     * Reload the React Native application using ReactHost directly (for brownfield apps).
-     * Caller should run this on main thread.
+     * Reload the React Native application using ReactHost directly.
      * @param reactHost The ReactHost instance
      */
-    public suspend fun reload(reactHost: ReactHost) {
+    private suspend fun reloadInternal(reactHost: ReactHost) {
         try {
             // Ensure initialized; if not, start and wait
             waitForReactContextInitialized(reactHost)
@@ -123,31 +68,100 @@ class ReactIntegrationManager(
     }
 
     /**
-     * Reload the React Native application, ensuring ReactContext is initialized first.
-     * Caller should run this on main thread.
+     * Gets the ReactApplication from context if available
+     * @return ReactApplication or null if not available
      */
-    public suspend fun reload(application: ReactApplication) {
+    private fun getReactApplicationFromContext(): ReactApplication? {
+        val application = context.applicationContext as? Application
+        return application as? ReactApplication
+    }
+
+    /**
+     * Sets the JS bundle.
+     * Priority: ReactHostHolder (if set) > application.reactHost > reactNativeHost
+     * @param bundleURL The bundle URL to set
+     */
+    public fun setJSBundle(bundleURL: String) {
         try {
+            // 1. First, check if ReactHost was set via HotUpdater.setReactHost()
+            val configuredHost = ReactHostHolder.getReactHost()
+            if (configuredHost != null) {
+                setJSBundleInternal(configuredHost, bundleURL)
+                return
+            }
+
+            // 2. Try to get ReactApplication from context
+            val application = getReactApplicationFromContext()
+            if (application == null) {
+                Log.d("HotUpdater", "No ReactHost set and application is not ReactApplication")
+                return
+            }
+
+            // 3. Try application's ReactHost (new architecture)
             val reactHost = application.reactHost
             if (reactHost != null) {
-                reload(reactHost)
-            } else {
-                // Fallback to old architecture if ReactHost is not available
-                @Suppress("DEPRECATION")
-                val reactNativeHost = application.reactNativeHost
-                try {
-                    reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
-                } catch (e: Exception) {
-                    val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
-                    if (currentActivity == null) {
-                        return
-                    }
+                setJSBundleInternal(reactHost, bundleURL)
+                return
+            }
 
-                    currentActivity.runOnUiThread {
-                        currentActivity.recreate()
-                    }
-                } catch (e: Exception) {
-                    Log.d("HotUpdater", "Failed to reload: ${e.message}")
+            // 4. Fallback to old architecture (reactNativeHost)
+            @Suppress("DEPRECATION")
+            val instanceManager = application.reactNativeHost.reactInstanceManager
+            val bundleLoader: JSBundleLoader? = this.getJSBundlerLoader(bundleURL)
+            val bundleLoaderField: Field =
+                instanceManager::class.java.getDeclaredField("mBundleLoader")
+            bundleLoaderField.isAccessible = true
+
+            if (bundleLoader != null) {
+                bundleLoaderField.set(instanceManager, bundleLoader)
+            } else {
+                bundleLoaderField.set(instanceManager, null)
+            }
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to setJSBundle: ${e.message}")
+        }
+    }
+
+    /**
+     * Reload the React Native application.
+     * Priority: ReactHostHolder (if set) > application.reactHost > reactNativeHost
+     */
+    public suspend fun reload() {
+        try {
+            // 1. First, check if ReactHost was set via HotUpdater.setReactHost()
+            val configuredHost = ReactHostHolder.getReactHost()
+            if (configuredHost != null) {
+                reloadInternal(configuredHost)
+                return
+            }
+
+            // 2. Try to get ReactApplication from context
+            val application = getReactApplicationFromContext()
+            if (application == null) {
+                Log.d("HotUpdater", "No ReactHost set and application is not ReactApplication")
+                return
+            }
+
+            // 3. Try application's ReactHost (new architecture)
+            val reactHost = application.reactHost
+            if (reactHost != null) {
+                reloadInternal(reactHost)
+                return
+            }
+
+            // 4. Fallback to old architecture (reactNativeHost)
+            @Suppress("DEPRECATION")
+            val reactNativeHost = application.reactNativeHost
+            try {
+                reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
+            } catch (e: Exception) {
+                val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
+                if (currentActivity == null) {
+                    return
+                }
+
+                currentActivity.runOnUiThread {
+                    currentActivity.recreate()
                 }
             }
         } catch (e: Exception) {
