@@ -68,13 +68,7 @@ class ReactIntegrationManager(
         }
     }
 
-    /**
-     * Gets the ReactApplication from context if available
-     * Priority: ReactApplicationContext.currentActivity.application > context.applicationContext
-     * @return ReactApplication or null if not available
-     */
-    private fun getReactApplicationFromContext(): ReactApplication? {
-        // 1. Try to get from ReactApplicationContext's current activity
+    private fun getReactApplication(): ReactApplication? {
         if (context is ReactApplicationContext) {
             val activity = context.currentActivity
             val application = activity?.application
@@ -83,9 +77,7 @@ class ReactIntegrationManager(
             }
         }
 
-        // 2. Fallback to context.applicationContext
-        val application = context.applicationContext as? Application
-        return application as? ReactApplication
+        return null
     }
 
     /**
@@ -103,7 +95,7 @@ class ReactIntegrationManager(
             }
 
             // 2. Try to get ReactApplication from context
-            val application = getReactApplicationFromContext()
+            val application = getReactApplication()
             if (application == null) {
                 Log.d("HotUpdater", "No ReactHost set and application is not ReactApplication")
                 return
@@ -148,7 +140,7 @@ class ReactIntegrationManager(
             }
 
             // 2. Try to get ReactApplication from context
-            val application = getReactApplicationFromContext()
+            val application = getReactApplication()
             if (application == null) {
                 Log.d("HotUpdater", "No ReactHost set and application is not ReactApplication")
                 return

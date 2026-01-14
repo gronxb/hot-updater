@@ -16,12 +16,7 @@ import kotlin.coroutines.resume
 class ReactIntegrationManager(
     private val context: Context,
 ) : ReactIntegrationManagerBase(context) {
-    /**
-     * Gets the ReactApplication from context if available
-     * Priority: ReactApplicationContext.currentActivity.application > context.applicationContext
-     * @return ReactApplication or null if not available
-     */
-    private fun getReactApplicationFromContext(): ReactApplication? {
+    private fun getReactApplication(): ReactApplication? {
         // 1. Try to get from ReactApplicationContext's current activity
         if (context is ReactApplicationContext) {
             val activity = context.currentActivity
@@ -31,9 +26,7 @@ class ReactIntegrationManager(
             }
         }
 
-        // 2. Fallback to context.applicationContext
-        val application = context.applicationContext as? Application
-        return application as? ReactApplication
+        return null
     }
 
     /**
@@ -43,7 +36,7 @@ class ReactIntegrationManager(
      */
     public fun setJSBundle(bundleURL: String) {
         try {
-            val application = getReactApplicationFromContext()
+            val application = getReactApplication()
             if (application == null) {
                 Log.d("HotUpdater", "Application is not ReactApplication")
                 return
@@ -71,7 +64,7 @@ class ReactIntegrationManager(
      */
     public suspend fun reload() {
         try {
-            val application = getReactApplicationFromContext()
+            val application = getReactApplication()
             if (application == null) {
                 Log.d("HotUpdater", "Application is not ReactApplication")
                 return
@@ -85,7 +78,7 @@ class ReactIntegrationManager(
             instanceManager.recreateReactContextInBackground()
         } catch (e: Exception) {
             try {
-                val application = getReactApplicationFromContext() ?: return
+                val application = getReactApplication() ?: return
                 val instanceManager = application.reactNativeHost.reactInstanceManager
                 val currentActivity = instanceManager.currentReactContext?.currentActivity
                 if (currentActivity == null) {
