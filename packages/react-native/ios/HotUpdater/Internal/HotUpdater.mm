@@ -29,7 +29,6 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
     if (self) {
         observedTasks = [NSMutableSet set];
 
-        // Start observing notifications needed for cleanup/events
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadProgress:)
                                                      name:HotUpdaterDownloadProgressUpdateNotification
@@ -200,11 +199,9 @@ RCT_EXPORT_MODULE();
      if (progressNum) {
          double progress = [progressNum doubleValue];
          NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
-         // Throttle events
          if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
              self.lastUpdateTime = currentTime;
-             // RCTLogInfo(@"[HotUpdater.mm] Sending progress event: %.2f", progress); // Reduce log noise
-             [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
+             [self sendEvent:@"onProgress" body:@{@"progress": @(progress)}];
          }
      }
  }
@@ -225,19 +222,15 @@ RCT_EXPORT_MODULE();
 
 - (void)startObserving {
     hasListeners = YES;
-    RCTLogInfo(@"[HotUpdater.mm] Start observing JS events.");
-    // Observers are added in init now
 }
 
 - (void)stopObserving {
     hasListeners = NO;
-    RCTLogInfo(@"[HotUpdater.mm] Stop observing JS events.");
-    // Observers are removed in invalidate/dealloc
 }
 
-- (void)sendEventWithName:(NSString * _Nonnull)name body:(id)body { // Changed body type to id
+- (void)sendEvent:(NSString *)name body:(id)body {
     if (hasListeners) {
-        [super sendEventWithName:name body:body];
+        [self sendEventWithName:name body:body];
     }
 }
 
@@ -318,14 +311,6 @@ RCT_EXPORT_MODULE();
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
-}
-
-- (void)addListener:(NSString *)eventName {
-    // No-op for New Architecture - handled by event emitter
-}
-
-- (void)removeListeners:(double)count {
-    // No-op for New Architecture - handled by event emitter
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
