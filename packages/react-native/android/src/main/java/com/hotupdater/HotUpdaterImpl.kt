@@ -276,15 +276,39 @@ class HotUpdaterImpl {
 
     /**
      * Reloads the React Native application
-     * @param activity Current activity (optional)
+     * @param activity Current activity (optional, not needed if ReactHost was set via ReactHostHolder/ReactNativeHostHolder)
      */
     suspend fun reload(activity: Activity? = null) {
         val reactIntegrationManager = ReactIntegrationManager(context)
-        val application = activity?.application ?: return
+        val bundleURL = getJSBundleFile()
+
+        // First, try to use the ReactHost set via HotUpdater.setReactHost() (for brownfield apps)
+        try {
+            val hostSuccess =
+                withContext(Dispatchers.Main) {
+                    val setBundleSuccess = reactIntegrationManager.setJSBundle(bundleURL)
+                    if (setBundleSuccess) {
+                        reactIntegrationManager.reload()
+                    } else {
+                        false
+                    }
+                }
+            if (hostSuccess) {
+                return
+            }
+        } catch (e: Exception) {
+            Log.e("HotUpdaterImpl", "Failed to reload with configured host", e)
+        }
+
+        // Fallback to activity-based approach for standard React Native apps
+        val application = activity?.application
+        if (application == null) {
+            Log.e("HotUpdaterImpl", "No ReactHost set and no activity available for reload")
+            return
+        }
 
         try {
             val reactApplication = reactIntegrationManager.getReactApplication(application)
-            val bundleURL = getJSBundleFile()
 
             // Perform reload (suspends until safe to reload on new arch)
             withContext(Dispatchers.Main) {
