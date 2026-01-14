@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.25.7
+
+### Patch Changes
+
+- 2922917: fix(iOS): Download progress percentage not displayed on iOS during OTA updates
+- 17bc46a: feat(react-native): add brownfield support via HotUpdater.setReactHost()
+  - @hot-updater/cli-tools@0.25.7
+  - @hot-updater/core@0.25.7
+  - @hot-updater/js@0.25.7
+  - @hot-updater/plugin-core@0.25.7
+
 ## 0.25.6
 
 ### Patch Changes
