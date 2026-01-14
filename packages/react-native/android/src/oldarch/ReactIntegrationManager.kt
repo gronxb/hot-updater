@@ -7,6 +7,7 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactInstanceEventListener
 import com.facebook.react.ReactInstanceManager
 import com.facebook.react.bridge.JSBundleLoader
+import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.lang.reflect.Field
@@ -17,9 +18,20 @@ class ReactIntegrationManager(
 ) : ReactIntegrationManagerBase(context) {
     /**
      * Gets the ReactApplication from context if available
+     * Priority: ReactApplicationContext.currentActivity.application > context.applicationContext
      * @return ReactApplication or null if not available
      */
     private fun getReactApplicationFromContext(): ReactApplication? {
+        // 1. Try to get from ReactApplicationContext's current activity
+        if (context is ReactApplicationContext) {
+            val activity = context.currentActivity
+            val application = activity?.application
+            if (application is ReactApplication) {
+                return application
+            }
+        }
+
+        // 2. Fallback to context.applicationContext
         val application = context.applicationContext as? Application
         return application as? ReactApplication
     }

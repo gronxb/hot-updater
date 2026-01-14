@@ -52,10 +52,10 @@ class HotUpdater {
 
         /**
          * Reloads the React Native application using the default singleton instance
-         * @param context Application context
+         * @param context Context (preferably ReactApplicationContext)
          */
         suspend fun reload(context: Context) {
-            getInstance(context).reload()
+            getInstance(context).reload(context)
         }
 
         /**

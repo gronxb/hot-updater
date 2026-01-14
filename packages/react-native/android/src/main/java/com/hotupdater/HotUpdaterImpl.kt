@@ -275,9 +275,10 @@ class HotUpdaterImpl {
 
     /**
      * Reloads the React Native application
+     * @param reactContext The original context (preferably ReactApplicationContext to get current activity)
      */
-    suspend fun reload() {
-        val reactIntegrationManager = ReactIntegrationManager(context)
+    suspend fun reload(reactContext: Context) {
+        val reactIntegrationManager = ReactIntegrationManager(reactContext)
         val bundleURL = getJSBundleFile()
 
         try {
