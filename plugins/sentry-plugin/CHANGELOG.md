@@ -1,5 +1,13 @@
 # @hot-updater/sentry-plugin
 
+## 0.25.7
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.7
+- @hot-updater/core@0.25.7
+- @hot-updater/plugin-core@0.25.7
+
 ## 0.25.6
 
 ### Patch Changes
