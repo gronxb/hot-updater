@@ -21,9 +21,9 @@ class ReactIntegrationManager(
      * @return true if successful, false if no ReactHost is set
      */
     public fun setJSBundle(bundleURL: String): Boolean {
-        val host = HotUpdater.getReactHost()
-        if (host is ReactHost) {
-            setJSBundle(host, bundleURL)
+        val reactHost = ReactHostHolder.getReactHost()
+        if (reactHost != null) {
+            setJSBundle(reactHost, bundleURL)
             return true
         }
         return false
@@ -34,9 +34,9 @@ class ReactIntegrationManager(
      * @return true if successful, false if no ReactHost is set
      */
     public suspend fun reload(): Boolean {
-        val host = HotUpdater.getReactHost()
-        if (host is ReactHost) {
-            reload(host)
+        val reactHost = ReactHostHolder.getReactHost()
+        if (reactHost != null) {
+            reload(reactHost)
             return true
         }
         return false

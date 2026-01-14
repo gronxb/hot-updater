@@ -14,41 +14,6 @@ class HotUpdater {
         private var instance: HotUpdaterImpl? = null
 
         /**
-         * ReactHost instance for brownfield apps (stored as Any to avoid architecture-specific imports)
-         */
-        @Volatile
-        private var reactHost: Any? = null
-
-        /**
-         * Sets the ReactHost for brownfield apps that don't have ReactApplication.
-         * When set, reload() will use this ReactHost instead of accessing Application.
-         * @param host The ReactHost instance (com.facebook.react.ReactHost)
-         */
-        @JvmStatic
-        fun setReactHost(host: Any) {
-            synchronized(this) {
-                reactHost = host
-            }
-        }
-
-        /**
-         * Gets the ReactHost that was set via setReactHost()
-         * @return The ReactHost instance or null if not set
-         */
-        @JvmStatic
-        fun getReactHost(): Any? = reactHost
-
-        /**
-         * Clears the ReactHost instance
-         */
-        @JvmStatic
-        fun clearReactHost() {
-            synchronized(this) {
-                reactHost = null
-            }
-        }
-
-        /**
          * Gets or creates the singleton instance
          * Thread-safe double-checked locking
          * @param context Application context
