@@ -1,8 +1,7 @@
 package com.hotupdater
 
-import android.app.Activity
 import android.content.Context
-import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.ReactHost
 
 /**
  * Main React Native package for HotUpdater
@@ -54,11 +53,10 @@ class HotUpdater {
 
         /**
          * Reloads the React Native application using the default singleton instance
-         * @param context Application context
+         * @param context Context (preferably ReactApplicationContext)
          */
         suspend fun reload(context: Context) {
-            val currentActivity = getCurrentActivity(context)
-            getInstance(context).reload(currentActivity)
+            getInstance(context).reload(context)
         }
 
         /**
@@ -89,15 +87,20 @@ class HotUpdater {
         fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
 
         /**
-         * Gets the current activity from ReactApplicationContext
-         * @param context Context that might be a ReactApplicationContext
-         * @return The current activity or null
+         * Sets the ReactHost for brownfield apps (New Architecture).
+         * Sets the ReactHost for brownfield apps that don't have ReactApplication.
+         * When set, reload() will use this ReactHost instead of accessing Application.
+         * @param reactHost The ReactHost instance
          */
-        private fun getCurrentActivity(context: Context): Activity? =
-            if (context is ReactApplicationContext) {
-                context.currentActivity
-            } else {
-                null
-            }
+        fun setReactHost(reactHost: ReactHost) {
+            ReactHostHolder.setReactHost(reactHost)
+        }
+
+        /**
+         * Clears the ReactHost instance (New Architecture).
+         */
+        fun clearReactHost() {
+            ReactHostHolder.clear()
+        }
     }
 }

@@ -4,20 +4,43 @@ import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactInstanceEventListener
+import com.facebook.react.ReactInstanceManager
 import com.facebook.react.bridge.JSBundleLoader
+import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.lang.reflect.Field
 import kotlin.coroutines.resume
 
 class ReactIntegrationManager(
-    context: Context,
+    private val context: Context,
 ) : ReactIntegrationManagerBase(context) {
-    public fun setJSBundle(
-        application: ReactApplication,
-        bundleURL: String,
-    ) {
+    private fun getReactApplication(): ReactApplication? {
+        // 1. Try to get from ReactApplicationContext's current activity
+        if (context is ReactApplicationContext) {
+            val activity = context.currentActivity
+            val application = activity?.application
+            if (application is ReactApplication) {
+                return application
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Sets the JS bundle.
+     * Gets ReactApplication from context and uses reactNativeHost.
+     * @param bundleURL The bundle URL to set
+     */
+    public fun setJSBundle(bundleURL: String) {
         try {
+            val application = getReactApplication()
+            if (application == null) {
+                Log.d("HotUpdater", "Application is not ReactApplication")
+                return
+            }
+
             val instanceManager = application.reactNativeHost.reactInstanceManager
             val bundleLoader: JSBundleLoader? = this.getJSBundlerLoader(bundleURL)
             val bundleLoaderField: Field =
@@ -35,52 +58,62 @@ class ReactIntegrationManager(
     }
 
     /**
-     * Reload the React Native application, ensuring ReactContext is initialized first.
-     * Caller should run this on main thread.
+     * Reload the React Native application.
+     * Gets ReactApplication from context and uses reactNativeHost.
      */
-    public suspend fun reload(application: ReactApplication) {
-        val reactNativeHost = application.reactNativeHost
+    public suspend fun reload() {
         try {
-            // Ensure initialized; if not, start and wait
-            waitForReactContextInitialized(application)
-
-            reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
-        } catch (e: Exception) {
-            val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
-            if (currentActivity == null) {
+            val application = getReactApplication()
+            if (application == null) {
+                Log.d("HotUpdater", "Application is not ReactApplication")
                 return
             }
 
-            currentActivity.runOnUiThread {
-                currentActivity.recreate()
-            }
+            val instanceManager = application.reactNativeHost.reactInstanceManager
+
+            // Ensure initialized; if not, start and wait
+            waitForReactContextInitialized(instanceManager)
+
+            instanceManager.recreateReactContextInBackground()
         } catch (e: Exception) {
-            Log.d("HotUpdater", "Failed to reload: ${e.message}")
+            try {
+                val application = getReactApplication() ?: return
+                val instanceManager = application.reactNativeHost.reactInstanceManager
+                val currentActivity = instanceManager.currentReactContext?.currentActivity
+                if (currentActivity == null) {
+                    return
+                }
+
+                currentActivity.runOnUiThread {
+                    currentActivity.recreate()
+                }
+            } catch (e2: Exception) {
+                Log.d("HotUpdater", "Failed to reload: ${e2.message}")
+            }
         }
     }
 
     /**
-     * Waits until ReactContext is initialized.
+     * Waits until ReactContext is initialized using ReactInstanceManager.
+     * @param instanceManager The ReactInstanceManager instance
      * @return true if ReactContext was already initialized; false if we waited for it.
      */
-    suspend fun waitForReactContextInitialized(application: ReactApplication): Boolean {
-        val reactInstanceManager = application.reactNativeHost.reactInstanceManager
-
+    suspend fun waitForReactContextInitialized(instanceManager: ReactInstanceManager): Boolean {
         // If already initialized, return immediately and indicate so
-        if (reactInstanceManager.currentReactContext != null) return true
+        if (instanceManager.currentReactContext != null) return true
 
         // Otherwise, wait for initialization; MainApplication handles starting the instance
         suspendCancellableCoroutine { continuation ->
             val listener =
                 object : ReactInstanceEventListener {
                     override fun onReactContextInitialized(context: ReactContext) {
-                        reactInstanceManager.removeReactInstanceEventListener(this)
+                        instanceManager.removeReactInstanceEventListener(this)
                         if (continuation.isActive) continuation.resume(Unit)
                     }
                 }
 
-            reactInstanceManager.addReactInstanceEventListener(listener)
-            continuation.invokeOnCancellation { reactInstanceManager.removeReactInstanceEventListener(listener) }
+            instanceManager.addReactInstanceEventListener(listener)
+            continuation.invokeOnCancellation { instanceManager.removeReactInstanceEventListener(listener) }
         }
         return false
     }
