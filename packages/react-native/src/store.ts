@@ -1,4 +1,6 @@
 import useSyncExternalStoreExports from "use-sync-external-store/shim/with-selector";
+import { addListener } from "./native";
+
 export type HotUpdaterState = {
   progress: number;
   isUpdateDownloaded: boolean;
@@ -51,6 +53,10 @@ const createHotUpdaterStore = () => {
     listeners.add(listener);
     return () => listeners.delete(listener);
   };
+
+  // Subscribe to native onProgress events
+  // This listener is registered once when the store is created
+  addListener("onProgress", setState);
 
   return { getSnapshot, setState, subscribe };
 };
