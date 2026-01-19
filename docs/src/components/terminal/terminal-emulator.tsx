@@ -1,4 +1,5 @@
 "use client";
+import "@xterm/xterm/css/xterm.css";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 import type { TerminalEmulatorProps } from "./types";
@@ -76,7 +77,6 @@ export function TerminalEmulator({ config, onReady }: TerminalEmulatorProps) {
 
     const init = async () => {
       const { Terminal } = await import("@xterm/xterm");
-      await import("@xterm/xterm/css/xterm.css");
 
       if (!terminalRef.current || xtermRef.current) return;
 
