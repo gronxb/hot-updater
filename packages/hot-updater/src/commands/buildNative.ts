@@ -1,7 +1,11 @@
 import { buildAndroid } from "@hot-updater/android-helper";
 import { buildIos } from "@hot-updater/apple-helper";
 import { getCwd, p } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
+import type {
+  IosNativeBuildOptions,
+  NativeBuildOptions,
+  Platform,
+} from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
@@ -11,7 +15,7 @@ const buildNativeInternal = async ({
   options,
   platform,
 }: {
-  options: NativeBuildOptions;
+  options: NativeBuildOptions | IosNativeBuildOptions;
   platform: Platform;
 }) => {
   printBanner();
@@ -38,6 +42,7 @@ const buildNativeInternal = async ({
       : () =>
           buildIos({
             schemeConfig: config.nativeBuild.ios[scheme]!,
+            simulator: (options as IosNativeBuildOptions).simulator,
           });
 
   try {
@@ -69,6 +74,6 @@ export const buildAndroidNative = async (options: NativeBuildOptions) => {
   await buildNativeInternal({ options, platform: "android" });
 };
 
-export const buildIosNative = async (options: NativeBuildOptions) => {
+export const buildIosNative = async (options: IosNativeBuildOptions) => {
   await buildNativeInternal({ options, platform: "ios" });
 };

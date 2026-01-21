@@ -403,3 +403,13 @@ export interface NativeBuildOptions {
   message?: string;
   scheme?: string;
 }
+
+export interface IosNativeBuildOptions extends NativeBuildOptions {
+  /**
+   * Build for iOS simulator instead of device.
+   * When enabled, no code signing is required.
+   *
+   * @default false
+   */
+  simulator?: boolean;
+}

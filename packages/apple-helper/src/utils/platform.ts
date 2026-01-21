@@ -27,8 +27,8 @@ export const platformConfigs: Record<ApplePlatform, PlatformConfig> = {
     deviceSdk: "iphoneos",
     simulatorSdk: "iphonesimulator",
     supportsSimulator: true,
-    deviceDestination: "platform=iOS",
-    simulatorDestination: "platform=iOS Simulator",
+    deviceDestination: "generic/platform=iOS",
+    simulatorDestination: "generic/platform=iOS Simulator",
   },
   // TODO: support other
   // macos: {

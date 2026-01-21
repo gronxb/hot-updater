@@ -3,7 +3,10 @@ import { Command, Option } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, colors, log, p } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions } from "@hot-updater/plugin-core";
+import type {
+  IosNativeBuildOptions,
+  NativeBuildOptions,
+} from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 import {
   appIdSuffixCommandOption,
@@ -256,12 +259,17 @@ if (process.env["EXPERIMENTAL"]) {
     .addOption(interactiveCommandOption)
     .addOption(nativeBuildSchemeCommandOption)
     .addOption(
+      new Option("--simulator", "Build for iOS simulator (.app file)").default(
+        false,
+      ),
+    )
+    .addOption(
       new Option(
         "-m, --message <message>",
         "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
       ),
     )
-    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+    .action(async (options: IosNativeBuildOptions) => {
       await buildIosNative(options);
     });
 

@@ -3,6 +3,7 @@ import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
+import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 import { createRandomTmpDir } from "./utils/createRandomTmpDir";
@@ -10,8 +11,10 @@ import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 
 export const buildIos = async ({
   schemeConfig: _schemeConfig,
+  simulator = false,
 }: {
   schemeConfig: NativeBuildIosScheme;
+  simulator?: boolean;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
@@ -19,6 +22,36 @@ export const buildIos = async ({
   const schemeConfig = await enrichNativeBuildIosScheme(_schemeConfig);
 
   const buildDirectory = await createRandomTmpDir();
+
+  // Simulator build: build .app directly without archiving
+  if (simulator) {
+    const appDir = path.join(buildDirectory, "app");
+    await fs.promises.mkdir(appDir, { recursive: true });
+
+    p.log.info("Building for iOS Simulator (.app file)...");
+
+    const { appPath } = await buildXcodeProject({
+      sourceDir: iosProjectRoot,
+      platform: schemeConfig.platform,
+      scheme: schemeConfig.scheme,
+      configuration: schemeConfig.configuration,
+      deviceType: "simulator",
+      installPods: schemeConfig.installPods,
+      extraParams: schemeConfig.extraParams,
+    });
+
+    const finalAppPath = path.join(appDir, path.basename(appPath));
+    await fs.promises.cp(appPath, finalAppPath, { recursive: true });
+
+    p.log.success(`.app file created: ${path.basename(appPath)}`);
+
+    return {
+      buildDirectory: buildDirectory,
+      buildArtifactPath: finalAppPath,
+    };
+  }
+
+  // Device build: archive and optionally export
   const archiveDir = path.join(buildDirectory, "archive");
   const exportDir = path.join(buildDirectory, "export");
   await fs.promises.mkdir(archiveDir, { recursive: true });
