@@ -177,16 +177,25 @@ RCT_EXPORT_MODULE();
 }
 
 
-// Get bundleURL using singleton
+// Get bundleURL with default bundle using singleton
 + (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURL];
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
-// Get bundleURL using instance impl
+// Get bundleURL with specific bundle using singleton
++ (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
+}
+
+// Get bundleURL with default bundle using instance impl
 - (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURL];
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
+// Get bundleURL with specific bundle using instance impl
+- (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
+}
 
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
 
@@ -247,7 +256,7 @@ RCT_EXPORT_MODULE();
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-            NSURL *bundleURL = [impl bundleURL];
+            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
@@ -337,7 +346,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-            NSURL *bundleURL = [impl bundleURL];
+            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
