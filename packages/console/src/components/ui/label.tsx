@@ -1,20 +1,24 @@
-import type { Component, ComponentProps } from "solid-js";
-import { splitProps } from "solid-js";
+"use client";
+
+import { Label as LabelPrimitive } from "radix-ui";
+import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Label: Component<ComponentProps<"label">> = (props) => {
-  const [local, others] = splitProps(props, ["class"]);
+function Label({
+  className,
+  ...props
+}: React.ComponentProps<typeof LabelPrimitive.Root>) {
   return (
-    // biome-ignore lint/a11y/noLabelWithoutControl: reusable label component
-    <label
-      class={cn(
-        "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-        local.class,
+    <LabelPrimitive.Root
+      data-slot="label"
+      className={cn(
+        "gap-2 text-xs/relaxed leading-none font-medium group-data-[disabled=true]:opacity-50 peer-disabled:opacity-50 flex items-center select-none group-data-[disabled=true]:pointer-events-none peer-disabled:cursor-not-allowed",
+        className,
       )}
-      {...others}
+      {...props}
     />
   );
-};
+}
 
 export { Label };
