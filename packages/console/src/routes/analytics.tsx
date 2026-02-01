@@ -1,6 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -25,9 +24,9 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { aggregateByAppVersion } from "@/lib/analytics-utils";
 import { useDeviceEventsQuery } from "@/lib/api";
-import { ANALYTICS_EVENTS_LIMIT, DEFAULT_PAGE_LIMIT } from "@/lib/constants";
+import { ANALYTICS_EVENTS_LIMIT } from "@/lib/constants";
 
-dayjs.extend(relativeTime);
+const RECENT_ACTIVITY_LIMIT = 10;
 
 export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
@@ -63,7 +62,7 @@ function AnalyticsPage() {
       bundleId,
       platform,
       channel,
-      limit: DEFAULT_PAGE_LIMIT,
+      limit: RECENT_ACTIVITY_LIMIT,
       offset: currentOffset,
     },
   );
@@ -109,7 +108,7 @@ function AnalyticsPage() {
   }, [analyticsEvents]);
 
   const handlePreviousPage = () => {
-    const newOffset = Math.max(0, currentOffset - DEFAULT_PAGE_LIMIT);
+    const newOffset = Math.max(0, currentOffset - RECENT_ACTIVITY_LIMIT);
     void navigate({
       to: "/analytics",
       search: {
@@ -122,7 +121,7 @@ function AnalyticsPage() {
   };
 
   const handleNextPage = () => {
-    const newOffset = currentOffset + DEFAULT_PAGE_LIMIT;
+    const newOffset = currentOffset + RECENT_ACTIVITY_LIMIT;
     void navigate({
       to: "/analytics",
       search: {
@@ -406,7 +405,9 @@ function AnalyticsPage() {
                         <ChannelBadge channel={event.channel} />
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
                           {event.createdAt
-                            ? dayjs(event.createdAt).fromNow()
+                            ? dayjs(event.createdAt).format(
+                                "YYYY/MM/DD HH:mm:ss",
+                              )
                             : "Unknown time"}
                         </span>
                       </div>

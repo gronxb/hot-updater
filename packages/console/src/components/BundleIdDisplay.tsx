@@ -9,16 +9,13 @@ interface BundleIdDisplayProps {
   bundleId: string;
   maxLength?: number;
 }
-
 export function BundleIdDisplay({
   bundleId,
-  maxLength = 8,
+  maxLength = 12,
 }: BundleIdDisplayProps) {
+  // UUIDv7: show last characters (more unique) instead of first (timestamp)
   const truncated =
-    bundleId.length > maxLength
-      ? `${bundleId.slice(0, maxLength)}...`
-      : bundleId;
-
+    bundleId.length > maxLength ? bundleId.slice(-maxLength) : bundleId;
   if (bundleId.length <= maxLength) {
     return <span className="font-mono text-sm">{bundleId}</span>;
   }

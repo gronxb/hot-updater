@@ -14,6 +14,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import appCss from "../styles.css?url";
+import { useEffect } from "react";
 
 const queryClient = new QueryClient();
 
@@ -38,12 +39,19 @@ export const Route = createRootRoute({
       },
     ],
   }),
-
+  
   component: RootLayout,
   shellComponent: RootDocument,
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      void  import("react-grab/core").then(({ init }) => {
+        init({ activationKey: "Meta+c" });
+      });
+    }
+  }, []);
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

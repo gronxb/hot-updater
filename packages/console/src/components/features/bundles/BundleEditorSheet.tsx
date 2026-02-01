@@ -1,3 +1,4 @@
+import type { Bundle } from "@hot-updater/plugin-core";
 import {
   Sheet,
   SheetContent,
@@ -5,7 +6,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { Bundle } from "@hot-updater/plugin-core";
+import { BundleBasicInfo } from "./BundleBasicInfo";
 import { BundleEditorForm } from "./BundleEditorForm";
 import { BundleMetadata } from "./BundleMetadata";
 import { RolloutStatsCard } from "./RolloutStatsCard";
@@ -29,17 +30,17 @@ export function BundleEditorSheet({
         <SheetHeader>
           <SheetTitle>Edit Bundle</SheetTitle>
           <SheetDescription>
-            Update bundle configuration and deployment settings
+            <BundleBasicInfo bundle={bundle} />
           </SheetDescription>
         </SheetHeader>
 
         <div className="px-6 pb-6 space-y-6">
           <RolloutStatsCard bundleId={bundle.id} />
-          <BundleMetadata bundle={bundle} />
           <BundleEditorForm
             bundle={bundle}
             onClose={() => onOpenChange(false)}
           />
+          <BundleMetadata bundle={bundle} />
         </div>
       </SheetContent>
     </Sheet>

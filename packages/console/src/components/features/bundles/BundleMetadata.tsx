@@ -1,27 +1,26 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { PlatformIcon } from "@/components/PlatformIcon";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExternalLink } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface BundleMetadataProps {
   bundle: Bundle;
 }
 
 export function BundleMetadata({ bundle }: BundleMetadataProps) {
+  const hasMetadata =
+    bundle.targetAppVersion ||
+    bundle.fingerprintHash ||
+    bundle.gitCommitHash ||
+    bundle.fileHash;
+
+  if (!hasMetadata) return null;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-sm font-medium">Metadata</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Platform</span>
-          <div className="flex items-center gap-2">
-            <PlatformIcon platform={bundle.platform} className="h-4 w-4" />
-            <span className="capitalize">{bundle.platform}</span>
-          </div>
-        </div>
-
         {bundle.targetAppVersion && (
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">App Version</span>

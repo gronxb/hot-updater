@@ -17,7 +17,9 @@ export function TimestampDisplay({
   const date = dayjs(timestamp);
 
   if (format === "relative") {
-    return <span className="text-sm text-muted-foreground">{date.fromNow()}</span>;
+    return (
+      <span className="text-sm text-muted-foreground">{date.fromNow()}</span>
+    );
   }
 
   if (format === "absolute") {

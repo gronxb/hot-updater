@@ -1,7 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
 import type { Bundle } from "@hot-updater/plugin-core";
-import { prepareConfig, isConfigLoaded } from "./config.server";
+import { createServerFn } from "@tanstack/react-start";
 import { DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_OFFSET } from "../constants";
+import { isConfigLoaded, prepareConfig } from "./config.server";
 
 // GET /api/config
 export const getConfig = createServerFn().handler(async () => {

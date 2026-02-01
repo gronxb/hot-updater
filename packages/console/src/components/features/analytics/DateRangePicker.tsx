@@ -1,7 +1,7 @@
-import { Button } from "@/components/ui/button";
-import { DATE_RANGE_PRESETS } from "@/lib/constants";
 import dayjs from "dayjs";
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DATE_RANGE_PRESETS } from "@/lib/constants";
 
 interface DateRangePickerProps {
   startDate?: string;
@@ -55,7 +55,9 @@ export function DateRangePicker({
     <div className="space-y-4">
       {/* Preset buttons */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground mr-2">Quick select:</span>
+        <span className="text-sm text-muted-foreground mr-2">
+          Quick select:
+        </span>
         {DATE_RANGE_PRESETS.map((preset) => (
           <Button
             key={preset.label}

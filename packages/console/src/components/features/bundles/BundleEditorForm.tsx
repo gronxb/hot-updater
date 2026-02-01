@@ -1,19 +1,19 @@
-import { useForm } from "@tanstack/react-form";
 import type { Bundle } from "@hot-updater/plugin-core";
-import { useUpdateBundleMutation } from "@/lib/api";
+import { useForm } from "@tanstack/react-form";
+import { Plus, X } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
-import { PromoteChannelDialog } from "./PromoteChannelDialog";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { useUpdateBundleMutation } from "@/lib/api";
 import { DeleteBundleDialog } from "./DeleteBundleDialog";
-import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { PromoteChannelDialog } from "./PromoteChannelDialog";
 
 interface BundleEditorFormProps {
   bundle: Bundle;
@@ -180,7 +180,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
                 onValueChange={([value]) => field.handleChange(value)}
                 min={0}
                 max={100}
-                step={5}
+                step={1}
               />
             </div>
           )}

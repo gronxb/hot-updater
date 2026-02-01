@@ -12,7 +12,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { type DeviceEvent } from "@/lib/analytics-utils";
+import type { DeviceEvent } from "@/lib/analytics-utils";
 
 dayjs.extend(relativeTime);
 
@@ -194,7 +194,7 @@ export function BundleDetailSheet({
 
             <div>
               <h4 className="text-sm font-medium mb-3">Recent Events</h4>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              <div className="space-y-2 max-h-[260px] border rounded-md p-2 overflow-y-auto">
                 {selectedBundleEvents.slice(0, 10).map((event, i) => (
                   <div
                     key={event.id || i}

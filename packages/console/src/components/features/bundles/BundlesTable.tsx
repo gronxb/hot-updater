@@ -1,9 +1,11 @@
-import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
-} from "@tanstack/react-table";
 import type { Bundle } from "@hot-updater/plugin-core";
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -12,11 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { bundleColumns } from "./BundleTableColumns";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
+import { bundleColumns } from "./BundleTableColumns";
 
 interface BundlesTableProps {
   bundles: Bundle[];

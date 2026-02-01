@@ -1,3 +1,5 @@
+import type { Bundle } from "@hot-updater/plugin-core";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,8 +11,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useDeleteBundleMutation } from "@/lib/api";
-import type { Bundle } from "@hot-updater/plugin-core";
-import { toast } from "sonner";
 
 interface DeleteBundleDialogProps {
   bundle: Bundle;

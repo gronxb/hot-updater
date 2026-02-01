@@ -1,9 +1,9 @@
-import { createColumnHelper } from "@tanstack/react-table";
 import type { Bundle } from "@hot-updater/plugin-core";
+import { createColumnHelper } from "@tanstack/react-table";
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
-import { PlatformIcon } from "@/components/PlatformIcon";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
+import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 
@@ -23,7 +23,7 @@ export const bundleColumns = [
     cell: (info) => (
       <div className="flex items-center gap-2">
         <PlatformIcon platform={info.getValue()} className="h-4 w-4" />
-        <span className="capitalize">{info.getValue()}</span>
+        <span>{info.getValue() === "ios" ? "iOS" : "Android"}</span>
       </div>
     ),
   }),

@@ -1,13 +1,13 @@
+import { Smartphone } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Badge } from "@/components/ui/badge";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AppVersionData } from "@/lib/analytics-utils";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { Smartphone } from "lucide-react";
 
 interface AppVersionChartProps {
   data: AppVersionData[];

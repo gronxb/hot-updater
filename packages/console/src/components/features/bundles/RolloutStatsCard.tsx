@@ -1,14 +1,14 @@
-import { useRolloutStatsQuery } from "@/lib/api";
+import { Activity } from "lucide-react";
+import { Label, Pie, PieChart } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import { Pie, PieChart, Label } from "recharts";
-import { Activity } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useRolloutStatsQuery } from "@/lib/api";
 
 interface RolloutStatsCardProps {
   bundleId: string;
@@ -22,20 +22,12 @@ export function RolloutStatsCard({ bundleId }: RolloutStatsCardProps) {
   const promotedCount = stats?.promotedCount ?? 0;
   const recoveredCount = stats?.recoveredCount ?? 0;
 
-  const successCount = Math.round((totalDevices * successRate) / 100);
-  const failedCount = totalDevices - successCount - recoveredCount;
-
   const chartData = [
-    { status: "success", count: successCount, fill: "var(--color-success)" },
+    { status: "promoted", count: promotedCount, fill: "var(--color-promoted)" },
     {
       status: "recovered",
       count: recoveredCount,
       fill: "var(--color-recovered)",
-    },
-    {
-      status: "failed",
-      count: Math.max(0, failedCount),
-      fill: "var(--color-failed)",
     },
   ];
 
@@ -43,16 +35,12 @@ export function RolloutStatsCard({ bundleId }: RolloutStatsCardProps) {
     count: {
       label: "Devices",
     },
-    success: {
-      label: "Success",
+    promoted: {
+      label: "Promoted",
       color: "oklch(0.723 0.219 149.579)",
     },
     recovered: {
       label: "Recovered",
-      color: "oklch(0.705 0.213 47.604)",
-    },
-    failed: {
-      label: "Failed",
       color: "oklch(0.577 0.245 27.325)",
     },
   } satisfies ChartConfig;
@@ -146,14 +134,8 @@ export function RolloutStatsCard({ bundleId }: RolloutStatsCardProps) {
               </div>
               <div className="space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Recovered</p>
-                <p className="text-lg font-bold text-orange-500">
-                  {recoveredCount.toLocaleString()}
-                </p>
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-[10px] text-muted-foreground">Failed</p>
                 <p className="text-lg font-bold text-destructive">
-                  {Math.max(0, failedCount).toLocaleString()}
+                  {recoveredCount.toLocaleString()}
                 </p>
               </div>
             </div>

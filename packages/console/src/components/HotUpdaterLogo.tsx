@@ -1,6 +1,8 @@
 export function HotUpdaterLogo({ className }: { className?: string }) {
   return (
     <svg
+      role="img"
+      aria-label="Hot Updater"
       className={className}
       viewBox="0 0 447 652"
       xmlns="http://www.w3.org/2000/svg"

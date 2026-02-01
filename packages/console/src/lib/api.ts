@@ -1,16 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Bundle } from "@hot-updater/plugin-core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getConfig,
-  getChannels,
-  getConfigLoaded,
-  getBundles,
-  getBundle,
-  getRolloutStats,
-  getDeviceEvents,
-  updateBundle as updateBundleApi,
   createBundle as createBundleApi,
   deleteBundle as deleteBundleApi,
+  getBundle,
+  getBundles,
+  getChannels,
+  getConfig,
+  getConfigLoaded,
+  getDeviceEvents,
+  getRolloutStats,
+  updateBundle as updateBundleApi,
 } from "./server/api.server";
 
 export interface DeviceEventFilters {

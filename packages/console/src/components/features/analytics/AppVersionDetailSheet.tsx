@@ -85,7 +85,7 @@ export function AppVersionDetailSheet({
         </SheetHeader>
 
         {selectedVersionData && (
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-6 flex-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border p-4 text-center">
                 <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
@@ -166,7 +166,7 @@ export function AppVersionDetailSheet({
 
             <div>
               <h4 className="text-sm font-medium mb-3">Recent Events</h4>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              <div className="space-y-2 max-h-[260px] border rounded-md p-2 overflow-y-auto">
                 {selectedVersionEvents.slice(0, 10).map((event, i) => (
                   <div
                     key={event.id || i}

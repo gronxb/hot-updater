@@ -1,14 +1,16 @@
+import type { Bundle } from "@hot-updater/plugin-core";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -16,10 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useChannelsQuery, useCreateBundleMutation, useDeleteBundleMutation } from "@/lib/api";
-import type { Bundle } from "@hot-updater/plugin-core";
-import { useState } from "react";
-import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import {
+  useChannelsQuery,
+  useCreateBundleMutation,
+  useDeleteBundleMutation,
+} from "@/lib/api";
 import { createUUIDv7WithSameTimestamp } from "@/lib/extract-timestamp-from-uuidv7";
 
 interface PromoteChannelDialogProps {
@@ -60,11 +64,11 @@ export function PromoteChannelDialog({
       if (isMove) {
         await deleteBundleMutation.mutateAsync({ bundleId: bundle.id });
         toast.success(
-          `Bundle moved from ${bundle.channel} to ${targetChannel}`
+          `Bundle moved from ${bundle.channel} to ${targetChannel}`,
         );
       } else {
         toast.success(
-          `Bundle copied from ${bundle.channel} to ${targetChannel}`
+          `Bundle copied from ${bundle.channel} to ${targetChannel}`,
         );
       }
 
@@ -106,11 +110,7 @@ export function PromoteChannelDialog({
 
           <div className="flex items-center justify-between">
             <Label htmlFor="is-move">Move (delete from source)</Label>
-            <Switch
-              id="is-move"
-              checked={isMove}
-              onCheckedChange={setIsMove}
-            />
+            <Switch id="is-move" checked={isMove} onCheckedChange={setIsMove} />
           </div>
         </div>
 
