@@ -116,7 +116,6 @@ function BundlesPage() {
     <div className="flex flex-col h-full bg-background min-h-screen">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mr-2 h-4" />
         <Link
           to="/analytics"
           search={{

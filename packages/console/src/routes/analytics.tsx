@@ -140,16 +140,12 @@ function AnalyticsPage() {
     <div className="flex flex-col h-full bg-background min-h-screen">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mr-2 h-4" />
-        <h1 className="text-lg font-semibold">Analytics Overview</h1>
+        <h1 className="text-lg font-semibold ml-2">Analytics Overview</h1>
         {bundleId && (
-          <>
-            <Separator orientation="vertical" className="mx-2 h-4" />
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Bundle:</span>
-              <BundleIdDisplay bundleId={bundleId} />
-            </div>
-          </>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground ml-2">
+            <span>Bundle:</span>
+            <BundleIdDisplay bundleId={bundleId} />
+          </div>
         )}
       </header>
 
