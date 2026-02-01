@@ -26,7 +26,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader>
+      <SidebarHeader className="h-12 justify-center">
         <Link
           to="/"
           search={{
@@ -49,7 +49,6 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
 
-      <SidebarSeparator />
 
       <SidebarContent>
         <SidebarGroup>
