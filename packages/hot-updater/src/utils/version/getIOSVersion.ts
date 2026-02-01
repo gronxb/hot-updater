@@ -3,8 +3,8 @@ import { getCwd } from "@hot-updater/cli-tools";
 import fg from "fast-glob";
 import fs from "fs/promises";
 import path from "path";
-import plist from "plist";
 import semverValid from "semver/ranges/valid";
+import { parsePlist } from "../configParser/plistUtils";
 import { getIosAppTargetDirectoryName } from "../getIosAppTargetDirectoryName";
 
 const isFileExist = async (path: string): Promise<boolean> => {
@@ -29,8 +29,8 @@ const getIOSVersionFromInfoPlist = async (): Promise<string | null> => {
     );
     if (!(await isFileExist(plistPath))) return null;
 
-    const file = await fs.readFile(plistPath, "utf8");
-    const data = plist.parse(file) as Record<string, any>;
+    const fileBuffer = await fs.readFile(plistPath);
+    const data = parsePlist(fileBuffer);
 
     return data["CFBundleShortVersionString"] ?? null;
   } catch {

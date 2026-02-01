@@ -15,42 +15,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch sponsors
+      - name: Fetch sponsors (commit only when sponsors changed)
         env:
           GH_TOKEN: ${{ secrets.SPONSORS_TOKEN }}
         run: |
+          set -euo pipefail
+          mkdir -p docs/public
+
+          # 1) Generate the new sponsors array (sorted for stable diffs)
           gh api graphql -f query='
             query {
               user(login: "gronxb") {
                 sponsorshipsAsMaintainer(first: 100, includePrivate: false) {
                   nodes {
                     sponsorEntity {
-                      ... on User {
-                        login
-                        avatarUrl
-                        name
-                        url
-                      }
-                      ... on Organization {
-                        login
-                        avatarUrl
-                        name
-                        url
-                      }
+                      ... on User { login avatarUrl name url }
+                      ... on Organization { login avatarUrl name url }
                     }
                   }
                 }
               }
             }
-          ' | jq '{
-            sponsors: [.data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity | select(. != null) | {
-              login,
-              avatarUrl,
-              name,
-              url
-            }],
-            updatedAt: now | todate
-          }' > docs/public/sponsors.json
+          ' | jq '[
+            .data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
+            | select(. != null)
+            | { login, avatarUrl, name, url }
+          ] | sort_by(.login)' > /tmp/sponsors.new.json
+
+          # 2) Extract the existing sponsors array (or use an empty array if missing)
+          if [ -f docs/public/sponsors.json ]; then
+            jq '.sponsors // [] | sort_by(.login)' docs/public/sponsors.json > /tmp/sponsors.old.json
+          else
+            echo '[]' > /tmp/sponsors.old.json
+          fi
+
+          # 3) If sponsors did not change, do not touch the file (so updatedAt won't change)
+          if diff -q /tmp/sponsors.old.json /tmp/sponsors.new.json >/dev/null; then
+            echo "No sponsor changes. Skipping update."
+            exit 0
+          fi
+
+          # 4) If sponsors changed, write a new sponsors.json with a fresh updatedAt timestamp
+          jq -n --slurpfile sponsors /tmp/sponsors.new.json \
+            '{ sponsors: $sponsors[0], updatedAt: (now | todate) }' \
+            > docs/public/sponsors.json
 
       - name: Commit and push
         run: |

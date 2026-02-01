@@ -1,6 +1,5 @@
 package com.hotupdater
 
-import android.app.Activity
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -276,20 +275,16 @@ class HotUpdaterImpl {
 
     /**
      * Reloads the React Native application
-     * @param activity Current activity (optional)
+     * @param reactContext The original context (preferably ReactApplicationContext to get current activity)
      */
-    suspend fun reload(activity: Activity? = null) {
-        val reactIntegrationManager = ReactIntegrationManager(context)
-        val application = activity?.application ?: return
+    suspend fun reload(reactContext: Context) {
+        val reactIntegrationManager = ReactIntegrationManager(reactContext)
+        val bundleURL = getJSBundleFile()
 
         try {
-            val reactApplication = reactIntegrationManager.getReactApplication(application)
-            val bundleURL = getJSBundleFile()
-
-            // Perform reload (suspends until safe to reload on new arch)
             withContext(Dispatchers.Main) {
-                reactIntegrationManager.setJSBundle(reactApplication, bundleURL)
-                reactIntegrationManager.reload(reactApplication)
+                reactIntegrationManager.setJSBundle(bundleURL)
+                reactIntegrationManager.reload()
             }
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)

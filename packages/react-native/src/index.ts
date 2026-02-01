@@ -37,12 +37,6 @@ export {
 } from "./types";
 export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
 
-addListener("onProgress", ({ progress }) => {
-  hotUpdaterStore.setState({
-    progress,
-  });
-});
-
 /**
  * Register getBaseURL to global objects for use without imports.
  * This is needed for Expo DOM components and Babel plugin generated code.

@@ -1,5 +1,43 @@
 # hot-updater
 
+## 0.25.7
+
+### Patch Changes
+
+- @hot-updater/android-helper@0.25.7
+- @hot-updater/apple-helper@0.25.7
+- @hot-updater/cli-tools@0.25.7
+- @hot-updater/console@0.25.7
+- @hot-updater/core@0.25.7
+- @hot-updater/server@0.25.7
+- @hot-updater/plugin-core@0.25.7
+
+## 0.25.6
+
+### Patch Changes
+
+- c7a0cc5: fix(cli): even though "provider: 'mysql'" is configured, the error still shows the dialect as postgresql
+  - @hot-updater/android-helper@0.25.6
+  - @hot-updater/apple-helper@0.25.6
+  - @hot-updater/cli-tools@0.25.6
+  - @hot-updater/console@0.25.6
+  - @hot-updater/core@0.25.6
+  - @hot-updater/server@0.25.6
+  - @hot-updater/plugin-core@0.25.6
+
+## 0.25.5
+
+### Patch Changes
+
+- 8041bab: fix(cli): function parse$4 expects an xml, but some inputs come as binary as well
+  - @hot-updater/android-helper@0.25.5
+  - @hot-updater/apple-helper@0.25.5
+  - @hot-updater/cli-tools@0.25.5
+  - @hot-updater/console@0.25.5
+  - @hot-updater/core@0.25.5
+  - @hot-updater/server@0.25.5
+  - @hot-updater/plugin-core@0.25.5
+
 ## 0.25.4
 
 ### Patch Changes

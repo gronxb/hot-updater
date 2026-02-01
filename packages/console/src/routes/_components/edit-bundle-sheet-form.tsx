@@ -351,7 +351,7 @@ export const EditBundleSheetForm = ({
               Commit Hash:{" "}
               {gitUrl() ? (
                 <a
-                  href={`${gitUrl()}/commit/${gitCommitHash}`}
+                  href={`${gitUrl()}/commit/${gitCommitHash()}`}
                   target="_blank"
                   rel="noreferrer"
                   class="ml-2"

@@ -44,8 +44,7 @@ class HotUpdaterModule internal constructor(
         moduleScope.launch {
             try {
                 val impl = getInstance()
-                val currentActivity = mReactApplicationContext.currentActivity
-                impl.reload(currentActivity)
+                impl.reload(mReactApplicationContext)
                 promise.resolve(null)
             } catch (e: Exception) {
                 Log.d("HotUpdater", "Failed to reload", e)

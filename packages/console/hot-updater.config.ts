@@ -46,4 +46,7 @@ export default {
       },
     ],
   }),
+  console: {
+    gitUrl: "https://github.com/gronxb/hot-updater",
+  },
 };

@@ -21,11 +21,12 @@ export type HotUpdaterEvent = {
   };
 };
 
+const eventEmitter = new NativeEventEmitter(HotUpdaterNative);
+
 export const addListener = <T extends keyof HotUpdaterEvent>(
   eventName: T,
   listener: (event: HotUpdaterEvent[T]) => void,
 ) => {
-  const eventEmitter = new NativeEventEmitter(HotUpdaterNative);
   const subscription = eventEmitter.addListener(eventName, listener);
 
   return () => {
