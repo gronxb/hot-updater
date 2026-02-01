@@ -13,7 +13,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from "@/components/ui/sidebar";
 
 export function AppSidebar() {
@@ -48,7 +47,6 @@ export function AppSidebar() {
           </div>
         </Link>
       </SidebarHeader>
-
 
       <SidebarContent>
         <SidebarGroup>

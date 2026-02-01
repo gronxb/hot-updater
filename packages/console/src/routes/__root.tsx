@@ -1,20 +1,19 @@
+import { TanStackDevtools } from "@tanstack/react-devtools";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  createRootRoute,
   HeadContent,
   Outlet,
   Scripts,
-  createRootRoute,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { TanStackDevtools } from "@tanstack/react-devtools";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "@/components/ThemeProvider";
-import { Toaster } from "@/components/ui/sonner";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
-import { TooltipProvider } from "@/components/ui/tooltip";
-
-import appCss from "../styles.css?url";
 import { useEffect } from "react";
+import { AppSidebar } from "@/components/AppSidebar";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import appCss from "../styles.css?url";
 
 const queryClient = new QueryClient();
 
@@ -39,7 +38,7 @@ export const Route = createRootRoute({
       },
     ],
   }),
-  
+
   component: RootLayout,
   shellComponent: RootDocument,
 });
@@ -47,8 +46,8 @@ export const Route = createRootRoute({
 function RootDocument({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (import.meta.env.DEV) {
-      void  import("react-grab/core").then(({ init }) => {
-        init({ activationKey: "Meta+c" });
+      void import("react-grab/core").then(({ init }) => {
+        init({ activationKey: { key: "c", metaKey: true } });
       });
     }
   }, []);

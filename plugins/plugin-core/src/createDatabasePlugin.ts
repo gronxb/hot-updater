@@ -3,7 +3,11 @@ import { merge } from "es-toolkit";
 import type {
   DatabasePlugin,
   DatabasePluginHooks,
+  DeviceEvent,
+  DeviceEventFilter,
+  DeviceEventListResult,
   PaginationInfo,
+  RolloutStats,
 } from "./types";
 
 export interface AbstractDatabasePlugin {
@@ -24,6 +28,12 @@ export interface AbstractDatabasePlugin {
       data: Bundle;
     }[];
   }) => Promise<void>;
+
+  trackDeviceEvent?: (event: DeviceEvent) => Promise<void>;
+  getRolloutStats?: (bundleId: string) => Promise<RolloutStats | undefined>;
+  getDeviceEvents?: (
+    filter?: DeviceEventFilter,
+  ) => Promise<DeviceEventListResult | undefined>;
 }
 
 /**

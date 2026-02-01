@@ -75,10 +75,10 @@ export interface DatabasePlugin {
   deleteBundle: (deleteBundle: Bundle) => Promise<void>;
 
   trackDeviceEvent?: (event: DeviceEvent) => Promise<void>;
-  getRolloutStats?: (bundleId: string) => Promise<RolloutStats>;
+  getRolloutStats?: (bundleId: string) => Promise<RolloutStats | undefined>;
   getDeviceEvents?: (
     filter?: DeviceEventFilter,
-  ) => Promise<DeviceEventListResult>;
+  ) => Promise<DeviceEventListResult | undefined>;
 }
 
 export interface DatabasePluginHooks {
