@@ -12,22 +12,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DeviceEvent } from "@/lib/analytics-utils";
+import { aggregateByBundle, type DeviceEvent } from "@/lib/analytics-utils";
 import { useDeviceEventsQuery } from "@/lib/api";
 import { ANALYTICS_EVENTS_LIMIT } from "@/lib/constants";
 
 const PAGE_SIZE = 10;
-
-type BundleData = {
-  bundleId: string;
-  promoted: number;
-  recovered: number;
-  total: number;
-  successRate: number;
-};
 
 export const Route = createFileRoute("/analytics_/bundles")({
   component: BundlesPage,
@@ -53,35 +51,15 @@ function BundlesPage() {
   });
 
   const analyticsEvents: DeviceEvent[] = analyticsData?.data ?? [];
+  const [sortBy, setSortBy] = useState<"total" | "failureRate">("total");
 
   const allBundleData = useMemo(() => {
-    const counts: Record<string, BundleData> = {};
-    for (const event of analyticsEvents) {
-      const bId = event.bundleId;
-      if (!counts[bId]) {
-        counts[bId] = {
-          bundleId: bId,
-          promoted: 0,
-          recovered: 0,
-          total: 0,
-          successRate: 0,
-        };
-      }
-      if (event.eventType === "PROMOTED") {
-        counts[bId].promoted += 1;
-      } else {
-        counts[bId].recovered += 1;
-      }
-      counts[bId].total += 1;
+    const data = aggregateByBundle(analyticsEvents);
+    if (sortBy === "failureRate") {
+      return [...data].sort((a, b) => a.successRate - b.successRate);
     }
-
-    return Object.values(counts)
-      .map((b) => ({
-        ...b,
-        successRate: b.total > 0 ? (b.promoted / b.total) * 100 : 0,
-      }))
-      .sort((a, b) => b.total - a.total);
-  }, [analyticsEvents]);
+    return data;
+  }, [analyticsEvents, sortBy]);
 
   const filteredData = useMemo(() => {
     if (!search.trim()) return allBundleData;
@@ -130,8 +108,7 @@ function BundlesPage() {
             Back
           </Button>
         </Link>
-        <Separator orientation="vertical" className="mx-2 h-4" />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-2">
           <Package className="h-4 w-4 text-muted-foreground" />
           <h1 className="text-lg font-semibold">Bundles</h1>
         </div>
@@ -148,14 +125,30 @@ function BundlesPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search bundle ID..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search bundle ID..."
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select
+                value={sortBy}
+                onValueChange={(v) => setSortBy(v as "total" | "failureRate")}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="total">Sort by: Total</SelectItem>
+                  <SelectItem value="failureRate">
+                    Sort by: Failure Rate
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {isLoading ? (
@@ -193,6 +186,9 @@ function BundlesPage() {
                           Total
                         </th>
                         <th className="px-4 py-3 text-right font-medium">
+                          Devices
+                        </th>
+                        <th className="px-4 py-3 text-right font-medium">
                           Success Rate
                         </th>
                       </tr>
@@ -201,7 +197,7 @@ function BundlesPage() {
                       {paginatedData.map((bundle) => (
                         <tr
                           key={bundle.bundleId}
-                          className="hover:bg-muted/30 cursor-pointer transition-colors"
+                          className={`hover:bg-muted/30 cursor-pointer transition-colors ${bundle.successRate < 90 ? "bg-amber-500/5" : ""}`}
                           onClick={() => setSelectedBundle(bundle.bundleId)}
                         >
                           <td className="px-4 py-3 font-mono text-xs">
@@ -215,6 +211,9 @@ function BundlesPage() {
                           </td>
                           <td className="px-4 py-3 text-right font-medium">
                             {bundle.total.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right text-muted-foreground">
+                            {bundle.deviceCount.toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <Badge

@@ -17,7 +17,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -53,6 +60,10 @@ function ActivityPage() {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [eventFilter, setEventFilter] = useState<
+    "all" | "RECOVERED" | "PROMOTED"
+  >("all");
+  const [showRecoveredOnly, setShowRecoveredOnly] = useState(false);
 
   const { data: analyticsData, isLoading } = useDeviceEventsQuery({
     limit: ANALYTICS_EVENTS_LIMIT,
@@ -61,9 +72,14 @@ function ActivityPage() {
 
   const analyticsEvents: DeviceEvent[] = analyticsData?.data ?? [];
 
+  const filteredEvents = useMemo(() => {
+    if (eventFilter === "all") return analyticsEvents;
+    return analyticsEvents.filter((e) => e.eventType === eventFilter);
+  }, [analyticsEvents, eventFilter]);
+
   const allDeviceData = useMemo(() => {
     const devices: Record<string, DeviceData> = {};
-    for (const event of analyticsEvents) {
+    for (const event of filteredEvents) {
       const dId = event.deviceId;
       if (!devices[dId]) {
         devices[dId] = {
@@ -100,13 +116,19 @@ function ActivityPage() {
       }
       return b.total - a.total;
     });
-  }, [analyticsEvents]);
+  }, [filteredEvents]);
 
   const filteredData = useMemo(() => {
-    if (!search.trim()) return allDeviceData;
-    const q = search.toLowerCase();
-    return allDeviceData.filter((d) => d.deviceId.toLowerCase().includes(q));
-  }, [allDeviceData, search]);
+    let data = allDeviceData;
+    if (showRecoveredOnly) {
+      data = data.filter((d) => d.recovered > 0);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      data = data.filter((d) => d.deviceId.toLowerCase().includes(q));
+    }
+    return data;
+  }, [allDeviceData, search, showRecoveredOnly]);
 
   const totalPages = Math.ceil(filteredData.length / PAGE_SIZE);
   const paginatedData = filteredData.slice(
@@ -154,8 +176,7 @@ function ActivityPage() {
             Back
           </Button>
         </Link>
-        <Separator orientation="vertical" className="mx-2 h-4" />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-2">
           <Monitor className="h-4 w-4 text-muted-foreground" />
           <h1 className="text-lg font-semibold">Device Activity</h1>
         </div>
@@ -172,14 +193,46 @@ function ActivityPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search device ID..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search device ID..."
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select
+                value={eventFilter}
+                onValueChange={(v) =>
+                  setEventFilter(v as "all" | "RECOVERED" | "PROMOTED")
+                }
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Event type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Events</SelectItem>
+                  <SelectItem value="RECOVERED">RECOVERED Only</SelectItem>
+                  <SelectItem value="PROMOTED">PROMOTED Only</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="recoveredOnly"
+                  checked={showRecoveredOnly}
+                  onChange={(e) => setShowRecoveredOnly(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label
+                  htmlFor="recoveredOnly"
+                  className="text-sm whitespace-nowrap"
+                >
+                  Devices with recoveries only
+                </Label>
+              </div>
             </div>
 
             {isLoading ? (
@@ -225,7 +278,7 @@ function ActivityPage() {
                       {paginatedData.map((device) => (
                         <tr
                           key={device.deviceId}
-                          className="hover:bg-muted/30 cursor-pointer transition-colors"
+                          className={`hover:bg-muted/30 cursor-pointer transition-colors ${device.recovered > device.promoted ? "bg-amber-500/5" : ""}`}
                           onClick={() => setSelectedDevice(device.deviceId)}
                         >
                           <td className="px-4 py-3 font-mono text-xs truncate max-w-[200px]">

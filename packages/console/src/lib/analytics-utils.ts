@@ -246,3 +246,121 @@ export function aggregateByAppVersion(events: DeviceEvent[]): AppVersionData[] {
 
   return result;
 }
+
+export interface BundleData {
+  bundleId: string;
+  promoted: number;
+  recovered: number;
+  total: number;
+  successRate: number; // (promoted / total) * 100
+  deviceCount: number; // unique devices that received this bundle
+}
+
+/**
+ * Aggregate events by bundle ID
+ * @param events Array of device events
+ * @returns Array of bundle data with success rates and device counts
+ */
+export function aggregateByBundle(events: DeviceEvent[]): BundleData[] {
+  const bundleMap = new Map<
+    string,
+    { promoted: number; recovered: number; devices: Set<string> }
+  >();
+
+  for (const event of events) {
+    const bundleId = event.bundleId;
+
+    if (!bundleMap.has(bundleId)) {
+      bundleMap.set(bundleId, {
+        promoted: 0,
+        recovered: 0,
+        devices: new Set(),
+      });
+    }
+
+    const bundleData = bundleMap.get(bundleId)!;
+    if (event.eventType === "PROMOTED") {
+      bundleData.promoted += 1;
+    } else if (event.eventType === "RECOVERED") {
+      bundleData.recovered += 1;
+    }
+    bundleData.devices.add(event.deviceId);
+  }
+
+  // Convert to array and calculate success rates
+  const result: BundleData[] = Array.from(bundleMap.entries())
+    .map(([bundleId, data]) => {
+      const total = data.promoted + data.recovered;
+      const successRate = total > 0 ? (data.promoted / total) * 100 : 0;
+
+      return {
+        bundleId,
+        promoted: data.promoted,
+        recovered: data.recovered,
+        total,
+        successRate,
+        deviceCount: data.devices.size,
+      };
+    })
+    .sort((a, b) => b.total - a.total); // Sort by total events descending
+
+  return result;
+}
+
+/**
+ * Sort items by failure rate (highest failure first)
+ * @param items Array of items with successRate property
+ * @returns Sorted array with highest failure rate first
+ */
+export function sortByFailureRate<T extends { successRate: number }>(
+  items: T[],
+): T[] {
+  return [...items].sort((a, b) => a.successRate - b.successRate);
+}
+
+/**
+ * Sort items by total count (highest first)
+ * @param items Array of items with total property
+ * @returns Sorted array with highest total first
+ */
+export function sortByTotal<T extends { total: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Filter items with success rate below threshold (problematic items)
+ * @param items Array of items with successRate property
+ * @param threshold Success rate threshold (default 90%)
+ * @returns Array of items below the threshold
+ */
+export function getProblematicItems<T extends { successRate: number }>(
+  items: T[],
+  threshold = 90,
+): T[] {
+  return items.filter((item) => item.successRate < threshold);
+}
+
+/**
+ * Get unique device count per bundle from events
+ * @param events Array of device events
+ * @returns Map of bundleId to unique device count
+ */
+export function getDeviceReachCount(
+  events: DeviceEvent[],
+): Map<string, number> {
+  const bundleDevices = new Map<string, Set<string>>();
+
+  for (const event of events) {
+    if (!bundleDevices.has(event.bundleId)) {
+      bundleDevices.set(event.bundleId, new Set());
+    }
+    bundleDevices.get(event.bundleId)!.add(event.deviceId);
+  }
+
+  const result = new Map<string, number>();
+  bundleDevices.forEach((devices, bundleId) => {
+    result.set(bundleId, devices.size);
+  });
+
+  return result;
+}

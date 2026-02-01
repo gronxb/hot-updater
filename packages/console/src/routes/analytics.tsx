@@ -19,10 +19,19 @@ import { PlatformIcon } from "@/components/PlatformIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { aggregateByAppVersion } from "@/lib/analytics-utils";
+import {
+  aggregateByAppVersion,
+  aggregateByBundle,
+} from "@/lib/analytics-utils";
 import { useDeviceEventsQuery } from "@/lib/api";
 import { ANALYTICS_EVENTS_LIMIT } from "@/lib/constants";
 
@@ -47,6 +56,12 @@ function AnalyticsPage() {
 
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
+  const [versionSortBy, setVersionSortBy] = useState<"total" | "failureRate">(
+    "total",
+  );
+  const [bundleSortBy, setBundleSortBy] = useState<"total" | "failureRate">(
+    "total",
+  );
 
   const { data: analyticsData, isLoading: isLoadingAnalytics } =
     useDeviceEventsQuery({
@@ -71,41 +86,25 @@ function AnalyticsPage() {
   const totalEvents = eventsData?.pagination.total ?? 0;
   const analyticsEvents = analyticsData?.data ?? [];
 
-  const appVersionData = useMemo(
-    () => aggregateByAppVersion(analyticsEvents).slice(0, 5),
-    [analyticsEvents],
-  );
-
-  type BundleEventCount = {
-    bundleId: string;
-    promoted: number;
-    recovered: number;
-    total: number;
-  };
+  const appVersionData = useMemo(() => {
+    const data = aggregateByAppVersion(analyticsEvents);
+    if (versionSortBy === "failureRate") {
+      return [...data]
+        .sort((a, b) => a.successRate - b.successRate)
+        .slice(0, 5);
+    }
+    return data.slice(0, 5);
+  }, [analyticsEvents, versionSortBy]);
 
   const bundleData = useMemo(() => {
-    const counts: Record<string, BundleEventCount> = {};
-    for (const event of analyticsEvents) {
-      const bId = event.bundleId;
-      if (!counts[bId]) {
-        counts[bId] = {
-          bundleId: bId,
-          promoted: 0,
-          recovered: 0,
-          total: 0,
-        };
-      }
-      if (event.eventType === "PROMOTED") {
-        counts[bId].promoted += 1;
-      } else if (event.eventType === "RECOVERED") {
-        counts[bId].recovered += 1;
-      }
-      counts[bId].total += 1;
+    const data = aggregateByBundle(analyticsEvents);
+    if (bundleSortBy === "failureRate") {
+      return [...data]
+        .sort((a, b) => a.successRate - b.successRate)
+        .slice(0, 5);
     }
-    return Object.values(counts)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  }, [analyticsEvents]);
+    return data.slice(0, 5);
+  }, [analyticsEvents, bundleSortBy]);
 
   const handlePreviousPage = () => {
     const newOffset = Math.max(0, currentOffset - RECENT_ACTIVITY_LIMIT);
@@ -170,9 +169,27 @@ function AnalyticsPage() {
                   </Button>
                 </Link>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Top 5 app versions by event count
-              </p>
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-xs text-muted-foreground">
+                  {versionSortBy === "failureRate"
+                    ? "Top 5 by failure rate"
+                    : "Top 5 by volume"}
+                </p>
+                <Select
+                  value={versionSortBy}
+                  onValueChange={(v) =>
+                    setVersionSortBy(v as "total" | "failureRate")
+                  }
+                >
+                  <SelectTrigger className="h-7 w-[130px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="total">By Volume</SelectItem>
+                    <SelectItem value="failureRate">Problems First</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoadingAnalytics ? (
@@ -195,7 +212,7 @@ function AnalyticsPage() {
                       type="button"
                       key={version.appVersion}
                       onClick={() => setSelectedVersion(version.appVersion)}
-                      className="flex items-center justify-between w-full p-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer text-left"
+                      className={`flex items-center justify-between w-full p-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer text-left ${version.successRate < 90 ? "bg-amber-500/5" : ""}`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-sm">
@@ -242,9 +259,27 @@ function AnalyticsPage() {
                   </Button>
                 </Link>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Top 5 bundles by event count
-              </p>
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-xs text-muted-foreground">
+                  {bundleSortBy === "failureRate"
+                    ? "Top 5 by failure rate"
+                    : "Top 5 by volume"}
+                </p>
+                <Select
+                  value={bundleSortBy}
+                  onValueChange={(v) =>
+                    setBundleSortBy(v as "total" | "failureRate")
+                  }
+                >
+                  <SelectTrigger className="h-7 w-[130px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="total">By Volume</SelectItem>
+                    <SelectItem value="failureRate">Problems First</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoadingAnalytics ? (
@@ -267,21 +302,29 @@ function AnalyticsPage() {
                       type="button"
                       key={bundle.bundleId}
                       onClick={() => setSelectedBundleId(bundle.bundleId)}
-                      className="flex items-center justify-between w-full p-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer text-left"
+                      className={`flex items-center justify-between w-full p-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer text-left ${bundle.successRate < 90 ? "bg-amber-500/5" : ""}`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs truncate max-w-[140px]">
                           {bundle.bundleId}
                         </span>
+                        <span className="text-xs text-muted-foreground">
+                          {bundle.deviceCount} devices
+                        </span>
                       </div>
                       <div className="flex items-center gap-3 text-xs">
-                        <span className="text-emerald-600 dark:text-emerald-400">
-                          {bundle.promoted}
-                        </span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-orange-600 dark:text-orange-400">
-                          {bundle.recovered}
-                        </span>
+                        <Badge
+                          variant="outline"
+                          className={
+                            bundle.successRate >= 90
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                              : bundle.successRate >= 70
+                                ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20"
+                                : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
+                          }
+                        >
+                          {bundle.successRate.toFixed(0)}%
+                        </Badge>
                         <span className="text-muted-foreground w-12 text-right">
                           {bundle.total} total
                         </span>

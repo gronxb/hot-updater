@@ -12,7 +12,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { aggregateByAppVersion, type DeviceEvent } from "@/lib/analytics-utils";
@@ -45,11 +51,15 @@ function AppVersionsPage() {
   });
 
   const analyticsEvents: DeviceEvent[] = analyticsData?.data ?? [];
+  const [sortBy, setSortBy] = useState<"total" | "failureRate">("total");
 
-  const allAppVersionData = useMemo(
-    () => aggregateByAppVersion(analyticsEvents),
-    [analyticsEvents],
-  );
+  const allAppVersionData = useMemo(() => {
+    const data = aggregateByAppVersion(analyticsEvents);
+    if (sortBy === "failureRate") {
+      return [...data].sort((a, b) => a.successRate - b.successRate);
+    }
+    return data;
+  }, [analyticsEvents, sortBy]);
 
   const filteredData = useMemo(() => {
     if (!search.trim()) return allAppVersionData;
@@ -100,8 +110,7 @@ function AppVersionsPage() {
             Back
           </Button>
         </Link>
-        <Separator orientation="vertical" className="mx-2 h-4" />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-2">
           <Smartphone className="h-4 w-4 text-muted-foreground" />
           <h1 className="text-lg font-semibold">App Versions</h1>
         </div>
@@ -118,14 +127,30 @@ function AppVersionsPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search version..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search version..."
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select
+                value={sortBy}
+                onValueChange={(v) => setSortBy(v as "total" | "failureRate")}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="total">Sort by: Total</SelectItem>
+                  <SelectItem value="failureRate">
+                    Sort by: Failure Rate
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {isLoading ? (
@@ -171,7 +196,7 @@ function AppVersionsPage() {
                       {paginatedData.map((version) => (
                         <tr
                           key={version.appVersion}
-                          className="hover:bg-muted/30 cursor-pointer transition-colors"
+                          className={`hover:bg-muted/30 cursor-pointer transition-colors ${version.successRate < 90 ? "bg-amber-500/5" : ""}`}
                           onClick={() => setSelectedVersion(version.appVersion)}
                         >
                           <td className="px-4 py-3 font-mono text-sm">
