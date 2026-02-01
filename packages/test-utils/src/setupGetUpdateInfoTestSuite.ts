@@ -2341,4 +2341,446 @@ export const setupGetUpdateInfoTestSuite = ({
       });
     });
   });
+
+  describe("gradual rollout (fingerprint strategy)", () => {
+    describe("percentage-based rollout", () => {
+      it("returns null when rolloutPercentage is 0%", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 0, // 0% rollout - no devices should receive
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "test-device-123",
+        });
+
+        expect(update).toBeNull();
+      });
+
+      it("applies update when rolloutPercentage is 100%", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 100, // 100% rollout
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "test-device-123",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("applies update when rolloutPercentage is null (defaults to 100%)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: null, // null means 100%
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "test-device-123",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("applies update for device eligible by hash (50% rollout)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 50,
+          },
+        ];
+
+        // Using "device-43" which hashes to 22 < 50
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-43", // Hash: 22 < 50
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("returns null for device ineligible by hash (50% rollout)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 50,
+          },
+        ];
+
+        // Using "device-99" which hashes to 79 >= 50
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-99", // Hash: 79 >= 50
+        });
+
+        expect(update).toBeNull();
+      });
+    });
+
+    describe("targeted updates", () => {
+      it("applies update when deviceId is in targetDeviceIds", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            targetDeviceIds: ["device-A", "device-B", "device-C"],
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-B",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("returns null when deviceId is not in targetDeviceIds", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            targetDeviceIds: ["device-A", "device-B", "device-C"],
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-X", // Not in the list
+        });
+
+        expect(update).toBeNull();
+      });
+
+      it("targetDeviceIds takes priority over rolloutPercentage", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 0, // 0% rollout, but targetDeviceIds should override
+            targetDeviceIds: ["device-special"],
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-special",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("applies update when targetDeviceIds is empty array (fallback to percentage)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 100,
+            targetDeviceIds: [], // Empty array - should fallback to percentage
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "any-device",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+    });
+
+    describe("ROLLBACK behavior", () => {
+      it("applies ROLLBACK regardless of rolloutPercentage", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 0, // 0% rollout
+          },
+        ];
+
+        // Current bundle doesn't exist, should rollback to bundle 1
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000002", // This bundle doesn't exist
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "test-device",
+        });
+
+        // ROLLBACK should always be allowed, regardless of rollout settings
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: true,
+          status: "ROLLBACK",
+        });
+      });
+
+      it("applies ROLLBACK regardless of targetDeviceIds", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            targetDeviceIds: ["device-A"], // Only device-A targeted
+          },
+        ];
+
+        // Current bundle doesn't exist, should rollback
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000002",
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-B", // Not in targetDeviceIds, but ROLLBACK should work
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: true,
+          status: "ROLLBACK",
+        });
+      });
+    });
+
+    describe("backward compatibility", () => {
+      it("applies update when deviceId is not provided (legacy client)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 50, // 50% rollout
+          },
+        ];
+
+        // No deviceId provided - should treat as 100% rollout for backward compatibility
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          // deviceId not provided
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("applies update when deviceId is undefined", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 0, // 0% rollout
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: undefined, // Explicitly undefined
+        });
+
+        // Should apply update because deviceId is undefined (legacy behavior)
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+    });
+
+    describe("combined scenarios", () => {
+      it("returns null when UPDATE but ineligible, then applies ROLLBACK", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000002", // Newer bundle
+            rolloutPercentage: 50,
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001", // Older bundle
+            rolloutPercentage: 100,
+          },
+        ];
+
+        // Device on bundle 2, but becomes ineligible, should rollback to bundle 1
+        const updateEligible = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000002",
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-99", // Ineligible for bundle 2 (hash >= 50)
+        });
+
+        // No update available because device is ineligible for newer bundle
+        expect(updateEligible).toBeNull();
+
+        // But if bundle 2 is disabled, should rollback to bundle 1
+        const bundlesWithDisabled = bundles.map((b) =>
+          b.id === "00000000-0000-0000-0000-000000000002"
+            ? { ...b, enabled: false }
+            : b,
+        );
+
+        const rollback = await getUpdateInfo(bundlesWithDisabled, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000002",
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-99",
+        });
+
+        expect(rollback).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: true,
+          status: "ROLLBACK",
+        });
+      });
+
+      it("applies update when both rolloutPercentage and targetDeviceIds favor the device", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            enabled: true,
+            shouldForceUpdate: false,
+            id: "00000000-0000-0000-0000-000000000001",
+            rolloutPercentage: 100, // Would allow this device
+            targetDeviceIds: ["device-special"], // Also allows this device
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+          deviceId: "device-special",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000001",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+    });
+  });
 };
