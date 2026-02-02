@@ -106,10 +106,11 @@ import React
     
     /**
      * Gets the URL to the bundle file.
+     * @param bundle instance to lookup the JavaScript bundle resource. Defaults to Bundle.main.
      * @return URL to the bundle or nil
      */
-    public func bundleURL() -> URL? {
-        return bundleStorage.getBundleURL()
+    public func bundleURL(bundle: Bundle = Bundle.main) -> URL? {
+        return bundleStorage.getBundleURL(bundle: bundle)
     }
     
     // MARK: - Bundle Update
