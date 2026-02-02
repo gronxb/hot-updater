@@ -1,5 +1,11 @@
 # @hot-updater/test-utils
 
+## 0.25.8
+
+### Patch Changes
+
+- @hot-updater/core@0.25.8
+
 ## 0.25.7
 
 ### Patch Changes

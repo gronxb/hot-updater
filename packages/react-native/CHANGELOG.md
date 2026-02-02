@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.25.8
+
+### Patch Changes
+
+- e7d3ffc: Add `bundle` parameter for XCFramework brownfield support on iOS
+  - @hot-updater/cli-tools@0.25.8
+  - @hot-updater/core@0.25.8
+  - @hot-updater/js@0.25.8
+  - @hot-updater/plugin-core@0.25.8
+
 ## 0.25.7
 
 ### Patch Changes
