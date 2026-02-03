@@ -3,8 +3,7 @@ import { p } from "@hot-updater/cli-tools";
 import {
   type ApplePlatform,
   generateMinBundleId,
-  IosBuildDestination,
-  type NativeBuildIosScheme,
+  type IosBuildDestination,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import path from "path";
