@@ -185,7 +185,7 @@ export interface NativeBuildIosScheme {
   /**
    * Automatically install CocoaPods dependencies before building.
    *
-   * @default true
+   * @default false
    */
   installPods?: boolean;
 
