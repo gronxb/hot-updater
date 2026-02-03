@@ -1,7 +1,9 @@
 import { p } from "@hot-updater/cli-tools";
+
 import {
   type ApplePlatform,
   generateMinBundleId,
+  IosBuildDestination,
   type NativeBuildIosScheme,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
@@ -23,15 +25,25 @@ import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 export const archiveXcodeProject = async ({
   sourceDir,
   platform,
-  schemeConfig,
+  installPods,
+  destination,
+  extraParams,
+  configuration,
+  scheme,
+  xcconfig,
 }: {
-  sourceDir: string;
-  schemeConfig: NativeBuildIosScheme;
+  configuration?: string;
+  destination?: IosBuildDestination[];
+  extraParams?: string[];
+  installPods: boolean;
   platform: ApplePlatform;
+  scheme: string;
+  sourceDir: string;
+  xcconfig?: string;
 }): Promise<{ archivePath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
-  if (schemeConfig.installPods ?? true) {
+  if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
 
@@ -43,14 +55,18 @@ export const archiveXcodeProject = async ({
   const archiveArgs = prepareArchiveArgs({
     archivePath,
     platform,
-    schemeConfig,
     sourceDir,
     xcodeProject,
+    configuration,
+    extraParams,
+    destination,
+    xcconfig,
+    scheme,
   });
 
   p.log.info(`Xcode Archive Settings:
 Project    ${xcodeProject.name}
-Scheme     ${schemeConfig.scheme}
+Scheme     ${scheme}
 Platform   ${platform}
 Command    xcodebuild ${archiveArgs.join(" ")}
 `);
@@ -77,15 +93,23 @@ Command    xcodebuild ${archiveArgs.join(" ")}
 };
 
 const prepareArchiveArgs = ({
+  scheme,
   archivePath,
   platform,
-  schemeConfig,
   sourceDir,
   xcodeProject,
+  configuration = "Release",
+  xcconfig,
+  extraParams,
+  destination = [],
 }: {
   archivePath: string;
+  configuration?: string;
+  destination?: IosBuildDestination[];
+  extraParams?: string[];
   platform: ApplePlatform;
-  schemeConfig: NativeBuildIosScheme;
+  scheme: string;
+  xcconfig?: string;
   sourceDir: string;
   xcodeProject: XcodeProjectInfo;
 }): string[] => {
@@ -93,25 +117,25 @@ const prepareArchiveArgs = ({
     xcodeProject.isWorkspace ? "-workspace" : "-project",
     path.join(sourceDir, xcodeProject.name),
     "-scheme",
-    schemeConfig.scheme,
+    scheme,
     "-configuration",
-    schemeConfig.configuration || "Release",
+    configuration,
     "archive",
     "-archivePath",
     archivePath,
     `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId()}`,
   ];
 
-  if (schemeConfig.xcconfig) {
-    args.push("-xcconfig", schemeConfig.xcconfig);
+  if (xcconfig) {
+    args.push("-xcconfig", xcconfig);
   }
 
-  if (schemeConfig.extraParams) {
-    args.push(...schemeConfig.extraParams);
+  if (extraParams) {
+    args.push(...extraParams);
   }
 
   const resolvedDestinations = resolveDestinations({
-    destinations: schemeConfig.destination || [],
+    destinations: destination,
     useGeneric: true,
   });
   if (resolvedDestinations.length === 0) {

@@ -54,7 +54,7 @@ export const runIos = async ({
       scheme: schemeConfig.scheme,
       configuration: schemeConfig.configuration,
       deviceType: selectedDevice.type,
-      udid: selectedDevice.udid,
+      destination: [{ id: selectedDevice.udid }],
       installPods: schemeConfig.installPods,
       extraParams: schemeConfig.extraParams,
     });
@@ -84,7 +84,7 @@ export const runIos = async ({
     scheme: schemeConfig.scheme,
     configuration: schemeConfig.configuration,
     deviceType: device.type,
-    udid: device.udid,
+    destination: [{ id: device.udid }],
     installPods: schemeConfig.installPods,
     extraParams: schemeConfig.extraParams,
   });

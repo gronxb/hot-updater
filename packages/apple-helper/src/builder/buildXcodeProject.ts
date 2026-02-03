@@ -2,6 +2,7 @@ import { p } from "@hot-updater/cli-tools";
 import {
   type ApplePlatform,
   generateMinBundleId,
+  type IosBuildDestination,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import path from "path";
@@ -9,6 +10,10 @@ import type { AppleDeviceType } from "../types";
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import { createXcodebuildLogger } from "../utils/createXcodebuildLogger";
+import {
+  getDefaultDestination,
+  resolveDestinations,
+} from "../utils/destination";
 import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
@@ -22,7 +27,8 @@ export const buildXcodeProject = async ({
   scheme,
   configuration,
   deviceType,
-  udid,
+  destination = [],
+  useGenericDestination = false,
   installPods,
   extraParams,
 }: {
@@ -31,27 +37,42 @@ export const buildXcodeProject = async ({
   scheme: string;
   configuration: string;
   deviceType: AppleDeviceType;
-  udid?: string;
+  destination?: IosBuildDestination[];
+  useGenericDestination?: boolean;
   installPods?: boolean;
   extraParams?: string[];
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
-  if (installPods ?? true) {
+  if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
 
   const derivedDataPath = await createRandomTmpDir();
 
+  const resolvedDestinations = resolveDestinations({
+    destinations: destination,
+    useGeneric: useGenericDestination,
+  });
+  if (resolvedDestinations.length === 0) {
+    resolvedDestinations.push(
+      getDefaultDestination({
+        deviceType,
+        platform,
+        useGeneric: useGenericDestination,
+      }),
+    );
+  }
+
   const buildArgs = prepareBuildArgs({
     configuration,
     derivedDataPath,
     deviceType,
+    resolvedDestinations,
     extraParams,
     platform,
     scheme,
     sourceDir,
-    udid,
     xcodeProject,
   });
 
@@ -81,11 +102,9 @@ Command        xcodebuild ${buildArgs.join(" ")}
     return await getBuildSettings({
       configuration,
       derivedDataPath,
-      deviceType,
-      platform,
+      resolvedDestinations,
       scheme,
       sourceDir,
-      udid,
       xcodeProject,
     });
   } catch (error) {
@@ -101,30 +120,24 @@ const prepareBuildArgs = ({
   scheme,
   configuration,
   deviceType,
-  udid,
+  resolvedDestinations,
   derivedDataPath,
   extraParams,
 }: {
   configuration: string;
   derivedDataPath: string;
-  deviceType: "device" | "simulator";
+  deviceType: AppleDeviceType;
+  resolvedDestinations: string[];
   extraParams?: string[];
   platform: ApplePlatform;
   scheme: string;
   sourceDir: string;
-  udid?: string;
   xcodeProject: XcodeProjectInfo;
 }): string[] => {
   const sdk =
     deviceType === "simulator"
       ? platformConfigs[platform].simulatorSdk
       : platformConfigs[platform].deviceSdk;
-
-  const destination = udid
-    ? `id=${udid}`
-    : deviceType === "simulator"
-      ? platformConfigs[platform].simulatorDestination
-      : platformConfigs[platform].deviceDestination;
 
   const args = [
     xcodeProject.isWorkspace ? "-workspace" : "-project",
@@ -135,8 +148,6 @@ const prepareBuildArgs = ({
     configuration,
     "-sdk",
     sdk,
-    "-destination",
-    destination,
     "-derivedDataPath",
     derivedDataPath,
     `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId()}`,
@@ -147,38 +158,32 @@ const prepareBuildArgs = ({
     args.push(...extraParams);
   }
 
+  for (const dest of resolvedDestinations) {
+    args.push("-destination", dest);
+  }
+
   return args;
 };
 
 const getBuildSettings = async ({
   xcodeProject,
   sourceDir,
-  platform,
   scheme,
   configuration,
-  deviceType,
-  udid,
+  resolvedDestinations,
   derivedDataPath,
 }: {
   configuration: string;
   derivedDataPath: string;
-  deviceType: AppleDeviceType;
-  platform: ApplePlatform;
+  resolvedDestinations: string[];
   scheme: string;
   sourceDir: string;
-  udid?: string;
   xcodeProject: XcodeProjectInfo;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
-  const sdk =
-    deviceType === "simulator"
-      ? platformConfigs[platform].simulatorSdk
-      : platformConfigs[platform].deviceSdk;
-
-  const destination = udid
-    ? `id=${udid}`
-    : deviceType === "simulator"
-      ? platformConfigs[platform].simulatorDestination
-      : platformConfigs[platform].deviceDestination;
+  const destinationArgs = resolvedDestinations.flatMap((dest) => [
+    "-destination",
+    dest,
+  ]);
 
   const { stdout: buildSettings } = await execa(
     "xcodebuild",
@@ -189,10 +194,7 @@ const getBuildSettings = async ({
       scheme,
       "-configuration",
       configuration,
-      "-sdk",
-      sdk,
-      "-destination",
-      destination,
+      ...destinationArgs,
       "-derivedDataPath",
       derivedDataPath,
       "-showBuildSettings",
