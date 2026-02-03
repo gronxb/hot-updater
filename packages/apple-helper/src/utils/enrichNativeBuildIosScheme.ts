@@ -38,7 +38,7 @@ export const enrichNativeBuildIosScheme = async (
 ): Promise<EnrichedNativeBuildIosScheme> => {
   return {
     platform: "ios",
-    installPods: true,
+    installPods: false,
     configuration: "Release",
     destination: [],
     ...scheme,
