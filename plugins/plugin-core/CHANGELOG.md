@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.25.9
+
+### Patch Changes
+
+- 6b22072: Change the default value of `podInstalls` option in iOS native build scheme to `false`
+  - @hot-updater/core@0.25.9
+
 ## 0.25.8
 
 ### Patch Changes
