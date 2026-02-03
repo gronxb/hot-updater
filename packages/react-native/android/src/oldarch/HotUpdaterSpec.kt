@@ -22,4 +22,8 @@ abstract class HotUpdaterSpec internal constructor(
     abstract fun clearCrashHistory(): Boolean
 
     abstract fun getBaseURL(): String
+
+    abstract fun setUserId(customId: String)
+
+    abstract fun getUserId(): String
 }

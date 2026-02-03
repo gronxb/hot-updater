@@ -100,6 +100,22 @@ export function createPluginDatabaseCore(
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();
     },
+
+    trackDeviceEvent: plugin.trackDeviceEvent
+      ? async (event) => {
+          await plugin.trackDeviceEvent?.(event);
+        }
+      : undefined,
+
+    getRolloutStats: plugin.getRolloutStats
+      ? async (bundleId) => {
+          const stats = await plugin.getRolloutStats?.(bundleId);
+          if (!stats) {
+            throw new Error("getRolloutStats returned empty result");
+          }
+          return stats;
+        }
+      : undefined,
   };
 
   return {
