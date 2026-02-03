@@ -24,7 +24,8 @@ export default defineConfig({
         bundleIdentifier: "com.hotupdaterexample",
         scheme: "HotUpdaterExample",
         configuration: "Debug",
-        installPods: true,
+        installPods: false,
+        simulator: false,
       },
       release: {
         bundleIdentifier: "com.hotupdaterexample",
