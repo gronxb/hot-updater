@@ -43,7 +43,8 @@ export function useConfigQuery() {
   return useQuery({
     queryKey: queryKeys.config,
     queryFn: () => getConfig(),
-    staleTime: Infinity,
+    staleTime: 5 * 60 * 1000, // 5 minutes - config rarely changes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 }
 
@@ -51,7 +52,8 @@ export function useChannelsQuery() {
   return useQuery({
     queryKey: queryKeys.channels,
     queryFn: () => getChannels(),
-    staleTime: Infinity,
+    staleTime: 5 * 60 * 1000, // 5 minutes - channels rarely change
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 }
 
@@ -59,7 +61,8 @@ export function useConfigLoadedQuery() {
   return useQuery({
     queryKey: queryKeys.configLoaded,
     queryFn: () => getConfigLoaded(),
-    staleTime: Infinity,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 }
 
@@ -71,8 +74,9 @@ export function useBundlesQuery(filters?: {
 }) {
   return useQuery({
     queryKey: queryKeys.bundles(filters),
-    queryFn: () => (getBundles as any)({ data: filters }),
-    staleTime: Infinity,
+    queryFn: () => getBundles({ data: filters }),
+    staleTime: 30 * 1000, // 30 seconds - bundles can change frequently
+    gcTime: 5 * 60 * 1000, // 5 minutes
     placeholderData: (previousData) => previousData,
   });
 }
@@ -80,8 +84,9 @@ export function useBundlesQuery(filters?: {
 export function useBundleQuery(bundleId: string) {
   return useQuery({
     queryKey: queryKeys.bundle(bundleId),
-    queryFn: () => (getBundle as any)({ data: { bundleId } }),
-    staleTime: Infinity,
+    queryFn: () => getBundle({ data: { bundleId } }),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
     enabled: !!bundleId,
   });
 }
@@ -89,8 +94,9 @@ export function useBundleQuery(bundleId: string) {
 export function useRolloutStatsQuery(bundleId: string) {
   return useQuery({
     queryKey: queryKeys.rolloutStats(bundleId),
-    queryFn: () => (getRolloutStats as any)({ data: { bundleId } }),
-    staleTime: Infinity,
+    queryFn: () => getRolloutStats({ data: { bundleId } }),
+    staleTime: 30 * 1000, // 30 seconds - stats update frequently
+    gcTime: 5 * 60 * 1000, // 5 minutes
     enabled: !!bundleId,
   });
 }
@@ -139,11 +145,15 @@ export function useDeleteBundleMutation() {
   });
 }
 
-export function useDeviceEventsQuery(filters?: DeviceEventFilters) {
+export function useDeviceEventsQuery(
+  filters?: DeviceEventFilters,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.deviceEvents(filters),
-    queryFn: () => (getDeviceEvents as any)({ data: filters }),
+    queryFn: () => getDeviceEvents({ data: filters }),
     staleTime: 30000,
     placeholderData: (previousData) => previousData,
+    ...options,
   });
 }

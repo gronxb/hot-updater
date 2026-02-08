@@ -114,6 +114,13 @@ code {
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Editorial Data Room surfaces */
+  --panel-surface: oklch(0.995 0.001 95);
+  --panel-border: oklch(0.9 0.004 60 / 0.7);
+  --panel-shadow: 0 12px 26px -18px oklch(0.31 0.01 40 / 0.55);
+  --raised-surface: oklch(0.985 0.003 98);
+  --raised-surface-hover: oklch(0.968 0.003 95);
 }
 
 .dark {
@@ -180,6 +187,12 @@ code {
   --event-recovered: oklch(0.728 0.205 35.325);
   --event-recovered-muted: oklch(0.728 0.205 35.325 / 0.15);
   --event-recovered-border: oklch(0.728 0.205 35.325 / 0.3);
+
+  --panel-surface: oklch(0.216 0.007 55 / 0.88);
+  --panel-border: oklch(0.78 0.004 60 / 0.2);
+  --panel-shadow: 0 10px 24px -16px oklch(0 0 0 / 0.7);
+  --raised-surface: oklch(0.262 0.009 52 / 0.85);
+  --raised-surface-hover: oklch(0.292 0.012 52 / 0.9);
 }
 
 @theme inline {
@@ -270,4 +283,66 @@ code {
   [data-slot="badge"]:focus-visible {
     @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
+}
+
+@keyframes section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.analytics-shell {
+  @apply min-h-screen bg-background;
+}
+
+.analytics-command-header {
+  @apply sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b px-4 md:px-6;
+  background: color-mix(in oklch, var(--panel-surface) 86%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.analytics-title-wrap {
+  @apply flex min-w-0 flex-col justify-center items-start gap-px;
+}
+
+.analytics-title {
+  @apply text-sm leading-tight font-semibold tracking-tight truncate;
+}
+
+.analytics-chip-row {
+  @apply hidden lg:flex items-center gap-2 ml-3;
+}
+
+.analytics-shell-body {
+  @apply p-4 md:p-6 space-y-6;
+}
+
+.analytics-body-breadcrumb {
+  @apply rounded-md border border-[var(--panel-border)] bg-[var(--panel-surface)] px-3 py-2;
+}
+
+.analytics-section {
+  @apply space-y-3;
+  animation: section-enter 180ms var(--ease-out) both;
+}
+
+.analytics-section-head {
+  @apply flex flex-col items-start justify-between gap-2 md:flex-row md:items-center;
+}
+
+.analytics-section-title {
+  @apply text-[length:var(--text-h3)] font-semibold tracking-tight;
+}
+
+.analytics-section-description {
+  @apply mt-1 text-[length:var(--text-small)] text-muted-foreground;
+}
+
+.analytics-grid-table [data-slot="table-cell"] {
+  @apply tabular-nums;
 }

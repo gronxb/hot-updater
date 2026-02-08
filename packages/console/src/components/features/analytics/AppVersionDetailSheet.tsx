@@ -101,9 +101,9 @@ export function AppVersionDetailSheet({
 
   return (
     <Sheet open={!!selectedVersion} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg overflow-y-auto">
+      <SheetContent className="sm:max-w-lg overflow-y-auto bg-[var(--panel-surface)]">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+          <SheetTitle className="flex items-center gap-2 text-base">
             <Smartphone className="h-4 w-4" />
             Version {selectedVersion}
           </SheetTitle>
@@ -115,13 +115,13 @@ export function AppVersionDetailSheet({
         {selectedVersionData && (
           <div className="p-6 space-y-6 flex-1">
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg border p-4 text-center">
+              <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4 text-center">
                 <p className="text-2xl font-bold text-success">
                   {selectedVersionData.promoted.toLocaleString()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Promoted</p>
               </div>
-              <div className="rounded-lg border p-4 text-center">
+              <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4 text-center">
                 <p className="text-2xl font-bold text-[color:var(--event-recovered)]">
                   {selectedVersionData.recovered.toLocaleString()}
                 </p>
@@ -129,7 +129,7 @@ export function AppVersionDetailSheet({
               </div>
             </div>
 
-            <div className="rounded-lg border p-4">
+            <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Success Rate</p>
                 <Badge variant={getSuccessRateVariant(selectedVersionData.successRate)}>
@@ -153,7 +153,7 @@ export function AppVersionDetailSheet({
                   {selectedVersionBundles.slice(0, 10).map((bundle) => (
                     <div
                       key={bundle.bundleId}
-                      className="flex items-center justify-between text-sm p-2 rounded-md hover:bg-muted/50"
+                      className="flex items-center justify-between text-sm p-2 rounded-md bg-[var(--raised-surface)] hover:bg-[var(--raised-surface-hover)]"
                     >
                       <Link
                         to="/"
@@ -185,11 +185,11 @@ export function AppVersionDetailSheet({
 
             <div>
               <h4 className="text-sm font-medium mb-3">Recent Events</h4>
-              <div className="space-y-2 max-h-[260px] border rounded-md p-2 overflow-y-auto">
+              <div className="space-y-2 max-h-[260px] border border-[var(--panel-border)] rounded-md p-2 overflow-y-auto bg-[var(--raised-surface)]/70">
                 {selectedVersionEvents.slice(0, 10).map((event, i) => (
                   <div
                     key={event.id || i}
-                    className="flex items-center gap-3 text-sm p-2 rounded-md hover:bg-muted/50"
+                    className="flex items-center gap-3 text-sm p-2 rounded-md hover:bg-[var(--raised-surface-hover)]"
                   >
                     <div
                       className={`h-6 w-6 rounded-full flex items-center justify-center ${

@@ -9,7 +9,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TimeSeriesData } from "@/lib/analytics-utils";
 
-interface TimeSeriesChartProps {
+export interface TimeSeriesChartProps {
   data: TimeSeriesData[];
   isLoading?: boolean;
 }

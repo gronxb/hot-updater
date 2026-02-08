@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { AppVersionData } from "@/lib/analytics-utils";
 import { getSuccessRateVariant } from "@/lib/status-utils";
 
-interface AppVersionChartProps {
+export interface AppVersionChartProps {
   data: AppVersionData[];
   isLoading?: boolean;
 }

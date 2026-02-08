@@ -1,12 +1,30 @@
 import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+const tableContainerVariants = cva("relative w-full overflow-x-auto", {
+  variants: {
+    variant: {
+      default: "",
+      editorial:
+        "rounded-xl border border-[var(--panel-border)] bg-[var(--panel-surface)]",
+    },
+  },
+  defaultVariants: {
+    variant: "default",
+  },
+});
+
+function Table({
+  className,
+  variant,
+  ...props
+}: React.ComponentProps<"table"> & VariantProps<typeof tableContainerVariants>) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className={cn(tableContainerVariants({ variant }))}
     >
       <table
         data-slot="table"

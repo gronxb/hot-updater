@@ -11,6 +11,8 @@ const cardVariants = cva(
         default: "bg-card shadow",
         elevated: "bg-card shadow-md",
         subtle: "bg-card/50 border-border/50 backdrop-blur-sm shadow-sm",
+        editorial:
+          "bg-[var(--panel-surface)] border-[var(--panel-border)] shadow-[var(--panel-shadow)] backdrop-blur-sm",
         outline: "bg-transparent border-border",
       },
     },

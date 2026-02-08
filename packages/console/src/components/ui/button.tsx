@@ -10,6 +10,10 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        panel:
+          "bg-[var(--raised-surface)] text-foreground border-[var(--panel-border)] hover:bg-[var(--raised-surface-hover)]",
+        quiet:
+          "text-muted-foreground hover:text-foreground hover:bg-[var(--raised-surface)] border-transparent",
         outline:
           "border-border dark:bg-input/30 hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         secondary:

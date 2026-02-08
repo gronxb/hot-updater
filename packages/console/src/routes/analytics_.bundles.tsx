@@ -1,27 +1,27 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Package,
-  Search,
-} from "lucide-react";
+import { ArrowLeft, Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AnalyticsSection } from "@/components/features/analytics/AnalyticsSection";
+import { AnalyticsShell } from "@/components/features/analytics/AnalyticsShell";
 import { BundleDetailSheet } from "@/components/features/analytics/BundleDetailSheet";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+  type DataGridColumn,
+  DataGrid,
+} from "@/components/features/analytics/DataGrid";
+import { Badge } from "@/components/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { aggregateByBundle, type DeviceEvent } from "@/lib/analytics-utils";
+import { aggregateByBundle, type BundleData, type DeviceEvent } from "@/lib/analytics-utils";
 import { useDeviceEventsQuery } from "@/lib/api";
 import { ANALYTICS_EVENTS_LIMIT } from "@/lib/constants";
 import { getSuccessRateVariant } from "@/lib/status-utils";
@@ -52,15 +52,10 @@ function BundlesPage() {
   });
 
   const analyticsEvents: DeviceEvent[] = analyticsData?.data ?? [];
-  const [sortBy, setSortBy] = useState<"total" | "failureRate">("total");
 
   const allBundleData = useMemo(() => {
-    const data = aggregateByBundle(analyticsEvents);
-    if (sortBy === "failureRate") {
-      return [...data].sort((a, b) => a.successRate - b.successRate);
-    }
-    return data;
-  }, [analyticsEvents, sortBy]);
+    return aggregateByBundle(analyticsEvents);
+  }, [analyticsEvents]);
 
   const filteredData = useMemo(() => {
     if (!search.trim()) return allBundleData;
@@ -73,6 +68,55 @@ function BundlesPage() {
     page * PAGE_SIZE,
     (page + 1) * PAGE_SIZE,
   );
+
+  const columns: Array<DataGridColumn<BundleData>> = [
+    {
+      key: "bundleId",
+      header: "Bundle ID",
+      render: (bundle) => (
+        <span className="font-mono text-[0.68rem]">{bundle.bundleId}</span>
+      ),
+    },
+    {
+      key: "promoted",
+      header: "Promoted",
+      headerClassName: "text-right",
+      cellClassName: "text-right text-success",
+      render: (bundle) => bundle.promoted.toLocaleString(),
+    },
+    {
+      key: "recovered",
+      header: "Recovered",
+      headerClassName: "text-right",
+      cellClassName: "text-right text-[color:var(--event-recovered)]",
+      render: (bundle) => bundle.recovered.toLocaleString(),
+    },
+    {
+      key: "total",
+      header: "Total",
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (bundle) => <span className="font-semibold">{bundle.total.toLocaleString()}</span>,
+    },
+    {
+      key: "devices",
+      header: "Devices",
+      headerClassName: "text-right",
+      cellClassName: "text-right text-muted-foreground",
+      render: (bundle) => bundle.deviceCount.toLocaleString(),
+    },
+    {
+      key: "success",
+      header: "Success Rate",
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (bundle) => (
+        <Badge variant={getSuccessRateVariant(bundle.successRate)}>
+          {bundle.successRate.toFixed(1)}%
+        </Badge>
+      ),
+    },
+  ];
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -92,9 +136,34 @@ function BundlesPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background min-h-screen">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <SidebarTrigger className="-ml-1" />
+    <AnalyticsShell
+      title="Bundles"
+      breadcrumbs={
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link
+                  to="/analytics"
+                  search={{
+                    bundleId: undefined,
+                    platform: undefined,
+                    channel: undefined,
+                    offset: undefined,
+                  }}
+                >
+                  Analytics
+                </Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Bundles</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      }
+      controls={
         <Link
           to="/analytics"
           search={{
@@ -104,170 +173,86 @@ function BundlesPage() {
             offset: undefined,
           }}
         >
-          <Button variant="ghost" size="sm" className="gap-1">
+          <Button variant="quiet" size="sm" className="gap-1.5">
             <ArrowLeft className="h-4 w-4" />
-            Back
+            Overview
           </Button>
         </Link>
-        <div className="flex items-center gap-2 ml-2">
-          <Package className="h-4 w-4 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Bundles</h1>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-auto p-6">
-        <Card className="bg-card/50 border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">
-              All Bundles
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Click on a row to see detailed breakdown
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search bundle ID..."
-                  value={search}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <Select
-                value={sortBy}
-                onValueChange={(v) => setSortBy(v as "total" | "failureRate")}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="total">Sort by: Total</SelectItem>
-                  <SelectItem value="failureRate">
-                    Sort by: Failure Rate
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+      }
+    >
+      <AnalyticsSection
+        title="Bundle Reliability Ledger"
+        description="Bundle-level rollout stability, recovery trend, and device impact."
+        action={
+          <div className="flex items-center gap-2">
+            <div className="relative w-[220px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search bundle ID..."
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-9"
+              />
             </div>
-
-            {isLoading ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : filteredData.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-[300px] text-center">
-                <Package className="h-12 w-12 mb-4 opacity-20 text-muted-foreground" />
-                <h3 className="text-lg font-medium text-foreground">
-                  {search ? "No matching bundles" : "No bundle data"}
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-[400px] mt-2">
-                  {search ? "Try a different search term." : "No events found."}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="rounded-md border">
-                  <table className="w-full text-sm">
-                    <thead className="border-b bg-muted/50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium">
-                          Bundle ID
-                        </th>
-                        <th className="px-4 py-3 text-right font-medium">
-                          Promoted
-                        </th>
-                        <th className="px-4 py-3 text-right font-medium">
-                          Recovered
-                        </th>
-                        <th className="px-4 py-3 text-right font-medium">
-                          Total
-                        </th>
-                        <th className="px-4 py-3 text-right font-medium">
-                          Devices
-                        </th>
-                        <th className="px-4 py-3 text-right font-medium">
-                          Success Rate
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {paginatedData.map((bundle) => (
-                        <tr
-                          key={bundle.bundleId}
-                          className={`hover:bg-muted/30 cursor-pointer transition-colors ${bundle.successRate < 90 ? "bg-amber-500/5" : ""}`}
-                          onClick={() => setSelectedBundle(bundle.bundleId)}
-                        >
-                          <td className="px-4 py-3 font-mono text-xs">
-                            {bundle.bundleId}
-                          </td>
-                          <td className="px-4 py-3 text-right text-success">
-                            {bundle.promoted.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-right text-[color:var(--event-recovered)]">
-                            {bundle.recovered.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-right font-medium">
-                            {bundle.total.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-right text-muted-foreground">
-                            {bundle.deviceCount.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <Badge variant={getSuccessRateVariant(bundle.successRate)}>
-                              {bundle.successRate.toFixed(1)}%
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          </div>
+        }
+      >
+        <Card variant="editorial" className="p-3 md:p-4">
+          {isLoading ? (
+            <div className="space-y-2">
+              {[...Array(6)].map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : (
+            <DataGrid
+              data={paginatedData}
+              columns={columns}
+              getRowKey={(row) => row.bundleId}
+              onRowClick={(row) => setSelectedBundle(row.bundleId)}
+              empty={
+                <div className="rounded-xl border border-[var(--panel-border)] bg-[var(--panel-surface)] p-10 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {search ? "No matching bundles found." : "No bundle data collected yet."}
+                  </p>
                 </div>
+              }
+            />
+          )}
 
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      Page {page + 1} of {totalPages} ({filteredData.length}{" "}
-                      bundles)
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => Math.max(0, p - 1))}
-                        disabled={page === 0}
-                      >
-                        <ChevronLeft className="h-4 w-4 mr-1" />
-                        Previous
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setPage((p) => Math.min(totalPages - 1, p + 1))
-                        }
-                        disabled={page >= totalPages - 1}
-                      >
-                        Next
-                        <ChevronRight className="h-4 w-4 ml-1" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
+          {totalPages > 1 ? (
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Page {page + 1} of {totalPages} ({filteredData.length} bundles)
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="panel"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="panel"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </Card>
-      </div>
+      </AnalyticsSection>
 
       <BundleDetailSheet
         selectedBundle={selectedBundle}
         onOpenChange={handleSheetClose}
         analyticsEvents={analyticsEvents}
       />
-    </div>
+    </AnalyticsShell>
   );
 }

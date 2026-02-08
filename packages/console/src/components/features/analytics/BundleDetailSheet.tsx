@@ -12,33 +12,33 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { DeviceEvent } from "@/lib/analytics-utils";
+import type { BundleData, DeviceEvent } from "@/lib/analytics-utils";
 import { getSuccessRateVariant } from "@/lib/status-utils";
 
 dayjs.extend(relativeTime);
-
-type BundleData = {
-  bundleId: string;
-  promoted: number;
-  recovered: number;
-  total: number;
-  successRate: number;
-};
 
 type BundleDetailSheetProps = {
   selectedBundle: string | null;
   onOpenChange: (open: boolean) => void;
   analyticsEvents: DeviceEvent[];
+  // Optional pre-aggregated data for performance
+  bundleMap?: Map<string, BundleData>;
 };
 
 export function BundleDetailSheet({
   selectedBundle,
   onOpenChange,
   analyticsEvents,
+  bundleMap,
 }: BundleDetailSheetProps) {
   const selectedBundleData = useMemo(() => {
     if (!selectedBundle) return null;
-    const counts: BundleData = {
+    // Use pre-aggregated data if available for O(1) lookup
+    if (bundleMap) {
+      return bundleMap.get(selectedBundle) || null;
+    }
+    // Fallback to computing (for backward compatibility)
+    const counts = {
       bundleId: selectedBundle,
       promoted: 0,
       recovered: 0,
@@ -58,7 +58,7 @@ export function BundleDetailSheet({
     counts.successRate =
       counts.total > 0 ? (counts.promoted / counts.total) * 100 : 0;
     return counts.total > 0 ? counts : null;
-  }, [analyticsEvents, selectedBundle]);
+  }, [analyticsEvents, selectedBundle, bundleMap]);
 
   const selectedBundleVersions = useMemo(() => {
     if (!selectedBundle) return [];
@@ -96,9 +96,9 @@ export function BundleDetailSheet({
 
   return (
     <Sheet open={!!selectedBundle} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg overflow-y-auto">
+      <SheetContent className="sm:max-w-lg overflow-y-auto bg-[var(--panel-surface)]">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+          <SheetTitle className="flex items-center gap-2 text-base">
             <Package className="h-4 w-4" />
             <span className="font-mono text-sm truncate">{selectedBundle}</span>
           </SheetTitle>
@@ -114,7 +114,7 @@ export function BundleDetailSheet({
               offset: undefined,
             }}
           >
-            <Button variant="outline" size="sm" className="w-full mt-2 gap-2">
+            <Button variant="panel" size="sm" className="w-full mt-2 gap-2">
               <Edit className="h-4 w-4" />
               Edit Bundle
             </Button>
@@ -124,13 +124,13 @@ export function BundleDetailSheet({
         {selectedBundleData && (
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg border p-4 text-center">
+              <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4 text-center">
                 <p className="text-2xl font-bold text-success">
                   {selectedBundleData.promoted.toLocaleString()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Promoted</p>
               </div>
-              <div className="rounded-lg border p-4 text-center">
+              <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4 text-center">
                 <p className="text-2xl font-bold text-[color:var(--event-recovered)]">
                   {selectedBundleData.recovered.toLocaleString()}
                 </p>
@@ -138,7 +138,7 @@ export function BundleDetailSheet({
               </div>
             </div>
 
-            <div className="rounded-lg border p-4">
+            <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Success Rate</p>
                 <Badge variant={getSuccessRateVariant(selectedBundleData.successRate)}>
@@ -164,7 +164,7 @@ export function BundleDetailSheet({
                   {selectedBundleVersions.slice(0, 10).map((ver) => (
                     <div
                       key={ver.appVersion}
-                      className="flex items-center justify-between text-sm p-2 rounded-md hover:bg-muted/50"
+                      className="flex items-center justify-between text-sm p-2 rounded-md bg-[var(--raised-surface)] hover:bg-[var(--raised-surface-hover)]"
                     >
                       <span className="font-mono text-xs">
                         {ver.appVersion}
@@ -186,11 +186,11 @@ export function BundleDetailSheet({
 
             <div>
               <h4 className="text-sm font-medium mb-3">Recent Events</h4>
-              <div className="space-y-2 max-h-[260px] border rounded-md p-2 overflow-y-auto">
+              <div className="space-y-2 max-h-[260px] border border-[var(--panel-border)] rounded-md p-2 overflow-y-auto bg-[var(--raised-surface)]/70">
                 {selectedBundleEvents.slice(0, 10).map((event, i) => (
                   <div
                     key={event.id || i}
-                    className="flex items-center gap-3 text-sm p-2 rounded-md hover:bg-muted/50"
+                    className="flex items-center gap-3 text-sm p-2 rounded-md hover:bg-[var(--raised-surface-hover)]"
                   >
                     <div
                       className={`h-6 w-6 rounded-full flex items-center justify-center ${
