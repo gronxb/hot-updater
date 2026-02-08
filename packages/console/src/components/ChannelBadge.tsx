@@ -5,17 +5,26 @@ interface ChannelBadgeProps {
   className?: string;
 }
 
-const channelVariantMap: Record<
-  string,
-  "success" | "warning" | "info" | "outline"
-> = {
-  production: "success",
-  staging: "warning",
-  dev: "info",
-};
+const CHANNEL_VARIANTS = [
+  "success",
+  "info",
+  "warning",
+  "secondary",
+  "outline",
+] as const;
+
+type ChannelVariant = (typeof CHANNEL_VARIANTS)[number];
+
+function hashToVariant(str: string): ChannelVariant {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return CHANNEL_VARIANTS[Math.abs(hash) % CHANNEL_VARIANTS.length];
+}
 
 export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
-  const variant = channelVariantMap[channel.toLowerCase()] || "outline";
+  const variant = hashToVariant(channel.toLowerCase());
 
   return (
     <Badge variant={variant} className={className}>

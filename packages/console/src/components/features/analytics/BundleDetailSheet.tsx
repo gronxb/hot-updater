@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { ArrowUpRight, Edit, Package, RotateCcw } from "lucide-react";
+import { Edit, Package } from "lucide-react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Sheet,
   SheetContent,
@@ -122,36 +123,50 @@ export function BundleDetailSheet({
         </SheetHeader>
 
         {selectedBundleData && (
-          <div className="p-6 space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4 text-center">
-                <p className="text-2xl font-bold text-success">
-                  {selectedBundleData.promoted.toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">Promoted</p>
-              </div>
-              <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4 text-center">
-                <p className="text-2xl font-bold text-[color:var(--event-recovered)]">
-                  {selectedBundleData.recovered.toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">Recovered</p>
-              </div>
+          <div className="p-6 space-y-5">
+            <div className="grid grid-cols-2 gap-3">
+              <Card variant="outline">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-semibold text-success tabular-nums">
+                    {selectedBundleData.promoted.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Promoted</p>
+                </CardContent>
+              </Card>
+              <Card variant="outline">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-semibold text-[color:var(--event-recovered)] tabular-nums">
+                    {selectedBundleData.recovered.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Recovered
+                  </p>
+                </CardContent>
+              </Card>
             </div>
 
-            <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--raised-surface)] p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Success Rate</p>
-                <Badge variant={getSuccessRateVariant(selectedBundleData.successRate)}>
-                  {selectedBundleData.successRate.toFixed(1)}%
-                </Badge>
-              </div>
-              <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full bg-success transition-all"
-                  style={{ width: `${selectedBundleData.successRate}%` }}
-                />
-              </div>
-            </div>
+            <Card variant="outline">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Success Rate</p>
+                  <Badge
+                    variant={getSuccessRateVariant(
+                      selectedBundleData.successRate,
+                    )}
+                  >
+                    {selectedBundleData.successRate.toFixed(1)}%
+                  </Badge>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-success transition-all"
+                    style={{
+                      width: `${selectedBundleData.successRate}%`,
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
 
             <div>
               <h4 className="text-sm font-medium mb-3">
@@ -160,20 +175,18 @@ export function BundleDetailSheet({
               {selectedBundleVersions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No version data</p>
               ) : (
-                <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
                   {selectedBundleVersions.slice(0, 10).map((ver) => (
                     <div
                       key={ver.appVersion}
-                      className="flex items-center justify-between text-sm p-2 rounded-md bg-[var(--raised-surface)] hover:bg-[var(--raised-surface-hover)]"
+                      className="flex items-center justify-between text-sm px-3 py-2 rounded-lg border border-transparent hover:bg-muted/50"
                     >
                       <span className="font-mono text-xs">
                         {ver.appVersion}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-success">
-                          {ver.promoted}
-                        </span>
-                        <span className="text-muted-foreground">/</span>
+                      <div className="flex items-center gap-1.5 text-xs tabular-nums">
+                        <span className="text-success">{ver.promoted}</span>
+                        <span className="text-muted-foreground/50">/</span>
                         <span className="text-[color:var(--event-recovered)]">
                           {ver.recovered}
                         </span>
@@ -186,30 +199,25 @@ export function BundleDetailSheet({
 
             <div>
               <h4 className="text-sm font-medium mb-3">Recent Events</h4>
-              <div className="space-y-2 max-h-[260px] border border-[var(--panel-border)] rounded-md p-2 overflow-y-auto bg-[var(--raised-surface)]/70">
+              <div className="space-y-1 max-h-[260px] overflow-y-auto">
                 {selectedBundleEvents.slice(0, 10).map((event, i) => (
                   <div
                     key={event.id || i}
-                    className="flex items-center gap-3 text-sm p-2 rounded-md hover:bg-[var(--raised-surface-hover)]"
+                    className="flex items-center gap-3 text-sm px-3 py-2 rounded-lg hover:bg-muted/50"
                   >
-                    <div
-                      className={`h-6 w-6 rounded-full flex items-center justify-center ${
-                        event.eventType === "PROMOTED"
-                          ? "bg-success-muted text-success"
-                          : "bg-event-recovered-muted text-[color:var(--event-recovered)]"
-                      }`}
+                    <Badge
+                      variant={
+                        event.eventType === "PROMOTED" ? "success" : "warning"
+                      }
+                      className="text-[0.6rem] shrink-0"
                     >
-                      {event.eventType === "PROMOTED" ? (
-                        <ArrowUpRight className="h-3 w-3" />
-                      ) : (
-                        <RotateCcw className="h-3 w-3" />
-                      )}
-                    </div>
+                      {event.eventType === "PROMOTED" ? "P" : "R"}
+                    </Badge>
                     <div className="flex-1 min-w-0">
                       <p className="font-mono text-xs truncate">
                         {event.deviceId}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[0.68rem] text-muted-foreground">
                         {event.createdAt
                           ? dayjs(event.createdAt).fromNow()
                           : "Unknown"}

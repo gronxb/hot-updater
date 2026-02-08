@@ -1,12 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import { AnalyticsSection } from "@/components/features/analytics/AnalyticsSection";
 import { AnalyticsShell } from "@/components/features/analytics/AnalyticsShell";
 import { BundleDetailSheet } from "@/components/features/analytics/BundleDetailSheet";
 import {
-  type DataGridColumn,
   DataGrid,
+  type DataGridColumn,
 } from "@/components/features/analytics/DataGrid";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,10 +17,20 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { aggregateByBundle, type BundleData, type DeviceEvent } from "@/lib/analytics-utils";
+import {
+  aggregateByBundle,
+  type BundleData,
+  type DeviceEvent,
+} from "@/lib/analytics-utils";
 import { useDeviceEventsQuery } from "@/lib/api";
 import { ANALYTICS_EVENTS_LIMIT } from "@/lib/constants";
 import { getSuccessRateVariant } from "@/lib/status-utils";
@@ -96,7 +105,9 @@ function BundlesPage() {
       header: "Total",
       headerClassName: "text-right",
       cellClassName: "text-right",
-      render: (bundle) => <span className="font-semibold">{bundle.total.toLocaleString()}</span>,
+      render: (bundle) => (
+        <span className="font-semibold">{bundle.total.toLocaleString()}</span>
+      ),
     },
     {
       key: "devices",
@@ -180,24 +191,27 @@ function BundlesPage() {
         </Link>
       }
     >
-      <AnalyticsSection
-        title="Bundle Reliability Ledger"
-        description="Bundle-level rollout stability, recovery trend, and device impact."
-        action={
-          <div className="flex items-center gap-2">
-            <div className="relative w-[220px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search bundle ID..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+      <Card variant="editorial">
+        <CardHeader className="flex flex-col gap-4 p-5 pb-0 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-sm font-semibold">
+              Bundle Reliability Ledger
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Bundle-level rollout stability, recovery trend, and device impact
+            </CardDescription>
           </div>
-        }
-      >
-        <Card variant="editorial" className="p-3 md:p-4">
+          <div className="relative w-[220px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search bundle ID..."
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="p-5 pt-4">
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(6)].map((_, i) => (
@@ -213,7 +227,9 @@ function BundlesPage() {
               empty={
                 <div className="rounded-xl border border-[var(--panel-border)] bg-[var(--panel-surface)] p-10 text-center">
                   <p className="text-sm text-muted-foreground">
-                    {search ? "No matching bundles found." : "No bundle data collected yet."}
+                    {search
+                      ? "No matching bundles found."
+                      : "No bundle data collected yet."}
                   </p>
                 </div>
               }
@@ -221,13 +237,13 @@ function BundlesPage() {
           )}
 
           {totalPages > 1 ? (
-            <div className="mt-3 flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground tabular-nums">
                 Page {page + 1} of {totalPages} ({filteredData.length} bundles)
               </p>
               <div className="flex items-center gap-2">
                 <Button
-                  variant="panel"
+                  variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
@@ -235,9 +251,11 @@ function BundlesPage() {
                   Previous
                 </Button>
                 <Button
-                  variant="panel"
+                  variant="outline"
                   size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  onClick={() =>
+                    setPage((p) => Math.min(totalPages - 1, p + 1))
+                  }
                   disabled={page >= totalPages - 1}
                 >
                   Next
@@ -245,8 +263,8 @@ function BundlesPage() {
               </div>
             </div>
           ) : null}
-        </Card>
-      </AnalyticsSection>
+        </CardContent>
+      </Card>
 
       <BundleDetailSheet
         selectedBundle={selectedBundle}

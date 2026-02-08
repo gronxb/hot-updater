@@ -1,24 +1,31 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import dayjs from "dayjs";
 import {
+  Activity,
   ArrowRight,
-  ArrowUpRight,
+  CheckCircle,
   Package,
   Radio,
-  RotateCcw,
   Smartphone,
+  Users,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
-import { AnalyticsSection } from "@/components/features/analytics/AnalyticsSection";
 import { AnalyticsShell } from "@/components/features/analytics/AnalyticsShell";
 import { AppVersionDetailSheet } from "@/components/features/analytics/AppVersionDetailSheet";
 import { BundleDetailSheet } from "@/components/features/analytics/BundleDetailSheet";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SkeletonList } from "@/components/ui/skeleton-list";
 import { useAnalyticsAggregation } from "@/hooks/useAnalyticsAggregation";
@@ -91,7 +98,10 @@ function AnalyticsPage() {
 
   const events = needsAdditionalFetch
     ? (eventsData?.data ?? [])
-    : analyticsEvents.slice(currentOffset, currentOffset + RECENT_ACTIVITY_LIMIT);
+    : analyticsEvents.slice(
+        currentOffset,
+        currentOffset + RECENT_ACTIVITY_LIMIT,
+      );
 
   const totalEvents = analyticsData?.pagination.total ?? 0;
   const isLoadingRecentActivity = needsAdditionalFetch
@@ -142,7 +152,10 @@ function AnalyticsPage() {
     <>
       {bundleId ? (
         <Badge variant="outline" className="font-mono text-[0.68rem]">
-          Bundle <span className="ml-1"><BundleIdDisplay bundleId={bundleId} /></span>
+          Bundle{" "}
+          <span className="ml-1">
+            <BundleIdDisplay bundleId={bundleId} />
+          </span>
         </Badge>
       ) : null}
       {platform ? (
@@ -158,48 +171,156 @@ function AnalyticsPage() {
     </>
   );
 
+  const summaryStats = useMemo(() => {
+    const uniqueDevices = new Set(analyticsEvents.map((e) => e.deviceId)).size;
+    const totalPromoted = analyticsEvents.filter(
+      (e) => e.eventType === "PROMOTED",
+    ).length;
+    const overallSuccessRate =
+      analyticsEvents.length > 0
+        ? (totalPromoted / analyticsEvents.length) * 100
+        : 0;
+    return {
+      totalEvents: analyticsEvents.length,
+      uniqueDevices,
+      overallSuccessRate,
+      activeBundles: bundles.length,
+    };
+  }, [analyticsEvents, bundles.length]);
+
   return (
     <AnalyticsShell title="Analytics Overview" chips={filterChips}>
+      {/* Summary Stat Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {isLoadingAnalytics ? (
+          <>
+            {[...Array(4)].map((_, i) => (
+              <Card key={i} variant="outline">
+                <CardHeader className="flex flex-row items-center justify-between p-4 pb-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-4 rounded" />
+                </CardHeader>
+                <CardContent className="p-4 pt-1">
+                  <Skeleton className="h-7 w-16" />
+                </CardContent>
+              </Card>
+            ))}
+          </>
+        ) : (
+          <>
+            <Card variant="outline">
+              <CardHeader className="flex flex-row items-center justify-between p-4 pb-1">
+                <CardDescription className="text-xs">
+                  Total Events
+                </CardDescription>
+                <Activity className="h-3.5 w-3.5 text-muted-foreground/60" />
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <p className="text-2xl font-semibold tabular-nums">
+                  {summaryStats.totalEvents.toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+            <Card variant="outline">
+              <CardHeader className="flex flex-row items-center justify-between p-4 pb-1">
+                <CardDescription className="text-xs">
+                  Unique Devices
+                </CardDescription>
+                <Users className="h-3.5 w-3.5 text-muted-foreground/60" />
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <p className="text-2xl font-semibold tabular-nums">
+                  {summaryStats.uniqueDevices.toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+            <Card variant="outline">
+              <CardHeader className="flex flex-row items-center justify-between p-4 pb-1">
+                <CardDescription className="text-xs">
+                  Success Rate
+                </CardDescription>
+                <CheckCircle className="h-3.5 w-3.5 text-muted-foreground/60" />
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <p
+                  className={`text-2xl font-semibold tabular-nums ${
+                    summaryStats.overallSuccessRate >= 90
+                      ? "text-success"
+                      : summaryStats.overallSuccessRate >= 70
+                        ? "text-warning"
+                        : "text-error"
+                  }`}
+                >
+                  {summaryStats.overallSuccessRate.toFixed(1)}%
+                </p>
+              </CardContent>
+            </Card>
+            <Card variant="outline">
+              <CardHeader className="flex flex-row items-center justify-between p-4 pb-1">
+                <CardDescription className="text-xs">
+                  Active Bundles
+                </CardDescription>
+                <Package className="h-3.5 w-3.5 text-muted-foreground/60" />
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <p className="text-2xl font-semibold tabular-nums">
+                  {summaryStats.activeBundles.toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+
+      {/* App Version & Bundle Distribution */}
       <div className="grid gap-6 xl:grid-cols-2">
-        <AnalyticsSection
-          title="App Version Compatibility"
-          description="Top app versions by event volume."
-          className="h-full"
-          action={
-            <div className="flex items-center gap-2">
-              <Link to="/analytics/app-versions" search={{ version: undefined }}>
-                <Button variant="quiet" size="sm" className="gap-1">
-                  Details <ArrowRight className="h-3 w-3" />
-                </Button>
-              </Link>
+        <Card variant="editorial" className="flex flex-col">
+          <CardHeader className="flex flex-row items-start justify-between p-5 pb-0">
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-semibold">
+                App Version Compatibility
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Top app versions by event volume
+              </CardDescription>
             </div>
-          }
-        >
-          <Card variant="editorial" className="p-4 h-full min-h-[280px]">
+            <Link to="/analytics/app-versions" search={{ version: undefined }}>
+              <Button variant="quiet" size="sm" className="gap-1 -mt-0.5">
+                Details <ArrowRight className="h-3 w-3" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="flex-1 p-5 pt-4">
             {isLoadingAnalytics ? (
               <SkeletonList
                 count={5}
-                className="h-8 w-full"
-                containerClassName="space-y-[var(--spacing-element)]"
+                className="h-9 w-full"
+                containerClassName="space-y-2"
               />
             ) : appVersionData.length === 0 ? (
               <div className="flex h-[220px] flex-col items-center justify-center text-center">
-                <Smartphone className="h-8 w-8 text-muted-foreground/60" />
-                <p className="mt-2 text-sm text-muted-foreground">No app version data</p>
+                <Smartphone className="h-8 w-8 text-muted-foreground/40" />
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No app version data
+                </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {appVersionData.map((version) => (
                   <button
                     type="button"
                     key={version.appVersion}
                     onClick={() => handleVersionClick(version.appVersion)}
-                    className={`flex w-full items-center justify-between rounded-md border border-transparent px-3 py-2 text-left hover:bg-[var(--raised-surface)] ${
-                      version.successRate < 90 ? "bg-warning-muted/30" : ""
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--raised-surface)] ${
+                      version.successRate < 90
+                        ? "bg-warning-muted/30 border border-warning-border/40"
+                        : "border border-transparent"
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-mono text-xs truncate">{version.appVersion}</span>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-mono text-xs font-medium truncate">
+                        {version.appVersion}
+                      </span>
                       <span className="text-[0.68rem] text-muted-foreground tabular-nums">
                         {version.total.toLocaleString()} events
                       </span>
@@ -211,51 +332,57 @@ function AnalyticsPage() {
                 ))}
               </div>
             )}
-          </Card>
-        </AnalyticsSection>
+          </CardContent>
+        </Card>
 
-        <AnalyticsSection
-          title="Bundle Event Distribution"
-          description="Top bundles by event volume."
-          className="h-full"
-          action={
-            <div className="flex items-center gap-2">
-              <Link to="/analytics/bundles" search={{ bundle: undefined }}>
-                <Button variant="quiet" size="sm" className="gap-1">
-                  Details <ArrowRight className="h-3 w-3" />
-                </Button>
-              </Link>
+        <Card variant="editorial" className="flex flex-col">
+          <CardHeader className="flex flex-row items-start justify-between p-5 pb-0">
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-semibold">
+                Bundle Event Distribution
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Top bundles by event volume
+              </CardDescription>
             </div>
-          }
-        >
-          <Card variant="editorial" className="p-4 h-full min-h-[280px]">
+            <Link to="/analytics/bundles" search={{ bundle: undefined }}>
+              <Button variant="quiet" size="sm" className="gap-1 -mt-0.5">
+                Details <ArrowRight className="h-3 w-3" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="flex-1 p-5 pt-4">
             {isLoadingAnalytics ? (
               <SkeletonList
                 count={5}
-                className="h-8 w-full"
-                containerClassName="space-y-[var(--spacing-element)]"
+                className="h-9 w-full"
+                containerClassName="space-y-2"
               />
             ) : bundleData.length === 0 ? (
               <div className="flex h-[220px] flex-col items-center justify-center text-center">
-                <Package className="h-8 w-8 text-muted-foreground/60" />
-                <p className="mt-2 text-sm text-muted-foreground">No bundle data</p>
+                <Package className="h-8 w-8 text-muted-foreground/40" />
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No bundle data
+                </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {bundleData.map((bundle) => (
                   <button
                     type="button"
                     key={bundle.bundleId}
                     onClick={() => handleBundleClick(bundle.bundleId)}
-                    className={`flex w-full items-center justify-between rounded-md border border-transparent px-3 py-2 text-left hover:bg-[var(--raised-surface)] ${
-                      bundle.successRate < 90 ? "bg-warning-muted/30" : ""
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--raised-surface)] ${
+                      bundle.successRate < 90
+                        ? "bg-warning-muted/30 border border-warning-border/40"
+                        : "border border-transparent"
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
                       <span className="font-mono text-[0.68rem] truncate max-w-[180px]">
                         {bundle.bundleId}
                       </span>
-                      <span className="text-[0.68rem] text-muted-foreground">
+                      <span className="text-[0.68rem] text-muted-foreground tabular-nums">
                         {bundle.deviceCount} devices
                       </span>
                     </div>
@@ -266,38 +393,46 @@ function AnalyticsPage() {
                 ))}
               </div>
             )}
-          </Card>
-        </AnalyticsSection>
+          </CardContent>
+        </Card>
       </div>
 
-      <AnalyticsSection
-        title="Recent Activity"
-        description="Device event timeline."
-        action={
+      {/* Recent Activity */}
+      <Card variant="editorial" className="overflow-hidden">
+        <CardHeader className="flex flex-row items-start justify-between p-5 pb-0">
+          <div className="space-y-1">
+            <CardTitle className="text-sm font-semibold">
+              Recent Activity
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Device event timeline
+            </CardDescription>
+          </div>
           <Link to="/analytics/activity">
-            <Button variant="quiet" size="sm" className="gap-1">
+            <Button variant="quiet" size="sm" className="gap-1 -mt-0.5">
               All Devices <ArrowRight className="h-3 w-3" />
             </Button>
           </Link>
-        }
-      >
-        <Card variant="editorial" className="overflow-hidden">
+        </CardHeader>
+        <CardContent className="p-0 pt-4">
           {isLoadingRecentActivity ? (
-            <div className="space-y-4 p-4">
+            <div className="space-y-4 px-5 pb-5">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center space-x-4">
-                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
                   <div className="space-y-2 flex-1">
                     <Skeleton className="h-4 w-[250px]" />
-                    <Skeleton className="h-4 w-[200px]" />
+                    <Skeleton className="h-3 w-[200px]" />
                   </div>
                 </div>
               ))}
             </div>
           ) : events.length === 0 ? (
             <div className="py-12 text-center">
-              <Radio className="mx-auto h-8 w-8 text-muted-foreground/60" />
-              <p className="mt-2 text-sm text-muted-foreground">No events found</p>
+              <Radio className="mx-auto h-8 w-8 text-muted-foreground/40" />
+              <p className="mt-3 text-sm text-muted-foreground">
+                No events found
+              </p>
             </div>
           ) : (
             <>
@@ -305,71 +440,54 @@ function AnalyticsPage() {
                 {events.map((event: any) => (
                   <div
                     key={event.id || event.createdAt}
-                    className="group flex flex-col gap-3 p-4 sm:flex-row sm:items-center hover:bg-[var(--raised-surface)]"
+                    className="flex items-center gap-4 px-5 py-3 transition-colors hover:bg-[var(--raised-surface)]/50"
                   >
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-background/40 ${
-                        event.eventType === "PROMOTED"
-                          ? "border-event-promoted-border text-success"
-                          : "border-event-recovered-border text-[color:var(--event-recovered)]"
-                      }`}
-                    >
-                      {event.eventType === "PROMOTED" ? (
-                        <ArrowUpRight className="h-5 w-5" />
-                      ) : (
-                        <RotateCcw className="h-5 w-5" />
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant={getEventTypeVariant(event.eventType)}>
                           {event.eventType.toLowerCase()}
                         </Badge>
+                        <PlatformIcon
+                          platform={event.platform}
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                        />
                         <span
-                          className="max-w-[250px] truncate font-mono text-xs text-muted-foreground"
+                          className="max-w-[200px] truncate font-mono text-[0.68rem] text-muted-foreground"
                           title={event.deviceId}
                         >
                           {event.deviceId}
                         </span>
-                        <PlatformIcon
-                          platform={event.platform}
-                          className="h-4 w-4 text-muted-foreground"
-                        />
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 text-[0.7rem] text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <span className="opacity-70">Bundle:</span>
-                          <BundleIdDisplay bundleId={event.bundleId} />
-                        </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.68rem] text-muted-foreground">
+                        <BundleIdDisplay bundleId={event.bundleId} />
                         {event.appVersion ? (
-                          <div className="flex items-center gap-1 border-l border-border/50 pl-3">
-                            <span className="opacity-70">App v:</span>
-                            <span className="font-mono">{event.appVersion}</span>
-                          </div>
+                          <span className="font-mono">v{event.appVersion}</span>
                         ) : null}
                       </div>
                     </div>
 
-                    <div className="ml-auto flex items-center gap-2 sm:flex-col sm:items-end">
+                    <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end">
                       <ChannelBadge channel={event.channel} />
-                      <span className="text-[0.68rem] text-muted-foreground whitespace-nowrap">
+                      <span className="text-[0.65rem] text-muted-foreground whitespace-nowrap tabular-nums">
                         {event.createdAt
-                          ? dayjs(event.createdAt).format("YYYY/MM/DD HH:mm:ss")
-                          : "Unknown time"}
+                          ? dayjs(event.createdAt).format("MM/DD HH:mm")
+                          : "—"}
                       </span>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="flex items-center justify-between border-t border-[var(--panel-border)] bg-[var(--raised-surface)]/60 px-4 py-3">
-                <div className="text-[0.7rem] text-muted-foreground">
-                  Showing {currentOffset + 1} to {Math.min(currentOffset + events.length, totalEvents)} of {totalEvents}
-                </div>
+              <Separator />
+              <div className="flex items-center justify-between px-5 py-3 bg-[var(--raised-surface)]/40">
+                <p className="text-[0.68rem] text-muted-foreground tabular-nums">
+                  {currentOffset + 1}–
+                  {Math.min(currentOffset + events.length, totalEvents)} of{" "}
+                  {totalEvents}
+                </p>
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="panel"
+                    variant="outline"
                     size="sm"
                     onClick={handlePreviousPage}
                     disabled={!hasPreviousPage}
@@ -378,7 +496,7 @@ function AnalyticsPage() {
                     Previous
                   </Button>
                   <Button
-                    variant="panel"
+                    variant="outline"
                     size="sm"
                     onClick={handleNextPage}
                     disabled={!hasNextPage}
@@ -390,8 +508,8 @@ function AnalyticsPage() {
               </div>
             </>
           )}
-        </Card>
-      </AnalyticsSection>
+        </CardContent>
+      </Card>
 
       <AppVersionDetailSheet
         selectedVersion={selectedVersion}

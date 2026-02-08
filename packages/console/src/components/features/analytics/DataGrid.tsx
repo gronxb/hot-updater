@@ -36,14 +36,17 @@ export function DataGrid<T>({
   }
 
   return (
-    <Table variant="editorial" className={cn("analytics-grid-table", className)}>
-      <TableHeader className="bg-[var(--raised-surface)]/70">
-        <TableRow className="hover:bg-transparent border-b-[var(--panel-border)]">
+    <Table
+      variant="editorial"
+      className={cn("analytics-grid-table", className)}
+    >
+      <TableHeader>
+        <TableRow className="hover:bg-transparent border-b">
           {columns.map((column) => (
             <TableHead
               key={column.key}
               className={cn(
-                "h-11 px-4 text-[0.68rem] uppercase tracking-[0.08em] text-muted-foreground",
+                "h-10 px-4 text-[0.68rem] uppercase tracking-wider text-muted-foreground font-medium",
                 column.headerClassName,
               )}
             >
@@ -57,7 +60,7 @@ export function DataGrid<T>({
           <TableRow
             key={getRowKey(row)}
             className={cn(
-              "border-b-[var(--panel-border)]/70 hover:bg-[var(--raised-surface)]/80",
+              "transition-colors hover:bg-muted/40",
               onRowClick && "cursor-pointer",
             )}
             onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -65,7 +68,7 @@ export function DataGrid<T>({
             {columns.map((column) => (
               <TableCell
                 key={`${getRowKey(row)}-${column.key}`}
-                className={cn("px-4 py-2.5", column.cellClassName)}
+                className={cn("px-4 py-3", column.cellClassName)}
               >
                 {column.render(row)}
               </TableCell>
