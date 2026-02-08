@@ -15,7 +15,43 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import appCss from "../styles.css?url";
 
-const queryClient = new QueryClient();
+const THEME_STORAGE_KEY = "hot-updater-theme";
+const THEME_INIT_SCRIPT = `(function(){
+  try {
+    var theme = localStorage.getItem('${THEME_STORAGE_KEY}') || 'dark';
+    var root = document.documentElement;
+    var isDark =
+      theme === 'dark' ||
+      (theme === 'system' &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+    root.classList.toggle('dark', isDark);
+    root.classList.toggle('light', !isDark);
+    root.style.colorScheme = isDark ? 'dark' : 'light';
+  } catch (_error) {
+    document.documentElement.classList.add('dark');
+    document.documentElement.classList.remove('light');
+    document.documentElement.style.colorScheme = 'dark';
+  }
+})();`;
+
+// Create singleton QueryClient instance
+let queryClientInstance: QueryClient | null = null;
+
+function getQueryClient() {
+  if (!queryClientInstance) {
+    queryClientInstance = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 60 * 1000, // 1 minute
+          gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
+          refetchOnWindowFocus: false,
+        },
+      },
+    });
+  }
+  return queryClientInstance;
+}
 
 export const Route = createRootRoute({
   head: () => ({
@@ -44,6 +80,8 @@ export const Route = createRootRoute({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const queryClient = getQueryClient();
+
   useEffect(() => {
     if (import.meta.env.DEV) {
       void import("react-grab/core").then(({ init }) => {
@@ -52,12 +90,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     }
   }, []);
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
-        <ThemeProvider defaultTheme="dark">
+        <ThemeProvider defaultTheme="dark" storageKey={THEME_STORAGE_KEY}>
           <QueryClientProvider client={queryClient}>
             <TooltipProvider>
               {children}

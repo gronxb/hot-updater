@@ -13,6 +13,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { DeviceEvent } from "@/lib/analytics-utils";
+import { getSuccessRateVariant } from "@/lib/status-utils";
 
 dayjs.extend(relativeTime);
 
@@ -124,13 +125,13 @@ export function BundleDetailSheet({
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border p-4 text-center">
-                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                <p className="text-2xl font-bold text-success">
                   {selectedBundleData.promoted.toLocaleString()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Promoted</p>
               </div>
               <div className="rounded-lg border p-4 text-center">
-                <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                <p className="text-2xl font-bold text-[color:var(--event-recovered)]">
                   {selectedBundleData.recovered.toLocaleString()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Recovered</p>
@@ -140,22 +141,13 @@ export function BundleDetailSheet({
             <div className="rounded-lg border p-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Success Rate</p>
-                <Badge
-                  variant="outline"
-                  className={
-                    selectedBundleData.successRate >= 90
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                      : selectedBundleData.successRate >= 70
-                        ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20"
-                        : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
-                  }
-                >
+                <Badge variant={getSuccessRateVariant(selectedBundleData.successRate)}>
                   {selectedBundleData.successRate.toFixed(1)}%
                 </Badge>
               </div>
               <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500 transition-all"
+                  className="h-full bg-success transition-all"
                   style={{ width: `${selectedBundleData.successRate}%` }}
                 />
               </div>
@@ -178,11 +170,11 @@ export function BundleDetailSheet({
                         {ver.appVersion}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className="text-emerald-600 dark:text-emerald-400">
+                        <span className="text-success">
                           {ver.promoted}
                         </span>
                         <span className="text-muted-foreground">/</span>
-                        <span className="text-orange-600 dark:text-orange-400">
+                        <span className="text-[color:var(--event-recovered)]">
                           {ver.recovered}
                         </span>
                       </div>
@@ -203,8 +195,8 @@ export function BundleDetailSheet({
                     <div
                       className={`h-6 w-6 rounded-full flex items-center justify-center ${
                         event.eventType === "PROMOTED"
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : "bg-orange-500/10 text-orange-500"
+                          ? "bg-success-muted text-success"
+                          : "bg-event-recovered-muted text-[color:var(--event-recovered)]"
                       }`}
                     >
                       {event.eventType === "PROMOTED" ? (

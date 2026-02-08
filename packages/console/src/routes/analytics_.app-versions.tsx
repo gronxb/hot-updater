@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { aggregateByAppVersion, type DeviceEvent } from "@/lib/analytics-utils";
 import { useDeviceEventsQuery } from "@/lib/api";
 import { ANALYTICS_EVENTS_LIMIT } from "@/lib/constants";
+import { getSuccessRateVariant } from "@/lib/status-utils";
 
 const PAGE_SIZE = 10;
 
@@ -202,26 +203,17 @@ function AppVersionsPage() {
                           <td className="px-4 py-3 font-mono text-sm">
                             {version.appVersion}
                           </td>
-                          <td className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">
+                          <td className="px-4 py-3 text-right text-success">
                             {version.promoted.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">
+                          <td className="px-4 py-3 text-right text-[color:var(--event-recovered)]">
                             {version.recovered.toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-right font-medium">
                             {version.total.toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Badge
-                              variant="outline"
-                              className={
-                                version.successRate >= 90
-                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                                  : version.successRate >= 70
-                                    ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20"
-                                    : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
-                              }
-                            >
+                            <Badge variant={getSuccessRateVariant(version.successRate)}>
                               {version.successRate.toFixed(1)}%
                             </Badge>
                           </td>

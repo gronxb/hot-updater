@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DeviceEvent } from "@/lib/analytics-utils";
 import { useDeviceEventsQuery } from "@/lib/api";
 import { ANALYTICS_EVENTS_LIMIT } from "@/lib/constants";
+import { getEventTypeVariant } from "@/lib/status-utils";
 
 dayjs.extend(relativeTime);
 
@@ -284,10 +285,10 @@ function ActivityPage() {
                           <td className="px-4 py-3 font-mono text-xs truncate max-w-[200px]">
                             {device.deviceId}
                           </td>
-                          <td className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">
+                          <td className="px-4 py-3 text-right text-success">
                             {device.promoted.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">
+                          <td className="px-4 py-3 text-right text-[color:var(--event-recovered)]">
                             {device.recovered.toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-right font-medium">
@@ -359,13 +360,13 @@ function ActivityPage() {
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="rounded-lg border p-4 text-center">
-                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  <p className="text-2xl font-bold text-success">
                     {selectedDeviceData.promoted.toLocaleString()}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Promoted</p>
                 </div>
                 <div className="rounded-lg border p-4 text-center">
-                  <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                  <p className="text-2xl font-bold text-[color:var(--event-recovered)]">
                     {selectedDeviceData.recovered.toLocaleString()}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -429,8 +430,8 @@ function ActivityPage() {
                       <div
                         className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
                           event.eventType === "PROMOTED"
-                            ? "bg-emerald-500/10 text-emerald-500"
-                            : "bg-orange-500/10 text-orange-500"
+                            ? "bg-success-muted text-success"
+                            : "bg-event-recovered-muted text-[color:var(--event-recovered)]"
                         }`}
                       >
                         {event.eventType === "PROMOTED" ? (
@@ -442,12 +443,7 @@ function ActivityPage() {
                       <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-center justify-between">
                           <Badge
-                            variant="outline"
-                            className={
-                              event.eventType === "PROMOTED"
-                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                                : "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20"
-                            }
+                            variant={getEventTypeVariant(event.eventType)}
                           >
                             {event.eventType.toLowerCase()}
                           </Badge>

@@ -1,10 +1,12 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import {
+  type Row,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { memo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -22,6 +24,36 @@ interface BundlesTableProps {
   bundles: Bundle[];
   onRowClick: (bundle: Bundle) => void;
 }
+
+// Memoized table row to prevent unnecessary re-renders
+const BundleTableRow = memo(
+  ({
+    row,
+    onRowClick,
+  }: {
+    row: Row<Bundle>;
+    onRowClick: (bundle: Bundle) => void;
+  }) => {
+    const handleClick = useCallback(() => {
+      onRowClick(row.original);
+    }, [row.original, onRowClick]);
+
+    return (
+      <TableRow
+        onClick={handleClick}
+        className="cursor-pointer hover:bg-muted/30 transition-colors data-[state=selected]:bg-muted"
+      >
+        {row.getVisibleCells().map((cell) => (
+          <TableCell key={cell.id} className="py-3">
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        ))}
+      </TableRow>
+    );
+  },
+);
+
+BundleTableRow.displayName = "BundleTableRow";
 
 export function BundlesTable({ bundles, onRowClick }: BundlesTableProps) {
   const { filters, setFilters } = useFilterParams();
@@ -75,20 +107,11 @@ export function BundlesTable({ bundles, onRowClick }: BundlesTableProps) {
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow
+                <BundleTableRow
                   key={row.id}
-                  onClick={() => onRowClick(row.original)}
-                  className="cursor-pointer hover:bg-muted/30 transition-colors data-[state=selected]:bg-muted"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-3">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
+                  row={row}
+                  onRowClick={onRowClick}
+                />
               ))
             ) : (
               <TableRow>

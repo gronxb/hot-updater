@@ -37,11 +37,11 @@ export function RolloutStatsCard({ bundleId }: RolloutStatsCardProps) {
     },
     promoted: {
       label: "Promoted",
-      color: "oklch(0.723 0.219 149.579)",
+      color: "var(--event-promoted)",
     },
     recovered: {
       label: "Recovered",
-      color: "oklch(0.577 0.245 27.325)",
+      color: "var(--event-recovered)",
     },
   } satisfies ChartConfig;
 
@@ -128,13 +128,13 @@ export function RolloutStatsCard({ bundleId }: RolloutStatsCardProps) {
               </div>
               <div className="space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Promoted</p>
-                <p className="text-lg font-bold text-emerald-500">
+                <p className="text-lg font-bold text-success">
                   {promotedCount.toLocaleString()}
                 </p>
               </div>
               <div className="space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Recovered</p>
-                <p className="text-lg font-bold text-destructive">
+                <p className="text-lg font-bold text-[color:var(--event-recovered)]">
                   {recoveredCount.toLocaleString()}
                 </p>
               </div>

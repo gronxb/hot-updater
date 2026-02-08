@@ -220,6 +220,10 @@ export const getDeviceEvents = createServerFn({ method: "GET" }).handler(
 
       const result = await databasePlugin.getDeviceEvents(data);
 
+      if (!result) {
+        return emptyResult;
+      }
+
       return {
         data: result.data.map((event) => ({
           id: event.id,

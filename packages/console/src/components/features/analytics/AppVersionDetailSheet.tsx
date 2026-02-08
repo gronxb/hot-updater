@@ -16,7 +16,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { aggregateByAppVersion, type DeviceEvent } from "@/lib/analytics-utils";
+import {
+  aggregateByAppVersion,
+  type AppVersionData,
+  type DeviceEvent,
+} from "@/lib/analytics-utils";
+import { getSuccessRateVariant } from "@/lib/status-utils";
 
 dayjs.extend(relativeTime);
 
@@ -24,22 +29,45 @@ type AppVersionDetailSheetProps = {
   selectedVersion: string | null;
   onOpenChange: (open: boolean) => void;
   analyticsEvents: DeviceEvent[];
+  // Optional pre-aggregated data for performance
+  appVersionMap?: Map<string, AppVersionData>;
+  versionBundlesMap?: Map<
+    string,
+    Array<{
+      bundleId: string;
+      promoted: number;
+      recovered: number;
+      total: number;
+    }>
+  >;
 };
 
 export function AppVersionDetailSheet({
   selectedVersion,
   onOpenChange,
   analyticsEvents,
+  appVersionMap,
+  versionBundlesMap,
 }: AppVersionDetailSheetProps) {
   const selectedVersionData = useMemo(() => {
     if (!selectedVersion) return null;
+    // Use pre-aggregated data if available for O(1) lookup
+    if (appVersionMap) {
+      return appVersionMap.get(selectedVersion) || null;
+    }
+    // Fallback to computing (for backward compatibility)
     return aggregateByAppVersion(analyticsEvents).find(
       (v) => v.appVersion === selectedVersion,
     );
-  }, [analyticsEvents, selectedVersion]);
+  }, [analyticsEvents, selectedVersion, appVersionMap]);
 
   const selectedVersionBundles = useMemo(() => {
     if (!selectedVersion) return [];
+    // Use pre-aggregated data if available for O(1) lookup
+    if (versionBundlesMap) {
+      return versionBundlesMap.get(selectedVersion) || [];
+    }
+    // Fallback to computing (for backward compatibility)
     const versionEvents = analyticsEvents.filter(
       (e) => e.appVersion === selectedVersion,
     );
@@ -64,7 +92,7 @@ export function AppVersionDetailSheet({
       bundleMap[event.bundleId].total += 1;
     }
     return Object.values(bundleMap).sort((a, b) => b.total - a.total);
-  }, [analyticsEvents, selectedVersion]);
+  }, [analyticsEvents, selectedVersion, versionBundlesMap]);
 
   const selectedVersionEvents = useMemo(() => {
     if (!selectedVersion) return [];
@@ -88,13 +116,13 @@ export function AppVersionDetailSheet({
           <div className="p-6 space-y-6 flex-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border p-4 text-center">
-                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                <p className="text-2xl font-bold text-success">
                   {selectedVersionData.promoted.toLocaleString()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Promoted</p>
               </div>
               <div className="rounded-lg border p-4 text-center">
-                <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                <p className="text-2xl font-bold text-[color:var(--event-recovered)]">
                   {selectedVersionData.recovered.toLocaleString()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Recovered</p>
@@ -104,22 +132,13 @@ export function AppVersionDetailSheet({
             <div className="rounded-lg border p-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Success Rate</p>
-                <Badge
-                  variant="outline"
-                  className={
-                    selectedVersionData.successRate >= 90
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                      : selectedVersionData.successRate >= 70
-                        ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20"
-                        : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
-                  }
-                >
+                <Badge variant={getSuccessRateVariant(selectedVersionData.successRate)}>
                   {selectedVersionData.successRate.toFixed(1)}%
                 </Badge>
               </div>
               <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500 transition-all"
+                  className="h-full bg-success transition-all"
                   style={{ width: `${selectedVersionData.successRate}%` }}
                 />
               </div>
@@ -150,11 +169,11 @@ export function AppVersionDetailSheet({
                         <ExternalLink className="h-3 w-3 shrink-0" />
                       </Link>
                       <div className="flex items-center gap-2">
-                        <span className="text-emerald-600 dark:text-emerald-400">
+                        <span className="text-success">
                           {bundle.promoted}
                         </span>
                         <span className="text-muted-foreground">/</span>
-                        <span className="text-orange-600 dark:text-orange-400">
+                        <span className="text-[color:var(--event-recovered)]">
                           {bundle.recovered}
                         </span>
                       </div>
@@ -175,8 +194,8 @@ export function AppVersionDetailSheet({
                     <div
                       className={`h-6 w-6 rounded-full flex items-center justify-center ${
                         event.eventType === "PROMOTED"
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : "bg-orange-500/10 text-orange-500"
+                          ? "bg-success-muted text-success"
+                          : "bg-event-recovered-muted text-[color:var(--event-recovered)]"
                       }`}
                     >
                       {event.eventType === "PROMOTED" ? (

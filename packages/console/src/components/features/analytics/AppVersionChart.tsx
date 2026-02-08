@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AppVersionData } from "@/lib/analytics-utils";
+import { getSuccessRateVariant } from "@/lib/status-utils";
 
 interface AppVersionChartProps {
   data: AppVersionData[];
@@ -17,23 +18,13 @@ interface AppVersionChartProps {
 const chartConfig = {
   promoted: {
     label: "Promoted",
-    color: "hsl(142 76% 36%)", // Emerald
+    color: "var(--event-promoted)",
   },
   recovered: {
     label: "Recovered",
-    color: "hsl(24 95% 53%)", // Orange
+    color: "var(--event-recovered)",
   },
 } satisfies ChartConfig;
-
-function getSuccessRateBadgeClass(successRate: number): string {
-  if (successRate >= 90) {
-    return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
-  }
-  if (successRate >= 70) {
-    return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20";
-  }
-  return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
-}
 
 export function AppVersionChart({ data, isLoading }: AppVersionChartProps) {
   if (isLoading) {
@@ -152,15 +143,15 @@ export function AppVersionChart({ data, isLoading }: AppVersionChartProps) {
       {/* Success rate legend */}
       <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded bg-emerald-500/20" />
+          <div className="h-3 w-3 rounded bg-success-muted" />
           <span>≥ 90% Success Rate</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded bg-yellow-500/20" />
+          <div className="h-3 w-3 rounded bg-warning-muted" />
           <span>70-89% Success Rate</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded bg-red-500/20" />
+          <div className="h-3 w-3 rounded bg-error-muted" />
           <span>&lt; 70% Success Rate</span>
         </div>
       </div>
@@ -186,20 +177,17 @@ export function AppVersionChart({ data, isLoading }: AppVersionChartProps) {
                   <td className="px-4 py-3 font-mono text-xs">
                     {version.appVersion}
                   </td>
-                  <td className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">
+                  <td className="px-4 py-3 text-right text-success">
                     {version.promoted.toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">
+                  <td className="px-4 py-3 text-right text-[color:var(--event-recovered)]">
                     {version.recovered.toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right font-medium">
                     {version.total.toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Badge
-                      variant="outline"
-                      className={getSuccessRateBadgeClass(version.successRate)}
-                    >
+                    <Badge variant={getSuccessRateVariant(version.successRate)}>
                       {version.successRate.toFixed(1)}%
                     </Badge>
                   </td>

@@ -17,11 +17,11 @@ interface TimeSeriesChartProps {
 const chartConfig = {
   promoted: {
     label: "Promoted",
-    color: "hsl(142 76% 36%)", // Emerald
+    color: "var(--event-promoted)",
   },
   recovered: {
     label: "Recovered",
-    color: "hsl(24 95% 53%)", // Orange
+    color: "var(--event-recovered)",
   },
 } satisfies ChartConfig;
 

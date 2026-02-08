@@ -9,7 +9,7 @@ import {
 import { BundleBasicInfo } from "./BundleBasicInfo";
 import { BundleEditorForm } from "./BundleEditorForm";
 import { BundleMetadata } from "./BundleMetadata";
-import { RolloutStatsCard } from "./RolloutStatsCard";
+import { LazyRolloutStatsCard } from "./LazyRolloutStatsCard";
 
 interface BundleEditorSheetProps {
   bundle: Bundle | null;
@@ -35,7 +35,7 @@ export function BundleEditorSheet({
         </SheetHeader>
 
         <div className="px-6 pb-6 space-y-6">
-          <RolloutStatsCard bundleId={bundle.id} />
+          <LazyRolloutStatsCard bundleId={bundle.id} />
           <BundleEditorForm
             bundle={bundle}
             onClose={() => onOpenChange(false)}
