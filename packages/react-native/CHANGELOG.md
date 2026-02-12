@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.25.9
+
+### Patch Changes
+
+- bd288a8: fix(android): brotil embed android for vulnerability
+- Updated dependencies [6b22072]
+  - @hot-updater/plugin-core@0.25.9
+  - @hot-updater/cli-tools@0.25.9
+  - @hot-updater/core@0.25.9
+  - @hot-updater/js@0.25.9
+
 ## 0.25.8
 
 ### Patch Changes
