@@ -1,3 +1,4 @@
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import { mockReactNativeProjectRoot } from "@hot-updater/test-utils/node";
 import fs from "fs";
 import path from "path";
@@ -31,12 +32,12 @@ describe("appendToProjectRootGitignore", () => {
 
     appendToProjectRootGitignore({
       cwd: rootDir,
-      globLines: [".hot-updater/output"],
+      globLines: [HotUpdateDirUtil.outputGitignorePath],
     });
 
     expect(fs.readFileSync(gitIgnorePath(), { encoding: "utf8" })).toBe(
       `# hot-updater
-.hot-updater/output
+${HotUpdateDirUtil.outputGitignorePath}
 `,
     );
   });

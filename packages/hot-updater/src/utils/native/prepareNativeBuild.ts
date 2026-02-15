@@ -5,6 +5,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
 import path from "path";
 import {
@@ -12,7 +13,6 @@ import {
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
-import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { setIosMinBundleIdSlotIntoInfoPlist } from "@/utils/setIosMinBundleIdSlotIntoInfoPlist";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
@@ -116,7 +116,12 @@ export async function prepareNativeBuild(
 
   const artifactResultStorePath =
     options.outputPath ??
-    path.join(getDefaultOutputPath(), "build", platform, scheme);
+    path.join(
+      HotUpdateDirUtil.getDefaultOutputPath({ cwd }),
+      "build",
+      platform,
+      scheme,
+    );
 
   const resolvedOutputPath = path.isAbsolute(artifactResultStorePath)
     ? artifactResultStorePath

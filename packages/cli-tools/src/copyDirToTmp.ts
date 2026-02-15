@@ -1,10 +1,11 @@
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import fs from "fs/promises";
 import path from "path";
 import { getCwd } from "./cwd";
 
 export const copyDirToTmp = async (dir: string, childDirname?: string) => {
   const cwd = getCwd();
-  const hotUpdaterDir = path.join(cwd, ".hot-updater");
+  const hotUpdaterDir = HotUpdateDirUtil.getDirPath({ cwd });
   const tmpDir = childDirname
     ? path.join(hotUpdaterDir, childDirname)
     : hotUpdaterDir;

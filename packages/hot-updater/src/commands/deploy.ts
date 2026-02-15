@@ -7,6 +7,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
@@ -25,9 +26,7 @@ import {
 } from "@/utils/fingerprint/diff";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
-import { getLatestGitCommit } from "@/utils/git";
-import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
-import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
+import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
@@ -226,11 +225,16 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   }
 
-  if (appendOutputDirectoryIntoGitignore()) {
+  if (
+    appendToProjectRootGitignore({
+      globLines: [HotUpdateDirUtil.outputGitignorePath],
+    })
+  ) {
     p.log.info(".gitignore has been modified");
   }
 
-  const outputPath = options.bundleOutputPath ?? getDefaultOutputPath();
+  const outputPath =
+    options.bundleOutputPath ?? HotUpdateDirUtil.getDefaultOutputPath({ cwd });
 
   let bundleId: string | null = null;
   let fileHash: string;

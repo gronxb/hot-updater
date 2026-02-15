@@ -43,6 +43,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "oxc-transform": "0.82.1"
   },
