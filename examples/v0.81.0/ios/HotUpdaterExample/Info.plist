@@ -68,5 +68,7 @@ dWEyuD7khcbLi92nsgYBbe/338uUtuQNTgb0FaMJvuoR3j41pmn2pwTgRYtTCTQn
 XUEukyuAGDU3HGRiGYHEhsEILoUzZpXy2Zs/eQRtZE0o644tb1Cn4D+/a7Pv6Yso
 zxKCEs5mNh/ligdmTntzMecCAwEAAQ==
 -----END PUBLIC KEY-----</string>
+		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
+		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
 	</dict>
 </plist>

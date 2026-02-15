@@ -42,8 +42,9 @@ export async function prepareNativeBuild(
   ).sort();
 
   if (!availableSchemes.length) {
-    // TODO: add documentation links
-    p.log.error(`configure your native build schemes for ${platform} first.`);
+    p.log.error(
+      `configure your native build schemes for ${platform} first. See documentation [https://hot-updater.dev/docs/guides/native-build/]`,
+    );
     return null;
   }
 
