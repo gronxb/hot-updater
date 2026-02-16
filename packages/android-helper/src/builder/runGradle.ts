@@ -86,13 +86,13 @@ Args       ${gradleArgs.join(" ")}
   try {
     const process = execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectPath,
+      all: true,
     });
-
-    for await (const line of process) {
-      if (line) {
-        logger.processLine(line);
-      }
+    const outputStream = process.all ?? process.stdout;
+    if (outputStream) {
+      await logger.processStream(outputStream);
     }
+    await process;
 
     logger.stop();
   } catch (e) {

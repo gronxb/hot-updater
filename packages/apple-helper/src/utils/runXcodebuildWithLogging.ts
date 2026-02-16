@@ -30,6 +30,7 @@ const createXcodebuildWithXcbeautifyProcess = ({
 }) => {
   return execa("bash", ["-c", XCODEBUILD_XCBEAUTIFY_SCRIPT, "--", ...args], {
     cwd: sourceDir,
+    all: true,
   });
 };
 
@@ -42,6 +43,7 @@ const createRawXcodebuildProcess = ({
 }) => {
   return execa("xcodebuild", args, {
     cwd: sourceDir,
+    all: true,
   });
 };
 
@@ -67,9 +69,11 @@ export const runXcodebuildWithLogging = async ({
       ? createXcodebuildWithXcbeautifyProcess({ args, sourceDir })
       : createRawXcodebuildProcess({ args, sourceDir });
 
-    for await (const line of process) {
-      logger.processLine(line);
+    const outputStream = process.all ?? process.stdout;
+    if (outputStream) {
+      await logger.processStream(outputStream);
     }
+    await process;
 
     logger.stop(successMessage);
   } catch (error) {

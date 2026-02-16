@@ -1,11 +1,12 @@
 import fs from "fs";
 import path from "path";
+import type { Readable } from "stream";
 import { getCwd } from "./cwd";
 import { p } from "./prompts";
 
 export type HotUpdaterLogWriter = {
   logFilePath: string | null;
-  writeLine: (line: string) => void;
+  writeStream: (input: Readable) => Promise<void>;
   writeError: (error: unknown) => void;
   close: () => Promise<void>;
 };
@@ -45,6 +46,18 @@ export const stripAnsi = (value: string) => {
   return result;
 };
 
+const normalizeChunk = ({ chunk }: { chunk: unknown }) => {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk.toString();
+  }
+
+  if (chunk instanceof Uint8Array) {
+    return Buffer.from(chunk).toString();
+  }
+
+  return String(chunk);
+};
+
 const createTimestamp = () => {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -70,7 +83,8 @@ export const createLogWriter = async ({
 
     const sanitizedPrefix = sanitizeFileNamePart(prefix);
     const resolvedLogFilePath =
-      logFilePath ?? path.join(logDir, `${createTimestamp()}-${sanitizedPrefix}.log`);
+      logFilePath ??
+      path.join(logDir, `${createTimestamp()}-${sanitizedPrefix}.log`);
 
     await fs.promises.mkdir(path.dirname(resolvedLogFilePath), {
       recursive: true,
@@ -94,26 +108,27 @@ export const createLogWriter = async ({
       p.log.warn(`Failed to write build logs: ${message}`);
     });
 
-    const writeLine = (line: string) => {
+    const writeChunk = (value: string | Buffer) => {
       if (!stream.writable || stream.destroyed) {
         return;
       }
-      const plainLine = stripAnsi(line).replace(/\r/g, "");
-      stream.write(`${plainLine}\n`);
+      const plainText = stripAnsi(normalizeChunk({ chunk: value })).replace(
+        /\r/g,
+        "",
+      );
+      stream.write(plainText);
+    };
+
+    const writeStream = async (input: Readable) => {
+      for await (const chunk of input) {
+        writeChunk(normalizeChunk({ chunk }));
+      }
     };
 
     const writeError = (error: unknown) => {
-      if (error instanceof Error) {
-        const message = error.stack ?? error.message;
-        for (const line of message.split("\n")) {
-          if (line.trim()) {
-            writeLine(line);
-          }
-        }
-        return;
-      }
-
-      writeLine(String(error));
+      const message =
+        error instanceof Error ? (error.stack ?? error.message) : String(error);
+      writeChunk(`${message}\n`);
     };
 
     const close = () => {
@@ -126,14 +141,19 @@ export const createLogWriter = async ({
       });
     };
 
-    return { logFilePath: resolvedLogFilePath, writeLine, writeError, close };
+    return {
+      logFilePath: resolvedLogFilePath,
+      writeStream,
+      writeError,
+      close,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p.log.warn(`Failed to initialize build log file: ${message}`);
 
     return {
       logFilePath: null,
-      writeLine: () => {},
+      writeStream: async () => {},
       writeError: () => {},
       close: async () => {},
     };

@@ -1,3 +1,4 @@
+import { PassThrough, type Readable } from "stream";
 import { createLogWriter, type HotUpdaterLogWriter } from "./LogWriter";
 import { type PromptProgress, p } from "./prompts";
 
@@ -19,6 +20,18 @@ const createInitialState = (): BuildLoggerState => ({
 
 const normalizeLine = ({ line }: { line: string }) => {
   return line.replace(/[\r\n]/g, "").trim();
+};
+
+const normalizeChunk = ({ chunk }: { chunk: unknown }) => {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk.toString();
+  }
+
+  if (chunk instanceof Uint8Array) {
+    return Buffer.from(chunk).toString();
+  }
+
+  return String(chunk);
 };
 
 const matchesAnyPattern = ({
@@ -124,15 +137,19 @@ export interface BuildLoggerConfig {
 export class BuildLogger {
   private state = createInitialState();
   private logWriter?: HotUpdaterLogWriter;
+  private readonly progressInput = new PassThrough();
   private readonly promptProgress: PromptProgress;
+  private bufferedPartialLine = "";
   private readonly stageCount: number;
 
   constructor(private readonly config: BuildLoggerConfig) {
     this.stageCount = config.progressStages.length;
+
     this.promptProgress = p.progress({
       indicator: "timer",
       max: config.progressStages.length,
       delay: 500,
+      input: this.progressInput,
     });
   }
 
@@ -144,12 +161,60 @@ export class BuildLogger {
     this.promptProgress.start();
   }
 
-  processLine(line: string) {
-    if (line) {
-      this.logWriter?.writeLine(line);
+  async processStream(input: Readable) {
+    if (!this.logWriter) {
+      throw new Error("BuildLogger has not been started. Call start() first.");
     }
-    line = line.slice(0, 100); // truncate after file logging
-    const normalizedLine = normalizeLine({ line });
+
+    const progressInput = new PassThrough();
+    const logInput = new PassThrough();
+    // Fan out one process stream to both consumers: prompt progress parsing and log file writer.
+    input.pipe(progressInput);
+    input.pipe(logInput);
+
+    await Promise.all([
+      this.consumeProgressStream(progressInput),
+      this.logWriter.writeStream(logInput),
+    ]);
+  }
+
+  private async consumeProgressStream(input: Readable) {
+    for await (const chunk of input) {
+      const lineChunk = normalizeChunk({ chunk });
+
+      if (!lineChunk) {
+        continue;
+      }
+
+      this.progressInput.write(lineChunk);
+      this.processProgressChunk(lineChunk);
+    }
+
+    this.flushProgressChunk();
+  }
+
+  private processProgressChunk(lineChunk: string) {
+    const chunkWithPreviousRemainder = `${this.bufferedPartialLine}${lineChunk}`;
+    const splitLines = chunkWithPreviousRemainder.split(/\r\n|\n|\r/g);
+    this.bufferedPartialLine = splitLines.pop() ?? "";
+
+    for (const line of splitLines) {
+      this.processProgressLine(line);
+    }
+  }
+
+  private flushProgressChunk() {
+    if (!this.bufferedPartialLine) {
+      return;
+    }
+
+    this.processProgressLine(this.bufferedPartialLine);
+    this.bufferedPartialLine = "";
+  }
+
+  private processProgressLine(line: string) {
+    const truncatedLine = line.slice(0, 100); // truncate after file logging
+    const normalizedLine = normalizeLine({ line: truncatedLine });
 
     if (!normalizedLine) {
       return;
@@ -193,6 +258,8 @@ export class BuildLogger {
   }
 
   async close() {
+    this.progressInput.end();
+
     if (!this.logWriter) {
       return;
     }
