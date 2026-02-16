@@ -6,9 +6,6 @@ settings:
 
 catalogs:
   default:
-    '@types/node':
-      specifier: ^20
-      version: 20.19.11
     execa:
       specifier: 9.5.2
       version: 9.5.2
@@ -32,9 +29,6 @@ importers:
       '@swc/helpers':
         specifier: ^0.5.17
         version: 0.5.17
-      chokidar:
-        specifier: ^4.0.3
-        version: 4.0.3
       execa:
         specifier: 'catalog:'
         version: 9.5.2
@@ -23232,7 +23226,7 @@ snapshots:
       miniflare: 4.20250902.0
       semver: 7.7.2
       vitest: 3.2.4(@types/debug@4.1.12)(@types/node@24.10.0)(jiti@2.6.1)(jsdom@25.0.1)(lightningcss@1.30.2)(msw@2.7.0(@types/node@24.10.0)(typescript@5.8.3))(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)
-      wrangler: 4.34.0(@cloudflare/workers-types@4.20250828.1)
+      wrangler: 4.34.0
       zod: 3.25.7
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -31621,7 +31615,7 @@ snapshots:
 
   axios@1.8.3:
     dependencies:
-      follow-redirects: 1.15.9(debug@4.4.3)
+      follow-redirects: 1.15.9
       form-data: 4.0.2
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -34781,6 +34775,8 @@ snapshots:
       vlq: 0.2.3
 
   fn.name@1.1.0: {}
+
+  follow-redirects@1.15.9: {}
 
   follow-redirects@1.15.9(debug@4.4.3):
     optionalDependencies:
@@ -39122,7 +39118,7 @@ snapshots:
       path-to-regexp: 6.3.0
       picocolors: 1.1.1
       strict-event-emitter: 0.5.1
-      type-fest: 4.35.0
+      type-fest: 4.37.0
       yargs: 17.7.2
     optionalDependencies:
       typescript: 5.8.3
@@ -44054,6 +44050,22 @@ snapshots:
       workerd: 1.20250813.0
     optionalDependencies:
       '@cloudflare/workers-types': 4.20250828.1
+      fsevents: 2.3.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  wrangler@4.34.0:
+    dependencies:
+      '@cloudflare/kv-asset-handler': 0.4.0
+      '@cloudflare/unenv-preset': 2.7.2(unenv@2.0.0-rc.20)(workerd@1.20250902.0)
+      blake3-wasm: 2.1.5
+      esbuild: 0.25.4
+      miniflare: 4.20250902.0
+      path-to-regexp: 6.3.0
+      unenv: 2.0.0-rc.20
+      workerd: 1.20250902.0
+    optionalDependencies:
       fsevents: 2.3.3
     transitivePeerDependencies:
       - bufferutil

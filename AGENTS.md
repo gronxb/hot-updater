@@ -10,7 +10,6 @@
 ## Build, Test, and Dev Commands
 - Install: `pnpm install` (Node 22 via `mise`/`.node-version`, corepack enabled).
 - Build all: `pnpm -w build` (Nx runs package and plugin builds; output in `dist/`).
-- Dev watch: `pnpm build:dev` (watches `packages/`, `plugins/`, `docs/`).
 - Test all: `pnpm -w test` (Vitest workspace over `packages/*`, `plugins/*`).
 - Format/Lint: `pnpm -w lint:fix` (write) • `pnpm lint` (read-only).
 - Clean: `pnpm clear` (removes `**/dist` and `.nx`).
