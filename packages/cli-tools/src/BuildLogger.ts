@@ -1,5 +1,8 @@
+import path from "path";
 import { createInterface } from "readline";
 import { PassThrough, type Readable } from "stream";
+import { colors } from "./colors";
+import { getCwd } from "./cwd";
 import { createLogWriter, type HotUpdaterLogWriter } from "./LogWriter";
 import { type PromptProgress, p } from "./prompts";
 
@@ -214,6 +217,7 @@ export class BuildLogger {
       this.promptProgress.error(finalMessage);
     }
 
+    this.showLogFileLocation();
     this.state = { ...this.state, stopped: true };
   }
 
@@ -278,5 +282,15 @@ export class BuildLogger {
       line,
       patterns: this.config.importantLogPatterns,
     });
+  }
+
+  private showLogFileLocation() {
+    if (!this.logWriter?.logFilePath) {
+      return;
+    }
+
+    const relativePath = path.relative(getCwd(), this.logWriter.logFilePath);
+    const highlightedPath = colors.blueBright(relativePath);
+    p.log.info(`Build log stored at ${highlightedPath}`);
   }
 }
