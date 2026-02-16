@@ -1,3 +1,4 @@
+import { createInterface } from "readline";
 import { PassThrough, type Readable } from "stream";
 import { createLogWriter, type HotUpdaterLogWriter } from "./LogWriter";
 import { type PromptProgress, p } from "./prompts";
@@ -18,20 +19,9 @@ const createInitialState = (): BuildLoggerState => ({
   stopped: false,
 });
 
-const normalizeLine = ({ line }: { line: string }) => {
-  return line.replace(/[\r\n]/g, "").trim();
-};
-
-const normalizeChunk = ({ chunk }: { chunk: unknown }) => {
-  if (Buffer.isBuffer(chunk)) {
-    return chunk.toString();
-  }
-
-  if (chunk instanceof Uint8Array) {
-    return Buffer.from(chunk).toString();
-  }
-
-  return String(chunk);
+const normalizeLine = (line: string) => {
+  const truncated = line.length > 50 ? `${line.slice(0, 50)}...` : line;
+  return truncated.replace(/[\r\n]/g, " ").trim();
 };
 
 const matchesAnyPattern = ({
@@ -137,9 +127,7 @@ export interface BuildLoggerConfig {
 export class BuildLogger {
   private state = createInitialState();
   private logWriter?: HotUpdaterLogWriter;
-  private readonly progressInput = new PassThrough();
   private readonly promptProgress: PromptProgress;
-  private bufferedPartialLine = "";
   private readonly stageCount: number;
 
   constructor(private readonly config: BuildLoggerConfig) {
@@ -149,7 +137,6 @@ export class BuildLogger {
       indicator: "timer",
       max: config.progressStages.length,
       delay: 500,
-      input: this.progressInput,
     });
   }
 
@@ -179,42 +166,19 @@ export class BuildLogger {
   }
 
   private async consumeProgressStream(input: Readable) {
-    for await (const chunk of input) {
-      const lineChunk = normalizeChunk({ chunk });
+    const lineReader = createInterface({
+      input,
+      crlfDelay: Infinity,
+      terminal: false,
+    });
 
-      if (!lineChunk) {
-        continue;
-      }
-
-      this.progressInput.write(lineChunk);
-      this.processProgressChunk(lineChunk);
-    }
-
-    this.flushProgressChunk();
-  }
-
-  private processProgressChunk(lineChunk: string) {
-    const chunkWithPreviousRemainder = `${this.bufferedPartialLine}${lineChunk}`;
-    const splitLines = chunkWithPreviousRemainder.split(/\r\n|\n|\r/g);
-    this.bufferedPartialLine = splitLines.pop() ?? "";
-
-    for (const line of splitLines) {
+    for await (const line of lineReader) {
       this.processProgressLine(line);
     }
   }
 
-  private flushProgressChunk() {
-    if (!this.bufferedPartialLine) {
-      return;
-    }
-
-    this.processProgressLine(this.bufferedPartialLine);
-    this.bufferedPartialLine = "";
-  }
-
   private processProgressLine(line: string) {
-    const truncatedLine = line.slice(0, 100); // truncate after file logging
-    const normalizedLine = normalizeLine({ line: truncatedLine });
+    const normalizedLine = normalizeLine(line);
 
     if (!normalizedLine) {
       return;
@@ -258,8 +222,6 @@ export class BuildLogger {
   }
 
   async close() {
-    this.progressInput.end();
-
     if (!this.logWriter) {
       return;
     }
