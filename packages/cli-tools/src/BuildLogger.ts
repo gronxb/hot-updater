@@ -41,6 +41,37 @@ const matchesAnyPattern = ({
   });
 };
 
+// Is it worth doing?
+const getPatternMatchScore = ({
+  line,
+  patterns,
+}: {
+  line: string;
+  patterns: LinePattern[];
+}) => {
+  const trimmedLine = line.trim();
+  const normalizedLine = trimmedLine.toLowerCase();
+
+  // Score reflects how specific a match is: longer patterns win ties over generic ones.
+  return patterns.reduce((bestScore, pattern) => {
+    if (pattern instanceof RegExp) {
+      pattern.lastIndex = 0;
+      if (!pattern.test(trimmedLine)) {
+        return bestScore;
+      }
+
+      return Math.max(bestScore, pattern.source.length);
+    }
+
+    const normalizedPattern = pattern.toLowerCase();
+    if (!normalizedLine.includes(normalizedPattern)) {
+      return bestScore;
+    }
+
+    return Math.max(bestScore, normalizedPattern.length);
+  }, 0);
+};
+
 const resolveNextCompletedStage = ({
   line,
   progressStages,
@@ -50,22 +81,43 @@ const resolveNextCompletedStage = ({
   progressStages: LinePattern[][];
   completedStages: number;
 }) => {
+  let nextCompletedStages = completedStages;
+  let bestMatchScore = 0;
+
+  // Search all remaining stages in one line and jump to the strongest/latest match.
+  // This avoids missing progress when output emits multiple stage markers together.
   for (
     let stageIndex = completedStages;
     stageIndex < progressStages.length;
     stageIndex += 1
   ) {
-    if (matchesAnyPattern({ line, patterns: progressStages[stageIndex] })) {
-      return stageIndex + 1;
+    const matchScore = getPatternMatchScore({
+      line,
+      patterns: progressStages[stageIndex],
+    });
+
+    if (matchScore <= 0) {
+      continue;
+    }
+
+    const candidateStage = stageIndex + 1;
+    if (
+      matchScore > bestMatchScore ||
+      (matchScore === bestMatchScore && candidateStage > nextCompletedStages)
+    ) {
+      nextCompletedStages = candidateStage;
+      bestMatchScore = matchScore;
     }
   }
 
-  return completedStages;
+  return nextCompletedStages;
 };
 
 export interface BuildLoggerConfig {
   logPrefix: string;
-  /** Progress stages: one stage advances by one step when a pattern is matched */
+  /** Lines that should be surfaced in prompt output as important events. */
+  importantLogPatterns: LinePattern[];
+  /** Progress stages: stage index advances when corresponding output patterns are observed. */
   progressStages: LinePattern[][];
 }
 
@@ -80,6 +132,7 @@ export class BuildLogger {
     this.promptProgress = p.progress({
       indicator: "timer",
       max: config.progressStages.length,
+      delay: 500,
     });
   }
 
@@ -95,6 +148,7 @@ export class BuildLogger {
     if (line) {
       this.logWriter?.writeLine(line);
     }
+    line = line.slice(0, 100); // truncate after file logging
     const normalizedLine = normalizeLine({ line });
 
     if (!normalizedLine) {
@@ -162,7 +216,11 @@ export class BuildLogger {
 
     if (progressDelta > 0) {
       this.promptProgress.advance(progressDelta, latestMessage);
-    } else if (latestMessage && latestMessage !== this.state.latestMessage) {
+    } else if (
+      latestMessage &&
+      latestMessage !== this.state.latestMessage &&
+      this.shouldLogLine(latestMessage)
+    ) {
       this.promptProgress.message(latestMessage);
     }
 
@@ -184,5 +242,12 @@ export class BuildLogger {
     const remainingStages = this.stageCount - this.state.completedStages;
     this.promptProgress.advance(remainingStages, this.state.latestMessage);
     this.state = { ...this.state, completedStages: this.stageCount };
+  }
+
+  private shouldLogLine(line: string) {
+    return matchesAnyPattern({
+      line,
+      patterns: this.config.importantLogPatterns,
+    });
   }
 }
