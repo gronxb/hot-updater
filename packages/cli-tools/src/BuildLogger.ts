@@ -117,7 +117,7 @@ export class BuildLogger {
       return "";
     }
 
-    return line.replace(/[\r\n]/g, "").trim();
+    return line.replace(/[\r\n]/g, " ").trim();
   }
 
   private matchesAnyPattern(
