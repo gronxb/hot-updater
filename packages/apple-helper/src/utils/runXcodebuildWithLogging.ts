@@ -129,7 +129,8 @@ export const runXcodebuildWithLogging = async ({
       const xcbeautifyProcess = createXcbeautifyProcess({ cwd: sourceDir });
       activeProcesses.push(xcodebuildProcess, xcbeautifyProcess);
 
-      const xcodebuildOutput = xcodebuildProcess.all ?? xcodebuildProcess.stdout;
+      const xcodebuildOutput =
+        xcodebuildProcess.all ?? xcodebuildProcess.stdout;
       const xcbeautifyInput = xcbeautifyProcess.stdin;
       if (!xcodebuildOutput || !xcbeautifyInput) {
         throw new Error("Failed to pipe xcodebuild output into xcbeautify");
